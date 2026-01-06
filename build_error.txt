@@ -1,0 +1,1 @@
+﻿src/ui/components/SyncStatusIndicator.tsx(6,13): error TS6133: 'syncState' is declared but its value is never read.

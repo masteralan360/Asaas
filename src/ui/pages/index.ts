@@ -1,0 +1,8 @@
+export { Dashboard } from './Dashboard'
+export { Login } from './Login'
+export { Register } from './Register'
+export { Products } from './Products'
+export { Customers } from './Customers'
+export { Orders } from './Orders'
+export { Invoices } from './Invoices'
+export { Settings } from './Settings'
