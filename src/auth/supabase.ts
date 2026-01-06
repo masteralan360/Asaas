@@ -4,7 +4,11 @@ const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || ''
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || ''
 
 // Check if Supabase is configured
-export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey)
+// Check if Supabase is configured with valid values
+const isUrlValid = supabaseUrl && supabaseUrl.startsWith('https://') && !supabaseUrl.includes('your_supabase_url')
+const isKeyValid = supabaseAnonKey && !supabaseAnonKey.includes('your_supabase_anon')
+
+export const isSupabaseConfigured = Boolean(isUrlValid && isKeyValid)
 
 // Create Supabase client
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
