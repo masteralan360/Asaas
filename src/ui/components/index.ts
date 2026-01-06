@@ -37,3 +37,4 @@ export {
 export { Textarea } from './textarea'
 export { Layout } from './Layout'
 export { SyncStatusIndicator } from './SyncStatusIndicator'
+export { LanguageSwitcher } from './LanguageSwitcher'

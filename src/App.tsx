@@ -65,7 +65,7 @@ function App() {
                     </ProtectedRoute>
                 </Route>
                 <Route path="/settings">
-                    <ProtectedRoute>
+                    <ProtectedRoute allowedRoles={['admin']}>
                         <Layout>
                             <Settings />
                         </Layout>

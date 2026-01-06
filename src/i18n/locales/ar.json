@@ -1,0 +1,264 @@
+{
+    "common": {
+        "loading": "جاري التحميل...",
+        "save": "حفظ",
+        "cancel": "إلغاء",
+        "delete": "حذف",
+        "edit": "تعديل",
+        "create": "إنشاء",
+        "search": "بحث...",
+        "actions": "إجراءات",
+        "confirm": "تأكيد",
+        "error": "خطأ",
+        "success": "نجاح",
+        "noData": "لا توجد بيانات متاحة"
+    },
+    "nav": {
+        "dashboard": "لوحة التحكم",
+        "products": "المنتجات",
+        "customers": "العملاء",
+        "orders": "الطلبات",
+        "invoices": "الفواتير",
+        "settings": "الإعدادات"
+    },
+    "products": {
+        "title": "المنتجات",
+        "subtitle": "إدارة المخزون الخاص بك",
+        "addProduct": "إضافة منتج",
+        "searchPlaceholder": "البحث عن منتجات...",
+        "table": {
+            "name": "الاسم",
+            "sku": "رمز الصنف (SKU)",
+            "price": "السعر",
+            "stock": "المخزون",
+            "category": "الفئة",
+            "status": "الحالة",
+            "inStock": "متوفر",
+            "lowStock": "مخزون منخفض",
+            "outOfStock": "نفد المخزون"
+        },
+        "form": {
+            "title": "تفاصيل المنتج",
+            "name": "اسم المنتج",
+            "sku": "رمز الصنف (SKU)",
+            "price": "السعر",
+            "cost": "التكلفة",
+            "stock": "كمية المخزون",
+            "minStock": "الحد الأدنى للمخزون",
+            "category": "الفئة",
+            "unit": "الوحدة",
+            "description": "الوصف"
+        },
+        "messages": {
+            "addSuccess": "تم إضافة المنتج بنجاح",
+            "updateSuccess": "تم تحديث المنتج بنجاح",
+            "deleteSuccess": "تم حذف المنتج بنجاح",
+            "deleteConfirm": "هل أنت متأكد أنك تريد حذف هذا المنتج؟"
+        }
+    },
+    "customers": {
+        "title": "العملاء",
+        "subtitle": "عملاء في قاعدة البيانات",
+        "addCustomer": "إضافة عميل",
+        "searchPlaceholder": "البحث عن عملاء...",
+        "table": {
+            "name": "الاسم",
+            "contact": "معلومات الاتصال",
+            "location": "الموقع",
+            "orders": "الطلبات",
+            "totalSpent": "إجمالي الإنفاق"
+        },
+        "form": {
+            "title": "تفاصيل العميل",
+            "name": "الاسم الكامل",
+            "email": "البريد الإلكتروني",
+            "phone": "رقم الهاتف",
+            "country": "البلد",
+            "city": "المدينة",
+            "address": "العنوان",
+            "notes": "ملاحظات (اختياري)"
+        },
+        "messages": {
+            "addSuccess": "تم إضافة العميل بنجاح",
+            "updateSuccess": "تم تحديث بيانات العميل بنجاح",
+            "deleteSuccess": "تم حذف العميل بنجاح",
+            "deleteConfirm": "هل أنت متأكد أنك تريد حذف هذا العميل؟"
+        }
+    },
+    "orders": {
+        "title": "الطلبات",
+        "subtitle": "إجمالي الطلبات",
+        "newOrder": "طلب جديد",
+        "searchPlaceholder": "البحث عن طلبات...",
+        "noCustomers": "أضف عملاء قبل إنشاء الطلبات.",
+        "listTitle": "قائمة الطلبات",
+        "table": {
+            "orderNumber": "رقم الطلب",
+            "customer": "العميل",
+            "items": "العناصر",
+            "status": "الحالة",
+            "total": "الإجمالي",
+            "date": "التاريخ"
+        },
+        "status": {
+            "pending": "قيد الانتظار",
+            "processing": "جاري المعالجة",
+            "shipped": "تم الشحن",
+            "delivered": "تم التوصيل",
+            "cancelled": "ملغي"
+        },
+        "form": {
+            "createTitle": "إنشاء طلب جديد",
+            "editTitle": "تعديل الطلب",
+            "customer": "العميل",
+            "selectCustomer": "اختر العميل",
+            "status": "الحالة",
+            "addProducts": "إضافة منتجات",
+            "selectProduct": "اختر منتجاً للإضافة...",
+            "table": {
+                "product": "المنتج",
+                "qty": "الكمية",
+                "price": "السعر",
+                "total": "الإجمالي"
+            },
+            "discount": "الخصم",
+            "tax": "الضريبة",
+            "total": "الإجمالي",
+            "shippingAddress": "عنوان الشحن",
+            "shippingPlaceholder": "أدخل عنوان الشحن...",
+            "notes": "ملاحظات (اختياري)"
+        },
+        "messages": {
+            "deleteConfirm": "هل أنت متأكد أنك تريد حذف هذا الطلب؟"
+        }
+    },
+    "invoices": {
+        "title": "الفواتير",
+        "subtitle": "إجمالي الفواتير",
+        "createInvoice": "إنشاء فاتورة",
+        "searchPlaceholder": "البحث عن فواتير...",
+        "listTitle": "قائمة الفواتير",
+        "table": {
+            "invoiceNumber": "رقم الفاتورة",
+            "customer": "العميل",
+            "status": "الحالة",
+            "total": "الإجمالي",
+            "dueDate": "تاريخ الاستحقاق",
+            "created": "تاريخ الإنشاء"
+        },
+        "stats": {
+            "revenue": "إجمالي الإيرادات (المدفوعة)",
+            "pending": "المبالغ المعلقة"
+        },
+        "status": {
+            "draft": "مسودة",
+            "sent": "مرسلة",
+            "paid": "مدفوعة",
+            "overdue": "متأخرة",
+            "cancelled": "ملغية"
+        },
+        "form": {
+            "createTitle": "إنشاء فاتورة من طلب",
+            "editTitle": "تعديل الفاتورة",
+            "selectOrder": "اختر الطلب",
+            "selectOrderPlaceholder": "اختر طلباً...",
+            "customer": "العميل",
+            "total": "الإجمالي",
+            "status": "الحالة",
+            "dueDate": "تاريخ الاستحقاق",
+            "notes": "ملاحظات (اختياري)"
+        },
+        "messages": {
+            "deleteConfirm": "هل أنت متأكد أنك تريد حذف هذه الفاتورة؟"
+        }
+    },
+    "auth": {
+        "login": "تسجيل الدخول",
+        "register": "تسجيل جديد",
+        "email": "البريد الإلكتروني",
+        "password": "كلمة المرور",
+        "passkey": "رمز التسجيل",
+        "passkeyPlaceholder": "أدخل رمز الدعوة الخاص بك",
+        "invalidPasskey": "رمز التسجيل غير صحيح. يرجى التحقق وإعادة المحاولة.",
+        "signOut": "تسجيل الخروج",
+        "welcomeBack": "مرحبًا بعودتك",
+        "signInSubtitle": "سجل الدخول إلى حسابك",
+        "getStarted": "ابدأ الآن",
+        "createAccountSubtitle": "مستخدم جديد؟ قم بإنشاء حساب للبدء",
+        "createAccount": "بادر بإنشاء حسابك",
+        "signingIn": "جاري تسجيل الدخول...",
+        "signIn": "تسجيل الدخول",
+        "fullName": "الاسم الكامل",
+        "name": "الاسم",
+        "createAccountBtn": "إنشاء حساب",
+        "creatingAccount": "جاري إنشاء الحساب...",
+        "noAccount": "ليس لديك حساب؟ سجل الآن",
+        "hasAccount": "لديك حساب بالفعل؟ تسجيل الدخول",
+        "localDataInfo": "يتم تخزين البيانات محليًا أولاً ومزامنتها عند الاتصال بالإنترنت",
+        "supabaseNotConfigured": "Supabase غير مكون. استخدام الوضع التجريبي مع البيانات المحلية فقط.",
+        "selectRole": "اختر الدور",
+        "roles": {
+            "admin": "مسؤول",
+            "staff": "موظف",
+            "viewer": "مشاهد"
+        }
+    },
+    "dashboard": {
+        "title": "لوحة التحكم",
+        "subtitle": "نظرة عامة على مقاييس عملك",
+        "totalRevenue": "إجمالي الإيرادات",
+        "activeOrders": "الطلبات النشطة",
+        "totalCustomers": "إجمالي العملاء",
+        "lowStock": "منتجات منخفضة المخزون",
+        "recentActivity": "النشاط الحديث",
+        "recentOrders": "الطلبات الحديثة",
+        "pendingInvoices": "الفواتير المعلقة",
+        "totalProducts": "إجمالي المنتجات",
+        "totalOrders": "إجمالي الطلبات",
+        "allStocked": "جميع المنتجات متوفرة بشكل جيد",
+        "noPendingInvoices": "لا توجد فواتير معلقة"
+    },
+    "settings": {
+        "title": "الإعدادات",
+        "subtitle": "إدارة إعدادات حسابك والتطبيق",
+        "appearance": "المظهر",
+        "appearanceDesc": "تخصيص شكل ومظهر التطبيق",
+        "language": "اللغة",
+        "languageDesc": "اختر لغتك المفضلة",
+        "theme": {
+            "title": "السمة",
+            "light": "فاتح",
+            "dark": "داكن",
+            "system": "النظام"
+        },
+        "account": "الحساب",
+        "accountDesc": "معلومات حسابك",
+        "role": "الدور",
+        "authMode": "وضع المصادقة",
+        "demo": "تجريبي (محلي فقط)",
+        "syncStatus": "حالة المزامنة",
+        "syncDesc": "معلومات المزامنة السحابية",
+        "connection": "الاتصال",
+        "online": "متصل",
+        "offline": "غير متصل",
+        "syncState": "حالة المزامنة",
+        "pendingChanges": "التغييرات المعلقة",
+        "lastSynced": "آخر مزامنة",
+        "never": "أبداً",
+        "syncNow": "مزامنة الآن",
+        "syncing": "جاري المزامنة...",
+        "clearQueue": "مسح قائمة الانتظار",
+        "localData": "البيانات المحلية",
+        "localDataDesc": "إدارة قاعدة البيانات المحلية",
+        "localDataInfo": "يتم تخزين جميع بياناتك محليًا وتعمل دون اتصال بالإنترنت. استخدم الخيارات أدناه لإدارة بياناتك المحلية.",
+        "dangerZone": "منطقة الخطر",
+        "clearDataWarning": "سيؤدي مسح البيانات المحلية إلى حذف جميع المنتجات والعملاء والطلبات والفواتير بشكل دائم.",
+        "clearData": "مسح جميع البيانات المحلية",
+        "about": "حول",
+        "builtWith": "تم التطوير باستخدام React و Vite و Dexie.js و Supabase",
+        "messages": {
+            "clearQueueConfirm": "مسح جميع عناصر المزامنة المعلقة؟ لا يمكن التراجع عن هذا الإجراء.",
+            "clearDataConfirm": "سيؤدي هذا إلى حذف جميع البيانات المحلية بما في ذلك المنتجات والعملاء والطلبات والفواتير. هل أنت متأكد؟"
+        }
+    }
+}

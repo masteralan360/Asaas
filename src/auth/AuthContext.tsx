@@ -18,7 +18,7 @@ interface AuthContextType {
     isAuthenticated: boolean
     isSupabaseConfigured: boolean
     signIn: (email: string, password: string) => Promise<{ error: Error | null }>
-    signUp: (email: string, password: string, name: string, role?: UserRole) => Promise<{ error: Error | null }>
+    signUp: (email: string, password: string, name: string, role?: UserRole, passkey?: string) => Promise<{ error: Error | null }>
     signOut: () => Promise<void>
     hasRole: (roles: UserRole[]) => boolean
 }
@@ -88,7 +88,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { error: error as Error | null }
     }
 
-    const signUp = async (email: string, password: string, name: string, role: UserRole = 'viewer') => {
+    const signUp = async (email: string, password: string, name: string, role: UserRole = 'viewer', passkey?: string) => {
         if (!isSupabaseConfigured) {
             setUser({ ...DEMO_USER, email, name, role })
             return { error: null }
@@ -100,7 +100,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             options: {
                 data: {
                     name,
-                    role
+                    role,
+                    passkey // This will be checked by the database trigger
                 }
             }
         })

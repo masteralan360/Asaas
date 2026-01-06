@@ -23,6 +23,8 @@ import {
     Textarea
 } from '@/ui/components'
 import { Plus, Pencil, Trash2, Users, Search, Mail, Phone, MapPin } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
+import { useAuth } from '@/auth'
 
 type CustomerFormData = Omit<Customer, 'id' | 'createdAt' | 'updatedAt' | 'syncStatus' | 'lastSyncedAt' | 'version' | 'isDeleted' | 'totalOrders' | 'totalSpent'>
 
@@ -38,6 +40,9 @@ const initialFormData: CustomerFormData = {
 
 export function Customers() {
     const customers = useCustomers()
+    const { t } = useTranslation()
+    const { user } = useAuth()
+    const canEdit = user?.role === 'admin' || user?.role === 'staff'
     const [search, setSearch] = useState('')
     const [isDialogOpen, setIsDialogOpen] = useState(false)
     const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null)
@@ -90,7 +95,7 @@ export function Customers() {
     }
 
     const handleDelete = async (id: string) => {
-        if (confirm('Are you sure you want to delete this customer?')) {
+        if (confirm(t('customers.messages.deleteConfirm') || 'Are you sure you want to delete this customer?')) {
             await deleteCustomer(id)
         }
     }
@@ -102,21 +107,23 @@ export function Customers() {
                 <div>
                     <h1 className="text-2xl font-bold flex items-center gap-2">
                         <Users className="w-6 h-6 text-primary" />
-                        Customers
+                        {t('customers.title')}
                     </h1>
-                    <p className="text-muted-foreground">{customers.length} customers in database</p>
+                    <p className="text-muted-foreground">{customers.length} {t('customers.subtitle')}</p>
                 </div>
+            </div>
+            {canEdit && (
                 <Button onClick={() => handleOpenDialog()}>
                     <Plus className="w-4 h-4" />
-                    Add Customer
+                    {t('customers.addCustomer')}
                 </Button>
-            </div>
+            )}
 
             {/* Search */}
             <div className="relative max-w-md">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input
-                    placeholder="Search customers..."
+                    placeholder={t('customers.searchPlaceholder') || "Search customers..."}
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                     className="pl-10"
@@ -126,23 +133,23 @@ export function Customers() {
             {/* Customers Table */}
             <Card>
                 <CardHeader>
-                    <CardTitle>Customer List</CardTitle>
+                    <CardTitle>{t('customers.title')}</CardTitle>
                 </CardHeader>
                 <CardContent>
                     {filteredCustomers.length === 0 ? (
                         <div className="text-center py-8 text-muted-foreground">
-                            {customers.length === 0 ? 'No customers yet. Add your first customer!' : 'No customers match your search.'}
+                            {customers.length === 0 ? t('common.noData') : t('common.noData')}
                         </div>
                     ) : (
                         <Table>
                             <TableHeader>
                                 <TableRow>
-                                    <TableHead>Name</TableHead>
-                                    <TableHead>Contact</TableHead>
-                                    <TableHead>Location</TableHead>
-                                    <TableHead className="text-right">Orders</TableHead>
-                                    <TableHead className="text-right">Total Spent</TableHead>
-                                    <TableHead className="text-right">Actions</TableHead>
+                                    <TableHead>{t('customers.table.name')}</TableHead>
+                                    <TableHead>{t('customers.table.contact')}</TableHead>
+                                    <TableHead>{t('customers.table.location')}</TableHead>
+                                    <TableHead className="text-right">{t('customers.table.orders')}</TableHead>
+                                    <TableHead className="text-right">{t('customers.table.totalSpent')}</TableHead>
+                                    {canEdit && <TableHead className="text-right">{t('common.actions')}</TableHead>}
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
@@ -166,16 +173,18 @@ export function Customers() {
                                         </TableCell>
                                         <TableCell className="text-right">{customer.totalOrders}</TableCell>
                                         <TableCell className="text-right">{formatCurrency(customer.totalSpent)}</TableCell>
-                                        <TableCell className="text-right">
-                                            <div className="flex justify-end gap-2">
-                                                <Button variant="ghost" size="icon" onClick={() => handleOpenDialog(customer)}>
-                                                    <Pencil className="w-4 h-4" />
-                                                </Button>
-                                                <Button variant="ghost" size="icon" onClick={() => handleDelete(customer.id)}>
-                                                    <Trash2 className="w-4 h-4 text-destructive" />
-                                                </Button>
-                                            </div>
-                                        </TableCell>
+                                        {canEdit && (
+                                            <TableCell className="text-right">
+                                                <div className="flex justify-end gap-2">
+                                                    <Button variant="ghost" size="icon" onClick={() => handleOpenDialog(customer)}>
+                                                        <Pencil className="w-4 h-4" />
+                                                    </Button>
+                                                    <Button variant="ghost" size="icon" onClick={() => handleDelete(customer.id)}>
+                                                        <Trash2 className="w-4 h-4 text-destructive" />
+                                                    </Button>
+                                                </div>
+                                            </TableCell>
+                                        )}
                                     </TableRow>
                                 ))}
                             </TableBody>
@@ -188,12 +197,12 @@ export function Customers() {
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                 <DialogContent className="max-w-2xl">
                     <DialogHeader>
-                        <DialogTitle>{editingCustomer ? 'Edit Customer' : 'Add New Customer'}</DialogTitle>
+                        <DialogTitle>{editingCustomer ? t('common.edit') : t('customers.addCustomer')}</DialogTitle>
                     </DialogHeader>
                     <form onSubmit={handleSubmit} className="space-y-4">
                         <div className="grid gap-4 md:grid-cols-2">
                             <div className="space-y-2">
-                                <Label htmlFor="name">Full Name</Label>
+                                <Label htmlFor="name">{t('customers.form.name')}</Label>
                                 <Input
                                     id="name"
                                     value={formData.name}
@@ -203,7 +212,7 @@ export function Customers() {
                                 />
                             </div>
                             <div className="space-y-2">
-                                <Label htmlFor="email">Email</Label>
+                                <Label htmlFor="email">{t('customers.form.email')}</Label>
                                 <Input
                                     id="email"
                                     type="email"
@@ -217,7 +226,7 @@ export function Customers() {
 
                         <div className="grid gap-4 md:grid-cols-2">
                             <div className="space-y-2">
-                                <Label htmlFor="phone">Phone</Label>
+                                <Label htmlFor="phone">{t('customers.form.phone')}</Label>
                                 <Input
                                     id="phone"
                                     value={formData.phone}
@@ -227,7 +236,7 @@ export function Customers() {
                                 />
                             </div>
                             <div className="space-y-2">
-                                <Label htmlFor="country">Country</Label>
+                                <Label htmlFor="country">{t('customers.form.country')}</Label>
                                 <Input
                                     id="country"
                                     value={formData.country}
@@ -240,7 +249,7 @@ export function Customers() {
 
                         <div className="grid gap-4 md:grid-cols-2">
                             <div className="space-y-2">
-                                <Label htmlFor="city">City</Label>
+                                <Label htmlFor="city">{t('customers.form.city')}</Label>
                                 <Input
                                     id="city"
                                     value={formData.city}
@@ -250,7 +259,7 @@ export function Customers() {
                                 />
                             </div>
                             <div className="space-y-2">
-                                <Label htmlFor="address">Address</Label>
+                                <Label htmlFor="address">{t('customers.form.address')}</Label>
                                 <Input
                                     id="address"
                                     value={formData.address}
@@ -262,22 +271,22 @@ export function Customers() {
                         </div>
 
                         <div className="space-y-2">
-                            <Label htmlFor="notes">Notes (Optional)</Label>
+                            <Label htmlFor="notes">{t('customers.form.notes')}</Label>
                             <Textarea
                                 id="notes"
                                 value={formData.notes}
                                 onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                                placeholder="Additional notes..."
+                                placeholder={t('customers.form.notes') || "Additional notes..."}
                                 rows={3}
                             />
                         </div>
 
                         <DialogFooter>
                             <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
-                                Cancel
+                                {t('common.cancel')}
                             </Button>
                             <Button type="submit" disabled={isLoading}>
-                                {isLoading ? 'Saving...' : editingCustomer ? 'Update' : 'Create'}
+                                {isLoading ? t('common.loading') : editingCustomer ? t('common.save') : t('common.create')}
                             </Button>
                         </DialogFooter>
                     </form>

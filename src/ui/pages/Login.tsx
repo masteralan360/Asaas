@@ -3,10 +3,12 @@ import { useLocation } from 'wouter'
 import { useAuth } from '@/auth'
 import { Button, Input, Label, Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/ui/components'
 import { Boxes, Mail, Lock, Loader2 } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 
 export function Login() {
     const [, setLocation] = useLocation()
     const { signIn, isSupabaseConfigured } = useAuth()
+    const { t } = useTranslation()
     const [email, setEmail] = useState('')
     const [password, setPassword] = useState('')
     const [error, setError] = useState('')
@@ -25,7 +27,7 @@ export function Login() {
                 setLocation('/')
             }
         } catch (err) {
-            setError('An unexpected error occurred')
+            setError(t('common.error') || 'An unexpected error occurred')
         } finally {
             setIsLoading(false)
         }
@@ -45,21 +47,21 @@ export function Login() {
 
                 <Card className="glass">
                     <CardHeader className="text-center">
-                        <CardTitle>Welcome back</CardTitle>
-                        <CardDescription>Sign in to your account</CardDescription>
+                        <CardTitle>{t('auth.welcomeBack')}</CardTitle>
+                        <CardDescription>{t('auth.signInSubtitle')}</CardDescription>
                     </CardHeader>
                     <CardContent>
                         {!isSupabaseConfigured && (
                             <div className="mb-4 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
                                 <p className="text-sm text-amber-500">
-                                    Supabase is not configured. Using demo mode with local-only data.
+                                    {t('auth.supabaseNotConfigured')}
                                 </p>
                             </div>
                         )}
 
                         <form onSubmit={handleSubmit} className="space-y-4">
                             <div className="space-y-2">
-                                <Label htmlFor="email">Email</Label>
+                                <Label htmlFor="email">{t('auth.email')}</Label>
                                 <div className="relative">
                                     <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                                     <Input
@@ -75,7 +77,7 @@ export function Login() {
                             </div>
 
                             <div className="space-y-2">
-                                <Label htmlFor="password">Password</Label>
+                                <Label htmlFor="password">{t('auth.password')}</Label>
                                 <div className="relative">
                                     <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                                     <Input
@@ -98,10 +100,10 @@ export function Login() {
                                 {isLoading ? (
                                     <>
                                         <Loader2 className="w-4 h-4 animate-spin" />
-                                        Signing in...
+                                        {t('auth.signingIn')}
                                     </>
                                 ) : (
-                                    'Sign in'
+                                    t('auth.signIn')
                                 )}
                             </Button>
                         </form>
@@ -111,14 +113,14 @@ export function Login() {
                                 onClick={() => setLocation('/register')}
                                 className="text-sm text-primary hover:underline"
                             >
-                                Don't have an account? Sign up
+                                {t('auth.noAccount')}
                             </button>
                         </div>
                     </CardContent>
                 </Card>
 
                 <p className="text-xs text-center text-muted-foreground">
-                    Data is stored locally first and synced when online
+                    {t('auth.localDataInfo')}
                 </p>
             </div>
         </div>

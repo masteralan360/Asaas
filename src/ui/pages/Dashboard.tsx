@@ -3,13 +3,15 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/ui/components'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { Package, Users, ShoppingCart, FileText, TrendingUp, AlertTriangle } from 'lucide-react'
 import { Link } from 'wouter'
+import { useTranslation } from 'react-i18next'
 
 export function Dashboard() {
     const stats = useDashboardStats()
+    const { t } = useTranslation()
 
     const statCards = [
         {
-            title: 'Total Products',
+            title: t('dashboard.totalProducts') || 'Total Products',
             value: stats.productCount,
             icon: Package,
             color: 'text-blue-500',
@@ -17,7 +19,7 @@ export function Dashboard() {
             href: '/products'
         },
         {
-            title: 'Total Customers',
+            title: t('dashboard.totalCustomers'),
             value: stats.customerCount,
             icon: Users,
             color: 'text-emerald-500',
@@ -25,7 +27,7 @@ export function Dashboard() {
             href: '/customers'
         },
         {
-            title: 'Total Orders',
+            title: t('dashboard.totalOrders') || 'Total Orders',
             value: stats.orderCount,
             icon: ShoppingCart,
             color: 'text-purple-500',
@@ -33,7 +35,7 @@ export function Dashboard() {
             href: '/orders'
         },
         {
-            title: 'Total Revenue',
+            title: t('dashboard.totalRevenue'),
             value: formatCurrency(stats.totalRevenue),
             icon: TrendingUp,
             color: 'text-amber-500',
@@ -46,8 +48,8 @@ export function Dashboard() {
         <div className="space-y-6">
             {/* Page Header */}
             <div>
-                <h1 className="text-2xl font-bold">Dashboard</h1>
-                <p className="text-muted-foreground">Overview of your business metrics</p>
+                <h1 className="text-2xl font-bold">{t('dashboard.title')}</h1>
+                <p className="text-muted-foreground">{t('dashboard.subtitle') || 'Overview of your business metrics'}</p>
             </div>
 
             {/* Stats Grid */}
@@ -77,13 +79,13 @@ export function Dashboard() {
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2">
                             <ShoppingCart className="w-5 h-5 text-primary" />
-                            Recent Orders
+                            {t('dashboard.recentOrders') || 'Recent Orders'}
                         </CardTitle>
                     </CardHeader>
                     <CardContent>
                         {stats.recentOrders.length === 0 ? (
                             <p className="text-sm text-muted-foreground text-center py-4">
-                                No orders yet
+                                {t('common.noData') || 'No orders yet'}
                             </p>
                         ) : (
                             <div className="space-y-3">
@@ -114,7 +116,7 @@ export function Dashboard() {
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2">
                             <AlertTriangle className="w-5 h-5 text-amber-500" />
-                            Low Stock Alert
+                            {t('dashboard.lowStock')}
                         </CardTitle>
                     </CardHeader>
                     <CardContent>
@@ -151,7 +153,7 @@ export function Dashboard() {
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2">
                             <FileText className="w-5 h-5 text-primary" />
-                            Pending Invoices
+                            {t('dashboard.pendingInvoices') || 'Pending Invoices'}
                         </CardTitle>
                     </CardHeader>
                     <CardContent>

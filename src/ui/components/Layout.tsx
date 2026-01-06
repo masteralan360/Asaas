@@ -17,24 +17,27 @@ import {
 } from 'lucide-react'
 import { useState } from 'react'
 import { Button } from './button'
+import { useTranslation } from 'react-i18next'
 
 interface LayoutProps {
     children: ReactNode
 }
 
-const navigation = [
-    { name: 'Dashboard', href: '/', icon: LayoutDashboard },
-    { name: 'Products', href: '/products', icon: Package },
-    { name: 'Customers', href: '/customers', icon: Users },
-    { name: 'Orders', href: '/orders', icon: ShoppingCart },
-    { name: 'Invoices', href: '/invoices', icon: FileText },
-    { name: 'Settings', href: '/settings', icon: Settings },
-]
-
 export function Layout({ children }: LayoutProps) {
     const [location] = useLocation()
     const { user, signOut } = useAuth()
     const [sidebarOpen, setSidebarOpen] = useState(false)
+    const { t } = useTranslation()
+    const [logoError, setLogoError] = useState(false)
+
+    const navigation = [
+        { name: t('nav.dashboard'), href: '/', icon: LayoutDashboard },
+        { name: t('nav.products'), href: '/products', icon: Package },
+        { name: t('nav.customers'), href: '/customers', icon: Users },
+        { name: t('nav.orders'), href: '/orders', icon: ShoppingCart },
+        { name: t('nav.invoices'), href: '/invoices', icon: FileText },
+        ...(user?.role === 'admin' ? [{ name: t('nav.settings'), href: '/settings', icon: Settings }] : []),
+    ]
 
     return (
         <div className="min-h-screen bg-background">
@@ -49,21 +52,36 @@ export function Layout({ children }: LayoutProps) {
             {/* Sidebar */}
             <aside
                 className={cn(
-                    'fixed inset-y-0 left-0 z-50 w-64 bg-card border-r border-border transform transition-transform duration-300 ease-in-out lg:translate-x-0',
-                    sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+                    'fixed inset-y-0 z-50 w-64 bg-card transform transition-transform duration-300 ease-in-out',
+                    // Desktop: always show (ltr:translate-x-0, rtl:translate-x-0)
+                    'lg:translate-x-0 lg:rtl:translate-x-0',
+                    // Positioning
+                    'left-0 rtl:left-auto rtl:right-0',
+                    'border-r rtl:border-r-0 rtl:border-l border-border',
+                    // Mobile state handling
+                    sidebarOpen ? 'translate-x-0' : '-translate-x-full rtl:translate-x-full'
                 )}
             >
                 {/* Logo */}
                 <div className="flex items-center gap-3 px-6 py-5 border-b border-border">
                     <div className="p-2 bg-primary/10 rounded-lg">
-                        <Boxes className="w-6 h-6 text-primary" />
+                        {!logoError ? (
+                            <img
+                                src="/logo.png"
+                                alt="Logo"
+                                className="w-8 h-8 object-contain"
+                                onError={() => setLogoError(true)}
+                            />
+                        ) : (
+                            <Boxes className="w-6 h-6 text-primary" />
+                        )}
                     </div>
                     <div>
                         <h1 className="text-lg font-bold gradient-text">ERP System</h1>
                         <p className="text-xs text-muted-foreground">Offline-First</p>
                     </div>
                     <button
-                        className="ml-auto lg:hidden"
+                        className="ms-auto lg:hidden"
                         onClick={() => setSidebarOpen(false)}
                     >
                         <X className="w-5 h-5" />
@@ -77,7 +95,7 @@ export function Layout({ children }: LayoutProps) {
                             (item.href !== '/' && location.startsWith(item.href))
                         return (
                             <Link
-                                key={item.name}
+                                key={item.href}
                                 href={item.href}
                                 onClick={() => setSidebarOpen(false)}
                             >
@@ -104,8 +122,8 @@ export function Layout({ children }: LayoutProps) {
                             {user?.name?.charAt(0).toUpperCase() || 'U'}
                         </div>
                         <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium truncate">{user?.name}</p>
-                            <p className="text-xs text-muted-foreground capitalize">{user?.role}</p>
+                            <p className="text-sm font-medium truncate text-start">{user?.name}</p>
+                            <p className="text-xs text-muted-foreground capitalize text-start">{user?.role}</p>
                         </div>
                         <Button
                             variant="ghost"
@@ -120,11 +138,11 @@ export function Layout({ children }: LayoutProps) {
             </aside>
 
             {/* Main content */}
-            <div className="lg:pl-64">
+            <div className="lg:pl-64 lg:rtl:pl-0 lg:rtl:pr-64 transition-[padding] duration-300 ease-in-out">
                 {/* Top bar */}
                 <header className="sticky top-0 z-30 flex items-center gap-4 px-4 py-3 bg-background/80 backdrop-blur-lg border-b border-border">
                     <button
-                        className="lg:hidden p-2 -ml-2 rounded-lg hover:bg-secondary"
+                        className="lg:hidden p-2 -ms-2 rounded-lg hover:bg-secondary"
                         onClick={() => setSidebarOpen(true)}
                     >
                         <Menu className="w-5 h-5" />

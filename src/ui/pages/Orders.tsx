@@ -28,6 +28,8 @@ import {
     SelectValue
 } from '@/ui/components'
 import { Plus, Pencil, Trash2, ShoppingCart, Search, Package } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
+import { useAuth } from '@/auth'
 
 const ORDER_STATUSES: OrderStatus[] = ['pending', 'processing', 'shipped', 'delivered', 'cancelled']
 
@@ -43,6 +45,9 @@ export function Orders() {
     const orders = useOrders()
     const customers = useCustomers()
     const products = useProducts()
+    const { t } = useTranslation()
+    const { user } = useAuth()
+    const canEdit = user?.role === 'admin' || user?.role === 'staff'
     const [search, setSearch] = useState('')
     const [isDialogOpen, setIsDialogOpen] = useState(false)
     const [editingOrder, setEditingOrder] = useState<Order | null>(null)
@@ -159,7 +164,7 @@ export function Orders() {
     }
 
     const handleDelete = async (id: string) => {
-        if (confirm('Are you sure you want to delete this order?')) {
+        if (confirm(t('orders.messages.deleteConfirm') || 'Are you sure you want to delete this order?')) {
             await deleteOrder(id)
         }
     }
@@ -171,27 +176,31 @@ export function Orders() {
                 <div>
                     <h1 className="text-2xl font-bold flex items-center gap-2">
                         <ShoppingCart className="w-6 h-6 text-primary" />
-                        Orders
+                        {t('orders.title')}
                     </h1>
-                    <p className="text-muted-foreground">{orders.length} orders total</p>
+                    <p className="text-muted-foreground">{orders.length} {t('orders.subtitle')}</p>
                 </div>
+            </div>
+            {canEdit && (
                 <Button onClick={() => handleOpenDialog()} disabled={customers.length === 0 || products.length === 0}>
                     <Plus className="w-4 h-4" />
-                    New Order
+                    {t('orders.newOrder')}
                 </Button>
-            </div>
-
-            {customers.length === 0 && (
-                <div className="p-4 rounded-lg bg-amber-500/10 border border-amber-500/20">
-                    <p className="text-sm text-amber-500">Add customers before creating orders.</p>
-                </div>
             )}
+
+            {
+                customers.length === 0 && (
+                    <div className="p-4 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                        <p className="text-sm text-amber-500">{t('orders.noCustomers')}</p>
+                    </div>
+                )
+            }
 
             {/* Search */}
             <div className="relative max-w-md">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input
-                    placeholder="Search orders..."
+                    placeholder={t('orders.searchPlaceholder') || "Search orders..."}
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                     className="pl-10"
@@ -201,24 +210,24 @@ export function Orders() {
             {/* Orders Table */}
             <Card>
                 <CardHeader>
-                    <CardTitle>Order List</CardTitle>
+                    <CardTitle>{t('orders.listTitle') || "Order List"}</CardTitle>
                 </CardHeader>
                 <CardContent>
                     {filteredOrders.length === 0 ? (
                         <div className="text-center py-8 text-muted-foreground">
-                            {orders.length === 0 ? 'No orders yet.' : 'No orders match your search.'}
+                            {orders.length === 0 ? t('common.noData') : t('common.noData')}
                         </div>
                     ) : (
                         <Table>
                             <TableHeader>
                                 <TableRow>
-                                    <TableHead>Order #</TableHead>
-                                    <TableHead>Customer</TableHead>
-                                    <TableHead>Items</TableHead>
-                                    <TableHead>Status</TableHead>
-                                    <TableHead className="text-right">Total</TableHead>
-                                    <TableHead>Date</TableHead>
-                                    <TableHead className="text-right">Actions</TableHead>
+                                    <TableHead>{t('orders.table.orderNumber')}</TableHead>
+                                    <TableHead>{t('orders.table.customer')}</TableHead>
+                                    <TableHead>{t('orders.table.items')}</TableHead>
+                                    <TableHead>{t('orders.table.status')}</TableHead>
+                                    <TableHead className="text-right">{t('orders.table.total')}</TableHead>
+                                    <TableHead>{t('orders.table.date')}</TableHead>
+                                    {canEdit && <TableHead className="text-right">{t('common.actions')}</TableHead>}
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
@@ -226,24 +235,26 @@ export function Orders() {
                                     <TableRow key={order.id}>
                                         <TableCell className="font-mono text-sm">{order.orderNumber}</TableCell>
                                         <TableCell className="font-medium">{order.customerName}</TableCell>
-                                        <TableCell>{order.items.length} items</TableCell>
+                                        <TableCell>{order.items.length} {t('orders.table.items').toLowerCase()}</TableCell>
                                         <TableCell>
                                             <span className={`px-2 py-1 rounded-full text-xs font-medium ${statusColors[order.status]}`}>
-                                                {order.status}
+                                                {t(`orders.status.${order.status}`)}
                                             </span>
                                         </TableCell>
                                         <TableCell className="text-right font-medium">{formatCurrency(order.total)}</TableCell>
                                         <TableCell className="text-muted-foreground text-sm">{formatDate(order.createdAt)}</TableCell>
-                                        <TableCell className="text-right">
-                                            <div className="flex justify-end gap-2">
-                                                <Button variant="ghost" size="icon" onClick={() => handleOpenDialog(order)}>
-                                                    <Pencil className="w-4 h-4" />
-                                                </Button>
-                                                <Button variant="ghost" size="icon" onClick={() => handleDelete(order.id)}>
-                                                    <Trash2 className="w-4 h-4 text-destructive" />
-                                                </Button>
-                                            </div>
-                                        </TableCell>
+                                        {canEdit && (
+                                            <TableCell className="text-right">
+                                                <div className="flex justify-end gap-2">
+                                                    <Button variant="ghost" size="icon" onClick={() => handleOpenDialog(order)}>
+                                                        <Pencil className="w-4 h-4" />
+                                                    </Button>
+                                                    <Button variant="ghost" size="icon" onClick={() => handleDelete(order.id)}>
+                                                        <Trash2 className="w-4 h-4 text-destructive" />
+                                                    </Button>
+                                                </div>
+                                            </TableCell>
+                                        )}
                                     </TableRow>
                                 ))}
                             </TableBody>
@@ -256,15 +267,15 @@ export function Orders() {
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                 <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
                     <DialogHeader>
-                        <DialogTitle>{editingOrder ? 'Edit Order' : 'Create New Order'}</DialogTitle>
+                        <DialogTitle>{editingOrder ? t('orders.form.editTitle') : t('orders.form.createTitle')}</DialogTitle>
                     </DialogHeader>
                     <form onSubmit={handleSubmit} className="space-y-4">
                         <div className="grid gap-4 md:grid-cols-2">
                             <div className="space-y-2">
-                                <Label>Customer</Label>
+                                <Label>{t('orders.form.customer')}</Label>
                                 <Select value={customerId} onValueChange={setCustomerId} required>
                                     <SelectTrigger>
-                                        <SelectValue placeholder="Select customer" />
+                                        <SelectValue placeholder={t('orders.form.selectCustomer')} />
                                     </SelectTrigger>
                                     <SelectContent>
                                         {customers.map((c) => (
@@ -274,14 +285,14 @@ export function Orders() {
                                 </Select>
                             </div>
                             <div className="space-y-2">
-                                <Label>Status</Label>
+                                <Label>{t('orders.form.status')}</Label>
                                 <Select value={status} onValueChange={(v) => setStatus(v as OrderStatus)}>
                                     <SelectTrigger>
                                         <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
                                         {ORDER_STATUSES.map((s) => (
-                                            <SelectItem key={s} value={s} className="capitalize">{s}</SelectItem>
+                                            <SelectItem key={s} value={s} className="capitalize">{t(`orders.status.${s}`)}</SelectItem>
                                         ))}
                                     </SelectContent>
                                 </Select>
@@ -290,10 +301,10 @@ export function Orders() {
 
                         {/* Add Products */}
                         <div className="space-y-2">
-                            <Label>Add Products</Label>
+                            <Label>{t('orders.form.addProducts')}</Label>
                             <Select onValueChange={addItem}>
                                 <SelectTrigger>
-                                    <SelectValue placeholder="Select product to add..." />
+                                    <SelectValue placeholder={t('orders.form.selectProduct')} />
                                 </SelectTrigger>
                                 <SelectContent>
                                     {products.map((p) => (
@@ -314,10 +325,10 @@ export function Orders() {
                                 <Table>
                                     <TableHeader>
                                         <TableRow>
-                                            <TableHead>Product</TableHead>
-                                            <TableHead className="w-24">Qty</TableHead>
-                                            <TableHead className="text-right">Price</TableHead>
-                                            <TableHead className="text-right">Total</TableHead>
+                                            <TableHead>{t('orders.form.table.product')}</TableHead>
+                                            <TableHead className="w-24">{t('orders.form.table.qty')}</TableHead>
+                                            <TableHead className="text-right">{t('orders.form.table.price')}</TableHead>
+                                            <TableHead className="text-right">{t('orders.form.table.total')}</TableHead>
                                             <TableHead className="w-10"></TableHead>
                                         </TableRow>
                                     </TableHeader>
@@ -351,7 +362,7 @@ export function Orders() {
                         {/* Totals */}
                         <div className="grid gap-4 md:grid-cols-3">
                             <div className="space-y-2">
-                                <Label htmlFor="discount">Discount</Label>
+                                <Label htmlFor="discount">{t('orders.form.discount')}</Label>
                                 <Input
                                     id="discount"
                                     type="number"
@@ -362,7 +373,7 @@ export function Orders() {
                                 />
                             </div>
                             <div className="space-y-2">
-                                <Label htmlFor="tax">Tax</Label>
+                                <Label htmlFor="tax">{t('orders.form.tax')}</Label>
                                 <Input
                                     id="tax"
                                     type="number"
@@ -373,7 +384,7 @@ export function Orders() {
                                 />
                             </div>
                             <div className="space-y-2">
-                                <Label>Total</Label>
+                                <Label>{t('orders.form.total')}</Label>
                                 <div className="h-10 px-3 py-2 border rounded-md bg-secondary font-bold">
                                     {formatCurrency(total)}
                                 </div>
@@ -381,34 +392,34 @@ export function Orders() {
                         </div>
 
                         <div className="space-y-2">
-                            <Label htmlFor="shippingAddress">Shipping Address</Label>
+                            <Label htmlFor="shippingAddress">{t('orders.form.shippingAddress')}</Label>
                             <Textarea
                                 id="shippingAddress"
                                 value={shippingAddress}
                                 onChange={(e) => setShippingAddress(e.target.value)}
-                                placeholder="Enter shipping address..."
+                                placeholder={t('orders.form.shippingPlaceholder') || "Enter shipping address..."}
                                 rows={2}
                                 required
                             />
                         </div>
 
                         <div className="space-y-2">
-                            <Label htmlFor="notes">Notes (Optional)</Label>
+                            <Label htmlFor="notes">{t('orders.form.notes')}</Label>
                             <Textarea
                                 id="notes"
                                 value={notes}
                                 onChange={(e) => setNotes(e.target.value)}
-                                placeholder="Additional notes..."
+                                placeholder={t('orders.form.notes') || "Additional notes..."}
                                 rows={2}
                             />
                         </div>
 
                         <DialogFooter>
                             <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
-                                Cancel
+                                {t('common.cancel')}
                             </Button>
                             <Button type="submit" disabled={isLoading || items.length === 0 || !customerId}>
-                                {isLoading ? 'Saving...' : editingOrder ? 'Update Order' : 'Create Order'}
+                                {isLoading ? t('common.loading') : editingOrder ? t('common.save') : t('common.create')}
                             </Button>
                         </DialogFooter>
                     </form>

@@ -2,15 +2,18 @@ import { useState } from 'react'
 import { useLocation } from 'wouter'
 import { useAuth } from '@/auth'
 import { Button, Input, Label, Card, CardContent, CardHeader, CardTitle, CardDescription, Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/ui/components'
-import { Boxes, Mail, Lock, User, Loader2 } from 'lucide-react'
+import { Boxes, Mail, Lock, User, Loader2, Key } from 'lucide-react'
 import type { UserRole } from '@/local-db/models'
+import { useTranslation } from 'react-i18next'
 
 export function Register() {
     const [, setLocation] = useLocation()
     const { signUp, isSupabaseConfigured } = useAuth()
+    const { t } = useTranslation()
     const [name, setName] = useState('')
     const [email, setEmail] = useState('')
     const [password, setPassword] = useState('')
+    const [passkey, setPasskey] = useState('')
     const [role, setRole] = useState<UserRole>('staff')
     const [error, setError] = useState('')
     const [isLoading, setIsLoading] = useState(false)
@@ -21,14 +24,20 @@ export function Register() {
         setIsLoading(true)
 
         try {
-            const { error } = await signUp(email, password, name, role)
+            const { error } = await signUp(email, password, name, role, passkey)
             if (error) {
-                setError(error.message)
+                // If it's a passkey error from the trigger, it might be genericized by Supabase
+                // or contain the custom message. We map both to our localized key.
+                if (error.message.includes('Invalid Access Code') || error.message.includes('Database error saving new user')) {
+                    setError(t('auth.invalidPasskey'))
+                } else {
+                    setError(error.message)
+                }
             } else {
                 setLocation('/')
             }
         } catch (err) {
-            setError('An unexpected error occurred')
+            setError(t('common.error') || 'An unexpected error occurred')
         } finally {
             setIsLoading(false)
         }
@@ -43,26 +52,26 @@ export function Register() {
                         <Boxes className="w-10 h-10 text-primary" />
                     </div>
                     <h1 className="text-2xl font-bold gradient-text">ERP System</h1>
-                    <p className="text-sm text-muted-foreground">Create your account</p>
+                    <p className="text-sm text-muted-foreground">{t('auth.createAccount')}</p>
                 </div>
 
                 <Card className="glass">
                     <CardHeader className="text-center">
-                        <CardTitle>Get started</CardTitle>
-                        <CardDescription>Create a new account to get started</CardDescription>
+                        <CardTitle>{t('auth.getStarted')}</CardTitle>
+                        <CardDescription>{t('auth.createAccountSubtitle')}</CardDescription>
                     </CardHeader>
                     <CardContent>
                         {!isSupabaseConfigured && (
                             <div className="mb-4 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
                                 <p className="text-sm text-amber-500">
-                                    Supabase is not configured. Using demo mode with local-only data.
+                                    {t('auth.supabaseNotConfigured')}
                                 </p>
                             </div>
                         )}
 
                         <form onSubmit={handleSubmit} className="space-y-4">
                             <div className="space-y-2">
-                                <Label htmlFor="name">Full Name</Label>
+                                <Label htmlFor="name">{t('auth.fullName')}</Label>
                                 <div className="relative">
                                     <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                                     <Input
@@ -78,7 +87,7 @@ export function Register() {
                             </div>
 
                             <div className="space-y-2">
-                                <Label htmlFor="email">Email</Label>
+                                <Label htmlFor="email">{t('auth.email')}</Label>
                                 <div className="relative">
                                     <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                                     <Input
@@ -94,7 +103,7 @@ export function Register() {
                             </div>
 
                             <div className="space-y-2">
-                                <Label htmlFor="password">Password</Label>
+                                <Label htmlFor="password">{t('auth.password')}</Label>
                                 <div className="relative">
                                     <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                                     <Input
@@ -111,15 +120,31 @@ export function Register() {
                             </div>
 
                             <div className="space-y-2">
-                                <Label htmlFor="role">Role</Label>
+                                <Label htmlFor="passkey">{t('auth.passkey')}</Label>
+                                <div className="relative">
+                                    <Key className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                                    <Input
+                                        id="passkey"
+                                        type="text"
+                                        placeholder={t('auth.passkeyPlaceholder')}
+                                        value={passkey}
+                                        onChange={(e) => setPasskey(e.target.value)}
+                                        className="pl-10"
+                                        required={isSupabaseConfigured}
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label htmlFor="role">{t('settings.role')}</Label>
                                 <Select value={role} onValueChange={(value) => setRole(value as UserRole)}>
                                     <SelectTrigger>
-                                        <SelectValue placeholder="Select a role" />
+                                        <SelectValue placeholder={t('auth.selectRole')} />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="admin">Admin</SelectItem>
-                                        <SelectItem value="staff">Staff</SelectItem>
-                                        <SelectItem value="viewer">Viewer</SelectItem>
+                                        <SelectItem value="admin">{t('auth.roles.admin')}</SelectItem>
+                                        <SelectItem value="staff">{t('auth.roles.staff')}</SelectItem>
+                                        <SelectItem value="viewer">{t('auth.roles.viewer')}</SelectItem>
                                     </SelectContent>
                                 </Select>
                             </div>
@@ -132,10 +157,10 @@ export function Register() {
                                 {isLoading ? (
                                     <>
                                         <Loader2 className="w-4 h-4 animate-spin" />
-                                        Creating account...
+                                        {t('auth.creatingAccount')}
                                     </>
                                 ) : (
-                                    'Create account'
+                                    t('auth.createAccountBtn')
                                 )}
                             </Button>
                         </form>
@@ -145,7 +170,7 @@ export function Register() {
                                 onClick={() => setLocation('/login')}
                                 className="text-sm text-primary hover:underline"
                             >
-                                Already have an account? Sign in
+                                {t('auth.hasAccount')}
                             </button>
                         </div>
                     </CardContent>

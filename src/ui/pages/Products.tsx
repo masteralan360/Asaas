@@ -28,6 +28,8 @@ import {
     SelectValue
 } from '@/ui/components'
 import { Plus, Pencil, Trash2, Package, Search } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
+import { useAuth } from '@/auth'
 
 const CATEGORIES = ['Electronics', 'Clothing', 'Food', 'Furniture', 'Other']
 const UNITS = ['pcs', 'kg', 'liter', 'box', 'pack']
@@ -49,6 +51,10 @@ const initialFormData: ProductFormData = {
 
 export function Products() {
     const products = useProducts()
+    const { t } = useTranslation()
+    const { user } = useAuth()
+    const canEdit = user?.role === 'admin' || user?.role === 'staff'
+    const canDelete = user?.role === 'admin'
     const [search, setSearch] = useState('')
     const [isDialogOpen, setIsDialogOpen] = useState(false)
     const [editingProduct, setEditingProduct] = useState<Product | null>(null)
@@ -104,7 +110,7 @@ export function Products() {
     }
 
     const handleDelete = async (id: string) => {
-        if (confirm('Are you sure you want to delete this product?')) {
+        if (confirm(t('products.messages.deleteConfirm') || 'Are you sure you want to delete this product?')) {
             await deleteProduct(id)
         }
     }
@@ -116,21 +122,23 @@ export function Products() {
                 <div>
                     <h1 className="text-2xl font-bold flex items-center gap-2">
                         <Package className="w-6 h-6 text-primary" />
-                        Products
+                        {t('products.title')}
                     </h1>
-                    <p className="text-muted-foreground">{products.length} products in inventory</p>
+                    <p className="text-muted-foreground">{t('products.subtitle') || 'Manage your inventory'}</p>
                 </div>
+            </div>
+            {canEdit && (
                 <Button onClick={() => handleOpenDialog()}>
                     <Plus className="w-4 h-4" />
-                    Add Product
+                    {t('products.addProduct')}
                 </Button>
-            </div>
+            )}
 
             {/* Search */}
             <div className="relative max-w-md">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input
-                    placeholder="Search products..."
+                    placeholder={t('products.searchPlaceholder') || "Search products..."}
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                     className="pl-10"
@@ -140,23 +148,23 @@ export function Products() {
             {/* Products Table */}
             <Card>
                 <CardHeader>
-                    <CardTitle>Inventory</CardTitle>
+                    <CardTitle>{t('products.title')}</CardTitle>
                 </CardHeader>
                 <CardContent>
                     {filteredProducts.length === 0 ? (
                         <div className="text-center py-8 text-muted-foreground">
-                            {products.length === 0 ? 'No products yet. Add your first product!' : 'No products match your search.'}
+                            {products.length === 0 ? t('common.noData') : t('common.noData')}
                         </div>
                     ) : (
                         <Table>
                             <TableHeader>
                                 <TableRow>
-                                    <TableHead>SKU</TableHead>
-                                    <TableHead>Name</TableHead>
-                                    <TableHead>Category</TableHead>
-                                    <TableHead className="text-right">Price</TableHead>
-                                    <TableHead className="text-right">Stock</TableHead>
-                                    <TableHead className="text-right">Actions</TableHead>
+                                    <TableHead>{t('products.table.sku')}</TableHead>
+                                    <TableHead>{t('products.table.name')}</TableHead>
+                                    <TableHead>{t('products.table.category')}</TableHead>
+                                    <TableHead className="text-right">{t('products.table.price')}</TableHead>
+                                    <TableHead className="text-right">{t('products.table.stock')}</TableHead>
+                                    {(canEdit || canDelete) && <TableHead className="text-right">{t('common.actions')}</TableHead>}
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
@@ -171,16 +179,22 @@ export function Products() {
                                                 {product.quantity} {product.unit}
                                             </span>
                                         </TableCell>
-                                        <TableCell className="text-right">
-                                            <div className="flex justify-end gap-2">
-                                                <Button variant="ghost" size="icon" onClick={() => handleOpenDialog(product)}>
-                                                    <Pencil className="w-4 h-4" />
-                                                </Button>
-                                                <Button variant="ghost" size="icon" onClick={() => handleDelete(product.id)}>
-                                                    <Trash2 className="w-4 h-4 text-destructive" />
-                                                </Button>
-                                            </div>
-                                        </TableCell>
+                                        {(canEdit || canDelete) && (
+                                            <TableCell className="text-right">
+                                                <div className="flex justify-end gap-2">
+                                                    {canEdit && (
+                                                        <Button variant="ghost" size="icon" onClick={() => handleOpenDialog(product)}>
+                                                            <Pencil className="w-4 h-4" />
+                                                        </Button>
+                                                    )}
+                                                    {canDelete && (
+                                                        <Button variant="ghost" size="icon" onClick={() => handleDelete(product.id)}>
+                                                            <Trash2 className="w-4 h-4 text-destructive" />
+                                                        </Button>
+                                                    )}
+                                                </div>
+                                            </TableCell>
+                                        )}
                                     </TableRow>
                                 ))}
                             </TableBody>
@@ -192,13 +206,14 @@ export function Products() {
             {/* Add/Edit Dialog */}
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                 <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+                    {/* ... Dialog Content ... */}
                     <DialogHeader>
-                        <DialogTitle>{editingProduct ? 'Edit Product' : 'Add New Product'}</DialogTitle>
+                        <DialogTitle>{editingProduct ? t('common.edit') : t('products.addProduct')}</DialogTitle>
                     </DialogHeader>
                     <form onSubmit={handleSubmit} className="space-y-4">
                         <div className="grid gap-4 md:grid-cols-2">
                             <div className="space-y-2">
-                                <Label htmlFor="sku">SKU</Label>
+                                <Label htmlFor="sku">{t('products.table.sku')}</Label>
                                 <Input
                                     id="sku"
                                     value={formData.sku}
@@ -208,31 +223,31 @@ export function Products() {
                                 />
                             </div>
                             <div className="space-y-2">
-                                <Label htmlFor="name">Name</Label>
+                                <Label htmlFor="name">{t('products.table.name')}</Label>
                                 <Input
                                     id="name"
                                     value={formData.name}
                                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                                    placeholder="Product name"
+                                    placeholder={t('products.form.name') || "Product name"}
                                     required
                                 />
                             </div>
                         </div>
 
                         <div className="space-y-2">
-                            <Label htmlFor="description">Description</Label>
+                            <Label htmlFor="description">{t('products.form.description')}</Label>
                             <Textarea
                                 id="description"
                                 value={formData.description}
                                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                                placeholder="Product description..."
+                                placeholder={t('products.form.description') || "Product description..."}
                                 rows={3}
                             />
                         </div>
 
                         <div className="grid gap-4 md:grid-cols-2">
                             <div className="space-y-2">
-                                <Label htmlFor="category">Category</Label>
+                                <Label htmlFor="category">{t('products.table.category')}</Label>
                                 <Select value={formData.category} onValueChange={(value) => setFormData({ ...formData, category: value })}>
                                     <SelectTrigger>
                                         <SelectValue />
@@ -245,7 +260,7 @@ export function Products() {
                                 </Select>
                             </div>
                             <div className="space-y-2">
-                                <Label htmlFor="unit">Unit</Label>
+                                <Label htmlFor="unit">{t('products.form.unit')}</Label>
                                 <Select value={formData.unit} onValueChange={(value) => setFormData({ ...formData, unit: value })}>
                                     <SelectTrigger>
                                         <SelectValue />
@@ -261,7 +276,7 @@ export function Products() {
 
                         <div className="grid gap-4 md:grid-cols-2">
                             <div className="space-y-2">
-                                <Label htmlFor="price">Selling Price</Label>
+                                <Label htmlFor="price">{t('products.table.price')}</Label>
                                 <Input
                                     id="price"
                                     type="number"
@@ -273,7 +288,7 @@ export function Products() {
                                 />
                             </div>
                             <div className="space-y-2">
-                                <Label htmlFor="costPrice">Cost Price</Label>
+                                <Label htmlFor="costPrice">{t('products.form.cost')}</Label>
                                 <Input
                                     id="costPrice"
                                     type="number"
@@ -288,7 +303,7 @@ export function Products() {
 
                         <div className="grid gap-4 md:grid-cols-2">
                             <div className="space-y-2">
-                                <Label htmlFor="quantity">Current Stock</Label>
+                                <Label htmlFor="quantity">{t('products.form.stock')}</Label>
                                 <Input
                                     id="quantity"
                                     type="number"
@@ -299,7 +314,7 @@ export function Products() {
                                 />
                             </div>
                             <div className="space-y-2">
-                                <Label htmlFor="minStockLevel">Min Stock Level</Label>
+                                <Label htmlFor="minStockLevel">{t('products.form.minStock')}</Label>
                                 <Input
                                     id="minStockLevel"
                                     type="number"
@@ -313,10 +328,10 @@ export function Products() {
 
                         <DialogFooter>
                             <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
-                                Cancel
+                                {t('common.cancel')}
                             </Button>
                             <Button type="submit" disabled={isLoading}>
-                                {isLoading ? 'Saving...' : editingProduct ? 'Update' : 'Create'}
+                                {isLoading ? t('common.loading') : editingProduct ? t('common.save') : t('common.create')}
                             </Button>
                         </DialogFooter>
                     </form>

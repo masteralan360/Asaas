@@ -1,0 +1,264 @@
+{
+    "common": {
+        "loading": "Loading...",
+        "save": "Save",
+        "cancel": "Cancel",
+        "delete": "Delete",
+        "edit": "Edit",
+        "create": "Create",
+        "search": "Search...",
+        "actions": "Actions",
+        "confirm": "Confirm",
+        "error": "Error",
+        "success": "Success",
+        "noData": "No data available"
+    },
+    "nav": {
+        "dashboard": "Dashboard",
+        "products": "Products",
+        "customers": "Customers",
+        "orders": "Orders",
+        "invoices": "Invoices",
+        "settings": "Settings"
+    },
+    "products": {
+        "title": "Products",
+        "subtitle": "Manage your inventory",
+        "addProduct": "Add Product",
+        "searchPlaceholder": "Search products...",
+        "table": {
+            "name": "Name",
+            "sku": "SKU",
+            "price": "Price",
+            "stock": "Stock",
+            "category": "Category",
+            "status": "Status",
+            "inStock": "In Stock",
+            "lowStock": "Low Stock",
+            "outOfStock": "Out of Stock"
+        },
+        "form": {
+            "title": "Product Details",
+            "name": "Product Name",
+            "sku": "SKU",
+            "price": "Price",
+            "cost": "Cost",
+            "stock": "Stock Quantity",
+            "minStock": "Min Stock Level",
+            "category": "Category",
+            "unit": "Unit",
+            "description": "Description"
+        },
+        "messages": {
+            "addSuccess": "Product added successfully",
+            "updateSuccess": "Product updated successfully",
+            "deleteSuccess": "Product deleted successfully",
+            "deleteConfirm": "Are you sure you want to delete this product?"
+        }
+    },
+    "customers": {
+        "title": "Customers",
+        "subtitle": "customers in database",
+        "addCustomer": "Add Customer",
+        "searchPlaceholder": "Search customers...",
+        "table": {
+            "name": "Name",
+            "contact": "Contact",
+            "location": "Location",
+            "orders": "Orders",
+            "totalSpent": "Total Spent"
+        },
+        "form": {
+            "title": "Customer Details",
+            "name": "Full Name",
+            "email": "Email",
+            "phone": "Phone",
+            "country": "Country",
+            "city": "City",
+            "address": "Address",
+            "notes": "Notes (Optional)"
+        },
+        "messages": {
+            "addSuccess": "Customer added successfully",
+            "updateSuccess": "Customer updated successfully",
+            "deleteSuccess": "Customer deleted successfully",
+            "deleteConfirm": "Are you sure you want to delete this customer?"
+        }
+    },
+    "orders": {
+        "title": "Orders",
+        "subtitle": "orders total",
+        "newOrder": "New Order",
+        "searchPlaceholder": "Search orders...",
+        "noCustomers": "Add customers before creating orders.",
+        "listTitle": "Order List",
+        "table": {
+            "orderNumber": "Order #",
+            "customer": "Customer",
+            "items": "Items",
+            "status": "Status",
+            "total": "Total",
+            "date": "Date"
+        },
+        "status": {
+            "pending": "Pending",
+            "processing": "Processing",
+            "shipped": "Shipped",
+            "delivered": "Delivered",
+            "cancelled": "Cancelled"
+        },
+        "form": {
+            "createTitle": "Create New Order",
+            "editTitle": "Edit Order",
+            "customer": "Customer",
+            "selectCustomer": "Select customer",
+            "status": "Status",
+            "addProducts": "Add Products",
+            "selectProduct": "Select product to add...",
+            "table": {
+                "product": "Product",
+                "qty": "Qty",
+                "price": "Price",
+                "total": "Total"
+            },
+            "discount": "Discount",
+            "tax": "Tax",
+            "total": "Total",
+            "shippingAddress": "Shipping Address",
+            "shippingPlaceholder": "Enter shipping address...",
+            "notes": "Notes (Optional)"
+        },
+        "messages": {
+            "deleteConfirm": "Are you sure you want to delete this order?"
+        }
+    },
+    "invoices": {
+        "title": "Invoices",
+        "subtitle": "invoices total",
+        "createInvoice": "Create Invoice",
+        "searchPlaceholder": "Search invoices...",
+        "listTitle": "Invoice List",
+        "table": {
+            "invoiceNumber": "Invoice #",
+            "customer": "Customer",
+            "status": "Status",
+            "total": "Total",
+            "dueDate": "Due Date",
+            "created": "Created"
+        },
+        "stats": {
+            "revenue": "Total Revenue (Paid)",
+            "pending": "Pending Amount"
+        },
+        "status": {
+            "draft": "Draft",
+            "sent": "Sent",
+            "paid": "Paid",
+            "overdue": "Overdue",
+            "cancelled": "Cancelled"
+        },
+        "form": {
+            "createTitle": "Create Invoice from Order",
+            "editTitle": "Edit Invoice",
+            "selectOrder": "Select Order",
+            "selectOrderPlaceholder": "Select an order...",
+            "customer": "Customer",
+            "total": "Total",
+            "status": "Status",
+            "dueDate": "Due Date",
+            "notes": "Notes (Optional)"
+        },
+        "messages": {
+            "deleteConfirm": "Are you sure you want to delete this invoice?"
+        }
+    },
+    "auth": {
+        "login": "Login",
+        "register": "Register",
+        "email": "Email",
+        "password": "Password",
+        "passkey": "Registration Passkey",
+        "passkeyPlaceholder": "Enter your invitation code",
+        "invalidPasskey": "Invalid passkey. Please check and try again.",
+        "signOut": "Sign Out",
+        "welcomeBack": "Welcome back",
+        "signInSubtitle": "Sign in to your account",
+        "getStarted": "Get started",
+        "createAccountSubtitle": "Create a new account to get started",
+        "createAccount": "Create your account",
+        "signingIn": "Signing in...",
+        "signIn": "Sign in",
+        "fullName": "Full Name",
+        "name": "Name",
+        "createAccountBtn": "Create account",
+        "creatingAccount": "Creating account...",
+        "noAccount": "Don't have an account? Sign up",
+        "hasAccount": "Already have an account? Sign in",
+        "localDataInfo": "Data is stored locally first and synced when online",
+        "supabaseNotConfigured": "Supabase is not configured. Using demo mode with local-only data.",
+        "selectRole": "Select a role",
+        "roles": {
+            "admin": "Admin",
+            "staff": "Staff",
+            "viewer": "Viewer"
+        }
+    },
+    "dashboard": {
+        "title": "Dashboard",
+        "subtitle": "Overview of your business metrics",
+        "totalRevenue": "Total Revenue",
+        "activeOrders": "Active Orders",
+        "totalCustomers": "Total Customers",
+        "lowStock": "Low Stock Items",
+        "recentActivity": "Recent Activity",
+        "recentOrders": "Recent Orders",
+        "pendingInvoices": "Pending Invoices",
+        "totalProducts": "Total Products",
+        "totalOrders": "Total Orders",
+        "allStocked": "All products are well stocked",
+        "noPendingInvoices": "No pending invoices"
+    },
+    "settings": {
+        "title": "Settings",
+        "subtitle": "Manage your account and application settings",
+        "appearance": "Appearance",
+        "appearanceDesc": "Customize the look and feel of the application",
+        "language": "Language",
+        "languageDesc": "Select your preferred language",
+        "theme": {
+            "title": "Theme",
+            "light": "Light",
+            "dark": "Dark",
+            "system": "System"
+        },
+        "account": "Account",
+        "accountDesc": "Your account information",
+        "role": "Role",
+        "authMode": "Auth Mode",
+        "demo": "Demo (Local Only)",
+        "syncStatus": "Sync Status",
+        "syncDesc": "Cloud synchronization information",
+        "connection": "Connection",
+        "online": "Online",
+        "offline": "Offline",
+        "syncState": "Sync State",
+        "pendingChanges": "Pending Changes",
+        "lastSynced": "Last Synced",
+        "never": "Never",
+        "syncNow": "Sync Now",
+        "syncing": "Syncing...",
+        "clearQueue": "Clear Queue",
+        "localData": "Local Data",
+        "localDataDesc": "Manage your local database",
+        "localDataInfo": "All your data is stored locally in IndexedDB and works offline. Use the options below to manage your local data.",
+        "dangerZone": "Danger Zone",
+        "clearDataWarning": "Clearing local data will permanently delete all your products, customers, orders, and invoices.",
+        "clearData": "Clear All Local Data",
+        "about": "About",
+        "builtWith": "Built with React, Vite, Dexie.js, and Supabase",
+        "messages": {
+            "clearQueueConfirm": "Clear all pending sync items? This cannot be undone.",
+            "clearDataConfirm": "This will delete ALL local data including products, customers, orders, and invoices. Are you sure?"
+        }
+    }
+}
