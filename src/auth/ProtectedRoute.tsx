@@ -7,14 +7,16 @@ interface ProtectedRouteProps {
     children: ReactNode
     allowedRoles?: UserRole[]
     redirectTo?: string
+    allowKicked?: boolean
 }
 
 export function ProtectedRoute({
     children,
     allowedRoles,
-    redirectTo = '/login'
+    redirectTo = '/login',
+    allowKicked = false
 }: ProtectedRouteProps) {
-    const { isAuthenticated, isLoading, hasRole } = useAuth()
+    const { isAuthenticated, isLoading, hasRole, isKicked } = useAuth()
     const [location] = useLocation()
 
     if (isLoading) {
@@ -30,6 +32,11 @@ export function ProtectedRoute({
 
     if (!isAuthenticated) {
         return <Redirect to={`${redirectTo}?redirect=${encodeURIComponent(location)}`} />
+    }
+
+    // Redirect kicked users to workspace registration (unless this route allows kicked users)
+    if (isKicked && !allowKicked) {
+        return <Redirect to="/workspace-registration" />
     }
 
     if (allowedRoles && !hasRole(allowedRoles)) {

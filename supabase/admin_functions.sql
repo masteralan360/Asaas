@@ -37,12 +37,16 @@ $$;
 
 -- 4. Function to get all users including emails
 -- We use SECURITY DEFINER to bypass RLS on profiles and access auth.users
+
+DROP FUNCTION IF EXISTS public.get_all_users(text);
+
 CREATE OR REPLACE FUNCTION public.get_all_users(provided_key TEXT)
 RETURNS TABLE (
     id UUID,
     name TEXT,
     role TEXT,
     workspace_id UUID,
+    workspace_name TEXT,
     created_at TIMESTAMPTZ,
     email TEXT
 )
@@ -60,11 +64,13 @@ BEGIN
         u.id, 
         p.name, 
         p.role, 
-        p.workspace_id, 
+        p.workspace_id,
+        w.name as workspace_name,
         u.created_at,
         u.email::TEXT
     FROM auth.users u
     LEFT JOIN public.profiles p ON u.id = p.id
+    LEFT JOIN public.workspaces w ON p.workspace_id = w.id
     ORDER BY u.created_at DESC;
 END;
 $$;

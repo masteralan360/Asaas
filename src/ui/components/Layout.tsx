@@ -15,7 +15,8 @@ import {
     X,
     Boxes,
     Copy,
-    Check
+    Check,
+    UsersRound
 } from 'lucide-react'
 import { useState } from 'react'
 import { Button } from './button'
@@ -65,7 +66,10 @@ export function Layout({ children }: LayoutProps) {
         { name: t('nav.customers'), href: '/customers', icon: Users },
         { name: t('nav.orders'), href: '/orders', icon: ShoppingCart },
         { name: t('nav.invoices'), href: '/invoices', icon: FileText },
-        ...(user?.role === 'admin' ? [{ name: t('nav.settings'), href: '/settings', icon: Settings }] : []),
+        ...(user?.role === 'admin' ? [
+            { name: t('members.title'), href: '/members', icon: UsersRound },
+            { name: t('nav.settings'), href: '/settings', icon: Settings }
+        ] : []),
     ]
 
     return (

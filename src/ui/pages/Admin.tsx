@@ -9,7 +9,7 @@ import {
     Mail,
     Calendar
 } from 'lucide-react'
-import { Button } from '@/ui/components/button'
+import { Button, LanguageSwitcher, ThemeToggle } from '@/ui/components'
 import { supabase, isSupabaseConfigured } from '@/auth/supabase'
 import { useLocation } from 'wouter'
 
@@ -21,6 +21,7 @@ interface AdminUser {
     role: string
     created_at: string
     email?: string
+    workspace_name?: string
 }
 
 export function Admin() {
@@ -119,7 +120,11 @@ export function Admin() {
 
     if (!isAuthenticated) {
         return (
-            <div className="min-h-screen flex items-center justify-center bg-background p-4">
+            <div className="min-h-screen flex items-center justify-center bg-background p-4 relative">
+                <div className="absolute top-4 right-4 flex items-center gap-2">
+                    <LanguageSwitcher />
+                    <ThemeToggle />
+                </div>
                 <div className="w-full max-w-sm bg-card rounded-2xl border border-border p-8 shadow-xl">
                     <div className="flex justify-center mb-6">
                         <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
@@ -183,6 +188,8 @@ export function Admin() {
                         </div>
                     </div>
                     <div className="flex items-center gap-3">
+                        <LanguageSwitcher />
+                        <ThemeToggle />
                         <Button variant="outline" onClick={fetchUsers} disabled={isLoading} className="rounded-xl">
                             <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
                             Refresh Users
@@ -211,6 +218,7 @@ export function Admin() {
                                 <tr className="bg-muted/30">
                                     <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">User</th>
                                     <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">Username</th>
+                                    <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">Workspace</th>
                                     <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">Joined</th>
                                     <th className="px-6 py-4 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wider">Actions</th>
                                 </tr>
@@ -236,6 +244,15 @@ export function Admin() {
                                             <span className="px-2 py-1 rounded bg-muted text-xs font-mono">
                                                 @{user.name?.toLowerCase().replace(/\s+/g, '')}
                                             </span>
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            {user.workspace_name ? (
+                                                <span className="px-2 py-1 rounded bg-primary/10 text-primary text-xs font-medium">
+                                                    {user.workspace_name}
+                                                </span>
+                                            ) : (
+                                                <span className="text-xs text-muted-foreground italic">No Workspace</span>
+                                            )}
                                         </td>
                                         <td className="px-6 py-4">
                                             <div className="text-sm flex items-center gap-1.5 text-muted-foreground">

@@ -9,8 +9,10 @@ import {
     Customers,
     Orders,
     Invoices,
+    Members,
     Settings,
-    Admin
+    Admin,
+    WorkspaceRegistration
 } from '@/ui/pages'
 
 function App() {
@@ -58,11 +60,24 @@ function App() {
                         </Layout>
                     </ProtectedRoute>
                 </Route>
+
                 <Route path="/invoices">
                     <ProtectedRoute>
                         <Layout>
                             <Invoices />
                         </Layout>
+                    </ProtectedRoute>
+                </Route>
+                <Route path="/members">
+                    <ProtectedRoute allowedRoles={['admin']}>
+                        <Layout>
+                            <Members />
+                        </Layout>
+                    </ProtectedRoute>
+                </Route>
+                <Route path="/workspace-registration">
+                    <ProtectedRoute allowKicked={true}>
+                        <WorkspaceRegistration />
                     </ProtectedRoute>
                 </Route>
                 <Route path="/settings">
@@ -87,7 +102,7 @@ function App() {
                     </div>
                 </Route>
             </Switch>
-        </AuthProvider>
+        </AuthProvider >
     )
 }
 

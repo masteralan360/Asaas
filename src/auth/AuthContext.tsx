@@ -19,6 +19,7 @@ interface AuthContextType {
     session: Session | null
     isLoading: boolean
     isAuthenticated: boolean
+    isKicked: boolean
     isSupabaseConfigured: boolean
     signIn: (email: string, password: string) => Promise<{ error: Error | null }>
     signUp: (params: {
@@ -32,6 +33,8 @@ interface AuthContextType {
     }) => Promise<{ error: Error | null }>
     signOut: () => Promise<void>
     hasRole: (roles: UserRole[]) => boolean
+    refreshUser: () => Promise<void>
+    updateUser: (updates: Partial<AuthUser>) => void
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -228,6 +231,48 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return roles.includes(user.role)
     }
 
+    const refreshUser = async () => {
+        if (!isSupabaseConfigured) return
+
+        // Force a session refresh to get the latest token with updated metadata
+        const { data: { session }, error } = await supabase.auth.refreshSession()
+
+        if (error) {
+            console.error('Error refreshing session:', error)
+            return
+        }
+
+        if (session?.user) {
+            // Update state with new session and user
+            setSession(session)
+
+            const parsedUser = parseUserFromSupabase(session.user)
+
+            // Fetch workspace code if we have workspace_id
+            if (parsedUser.workspaceId && !parsedUser.workspaceCode) {
+                const { data: wsData } = await supabase
+                    .from('workspaces')
+                    .select('code, name')
+                    .eq('id', parsedUser.workspaceId)
+                    .single()
+                if (wsData) {
+                    parsedUser.workspaceCode = wsData.code
+                    parsedUser.workspaceName = wsData.name
+                }
+            }
+
+            setUser(parsedUser)
+        }
+    }
+
+    const updateUser = (updates: Partial<AuthUser>) => {
+        if (!user) return
+        setUser({ ...user, ...updates })
+    }
+
+    // User is kicked if authenticated but has no workspace
+    const isKicked = !!user && !user.workspaceId
+
     return (
         <AuthContext.Provider
             value={{
@@ -235,11 +280,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 session,
                 isLoading,
                 isAuthenticated: !!user,
+                isKicked,
                 isSupabaseConfigured,
                 signIn,
                 signUp,
                 signOut,
-                hasRole
+                hasRole,
+                refreshUser,
+                updateUser
             }}
         >
             {children}

@@ -266,5 +266,30 @@
             "clearQueueConfirm": "Clear all pending sync items? This cannot be undone.",
             "clearDataConfirm": "This will delete ALL local data including products, customers, orders, and invoices. Are you sure?"
         }
+    },
+    "members": {
+        "title": "Members",
+        "subtitle": "Manage workspace members",
+        "table": {
+            "name": "Name",
+            "role": "Role",
+            "joinedAt": "Joined"
+        },
+        "kick": "Kick",
+        "kickTitle": "Kick Member",
+        "kickConfirm": "Are you sure you want to remove {{name}} from the workspace? They will need a workspace code to rejoin.",
+        "kickWarning": "This user will lose access to all workspace data immediately. Their role will be preserved.",
+        "kickSuccess": "Member removed successfully",
+        "cannotKickAdmin": "Cannot kick other admins",
+        "you": "You"
+    },
+    "workspaceRegistration": {
+        "title": "Join a Workspace",
+        "subtitle": "Enter a workspace code to join",
+        "joining": "Joining...",
+        "join": "Join Workspace",
+        "invalidCode": "Invalid workspace code",
+        "kickedMessage": "You have been removed from your previous workspace. Please enter a valid workspace code to join a new one.",
+        "codeHint": "Ask your admin for the workspace code"
     }
 }
