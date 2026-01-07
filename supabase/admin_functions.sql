@@ -34,3 +34,37 @@ BEGIN
     DELETE FROM auth.users WHERE id = target_user_id;
 END;
 $$;
+
+-- 4. Function to get all users including emails
+-- We use SECURITY DEFINER to bypass RLS on profiles and access auth.users
+CREATE OR REPLACE FUNCTION public.get_all_users(provided_key TEXT)
+RETURNS TABLE (
+    id UUID,
+    name TEXT,
+    role TEXT,
+    workspace_id UUID,
+    created_at TIMESTAMPTZ,
+    email TEXT
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, auth
+AS $$
+BEGIN
+    IF NOT public.verify_admin_passkey(provided_key) THEN
+        RAISE EXCEPTION 'Unauthorized: Invalid admin passkey';
+    END IF;
+
+    RETURN QUERY
+    SELECT 
+        u.id, 
+        p.name, 
+        p.role, 
+        p.workspace_id, 
+        u.created_at,
+        u.email::TEXT
+    FROM auth.users u
+    LEFT JOIN public.profiles p ON u.id = p.id
+    ORDER BY u.created_at DESC;
+END;
+$$;

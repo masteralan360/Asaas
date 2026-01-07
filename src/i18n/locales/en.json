@@ -200,6 +200,8 @@
         "role": "Role",
         "workspaceName": "Workspace Name",
         "workspaceCode": "Workspace Code",
+        "copyCode": "Copy Code",
+        "copied": "Copied!",
         "members": "Workspace Members",
         "roles": {
             "admin": "Admin",

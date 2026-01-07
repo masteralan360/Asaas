@@ -13,7 +13,9 @@ import {
     LogOut,
     Menu,
     X,
-    Boxes
+    Boxes,
+    Copy,
+    Check
 } from 'lucide-react'
 import { useState } from 'react'
 import { Button } from './button'
@@ -32,6 +34,13 @@ export function Layout({ children }: LayoutProps) {
     const [members, setMembers] = useState<{ id: string, name: string, role: string }[]>([])
     const { t } = useTranslation()
     const [logoError, setLogoError] = useState(false)
+    const [copied, setCopied] = useState(false)
+
+    const copyToClipboard = (text: string) => {
+        navigator.clipboard.writeText(text)
+        setCopied(true)
+        setTimeout(() => setCopied(false), 2000)
+    }
 
     useEffect(() => {
         if (!user?.workspaceId) return
@@ -138,8 +147,34 @@ export function Layout({ children }: LayoutProps) {
                 {/* Workspace Members */}
                 <div className="mt-8 px-6">
                     <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-4">
-                        {t('auth.members') || 'Workspace Members'}
+                        {t('auth.members')}
                     </h2>
+
+                    {/* Workspace Code */}
+                    {user?.workspaceCode && (
+                        <div
+                            className="mb-4 p-2.5 bg-secondary/30 rounded-lg border border-border group hover:border-primary/50 transition-all cursor-pointer relative overflow-hidden"
+                            onClick={() => copyToClipboard(user.workspaceCode)}
+                        >
+                            <div className="relative z-10">
+                                <p className="text-[10px] text-muted-foreground uppercase font-bold mb-1 flex items-center justify-between">
+                                    {t('auth.workspaceCode')}
+                                    {copied ? (
+                                        <span className="flex items-center gap-1 text-emerald-500 animate-in fade-in zoom-in duration-300">
+                                            <Check className="w-3 h-3" />
+                                            {t('auth.copied')}
+                                        </span>
+                                    ) : (
+                                        <Copy className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-all" />
+                                    )}
+                                </p>
+                                <p className="text-sm font-mono font-bold tracking-wider">{user.workspaceCode}</p>
+                            </div>
+                            {/* Hover effect background */}
+                            <div className="absolute inset-0 bg-primary/5 opacity-0 group-hover:opacity-100 transition-opacity" />
+                        </div>
+                    )}
+
                     <div className="space-y-3">
                         {members.map((member) => (
                             <div key={member.id} className="flex items-center gap-3">

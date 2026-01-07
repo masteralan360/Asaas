@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useLocation } from 'wouter'
 import { useAuth } from '@/auth'
-import { Button, Input, Label, Card, CardContent, CardHeader, CardTitle, CardDescription, Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/ui/components'
+import { Button, Input, Label, Card, CardContent, CardHeader, CardTitle, CardDescription, Select, SelectTrigger, SelectValue, SelectContent, SelectItem, LanguageSwitcher, ThemeToggle } from '@/ui/components'
 import { Boxes, Mail, Lock, User, Loader2, Key } from 'lucide-react'
 import type { UserRole } from '@/local-db/models'
 import { useTranslation } from 'react-i18next'
@@ -55,7 +55,13 @@ export function Register() {
     }
 
     return (
-        <div className="min-h-screen flex items-center justify-center bg-background p-4">
+        <div className="min-h-screen flex items-center justify-center bg-background p-4 relative">
+            {/* Theme & Language Switchers */}
+            <div className="absolute top-4 right-4 flex items-center gap-2">
+                <LanguageSwitcher />
+                <ThemeToggle />
+            </div>
+
             <div className="w-full max-w-md space-y-6">
                 {/* Logo */}
                 <div className="flex flex-col items-center gap-2">

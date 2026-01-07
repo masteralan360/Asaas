@@ -3,16 +3,24 @@ import { useSyncStatus, clearQueue } from '@/sync'
 import { clearDatabase } from '@/local-db'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, Button, Label, LanguageSwitcher } from '@/ui/components'
 import { useTranslation } from 'react-i18next'
-import { Settings as SettingsIcon, Database, Cloud, Trash2, RefreshCw, User } from 'lucide-react'
+import { Settings as SettingsIcon, Database, Cloud, Trash2, RefreshCw, User, Copy, Check } from 'lucide-react'
 import { formatDateTime } from '@/lib/utils'
 import { useTheme } from '@/ui/components/theme-provider'
 import { Moon, Sun, Monitor } from 'lucide-react'
+import { useState } from 'react'
 
 export function Settings() {
     const { user, signOut, isSupabaseConfigured } = useAuth()
     const { syncState, pendingCount, lastSyncTime, sync, isSyncing, isOnline } = useSyncStatus()
     const { theme, setTheme } = useTheme()
     const { t } = useTranslation()
+    const [copied, setCopied] = useState(false)
+
+    const copyToClipboard = (text: string) => {
+        navigator.clipboard.writeText(text)
+        setCopied(true)
+        setTimeout(() => setCopied(false), 2000)
+    }
 
     const handleClearSyncQueue = async () => {
         if (confirm(t('settings.messages.clearQueueConfirm'))) {
@@ -118,6 +126,26 @@ export function Settings() {
                         <div>
                             <Label className="text-muted-foreground">{t('settings.authMode')}</Label>
                             <p className="font-medium">{isSupabaseConfigured ? 'Supabase' : t('settings.demo')}</p>
+                        </div>
+                        <div className="md:col-span-2">
+                            <Label className="text-muted-foreground">{t('auth.workspaceCode')}</Label>
+                            <div
+                                className="flex items-center gap-3 mt-1 p-3 bg-secondary/30 rounded-lg border border-border group hover:border-primary/50 transition-all cursor-pointer w-full max-w-sm"
+                                onClick={() => user?.workspaceCode && copyToClipboard(user.workspaceCode)}
+                            >
+                                <span className="font-mono font-bold tracking-wider flex-1">{user?.workspaceCode}</span>
+                                {copied ? (
+                                    <span className="flex items-center gap-1.5 text-emerald-500 text-sm font-medium animate-in fade-in slide-in-from-right-2">
+                                        <Check className="w-4 h-4" />
+                                        {t('auth.copied')}
+                                    </span>
+                                ) : (
+                                    <Button variant="ghost" size="sm" className="h-8 gap-2 group-hover:bg-primary/10 group-hover:text-primary">
+                                        <Copy className="w-4 h-4" />
+                                        {t('auth.copyCode')}
+                                    </Button>
+                                )}
+                            </div>
                         </div>
                     </div>
                     <Button variant="destructive" onClick={signOut}>

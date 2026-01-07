@@ -200,6 +200,8 @@
         "role": "ڕۆڵ",
         "workspaceName": "ناوی شوێنی کار",
         "workspaceCode": "کۆدی شوێنی کار",
+        "copyCode": "کۆپیکردنی کۆد",
+        "copied": "کۆپی کرا!",
         "members": "ئەندامانی شوێنی کار",
         "roles": {
             "admin": "بەڕێوەبەر",

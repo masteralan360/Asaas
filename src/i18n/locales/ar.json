@@ -200,6 +200,8 @@
         "role": "الدور",
         "workspaceName": "اسم مساحة العمل",
         "workspaceCode": "رمز مساحة العمل",
+        "copyCode": "نسخ الرمز",
+        "copied": "تم النسخ!",
         "members": "أعضاء مساحة العمل",
         "roles": {
             "admin": "مسؤول",

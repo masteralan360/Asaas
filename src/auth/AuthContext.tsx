@@ -9,6 +9,7 @@ interface AuthUser {
     name: string
     role: UserRole
     workspaceId: string
+    workspaceCode: string
     workspaceName?: string
     avatarUrl?: string
 }
@@ -42,6 +43,7 @@ const DEMO_USER: AuthUser = {
     name: 'Demo User',
     role: 'admin',
     workspaceId: 'demo-workspace',
+    workspaceCode: 'DEMO-1234',
     workspaceName: 'Demo Workspace',
     avatarUrl: undefined
 }
@@ -53,6 +55,7 @@ function parseUserFromSupabase(user: User): AuthUser {
         name: user.user_metadata?.name ?? user.email?.split('@')[0] ?? 'User',
         role: (user.user_metadata?.role as UserRole) ?? 'viewer',
         workspaceId: user.user_metadata?.workspace_id ?? '',
+        workspaceCode: user.user_metadata?.workspace_code ?? '',
         workspaceName: user.user_metadata?.workspace_name,
         avatarUrl: user.user_metadata?.avatar_url
     }
@@ -74,14 +77,51 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Get initial session
         supabase.auth.getSession().then(({ data: { session } }) => {
             setSession(session)
-            setUser(session?.user ? parseUserFromSupabase(session.user) : null)
+            const parsedUser = session?.user ? parseUserFromSupabase(session.user) : null
+
+            // If we have a user but no workspaceCode, fetch it
+            if (parsedUser && parsedUser.workspaceId && !parsedUser.workspaceCode) {
+                supabase
+                    .from('workspaces')
+                    .select('code')
+                    .eq('id', parsedUser.workspaceId)
+                    .single()
+                    .then(({ data }) => {
+                        if (data) {
+                            parsedUser.workspaceCode = data.code
+                            setUser({ ...parsedUser })
+                        } else {
+                            setUser(parsedUser)
+                        }
+                    })
+            } else {
+                setUser(parsedUser)
+            }
             setIsLoading(false)
         })
 
         // Listen for auth changes
         const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
             setSession(session)
-            setUser(session?.user ? parseUserFromSupabase(session.user) : null)
+            const parsedUser = session?.user ? parseUserFromSupabase(session.user) : null
+
+            if (parsedUser && parsedUser.workspaceId && !parsedUser.workspaceCode) {
+                supabase
+                    .from('workspaces')
+                    .select('code')
+                    .eq('id', parsedUser.workspaceId)
+                    .single()
+                    .then(({ data }) => {
+                        if (data) {
+                            parsedUser.workspaceCode = data.code
+                            setUser({ ...parsedUser })
+                        } else {
+                            setUser(parsedUser)
+                        }
+                    })
+            } else {
+                setUser(parsedUser)
+            }
         })
 
         return () => {
@@ -145,6 +185,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 resolvedWorkspaceName = wsData.name
             }
 
+            // We need to get the workspaceCode if we don't have it (admin case who just created it)
+            let resolvedWorkspaceCode = workspaceCode
+            if (role === 'admin' && !resolvedWorkspaceCode) {
+                const { data: wsData } = await supabase.from('workspaces').select('code').eq('id', workspaceId).single()
+                if (wsData) resolvedWorkspaceCode = wsData.code
+            }
+
             const { error } = await supabase.auth.signUp({
                 email,
                 password,
@@ -154,6 +201,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                         role,
                         passkey,
                         workspace_id: workspaceId,
+                        workspace_code: resolvedWorkspaceCode,
                         workspace_name: resolvedWorkspaceName
                     }
                 }

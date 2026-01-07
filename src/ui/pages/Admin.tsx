@@ -10,7 +10,7 @@ import {
     Calendar
 } from 'lucide-react'
 import { Button } from '@/ui/components/button'
-import { supabase } from '@/auth/supabase'
+import { supabase, isSupabaseConfigured } from '@/auth/supabase'
 import { useLocation } from 'wouter'
 
 const SESSION_DURATION = 60 // seconds
@@ -78,35 +78,27 @@ export function Admin() {
     }
 
     const fetchUsers = async () => {
+        if (!isSupabaseConfigured) {
+            console.warn('[Admin] fetchUsers: Supabase is NOT configured. Showing demo empty list.')
+            setUsers([])
+            return
+        }
+
         setIsLoading(true)
+        console.log('[Admin] Fetching all users...')
         try {
-            const { data: profiles, error: profileError } = await supabase
-                .from('profiles')
-                .select('*')
-                .order('created_at', { ascending: false })
+            const { data, error: rpcError } = await supabase.rpc('get_all_users', { provided_key: passkey })
 
-            if (profileError) throw profileError
-
-            // Attempt to get emails if we have admin rights, otherwise fallback
-            let enrichedUsers = profiles as AdminUser[]
-            try {
-                const { data: authUsers } = await supabase.auth.admin.listUsers()
-                if (authUsers) {
-                    enrichedUsers = profiles.map(p => {
-                        const authUser = authUsers.users.find(u => u.id === p.id)
-                        return {
-                            ...p,
-                            email: authUser?.email || 'N/A'
-                        }
-                    })
-                }
-            } catch (authErr) {
-                console.warn('Could not fetch auth emails, using profile data only.')
+            if (rpcError) {
+                console.error('[Admin] RPC Error:', rpcError)
+                throw rpcError
             }
 
-            setUsers(enrichedUsers)
+            console.log(`[Admin] Received ${data?.length || 0} users from RPC`)
+            setUsers(data as AdminUser[])
         } catch (err: any) {
-            console.error('Error fetching users:', err)
+            console.error('[Admin] fetchUsers FAILED:', err)
+            setError('Failed to fetch users: ' + (err.message || JSON.stringify(err)))
         } finally {
             setIsLoading(false)
         }
@@ -149,8 +141,19 @@ export function Admin() {
                                 autoFocus
                             />
                         </div>
-                        {error && <p className="text-xs text-destructive text-center">{error}</p>}
-                        <Button type="submit" className="w-full py-6 rounded-xl text-md font-semibold" disabled={isLoading}>
+                        {error && <p className="text-xs text-destructive text-center mb-4">{error}</p>}
+                        {!isSupabaseConfigured && (
+                            <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 mb-4">
+                                <p className="text-xs text-amber-500 text-center">
+                                    Supabase is not configured. Admin features require a live Supabase connection.
+                                </p>
+                            </div>
+                        )}
+                        <Button
+                            type="submit"
+                            className="w-full py-6 rounded-xl text-md font-semibold"
+                            disabled={isLoading || !isSupabaseConfigured}
+                        >
                             {isLoading ? 'Verifying...' : 'Submit'}
                         </Button>
                     </form>

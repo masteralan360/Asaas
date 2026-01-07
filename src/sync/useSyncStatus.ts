@@ -51,7 +51,9 @@ export function useSyncStatus(): UseSyncStatusResult {
         setSyncState('syncing')
 
         try {
+            console.log('[SyncHook] Starting sync execution...')
             const result = await fullSync(user.id, user.workspaceId, lastSyncTime)
+            console.log('[SyncHook] Sync finished with result:', result)
 
             const now = new Date().toISOString()
             setLastSyncTime(now)
@@ -64,9 +66,10 @@ export function useSyncStatus(): UseSyncStatusResult {
 
             setSyncState(result.success ? 'idle' : 'error')
         } catch (error) {
-            console.error('Sync error:', error)
+            console.error('[SyncHook] UNEXPECTED SYNC ERROR:', error)
             setSyncState('error')
         } finally {
+            console.log('[SyncHook] Releasing syncInProgress lock')
             syncInProgress.current = false
         }
     }, [isOnline, isAuthenticated, user, lastSyncTime])
