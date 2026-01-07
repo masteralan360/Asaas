@@ -11,7 +11,11 @@
         "confirm": "Confirm",
         "error": "Error",
         "success": "Success",
-        "noData": "No data available"
+        "noData": "No data available",
+        "quantity": "Quantity",
+        "price": "Price",
+        "total": "Total",
+        "add": "Add"
     },
     "nav": {
         "dashboard": "Dashboard",
@@ -19,6 +23,8 @@
         "customers": "Customers",
         "orders": "Orders",
         "invoices": "Invoices",
+        "pos": "POS",
+        "sales": "Sales",
         "settings": "Settings"
     },
     "products": {
@@ -47,7 +53,7 @@
             "minStock": "Min Stock Level",
             "category": "Category",
             "unit": "Unit",
-            "description": "Description"
+            "description": "Description (Optional)"
         },
         "messages": {
             "addSuccess": "Product added successfully",
@@ -291,5 +297,48 @@
         "invalidCode": "Invalid workspace code",
         "kickedMessage": "You have been removed from your previous workspace. Please enter a valid workspace code to join a new one.",
         "codeHint": "Ask your admin for the workspace code"
+    },
+    "pos": {
+        "title": "Point of Sale",
+        "searchPlaceholder": "Search products...",
+        "currentSale": "Current Sale",
+        "checkout": "Checkout",
+        "enterSku": "Enter SKU",
+        "skuNotFound": "Product not found",
+        "sku": "SKU"
+    },
+    "sales": {
+        "title": "Sales History",
+        "subtitle": "View past transactions",
+        "listTitle": "Recent Sales",
+        "date": "Date",
+        "cashier": "Cashier",
+        "origin": "Origin",
+        "total": "Total",
+        "details": "Sale Details",
+        "id": "Sale ID"
+    },
+    "messages": {
+        "success": "Success",
+        "error": "Error",
+        "saleCompleted": "Sale completed successfully!",
+        "checkoutFailed": "Checkout failed"
+    },
+    "workspaceConfig": {
+        "title": "Configure Your Workspace",
+        "subtitle": "Select which features to enable for your workspace. You can change these settings later.",
+        "workspaceName": "Workspace",
+        "continue": "Continue to Dashboard",
+        "note": "Only The Admin can modify these settings.",
+        "features": {
+            "pos": "Point of Sale (POS)",
+            "posDesc": "Enable quick sales and checkout functionality",
+            "customers": "Customer Management",
+            "customersDesc": "Track and manage customer information",
+            "orders": "Order Management",
+            "ordersDesc": "Create and track customer orders",
+            "invoices": "Invoicing",
+            "invoicesDesc": "Generate and manage invoices"
+        }
     }
 }

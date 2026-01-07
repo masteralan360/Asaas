@@ -2,6 +2,7 @@ import { type ReactNode } from 'react'
 import { Link, useLocation } from 'wouter'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/auth'
+import { useWorkspace } from '@/workspace'
 import { SyncStatusIndicator } from './SyncStatusIndicator'
 import {
     LayoutDashboard,
@@ -16,7 +17,9 @@ import {
     Boxes,
     Copy,
     Check,
-    UsersRound
+    UsersRound,
+    CreditCard,
+    Receipt
 } from 'lucide-react'
 import { useState } from 'react'
 import { Button } from './button'
@@ -31,6 +34,7 @@ interface LayoutProps {
 export function Layout({ children }: LayoutProps) {
     const [location] = useLocation()
     const { user, signOut } = useAuth()
+    const { hasFeature } = useWorkspace()
     const [sidebarOpen, setSidebarOpen] = useState(false)
     const [members, setMembers] = useState<{ id: string, name: string, role: string }[]>([])
     const { t } = useTranslation()
@@ -62,10 +66,27 @@ export function Layout({ children }: LayoutProps) {
 
     const navigation = [
         { name: t('nav.dashboard'), href: '/', icon: LayoutDashboard },
+        // POS - requires feature flag AND role
+        ...((user?.role === 'admin' || user?.role === 'staff') && hasFeature('allow_pos') ? [
+            { name: t('nav.pos') || 'POS', href: '/pos', icon: CreditCard }
+        ] : []),
+        // Sales - always visible (history of transactions)
+        { name: t('nav.sales') || 'Sales', href: '/sales', icon: Receipt },
+        // Products - always visible
         { name: t('nav.products'), href: '/products', icon: Package },
-        { name: t('nav.customers'), href: '/customers', icon: Users },
-        { name: t('nav.orders'), href: '/orders', icon: ShoppingCart },
-        { name: t('nav.invoices'), href: '/invoices', icon: FileText },
+        // Customers - requires feature flag
+        ...(hasFeature('allow_customers') ? [
+            { name: t('nav.customers'), href: '/customers', icon: Users }
+        ] : []),
+        // Orders - requires feature flag
+        ...(hasFeature('allow_orders') ? [
+            { name: t('nav.orders'), href: '/orders', icon: ShoppingCart }
+        ] : []),
+        // Invoices - requires feature flag
+        ...(hasFeature('allow_invoices') ? [
+            { name: t('nav.invoices'), href: '/invoices', icon: FileText }
+        ] : []),
+        // Admin-only routes
         ...(user?.role === 'admin' ? [
             { name: t('members.title'), href: '/members', icon: UsersRound },
             { name: t('nav.settings'), href: '/settings', icon: Settings }

@@ -1,9 +1,9 @@
 import { useAuth } from '@/auth'
 import { useSyncStatus, clearQueue } from '@/sync'
 import { clearDatabase } from '@/local-db'
-import { Card, CardContent, CardHeader, CardTitle, CardDescription, Button, Label, LanguageSwitcher } from '@/ui/components'
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, Button, Label, LanguageSwitcher, Input } from '@/ui/components'
 import { useTranslation } from 'react-i18next'
-import { Settings as SettingsIcon, Database, Cloud, Trash2, RefreshCw, User, Copy, Check } from 'lucide-react'
+import { Settings as SettingsIcon, Database, Cloud, Trash2, RefreshCw, User, Copy, Check, CreditCard } from 'lucide-react'
 import { formatDateTime } from '@/lib/utils'
 import { useTheme } from '@/ui/components/theme-provider'
 import { Moon, Sun, Monitor } from 'lucide-react'
@@ -15,6 +15,13 @@ export function Settings() {
     const { theme, setTheme } = useTheme()
     const { t } = useTranslation()
     const [copied, setCopied] = useState(false)
+    const [posHotkey, setPosHotkey] = useState(localStorage.getItem('pos_hotkey') || 'p')
+
+    const handleHotkeyChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const val = e.target.value.slice(0, 1).toLowerCase()
+        setPosHotkey(val)
+        localStorage.setItem('pos_hotkey', val)
+    }
 
     const copyToClipboard = (text: string) => {
         navigator.clipboard.writeText(text)
@@ -235,6 +242,30 @@ export function Settings() {
                                 </Button>
                             </div>
                         </div>
+                    </div>
+                </CardContent>
+            </Card>
+
+            {/* POS Settings */}
+            <Card>
+                <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                        <CreditCard className="w-5 h-5" />
+                        {t('settings.pos.title') || 'POS Configuration'}
+                    </CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <div className="space-y-2">
+                        <Label>{t('settings.pos.hotkey') || 'SKU Shortcut Key'}</Label>
+                        <Input
+                            value={posHotkey}
+                            onChange={handleHotkeyChange}
+                            maxLength={1}
+                            className="w-20 text-center font-mono uppercase"
+                        />
+                        <p className="text-sm text-muted-foreground">
+                            {t('settings.pos.hotkeyDesc') || 'Press this key to open the SKU modal in POS.'}
+                        </p>
                     </div>
                 </CardContent>
             </Card>

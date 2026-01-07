@@ -45,7 +45,11 @@ export function Register() {
                     setError(error.message)
                 }
             } else {
-                setLocation('/')
+                if (role === 'admin') {
+                    setLocation('/workspace-configuration')
+                } else {
+                    setLocation('/')
+                }
             }
         } catch (err) {
             setError(t('common.error') || 'An unexpected error occurred')

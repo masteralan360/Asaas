@@ -1,0 +1,243 @@
+import { useState, useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
+import { useAuth } from '@/auth'
+import { supabase } from '@/auth/supabase'
+import { Sale } from '@/types'
+import { formatCurrency, formatDateTime } from '@/lib/utils'
+import {
+    Table,
+    TableBody,
+    TableCell,
+    TableHead,
+    TableHeader,
+    TableRow,
+    Card,
+    CardContent,
+    CardHeader,
+    CardTitle,
+    Button,
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle
+} from '@/ui/components'
+import {
+    Receipt,
+    Eye,
+    Loader2,
+    Trash2
+} from 'lucide-react'
+
+export function Sales() {
+    const { user } = useAuth()
+    const { t } = useTranslation()
+    const [sales, setSales] = useState<Sale[]>([])
+    const [isLoading, setIsLoading] = useState(true)
+    const [selectedSale, setSelectedSale] = useState<Sale | null>(null)
+
+    const handleDeleteSale = async (id: string) => {
+        if (!confirm(t('common.messages.deleteConfirm') || 'Are you sure you want to delete this sale? Inventory will be restored.')) return
+
+        try {
+            const { error } = await supabase.rpc('delete_sale', { p_sale_id: id })
+            if (error) throw error
+
+            setSales(sales.filter(s => s.id !== id))
+            if (selectedSale?.id === id) setSelectedSale(null)
+        } catch (err: any) {
+            console.error('Error deleting sale:', err)
+            alert('Failed to delete sale: ' + (err.message || 'Unknown error'))
+        }
+    }
+
+    const fetchSales = async () => {
+        setIsLoading(true)
+        try {
+            // Fetch sales with items and product info
+            const { data, error } = await supabase
+                .from('sales')
+                .select(`
+                    *,
+                    items:sale_items(
+                        *,
+                        product:product_id(name, sku)
+                    )
+                `)
+                .order('created_at', { ascending: false })
+
+            if (error) throw error
+
+            const formattedSales = data.map((sale: any) => ({
+                ...sale,
+                cashier_name: 'Staff',
+                items: sale.items?.map((item: any) => ({
+                    ...item,
+                    product_name: item.product?.name || 'Unknown Product',
+                    product_sku: item.product?.sku || ''
+                }))
+            }))
+
+            setSales(formattedSales)
+        } catch (err) {
+            console.error('Error fetching sales:', err)
+        } finally {
+            setIsLoading(false)
+        }
+    }
+
+    useEffect(() => {
+        if (user?.workspaceId) {
+            fetchSales()
+        }
+    }, [user?.workspaceId])
+
+    return (
+        <div className="space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                    <h1 className="text-2xl font-bold flex items-center gap-2">
+                        <Receipt className="w-6 h-6 text-primary" />
+                        {t('sales.title') || 'Sales History'}
+                    </h1>
+                    <p className="text-muted-foreground">
+                        {t('sales.subtitle') || 'View past transactions'}
+                    </p>
+                </div>
+            </div>
+
+            <Card>
+                <CardHeader>
+                    <CardTitle>{t('sales.listTitle') || 'Recent Sales'}</CardTitle>
+                </CardHeader>
+                <CardContent>
+                    {isLoading ? (
+                        <div className="flex justify-center py-8">
+                            <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+                        </div>
+                    ) : sales.length === 0 ? (
+                        <div className="text-center py-8 text-muted-foreground">
+                            {t('common.noData')}
+                        </div>
+                    ) : (
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead className="text-start">{t('sales.date') || 'Date'}</TableHead>
+                                    <TableHead className="text-start">{t('sales.cashier') || 'Cashier'}</TableHead>
+                                    <TableHead className="text-start">{t('sales.origin') || 'Origin'}</TableHead>
+                                    <TableHead className="text-end">{t('sales.total') || 'Total'}</TableHead>
+                                    <TableHead className="text-end">{t('common.actions')}</TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {sales.map((sale) => (
+                                    <TableRow key={sale.id}>
+                                        <TableCell className="text-start font-mono text-sm">
+                                            {formatDateTime(sale.created_at)}
+                                        </TableCell>
+                                        <TableCell className="text-start">
+                                            {sale.cashier_name}
+                                        </TableCell>
+                                        <TableCell className="text-start">
+                                            <span className="px-2 py-1 rounded-full text-xs font-medium bg-secondary text-secondary-foreground uppercase">
+                                                {sale.origin}
+                                            </span>
+                                        </TableCell>
+                                        <TableCell className="text-end font-bold">
+                                            {formatCurrency(sale.total_amount)}
+                                        </TableCell>
+                                        <TableCell className="text-end">
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                onClick={() => setSelectedSale(sale)}
+                                            >
+                                                <Eye className="w-4 h-4" />
+                                            </Button>
+                                            {user?.role === 'admin' && (
+                                                <Button
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                                                    onClick={() => handleDeleteSale(sale.id)}
+                                                >
+                                                    <Trash2 className="w-4 h-4" />
+                                                </Button>
+                                            )}
+                                        </TableCell>
+                                    </TableRow>
+                                ))}
+                            </TableBody>
+                        </Table>
+                    )}
+                </CardContent>
+            </Card>
+
+            {/* Sale Details Modal */}
+            <Dialog open={!!selectedSale} onOpenChange={() => setSelectedSale(null)}>
+                <DialogContent className="max-w-2xl">
+                    <DialogHeader>
+                        <DialogTitle>{t('sales.details') || 'Sale Details'}</DialogTitle>
+                    </DialogHeader>
+                    {selectedSale && (
+                        <div className="space-y-4">
+                            <div className="grid grid-cols-2 gap-4 text-sm">
+                                <div>
+                                    <span className="text-muted-foreground">{t('sales.date')}:</span>
+                                    <div className="font-medium">{formatDateTime(selectedSale.created_at)}</div>
+                                </div>
+                                <div>
+                                    <span className="text-muted-foreground">{t('sales.cashier')}:</span>
+                                    <div className="font-medium">{selectedSale.cashier_name}</div>
+                                </div>
+                                <div>
+                                    <span className="text-muted-foreground">{t('sales.id')}:</span>
+                                    <div className="font-mono text-xs text-muted-foreground">{selectedSale.id}</div>
+                                </div>
+                            </div>
+
+                            <div className="border rounded-md">
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow>
+                                            <TableHead className="text-start">{t('products.table.name')}</TableHead>
+                                            <TableHead className="text-end">{t('common.quantity')}</TableHead>
+                                            <TableHead className="text-end">{t('common.price')}</TableHead>
+                                            <TableHead className="text-end">{t('common.total')}</TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {selectedSale.items?.map((item) => (
+                                            <TableRow key={item.id}>
+                                                <TableCell className="text-start">
+                                                    <div className="font-medium">{item.product_name}</div>
+                                                    <div className="text-xs text-muted-foreground">{item.product_sku}</div>
+                                                </TableCell>
+                                                <TableCell className="text-end font-mono">
+                                                    {item.quantity}
+                                                </TableCell>
+                                                <TableCell className="text-end text-muted-foreground">
+                                                    {formatCurrency(item.unit_price)}
+                                                </TableCell>
+                                                <TableCell className="text-end font-medium">
+                                                    {formatCurrency(item.total_price)}
+                                                </TableCell>
+                                            </TableRow>
+                                        ))}
+                                    </TableBody>
+                                </Table>
+                            </div>
+
+                            <div className="flex justify-between items-center pt-4 border-t">
+                                <div className="text-lg font-bold">{t('sales.total')}</div>
+                                <div className="text-2xl font-bold text-primary">
+                                    {formatCurrency(selectedSale.total_amount)}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </DialogContent>
+            </Dialog>
+        </div>
+    )
+}

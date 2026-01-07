@@ -12,6 +12,7 @@ interface AuthUser {
     workspaceCode: string
     workspaceName?: string
     avatarUrl?: string
+    isConfigured?: boolean
 }
 
 interface AuthContextType {
@@ -60,7 +61,8 @@ function parseUserFromSupabase(user: User): AuthUser {
         workspaceId: user.user_metadata?.workspace_id ?? '',
         workspaceCode: user.user_metadata?.workspace_code ?? '',
         workspaceName: user.user_metadata?.workspace_name,
-        avatarUrl: user.user_metadata?.avatar_url
+        avatarUrl: user.user_metadata?.avatar_url,
+        isConfigured: user.user_metadata?.is_configured
     }
 }
 
@@ -86,12 +88,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             if (parsedUser && parsedUser.workspaceId && !parsedUser.workspaceCode) {
                 supabase
                     .from('workspaces')
-                    .select('code')
+                    .select('code, is_configured')
                     .eq('id', parsedUser.workspaceId)
                     .single()
                     .then(({ data }) => {
                         if (data) {
                             parsedUser.workspaceCode = data.code
+                            parsedUser.isConfigured = data.is_configured
                             setUser({ ...parsedUser })
                         } else {
                             setUser(parsedUser)
@@ -111,12 +114,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             if (parsedUser && parsedUser.workspaceId && !parsedUser.workspaceCode) {
                 supabase
                     .from('workspaces')
-                    .select('code')
+                    .select('code, is_configured')
                     .eq('id', parsedUser.workspaceId)
                     .single()
                     .then(({ data }) => {
                         if (data) {
                             parsedUser.workspaceCode = data.code
+                            parsedUser.isConfigured = data.is_configured
                             setUser({ ...parsedUser })
                         } else {
                             setUser(parsedUser)
