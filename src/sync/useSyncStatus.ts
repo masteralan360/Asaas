@@ -32,9 +32,17 @@ export function useSyncStatus(): UseSyncStatusResult {
     const { isOnline } = useOnlineStatus()
     const { user, isAuthenticated } = useAuth()
     const syncInProgress = useRef(false)
+    const lastSyncTimeRef = useRef(lastSyncTime)
+
+    // Update ref when state changes
+    useEffect(() => {
+        lastSyncTimeRef.current = lastSyncTime
+    }, [lastSyncTime])
 
     // Get pending sync count
     const pendingCount = useLiveQuery(() => db.syncQueue.count(), []) ?? 0
+    // Track previous pending count to detect new additions
+    const prevPendingCount = useRef(pendingCount)
 
     // Perform sync
     const sync = useCallback(async () => {
@@ -52,7 +60,7 @@ export function useSyncStatus(): UseSyncStatusResult {
 
         try {
             console.log('[SyncHook] Starting sync execution...')
-            const result = await fullSync(user.id, user.workspaceId, lastSyncTime)
+            const result = await fullSync(user.id, user.workspaceId, lastSyncTimeRef.current)
             console.log('[SyncHook] Sync finished with result:', result)
 
             const now = new Date().toISOString()
@@ -64,6 +72,9 @@ export function useSyncStatus(): UseSyncStatusResult {
                 pulled: result.pulled
             })
 
+            // If we have failed items, we are effectively still in "error" state regarding those items,
+            // but the sync process itself finished. 
+            // We set 'idle' if successful, 'error' if any errors occurred.
             setSyncState(result.success ? 'idle' : 'error')
         } catch (error) {
             console.error('[SyncHook] UNEXPECTED SYNC ERROR:', error)
@@ -72,7 +83,7 @@ export function useSyncStatus(): UseSyncStatusResult {
             console.log('[SyncHook] Releasing syncInProgress lock')
             syncInProgress.current = false
         }
-    }, [isOnline, isAuthenticated, user, lastSyncTime])
+    }, [isOnline, isAuthenticated, user]) // Removed lastSyncTime from deps
 
     // Auto sync on interval
     useEffect(() => {
@@ -84,10 +95,22 @@ export function useSyncStatus(): UseSyncStatusResult {
 
     // Sync when coming back online
     useEffect(() => {
-        if (isOnline && isAuthenticated && pendingCount > 0) {
+        if (isOnline && isAuthenticated) {
+            // Only sync if we haven't synced in a while or have pending items? 
+            // Ideally just one sync check on connection restore is good.
+            console.log('[SyncHook] Online status restored, triggering sync...')
             sync()
         }
-    }, [isOnline, isAuthenticated, pendingCount, sync])
+    }, [isOnline, isAuthenticated]) // Removed pendingCount and sync from here to prevent loops
+
+    // Trigger sync when new items are added to queue (pendingCount increases)
+    useEffect(() => {
+        if (pendingCount > prevPendingCount.current && isOnline && isAuthenticated) {
+            console.log('[SyncHook] New items added to queue, triggering sync...')
+            sync()
+        }
+        prevPendingCount.current = pendingCount
+    }, [pendingCount, isOnline, isAuthenticated])
 
     // Initial sync
     useEffect(() => {

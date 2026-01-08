@@ -78,6 +78,20 @@ async function pushItem(item: any, userId: string, workspaceId: string): Promise
         switch (item.operation) {
             case 'create':
             case 'update': {
+                if (item.entityType === 'sales') {
+                    console.log(`[Sync] Calling Supabase complete_sale RPC for ${tableName}...`)
+                    const { error } = (await withTimeout(
+                        supabase.rpc('complete_sale', { payload: data }) as any,
+                        20000
+                    )) as any
+
+                    if (error) {
+                        console.error(`[Sync] Supabase RPC ERROR for sales:`, error)
+                        throw error
+                    }
+                    break
+                }
+
                 console.log(`[Sync] Calling Supabase upsert on ${tableName}...`)
                 const { error } = (await withTimeout(
                     supabase

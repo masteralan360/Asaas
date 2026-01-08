@@ -27,6 +27,8 @@ import {
     Loader2,
     Barcode
 } from 'lucide-react'
+import { generateId } from '@/lib/utils'
+import { addToQueue } from '@/sync/syncQueue'
 
 export function POS() {
     const { toast } = useToast()
@@ -133,24 +135,34 @@ export function POS() {
     }
 
     const handleCheckout = async () => {
-        if (cart.length === 0) return
+        if (cart.length === 0 || !user) return
         setIsLoading(true)
 
+        const saleId = generateId()
+        const checkoutPayload = {
+            items: cart.map((item) => ({
+                product_id: item.product_id,
+                quantity: item.quantity,
+                price: item.price,
+                total: item.price * item.quantity
+            })),
+            total_amount: totalAmount,
+            origin: 'pos'
+        }
+
         try {
+            // Attempt online checkout
             const { error } = await supabase.rpc('complete_sale', {
-                payload: {
-                    items: cart.map((item) => ({
-                        product_id: item.product_id,
-                        quantity: item.quantity,
-                        price: item.price,
-                        total: item.price * item.quantity
-                    })),
-                    total_amount: totalAmount,
-                    origin: 'pos'
-                }
+                payload: checkoutPayload
             })
 
-            if (error) throw error
+            if (error) {
+                // If it's a network error, we want to handle it as offline
+                if (error.message?.includes('Failed to fetch') || (error as any).status === 0) {
+                    throw new Error('OFFLINE_FETCH_ERROR')
+                }
+                throw error
+            }
 
             // Update local inventory (reflect backend change immediately)
             await Promise.all(cart.map(async (item) => {
@@ -170,7 +182,64 @@ export function POS() {
                 duration: 3000,
             })
         } catch (err: any) {
-            console.error('Checkout failed:', err)
+            console.error('Checkout failed, attempting offline save:', err)
+
+            // Handle Offline Fallback
+            if (err.message === 'OFFLINE_FETCH_ERROR' || !navigator.onLine) {
+                try {
+                    // 1. Save Sale locally
+                    await db.sales.add({
+                        id: saleId,
+                        workspaceId: user.workspaceId,
+                        cashierId: user.id,
+                        totalAmount: totalAmount,
+                        origin: 'pos',
+                        createdAt: new Date().toISOString(),
+                        updatedAt: new Date().toISOString(),
+                        syncStatus: 'pending',
+                        lastSyncedAt: null,
+                        version: 1,
+                        isDeleted: false
+                    })
+
+                    // 2. Save Sale Items locally
+                    await Promise.all(cart.map(item =>
+                        db.sale_items.add({
+                            id: generateId(),
+                            saleId: saleId,
+                            productId: item.product_id,
+                            quantity: item.quantity,
+                            unitPrice: item.price,
+                            totalPrice: item.price * item.quantity
+                        })
+                    ))
+
+                    // 3. Update Local Inventory
+                    await Promise.all(cart.map(async (item) => {
+                        const product = products.find(p => p.id === item.product_id)
+                        if (product) {
+                            await db.products.update(item.product_id, {
+                                quantity: Math.max(0, product.quantity - item.quantity)
+                            })
+                        }
+                    }))
+
+                    // 4. Add to Sync Queue
+                    await addToQueue('sales', saleId, 'create', checkoutPayload)
+
+                    // Success Feedback
+                    setCart([])
+                    toast({
+                        title: t('pos.offlineTitle') || 'Saved Offline',
+                        description: t('pos.offlineDesc') || 'Sale saved locally and will sync when online.',
+                        duration: 5000,
+                    })
+                    return
+                } catch (saveErr: any) {
+                    console.error('Offline save failed:', saveErr)
+                }
+            }
+
             toast({
                 variant: 'destructive',
                 title: t('messages.error'),

@@ -93,10 +93,26 @@ export interface Invoice extends BaseEntity {
     notes?: string
 }
 
+export interface Sale extends BaseEntity {
+    cashierId: string
+    totalAmount: number
+    origin: string
+}
+
+export interface SaleItem {
+    id: string
+    saleId: string
+    productId: string
+    quantity: number
+    unitPrice: number
+    totalPrice: number
+}
+
+
 // Sync Queue Item for tracking pending changes
 export interface SyncQueueItem {
     id: string
-    entityType: 'products' | 'customers' | 'orders' | 'invoices' | 'users'
+    entityType: 'products' | 'customers' | 'orders' | 'invoices' | 'users' | 'sales'
     entityId: string
     operation: 'create' | 'update' | 'delete'
     data: Record<string, unknown>

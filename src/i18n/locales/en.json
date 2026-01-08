@@ -271,6 +271,11 @@
         "messages": {
             "clearQueueConfirm": "Clear all pending sync items? This cannot be undone.",
             "clearDataConfirm": "This will delete ALL local data including products, customers, orders, and invoices. Are you sure?"
+        },
+        "pos": {
+            "title": "Clear all pending sync items? This cannot be undone.",
+            "hotkey": "Hotkey",
+            "hotkeyDesc": "Press this key to open the SKU modal in POS."
         }
     },
     "members": {
@@ -303,6 +308,8 @@
         "searchPlaceholder": "Search products...",
         "currentSale": "Current Sale",
         "checkout": "Checkout",
+        "offlineTitle": "Saved Offline",
+        "offlineDesc": "Sale saved locally and will sync when online.",
         "enterSku": "Enter SKU",
         "skuNotFound": "Product not found",
         "sku": "SKU"

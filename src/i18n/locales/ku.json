@@ -302,6 +302,8 @@
         "searchPlaceholder": "گەڕان بۆ بەرهەم...",
         "currentSale": "فرۆشتنی ئێستا",
         "checkout": "کڕین",
+        "offlineTitle": "بە ئۆفلاین پاشەکەوت کرا",
+        "offlineDesc": "فرۆشتنەکە بە ناوخۆیی پاشەکەوت کرا و کاتێک ئۆنلاین بوویت هاوکات دەکرێت.",
         "enterSku": "SKU بنووسە",
         "skuNotFound": "بەرهەم نەدۆزرایەوە",
         "sku": "SKU"

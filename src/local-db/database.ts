@@ -1,5 +1,5 @@
 import Dexie, { type EntityTable } from 'dexie'
-import type { Product, Customer, Order, Invoice, User, SyncQueueItem } from './models'
+import type { Product, Customer, Order, Invoice, User, SyncQueueItem, Sale, SaleItem } from './models'
 
 // ERP Database using Dexie.js for IndexedDB
 export class ERPDatabase extends Dexie {
@@ -8,17 +8,21 @@ export class ERPDatabase extends Dexie {
     orders!: EntityTable<Order, 'id'>
     invoices!: EntityTable<Invoice, 'id'>
     users!: EntityTable<User, 'id'>
+    sales!: EntityTable<Sale, 'id'>
+    sale_items!: EntityTable<SaleItem, 'id'>
     syncQueue!: EntityTable<SyncQueueItem, 'id'>
 
     constructor() {
         super('ERPDatabase')
 
-        this.version(2).stores({
+        this.version(3).stores({
             products: 'id, sku, name, category, workspaceId, syncStatus, updatedAt, isDeleted',
             customers: 'id, name, email, workspaceId, syncStatus, updatedAt, isDeleted',
             orders: 'id, orderNumber, customerId, status, workspaceId, syncStatus, updatedAt, isDeleted',
             invoices: 'id, invoiceNumber, orderId, customerId, status, workspaceId, syncStatus, updatedAt, isDeleted',
             users: 'id, email, role, workspaceId, syncStatus, updatedAt, isDeleted',
+            sales: 'id, cashierId, workspaceId, syncStatus, createdAt',
+            sale_items: 'id, saleId, productId',
             syncQueue: 'id, entityType, entityId, operation, timestamp'
         })
     }

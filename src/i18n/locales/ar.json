@@ -321,7 +321,9 @@
         "success": "ناجح",
         "error": "خطأ",
         "saleCompleted": "تم إكمال البيع بنجاح!",
-        "checkoutFailed": "فشل الدفع"
+        "checkout": "الدفع",
+        "offlineTitle": "تم الحفظ بدون اتصال",
+        "offlineDesc": "تم حفظ عملية البيع محلياً وستتم مزامنتها عند الاتصال بالإنترنت."
     },
     "workspaceConfig": {
         "title": "إعداد مساحة العمل",
