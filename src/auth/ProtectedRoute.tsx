@@ -76,25 +76,6 @@ export function ProtectedRoute({
         )
     }
 
-    // 2. Check User Permission Level
-    if (requiredFeature && user?.permissions) {
-        // We cast requiredFeature because WorkspaceFeatures includes 'is_configured' but permissions obj does not
-        // However, requiredFeature prop is already Omit<..., 'is_configured'>
-        const userHasPermission = user.permissions[requiredFeature as keyof typeof user.permissions]
-
-        if (userHasPermission === false) {
-            return (
-                <div className="min-h-screen flex items-center justify-center bg-background">
-                    <div className="text-center">
-                        <h1 className="text-4xl font-bold text-destructive mb-4">Access Denied</h1>
-                        <p className="text-muted-foreground mb-4">You do not have permission to access this feature.</p>
-                        <a href="/" className="text-primary hover:underline">Return to Dashboard</a>
-                    </div>
-                </div>
-            )
-        }
-    }
-
     return <>{children}</>
 }
 
