@@ -2,14 +2,14 @@ import { type ReactNode } from 'react'
 import { useAuth } from './AuthContext'
 import { Redirect, useLocation } from 'wouter'
 import type { UserRole } from '@/local-db/models'
-import { useWorkspace, type WorkspaceFeatures } from '@/workspace'
+import { useWorkspace } from '@/workspace'
 
 interface ProtectedRouteProps {
     children: ReactNode
     allowedRoles?: UserRole[]
     redirectTo?: string
     allowKicked?: boolean
-    requiredFeature?: keyof Omit<WorkspaceFeatures, 'is_configured'>
+    requiredFeature?: 'allow_pos' | 'allow_customers' | 'allow_orders' | 'allow_invoices'
 }
 
 export function ProtectedRoute({
@@ -35,7 +35,7 @@ export function ProtectedRoute({
     }
 
     if (!isAuthenticated) {
-        return <Redirect to={`${redirectTo}?redirect=${encodeURIComponent(location)}`} />
+        return <Redirect to={`${redirectTo}?redirect = ${encodeURIComponent(location)} `} />
     }
 
     // Redirect kicked users to workspace registration (unless this route allows kicked users)

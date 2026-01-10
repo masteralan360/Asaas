@@ -30,6 +30,7 @@ import {
 import { Plus, Pencil, Trash2, ShoppingCart, Search, Package } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/auth'
+import { useWorkspace } from '@/workspace'
 
 const ORDER_STATUSES: OrderStatus[] = ['pending', 'processing', 'shipped', 'delivered', 'cancelled']
 
@@ -46,6 +47,7 @@ export function Orders() {
     const orders = useOrders(user?.workspaceId)
     const customers = useCustomers(user?.workspaceId)
     const products = useProducts(user?.workspaceId)
+    const { features } = useWorkspace()
     const { t } = useTranslation()
     const canEdit = user?.role === 'admin' || user?.role === 'staff'
     const [search, setSearch] = useState('')
@@ -111,7 +113,8 @@ export function Orders() {
                 productName: product.name,
                 quantity: 1,
                 unitPrice: product.price,
-                total: product.price
+                total: product.price,
+                currency: product.currency
             }])
         }
     }
@@ -148,7 +151,8 @@ export function Orders() {
                 total,
                 status,
                 notes,
-                shippingAddress
+                shippingAddress,
+                currency: items.length > 0 ? (items[0] as any).currency : features.default_currency
             }
 
             if (editingOrder) {
@@ -242,7 +246,9 @@ export function Orders() {
                                                 {t(`orders.status.${order.status}`)}
                                             </span>
                                         </TableCell>
-                                        <TableCell className="text-right font-medium">{formatCurrency(order.total)}</TableCell>
+                                        <TableCell className="text-right font-medium">
+                                            {formatCurrency(order.total, (order as any).currency || 'usd', features.iqd_display_preference)}
+                                        </TableCell>
                                         <TableCell className="text-muted-foreground text-sm">{formatDate(order.createdAt)}</TableCell>
                                         {canEdit && (
                                             <TableCell className="text-right">
@@ -312,7 +318,7 @@ export function Orders() {
                                         <SelectItem key={p.id} value={p.id}>
                                             <span className="flex items-center gap-2">
                                                 <Package className="w-4 h-4" />
-                                                {p.name} - {formatCurrency(p.price)}
+                                                {p.name} - {formatCurrency(p.price, p.currency, features.iqd_display_preference)}
                                             </span>
                                         </SelectItem>
                                     ))}
@@ -346,8 +352,12 @@ export function Orders() {
                                                         className="w-20"
                                                     />
                                                 </TableCell>
-                                                <TableCell className="text-right">{formatCurrency(item.unitPrice)}</TableCell>
-                                                <TableCell className="text-right font-medium">{formatCurrency(item.total)}</TableCell>
+                                                <TableCell className="text-right">
+                                                    {formatCurrency(item.unitPrice, (item as any).currency || 'usd', features.iqd_display_preference)}
+                                                </TableCell>
+                                                <TableCell className="text-right font-medium">
+                                                    {formatCurrency(item.total, (item as any).currency || 'usd', features.iqd_display_preference)}
+                                                </TableCell>
                                                 <TableCell>
                                                     <Button type="button" variant="ghost" size="icon" onClick={() => removeItem(index)}>
                                                         <Trash2 className="w-4 h-4 text-destructive" />
@@ -387,7 +397,7 @@ export function Orders() {
                             <div className="space-y-2">
                                 <Label>{t('orders.form.total')}</Label>
                                 <div className="h-10 px-3 py-2 border rounded-md bg-secondary font-bold">
-                                    {formatCurrency(total)}
+                                    {formatCurrency(total, items.length > 0 ? (items[0] as any).currency : features.default_currency, features.iqd_display_preference)}
                                 </div>
                             </div>
                         </div>

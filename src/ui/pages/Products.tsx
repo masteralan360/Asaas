@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useProducts, createProduct, updateProduct, deleteProduct, useCategories, createCategory, updateCategory, deleteCategory, type Product, type Category } from '@/local-db'
+import type { CurrencyCode } from '@/local-db/models'
 import { formatCurrency } from '@/lib/utils'
 import {
     Table,
@@ -25,11 +26,13 @@ import {
     SelectContent,
     SelectItem,
     SelectTrigger,
-    SelectValue
+    SelectValue,
+    CurrencySelector
 } from '@/ui/components'
 import { Plus, Pencil, Trash2, Package, Search } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/auth'
+import { useWorkspace } from '@/workspace'
 
 const UNITS = ['pcs', 'kg', 'liter', 'box', 'pack']
 
@@ -43,6 +46,7 @@ type ProductFormData = {
     quantity: number | ''
     minStockLevel: number | ''
     unit: string
+    currency: CurrencyCode
     imageUrl: string
 }
 
@@ -56,6 +60,7 @@ const initialFormData: ProductFormData = {
     quantity: '',
     minStockLevel: 10,
     unit: 'pcs',
+    currency: 'usd',
     imageUrl: ''
 }
 
@@ -63,6 +68,7 @@ export function Products() {
     const { user } = useAuth()
     const products = useProducts(user?.workspaceId)
     const categories = useCategories(user?.workspaceId)
+    const { features } = useWorkspace()
     const { t } = useTranslation()
     const canEdit = user?.role === 'admin' || user?.role === 'staff'
     const canDelete = user?.role === 'admin'
@@ -102,11 +108,15 @@ export function Products() {
                 quantity: product.quantity,
                 minStockLevel: product.minStockLevel,
                 unit: product.unit,
+                currency: product.currency,
                 imageUrl: product.imageUrl || ''
             })
         } else {
             setEditingProduct(null)
-            setFormData(initialFormData)
+            setFormData({
+                ...initialFormData,
+                currency: features.default_currency
+            })
         }
         setIsDialogOpen(true)
     }
@@ -243,7 +253,9 @@ export function Products() {
                                         <TableCell className="font-mono text-sm">{product.sku}</TableCell>
                                         <TableCell className="font-medium">{product.name}</TableCell>
                                         <TableCell>{getCategoryName(product.categoryId)}</TableCell>
-                                        <TableCell className="text-right">{formatCurrency(product.price)}</TableCell>
+                                        <TableCell className="text-right">
+                                            {formatCurrency(product.price, product.currency, features.iqd_display_preference)}
+                                        </TableCell>
                                         <TableCell className="text-right">
                                             <span className={product.quantity <= product.minStockLevel ? 'text-amber-500 font-medium' : ''}>
                                                 {product.quantity} {product.unit}
@@ -345,7 +357,7 @@ export function Products() {
                             </div>
                         </div>
 
-                        <div className="grid gap-4 md:grid-cols-2">
+                        <div className="grid gap-4 md:grid-cols-3">
                             <div className="space-y-2">
                                 <Label htmlFor="price">{t('products.table.price')}</Label>
                                 <Input
@@ -357,6 +369,14 @@ export function Products() {
                                     onChange={(e) => setFormData({ ...formData, price: e.target.value === '' ? '' : parseFloat(e.target.value) })}
                                     placeholder="0.00"
                                     required
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <CurrencySelector
+                                    label={t('products.form.currency') || "Currency"}
+                                    value={formData.currency}
+                                    onChange={(val) => setFormData({ ...formData, currency: val })}
+                                    iqdDisplayPreference={features.iqd_display_preference}
                                 />
                             </div>
                             <div className="space-y-2">

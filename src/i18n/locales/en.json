@@ -3,6 +3,7 @@
         "loading": "Loading...",
         "save": "Save",
         "cancel": "Cancel",
+        "close": "Close",
         "delete": "Delete",
         "edit": "Edit",
         "create": "Create",
@@ -15,7 +16,10 @@
         "quantity": "Quantity",
         "price": "Price",
         "total": "Total",
-        "add": "Add"
+        "add": "Add",
+        "each": "each",
+        "snapshots": "Snapshots",
+        "added": "Added"
     },
     "nav": {
         "dashboard": "Dashboard",
@@ -54,7 +58,8 @@
             "minStock": "Min Stock Level Alert",
             "category": "Category",
             "unit": "Unit",
-            "description": "Description (Optional)"
+            "description": "Description (Optional)",
+            "currency": "Currency"
         },
         "messages": {
             "addSuccess": "Product added successfully",
@@ -234,6 +239,10 @@
     "settings": {
         "title": "Settings",
         "subtitle": "Manage your account and application settings",
+        "tabs": {
+            "general": "General Settings",
+            "advanced": "Advanced Settings"
+        },
         "appearance": "Appearance",
         "appearanceDesc": "Customize the look and feel of the application",
         "language": "Language",
@@ -279,7 +288,48 @@
             "hotkeyDesc": "Press this key to open the SKU modal in POS.",
             "barcodeHotkey": "Barcode Shortcut Key",
             "barcodeHotkeyDesc": "Press this key to open the Barcode Scanner in POS."
+        },
+        "currency": {
+            "title": "Currency",
+            "desc": "Set the default currency for your workspace.",
+            "default": "Default Currency",
+            "iqdPreference": "IQD Display Preference"
+        },
+        "exchangeRate": {
+            "title": "Exchange Rate Source",
+            "primary": "Primary Source USD/IQD",
+            "primaryDesc": "Select which website to use for live market rates.",
+            "xeiqd": "XEIQD USD/IQD (Slower & More Accurate)",
+            "egcurrency": "EgCurrency USD/IQD (Faster & More Reliable)",
+            "eurEnable": "Enable EUR/IQD Exchange Rate",
+            "eurEnableDesc": "Enable EUR/IQD exchange rate in the system.",
+            "eurSource": "EUR/IQD Source",
+            "eurSourceAdminOnly": "EgCurrency is currently the only supported source for Euro rates."
         }
+    },
+    "sync": {
+        "title": "Synchronize Data",
+        "pendingCount": "You have {{count}} pending changes to upload.",
+        "syncing": "Synchronizing with Supabase...",
+        "success": "Sync completed successfully!",
+        "failed": "Sync failed.",
+        "connectionNote": "Make sure you have a stable internet connection.",
+        "processing": "Processing...",
+        "allSynced": "All data synced!",
+        "syncNow": "Sync Now",
+        "syncingBtn": "Syncing...",
+        "discardBtn": "Discard Changes",
+        "confirmDiscard": "Confirm Discard",
+        "discardDescription": "Are you sure you want to discard {{count}} pending changes? This action cannot be undone and your offline edits will be permanently lost.",
+        "yesDiscard": "Yes, Discard All",
+        "toastDiscardTitle": "Changes Discarded",
+        "toastDiscardDesc": "All pending offline mutations have been cleared.",
+        "toastSyncComplete": "Sync Complete",
+        "toastSyncStats": "Pushed {{pushed}} changes. Pulled {{pulled}} updates.",
+        "toastSyncFailed": "Sync Failed",
+        "toastSyncFailedDesc": "There were errors during synchronization.",
+        "toastSyncError": "Sync Error",
+        "discardError": "Failed to discard changes."
     },
     "members": {
         "title": "Members",
@@ -307,6 +357,8 @@
         "codeHint": "Ask your admin for the workspace code"
     },
     "pos": {
+        "currencyError": "Currency Error",
+        "currencyErrorDesc": "Please set a default currency in the settings.",
         "title": "Point of Sale",
         "searchPlaceholder": "Search products...",
         "currentSale": "Current Sale",
@@ -325,7 +377,9 @@
         "scannerEnabled": "Scanner Enabled",
         "scannerDisabled": "Scanner Disabled",
         "cameraNotFound": "Camera not found",
-        "permissionDenied": "Camera permission denied"
+        "permissionDenied": "Camera permission denied",
+        "exchangeRateError": "Exchange rate unavailable. Checkout blocked.",
+        "eurDisabled": "EURO conversion is disabled."
     },
     "sales": {
         "title": "Sales History",

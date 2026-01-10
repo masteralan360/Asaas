@@ -3,6 +3,7 @@
         "loading": "جاري التحميل...",
         "save": "حفظ",
         "cancel": "إلغاء",
+        "close": "إغلاق",
         "delete": "حذف",
         "edit": "تعديل",
         "create": "إنشاء",
@@ -53,7 +54,8 @@
             "minStock": "الحد الأدنى للمخزون",
             "category": "الفئة",
             "unit": "الوحدة",
-            "description": "الوصف (اختياري)"
+            "description": "الوصف (اختياري)",
+            "currency": "العملة"
         },
         "messages": {
             "addSuccess": "تم إضافة المنتج بنجاح",
@@ -233,6 +235,10 @@
     "settings": {
         "title": "الإعدادات",
         "subtitle": "إدارة إعدادات حسابك والتطبيق",
+        "tabs": {
+            "general": "الإعدادات العامة",
+            "advanced": "الإعدادات المتقدمة"
+        },
         "appearance": "المظهر",
         "appearanceDesc": "تخصيص شكل ومظهر التطبيق",
         "language": "اللغة",
@@ -278,7 +284,48 @@
             "hotkeyDesc": "اضغط على هذا المفتاح لفتح نافذة SKU في نقطة البيع.",
             "barcodeHotkey": "مفتاح اختصار الباركود",
             "barcodeHotkeyDesc": "اضغط على هذا المفتاح لفتح ماسح الباركود في نقطة البيع."
+        },
+        "currency": {
+            "title": "العملة",
+            "desc": "تعيين العملة الافتراضية لمساحة العمل الخاصة بك.",
+            "default": "العملة الافتراضية",
+            "iqdPreference": "إظهار العملة"
+        },
+        "exchangeRate": {
+            "title": "مصدر سعر الصرف",
+            "primary": "المصدر الأساسي USD/IQD",
+            "primaryDesc": "اختر الموقع الذي تريد استخدامه لأسعار السوق المباشرة.",
+            "xeiqd": "XEIQD (Slower & More Accurate)",
+            "egcurrency": "EgCurrency (Faster & More Reliable)",
+            "eurEnable": "تمكين سعر صرف EUR/IQD",
+            "eurEnableDesc": "تمكين سعر صرف EUR/IQD في النظام.",
+            "eurSource": "مصدر EUR/IQD",
+            "eurSourceAdminOnly": "مصدر EUR/IQD"
         }
+    },
+    "sync": {
+        "title": "مزامنة البيانات",
+        "pendingCount": "لديك {{count}} تغييرات معلقة للرفع.",
+        "syncing": "جارٍ المزامنة مع Supabase...",
+        "success": "تمت المزامنة بنجاح!",
+        "failed": "فشلت المزامنة.",
+        "connectionNote": "تأكد من وجود اتصال إنترنت مستقر.",
+        "processing": "جارٍ المعالجة...",
+        "allSynced": "تمت مزامنة جميع البيانات!",
+        "syncNow": "مزامنة الآن",
+        "syncingBtn": "جاري المزامنة...",
+        "discardBtn": "⚠️تجاهل التغييرات",
+        "confirmDiscard": "تأكيد التجاهل",
+        "discardDescription": "هل أنت متأكد من رغبتك في تجاهل {{count}} تغييرات معلقة؟ لا يمكن التراجع عن هذا الإجراء وستفقد تعديلاتك غير المتصلة بشكل دائم.",
+        "yesDiscard": "نعم، تجاهل الكل",
+        "toastDiscardTitle": "تم تجاهل التغييرات",
+        "toastDiscardDesc": "تم مسح جميع التغييرات المعلقة.",
+        "toastSyncComplete": "اكتملت المزامنة",
+        "toastSyncStats": "تم رفع {{pushed}} تغييرات. تم جلب {{pulled}} تحديثات.",
+        "toastSyncFailed": "فشلت المزامنة",
+        "toastSyncFailedDesc": "حدثت أخطاء أثناء المزامنة.",
+        "toastSyncError": "خطأ في المزامنة",
+        "discardError": "فشل تجاهل التغييرات."
     },
     "members": {
         "title": "الأعضاء",
@@ -306,6 +353,8 @@
         "codeHint": "اطلب رمز مساحة العمل من المسؤول"
     },
     "pos": {
+        "error": "حدث خطأ",
+        "exchangeRateError": "سعر الصرف غير متاح. تم إيقاف الدفع.",
         "title": "نقطة البيع",
         "searchPlaceholder": "البحث عن المنتجات...",
         "currentSale": "البيع الحالي",

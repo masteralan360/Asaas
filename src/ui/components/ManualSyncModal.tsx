@@ -10,10 +10,10 @@ import {
 import { Button } from '@/ui/components/button'
 import { Loader2, CheckCircle2, AlertTriangle } from 'lucide-react'
 import { useAuth } from '@/auth/AuthContext'
-// import { useWorkspace } from '@/workspace'
 import { fullSync } from '@/sync/syncEngine'
 import { useToast } from '@/ui/components/use-toast'
-import { usePendingSyncCount } from '@/local-db/hooks'
+import { usePendingSyncCount, clearOfflineMutations } from '@/local-db/hooks'
+import { useTranslation } from 'react-i18next'
 
 interface ManualSyncModalProps {
     open: boolean
@@ -22,14 +22,15 @@ interface ManualSyncModalProps {
 }
 
 export function ManualSyncModal({ open, onOpenChange, onSyncComplete }: ManualSyncModalProps) {
+    const { t } = useTranslation()
     const { user } = useAuth()
-    // const { workspace } = useWorkspace() // Not needed, user has workspaceId
     const { toast } = useToast()
     const pendingCount = usePendingSyncCount()
 
     const [isSyncing, setIsSyncing] = useState(false)
     const [status, setStatus] = useState<'idle' | 'syncing' | 'success' | 'error'>('idle')
     const [errorMessage, setErrorMessage] = useState<string | null>(null)
+    const [showDiscardConfirm, setShowDiscardConfirm] = useState(false)
 
     async function handleSync() {
         if (!user || !user.workspaceId) return
@@ -39,19 +40,17 @@ export function ManualSyncModal({ open, onOpenChange, onSyncComplete }: ManualSy
         setErrorMessage(null)
 
         try {
-            // Trigger full sync (Process Queue + Pull Changes)
-            const result = await fullSync(user.id, user.workspaceId, null) // TODO: track lastSyncTime properly if needed
+            const result = await fullSync(user.id, user.workspaceId, null)
 
             if (result.success) {
                 setStatus('success')
                 toast({
-                    title: 'Sync Complete',
-                    description: `Pushed ${result.pushed} changes. Pulled ${result.pulled} updates.`,
+                    title: t('sync.toastSyncComplete'),
+                    description: t('sync.toastSyncStats', { pushed: result.pushed, pulled: result.pulled }),
                     variant: 'default'
                 })
                 if (onSyncComplete) onSyncComplete()
 
-                // Close after a brief delay
                 setTimeout(() => {
                     onOpenChange(false)
                     setStatus('idle')
@@ -60,8 +59,8 @@ export function ManualSyncModal({ open, onOpenChange, onSyncComplete }: ManualSy
                 setStatus('error')
                 setErrorMessage(result.errors.join(', '))
                 toast({
-                    title: 'Sync Failed',
-                    description: 'There were errors during synchronization.',
+                    title: t('sync.toastSyncFailed'),
+                    description: t('sync.toastSyncFailedDesc'),
                     variant: 'destructive'
                 })
             }
@@ -69,7 +68,7 @@ export function ManualSyncModal({ open, onOpenChange, onSyncComplete }: ManualSy
             setStatus('error')
             setErrorMessage(error.message || 'Unknown error occurred')
             toast({
-                title: 'Sync Error',
+                title: t('sync.toastSyncError'),
                 description: error.message,
                 variant: 'destructive'
             })
@@ -78,73 +77,127 @@ export function ManualSyncModal({ open, onOpenChange, onSyncComplete }: ManualSy
         }
     }
 
+    async function handleDiscard() {
+        try {
+            await clearOfflineMutations()
+            toast({
+                title: t('sync.toastDiscardTitle'),
+                description: t('sync.toastDiscardDesc'),
+                variant: 'default'
+            })
+            setShowDiscardConfirm(false)
+            onOpenChange(false)
+        } catch (error: any) {
+            toast({
+                title: t('common.error', 'Error'),
+                description: t('sync.discardError'),
+                variant: 'destructive'
+            })
+        }
+    }
+
     return (
-        <Dialog open={open} onOpenChange={isSyncing ? undefined : onOpenChange}>
-            <DialogContent className="sm:max-w-md">
-                <DialogHeader>
-                    <DialogTitle>Synchronize Data</DialogTitle>
-                    <DialogDescription>
-                        {status === 'idle' && `You have ${pendingCount} pending changes to upload.`}
-                        {status === 'syncing' && 'Synchronizing with Supabase...'}
-                        {status === 'success' && 'Sync completed successfully!'}
-                        {status === 'error' && 'Sync failed.'}
-                    </DialogDescription>
-                </DialogHeader>
+        <>
+            <Dialog open={open} onOpenChange={isSyncing ? undefined : onOpenChange}>
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>{t('sync.title')}</DialogTitle>
+                        <DialogDescription>
+                            {status === 'idle' && t('sync.pendingCount', { count: pendingCount })}
+                            {status === 'syncing' && t('sync.syncing')}
+                            {status === 'success' && t('sync.success')}
+                            {status === 'error' && t('sync.failed')}
+                        </DialogDescription>
+                    </DialogHeader>
 
-                <div className="flex flex-col items-center justify-center py-6 space-y-4">
-                    {status === 'idle' && (
-                        <div className="text-center space-y-2">
-                            <p className="text-sm text-muted-foreground">
-                                Make sure you have a stable internet connection.
-                            </p>
-                        </div>
-                    )}
-
-                    {status === 'syncing' && (
-                        <div className="flex flex-col items-center gap-2">
-                            <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                            <p className="text-sm text-muted-foreground">Processing...</p>
-                        </div>
-                    )}
-
-                    {status === 'success' && (
-                        <div className="flex flex-col items-center gap-2">
-                            <CheckCircle2 className="h-8 w-8 text-green-500" />
-                            <p className="text-sm font-medium text-green-600">All data synced!</p>
-                        </div>
-                    )}
-
-                    {status === 'error' && (
-                        <div className="flex flex-col items-center gap-2">
-                            <AlertTriangle className="h-8 w-8 text-destructive" />
-                            <p className="text-sm font-medium text-destructive">Sync failed</p>
-                            {errorMessage && (
-                                <p className="text-xs text-muted-foreground text-center max-w-[80%]">
-                                    {errorMessage}
+                    <div className="flex flex-col items-center justify-center py-6 space-y-4">
+                        {status === 'idle' && (
+                            <div className="text-center space-y-2">
+                                <p className="text-sm text-muted-foreground">
+                                    {t('sync.connectionNote')}
                                 </p>
+                            </div>
+                        )}
+
+                        {status === 'syncing' && (
+                            <div className="flex flex-col items-center gap-2">
+                                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                                <p className="text-sm text-muted-foreground">{t('sync.processing')}</p>
+                            </div>
+                        )}
+
+                        {status === 'success' && (
+                            <div className="flex flex-col items-center gap-2">
+                                <CheckCircle2 className="h-8 w-8 text-green-500" />
+                                <p className="text-sm font-medium text-green-600">{t('sync.allSynced')}</p>
+                            </div>
+                        )}
+
+                        {status === 'error' && (
+                            <div className="flex flex-col items-center gap-2">
+                                <AlertTriangle className="h-8 w-8 text-destructive" />
+                                <p className="text-sm font-medium text-destructive">{t('sync.failed')}</p>
+                                {errorMessage && (
+                                    <p className="text-xs text-muted-foreground text-center max-w-[80%]">
+                                        {errorMessage}
+                                    </p>
+                                )}
+                            </div>
+                        )}
+                    </div>
+
+                    <DialogFooter className="sm:justify-between flex-row gap-2">
+                        <div className="flex gap-2">
+                            <Button
+                                variant="ghost"
+                                onClick={() => onOpenChange(false)}
+                                disabled={isSyncing}
+                            >
+                                {status === 'success' ? t('common.close', 'Close') : t('common.cancel', 'Cancel')}
+                            </Button>
+                            {status === 'idle' && pendingCount > 0 && (
+                                <Button
+                                    variant="destructive"
+                                    onClick={() => setShowDiscardConfirm(true)}
+                                    disabled={isSyncing}
+                                >
+                                    {t('sync.discardBtn')}
+                                </Button>
                             )}
                         </div>
-                    )}
-                </div>
+                        {status !== 'success' && (
+                            <Button
+                                onClick={handleSync}
+                                disabled={isSyncing || !navigator.onLine}
+                            >
+                                {isSyncing ? t('sync.syncingBtn') : t('sync.syncNow')}
+                            </Button>
+                        )}
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
 
-                <DialogFooter className="sm:justify-between">
-                    <Button
-                        variant="ghost"
-                        onClick={() => onOpenChange(false)}
-                        disabled={isSyncing}
-                    >
-                        {status === 'success' ? 'Close' : 'Cancel'}
-                    </Button>
-                    {status !== 'success' && (
-                        <Button
-                            onClick={handleSync}
-                            disabled={isSyncing || !navigator.onLine}
-                        >
-                            {isSyncing ? 'Syncing...' : 'Sync Now'}
+            <Dialog open={showDiscardConfirm} onOpenChange={setShowDiscardConfirm}>
+                <DialogContent className="sm:max-w-[400px]">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2 text-destructive">
+                            <AlertTriangle className="h-5 w-5" />
+                            {t('sync.confirmDiscard')}
+                        </DialogTitle>
+                        <DialogDescription>
+                            {t('sync.discardDescription', { count: pendingCount })}
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter className="sm:justify-end gap-2">
+                        <Button variant="ghost" onClick={() => setShowDiscardConfirm(false)}>
+                            {t('common.cancel', 'Cancel')}
                         </Button>
-                    )}
-                </DialogFooter>
-            </DialogContent>
-        </Dialog>
+                        <Button variant="destructive" onClick={handleDiscard}>
+                            {t('sync.yesDiscard')}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+        </>
     )
 }

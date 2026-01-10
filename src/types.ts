@@ -5,8 +5,12 @@ export interface SaleItem {
     quantity: number
     unit_price: number
     total_price: number
-    product_name?: string // Optional, joined for display
-    product_sku?: string // Optional, joined for display
+    product_name?: string
+    product_sku?: string
+    original_currency: string
+    original_unit_price: number
+    converted_unit_price: number
+    settlement_currency: string
 }
 
 export interface Sale {
@@ -14,10 +18,15 @@ export interface Sale {
     workspace_id: string
     cashier_id: string
     total_amount: number
+    settlement_currency: string
+    exchange_source: string
+    exchange_rate: number
+    exchange_rate_timestamp: string
+    exchange_rates?: any[]
     created_at: string
     origin: 'pos' | 'manual'
-    cashier_name?: string // Optional, joined for display
-    items?: SaleItem[] // Optional, for detailed view
+    cashier_name?: string
+    items?: SaleItem[]
 }
 
 export interface CartItem {

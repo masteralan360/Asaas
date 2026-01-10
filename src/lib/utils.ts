@@ -5,7 +5,26 @@ export function cn(...inputs: ClassValue[]) {
     return twMerge(clsx(inputs))
 }
 
-export function formatCurrency(amount: number): string {
+export function formatCurrency(
+    amount: number,
+    currency: string = 'usd',
+    iqdPreference: 'IQD' | 'د.ع' = 'IQD'
+): string {
+    const code = currency.toLowerCase()
+
+    if (code === 'iqd') {
+        const formatted = new Intl.NumberFormat('en-US').format(amount)
+        return iqdPreference === 'IQD' ? `${formatted} IQD` : `${formatted} د.ع`
+    }
+
+    if (code === 'eur') {
+        return new Intl.NumberFormat('de-DE', {
+            style: 'currency',
+            currency: 'EUR',
+        }).format(amount)
+    }
+
+    // Default to USD
     return new Intl.NumberFormat('en-US', {
         style: 'currency',
         currency: 'USD',
@@ -28,6 +47,16 @@ export function formatDateTime(date: Date | string): string {
         hour: '2-digit',
         minute: '2-digit',
     }).format(new Date(date))
+}
+
+export function formatSnapshotTime(date: Date | string): string {
+    const d = new Date(date)
+    const yy = d.getFullYear().toString().slice(-2)
+    const mm = (d.getMonth() + 1).toString().padStart(2, '0')
+    const dd = d.getDate().toString().padStart(2, '0')
+    const hh = d.getHours().toString().padStart(2, '0')
+    const min = d.getMinutes().toString().padStart(2, '0')
+    return `${yy}/${mm}/${dd} ${hh}:${min}`
 }
 
 export function generateId(): string {

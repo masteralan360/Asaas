@@ -56,6 +56,28 @@ export default defineConfig({
             }
         })
     ],
+    server: {
+        proxy: {
+            '/api-xeiqd': {
+                target: 'https://xeiqd.com',
+                changeOrigin: true,
+                rewrite: (path) => path.replace(/^\/api-xeiqd/, ''),
+                headers: {
+                    'Referer': 'https://xeiqd.com',
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                }
+            },
+            '/api-egcurrency': {
+                target: 'https://egcurrency.com',
+                changeOrigin: true,
+                rewrite: (path) => path.replace(/^\/api-egcurrency/, ''),
+                headers: {
+                    'Referer': 'https://egcurrency.com',
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                }
+            }
+        }
+    },
     resolve: {
         alias: {
             '@': path.resolve(__dirname, './src')

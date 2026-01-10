@@ -1,6 +1,9 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 import { supabase, isSupabaseConfigured } from '@/auth/supabase'
 import { useAuth } from '@/auth'
+import type { CurrencyCode, IQDDisplayPreference } from '@/local-db/models'
+import { db } from '@/local-db/database'
+import { addToOfflineMutations } from '@/local-db/hooks'
 
 export interface WorkspaceFeatures {
     allow_pos: boolean
@@ -8,13 +11,17 @@ export interface WorkspaceFeatures {
     allow_orders: boolean
     allow_invoices: boolean
     is_configured: boolean
+    default_currency: CurrencyCode
+    iqd_display_preference: IQDDisplayPreference
+    eur_conversion_enabled: boolean
 }
 
 interface WorkspaceContextType {
     features: WorkspaceFeatures
     isLoading: boolean
-    hasFeature: (feature: keyof Omit<WorkspaceFeatures, 'is_configured'>) => boolean
+    hasFeature: (feature: 'allow_pos' | 'allow_customers' | 'allow_orders' | 'allow_invoices') => boolean
     refreshFeatures: () => Promise<void>
+    updateSettings: (settings: Partial<Pick<WorkspaceFeatures, 'default_currency' | 'iqd_display_preference' | 'eur_conversion_enabled'>>) => Promise<void>
 }
 
 const defaultFeatures: WorkspaceFeatures = {
@@ -22,7 +29,10 @@ const defaultFeatures: WorkspaceFeatures = {
     allow_customers: true,
     allow_orders: true,
     allow_invoices: true,
-    is_configured: true
+    is_configured: true,
+    default_currency: 'usd',
+    iqd_display_preference: 'IQD',
+    eur_conversion_enabled: false
 }
 
 const WorkspaceContext = createContext<WorkspaceContextType | undefined>(undefined)
@@ -41,18 +51,53 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         }
 
         try {
-            const { data, error } = await supabase.rpc('get_workspace_features')
-
+            const { data, error } = await supabase.rpc('get_workspace_features').single()
             if (error) {
-                console.error('Error fetching workspace features:', error)
-                setFeatures(defaultFeatures)
+                console.error('Error fetching workspace features from Supabase:', error)
+                // Try to load from local DB if Supabase fails
+                const localWorkspace = await db.workspaces.get(user.workspaceId)
+                if (localWorkspace) {
+                    setFeatures({
+                        allow_pos: true,
+                        allow_customers: true,
+                        allow_orders: true,
+                        allow_invoices: true,
+                        is_configured: true,
+                        default_currency: localWorkspace.default_currency,
+                        iqd_display_preference: localWorkspace.iqd_display_preference,
+                        eur_conversion_enabled: (localWorkspace as any).eur_conversion_enabled ?? false
+                    })
+                } else {
+                    setFeatures(defaultFeatures)
+                }
             } else if (data) {
-                setFeatures({
-                    allow_pos: data.allow_pos ?? false,
-                    allow_customers: data.allow_customers ?? false,
-                    allow_orders: data.allow_orders ?? false,
-                    allow_invoices: data.allow_invoices ?? false,
-                    is_configured: data.is_configured ?? false
+                const featureData = data as any
+                const fetchedFeatures: WorkspaceFeatures = {
+                    allow_pos: featureData.allow_pos ?? false,
+                    allow_customers: featureData.allow_customers ?? false,
+                    allow_orders: featureData.allow_orders ?? false,
+                    allow_invoices: featureData.allow_invoices ?? false,
+                    is_configured: featureData.is_configured ?? false,
+                    default_currency: featureData.default_currency || 'usd',
+                    iqd_display_preference: featureData.iqd_display_preference || 'IQD',
+                    eur_conversion_enabled: featureData.eur_conversion_enabled ?? false
+                }
+                setFeatures(fetchedFeatures)
+
+                // Cache in local DB for offline access
+                await db.workspaces.put({
+                    id: user.workspaceId,
+                    workspaceId: user.workspaceId,
+                    name: featureData.workspace_name || 'My Workspace',
+                    code: 'LOADED',
+                    default_currency: fetchedFeatures.default_currency,
+                    iqd_display_preference: fetchedFeatures.iqd_display_preference,
+                    syncStatus: 'synced',
+                    lastSyncedAt: new Date().toISOString(),
+                    version: 1,
+                    isDeleted: false,
+                    createdAt: new Date().toISOString(),
+                    updatedAt: new Date().toISOString()
                 })
             }
         } catch (err) {
@@ -74,8 +119,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         }
     }, [isAuthenticated, user?.workspaceId, authLoading])
 
-    const hasFeature = (feature: keyof Omit<WorkspaceFeatures, 'is_configured'>): boolean => {
-        return features[feature] ?? false
+    const hasFeature = (feature: 'allow_pos' | 'allow_customers' | 'allow_orders' | 'allow_invoices'): boolean => {
+        return features[feature] === true
     }
 
     const refreshFeatures = async () => {
@@ -83,8 +128,56 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         await fetchFeatures()
     }
 
+    const updateSettings = async (settings: Partial<Pick<WorkspaceFeatures, 'default_currency' | 'iqd_display_preference' | 'eur_conversion_enabled'>>) => {
+        const workspaceId = user?.workspaceId
+        if (!workspaceId) return
+
+        // Optimistically update local state
+        setFeatures(prev => ({ ...prev, ...settings }))
+
+        // Update local DB cache
+        const existing = await db.workspaces.get(workspaceId)
+        if (existing) {
+            await db.workspaces.update(workspaceId, {
+                ...settings,
+                updatedAt: new Date().toISOString()
+            })
+        } else {
+            // If doesn't exist locally, create it
+            await db.workspaces.put({
+                id: workspaceId,
+                workspaceId,
+                name: 'My Workspace',
+                code: 'LOCAL',
+                default_currency: settings.default_currency || 'usd',
+                iqd_display_preference: settings.iqd_display_preference || 'IQD',
+                syncStatus: 'pending',
+                lastSyncedAt: null,
+                version: 1,
+                isDeleted: false,
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString()
+            })
+        }
+
+        if (navigator.onLine) {
+            const { error } = await supabase
+                .from('workspaces')
+                .update(settings)
+                .eq('id', workspaceId)
+
+            if (error) {
+                console.error('Error updating workspace settings on Supabase:', error)
+                await addToOfflineMutations('workspaces', workspaceId, 'update', settings as Record<string, unknown>, workspaceId)
+            }
+        } else {
+            // OFFLINE: Add to mutation queue
+            await addToOfflineMutations('workspaces', workspaceId, 'update', settings as Record<string, unknown>, workspaceId)
+        }
+    }
+
     return (
-        <WorkspaceContext.Provider value={{ features, isLoading, hasFeature, refreshFeatures }}>
+        <WorkspaceContext.Provider value={{ features, isLoading, hasFeature, refreshFeatures, updateSettings }}>
             {children}
         </WorkspaceContext.Provider>
     )

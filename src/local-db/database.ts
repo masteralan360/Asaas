@@ -1,5 +1,5 @@
 import Dexie, { type EntityTable } from 'dexie'
-import type { Product, Category, Customer, Order, Invoice, User, SyncQueueItem, Sale, SaleItem, OfflineMutation } from './models'
+import type { Product, Category, Customer, Order, Invoice, User, SyncQueueItem, Sale, SaleItem, OfflineMutation, Workspace } from './models'
 
 // ERP Database using Dexie.js for IndexedDB
 export class ERPDatabase extends Dexie {
@@ -11,23 +11,25 @@ export class ERPDatabase extends Dexie {
     users!: EntityTable<User, 'id'>
     sales!: EntityTable<Sale, 'id'>
     sale_items!: EntityTable<SaleItem, 'id'>
+    workspaces!: EntityTable<Workspace, 'id'>
     syncQueue!: EntityTable<SyncQueueItem, 'id'>
     offline_mutations!: EntityTable<OfflineMutation, 'id'>
 
     constructor() {
         super('ERPDatabase')
 
-        this.version(4).stores({
-            products: 'id, sku, name, categoryId, workspaceId, syncStatus, updatedAt, isDeleted',
+        this.version(8).stores({
+            products: 'id, sku, name, categoryId, workspaceId, currency, syncStatus, updatedAt, isDeleted',
             categories: 'id, name, workspaceId, syncStatus, updatedAt, isDeleted',
             customers: 'id, name, email, workspaceId, syncStatus, updatedAt, isDeleted',
             orders: 'id, orderNumber, customerId, status, workspaceId, syncStatus, updatedAt, isDeleted',
             invoices: 'id, invoiceNumber, orderId, customerId, status, workspaceId, syncStatus, updatedAt, isDeleted',
             users: 'id, email, role, workspaceId, syncStatus, updatedAt, isDeleted',
-            sales: 'id, cashierId, workspaceId, syncStatus, createdAt',
+            sales: 'id, cashierId, workspaceId, settlement_currency, syncStatus, createdAt',
             sale_items: 'id, saleId, productId',
+            workspaces: 'id, name, code, syncStatus, updatedAt, isDeleted',
             syncQueue: 'id, entityType, entityId, operation, timestamp',
-            offline_mutations: 'id, workspaceId, entityType, entityId, status, createdAt'
+            offline_mutations: 'id, workspaceId, entityType, entityId, status, createdAt, [entityType+entityId+status]'
         })
     }
 }

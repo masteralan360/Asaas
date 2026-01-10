@@ -30,6 +30,7 @@ import {
 import { Plus, Pencil, Trash2, FileText, Search } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/auth'
+import { useWorkspace } from '@/workspace'
 
 const INVOICE_STATUSES: InvoiceStatus[] = ['draft', 'sent', 'paid', 'overdue', 'cancelled']
 
@@ -45,6 +46,7 @@ export function Invoices() {
     const { user } = useAuth()
     const invoices = useInvoices(user?.workspaceId)
     const orders = useOrders(user?.workspaceId)
+    const { features } = useWorkspace()
     const { t } = useTranslation()
     const canEdit = user?.role === 'admin' || user?.role === 'staff'
     const [search, setSearch] = useState('')
@@ -113,7 +115,8 @@ export function Invoices() {
                     total: selectedOrder.total,
                     status,
                     dueDate: new Date(dueDate).toISOString(),
-                    notes
+                    notes,
+                    currency: selectedOrder.currency
                 })
             }
             setIsDialogOpen(false)
@@ -163,7 +166,9 @@ export function Invoices() {
                     <CardContent className="p-4 flex items-center justify-between">
                         <div>
                             <p className="text-sm text-muted-foreground">{t('invoices.stats.revenue')}</p>
-                            <p className="text-2xl font-bold text-emerald-500">{formatCurrency(totalRevenue)}</p>
+                            <p className="text-2xl font-bold text-emerald-500">
+                                {formatCurrency(totalRevenue, features.default_currency, features.iqd_display_preference)}
+                            </p>
                         </div>
                     </CardContent>
                 </Card>
@@ -171,7 +176,9 @@ export function Invoices() {
                     <CardContent className="p-4 flex items-center justify-between">
                         <div>
                             <p className="text-sm text-muted-foreground">{t('invoices.stats.pending')}</p>
-                            <p className="text-2xl font-bold text-amber-500">{formatCurrency(pendingAmount)}</p>
+                            <p className="text-2xl font-bold text-amber-500">
+                                {formatCurrency(pendingAmount, features.default_currency, features.iqd_display_preference)}
+                            </p>
                         </div>
                     </CardContent>
                 </Card>
@@ -221,7 +228,9 @@ export function Invoices() {
                                                 {t(`invoices.status.${invoice.status}`)}
                                             </span>
                                         </TableCell>
-                                        <TableCell className="text-right font-medium">{formatCurrency(invoice.total)}</TableCell>
+                                        <TableCell className="text-right font-medium">
+                                            {formatCurrency(invoice.total, invoice.currency || 'usd', features.iqd_display_preference)}
+                                        </TableCell>
                                         <TableCell className={invoice.status === 'overdue' ? 'text-red-500' : 'text-muted-foreground'}>
                                             {formatDate(invoice.dueDate)}
                                         </TableCell>
@@ -263,7 +272,7 @@ export function Invoices() {
                                     <SelectContent>
                                         {availableOrders.map((o) => (
                                             <SelectItem key={o.id} value={o.id}>
-                                                {o.orderNumber} - {o.customerName} ({formatCurrency(o.total)})
+                                                {o.orderNumber} - {o.customerName} ({formatCurrency(o.total, o.currency || 'usd', features.iqd_display_preference)})
                                             </SelectItem>
                                         ))}
                                     </SelectContent>
@@ -283,7 +292,7 @@ export function Invoices() {
                                     <div>
                                         <span className="text-muted-foreground">{t('invoices.form.total')}:</span>
                                         <span className="ml-2 font-bold">
-                                            {formatCurrency(editingInvoice?.total || selectedOrder?.total || 0)}
+                                            {formatCurrency(editingInvoice?.total || selectedOrder?.total || 0, editingInvoice?.currency || selectedOrder?.currency || 'usd', features.iqd_display_preference)}
                                         </span>
                                     </div>
                                 </div>

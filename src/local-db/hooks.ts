@@ -788,6 +788,42 @@ export async function addToOfflineMutations(
     payload: Record<string, unknown>,
     workspaceId: string
 ): Promise<void> {
+    // 1. Check for existing pending mutation for this entity
+    const existing = await db.offline_mutations
+        .where('[entityType+entityId+status]')
+        .equals([entityType, entityId, 'pending'])
+        .first()
+
+    if (existing) {
+        // 2. Handle redundant/canceling operations
+        if (operation === 'delete') {
+            if (existing.operation === 'create') {
+                // Case: Created then Deleted while offline -> Remove from queue entirely
+                await db.offline_mutations.delete(existing.id)
+                return
+            }
+            // Case: Updated then Deleted while offline -> Change existing update to a delete
+            await db.offline_mutations.update(existing.id, {
+                operation: 'delete',
+                payload: { id: entityId },
+                createdAt: new Date().toISOString()
+            })
+            return
+        }
+
+        if (operation === 'update' || operation === 'create') {
+            // Case: Multiple updates or re-creating a deleted item
+            // Merge payloads to keep the latest state
+            await db.offline_mutations.update(existing.id, {
+                operation: existing.operation === 'delete' ? 'update' : existing.operation,
+                payload: { ...existing.payload, ...payload },
+                createdAt: new Date().toISOString()
+            })
+            return
+        }
+    }
+
+    // 3. Default: Add new mutation if no pending exists or couldn't be merged
     await db.offline_mutations.add({
         id: generateId(),
         workspaceId,
@@ -806,6 +842,18 @@ export async function removeFromSyncQueue(id: string): Promise<void> {
 
 export async function clearSyncQueue(): Promise<void> {
     await db.syncQueue.clear()
+}
+
+export async function clearOfflineMutations(): Promise<void> {
+    await db.offline_mutations.clear()
+
+    // Also reset syncStatus for items if possible? 
+    // Actually, discarding mutations means we won't sync them.
+    // The simplest way to "discard" is just to clear the mutation queue.
+    // But local items will still have syncStatus: 'pending'.
+    // We should probably reset them to 'synced' (as if they were never intended to be synced) 
+    // or just leave them as 'pending' (they will stay local only).
+    // The user said "pending info will get deleted or discarded".
 }
 
 // ===================

@@ -98,6 +98,12 @@ export async function processMutationQueue(userId: string): Promise<{ success: n
                 if (entityType === 'sales') {
                     const { error } = await supabase.rpc('complete_sale', { payload: dbPayload })
                     if (error) throw error
+                } else if (entityType === 'workspaces') {
+                    // Remove workspace_id from payload for workspace table update itself
+                    delete dbPayload.workspace_id
+                    delete dbPayload.user_id
+                    const { error } = await supabase.from(tableName).update(dbPayload).eq('id', entityId)
+                    if (error) throw error
                 } else {
                     const { error } = await supabase.from(tableName).upsert(dbPayload)
                     if (error) throw error
@@ -149,17 +155,15 @@ export async function pullChanges(workspaceId: string, lastSyncTime: string | nu
 
     let totalPulled = 0
 
-    const tables = ['products', 'categories', 'customers', 'orders', 'invoices']
+    const tables = ['products', 'categories', 'customers', 'orders', 'invoices', 'workspaces']
 
     for (const table of tables) {
         try {
             // console.log(`[Sync] pullChanges: Fetching ${table}...`)
             const { data, error } = (await withTimeout(
-                supabase
-                    .from(table)
-                    .select('*')
-                    .eq('workspace_id', workspaceId)
-                    .gt('updated_at', since) as any,
+                table === 'workspaces'
+                    ? supabase.from(table).select('*').eq('id', workspaceId).gt('updated_at', since)
+                    : supabase.from(table).select('*').eq('workspace_id', workspaceId).gt('updated_at', since) as any,
                 30000
             )) as any
 

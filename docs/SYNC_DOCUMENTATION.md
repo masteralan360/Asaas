@@ -1,127 +1,65 @@
-# Sync Engine Documentation
+# Offline Synchronization Guide
 
-## Overview
+This document describes how to use and integrate the synchronization system in the ERP application.
 
-The ERP System uses an **offline-first architecture** where:
-1. All data is stored locally in IndexedDB (via Dexie.js)
-2. The UI reads/writes only from the local database
-3. Changes are synced to Supabase when online
+## 🌟 Overview
 
-## Architecture
+The application follows an **offline-first** philosophy. All user actions (creating products, making sales, updating settings) are saved immediately to a local IndexedDB database. This ensures the app is fast and fully functional without an internet connection.
 
-```
-┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│   UI Layer      │────▶│  Local DB       │────▶│  Sync Engine    │
-│   (React)       │◀────│  (IndexedDB)    │◀────│                 │
-└─────────────────┘     └─────────────────┘     └────────┬────────┘
-                                                         │
-                                                         ▼
-                                                ┌─────────────────┐
-                                                │   Supabase      │
-                                                │   (PostgreSQL)  │
-                                                └─────────────────┘
-```
+## 🏗 How it Works
 
-## Sync Flow
+1.  **Local First**: Every write operation goes to the local database and is marked as `pending`.
+2.  **Mutation Queue**: A record of the "intent" (e.g., "Update Product X") is stored in the `offline_mutations` table.
+3.  **Manual Sync**: Synchronization is currently a manual process triggered by the user to ensure data consistency and give control over bandwidth.
+4.  **Push then Pull**: The sync process first pushes all local changes to Supabase, then pulls any changes made by other users/devices.
 
-### 1. Local Operations
-When you create, update, or delete a record:
-1. Change is written to IndexedDB immediately
-2. Record is marked with `syncStatus: 'pending'`
-3. A sync queue item is created
+## 🎣 React Hooks
 
-### 2. Push Changes
-When online, pending changes are pushed to Supabase:
-1. Iterate through sync queue items
-2. For each item, call Supabase upsert/delete
-3. On success, remove from queue and mark as synced
+### `useSyncStatus()`
+The primary hook for managing sync in the UI.
 
-### 3. Pull Changes
-After pushing, pull remote changes:
-1. Query Supabase for records updated after `lastSyncTime`
-2. Compare versions with local records
-3. Apply remote changes using last-write-wins
-
-## Conflict Resolution
-
-**Strategy: Last-Write-Wins**
-
-When the same record is modified both locally and remotely:
-- Compare `version` numbers
-- Higher version wins
-- If equal, compare `updatedAt` timestamps
-
-```typescript
-if (remoteRecord.version > localRecord.version) {
-  // Remote wins - apply remote changes
-} else if (localRecord.version > remoteRecord.version) {
-  // Local wins - push will overwrite remote
-}
-```
-
-## Key Files
-
-| File | Purpose |
-|------|---------|
-| `src/sync/syncEngine.ts` | Core push/pull logic |
-| `src/sync/syncQueue.ts` | Queue management |
-| `src/sync/useOnlineStatus.ts` | Connection detection |
-| `src/sync/useSyncStatus.ts` | React hook for sync state |
-
-## Usage
-
-### Check Sync Status
 ```tsx
 import { useSyncStatus } from '@/sync'
 
-function MyComponent() {
-  const { syncState, pendingCount, sync, isOnline } = useSyncStatus()
-  
-  return (
-    <div>
-      <p>Status: {syncState}</p>
-      <p>Pending: {pendingCount}</p>
-      <button onClick={sync}>Sync Now</button>
-    </div>
-  )
+function SyncIndicator() {
+    const { 
+        syncState,      // 'idle' | 'syncing' | 'error' | 'offline'
+        pendingCount,   // Number of changes waiting to be synced
+        isOnline,       // Current connection status
+        sync,           // Function to trigger manual sync
+        isSyncing       // Boolean: true if sync is in progress
+    } = useSyncStatus()
+
+    return (
+        <div>
+            <span>Pending Changes: {pendingCount}</span>
+            <button onClick={sync} disabled={isSyncing || !isOnline}>
+                {isSyncing ? 'Synchronizing...' : 'Sync Now'}
+            </button>
+        </div>
+    )
 }
 ```
 
-### Manual Sync
-```typescript
-import { fullSync } from '@/sync'
+### `useOnlineStatus()`
+A simple hook to detect if the browser is online or offline.
 
-await fullSync(userId, lastSyncTime)
+```tsx
+const { isOnline, status } = useOnlineStatus()
 ```
 
-## Sync States
+## 📋 Synchronization States
 
-| State | Description |
-|-------|-------------|
-| `idle` | No sync in progress |
-| `syncing` | Currently syncing |
-| `error` | Sync failed |
-| `offline` | No internet connection |
+- **`idle`**: All local changes have been successfully synced or there's nothing to sync.
+- **`syncing`**: Communication with Supabase is in progress.
+- **`offline`**: No internet connection detected; sync is disabled.
+- **`error`**: The last sync attempt failed. Pending changes remain safe in local storage.
 
-## Configuration
+## 📂 Key Files
 
-Set environment variables in `.env`:
+- `src/sync/syncEngine.ts`: Core logic for pushing and pulling data.
+- `src/sync/useSyncStatus.ts`: Main React interface for the sync system.
+- `src/local-db/hooks.ts`: Contains `addToOfflineMutations` used by all data hooks.
 
-```
-VITE_SUPABASE_URL=https://your-project.supabase.co
-VITE_SUPABASE_ANON_KEY=your-anon-key
-```
-
-## Auto-Sync Behavior
-
-- Syncs automatically every 30 seconds when online
-- Triggers sync immediately when coming back online
-- Shows pending count in the UI
-
-## Offline Mode
-
-When offline:
-- All CRUD operations work normally
-- Changes accumulate in the sync queue
-- Sync status indicator shows "Offline"
-- App continues to function fully
+---
+*For technical implementation details, see [SYNC_ENGINE.md](./SYNC_ENGINE.md)*

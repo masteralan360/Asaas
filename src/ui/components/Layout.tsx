@@ -4,6 +4,7 @@ import { cn } from '@/lib/utils'
 import { useAuth } from '@/auth'
 import { useWorkspace } from '@/workspace'
 import { SyncStatusIndicator } from './SyncStatusIndicator'
+import { ExchangeRateIndicator } from './ExchangeRateIndicator'
 import {
     LayoutDashboard,
     Package,
@@ -251,7 +252,11 @@ export function Layout({ children }: LayoutProps) {
 
                     <div className="flex-1" />
 
-                    <SyncStatusIndicator />
+                    <div className="flex items-center gap-3">
+                        <ExchangeRateIndicator />
+                        <div className="w-px h-4 bg-border mx-1" />
+                        <SyncStatusIndicator />
+                    </div>
                 </header>
 
                 {/* Page content */}

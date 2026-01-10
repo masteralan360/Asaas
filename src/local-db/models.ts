@@ -5,6 +5,10 @@ export type SyncStatus = 'pending' | 'synced' | 'conflict'
 
 export type UserRole = 'admin' | 'staff' | 'viewer'
 
+export type CurrencyCode = 'usd' | 'eur' | 'iqd'
+
+export type IQDDisplayPreference = 'IQD' | 'د.ع'
+
 export interface SyncMetadata {
     syncStatus: SyncStatus
     lastSyncedAt: string | null
@@ -36,6 +40,7 @@ export interface Product extends BaseEntity {
     quantity: number
     minStockLevel: number
     unit: string
+    currency: CurrencyCode
     barcode?: string
     imageUrl?: string
 }
@@ -63,6 +68,7 @@ export interface OrderItem {
     quantity: number
     unitPrice: number
     total: number
+    currency: CurrencyCode
 }
 
 export type OrderStatus = 'pending' | 'processing' | 'shipped' | 'delivered' | 'cancelled'
@@ -79,6 +85,7 @@ export interface Order extends BaseEntity {
     status: OrderStatus
     notes?: string
     shippingAddress: string
+    currency: CurrencyCode
 }
 
 export type InvoiceStatus = 'draft' | 'sent' | 'paid' | 'overdue' | 'cancelled'
@@ -97,11 +104,17 @@ export interface Invoice extends BaseEntity {
     dueDate: string
     paidAt?: string
     notes?: string
+    currency: CurrencyCode
 }
 
 export interface Sale extends BaseEntity {
     cashierId: string
     totalAmount: number
+    settlement_currency: CurrencyCode
+    exchange_source: string
+    exchange_rate: number
+    exchange_rate_timestamp: string
+    exchange_rates?: any[]
     origin: string
 }
 
@@ -112,6 +125,10 @@ export interface SaleItem {
     quantity: number
     unitPrice: number
     totalPrice: number
+    original_currency: CurrencyCode
+    original_unit_price: number
+    converted_unit_price: number
+    settlement_currency: CurrencyCode
 }
 
 
@@ -129,10 +146,18 @@ export interface SyncQueueItem {
 // Offline Mutation for manual sync queue
 export type MutationStatus = 'pending' | 'syncing' | 'failed' | 'synced'
 
+export interface Workspace extends BaseEntity {
+    name: string
+    code: string
+    default_currency: CurrencyCode
+    iqd_display_preference: IQDDisplayPreference
+    eur_conversion_enabled?: boolean
+}
+
 export interface OfflineMutation {
     id: string
     workspaceId: string
-    entityType: 'products' | 'customers' | 'orders' | 'invoices' | 'users' | 'sales' | 'categories'
+    entityType: 'products' | 'customers' | 'orders' | 'invoices' | 'users' | 'sales' | 'categories' | 'workspaces'
     entityId: string
     operation: 'create' | 'update' | 'delete'
     payload: Record<string, unknown>
@@ -143,7 +168,7 @@ export interface OfflineMutation {
 
 // Type guards
 export function isProduct(entity: BaseEntity): entity is Product {
-    return 'sku' in entity && 'price' in entity
+    return 'sku' in entity && 'price' in entity && 'currency' in entity
 }
 
 export function isCustomer(entity: BaseEntity): entity is Customer {

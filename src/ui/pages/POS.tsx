@@ -1,11 +1,13 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/auth'
 import { supabase } from '@/auth/supabase'
-import { addToOfflineMutations, useProducts, type Product } from '@/local-db'
+import { addToOfflineMutations, useProducts, type Product, type CurrencyCode } from '@/local-db'
 import { db } from '@/local-db/database'
-import { formatCurrency, generateId } from '@/lib/utils'
+import { formatCurrency, generateId, cn } from '@/lib/utils'
 import { CartItem } from '@/types'
+import { useWorkspace } from '@/workspace'
+import { useExchangeRate } from '@/context/ExchangeRateContext'
 import {
     Button,
     Input,
@@ -38,6 +40,7 @@ export function POS() {
     const { toast } = useToast()
     const { user } = useAuth()
     const { t } = useTranslation()
+    const { features } = useWorkspace()
     const products = useProducts(user?.workspaceId)
     const [search, setSearch] = useState('')
     const [cart, setCart] = useState<CartItem[]>([])
@@ -64,8 +67,63 @@ export function POS() {
             p.sku.toLowerCase().includes(search.toLowerCase())
     )
 
+    // Exchange Rate for advisory display and calculations
+    const { exchangeData, eurRates, refresh: refreshExchangeRate } = useExchangeRate()
+    const settlementCurrency = features.default_currency || 'usd'
+
+    useEffect(() => {
+        refreshExchangeRate()
+    }, [refreshExchangeRate])
+
+    const convertPrice = useCallback((amount: number, from: CurrencyCode, to: CurrencyCode) => {
+        if (from === to) return amount
+
+        // Helper to get raw rate (amount per 1 USD/EUR)
+        const getRate = (pair: 'usd_iqd' | 'usd_eur' | 'eur_iqd') => {
+            if (pair === 'usd_iqd') return exchangeData ? exchangeData.rate / 100 : null
+            if (pair === 'usd_eur') return eurRates.usd_eur ? eurRates.usd_eur.rate / 100 : null
+            if (pair === 'eur_iqd') return eurRates.eur_iqd ? eurRates.eur_iqd.rate / 100 : null
+            return null
+        }
+
+        let converted = amount
+
+        // PATH LOGIC
+        if (from === 'usd' && to === 'iqd') {
+            const r = getRate('usd_iqd'); if (!r) return amount; converted = amount * r
+        } else if (from === 'iqd' && to === 'usd') {
+            const r = getRate('usd_iqd'); if (!r) return amount; converted = amount / r
+        } else if (from === 'usd' && to === 'eur') {
+            const r = getRate('usd_eur'); if (!r) return amount; converted = amount * r
+        } else if (from === 'eur' && to === 'usd') {
+            const r = getRate('usd_eur'); if (!r) return amount; converted = amount / r
+        } else if (from === 'eur' && to === 'iqd') {
+            const r = getRate('eur_iqd'); if (!r) return amount; converted = amount * r
+        } else if (from === 'iqd' && to === 'eur') {
+            const r = getRate('eur_iqd'); if (!r) return amount; converted = amount / r
+        }
+        // CHAINED PATHS (If needed based on default_currency)
+        else if (from === 'usd' && to === 'iqd') { /* already handled */ }
+        else if (from === 'iqd' && to === 'usd') { /* already handled */ }
+        // ... more chains if needed, e.g. IQD -> USD -> EUR
+        else if (from === 'iqd' && to === 'eur') {
+            const r1 = getRate('usd_iqd'); const r2 = getRate('usd_eur')
+            if (r1 && r2) converted = (amount / r1) * r2
+        } else if (from === 'eur' && to === 'iqd') {
+            // we have direct EUR/IQD now from egcurrency
+        }
+
+        // Rounding rules
+        if (to === 'iqd') return Math.round(converted)
+        return Math.round(converted * 100) / 100
+    }, [exchangeData, eurRates])
+
     // Calculate totals
-    const totalAmount = cart.reduce((sum, item) => sum + item.price * item.quantity, 0)
+    const totalAmount = cart.reduce((sum, item) => {
+        const itemCurrency = products.find(p => p.id === item.product_id)?.currency || 'usd'
+        const converted = convertPrice(item.price, itemCurrency, settlementCurrency)
+        return sum + (converted * item.quantity)
+    }, 0)
     const totalItems = cart.reduce((sum, item) => sum + item.quantity, 0)
 
     // Hotkey listener
@@ -111,6 +169,19 @@ export function POS() {
 
     const addToCart = (product: Product) => {
         if (product.quantity <= 0) return // Out of stock
+
+        // Check EUR support
+        if (product.currency === 'eur' && !features.eur_conversion_enabled) {
+            toast({
+                variant: 'destructive',
+                title: t('messages.error'),
+                description: t('pos.eurDisabled') || 'Euro products represent a currency that is currently disabled in settings.',
+            })
+            return
+        }
+
+        // Mixed currency is now allowed.
+        // Conversion will be handled in calculations and checkout.
 
         setCart((prev) => {
             const existing = prev.find((item) => item.product_id === product.id)
@@ -215,17 +286,107 @@ export function POS() {
 
     const handleCheckout = async () => {
         if (cart.length === 0 || !user) return
+
+        const isMixedCurrency = cart.some(item => {
+            const product = products.find(p => p.id === item.product_id)
+            return product && product.currency !== settlementCurrency
+        })
+
+        if (isMixedCurrency && !exchangeData) {
+            toast({
+                variant: 'destructive',
+                title: t('messages.error'),
+                description: t('pos.exchangeRateError') || 'Exchange rate unavailable. Mixed-currency checkout blocked.',
+            })
+            return
+        }
+
         setIsLoading(true)
 
         const saleId = generateId()
-        const checkoutPayload = {
-            items: cart.map((item) => ({
+
+        // Collect actually used exchange rates for this specific checkout
+        const usedCurrencies = new Set(cart.map(item => products.find(p => p.id === item.product_id)?.currency || 'usd'))
+        const exchangeRatesSnapshot: any[] = []
+
+        // If it's a mixed checkout (items currency != settlement currency)
+        if (usedCurrencies.has('usd') && settlementCurrency === 'iqd' && exchangeData) {
+            exchangeRatesSnapshot.push({
+                pair: 'USD/IQD',
+                rate: exchangeData.rate,
+                source: exchangeData.source,
+                timestamp: exchangeData.timestamp || new Date().toISOString()
+            })
+        }
+        if (usedCurrencies.has('eur')) {
+            if (settlementCurrency === 'iqd' && eurRates.eur_iqd) {
+                exchangeRatesSnapshot.push({
+                    pair: 'EUR/IQD',
+                    rate: eurRates.eur_iqd.rate,
+                    source: eurRates.eur_iqd.source,
+                    timestamp: eurRates.eur_iqd.timestamp
+                })
+            } else if (settlementCurrency === 'usd' && eurRates.usd_eur) {
+                exchangeRatesSnapshot.push({
+                    pair: 'USD/EUR',
+                    rate: eurRates.usd_eur.rate,
+                    source: eurRates.usd_eur.source,
+                    timestamp: eurRates.usd_eur.timestamp
+                })
+            }
+        }
+        // Handle IQD items settled in USD/EUR if applicable
+        if (usedCurrencies.has('iqd') && settlementCurrency !== 'iqd' && exchangeData) {
+            // We need USD/IQD for IQD -> USD conversion
+            if (!exchangeRatesSnapshot.find(s => s.pair === 'USD/IQD')) {
+                exchangeRatesSnapshot.push({
+                    pair: 'USD/IQD',
+                    rate: exchangeData.rate,
+                    source: exchangeData.source,
+                    timestamp: exchangeData.timestamp || new Date().toISOString()
+                })
+            }
+            if (settlementCurrency === 'eur' && eurRates.usd_eur) {
+                exchangeRatesSnapshot.push({
+                    pair: 'USD/EUR',
+                    rate: eurRates.usd_eur.rate,
+                    source: eurRates.usd_eur.source,
+                    timestamp: eurRates.usd_eur.timestamp
+                })
+            }
+        }
+
+        const snapshotRate = exchangeData?.rate || 0
+        const snapshotSource = exchangeData?.source || 'none'
+        const snapshotTimestamp = new Date().toISOString()
+
+        const itemsWithMetadata = cart.map((item) => {
+            const product = products.find(p => p.id === item.product_id)
+            const originalCurrency = product?.currency || 'usd'
+            const convertedUnitPrice = convertPrice(item.price, originalCurrency, settlementCurrency)
+
+            return {
                 product_id: item.product_id,
                 quantity: item.quantity,
-                price: item.price,
-                total: item.price * item.quantity
-            })),
+                unit_price: item.price, // original
+                total_price: item.price * item.quantity, // original total
+                original_currency: originalCurrency,
+                original_unit_price: item.price,
+                converted_unit_price: convertedUnitPrice,
+                settlement_currency: settlementCurrency,
+                total: convertedUnitPrice * item.quantity
+            }
+        })
+
+        const checkoutPayload = {
+            id: saleId,
+            items: itemsWithMetadata,
             total_amount: totalAmount,
+            settlement_currency: settlementCurrency,
+            exchange_source: exchangeRatesSnapshot.length > 1 ? 'mixed' : snapshotSource,
+            exchange_rate: snapshotRate,
+            exchange_rate_timestamp: snapshotTimestamp,
+            exchange_rates: exchangeRatesSnapshot, // New field for multi-currency
             origin: 'pos'
         }
 
@@ -236,14 +397,13 @@ export function POS() {
             })
 
             if (error) {
-                // If it's a network error, we want to handle it as offline
                 if (error.message?.includes('Failed to fetch') || (error as any).status === 0) {
                     throw new Error('OFFLINE_FETCH_ERROR')
                 }
                 throw error
             }
 
-            // Update local inventory (reflect backend change immediately)
+            // Update local inventory
             await Promise.all(cart.map(async (item) => {
                 const product = products.find(p => p.id === item.product_id)
                 if (product) {
@@ -253,17 +413,17 @@ export function POS() {
                 }
             }))
 
-            // Success
             setCart([])
             toast({
                 title: t('messages.success'),
                 description: t('messages.saleCompleted'),
                 duration: 3000,
             })
+            // Refresh exchange rate for the next sale
+            refreshExchangeRate()
         } catch (err: any) {
             console.error('Checkout failed, attempting offline save:', err)
 
-            // Handle Offline Fallback
             if (err.message === 'OFFLINE_FETCH_ERROR' || !navigator.onLine) {
                 try {
                     // 1. Save Sale locally
@@ -272,9 +432,14 @@ export function POS() {
                         workspaceId: user.workspaceId,
                         cashierId: user.id,
                         totalAmount: totalAmount,
+                        settlement_currency: settlementCurrency,
+                        exchange_source: snapshotSource,
+                        exchange_rate: snapshotRate,
+                        exchange_rate_timestamp: snapshotTimestamp,
+                        exchange_rates: checkoutPayload.exchange_rates,
                         origin: 'pos',
-                        createdAt: new Date().toISOString(),
-                        updatedAt: new Date().toISOString(),
+                        createdAt: snapshotTimestamp,
+                        updatedAt: snapshotTimestamp,
                         syncStatus: 'pending',
                         lastSyncedAt: null,
                         version: 1,
@@ -282,14 +447,18 @@ export function POS() {
                     })
 
                     // 2. Save Sale Items locally
-                    await Promise.all(cart.map(item =>
+                    await Promise.all(itemsWithMetadata.map(item =>
                         db.sale_items.add({
                             id: generateId(),
                             saleId: saleId,
                             productId: item.product_id,
                             quantity: item.quantity,
-                            unitPrice: item.price,
-                            totalPrice: item.price * item.quantity
+                            unitPrice: item.unit_price,
+                            totalPrice: item.total_price,
+                            original_currency: item.original_currency,
+                            original_unit_price: item.original_unit_price,
+                            converted_unit_price: item.converted_unit_price,
+                            settlement_currency: item.settlement_currency
                         })
                     ))
 
@@ -304,10 +473,8 @@ export function POS() {
                     }))
 
                     // 4. Add to Sync Queue
-                    // 4. Add to Sync Queue
                     await addToOfflineMutations('sales', saleId, 'create', checkoutPayload, user.workspaceId)
 
-                    // Success Feedback
                     setCart([])
                     toast({
                         title: t('pos.offlineTitle') || 'Saved Offline',
@@ -389,7 +556,7 @@ export function POS() {
                                     <p className="text-xs text-muted-foreground truncate">{product.sku}</p>
                                 </div>
                                 <div className="mt-auto font-bold text-lg text-primary">
-                                    {formatCurrency(product.price)}
+                                    {formatCurrency(product.price, product.currency, features.iqd_display_preference)}
                                 </div>
                             </button>
                         ))}
@@ -417,68 +584,138 @@ export function POS() {
                                 <p>Cart is empty</p>
                             </div>
                         ) : (
-                            cart.map((item) => (
-                                <div key={item.product_id} className="bg-background border border-border p-3 rounded-lg flex gap-3 group">
-                                    <div className="flex-1 min-w-0">
-                                        <div className="font-medium truncate">{item.name}</div>
-                                        <div className="text-xs text-muted-foreground">{formatCurrency(item.price)} x {item.quantity}</div>
-                                    </div>
-                                    <div className="flex flex-col items-end gap-1">
-                                        <div className="font-bold">{formatCurrency(item.price * item.quantity)}</div>
-                                        <div className="flex items-center gap-1">
-                                            <Button
-                                                variant="outline"
-                                                size="icon"
-                                                className="h-6 w-6 rounded-md"
-                                                onClick={() => updateQuantity(item.product_id, -1)}
-                                            >
-                                                <Minus className="w-3 h-3" />
-                                            </Button>
-                                            <span className="w-4 text-center text-sm font-medium">{item.quantity}</span>
-                                            <Button
-                                                variant="outline"
-                                                size="icon"
-                                                className="h-6 w-6 rounded-md"
-                                                onClick={() => updateQuantity(item.product_id, 1)}
-                                                disabled={item.quantity >= item.max_stock}
-                                            >
-                                                <Plus className="w-3 h-3" />
-                                            </Button>
-                                            <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                className="h-6 w-6 rounded-md text-destructive opacity-0 group-hover:opacity-100 transition-opacity ml-1"
-                                                onClick={() => removeFromCart(item.product_id)}
-                                            >
-                                                <Trash2 className="w-3 h-3" />
-                                            </Button>
+                            cart.map((item) => {
+                                const productCurrency = products.find(p => p.id === item.product_id)?.currency || 'usd'
+                                const convertedPrice = convertPrice(item.price, productCurrency, settlementCurrency)
+                                const isConverted = productCurrency !== settlementCurrency
+
+                                return (
+                                    <div key={item.product_id} className="bg-background border border-border p-3 rounded-lg flex gap-3 group">
+                                        <div className="flex-1 min-w-0">
+                                            <div className="font-medium truncate">{item.name}</div>
+                                            <div className="flex flex-col gap-0.5">
+                                                <div className="text-xs text-muted-foreground">
+                                                    {formatCurrency(item.price, productCurrency, features.iqd_display_preference)} x {item.quantity}
+                                                </div>
+                                                {isConverted && (
+                                                    <div className="text-[10px] text-primary/60 font-medium">
+                                                        ≈ {formatCurrency(convertedPrice, settlementCurrency, features.iqd_display_preference)} {t('common.each')}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                        <div className="flex flex-col items-end gap-1">
+                                            <div className="font-bold flex flex-col items-end">
+                                                <span>{formatCurrency(convertedPrice * item.quantity, settlementCurrency, features.iqd_display_preference)}</span>
+                                                {isConverted && (
+                                                    <span className="text-[10px] text-muted-foreground line-through opacity-50">
+                                                        {formatCurrency(item.price * item.quantity, productCurrency, features.iqd_display_preference)}
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <div className="flex items-center gap-1">
+                                                <Button
+                                                    variant="outline"
+                                                    size="icon"
+                                                    className="h-6 w-6 rounded-md"
+                                                    onClick={() => updateQuantity(item.product_id, -1)}
+                                                >
+                                                    <Minus className="w-3 h-3" />
+                                                </Button>
+                                                <span className="w-4 text-center text-sm font-medium">{item.quantity}</span>
+                                                <Button
+                                                    variant="outline"
+                                                    size="icon"
+                                                    className="h-6 w-6 rounded-md"
+                                                    onClick={() => updateQuantity(item.product_id, 1)}
+                                                    disabled={item.quantity >= item.max_stock}
+                                                >
+                                                    <Plus className="w-3 h-3" />
+                                                </Button>
+                                                <Button
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    className="h-6 w-6 rounded-md text-destructive opacity-0 group-hover:opacity-100 transition-opacity ml-1"
+                                                    onClick={() => removeFromCart(item.product_id)}
+                                                >
+                                                    <Trash2 className="w-3 h-3" />
+                                                </Button>
+                                            </div>
                                         </div>
                                     </div>
-                                </div>
-                            ))
+                                )
+                            })
                         )}
                     </div>
                 </div>
 
-                <div className="p-4 border-t border-border bg-muted/10">
-                    <div className="flex items-center justify-between mb-2">
-                        <span className="text-muted-foreground">Subtotal</span>
-                        <span className="font-semibold">{formatCurrency(totalAmount)}</span>
+                <div className="p-4 border-t border-border bg-muted/10 space-y-3">
+                    {/* Exchange Rate Info */}
+                    {(exchangeData || (features.eur_conversion_enabled && eurRates.eur_iqd)) && (
+                        <div className="bg-primary/5 rounded-lg p-2.5 border border-primary/10 space-y-2">
+                            {/* USD Rate */}
+                            {exchangeData && (
+                                <div className="flex justify-between items-center text-[11px]">
+                                    <div className="flex items-center gap-2">
+                                        <span className="font-bold text-primary/80 uppercase">USD/IQD</span>
+                                        <span className="opacity-50 text-[10px] uppercase">{exchangeData.source}</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <span className="opacity-60">100 USD =</span>
+                                        <span className="font-bold text-primary">
+                                            {formatCurrency(exchangeData.rate, 'iqd', features.iqd_display_preference)}
+                                        </span>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* EUR Rate (Conditional) */}
+                            {features.eur_conversion_enabled && eurRates.eur_iqd && (
+                                <div className={cn(
+                                    "flex justify-between items-center text-[11px]",
+                                    exchangeData && "pt-1.5 border-t border-primary/5"
+                                )}>
+                                    <div className="flex items-center gap-2">
+                                        <span className="font-bold text-primary/80 uppercase">EUR/IQD</span>
+                                        <span className="opacity-50 text-[10px] uppercase leading-none">{eurRates.eur_iqd.source}</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <span className="opacity-60">100 EUR =</span>
+                                        <span className="font-bold text-primary">
+                                            {formatCurrency(eurRates.eur_iqd.rate, 'iqd', features.iqd_display_preference)}
+                                        </span>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                            <span className="text-muted-foreground text-sm">Subtotal</span>
+                            <span className="font-semibold">
+                                {formatCurrency(totalAmount, settlementCurrency, features.iqd_display_preference)}
+                            </span>
+                        </div>
+                        <div className="flex items-center justify-between text-xl font-bold text-primary pt-1 border-t border-border/50">
+                            <span>Total</span>
+                            <div className="flex flex-col items-end leading-tight">
+                                <span>{formatCurrency(totalAmount, settlementCurrency, features.iqd_display_preference)}</span>
+                                <span className="text-[10px] uppercase opacity-50 tracking-tighter">{settlementCurrency}</span>
+                            </div>
+                        </div>
                     </div>
-                    <div className="flex items-center justify-between mb-4 text-xl font-bold text-primary">
-                        <span>Total</span>
-                        <span>{formatCurrency(totalAmount)}</span>
-                    </div>
+
                     <Button
                         size="lg"
-                        className="w-full h-12 text-lg"
+                        className="w-full h-14 text-xl shadow-lg shadow-primary/20"
                         onClick={handleCheckout}
-                        disabled={cart.length === 0 || isLoading}
+                        disabled={cart.length === 0 || isLoading || (cart.some(item => products.find(p => p.id === item.product_id)?.currency !== settlementCurrency) && !exchangeData)}
                     >
                         {isLoading ? (
-                            <Loader2 className="w-5 h-5 animate-spin mr-2" />
+                            <Loader2 className="w-6 h-6 animate-spin mr-2" />
                         ) : (
-                            <CreditCard className="w-5 h-5 mr-2" />
+                            <CreditCard className="w-6 h-6 mr-2" />
                         )}
                         {t('pos.checkout') || 'Checkout'}
                     </Button>
