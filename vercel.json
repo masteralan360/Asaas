@@ -1,0 +1,24 @@
+{
+    "rewrites": [
+        {
+            "source": "/api-xeiqd/(.*)",
+            "destination": "/api/xeiqd?path=$1"
+        },
+        {
+            "source": "/api-xeiqd",
+            "destination": "/api/xeiqd"
+        },
+        {
+            "source": "/api-egcurrency/(.*)",
+            "destination": "/api/egcurrency?path=$1"
+        },
+        {
+            "source": "/api-egcurrency",
+            "destination": "/api/egcurrency"
+        },
+        {
+            "source": "/(.*)",
+            "destination": "/index.html"
+        }
+    ]
+}
