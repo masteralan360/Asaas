@@ -29,10 +29,11 @@ import {
     SelectValue,
     CurrencySelector
 } from '@/ui/components'
-import { Plus, Pencil, Trash2, Package, Search } from 'lucide-react'
+import { Plus, Pencil, Trash2, Package, Search, ImagePlus, Info } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/auth'
 import { useWorkspace } from '@/workspace'
+import { useEffect } from 'react'
 
 const UNITS = ['pcs', 'kg', 'liter', 'box', 'pack']
 
@@ -81,6 +82,32 @@ export function Products() {
     const [formData, setFormData] = useState<ProductFormData>(initialFormData)
     const [categoryFormData, setCategoryFormData] = useState({ name: '', description: '' })
     const [isLoading, setIsLoading] = useState(false)
+    const [isElectron, setIsElectron] = useState(false)
+
+    useEffect(() => {
+        window.electronAPI?.isElectron().then(setIsElectron).catch(() => setIsElectron(false));
+    }, [])
+
+    const handleImageUpload = async () => {
+        if (!window.electronAPI) return;
+        try {
+            const filePath = await window.electronAPI.selectProductImage(workspaceId);
+            if (filePath) {
+                setFormData(prev => ({ ...prev, imageUrl: filePath }));
+            }
+        } catch (error) {
+            console.error('Error uploading image:', error);
+        }
+    }
+
+    const getDisplayImageUrl = (url?: string) => {
+        if (!url) return '';
+        // If it's a local path (starts with drive letter or /) and we are in electron, wrap in protocol
+        if (url.match(/^[a-zA-Z]:[/\\]|^[/\\]|^\w+:/) && !url.startsWith('http') && !url.startsWith('erpimg://')) {
+            return `erpimg:///${url.replace(/\\/g, '/')}`;
+        }
+        return url;
+    }
 
     const getCategoryName = (id?: string) => {
         if (!id) return t('categories.noCategory')
@@ -239,6 +266,7 @@ export function Products() {
                         <Table>
                             <TableHeader>
                                 <TableRow>
+                                    <TableHead className="w-[80px]">{t('products.table.image') || 'Image'}</TableHead>
                                     <TableHead>{t('products.table.sku')}</TableHead>
                                     <TableHead>{t('products.table.name')}</TableHead>
                                     <TableHead>{t('products.table.category')}</TableHead>
@@ -250,6 +278,19 @@ export function Products() {
                             <TableBody>
                                 {filteredProducts.map((product) => (
                                     <TableRow key={product.id}>
+                                        <TableCell>
+                                            <div className="w-10 h-10 rounded border bg-muted flex items-center justify-center overflow-hidden">
+                                                {product.imageUrl ? (
+                                                    <img
+                                                        src={getDisplayImageUrl(product.imageUrl)}
+                                                        alt=""
+                                                        className="w-full h-full object-cover"
+                                                    />
+                                                ) : (
+                                                    <Package className="w-5 h-5 text-muted-foreground/30" />
+                                                )}
+                                            </div>
+                                        </TableCell>
                                         <TableCell className="font-mono text-sm">{product.sku}</TableCell>
                                         <TableCell className="font-medium">{product.name}</TableCell>
                                         <TableCell>{getCategoryName(product.categoryId)}</TableCell>
@@ -420,7 +461,66 @@ export function Products() {
                             </div>
                         </div>
 
-                        <DialogFooter>
+                        <div className="space-y-4 pt-4 border-t">
+                            <Label className="flex items-center gap-2">
+                                {t('products.form.image') || 'Product Image'}
+                                {!isElectron && (
+                                    <div className="flex items-center gap-1 text-[10px] text-muted-foreground font-normal">
+                                        <Info className="w-3 h-3" />
+                                        {t('products.form.electronOnly') || 'Upload only available in Desktop App'}
+                                    </div>
+                                )}
+                            </Label>
+
+                            <div className="flex flex-col sm:flex-row gap-4 items-start">
+                                {/* Preview Thumbnail */}
+                                <div className="w-32 h-32 rounded-lg border bg-muted flex items-center justify-center overflow-hidden shrink-0">
+                                    {formData.imageUrl ? (
+                                        <img
+                                            src={getDisplayImageUrl(formData.imageUrl)}
+                                            alt="Preview"
+                                            className="w-full h-full object-cover"
+                                            onError={(e) => {
+                                                (e.target as HTMLImageElement).src = 'https://placehold.co/200x200?text=Error';
+                                            }}
+                                        />
+                                    ) : (
+                                        <Package className="w-12 h-12 text-muted-foreground/30" />
+                                    )}
+                                </div>
+
+                                <div className="flex-1 space-y-2 w-full">
+                                    <div className="flex gap-2">
+                                        <Input
+                                            id="imageUrl"
+                                            value={formData.imageUrl}
+                                            onChange={(e) => setFormData({ ...formData, imageUrl: e.target.value })}
+                                            placeholder={t('products.form.imageUrlPlaceholder') || "Image URL or local path"}
+                                            readOnly={isElectron}
+                                            className={isElectron ? 'bg-muted/50' : ''}
+                                        />
+                                        {isElectron && (
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                onClick={handleImageUpload}
+                                                className="shrink-0"
+                                            >
+                                                <ImagePlus className="w-4 h-4 mr-2" />
+                                                {t('products.form.upload') || 'Upload'}
+                                            </Button>
+                                        )}
+                                    </div>
+                                    <p className="text-[11px] text-muted-foreground italic">
+                                        {isElectron
+                                            ? (t('products.form.localPathDesc') || 'Image will be stored locally in your workstation.')
+                                            : (t('products.form.webUrlDesc') || 'Enter a public image URL or switch to desktop app for local upload.')}
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <DialogFooter className="pt-4 mt-4 border-t">
                             <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
                                 {t('common.cancel')}
                             </Button>

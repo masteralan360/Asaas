@@ -67,6 +67,14 @@ export function POS() {
             p.sku.toLowerCase().includes(search.toLowerCase())
     )
 
+    const getDisplayImageUrl = (url?: string) => {
+        if (!url) return '';
+        if (url.match(/^[a-zA-Z]:[/\\]|^[/\\]|^\w+:/) && !url.startsWith('http') && !url.startsWith('erpimg://')) {
+            return `erpimg:///${url.replace(/\\/g, '/')}`;
+        }
+        return url;
+    }
+
     // Exchange Rate for advisory display and calculations
     const { exchangeData, eurRates, refresh: refreshExchangeRate } = useExchangeRate()
     const settlementCurrency = features.default_currency || 'usd'
@@ -547,9 +555,19 @@ export function POS() {
                                 <div className="absolute top-2 right-2 bg-primary/10 text-primary px-2 py-0.5 rounded text-xs font-bold">
                                     {product.quantity}
                                 </div>
-                                <div className="h-24 w-full bg-muted/20 rounded-lg mb-2 flex items-center justify-center text-muted-foreground">
-                                    {/* Placeholder for Image */}
-                                    <Zap className="w-8 h-8 opacity-20" />
+                                <div className="h-24 w-full bg-muted/20 rounded-lg mb-2 flex items-center justify-center text-muted-foreground overflow-hidden">
+                                    {product.imageUrl ? (
+                                        <img
+                                            src={getDisplayImageUrl(product.imageUrl)}
+                                            alt={product.name}
+                                            className="w-full h-full object-cover"
+                                            onError={(e) => {
+                                                (e.target as HTMLImageElement).src = 'https://placehold.co/200x200?text=Error';
+                                            }}
+                                        />
+                                    ) : (
+                                        <Zap className="w-8 h-8 opacity-20" />
+                                    )}
                                 </div>
                                 <div className="flex-1 min-w-0">
                                     <h3 className="font-semibold truncate" title={product.name}>{product.name}</h3>
