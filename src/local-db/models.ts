@@ -131,6 +131,7 @@ export interface SaleItem {
     originalUnitPrice: number
     convertedUnitPrice: number
     settlementCurrency: CurrencyCode
+    negotiatedPrice?: number
 }
 
 

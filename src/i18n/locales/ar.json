@@ -392,7 +392,11 @@
         "scannerEnabled": "الماسح مفعل",
         "scannerDisabled": "الماسح معطل",
         "cameraNotFound": "لم يتم العثور على كاميرا",
-        "permissionDenied": "تم رفض الوصول للكاميرا"
+        "permissionDenied": "تم رفض الوصول للكاميرا",
+        "modifyPrice": "تعديل السعر",
+        "negotiatedPrice": "سعر التفاوض",
+        "originalPriceLabel": "السعر الأصلي",
+        "originalPriceDesc": " "
     },
     "sales": {
         "title": "سجل المبيعات",

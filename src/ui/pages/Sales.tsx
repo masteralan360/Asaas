@@ -365,35 +365,46 @@ export function Sales() {
                                     <TableBody>
                                         {selectedSale.items?.map((item) => {
                                             const isConverted = item.original_currency && item.settlement_currency && item.original_currency !== item.settlement_currency
+                                            const hasNegotiated = item.negotiated_price !== undefined && item.negotiated_price !== null
+                                            const displayUnitPrice = item.converted_unit_price || item.unit_price
+                                            const originalUnitPrice = item.original_unit_price || item.unit_price
+
                                             return (
                                                 <TableRow key={item.id}>
                                                     <TableCell className="text-start">
                                                         <div className="font-medium">{item.product_name}</div>
                                                         <div className="text-xs text-muted-foreground">{item.product_sku}</div>
+                                                        {hasNegotiated && (
+                                                            <div className="text-[10px] text-emerald-600 font-medium">
+                                                                {t('pos.negotiatedPrice') || 'Negotiated'}
+                                                            </div>
+                                                        )}
                                                     </TableCell>
                                                     <TableCell className="text-end font-mono">
                                                         {item.quantity}
                                                     </TableCell>
                                                     <TableCell className="text-end">
                                                         <div className="flex flex-col items-end">
-                                                            <span className="font-medium">
-                                                                {formatCurrency(item.converted_unit_price || item.unit_price, selectedSale.settlement_currency || 'usd', features.iqd_display_preference)}
+                                                            {/* Show negotiated/effective price */}
+                                                            <span className={hasNegotiated ? "font-medium text-emerald-600" : "font-medium"}>
+                                                                {formatCurrency(displayUnitPrice, selectedSale.settlement_currency || 'usd', features.iqd_display_preference)}
                                                             </span>
-                                                            {isConverted && (
-                                                                <span className="text-[10px] text-muted-foreground">
-                                                                    {formatCurrency(item.original_unit_price || item.unit_price, item.original_currency || 'usd', features.iqd_display_preference)}
+                                                            {/* Show original price if negotiated OR converted */}
+                                                            {(hasNegotiated || isConverted) && (
+                                                                <span className="text-[10px] text-muted-foreground line-through opacity-60">
+                                                                    {formatCurrency(originalUnitPrice, item.original_currency || 'usd', features.iqd_display_preference)}
                                                                 </span>
                                                             )}
                                                         </div>
                                                     </TableCell>
                                                     <TableCell className="text-end font-bold">
                                                         <div className="flex flex-col items-end">
-                                                            <span>
-                                                                {formatCurrency((item.converted_unit_price || item.unit_price) * item.quantity, selectedSale.settlement_currency || 'usd', features.iqd_display_preference)}
+                                                            <span className={hasNegotiated ? "text-emerald-600" : ""}>
+                                                                {formatCurrency(displayUnitPrice * item.quantity, selectedSale.settlement_currency || 'usd', features.iqd_display_preference)}
                                                             </span>
-                                                            {isConverted && (
+                                                            {(hasNegotiated || isConverted) && (
                                                                 <span className="text-[10px] text-muted-foreground line-through opacity-50">
-                                                                    {formatCurrency((item.original_unit_price || item.unit_price) * item.quantity, item.original_currency || 'usd', features.iqd_display_preference)}
+                                                                    {formatCurrency(originalUnitPrice * item.quantity, item.original_currency || 'usd', features.iqd_display_preference)}
                                                                 </span>
                                                             )}
                                                         </div>

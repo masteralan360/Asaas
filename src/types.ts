@@ -13,6 +13,7 @@ export interface SaleItem {
     original_unit_price: number
     converted_unit_price: number
     settlement_currency: string
+    negotiated_price?: number
 }
 
 export interface Sale {
@@ -38,4 +39,5 @@ export interface CartItem {
     price: number
     quantity: number
     max_stock: number
+    negotiated_price?: number
 }

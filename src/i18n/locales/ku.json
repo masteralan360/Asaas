@@ -398,7 +398,11 @@
         "tryDisabled": "گۆڕینەوەی لیرە ناچالاکە.",
         "scannerDisabled": "سکانەر ناچالاکە",
         "cameraNotFound": "کامێرا نەدۆزرایەوە",
-        "permissionDenied": "دەسەڵاتی کامێرا ڕەتکرایەوە"
+        "permissionDenied": "دەسەڵاتی کامێرا ڕەتکرایەوە",
+        "modifyPrice": "دەستکاری کردنی نرخ",
+        "negotiatedPrice": "سعر التفاوض",
+        "originalPriceLabel": "السعر الأصلي",
+        "originalPriceDesc": " "
     },
     "sales": {
         "title": "مێژووی فرۆشتن",

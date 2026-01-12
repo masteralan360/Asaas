@@ -31,7 +31,8 @@ import {
     Loader2,
     Barcode,
     Camera,
-    Settings as SettingsIcon
+    Settings as SettingsIcon,
+    Pencil
 } from 'lucide-react'
 import { BarcodeScanner } from 'react-barcode-scanner'
 import 'react-barcode-scanner/polyfill'
@@ -59,6 +60,11 @@ export function POS() {
     const [scanDelay, setScanDelay] = useState(() => {
         return Number(localStorage.getItem('scanner_scan_delay')) || 2500
     })
+
+    // Negotiated Price Edit State
+    const [editingPriceItemId, setEditingPriceItemId] = useState<string | null>(null)
+    const [negotiatedPriceInput, setNegotiatedPriceInput] = useState('')
+    const isAdmin = user?.role === 'admin'
 
     // Filter products
     const filteredProducts = products.filter(
@@ -151,7 +157,8 @@ export function POS() {
     // Calculate totals
     const totalAmount = cart.reduce((sum, item) => {
         const itemCurrency = products.find(p => p.id === item.product_id)?.currency || 'usd'
-        const converted = convertPrice(item.price, itemCurrency, settlementCurrency)
+        const basePrice = item.negotiated_price ?? item.price
+        const converted = convertPrice(basePrice, itemCurrency, settlementCurrency)
         return sum + (converted * item.quantity)
     }, 0)
     const totalItems = cart.reduce((sum, item) => sum + item.quantity, 0)
@@ -264,6 +271,41 @@ export function POS() {
                 return item
             })
         })
+    }
+
+    const setNegotiatedPrice = (productId: string, price: number | undefined) => {
+        setCart((prev) =>
+            prev.map((item) =>
+                item.product_id === productId
+                    ? { ...item, negotiated_price: price }
+                    : item
+            )
+        )
+    }
+
+    const openPriceEdit = (productId: string, currentPrice: number) => {
+        setEditingPriceItemId(productId)
+        setNegotiatedPriceInput(currentPrice.toString())
+    }
+
+    const savePriceEdit = () => {
+        if (editingPriceItemId) {
+            const newPrice = parseFloat(negotiatedPriceInput)
+            if (!isNaN(newPrice) && newPrice >= 0) {
+                setNegotiatedPrice(editingPriceItemId, newPrice)
+            }
+            setEditingPriceItemId(null)
+            setNegotiatedPriceInput('')
+        }
+    }
+
+    const cancelPriceEdit = () => {
+        setEditingPriceItemId(null)
+        setNegotiatedPriceInput('')
+    }
+
+    const clearNegotiatedPrice = (productId: string) => {
+        setNegotiatedPrice(productId, undefined)
     }
 
     const handleSkuSubmit = (e: React.FormEvent) => {
@@ -460,21 +502,23 @@ export function POS() {
         const itemsWithMetadata = cart.map((item) => {
             const product = products.find(p => p.id === item.product_id)
             const originalCurrency = product?.currency || 'usd'
-            const convertedUnitPrice = convertPrice(item.price, originalCurrency, settlementCurrency)
+            const effectivePrice = item.negotiated_price ?? item.price
+            const convertedUnitPrice = convertPrice(effectivePrice, originalCurrency, settlementCurrency)
             const costPrice = product?.costPrice || 0
             const convertedCostPrice = convertPrice(costPrice, originalCurrency, settlementCurrency)
 
             return {
                 product_id: item.product_id,
                 quantity: item.quantity,
-                unit_price: item.price, // original
-                total_price: item.price * item.quantity, // original total
-                cost_price: costPrice, // capture cost at time of sale
+                unit_price: effectivePrice, // negotiated or original
+                total_price: effectivePrice * item.quantity,
+                cost_price: costPrice,
                 converted_cost_price: convertedCostPrice,
                 original_currency: originalCurrency,
-                original_unit_price: item.price,
+                original_unit_price: item.price, // always store original
                 converted_unit_price: convertedUnitPrice,
                 settlement_currency: settlementCurrency,
+                negotiated_price: item.negotiated_price, // store if negotiated
                 total: convertedUnitPrice * item.quantity
             }
         })
@@ -704,17 +748,38 @@ export function POS() {
                         ) : (
                             cart.map((item) => {
                                 const productCurrency = products.find(p => p.id === item.product_id)?.currency || 'usd'
-                                const convertedPrice = convertPrice(item.price, productCurrency, settlementCurrency)
+                                const effectivePrice = item.negotiated_price ?? item.price
+                                const convertedPrice = convertPrice(effectivePrice, productCurrency, settlementCurrency)
                                 const isConverted = productCurrency !== settlementCurrency
+                                const hasNegotiated = item.negotiated_price !== undefined
 
                                 return (
                                     <div key={item.product_id} className="bg-background border border-border p-3 rounded-lg flex gap-3 group">
                                         <div className="flex-1 min-w-0">
                                             <div className="font-medium truncate">{item.name}</div>
                                             <div className="flex flex-col gap-0.5">
-                                                <div className="text-xs text-muted-foreground">
+                                                {/* Show original price (grayed out if negotiated) */}
+                                                <div className={cn(
+                                                    "text-xs",
+                                                    hasNegotiated ? "text-muted-foreground/50 line-through" : "text-muted-foreground"
+                                                )}>
                                                     {formatCurrency(item.price, productCurrency, features.iqd_display_preference)} x {item.quantity}
                                                 </div>
+                                                {/* Show negotiated price if set */}
+                                                {hasNegotiated && (
+                                                    <div className="text-xs text-emerald-600 font-medium flex items-center gap-1">
+                                                        <span>{formatCurrency(item.negotiated_price!, productCurrency, features.iqd_display_preference)} x {item.quantity}</span>
+                                                        {isAdmin && (
+                                                            <button
+                                                                onClick={() => clearNegotiatedPrice(item.product_id)}
+                                                                className="text-[10px] text-destructive hover:underline"
+                                                                title={t('pos.clearNegotiatedPrice') || 'Clear'}
+                                                            >
+                                                                ✕
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                )}
                                                 {isConverted && (
                                                     <div className="text-[10px] text-primary/60 font-medium">
                                                         ≈ {formatCurrency(convertedPrice, settlementCurrency, features.iqd_display_preference)} {t('common.each')}
@@ -723,42 +788,52 @@ export function POS() {
                                             </div>
                                         </div>
                                         <div className="flex flex-col items-end gap-1">
-                                            <div className="font-bold flex flex-col items-end">
+                                            <div className="font-bold flex items-center gap-1">
                                                 <span>{formatCurrency(convertedPrice * item.quantity, settlementCurrency, features.iqd_display_preference)}</span>
-                                                {isConverted && (
-                                                    <span className="text-[10px] text-muted-foreground line-through opacity-50">
-                                                        {formatCurrency(item.price * item.quantity, productCurrency, features.iqd_display_preference)}
-                                                    </span>
+                                                {/* Admin-only Pencil icon */}
+                                                {isAdmin && (
+                                                    <button
+                                                        onClick={() => openPriceEdit(item.product_id, item.negotiated_price ?? item.price)}
+                                                        className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 hover:bg-muted rounded"
+                                                        title={t('pos.modifyPrice') || 'Modify Price'}
+                                                    >
+                                                        <Pencil className="w-3 h-3 text-primary" />
+                                                    </button>
                                                 )}
                                             </div>
-                                            <div className="flex items-center gap-1">
-                                                <Button
-                                                    variant="outline"
-                                                    size="icon"
-                                                    className="h-6 w-6 rounded-md"
-                                                    onClick={() => updateQuantity(item.product_id, -1)}
-                                                >
-                                                    <Minus className="w-3 h-3" />
-                                                </Button>
-                                                <span className="w-4 text-center text-sm font-medium">{item.quantity}</span>
-                                                <Button
-                                                    variant="outline"
-                                                    size="icon"
-                                                    className="h-6 w-6 rounded-md"
-                                                    onClick={() => updateQuantity(item.product_id, 1)}
-                                                    disabled={item.quantity >= item.max_stock}
-                                                >
-                                                    <Plus className="w-3 h-3" />
-                                                </Button>
-                                                <Button
-                                                    variant="ghost"
-                                                    size="icon"
-                                                    className="h-6 w-6 rounded-md text-destructive opacity-0 group-hover:opacity-100 transition-opacity ml-1"
-                                                    onClick={() => removeFromCart(item.product_id)}
-                                                >
-                                                    <Trash2 className="w-3 h-3" />
-                                                </Button>
-                                            </div>
+                                            {isConverted && !hasNegotiated && (
+                                                <span className="text-[10px] text-muted-foreground line-through opacity-50">
+                                                    {formatCurrency(item.price * item.quantity, productCurrency, features.iqd_display_preference)}
+                                                </span>
+                                            )}
+                                        </div>
+                                        <div className="flex items-center gap-1">
+                                            <Button
+                                                variant="outline"
+                                                size="icon"
+                                                className="h-6 w-6 rounded-md"
+                                                onClick={() => updateQuantity(item.product_id, -1)}
+                                            >
+                                                <Minus className="w-3 h-3" />
+                                            </Button>
+                                            <span className="w-4 text-center text-sm font-medium">{item.quantity}</span>
+                                            <Button
+                                                variant="outline"
+                                                size="icon"
+                                                className="h-6 w-6 rounded-md"
+                                                onClick={() => updateQuantity(item.product_id, 1)}
+                                                disabled={item.quantity >= item.max_stock}
+                                            >
+                                                <Plus className="w-3 h-3" />
+                                            </Button>
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                className="h-6 w-6 rounded-md text-destructive opacity-0 group-hover:opacity-100 transition-opacity ml-1"
+                                                onClick={() => removeFromCart(item.product_id)}
+                                            >
+                                                <Trash2 className="w-3 h-3" />
+                                            </Button>
                                         </div>
                                     </div>
                                 )
@@ -1002,6 +1077,64 @@ export function POS() {
                     </form>
                 </DialogContent>
             </Dialog>
-        </div>
+
+            {/* Negotiated Price Edit Dialog */}
+            <Dialog open={editingPriceItemId !== null} onOpenChange={() => cancelPriceEdit()}>
+                <DialogContent className="max-w-sm">
+                    <DialogHeader>
+                        <DialogTitle>{t('pos.modifyPrice') || 'Modify Price'}</DialogTitle>
+                    </DialogHeader>
+                    {(() => {
+                        const editingItem = cart.find(i => i.product_id === editingPriceItemId)
+                        const editingProduct = products.find(p => p.id === editingPriceItemId)
+                        if (!editingItem) return null
+
+                        return (
+                            <div className="space-y-4">
+                                {/* Product Name */}
+                                <div className="text-sm font-medium text-center p-2 bg-muted/30 rounded">
+                                    {editingItem.name}
+                                </div>
+
+                                {/* Original Price - Readonly */}
+                                <div>
+                                    <Label className="text-muted-foreground">{t('pos.originalPriceLabel') || 'Original Price'}</Label>
+                                    <div className="text-lg font-mono font-bold mt-1 p-3 bg-muted/50 rounded border border-border">
+                                        {formatCurrency(editingItem.price, editingProduct?.currency || 'usd', features.iqd_display_preference)}
+                                    </div>
+                                </div>
+
+                                {/* Negotiated Price - Editable */}
+                                <div>
+                                    <Label>{t('pos.negotiatedPrice') || 'Negotiated Price'}</Label>
+                                    <Input
+                                        type="number"
+                                        min="0"
+                                        step="0.01"
+                                        value={negotiatedPriceInput}
+                                        onChange={(e) => setNegotiatedPriceInput(e.target.value)}
+                                        placeholder="0.00"
+                                        className="text-lg py-5 font-mono mt-1"
+                                        autoFocus
+                                    />
+                                    <p className="text-xs text-muted-foreground mt-1">
+                                        {t('pos.originalPriceDesc') || 'Original price will be preserved in records.'}
+                                    </p>
+                                </div>
+
+                                <DialogFooter>
+                                    <Button type="button" variant="outline" onClick={cancelPriceEdit}>
+                                        {t('common.cancel')}
+                                    </Button>
+                                    <Button type="button" onClick={savePriceEdit}>
+                                        {t('common.save')}
+                                    </Button>
+                                </DialogFooter>
+                            </div>
+                        )
+                    })()}
+                </DialogContent>
+            </Dialog>
+        </div >
     )
 }

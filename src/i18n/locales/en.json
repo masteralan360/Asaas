@@ -402,9 +402,12 @@
         "cameraNotFound": "Camera not found",
         "permissionDenied": "Camera permission denied",
         "exchangeRateError": "Exchange rate unavailable. Checkout blocked.",
-        "exchangeRateError": "Exchange rate unavailable. Checkout blocked.",
         "eurDisabled": "EURO conversion is disabled.",
-        "tryDisabled": "TRY conversion is disabled."
+        "tryDisabled": "TRY conversion is disabled.",
+        "modifyPrice": "Modify Price",
+        "negotiatedPrice": "Negotiated Price",
+        "originalPriceLabel": "Original Price",
+        "originalPriceDesc": " "
     },
     "sales": {
         "title": "Sales History",
