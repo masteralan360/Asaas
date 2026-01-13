@@ -27,6 +27,7 @@
         "each": "each",
         "snapshots": "Snapshots",
         "added": "Added",
+        "to": "to",
         "offline": "Offline",
         "messages": {
             "deleteConfirm": "Are you sure you want to delete this item?",
@@ -43,7 +44,12 @@
         "pos": "Point of Sale",
         "sales": "Sales History",
         "revenue": "Net Revenue",
+        "performance": "Team Performance",
         "settings": "Settings"
+    },
+    "report": {
+        "print": "Print Performance Report",
+        "generatedOn": "Report generated on"
     },
     "products": {
         "title": "Products",
@@ -506,6 +512,54 @@
         "stats": {
             "totalSales": "Total Sales",
             "avgOrderValue": "Avg. Sale Profit"
+        }
+    },
+    "performance": {
+        "title": "Team Performance",
+        "subtitle": "Track staff sales and targets",
+        "filters": {
+            "today": "Today",
+            "thisMonth": "This Month",
+            "custom": "Custom Range",
+            "start": "Start Date",
+            "end": "End Date"
+        },
+        "table": {
+            "name": "Staff Name",
+            "role": "Role",
+            "salesCount": "Sales Count",
+            "totalRevenue": "Total Revenue",
+            "target": "Target",
+            "progress": "Progress"
+        },
+        "stats": {
+            "totalSales": "Total Workspace Sales",
+            "topPerformer": "Top Performer",
+            "meetingTarget": "Meeting Target",
+            "totalTransactions": "total transactions",
+            "aboveTarget": "Staff above 100% target",
+            "topContributor": "Highest revenue contributor"
+        },
+        "charts": {
+            "share": "Sales Share (%)",
+            "basis": "Based on number of sales",
+            "trend": "Sales Volume Trend",
+            "revenueTrendDesc": "Revenue contribution over time (USD)",
+            "cumulative": "Cumulative Sales"
+        },
+        "form": {
+            "setTarget": "Set Monthly Target",
+            "targetAmount": "Target Sales Count",
+            "settingTargetFor": "Setting target for"
+        },
+        "report": {
+            "print": "Print Report",
+            "generatedOn": "Report generated on",
+            "title": "Performance Report",
+            "period": "Period",
+            "summary": "Performance Summary",
+            "description": "This report summarizes the sales performance for the selected period. Revenue is calculated based on settlement totals per staff member. Targets are set based on the number of completed sales.",
+            "signature": "Authorized Signature"
         }
     }
 }

@@ -20,6 +20,7 @@ export interface WorkspaceFeatures {
 
 interface WorkspaceContextType {
     features: WorkspaceFeatures
+    workspaceName: string | null
     isLoading: boolean
     hasFeature: (feature: 'allow_pos' | 'allow_customers' | 'allow_orders' | 'allow_invoices') => boolean
     refreshFeatures: () => Promise<void>
@@ -44,6 +45,7 @@ const WorkspaceContext = createContext<WorkspaceContextType | undefined>(undefin
 export function WorkspaceProvider({ children }: { children: ReactNode }) {
     const { user, isAuthenticated, isLoading: authLoading } = useAuth()
     const [features, setFeatures] = useState<WorkspaceFeatures>(defaultFeatures)
+    const [workspaceName, setWorkspaceName] = useState<string | null>(null)
     const [isLoading, setIsLoading] = useState(true)
 
     const fetchFeatures = async () => {
@@ -91,6 +93,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                     locked_workspace: featureData.locked_workspace ?? false
                 }
                 setFeatures(fetchedFeatures)
+                setWorkspaceName(featureData.workspace_name || 'My Workspace')
 
                 // Cache in local DB for offline access
                 await db.workspaces.put({
@@ -189,7 +192,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     }
 
     return (
-        <WorkspaceContext.Provider value={{ features, isLoading, hasFeature, refreshFeatures, updateSettings }}>
+        <WorkspaceContext.Provider value={{ features, workspaceName, isLoading, hasFeature, refreshFeatures, updateSettings }}>
             {children}
         </WorkspaceContext.Provider>
     )

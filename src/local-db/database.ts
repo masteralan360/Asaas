@@ -25,7 +25,7 @@ export class ERPDatabase extends Dexie {
             customers: 'id, name, email, workspaceId, syncStatus, updatedAt, isDeleted',
             orders: 'id, orderNumber, customerId, status, workspaceId, syncStatus, updatedAt, isDeleted',
             invoices: 'id, invoiceNumber, orderId, customerId, status, workspaceId, syncStatus, updatedAt, isDeleted',
-            users: 'id, email, role, workspaceId, syncStatus, updatedAt, isDeleted',
+            users: 'id, email, role, workspaceId, syncStatus, updatedAt, isDeleted, monthlyTarget',
             sales: 'id, cashierId, workspaceId, settlementCurrency, syncStatus, createdAt',
             sale_items: 'id, saleId, productId',
             workspaces: 'id, name, code, syncStatus, updatedAt, isDeleted',

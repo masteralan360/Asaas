@@ -20,6 +20,7 @@ const WorkspaceRegistration = lazy(() => import('@/ui/pages/WorkspaceRegistratio
 const POS = lazy(() => import('@/ui/pages/POS').then(m => ({ default: m.POS })))
 const Sales = lazy(() => import('@/ui/pages/Sales').then(m => ({ default: m.Sales })))
 const Revenue = lazy(() => import('@/ui/pages/Revenue').then(m => ({ default: m.Revenue })))
+const TeamPerformance = lazy(() => import('@/ui/pages/TeamPerformance').then(m => ({ default: m.TeamPerformance })))
 const WorkspaceConfiguration = lazy(() => import('@/ui/pages/WorkspaceConfiguration').then(m => ({ default: m.WorkspaceConfiguration })))
 const LockedWorkspace = lazy(() => import('@/ui/pages/LockedWorkspace').then(m => ({ default: m.LockedWorkspace })))
 const CurrencyConverter = lazy(() => import('@/ui/pages/CurrencyConverter').then(m => ({ default: m.CurrencyConverter })))
@@ -34,6 +35,7 @@ const pages = [
     () => import('@/ui/pages/POS'),
     () => import('@/ui/pages/Sales'),
     () => import('@/ui/pages/Revenue'),
+    () => import('@/ui/pages/TeamPerformance'),
     () => import('@/ui/pages/Settings'),
     () => import('@/ui/pages/Members'),
     () => import('@/ui/pages/WorkspaceConfiguration'),
@@ -115,6 +117,13 @@ function App() {
                                     <ProtectedRoute allowedRoles={['admin']}>
                                         <Layout>
                                             <Revenue />
+                                        </Layout>
+                                    </ProtectedRoute>
+                                </Route>
+                                <Route path="/performance">
+                                    <ProtectedRoute allowedRoles={['admin', 'staff', 'viewer']}>
+                                        <Layout>
+                                            <TeamPerformance />
                                         </Layout>
                                     </ProtectedRoute>
                                 </Route>

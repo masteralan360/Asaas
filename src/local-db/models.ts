@@ -28,6 +28,8 @@ export interface User extends BaseEntity {
     name: string
     role: UserRole
     avatarUrl?: string
+    monthlyTarget?: number
+    monthlyProgress?: number
 }
 
 export interface Product extends BaseEntity {

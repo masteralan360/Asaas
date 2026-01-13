@@ -24,6 +24,7 @@ import {
     TrendingUp,
     ChevronLeft,
     ChevronRight,
+    BarChart3
 } from 'lucide-react'
 import { useState } from 'react'
 import { Button } from './button'
@@ -38,7 +39,7 @@ interface LayoutProps {
 export function Layout({ children }: LayoutProps) {
     const [location] = useLocation()
     const { user, signOut } = useAuth()
-    const { hasFeature } = useWorkspace()
+    const { hasFeature, workspaceName } = useWorkspace()
     const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
     const [desktopSidebarOpen, setDesktopSidebarOpen] = useState(() => {
         if (typeof window !== 'undefined') {
@@ -84,7 +85,8 @@ export function Layout({ children }: LayoutProps) {
         { name: t('nav.sales') || 'Sales', href: '/sales', icon: Receipt },
         // Revenue - admin only
         ...(user?.role === 'admin' ? [
-            { name: t('nav.revenue') || 'Net Revenue', href: '/revenue', icon: TrendingUp }
+            { name: t('nav.revenue') || 'Net Revenue', href: '/revenue', icon: TrendingUp },
+            { name: t('nav.performance') || 'Team Performance', href: '/performance', icon: BarChart3 }
         ] : []),
         // Products - always visible
         { name: t('nav.products'), href: '/products', icon: Package },
@@ -146,8 +148,8 @@ export function Layout({ children }: LayoutProps) {
                         )}
                     </div>
                     <div>
-                        <h1 className="text-lg font-bold gradient-text">ERP System</h1>
-                        <p className="text-xs text-muted-foreground">Offline-First</p>
+                        <h1 className="text-lg font-bold gradient-text">{workspaceName || 'ERP System'}</h1>
+                        <p className="text-xs text-muted-foreground">Workspace</p>
                     </div>
                     <button
                         className="ms-auto lg:hidden"

@@ -425,19 +425,6 @@ export function Settings() {
                         </CardContent>
                     </Card>
 
-                    {/* About */}
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>{t('settings.about')}</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="space-y-2 text-sm text-muted-foreground">
-                                <p><strong>ERP System</strong> - Offline-First Enterprise Resource Planning</p>
-                                <p>Version 1.0.0</p>
-                                <p>{t('settings.builtWith')}</p>
-                            </div>
-                        </CardContent>
-                    </Card>
                 </TabsContent>
 
                 <TabsContent value="advanced" className="space-y-6 mt-0">
