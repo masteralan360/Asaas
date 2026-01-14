@@ -4,6 +4,9 @@ interface Window {
     electronAPI?: {
         selectProductImage: (workspaceId: string) => Promise<string | null>;
         isElectron: () => Promise<boolean>;
+        checkForUpdates: () => Promise<void>;
+        onUpdateStatus: (callback: (status: any) => void) => () => void;
+        fetchExchangeRate: (url: string) => Promise<string>;
     };
 }
 

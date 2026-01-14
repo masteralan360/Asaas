@@ -142,11 +142,28 @@ export async function fetchTRYToIQDRate(primarySource?: ExchangeRateSource): Pro
 
 export type ExchangePath = 'USD-to-IQD' | 'USD-to-EUR' | 'EUR-to-IQD' | 'USD-to-TRY' | 'TRY-to-IQD';
 
-async function fetchFromXEIQD(): Promise<number> {
-    const response = await fetch('/api-xeiqd', { cache: 'no-store' });
-    if (!response.ok) throw new Error(`HTTP Error ${response.status}`);
+// Helper to handle fetching in both Electron (via IPC) and Web (via Proxy)
+async function fetchUrl(url: string, isApiProxy = false): Promise<string> {
+    // If in Electron, use the IPC bridge to bypass CORS
+    if (window.electronAPI) {
+        // For Electron, we need the full URL, not the proxy path
+        let targetUrl = url;
+        if (isApiProxy) {
+            if (url.includes('api-xeiqd')) targetUrl = 'https://xeiqd.com' + url.replace('/api-xeiqd', '');
+            else if (url.includes('api-forexfy')) targetUrl = 'https://forexfy.app' + url.replace('/api-forexfy', '');
+        }
+        console.log(`[ExchangeRate] Electron detected, fulfilling via IPC: ${targetUrl}`);
+        return await window.electronAPI.fetchExchangeRate(targetUrl);
+    }
 
-    const html = await response.text();
+    // Web Mode (use standard fetch which hits Vite proxy)
+    const response = await fetch(url, { cache: 'no-store' });
+    if (!response.ok) throw new Error(`HTTP Error ${response.status}`);
+    return await response.text();
+}
+
+async function fetchFromXEIQD(): Promise<number> {
+    const html = await fetchUrl('/api-xeiqd', true);
 
     // 1. Try Sulaymaniyah spot rate
     const sulyRegex = /السليمانية.*?(?:IQD|د\.ع)\s*([0-9\u0660-\u0669]{1,3}(?:[.,\u066B\u066C][0-9\u0660-\u0669]{3})+)/s;
@@ -191,10 +208,7 @@ async function fetchFromXEIQD(): Promise<number> {
 }
 
 async function fetchFromForexfy(): Promise<number> {
-    const response = await fetch('/api-forexfy/en/currency/USD-to-IQD/blackMarket', { cache: 'no-store' });
-    if (!response.ok) throw new Error(`HTTP Error ${response.status}`);
-
-    const html = await response.text();
+    const html = await fetchUrl('/api-forexfy/en/currency/USD-to-IQD/blackMarket', true);
 
     /**
      * User requested "Sell Price" which currently is 1,453.95
@@ -261,9 +275,8 @@ async function fetchFromForexfy(): Promise<number> {
 }
 
 async function fetchFromDolarDinar(currencyCode: string = 'IQD'): Promise<number> {
-    const response = await fetch('https://opensheet.elk.sh/1VqEZiLBr7dYeoH2wkeUH3D9zNe61dw-_RPxj6MH_Xw0/Today', { cache: 'no-store' });
-    if (!response.ok) throw new Error(`HTTP Error ${response.status}`);
-    const data = await response.json();
+    const jsonStr = await fetchUrl('https://opensheet.elk.sh/1VqEZiLBr7dYeoH2wkeUH3D9zNe61dw-_RPxj6MH_Xw0/Today', false);
+    const data = JSON.parse(jsonStr);
 
     // Find row
     // DolarDinar sheet usually has 'Currency' column with values like 'IQD', 'EUR', 'TRY' (or 'Lira'?)
@@ -297,10 +310,7 @@ async function fetchFromDolarDinar(currencyCode: string = 'IQD'): Promise<number
 
 
 async function fetchEgRate(path: ExchangePath): Promise<number> {
-    const response = await fetch(`/api-forexfy/en/currency/${path}/blackMarket`, { cache: 'no-store' });
-    if (!response.ok) throw new Error(`HTTP Error ${response.status}`);
-
-    const html = await response.text();
+    const html = await fetchUrl(`/api-forexfy/en/currency/${path}/blackMarket`, true);
 
     const scriptRegex = /const\s+rates\s*=\s*({.*?});/s;
     const scriptMatch = html.match(scriptRegex);

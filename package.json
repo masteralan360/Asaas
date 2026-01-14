@@ -1,7 +1,7 @@
 {
   "name": "erp-system",
   "private": true,
-  "version": "1.0.2",
+  "version": "1.0.12",
   "main": "electron/main.cjs",
   "type": "module",
   "repository": {
@@ -19,12 +19,14 @@
       "electron/**/*"
     ],
     "win": {
-      "target": "nsis"
+      "target": "nsis",
+      "icon": "public/logo.ico"
     },
     "publish": {
       "provider": "github",
       "owner": "masteralan360",
-      "repo": "ERP-System"
+      "repo": "ERP-System",
+      "releaseType": "release"
     }
   },
   "scripts": {

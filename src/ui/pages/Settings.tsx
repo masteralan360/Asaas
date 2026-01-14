@@ -6,7 +6,7 @@ import { useTranslation } from 'react-i18next'
 import { useWorkspace } from '@/workspace'
 import { Coins } from 'lucide-react'
 import type { IQDDisplayPreference } from '@/local-db/models'
-import { Settings as SettingsIcon, Database, Cloud, Trash2, RefreshCw, User, Copy, Check, CreditCard, Globe } from 'lucide-react'
+import { Settings as SettingsIcon, Database, Cloud, Trash2, RefreshCw, User, Copy, Check, CreditCard, Globe, Download, AlertCircle } from 'lucide-react'
 import { formatDateTime } from '@/lib/utils'
 import { useTheme } from '@/ui/components/theme-provider'
 import { Moon, Sun, Monitor, Unlock, Server } from 'lucide-react'
@@ -36,6 +36,21 @@ export function Settings() {
     useEffect(() => {
         window.electronAPI?.isElectron().then(setIsElectron).catch(() => setIsElectron(false))
     }, [])
+
+    const [updateStatus, setUpdateStatus] = useState<any>(null)
+
+    useEffect(() => {
+        if (!isElectron) return
+        const removeListener = window.electronAPI?.onUpdateStatus((status) => {
+            setUpdateStatus(status)
+        })
+        return () => removeListener?.()
+    }, [isElectron])
+
+    const handleCheckForUpdates = async () => {
+        setUpdateStatus({ status: 'checking' })
+        await window.electronAPI?.checkForUpdates()
+    }
 
     const handleHotkeyChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const val = e.target.value.slice(0, 1).toLowerCase()
@@ -202,6 +217,60 @@ export function Settings() {
                             </div>
                         </CardContent>
                     </Card>
+
+                    {/* Application Updates (Electron Only) */}
+                    {isElectron && (
+                        <Card>
+                            <CardHeader>
+                                <CardTitle className="flex items-center gap-2">
+                                    <Download className="w-5 h-5" />
+                                    Application Updates
+                                </CardTitle>
+                                <CardDescription>Check for the latest version of the ERP System.</CardDescription>
+                            </CardHeader>
+                            <CardContent className="space-y-4">
+                                <div className="flex items-center justify-between">
+                                    <div className="space-y-1">
+                                        <p className="font-medium">Update Status</p>
+                                        <p className="text-sm text-muted-foreground">
+                                            {updateStatus?.status === 'checking' && 'Checking for updates...'}
+                                            {updateStatus?.status === 'available' && 'Update available! Downloading...'}
+                                            {updateStatus?.status === 'not-available' && 'You are on the latest version.'}
+                                            {updateStatus?.status === 'downloaded' && 'Update downloaded. Restart required.'}
+                                            {updateStatus?.status === 'error' && (
+                                                <span className="flex items-center gap-1 text-red-500">
+                                                    <AlertCircle className="w-4 h-4" />
+                                                    {updateStatus.message}
+                                                </span>
+                                            )}
+                                            {updateStatus?.status === 'progress' && `Downloading: ${Math.round(updateStatus.progress)}%`}
+                                            {!updateStatus && 'Click the button to check for updates.'}
+                                        </p>
+                                    </div>
+                                    <Button
+                                        onClick={handleCheckForUpdates}
+                                        disabled={updateStatus?.status === 'checking' || updateStatus?.status === 'progress'}
+                                        variant="outline"
+                                    >
+                                        {updateStatus?.status === 'checking' ? (
+                                            <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                                        ) : (
+                                            <RefreshCw className="w-4 h-4 mr-2" />
+                                        )}
+                                        Check for Updates
+                                    </Button>
+                                </div>
+                                {updateStatus?.status === 'progress' && (
+                                    <div className="w-full bg-secondary h-2 rounded-full overflow-hidden">
+                                        <div
+                                            className="bg-primary h-full transition-all duration-300"
+                                            style={{ width: `${updateStatus.progress}%` }}
+                                        />
+                                    </div>
+                                )}
+                            </CardContent>
+                        </Card>
+                    )}
 
                     {/* Currency Settings */}
                     <Card>

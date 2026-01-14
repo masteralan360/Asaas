@@ -9,6 +9,13 @@ protocol.registerSchemesAsPrivileged([
     { scheme: 'erpimg', privileges: { standard: true, secure: true, supportFetchAPI: true, bypassCSP: true, stream: true, corsEnabled: true } }
 ]);
 
+// Simple file logger for production debugging
+function logToFile(message) {
+    const logPath = path.join(app.getPath('userData'), 'debug.log');
+    const timestamp = new Date().toISOString();
+    fs.appendFileSync(logPath, `[${timestamp}] ${message}\n`);
+}
+
 // Suppress annoying upstream Electron/Chromium logs
 const originalStderrWrite = process.stderr.write;
 process.stderr.write = function (chunk, encoding, callback) {
@@ -19,25 +26,65 @@ process.stderr.write = function (chunk, encoding, callback) {
     return originalStderrWrite.call(process.stderr, chunk, encoding, callback);
 };
 
+let mainWindow;
+
 function createWindow() {
-    const win = new BrowserWindow({
-        width: 1200,
-        height: 800,
-        autoHideMenuBar: true,
-        webPreferences: {
-            nodeIntegration: false,
-            contextIsolation: true,
-            preload: path.join(__dirname, 'preload.cjs'),
-            webSecurity: true
-        }
-    })
-
+    logToFile('createWindow called');
     const isDev = !app.isPackaged;
+    logToFile(`isDev: ${isDev}`);
 
-    if (isDev) {
-        win.loadURL('http://localhost:5173')
-    } else {
-        win.loadFile(path.join(__dirname, '../dist/index.html'))
+    try {
+        // Use nativeImage for safer icon loading (doesn't throw if file missing)
+        // Switch to .ico as requested (better for Windows)
+        // In dev: ../public/logo.ico
+        // In prod: ../dist/logo.ico (copied by vite)
+        const iconPath = path.join(__dirname, isDev ? '../public/logo.ico' : '../dist/logo.ico');
+        logToFile(`Icon path resolved to: ${iconPath}`);
+
+        let icon = null;
+        try {
+            icon = nativeImage.createFromPath(iconPath);
+            logToFile(`Icon created successfully: ${!icon.isEmpty()}`);
+            if (icon.isEmpty()) {
+                logToFile('WARNING: Icon is empty! Trying png fallback...');
+                const pngPath = path.join(__dirname, isDev ? '../public/logo.png' : '../dist/logo.png');
+                icon = nativeImage.createFromPath(pngPath);
+                logToFile(`PNG fallback created: ${!icon.isEmpty()}`);
+            }
+        } catch (e) {
+            logToFile(`Error creating icon: ${e.message}`);
+        }
+
+        mainWindow = new BrowserWindow({
+            width: 1200,
+            height: 800,
+            icon: icon,
+            autoHideMenuBar: true,
+            webPreferences: {
+                nodeIntegration: false,
+                contextIsolation: true,
+                preload: path.join(__dirname, 'preload.cjs'),
+                webSecurity: true
+            }
+        });
+
+        logToFile('BrowserWindow created');
+
+        if (isDev) {
+            logToFile('Loading URL: http://localhost:5173');
+            mainWindow.loadURL('http://localhost:5173');
+        } else {
+            const filePath = path.join(__dirname, '../dist/index.html');
+            logToFile(`Loading file: ${filePath}`);
+            if (!fs.existsSync(filePath)) {
+                logToFile('CRITICAL: dist/index.html does not exist!');
+            }
+            mainWindow.loadFile(filePath).catch(e => {
+                logToFile(`Error loading file: ${e.message}`);
+            });
+        }
+    } catch (error) {
+        logToFile(`CRITICAL ERROR in createWindow: ${error.message}\n${error.stack}`);
     }
 }
 
@@ -79,30 +126,64 @@ app.whenReady().then(() => {
 
     createWindow()
 
-    // Auto-updater configuration
-    autoUpdater.checkForUpdatesAndNotify()
+    // Auto-updater configuration - Register listeners BEFORE checking
+    autoUpdater.on('checking-for-update', () => {
+        mainWindow?.webContents.send('update-status', { status: 'checking' });
+    })
 
     autoUpdater.on('update-available', () => {
-        console.log('[AutoUpdater] Update available.')
+        mainWindow?.webContents.send('update-status', { status: 'available' });
+    })
+
+    autoUpdater.on('update-not-available', () => {
+        mainWindow?.webContents.send('update-status', { status: 'not-available' });
     })
 
     autoUpdater.on('update-downloaded', () => {
-        console.log('[AutoUpdater] Update downloaded. Will install on quit.')
+        mainWindow?.webContents.send('update-status', { status: 'downloaded' });
         dialog.showMessageBox({
             type: 'info',
             title: 'Update Ready',
-            message: 'A new version of the ERP System has been downloaded. It will be installed the next time you restart the application.',
-            buttons: ['Restart Now', 'Later']
+            message: 'A new version of the ERP System has been downloaded. Restart now to install?',
+            buttons: ['Restart', 'Later']
         }).then((result) => {
             if (result.response === 0) {
-                autoUpdater.quitAndInstall()
+                autoUpdater.quitAndInstall();
             }
-        })
+        });
+    })
+
+    autoUpdater.on('download-progress', (progressObj) => {
+        mainWindow?.webContents.send('update-status', {
+            status: 'progress',
+            progress: progressObj.percent
+        });
     })
 
     autoUpdater.on('error', (err) => {
         console.error('[AutoUpdater] Error:', err)
+        mainWindow?.webContents.send('update-status', {
+            status: 'error',
+            message: err.message
+        });
     })
+
+    // Check for updates on startup (with slight delay to ensure window is ready)
+    setTimeout(() => {
+        autoUpdater.checkForUpdates();
+    }, 3000);
+
+    // IPC to trigger manual check
+    ipcMain.handle('check-for-updates', () => {
+        if (process.env.NODE_ENV === 'development') {
+            // Simulate check in dev
+            setTimeout(() => {
+                mainWindow?.webContents.send('update-status', { status: 'not-available', message: 'Dev mode: No updates.' });
+            }, 1000);
+            return;
+        }
+        autoUpdater.checkForUpdates();
+    });
 
     app.on('activate', () => {
         if (BrowserWindow.getAllWindows().length === 0) {
@@ -144,3 +225,26 @@ ipcMain.handle('select-product-image', async (event, workspaceId) => {
 });
 
 ipcMain.handle('is-electron', () => true);
+
+ipcMain.handle('fetch-exchange-rate', async (event, url) => {
+    return new Promise((resolve, reject) => {
+        const request = net.request(url);
+        request.on('response', (response) => {
+            let data = '';
+            response.on('data', (chunk) => {
+                data += chunk;
+            });
+            response.on('end', () => {
+                if (response.statusCode >= 200 && response.statusCode < 300) {
+                    resolve(data);
+                } else {
+                    reject(new Error(`HTTP Error ${response.statusCode}`));
+                }
+            });
+        });
+        request.on('error', (error) => {
+            reject(error);
+        });
+        request.end();
+    });
+});
