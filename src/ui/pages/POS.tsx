@@ -61,6 +61,31 @@ export function POS() {
         return Number(localStorage.getItem('scanner_scan_delay')) || 2500
     })
 
+    // Keyboard Navigation State (Electron Only)
+    const [isElectron, setIsElectron] = useState(false)
+    const [focusedSection, setFocusedSection] = useState<'grid' | 'cart'>('grid')
+    const [focusedProductIndex, setFocusedProductIndex] = useState<number>(-1)
+    const [focusedCartIndex, setFocusedCartIndex] = useState<number>(-1)
+    const searchInputRef = useRef<HTMLInputElement>(null)
+    const productRefs = useRef<(HTMLButtonElement | null)[]>([])
+    const cartItemRefs = useRef<(HTMLDivElement | null)[]>([])
+    const lastEnterTime = useRef<number>(0)
+
+    useEffect(() => {
+        window.electronAPI?.isElectron().then((res) => {
+            setIsElectron(res)
+            if (res) setFocusedProductIndex(0) // Default first item focus on Electron
+        })
+    }, [])
+
+    // Calculate grid columns for ArrowUp/Down navigation
+    const getGridColumns = () => {
+        const width = window.innerWidth
+        if (width >= 1280) return 4 // xl
+        if (width >= 1024) return 3 // lg
+        return 2 // default/md
+    }
+
     // Negotiated Price Edit State
     const [editingPriceItemId, setEditingPriceItemId] = useState<string | null>(null)
     const [negotiatedPriceInput, setNegotiatedPriceInput] = useState('')
@@ -165,6 +190,163 @@ export function POS() {
         return sum + (converted * item.quantity)
     }, 0)
     const totalItems = cart.reduce((sum, item) => sum + item.quantity, 0)
+
+    // Keyboard Navigation Effect
+    useEffect(() => {
+        if (!isElectron) return
+
+        const handleNavigation = (e: KeyboardEvent) => {
+            // Disable if modals are open
+            if (isSkuModalOpen || isBarcodeModalOpen || editingPriceItemId) return
+
+            // If search is focused, only handle Escape and Enter
+            if (document.activeElement === searchInputRef.current) {
+                if (e.key === 'Escape') {
+                    searchInputRef.current?.blur()
+                    setFocusedSection('grid')
+                    setFocusedProductIndex(0)
+                    e.preventDefault()
+                } else if (e.key === 'Enter') {
+                    searchInputRef.current?.blur()
+                    setFocusedSection('grid')
+                    setFocusedProductIndex(0)
+                    e.preventDefault()
+                }
+                return
+            }
+
+            // Handle letter/number keys to auto-focus search
+            if (e.key.length === 1 && /^[a-zA-Z0-9]$/.test(e.key) && !e.ctrlKey && !e.altKey && !e.metaKey) {
+                searchInputRef.current?.focus()
+                // The key will be typed automatically since we're focusing
+                return
+            }
+
+            const cols = getGridColumns()
+
+            // CART SECTION NAVIGATION
+            if (focusedSection === 'cart') {
+                switch (e.key) {
+                    case 'ArrowUp':
+                        e.preventDefault()
+                        setFocusedCartIndex(prev => Math.max(0, prev - 1))
+                        break
+                    case 'ArrowDown':
+                        e.preventDefault()
+                        setFocusedCartIndex(prev => Math.min(cart.length - 1, prev + 1))
+                        break
+                    case 'ArrowRight':
+                        e.preventDefault()
+                        if (focusedCartIndex >= 0 && focusedCartIndex < cart.length) {
+                            updateQuantity(cart[focusedCartIndex].product_id, 1)
+                        }
+                        break
+                    case 'ArrowLeft':
+                        e.preventDefault()
+                        if (focusedCartIndex >= 0 && focusedCartIndex < cart.length) {
+                            updateQuantity(cart[focusedCartIndex].product_id, -1)
+                        }
+                        break
+                    case 'Escape':
+                        e.preventDefault()
+                        if (focusedCartIndex >= 0 && focusedCartIndex < cart.length) {
+                            removeFromCart(cart[focusedCartIndex].product_id)
+                            // Adjust index if needed
+                            if (focusedCartIndex >= cart.length - 1) {
+                                setFocusedCartIndex(Math.max(0, cart.length - 2))
+                            }
+                        }
+                        break
+                    case 'Enter':
+                        e.preventDefault()
+                        const now = Date.now()
+                        if (now - lastEnterTime.current < 500) {
+                            // Double Enter - checkout
+                            handleCheckout()
+                            lastEnterTime.current = 0
+                        } else {
+                            lastEnterTime.current = now
+                        }
+                        break
+                    case 'Tab':
+                        e.preventDefault()
+                        setFocusedSection('grid')
+                        setFocusedCartIndex(-1)
+                        if (focusedProductIndex < 0) setFocusedProductIndex(0)
+                        break
+                }
+                // Scroll cart item into view
+                if (focusedCartIndex >= 0 && cartItemRefs.current[focusedCartIndex]) {
+                    cartItemRefs.current[focusedCartIndex]?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+                }
+                return
+            }
+
+            // GRID SECTION NAVIGATION
+            let newIndex = focusedProductIndex
+
+            switch (e.key) {
+                case 'ArrowRight':
+                    newIndex = Math.min(filteredProducts.length - 1, focusedProductIndex + 1)
+                    e.preventDefault()
+                    break
+                case 'ArrowLeft':
+                    newIndex = Math.max(0, focusedProductIndex - 1)
+                    e.preventDefault()
+                    break
+                case 'ArrowDown':
+                    newIndex = Math.min(filteredProducts.length - 1, focusedProductIndex + cols)
+                    e.preventDefault()
+                    break
+                case 'ArrowUp':
+                    newIndex = Math.max(0, focusedProductIndex - cols)
+                    e.preventDefault()
+                    break
+                case ' ': // Space to Add
+                case 'Enter':
+                    if (focusedProductIndex >= 0 && focusedProductIndex < filteredProducts.length) {
+                        addToCart(filteredProducts[focusedProductIndex])
+                        e.preventDefault()
+
+                        // Visual feedback animation on the button
+                        const btn = productRefs.current[focusedProductIndex]
+                        if (btn) {
+                            btn.classList.add('ring-4', 'ring-primary/50', 'scale-95')
+                            setTimeout(() => btn.classList.remove('ring-4', 'ring-primary/50', 'scale-95'), 150)
+                        }
+                    }
+                    break
+                case 'Tab':
+                    e.preventDefault()
+                    // Switch to cart section
+                    if (cart.length > 0) {
+                        setFocusedSection('cart')
+                        setFocusedCartIndex(0)
+                        setFocusedProductIndex(-1)
+                    }
+                    break
+                case 'Escape':
+                    // Clear search if any
+                    if (search) {
+                        setSearch('')
+                        e.preventDefault()
+                    }
+                    break
+            }
+
+            if (newIndex !== focusedProductIndex) {
+                setFocusedProductIndex(newIndex)
+                // Scroll into view
+                const el = productRefs.current[newIndex]
+                if (el) {
+                    el.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+                }
+            }
+        }
+
+        window.addEventListener('keydown', handleNavigation)
+        return () => window.removeEventListener('keydown', handleNavigation)
+    }, [isElectron, isSkuModalOpen, isBarcodeModalOpen, editingPriceItemId, focusedProductIndex, focusedSection, focusedCartIndex, filteredProducts, cart, search])
 
     // Hotkey listener
     useEffect(() => {
@@ -659,7 +841,9 @@ export function POS() {
                             placeholder={t('pos.searchPlaceholder') || "Search products..."}
                             value={search}
                             onChange={(e) => setSearch(e.target.value)}
+                            ref={searchInputRef}
                             className="pl-10 h-12 text-lg"
+                            tabIndex={isElectron ? -1 : 0}
                         />
                     </div>
                     <div className="flex gap-2">
@@ -668,6 +852,7 @@ export function POS() {
                             className="h-12 w-12 rounded-xl relative overflow-hidden"
                             onClick={() => setIsSkuModalOpen(true)}
                             title="Scan SKU (Hotkey: P)"
+                            tabIndex={isElectron ? -1 : 0}
                         >
                             <Barcode className="w-5 h-5" />
                         </Button>
@@ -676,6 +861,7 @@ export function POS() {
                             className="h-12 px-4 rounded-xl relative flex items-center gap-2"
                             onClick={() => setIsBarcodeModalOpen(true)}
                             title="Barcode Scanner (Hotkey: K)"
+                            tabIndex={isElectron ? -1 : 0}
                         >
                             <Camera className="w-5 h-5" />
                             <div className={`w-2.5 h-2.5 rounded-full ${isScannerAutoEnabled ? 'bg-emerald-500' : 'bg-red-500'} border border-background shadow-sm`} />
@@ -685,15 +871,18 @@ export function POS() {
 
                 <div className="flex-1 overflow-y-auto pr-2">
                     <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                        {filteredProducts.map((product) => (
+                        {filteredProducts.map((product, index) => (
                             <button
                                 key={product.id}
+                                ref={el => productRefs.current[index] = el}
                                 onClick={() => addToCart(product)}
                                 disabled={product.quantity <= 0}
-                                className={`
-                                    bg-card hover:bg-accent/50 transition-colors p-4 rounded-xl border border-border text-left flex flex-col gap-2 relative overflow-hidden group
-                                    ${product.quantity <= 0 ? 'opacity-60 cursor-not-allowed' : ''}
-                                `}
+                                className={cn(
+                                    "bg-card hover:bg-accent/50 transition-all duration-200 p-4 rounded-xl border border-border text-left flex flex-col gap-2 relative overflow-hidden group outline-none",
+                                    product.quantity <= 0 ? 'opacity-60 cursor-not-allowed' : '',
+                                    // Keyboard focus highlight (Electron only)
+                                    (isElectron && focusedSection === 'grid' && focusedProductIndex === index) ? "ring-2 ring-primary ring-offset-2 ring-offset-background scale-[1.02] shadow-lg z-10 box-shadow-[0_0_0_2px_hsl(var(--primary))]" : ""
+                                )}
                             >
                                 <div className="absolute top-2 right-2 bg-primary/10 text-primary px-2 py-0.5 rounded text-xs font-bold">
                                     {product.quantity}
@@ -750,7 +939,7 @@ export function POS() {
                                 <p>Cart is empty</p>
                             </div>
                         ) : (
-                            cart.map((item) => {
+                            cart.map((item, index) => {
                                 const productCurrency = products.find(p => p.id === item.product_id)?.currency || 'usd'
                                 const effectivePrice = item.negotiated_price ?? item.price
                                 const convertedPrice = convertPrice(effectivePrice, productCurrency, settlementCurrency)
@@ -758,7 +947,14 @@ export function POS() {
                                 const hasNegotiated = item.negotiated_price !== undefined
 
                                 return (
-                                    <div key={item.product_id} className="bg-background border border-border p-3 rounded-lg flex gap-3 group">
+                                    <div
+                                        key={item.product_id}
+                                        ref={el => cartItemRefs.current[index] = el}
+                                        className={cn(
+                                            "bg-background border border-border p-3 rounded-lg flex gap-3 group transition-all duration-200 scroll-m-2",
+                                            (isElectron && focusedSection === 'cart' && focusedCartIndex === index) ? "ring-2 ring-primary ring-offset-2 ring-offset-background border-primary/50 shadow-md transform scale-[1.01]" : ""
+                                        )}
+                                    >
                                         <div className="flex-1 min-w-0">
                                             <div className="font-medium truncate">{item.name}</div>
                                             <div className="flex flex-col gap-0.5">
