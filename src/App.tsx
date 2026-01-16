@@ -2,7 +2,7 @@ import { Route, Switch, Router, Link } from 'wouter'
 import { useHashLocation } from '@/hooks/useHashLocation'
 import { AuthProvider, ProtectedRoute, GuestRoute } from '@/auth'
 import { WorkspaceProvider } from '@/workspace'
-import { Layout, Toaster } from '@/ui/components'
+import { Layout, Toaster, TitleBar } from '@/ui/components'
 import { lazy, Suspense, useEffect } from 'react'
 
 // Lazy load pages
@@ -59,7 +59,8 @@ import { ExchangeRateProvider } from '@/context/ExchangeRateContext'
 import { isSupabaseConfigured } from '@/auth/supabase'
 
 function App() {
-    const isElectron = /electron/i.test(navigator.userAgent)
+    // @ts-ignore
+    const isElectron = !!window.__TAURI_INTERNALS__;
 
     // Hard Guard for Electron Connection Configuration
     // If we are in Electron and Supabase is not configured, we catch it here
@@ -74,157 +75,160 @@ function App() {
 
     useEffect(() => {
         if (isElectron) {
-            console.log('[Electron] Pre-loading all pages for snappy navigation...')
+            console.log('[Tauri] Pre-loading all pages for snappy navigation...')
             pages.forEach(load => load())
         }
     }, [])
 
     return (
-        <AuthProvider>
-            <WorkspaceProvider>
-                <ExchangeRateProvider>
-                    <Suspense fallback={<LoadingState />}>
-                        <Router hook={useHashLocation}>
-                            <Switch>
-                                {/* Guest Routes */}
-                                <Route path="/login">
-                                    <GuestRoute>
-                                        <Login />
-                                    </GuestRoute>
-                                </Route>
-                                <Route path="/register">
-                                    <GuestRoute>
-                                        <Register />
-                                    </GuestRoute>
-                                </Route>
+        <>
+            <AuthProvider>
+                <WorkspaceProvider>
+                    <TitleBar />
+                    <ExchangeRateProvider>
+                        <Suspense fallback={<LoadingState />}>
+                            <Router hook={useHashLocation}>
+                                <Switch>
+                                    {/* Guest Routes */}
+                                    <Route path="/login">
+                                        <GuestRoute>
+                                            <Login />
+                                        </GuestRoute>
+                                    </Route>
+                                    <Route path="/register">
+                                        <GuestRoute>
+                                            <Register />
+                                        </GuestRoute>
+                                    </Route>
 
-                                {/* Locked Workspace Route - no layout, standalone page */}
-                                <Route path="/locked-workspace">
-                                    <LockedWorkspace />
-                                </Route>
+                                    {/* Locked Workspace Route - no layout, standalone page */}
+                                    <Route path="/locked-workspace">
+                                        <LockedWorkspace />
+                                    </Route>
 
-                                {/* Connection Configuration Route - Electron Guard */}
-                                <Route path="/connection-configuration">
-                                    <ConnectionConfiguration />
-                                </Route>
+                                    {/* Connection Configuration Route - Electron Guard */}
+                                    <Route path="/connection-configuration">
+                                        <ConnectionConfiguration />
+                                    </Route>
 
-                                {/* Protected Routes */}
-                                <Route path="/">
-                                    <ProtectedRoute>
-                                        <Layout>
-                                            <Dashboard />
-                                        </Layout>
-                                    </ProtectedRoute>
-                                </Route>
-                                <Route path="/pos">
-                                    <ProtectedRoute allowedRoles={['admin', 'staff']} requiredFeature="allow_pos">
-                                        <Layout>
-                                            <POS />
-                                        </Layout>
-                                    </ProtectedRoute>
-                                </Route>
-                                <Route path="/sales">
-                                    <ProtectedRoute>
-                                        <Layout>
-                                            <Sales />
-                                        </Layout>
-                                    </ProtectedRoute>
-                                </Route>
-                                <Route path="/revenue">
-                                    <ProtectedRoute allowedRoles={['admin']}>
-                                        <Layout>
-                                            <Revenue />
-                                        </Layout>
-                                    </ProtectedRoute>
-                                </Route>
-                                <Route path="/performance">
-                                    <ProtectedRoute allowedRoles={['admin', 'staff', 'viewer']}>
-                                        <Layout>
-                                            <TeamPerformance />
-                                        </Layout>
-                                    </ProtectedRoute>
-                                </Route>
-                                <Route path="/products">
-                                    <ProtectedRoute>
-                                        <Layout>
-                                            <Products />
-                                        </Layout>
-                                    </ProtectedRoute>
-                                </Route>
-                                <Route path="/customers">
-                                    <ProtectedRoute requiredFeature="allow_customers">
-                                        <Layout>
-                                            <Customers />
-                                        </Layout>
-                                    </ProtectedRoute>
-                                </Route>
-                                <Route path="/orders">
-                                    <ProtectedRoute requiredFeature="allow_orders">
-                                        <Layout>
-                                            <Orders />
-                                        </Layout>
-                                    </ProtectedRoute>
-                                </Route>
+                                    {/* Protected Routes */}
+                                    <Route path="/">
+                                        <ProtectedRoute>
+                                            <Layout>
+                                                <Dashboard />
+                                            </Layout>
+                                        </ProtectedRoute>
+                                    </Route>
+                                    <Route path="/pos">
+                                        <ProtectedRoute allowedRoles={['admin', 'staff']} requiredFeature="allow_pos">
+                                            <Layout>
+                                                <POS />
+                                            </Layout>
+                                        </ProtectedRoute>
+                                    </Route>
+                                    <Route path="/sales">
+                                        <ProtectedRoute>
+                                            <Layout>
+                                                <Sales />
+                                            </Layout>
+                                        </ProtectedRoute>
+                                    </Route>
+                                    <Route path="/revenue">
+                                        <ProtectedRoute allowedRoles={['admin']}>
+                                            <Layout>
+                                                <Revenue />
+                                            </Layout>
+                                        </ProtectedRoute>
+                                    </Route>
+                                    <Route path="/performance">
+                                        <ProtectedRoute allowedRoles={['admin', 'staff', 'viewer']}>
+                                            <Layout>
+                                                <TeamPerformance />
+                                            </Layout>
+                                        </ProtectedRoute>
+                                    </Route>
+                                    <Route path="/products">
+                                        <ProtectedRoute>
+                                            <Layout>
+                                                <Products />
+                                            </Layout>
+                                        </ProtectedRoute>
+                                    </Route>
+                                    <Route path="/customers">
+                                        <ProtectedRoute requiredFeature="allow_customers">
+                                            <Layout>
+                                                <Customers />
+                                            </Layout>
+                                        </ProtectedRoute>
+                                    </Route>
+                                    <Route path="/orders">
+                                        <ProtectedRoute requiredFeature="allow_orders">
+                                            <Layout>
+                                                <Orders />
+                                            </Layout>
+                                        </ProtectedRoute>
+                                    </Route>
 
-                                <Route path="/invoices">
-                                    <ProtectedRoute requiredFeature="allow_invoices">
-                                        <Layout>
-                                            <Invoices />
-                                        </Layout>
-                                    </ProtectedRoute>
-                                </Route>
-                                <Route path="/currency-converter">
-                                    <ProtectedRoute allowedRoles={['admin', 'staff']}>
-                                        <Layout>
-                                            <CurrencyConverter />
-                                        </Layout>
-                                    </ProtectedRoute>
-                                </Route>
-                                <Route path="/members">
-                                    <ProtectedRoute allowedRoles={['admin']}>
-                                        <Layout>
-                                            <Members />
-                                        </Layout>
-                                    </ProtectedRoute>
-                                </Route>
-                                <Route path="/workspace-registration">
-                                    <ProtectedRoute allowKicked={true}>
-                                        <WorkspaceRegistration />
-                                    </ProtectedRoute>
-                                </Route>
-                                <Route path="/settings">
-                                    <ProtectedRoute allowedRoles={['admin']}>
-                                        <Layout>
-                                            <Settings />
-                                        </Layout>
-                                    </ProtectedRoute>
-                                </Route>
-                                <Route path="/admin">
-                                    <Admin />
-                                </Route>
-                                <Route path="/workspace-configuration">
-                                    <ProtectedRoute allowedRoles={['admin']}>
-                                        <WorkspaceConfiguration />
-                                    </ProtectedRoute>
-                                </Route>
+                                    <Route path="/invoices">
+                                        <ProtectedRoute requiredFeature="allow_invoices">
+                                            <Layout>
+                                                <Invoices />
+                                            </Layout>
+                                        </ProtectedRoute>
+                                    </Route>
+                                    <Route path="/currency-converter">
+                                        <ProtectedRoute allowedRoles={['admin', 'staff']}>
+                                            <Layout>
+                                                <CurrencyConverter />
+                                            </Layout>
+                                        </ProtectedRoute>
+                                    </Route>
+                                    <Route path="/members">
+                                        <ProtectedRoute allowedRoles={['admin']}>
+                                            <Layout>
+                                                <Members />
+                                            </Layout>
+                                        </ProtectedRoute>
+                                    </Route>
+                                    <Route path="/workspace-registration">
+                                        <ProtectedRoute allowKicked={true}>
+                                            <WorkspaceRegistration />
+                                        </ProtectedRoute>
+                                    </Route>
+                                    <Route path="/settings">
+                                        <ProtectedRoute allowedRoles={['admin']}>
+                                            <Layout>
+                                                <Settings />
+                                            </Layout>
+                                        </ProtectedRoute>
+                                    </Route>
+                                    <Route path="/admin">
+                                        <Admin />
+                                    </Route>
+                                    <Route path="/workspace-configuration">
+                                        <ProtectedRoute allowedRoles={['admin']}>
+                                            <WorkspaceConfiguration />
+                                        </ProtectedRoute>
+                                    </Route>
 
-                                {/* 404 */}
-                                <Route>
-                                    <div className="min-h-screen flex items-center justify-center bg-background">
-                                        <div className="text-center">
-                                            <h1 className="text-6xl font-bold gradient-text mb-4">404</h1>
-                                            <p className="text-muted-foreground mb-4">Page not found</p>
-                                            <Link href="/" className="text-primary hover:underline">Go home</Link>
+                                    {/* 404 */}
+                                    <Route>
+                                        <div className="min-h-screen flex items-center justify-center bg-background">
+                                            <div className="text-center">
+                                                <h1 className="text-6xl font-bold gradient-text mb-4">404</h1>
+                                                <p className="text-muted-foreground mb-4">Page not found</p>
+                                                <Link href="/" className="text-primary hover:underline">Go home</Link>
+                                            </div>
                                         </div>
-                                    </div>
-                                </Route>
-                            </Switch>
-                        </Router>
-                    </Suspense>
-                </ExchangeRateProvider>
-            </WorkspaceProvider>
-            <Toaster />
-        </AuthProvider >
+                                    </Route>
+                                </Switch>
+                            </Router>
+                        </Suspense>
+                    </ExchangeRateProvider>
+                </WorkspaceProvider>
+                <Toaster />
+            </AuthProvider >
+        </>
     )
 }
 

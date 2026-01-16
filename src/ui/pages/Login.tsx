@@ -33,8 +33,11 @@ export function Login() {
         }
     }
 
+    // @ts-ignore
+    const isTauri = !!window.__TAURI_INTERNALS__
+
     return (
-        <div className="min-h-screen flex items-center justify-center bg-background p-4 relative">
+        <div className={`min-h-screen flex items-center justify-center bg-background p-4 relative ${isTauri ? 'pt-14' : ''}`}>
             {/* Theme & Language Switchers */}
             <div className="absolute top-4 right-4 flex items-center gap-2">
                 <LanguageSwitcher />

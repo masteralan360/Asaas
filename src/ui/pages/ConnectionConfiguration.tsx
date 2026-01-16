@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, Button, Input, Label } from '@/ui/components'
 import { setAppSetting } from '@/local-db/settings'
 import { Server, Globe, Shield, RefreshCw, AlertCircle } from 'lucide-react'
+import { relaunch } from '@tauri-apps/plugin-process';
 
 export function ConnectionConfiguration() {
     const [url, setUrl] = useState('')
@@ -29,10 +30,7 @@ export function ConnectionConfiguration() {
             await setAppSetting('supabase_anon_key', anonKey.trim())
 
             // Reload the app to apply changes
-            setTimeout(() => {
-                window.location.reload()
-                window.location.href = '#/' // Go back to root
-            }, 1000)
+            await relaunch();
         } catch (err) {
             setError('Failed to save settings. Please try again.')
             setIsSaving(false)

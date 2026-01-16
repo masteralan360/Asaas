@@ -36,6 +36,7 @@ import {
 } from 'lucide-react'
 import { BarcodeScanner } from 'react-barcode-scanner'
 import 'react-barcode-scanner/polyfill'
+import { convertFileSrc } from '@tauri-apps/api/core';
 
 export function POS() {
     const { toast } = useToast()
@@ -72,10 +73,10 @@ export function POS() {
     const lastEnterTime = useRef<number>(0)
 
     useEffect(() => {
-        window.electronAPI?.isElectron().then((res) => {
-            setIsElectron(res)
-            if (res) setFocusedProductIndex(0) // Default first item focus on Electron
-        })
+        // @ts-ignore
+        const isTauri = !!window.__TAURI_INTERNALS__;
+        setIsElectron(isTauri);
+        if (isTauri) setFocusedProductIndex(0);
     }, [])
 
     // Calculate grid columns for ArrowUp/Down navigation
@@ -103,10 +104,8 @@ export function POS() {
 
     const getDisplayImageUrl = (url?: string) => {
         if (!url) return '';
-        if (url.match(/^[a-zA-Z]:[/\\]|^[/\\]|^\w+:/) && !url.startsWith('http') && !url.startsWith('erpimg://')) {
-            return `erpimg:///${url.replace(/\\/g, '/')}`;
-        }
-        return url;
+        if (url.startsWith('http')) return url;
+        return convertFileSrc(url);
     }
 
     // Exchange Rate for advisory display and calculations

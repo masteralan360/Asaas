@@ -127,3 +127,4 @@ Desktop.ini
 *.pem
 github
 docs/My whole project conversation before.md
+.env.example

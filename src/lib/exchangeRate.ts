@@ -143,17 +143,34 @@ export async function fetchTRYToIQDRate(primarySource?: ExchangeRateSource): Pro
 export type ExchangePath = 'USD-to-IQD' | 'USD-to-EUR' | 'EUR-to-IQD' | 'USD-to-TRY' | 'TRY-to-IQD';
 
 // Helper to handle fetching in both Electron (via IPC) and Web (via Proxy)
+import { fetch as tauriFetch } from '@tauri-apps/plugin-http';
+
+// Helper to handle fetching in both Tauri (Native HTTP) and Web (via Proxy)
 async function fetchUrl(url: string, isApiProxy = false): Promise<string> {
-    // If in Electron, use the IPC bridge to bypass CORS
-    if (window.electronAPI) {
-        // For Electron, we need the full URL, not the proxy path
+    // If in Tauri, use the Native HTTP client to bypass CORS
+    // @ts-ignore
+    if (window.__TAURI_INTERNALS__) {
         let targetUrl = url;
         if (isApiProxy) {
             if (url.includes('api-xeiqd')) targetUrl = 'https://xeiqd.com' + url.replace('/api-xeiqd', '');
             else if (url.includes('api-forexfy')) targetUrl = 'https://forexfy.app' + url.replace('/api-forexfy', '');
         }
-        console.log(`[ExchangeRate] Electron detected, fulfilling via IPC: ${targetUrl}`);
-        return await window.electronAPI.fetchExchangeRate(targetUrl);
+        console.log(`[ExchangeRate] Tauri detected, fulfilling via Native HTTP: ${targetUrl}`);
+
+        try {
+            const response = await tauriFetch(targetUrl, {
+                method: 'GET',
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                }
+            });
+
+            if (!response.ok) throw new Error(`HTTP Error ${response.status}`);
+            return await response.text();
+        } catch (e) {
+            console.error('[ExchangeRate] Tauri fetch failed:', e);
+            throw e;
+        }
     }
 
     // Web Mode (use standard fetch which hits Vite proxy)

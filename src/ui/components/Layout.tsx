@@ -109,13 +109,15 @@ export function Layout({ children }: LayoutProps) {
         ] : []),
     ]
 
+    // @ts-ignore
+    const isTauri = !!window.__TAURI_INTERNALS__
 
     return (
-        <div className="min-h-screen bg-background">
+        <div className={cn("min-h-screen bg-background", isTauri && "pt-10")}>
             {/* Mobile sidebar backdrop */}
             {mobileSidebarOpen && (
                 <div
-                    className="fixed inset-0 z-40 bg-black/50 lg:hidden"
+                    className={cn("fixed inset-0 z-40 bg-black/50 lg:hidden", isTauri && "top-10")}
                     onClick={() => setMobileSidebarOpen(false)}
                 />
             )}
@@ -123,8 +125,9 @@ export function Layout({ children }: LayoutProps) {
             {/* Sidebar */}
             <aside
                 className={cn(
-                    'fixed inset-y-0 z-50 w-64 transform transition-transform duration-300 ease-in-out',
+                    'fixed z-50 w-64 transform transition-transform duration-300 ease-in-out',
                     'glass sidebar-gradient shadow-2xl',
+                    isTauri ? 'top-10 bottom-0' : 'inset-y-0',
                     // Desktop state
                     desktopSidebarOpen ? 'lg:translate-x-0 lg:rtl:translate-x-0' : 'lg:-translate-x-full lg:rtl:translate-x-full',
                     // Positioning

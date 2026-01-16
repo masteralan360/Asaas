@@ -12,6 +12,8 @@ import { useTheme } from '@/ui/components/theme-provider'
 import { Moon, Sun, Monitor, Unlock, Server } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import { getAppSettingSync, setAppSetting } from '@/local-db/settings'
+import { check } from '@tauri-apps/plugin-updater';
+import { relaunch } from '@tauri-apps/plugin-process';
 
 export function Settings() {
     const { user, signOut, isSupabaseConfigured } = useAuth()
@@ -43,22 +45,55 @@ export function Settings() {
     /* --- Connection Settings (Web) State End --- */
 
     useEffect(() => {
-        window.electronAPI?.isElectron().then(setIsElectron).catch(() => setIsElectron(false))
+        // @ts-ignore
+        setIsElectron(!!window.__TAURI_INTERNALS__)
     }, [])
 
     const [updateStatus, setUpdateStatus] = useState<any>(null)
 
-    useEffect(() => {
-        if (!isElectron) return
-        const removeListener = window.electronAPI?.onUpdateStatus((status) => {
-            setUpdateStatus(status)
-        })
-        return () => removeListener?.()
-    }, [isElectron])
+    // Tauri updater doesn't use event listeners for status in the same way, logic is inside handleCheckForUpdates
 
     const handleCheckForUpdates = async () => {
+        if (updateStatus?.status === 'downloaded') {
+            await relaunch();
+            return;
+        }
+
         setUpdateStatus({ status: 'checking' })
-        await window.electronAPI?.checkForUpdates()
+        try {
+            const update = await check();
+            if (update && update.available) {
+                setUpdateStatus({ status: 'available', version: update.version });
+
+                let downloaded = 0;
+                let contentLength = 0;
+
+                await update.downloadAndInstall((event) => {
+                    switch (event.event) {
+                        case 'Started':
+                            contentLength = event.data.contentLength || 0;
+                            break;
+                        case 'Progress':
+                            downloaded += event.data.chunkLength;
+                            if (contentLength > 0) {
+                                const percent = (downloaded / contentLength) * 100;
+                                setUpdateStatus({ status: 'progress', progress: percent });
+                            }
+                            break;
+                        case 'Finished':
+                            setUpdateStatus({ status: 'downloaded' });
+                            break;
+                    }
+                });
+
+                setUpdateStatus({ status: 'downloaded' });
+            } else {
+                setUpdateStatus({ status: 'not-available' });
+            }
+        } catch (error) {
+            console.error('Update failed:', error);
+            setUpdateStatus({ status: 'error', message: String(error) });
+        }
     }
 
     const handleHotkeyChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -275,10 +310,12 @@ export function Settings() {
                                     >
                                         {updateStatus?.status === 'checking' ? (
                                             <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                                        ) : updateStatus?.status === 'downloaded' ? (
+                                            <RefreshCw className="w-4 h-4 mr-2" />
                                         ) : (
                                             <RefreshCw className="w-4 h-4 mr-2" />
                                         )}
-                                        Check for Updates
+                                        {updateStatus?.status === 'downloaded' ? 'Restart to Apply' : 'Check for Updates'}
                                     </Button>
                                 </div>
                                 {updateStatus?.status === 'progress' && (

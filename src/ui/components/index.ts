@@ -36,6 +36,7 @@ export {
 } from './table'
 export { Textarea } from './textarea'
 export { Layout } from './Layout'
+export { TitleBar } from './TitleBar'
 export { SyncStatusIndicator } from './SyncStatusIndicator'
 export { LanguageSwitcher } from './LanguageSwitcher'
 export { ThemeToggle } from './ThemeToggle'

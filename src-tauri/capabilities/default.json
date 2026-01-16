@@ -1,0 +1,36 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "enables the default permissions",
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "core:default",
+    "core:window:allow-set-title",
+    "core:window:allow-minimize",
+    "core:window:allow-maximize",
+    "core:window:allow-toggle-maximize",
+    "core:window:allow-close",
+    "core:window:allow-start-dragging",
+    "fs:default",
+    {
+      "identifier": "http:default",
+      "allow": [
+        {
+          "url": "https://forexfy.app/*"
+        },
+        {
+          "url": "https://xeiqd.com/*"
+        },
+        {
+          "url": "https://opensheet.elk.sh/*"
+        }
+      ]
+    },
+    "shell:allow-open",
+    "dialog:default",
+    "updater:default",
+    "process:default"
+  ]
+}
