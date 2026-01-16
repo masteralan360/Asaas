@@ -64,7 +64,7 @@ export function Register() {
     return (
         <div className={`min-h-screen flex items-center justify-center bg-background p-4 relative ${isTauri ? 'pt-14' : ''}`}>
             {/* Theme & Language Switchers */}
-            <div className="absolute top-4 right-4 flex items-center gap-2">
+            <div className={`absolute right-4 flex items-center gap-2 ${isTauri ? 'top-14' : 'top-4'}`}>
                 <LanguageSwitcher />
                 <ThemeToggle />
             </div>
