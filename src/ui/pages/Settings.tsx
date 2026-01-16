@@ -1,7 +1,7 @@
 import { useAuth } from '@/auth'
 import { useSyncStatus, clearQueue } from '@/sync'
 import { clearDatabase } from '@/local-db'
-import { Card, CardContent, CardHeader, CardTitle, CardDescription, Button, Label, LanguageSwitcher, Input, CurrencySelector, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Tabs, TabsList, TabsTrigger, TabsContent, Switch } from '@/ui/components'
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, Button, Label, LanguageSwitcher, Input, CurrencySelector, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Tabs, TabsList, TabsTrigger, TabsContent, Switch, Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/ui/components'
 import { useTranslation } from 'react-i18next'
 import { useWorkspace } from '@/workspace'
 import { Coins } from 'lucide-react'
@@ -32,6 +32,15 @@ export function Settings() {
     const [passkey, setPasskey] = useState('')
     const [customUrl, setCustomUrl] = useState(getAppSettingSync('supabase_url') || '')
     const [customKey, setCustomKey] = useState(getAppSettingSync('supabase_anon_key') || '')
+
+    /* --- Connection Settings (Web) State Start --- */
+    const [isWebConnectionUnlocked, setIsWebConnectionUnlocked] = useState(false)
+    const [isUnlockModalOpen, setIsUnlockModalOpen] = useState(false)
+    const [webPasskeyInput, setWebPasskeyInput] = useState('')
+
+    const activeSupabaseUrl = customUrl || import.meta.env.VITE_SUPABASE_URL || ''
+    const activeSupabaseKey = customKey || import.meta.env.VITE_SUPABASE_ANON_KEY || ''
+    /* --- Connection Settings (Web) State End --- */
 
     useEffect(() => {
         window.electronAPI?.isElectron().then(setIsElectron).catch(() => setIsElectron(false))
@@ -109,6 +118,18 @@ export function Settings() {
             alert("Invalid Passkey")
         }
     }
+
+    /* --- Connection Settings (Web) Handlers Start --- */
+    const handleUnlockWebConnection = () => {
+        if (webPasskeyInput === "Q9FZ7bM4K8xYtH6PVa5R2CJDW") {
+            setIsWebConnectionUnlocked(true)
+            setIsUnlockModalOpen(false)
+            setWebPasskeyInput('')
+        } else {
+            alert("Invalid Passkey")
+        }
+    }
+    /* --- Connection Settings (Web) Handlers End --- */
 
     const handleSaveConnection = async () => {
         if (confirm("Changing connection settings will reload the app. Continue?")) {
@@ -603,69 +624,157 @@ export function Settings() {
 
                     {/* Connection Settings (Electron Only) */}
                     {isElectron && (
-                        <Card className="border-primary/20 bg-primary/5">
-                            <CardHeader>
-                                <CardTitle className="flex items-center gap-2">
-                                    <Server className="w-5 h-5 text-primary" />
-                                    Connection Settings
-                                </CardTitle>
-                                <CardDescription>
-                                    Override the default Supabase instance. Requires master passkey.
-                                </CardDescription>
-                            </CardHeader>
-                            <CardContent>
-                                {!isConnectionSettingsUnlocked ? (
+                        <>
+                            {/* --- Connection Settings (Web) Section Start --- */}
+                            <Card className="border-muted bg-muted/5">
+                                <CardHeader>
+                                    <CardTitle className="flex items-center gap-2">
+                                        <Globe className="w-5 h-5 text-muted-foreground" />
+                                        System Connection Info (Read-only)
+                                    </CardTitle>
+                                    <CardDescription>
+                                        Active Supabase instance information.
+                                    </CardDescription>
+                                </CardHeader>
+                                <CardContent>
                                     <div className="space-y-4">
+                                        <div className="space-y-4 transition-all duration-300">
+                                            <div className="grid gap-4">
+                                                <div className="space-y-2">
+                                                    <Label className="text-muted-foreground">Supabase Project URL</Label>
+                                                    <Input
+                                                        readOnly
+                                                        value={isWebConnectionUnlocked ? activeSupabaseUrl : "https://••••••••••••••••••••"}
+                                                        className="bg-secondary/30 font-mono text-xs"
+                                                    />
+                                                </div>
+                                                <div className="space-y-2">
+                                                    <Label className="text-muted-foreground">Supabase Anon Key</Label>
+                                                    <Input
+                                                        readOnly
+                                                        value={isWebConnectionUnlocked ? activeSupabaseKey : "••••••••••••••••••••••••••••••••"}
+                                                        className="bg-secondary/30 font-mono text-xs"
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {!isWebConnectionUnlocked && (
+                                            <div className="flex flex-col items-center justify-center pt-2">
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    className="gap-2"
+                                                    onClick={() => setIsUnlockModalOpen(true)}
+                                                >
+                                                    <Unlock className="w-4 h-4" />
+                                                    Unlock to View
+                                                </Button>
+                                            </div>
+                                        )}
+                                    </div>
+                                </CardContent>
+                            </Card>
+
+                            <Dialog open={isUnlockModalOpen} onOpenChange={setIsUnlockModalOpen}>
+                                <DialogContent className="sm:max-w-md">
+                                    <DialogHeader>
+                                        <DialogTitle>Unlock Connection Settings</DialogTitle>
+                                        <DialogDescription>
+                                            Please enter the master passkey to view the system configuration.
+                                        </DialogDescription>
+                                    </DialogHeader>
+                                    <div className="flex flex-col gap-4 py-4">
                                         <div className="space-y-2">
                                             <Label>Master Passkey</Label>
-                                            <div className="flex gap-2">
-                                                <Input
-                                                    type="password"
-                                                    value={passkey}
-                                                    onChange={(e) => setPasskey(e.target.value)}
-                                                    placeholder="Enter passkey to unlock..."
-                                                    className="max-w-xs"
-                                                />
-                                                <Button onClick={handleUnlockConnection}>
-                                                    <Unlock className="w-4 h-4 mr-2" />
-                                                    Unlock
+                                            <Input
+                                                type="password"
+                                                autoFocus
+                                                value={webPasskeyInput}
+                                                onChange={(e) => setWebPasskeyInput(e.target.value)}
+                                                placeholder="••••••••••••••••••••"
+                                                onKeyDown={(e) => {
+                                                    if (e.key === 'Enter') handleUnlockWebConnection()
+                                                }}
+                                            />
+                                        </div>
+                                    </div>
+                                    <DialogFooter>
+                                        <Button variant="ghost" onClick={() => setIsUnlockModalOpen(false)}>
+                                            Cancel
+                                        </Button>
+                                        <Button onClick={handleUnlockWebConnection}>
+                                            Unlock Settings
+                                        </Button>
+                                    </DialogFooter>
+                                </DialogContent>
+                            </Dialog>
+                            {/* --- Connection Settings (Web) Section End --- */}
+
+                            <Card className="border-primary/20 bg-primary/5 mt-6">
+                                <CardHeader>
+                                    <CardTitle className="flex items-center gap-2">
+                                        <Server className="w-5 h-5 text-primary" />
+                                        Connection Settings
+                                    </CardTitle>
+                                    <CardDescription>
+                                        Override the default Supabase instance. Requires master passkey.
+                                    </CardDescription>
+                                </CardHeader>
+                                <CardContent>
+                                    {!isConnectionSettingsUnlocked ? (
+                                        <div className="space-y-4">
+                                            <div className="space-y-2">
+                                                <Label>Master Passkey</Label>
+                                                <div className="flex gap-2">
+                                                    <Input
+                                                        type="password"
+                                                        value={passkey}
+                                                        onChange={(e) => setPasskey(e.target.value)}
+                                                        placeholder="Enter passkey to unlock..."
+                                                        className="max-w-xs"
+                                                    />
+                                                    <Button onClick={handleUnlockConnection}>
+                                                        <Unlock className="w-4 h-4 mr-2" />
+                                                        Unlock
+                                                    </Button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="space-y-4 animate-in fade-in slide-in-from-top-2">
+                                            <div className="grid gap-4">
+                                                <div className="space-y-2">
+                                                    <Label>Supabase URL</Label>
+                                                    <Input
+                                                        value={customUrl}
+                                                        onChange={(e) => setCustomUrl(e.target.value)}
+                                                        placeholder="https://your-project.supabase.co"
+                                                    />
+                                                </div>
+                                                <div className="space-y-2">
+                                                    <Label>Supabase Anon Key</Label>
+                                                    <Input
+                                                        type="password"
+                                                        value={customKey}
+                                                        onChange={(e) => setCustomKey(e.target.value)}
+                                                        placeholder="your-anon-key"
+                                                    />
+                                                </div>
+                                            </div>
+                                            <div className="flex gap-2 pt-2">
+                                                <Button onClick={handleSaveConnection}>
+                                                    Save & Reconnect
+                                                </Button>
+                                                <Button variant="outline" onClick={handleResetConnection}>
+                                                    Reset to Default
                                                 </Button>
                                             </div>
                                         </div>
-                                    </div>
-                                ) : (
-                                    <div className="space-y-4 animate-in fade-in slide-in-from-top-2">
-                                        <div className="grid gap-4">
-                                            <div className="space-y-2">
-                                                <Label>Supabase URL</Label>
-                                                <Input
-                                                    value={customUrl}
-                                                    onChange={(e) => setCustomUrl(e.target.value)}
-                                                    placeholder="https://your-project.supabase.co"
-                                                />
-                                            </div>
-                                            <div className="space-y-2">
-                                                <Label>Supabase Anon Key</Label>
-                                                <Input
-                                                    type="password"
-                                                    value={customKey}
-                                                    onChange={(e) => setCustomKey(e.target.value)}
-                                                    placeholder="your-anon-key"
-                                                />
-                                            </div>
-                                        </div>
-                                        <div className="flex gap-2 pt-2">
-                                            <Button onClick={handleSaveConnection}>
-                                                Save & Reconnect
-                                            </Button>
-                                            <Button variant="outline" onClick={handleResetConnection}>
-                                                Reset to Default
-                                            </Button>
-                                        </div>
-                                    </div>
-                                )}
-                            </CardContent>
-                        </Card>
+                                    )}
+                                </CardContent>
+                            </Card>
+                        </>
                     )}
                 </TabsContent>
             </Tabs >

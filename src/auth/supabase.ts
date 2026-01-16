@@ -4,22 +4,25 @@ import { getAppSettingSync } from '@/local-db/settings'
 const supabaseUrl = getAppSettingSync('supabase_url') || import.meta.env.VITE_SUPABASE_URL || ''
 const supabaseAnonKey = getAppSettingSync('supabase_anon_key') || import.meta.env.VITE_SUPABASE_ANON_KEY || ''
 
-// Check if Supabase is configured
 // Check if Supabase is configured with valid values
+// We check against the actual values before fallback
 const isUrlValid = supabaseUrl && supabaseUrl.startsWith('https://') && !supabaseUrl.includes('your_supabase_url')
 const isKeyValid = supabaseAnonKey && !supabaseAnonKey.includes('your_supabase_anon')
 
 export const isSupabaseConfigured = Boolean(isUrlValid && isKeyValid)
 
-// Create Supabase client
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+// Create Supabase client with fallbacks to prevent crash if not configured
+// The app will redirect to configuration page if isSupabaseConfigured is false
+const clientUrl = isUrlValid ? supabaseUrl : 'https://placeholder.supabase.co'
+const clientKey = isKeyValid ? supabaseAnonKey : 'placeholder-key'
+
+export const supabase = createClient(clientUrl, clientKey, {
     auth: {
         persistSession: true,
         autoRefreshToken: true,
         detectSessionInUrl: true
     }
 })
-
 // Database table types for Supabase
 export type SupabaseProduct = {
     id: string

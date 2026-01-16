@@ -718,7 +718,7 @@ export function POS() {
             exchange_rate_timestamp: snapshotTimestamp,
             exchange_rates: exchangeRatesSnapshot,
             origin: 'pos',
-            payment_method: paymentType === 'cash' ? 'cash' : digitalProvider
+            payment_method: (paymentType === 'cash' ? 'cash' : digitalProvider) as 'cash' | 'fib' | 'qicard' | 'zaincash' | 'fastpay'
         }
 
         try {
@@ -769,6 +769,7 @@ export function POS() {
                         exchangeRateTimestamp: snapshotTimestamp,
                         exchangeRates: checkoutPayload.exchange_rates,
                         origin: 'pos',
+                        payment_method: checkoutPayload.payment_method,
                         createdAt: snapshotTimestamp,
                         updatedAt: snapshotTimestamp,
                         syncStatus: 'pending',

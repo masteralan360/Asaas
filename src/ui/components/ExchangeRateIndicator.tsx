@@ -1,107 +1,199 @@
-import { RefreshCw, Globe, AlertCircle, Loader2, Calculator } from 'lucide-react'
+import { useState } from 'react'
+import { RefreshCw, Globe, AlertCircle, Loader2, Calculator, Coins, X } from 'lucide-react'
 import { useLocation } from 'wouter'
 import { useExchangeRate } from '@/context/ExchangeRateContext'
 import { useWorkspace } from '@/workspace'
 import { cn } from '@/lib/utils'
+import { useTranslation } from 'react-i18next'
+import {
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+    DialogTrigger,
+    Button
+} from '@/ui/components'
 
 export function ExchangeRateIndicator() {
     const [, setLocation] = useLocation()
     const { exchangeData, eurRates, tryRates, status, lastUpdated, refresh } = useExchangeRate()
     const { features } = useWorkspace()
+    const { t, i18n } = useTranslation()
+    const [isOpen, setIsOpen] = useState(false)
+    const direction = i18n.dir()
 
-    return (
-        <div className="flex items-center gap-2">
-            <button
-                onClick={() => setLocation('/currency-converter')}
-                className="p-1.5 rounded-lg hover:bg-secondary border border-transparent hover:border-border transition-all group"
-                title="Currency Converter"
-            >
-                <Calculator className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors" />
-            </button>
-
-            <div
-                className={cn(
-                    'flex items-center gap-2 px-3 py-1.5 rounded-full transition-all border',
-                    status === 'live' && 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500',
-                    status === 'error' && 'bg-red-500/10 border-red-500/20 text-red-500',
-                    status === 'loading' && 'bg-secondary border-border text-muted-foreground'
-                )}
-            >
+    const RateContent = ({ isMobile = false }: { isMobile?: boolean }) => (
+        <div className={cn(
+            "flex items-center gap-2 px-3 py-1.5 rounded-full transition-all border w-fit",
+            status === 'live' && 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500',
+            status === 'error' && 'bg-red-500/10 border-red-500/20 text-red-500',
+            status === 'loading' && 'bg-secondary border-border text-muted-foreground',
+            isMobile && "flex-col items-start rtl:items-start rounded-xl p-4 w-full gap-4 border-none bg-transparent"
+        )}>
+            <div className="flex items-center gap-2">
                 {status === 'loading' ? (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <Loader2 className="w-4 h-4 animate-spin" />
                 ) : status === 'live' ? (
-                    <Globe className="w-3.5 h-3.5" />
+                    <Globe className="w-4 h-4" />
                 ) : (
-                    <AlertCircle className="w-3.5 h-3.5" />
+                    <AlertCircle className="w-4 h-4" />
                 )}
+                {isMobile && <span className="font-bold text-sm uppercase tracking-wider">{t('common.exchangeRates')}</span>}
+            </div>
 
-                <div className="text-xs font-bold font-mono flex items-center gap-3">
-                    {status === 'live' ? (
-                        <>
-                            {exchangeData && (
+            <div className={cn(
+                "text-xs font-bold font-mono flex items-center gap-3",
+                isMobile && "flex-col items-start rtl:items-start text-base w-full gap-4"
+            )}>
+                {status === 'live' ? (
+                    <>
+                        {exchangeData && (
+                            <div className={cn("flex items-center gap-2", isMobile && "w-full justify-between")}>
                                 <span>USD/IQD: {exchangeData.rate.toLocaleString()}</span>
-                            )}
-                            {features.eur_conversion_enabled && eurRates.eur_iqd && (
-                                <div className="flex items-center gap-3">
-                                    <span className="w-px h-3 bg-current/20" />
-                                    <span>EUR/IQD: {eurRates.eur_iqd.rate.toLocaleString()}</span>
-                                    {eurRates.eur_iqd.isFallback && (
-                                        <span className="text-xs opacity-70 font-normal ml-0.5">
-                                            ({eurRates.eur_iqd.source === 'forexfy' ? 'Forexfy' : 'DolarDinar'})
-                                        </span>
-                                    )}
-                                </div>
-                            )}
-                            {features.try_conversion_enabled && tryRates.try_iqd && (
-                                <div className="flex items-center gap-3">
-                                    <span className="w-px h-3 bg-current/20" />
-                                    <span>TRY/IQD: {tryRates.try_iqd.rate.toLocaleString()}</span>
-                                    {tryRates.try_iqd.isFallback && (
-                                        <span className="text-xs opacity-70 font-normal ml-0.5">
-                                            ({tryRates.try_iqd.source === 'forexfy' ? 'Forexfy' : 'DolarDinar'})
-                                        </span>
-                                    )}
-                                </div>
-                            )}
-                        </>
-                    ) : status === 'loading' ? (
-                        <span>Fetching...</span>
-                    ) : (
-                        <span>Rate Error</span>
-                    )}
-                </div>
+                                {exchangeData.isFallback && (
+                                    <span className="text-[10px] opacity-70 font-normal">
+                                        ({exchangeData.source === 'xeiqd' ? 'XEIQD' : 'Forexfy'})
+                                    </span>
+                                )}
+                            </div>
+                        )}
+                        {features.eur_conversion_enabled && eurRates.eur_iqd && (
+                            <div className={cn("flex items-center gap-3", isMobile && "w-full justify-between py-2 border-t border-emerald-500/20")}>
+                                {!isMobile && <span className="w-px h-3 bg-current/20" />}
+                                <span>EUR/IQD: {eurRates.eur_iqd.rate.toLocaleString()}</span>
+                                {eurRates.eur_iqd.isFallback && (
+                                    <span className="text-[10px] opacity-70 font-normal">
+                                        ({eurRates.eur_iqd.source === 'forexfy' ? 'Forexfy' : 'DolarDinar'})
+                                    </span>
+                                )}
+                            </div>
+                        )}
+                        {features.try_conversion_enabled && tryRates.try_iqd && (
+                            <div className={cn("flex items-center gap-3", isMobile && "w-full justify-between py-2 border-t border-emerald-500/20")}>
+                                {!isMobile && <span className="w-px h-3 bg-current/20" />}
+                                <span>TRY/IQD: {tryRates.try_iqd.rate.toLocaleString()}</span>
+                                {tryRates.try_iqd.isFallback && (
+                                    <span className="text-[10px] opacity-70 font-normal">
+                                        ({tryRates.try_iqd.source === 'forexfy' ? 'Forexfy' : 'DolarDinar'})
+                                    </span>
+                                )}
+                            </div>
+                        )}
+                    </>
+                ) : status === 'loading' ? (
+                    <span>{t('common.loading')}</span>
+                ) : (
+                    <span>{t('common.error')}</span>
+                )}
+            </div>
 
+            <div className={cn("flex items-center gap-2", isMobile && "mt-auto w-full pt-4 border-t border-emerald-500/20 justify-between")}>
                 {status === 'live' && (
                     <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                 )}
 
                 {status === 'live' && lastUpdated && (
-                    <span className="text-[10px] font-medium opacity-60 ml-0.5">
+                    <span className="text-[10px] font-medium opacity-60">
                         {lastUpdated}
                     </span>
                 )}
+            </div>
+        </div>
+    )
 
-                {status === 'live' && exchangeData?.isFallback && (
-                    <span className="text-xs opacity-70 font-normal ml-1">
-                        ({exchangeData.source === 'xeiqd' ? 'XEIQD' : 'Forexfy'})
-                    </span>
-                )}
+    return (
+        <div className="flex items-center gap-2">
+            {/* Desktop View */}
+            <div className="hidden md:flex items-center gap-2">
+                <button
+                    onClick={() => setLocation('/currency-converter')}
+                    className="p-1.5 rounded-lg hover:bg-secondary border border-transparent hover:border-border transition-all group"
+                    title="Currency Converter"
+                >
+                    <Calculator className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors" />
+                </button>
+
+                <RateContent />
+
+                <button
+                    onClick={refresh}
+                    disabled={status === 'loading'}
+                    className={cn(
+                        "p-1.5 rounded-lg hover:bg-secondary border border-transparent hover:border-border transition-all group",
+                        status === 'loading' && "opacity-50 cursor-not-allowed"
+                    )}
+                    title="Refresh Exchange Rate"
+                >
+                    <RefreshCw className={cn(
+                        "w-4 h-4 text-muted-foreground group-hover:text-foreground transition-transform",
+                        status === 'loading' && "animate-spin"
+                    )} />
+                </button>
             </div>
 
-            <button
-                onClick={refresh}
-                disabled={status === 'loading'}
-                className={cn(
-                    "p-1.5 rounded-lg hover:bg-secondary border border-transparent hover:border-border transition-all group",
-                    status === 'loading' && "opacity-50 cursor-not-allowed"
-                )}
-                title="Refresh Exchange Rate"
-            >
-                <RefreshCw className={cn(
-                    "w-4 h-4 text-muted-foreground group-hover:text-foreground transition-transform",
-                    status === 'loading' && "animate-spin"
-                )} />
-            </button>
-        </div >
+            {/* Mobile View */}
+            <div className="md:hidden">
+                <Dialog open={isOpen} onOpenChange={setIsOpen}>
+                    <DialogTrigger asChild>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            className={cn(
+                                "flex items-center gap-2 h-9 px-3 rounded-full border-emerald-500/20 bg-emerald-500/5 text-emerald-500 hover:bg-emerald-500/10 hover:text-emerald-600 transition-all",
+                                status === 'loading' && "opacity-70 animate-pulse",
+                                status === 'error' && "border-red-500/20 bg-red-500/5 text-red-500 hover:text-red-600"
+                            )}
+                        >
+                            <Globe className={cn("w-4 h-4", status === 'loading' && "animate-spin")} />
+                            <span className="text-xs font-bold uppercase tracking-tight">Live Rate</span>
+                        </Button>
+                    </DialogTrigger>
+                    <DialogContent dir={direction} className="max-w-[calc(100vw-2rem)] rounded-2xl p-0 overflow-hidden border-emerald-500/20">
+                        <DialogHeader className="p-6 border-b bg-emerald-500/5 items-start rtl:items-start text-start rtl:text-start">
+                            <DialogTitle className="flex items-center gap-2 text-emerald-600">
+                                <Coins className="w-5 h-5" />
+                                {t('common.exchangeRates')}
+                            </DialogTitle>
+                        </DialogHeader>
+
+                        <div className="p-2">
+                            <RateContent isMobile />
+                        </div>
+
+                        <div className="p-4 bg-secondary/30 flex flex-col gap-2">
+                            <div className="flex gap-2 w-full">
+                                <Button
+                                    variant="outline"
+                                    className="flex-1"
+                                    onClick={() => {
+                                        setIsOpen(false)
+                                        setLocation('/currency-converter')
+                                    }}
+                                >
+                                    <Calculator className="w-4 h-4 mr-2" />
+                                    Converter
+                                </Button>
+                                <Button
+                                    className="flex-1"
+                                    onClick={() => refresh()}
+                                    disabled={status === 'loading'}
+                                >
+                                    <RefreshCw className={cn("w-4 h-4 mr-2", status === 'loading' && "animate-spin")} />
+                                    {t('common.refresh')}
+                                </Button>
+                            </div>
+                            <Button
+                                variant="ghost"
+                                className="w-full text-muted-foreground"
+                                onClick={() => setIsOpen(false)}
+                            >
+                                <X className="w-4 h-4 mr-2" />
+                                {t('common.done')}
+                            </Button>
+                        </div>
+                    </DialogContent>
+                </Dialog>
+            </div>
+        </div>
     )
 }

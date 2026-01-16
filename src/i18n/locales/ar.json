@@ -29,7 +29,24 @@
         "continue": "متابعة",
         "back": "رجوع",
         "done": "تم",
-        "next": "التالي"
+        "next": "المتابعة",
+        "refresh": "تحديث",
+        "all": "الكل",
+        "unsavedChanges": {
+            "title": "تغييرات غير محفوظة",
+            "message": "لديك تغييرات غير محفوظة. هل ترغب في حفظها الآن أم تجاهل كل شيء؟",
+            "save": "حفظ التغييرات",
+            "discard": "تجاهل التغييرات",
+            "continue": "مواصلة التحرير"
+        },
+        "exchangeRates": "أسعار الصرف المباشرة"
+    },
+    "messages": {
+        "saleCompleted": "تم إتمام البيع بنجاح",
+        "success": "نجاح",
+        "error": "خطأ",
+        "warning": "تحذير",
+        "info": "معلومات"
     },
     "nav": {
         "dashboard": "لوحة التحكم",
@@ -450,18 +467,42 @@
             "allCashiers": "جميع الكاشير"
         },
         "return": {
-            "confirmTitle": "تأكيد الإرجاع",
+            "title": "إرجاع المنتجات",
+            "selectItems": "اختر المنتجات المراد إرجاعها",
+            "confirm": "تأكيد الإرجاع",
+            "reason": "سبب الإرجاع",
+            "quantity": "الكمية",
+            "max": "الحد الأقصى",
+            "select_quantity": "اختر الكمية المراد إرجاعها من {{name}} (الحد الأقصى {{max}})",
+            "customer_returned": "إرجاع العميل",
+            "wrong_item": "منتج خاطئ",
+            "pricing_mistake": "خطأ في التسعير",
+            "damaged_product": "منتج تالف",
+            "duplicate_sale": "بيع مكرر",
+            "other": "أخرى",
+            "restrictions": {
+                "title": "لا يمكن إرجاع بعض المنتجات",
+                "message": "لا يمكن إرجاع المنتجات التالية وفقاً لسياسة المتجر أو طبيعة المنتج:",
+                "sequential_rules": "قواعد الإرجاع لـ {{product}}"
+            },
+            "continueWithReturnable": "المتابعة مع المنتجات القابلة للإرجاع",
+            "confirmTitle": "إرجاع البيع",
             "confirmMessage": "هل أنت متأكد من أنك تريد إرجاع هذا البيع؟",
             "confirmReturn": "تأكيد الإرجاع",
-            "selectReason": "اختر سبب الإرجاع",
-            "reasonPlaceholder": "أدخل سبب الإرجاع (50 حرف كحد أقصى)",
+            "selectReason": "حدد سبب الإرجاع",
+            "reasonPlaceholder": "أدخل التفاصيل...",
+            "availableToReturn": "متاح للإرجاع",
             "selectQuantity": "كم عدد \"{{item}}\" الذي تريد إرجاعه؟",
             "maxQuantity": "الحد الأقصى للكمية: {{max}}",
             "specifyReason": "يرجى تحديد السبب:",
             "declineTitle": "الإرجاع غير ممكن",
             "declineMessage": "المنتجات التالية في هذا البيع مصنفة على أنها غير قابلة للإرجاع:",
+            "returnableMessage": "المنتجات التالية قابلة للإرجاع:",
             "declineNote": "يرجى الاتصال بالمسؤول إذا كنت تعتقد أن هذا خطأ.",
             "moreRulesFollowing": "توجد قواعد إضافية للعناصر الأخرى",
+            "partialReturn": "إرجاع جزئي",
+            "returnedLabel": "إرجاع المنتج",
+            "returnedStatus": "مرتجع",
             "reasons": {
                 "customerReturned": "العميل أرجع المنتج",
                 "wrongItem": "تم بيع منتج خاطئ",

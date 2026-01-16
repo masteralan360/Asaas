@@ -33,11 +33,25 @@
         "back": "Back",
         "done": "Done",
         "next": "Next",
+        "refresh": "Refresh",
+        "all": "All",
         "messages": {
             "deleteConfirm": "Are you sure you want to delete this item?",
             "deleteSuccess": "Item deleted successfully",
             "deleteError": "Failed to delete item"
-        }
+        },
+        "unsavedChanges": {
+            "title": "Unsaved Changes",
+            "message": "You have unsaved changes. Would you like to save them now or discard everything?",
+            "save": "Save Changes",
+            "discard": "Discard Changes",
+            "continue": "Continue Editing"
+        },
+        "exchangeRates": "Live Exchange Rates"
+    },
+    "messages": {
+        "saleCompleted": "Sale completed successfully",
+        "success": "Success"
     },
     "nav": {
         "dashboard": "Dashboard",
@@ -61,6 +75,22 @@
         "addProduct": "Add Product",
         "addCategory": "Add Category",
         "searchPlaceholder": "Search products...",
+        "receipt": {
+            "title": "Sale Receipt",
+            "date": "Date",
+            "time": "Time",
+            "orderId": "Order ID",
+            "product": "Product",
+            "qty": "Qty",
+            "price": "Price",
+            "total": "Total",
+            "subtotal": "Subtotal",
+            "discount": "Discount",
+            "payment": "Payment Method",
+            "cashier": "Cashier",
+            "thankYou": "Thank you for your business!",
+            "reprint": "Reprint Receipt"
+        },
         "table": {
             "image": "Image",
             "name": "Name",
@@ -399,6 +429,9 @@
         "cannotKickAdmin": "Cannot kick other admins",
         "you": "You"
     },
+    "return": {
+        "continueWithReturnable": "Continue with Returnable Items"
+    },
     "workspaceRegistration": {
         "title": "Join a Workspace",
         "subtitle": "Enter a workspace code to join",
@@ -466,18 +499,24 @@
         },
         "return": {
             "returnedMessage": "This sale has been returned",
+            "confirmTitle": "Return Sale",
+            "partialReturnDetected": "This sale has already been partially returned",
             "confirmMessage": "Are you sure you want to return this sale?",
-            "confirmTitle": "Confirm Return",
             "confirmReturn": "Confirm Return",
-            "selectReason": "Select a reason for return:",
-            "reasonPlaceholder": "Enter a reason for return (50 characters max)",
+            "selectReason": "Specify reason for return",
+            "reasonPlaceholder": "Enter details...",
+            "availableToReturn": "Available to return",
             "selectQuantity": "How many \"{{item}}\" would you like to return?",
             "maxQuantity": "Maximum quantity: {{max}}",
             "specifyReason": "Please specify reason:",
             "declineTitle": "Return Not Possible",
             "declineMessage": "The following products in this sale are marked as non-returnable:",
+            "returnableMessage": "The following products are returnable:",
             "declineNote": "Please contact an administrator if you believe this is an error.",
             "moreRulesFollowing": "More rules follow for other items",
+            "partialReturn": "Partial Return",
+            "returnedLabel": "Product Returned",
+            "returnedStatus": "Returned",
             "reasons": {
                 "customerReturned": "Customer returned item",
                 "wrongItem": "Wrong item sold",

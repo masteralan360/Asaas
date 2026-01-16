@@ -60,7 +60,10 @@ CREATE TABLE public.products (
     version integer DEFAULT 1,
     is_deleted boolean DEFAULT false,
     workspace_id uuid REFERENCES public.workspaces(id),
-    category_id uuid REFERENCES public.categories(id)
+    category_id uuid REFERENCES public.categories(id),
+    barcode text,
+    can_be_returned boolean NOT NULL DEFAULT true,
+    return_rules text
 );
 
 CREATE TABLE public.customers (
@@ -140,7 +143,14 @@ CREATE TABLE public.sales (
     exchange_rates jsonb,
     origin text NOT NULL,
     payment_method text,
-    created_at timestamp with time zone NOT NULL DEFAULT now()
+    created_at timestamp with time zone NOT NULL DEFAULT now(),
+    updated_at timestamp with time zone DEFAULT now(),
+    version integer DEFAULT 1,
+    is_deleted boolean DEFAULT false,
+    is_returned boolean DEFAULT false,
+    return_reason text,
+    returned_at timestamp with time zone,
+    returned_by uuid REFERENCES auth.users(id)
 );
 
 CREATE TABLE public.sale_items (
@@ -156,5 +166,10 @@ CREATE TABLE public.sale_items (
     settlement_currency text NOT NULL DEFAULT 'usd'::text,
     cost_price numeric NOT NULL DEFAULT 0,
     converted_cost_price numeric NOT NULL DEFAULT 0,
-    negotiated_price numeric
+    negotiated_price numeric,
+    is_returned boolean DEFAULT false,
+    return_reason text,
+    returned_at timestamp with time zone,
+    returned_by uuid REFERENCES auth.users(id),
+    returned_quantity integer DEFAULT 0
 );

@@ -1,7 +1,7 @@
 {
   "name": "erp-system",
   "private": true,
-  "version": "1.0.12",
+  "version": "1.0.14",
   "main": "electron/main.cjs",
   "type": "module",
   "repository": {
@@ -37,7 +37,7 @@
     "type-check": "tsc --noEmit",
     "electron:dev": "concurrently -k \"cross-env BROWSER=none npm run dev\" \"wait-on http://localhost:5173 && electron .\"",
     "electron:build": "npm run build && electron-builder",
-    "electron:publish": "npm run build && electron-builder --publish always"
+    "electron:publish": "cross-env VITE_SUPABASE_URL=\"\" VITE_SUPABASE_ANON_KEY=\"\" npm run build && electron-builder --publish always"
   },
   "dependencies": {
     "@radix-ui/react-alert-dialog": "^1.1.2",

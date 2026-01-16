@@ -24,6 +24,7 @@ const TeamPerformance = lazy(() => import('@/ui/pages/TeamPerformance').then(m =
 const WorkspaceConfiguration = lazy(() => import('@/ui/pages/WorkspaceConfiguration').then(m => ({ default: m.WorkspaceConfiguration })))
 const LockedWorkspace = lazy(() => import('@/ui/pages/LockedWorkspace').then(m => ({ default: m.LockedWorkspace })))
 const CurrencyConverter = lazy(() => import('@/ui/pages/CurrencyConverter').then(m => ({ default: m.CurrencyConverter })))
+const ConnectionConfiguration = lazy(() => import('@/ui/pages/ConnectionConfiguration').then(m => ({ default: m.ConnectionConfiguration })))
 
 // Preload list for Electron
 const pages = [
@@ -55,12 +56,23 @@ function LoadingState() {
 
 
 import { ExchangeRateProvider } from '@/context/ExchangeRateContext'
+import { isSupabaseConfigured } from '@/auth/supabase'
 
 function App() {
-    useEffect(() => {
-        // Detect Electron
-        const isElectron = /electron/i.test(navigator.userAgent)
+    const isElectron = /electron/i.test(navigator.userAgent)
 
+    // Hard Guard for Electron Connection Configuration
+    // If we are in Electron and Supabase is not configured, we catch it here
+    // effectively preventing the rest of the app (AuthProvider, etc.) from loading.
+    if (isElectron && !isSupabaseConfigured) {
+        return (
+            <Suspense fallback={<LoadingState />}>
+                <ConnectionConfiguration />
+            </Suspense>
+        )
+    }
+
+    useEffect(() => {
         if (isElectron) {
             console.log('[Electron] Pre-loading all pages for snappy navigation...')
             pages.forEach(load => load())
@@ -89,6 +101,11 @@ function App() {
                                 {/* Locked Workspace Route - no layout, standalone page */}
                                 <Route path="/locked-workspace">
                                     <LockedWorkspace />
+                                </Route>
+
+                                {/* Connection Configuration Route - Electron Guard */}
+                                <Route path="/connection-configuration">
+                                    <ConnectionConfiguration />
                                 </Route>
 
                                 {/* Protected Routes */}

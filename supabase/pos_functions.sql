@@ -7,7 +7,8 @@ CREATE TABLE IF NOT EXISTS public.sales (
     cashier_id UUID REFERENCES auth.users(id) NOT NULL,
     total_amount NUMERIC(10, 2) NOT NULL DEFAULT 0,
     created_at TIMESTAMPTZ DEFAULT NOW(),
-    origin TEXT DEFAULT 'pos' -- 'pos', 'manual', etc.
+    origin TEXT DEFAULT 'pos', -- 'pos', 'manual', etc.
+    payment_method TEXT DEFAULT 'cash'
 );
 
 -- 2. Create 'sale_items' table
@@ -105,6 +106,7 @@ BEGIN
 
     -- Insert Sale Record
     INSERT INTO public.sales (
+        id,
         workspace_id, 
         cashier_id, 
         total_amount, 
@@ -113,9 +115,11 @@ BEGIN
         exchange_rate,
         exchange_rate_timestamp,
         exchange_rates,
-        origin
+        origin,
+        payment_method
     )
     VALUES (
+        COALESCE((payload->>'id')::UUID, gen_random_uuid()),
         p_workspace_id, 
         auth.uid(), 
         total_sale_amount, 
@@ -124,7 +128,8 @@ BEGIN
         COALESCE((payload->>'exchange_rate')::NUMERIC, 0),
         COALESCE((payload->>'exchange_rate_timestamp')::TIMESTAMPTZ, NOW()),
         COALESCE((payload->'exchange_rates'), '[]'::jsonb),
-        COALESCE(payload->>'origin', 'pos')
+        COALESCE(payload->>'origin', 'pos'),
+        COALESCE(payload->>'payment_method', 'cash')
     )
     RETURNING id INTO new_sale_id;
 

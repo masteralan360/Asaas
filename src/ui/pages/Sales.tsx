@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/auth'
 import { supabase } from '@/auth/supabase'
 import { Sale } from '@/types'
-import { formatCurrency, formatDateTime, formatSnapshotTime, cn } from '@/lib/utils'
+import { formatCurrency, formatDateTime, cn } from '@/lib/utils'
 import { useWorkspace } from '@/workspace'
 import {
     Table,
@@ -17,11 +17,8 @@ import {
     CardHeader,
     CardTitle,
     Button,
-    Dialog,
-    DialogContent,
-    DialogHeader,
-    DialogTitle,
     SaleReceipt,
+    SaleDetailsModal,
     ReturnConfirmationModal,
     ReturnDeclineModal,
     ReturnRulesDisplayModal,
@@ -40,7 +37,6 @@ import {
     Trash2,
     Printer,
     RotateCcw,
-    XCircle,
     Calendar,
     Filter
 } from 'lucide-react'
@@ -63,6 +59,7 @@ export function Sales() {
     const [currentRuleIndex, setCurrentRuleIndex] = useState(-1)
     const [showDeclineModal, setShowDeclineModal] = useState(false)
     const [nonReturnableProducts, setNonReturnableProducts] = useState<string[]>([])
+    const [filteredReturnItems, setFilteredReturnItems] = useState<SaleItem[]>([])
     const printRef = useRef<HTMLDivElement>(null)
 
     const handlePrint = () => {
@@ -166,19 +163,12 @@ export function Sales() {
         }
     }
 
-    const initiateReturn = (sale: Sale, isWholeSale: boolean) => {
-        const itemsToCheck = sale.items || []
-        const nonReturnable = itemsToCheck
-            .filter(item => item.product && item.product.can_be_returned === false)
-            .map(item => item.product?.name || item.product_name || 'Unknown Product')
+    const [isWholeSaleReturn, setIsWholeSaleReturn] = useState(false)
 
-        if (nonReturnable.length > 0) {
-            setNonReturnableProducts(nonReturnable)
-            setShowDeclineModal(true)
-            return
-        }
+    const finalizeReturn = (sale: Sale, items: SaleItem[], isWholeSale: boolean, isPartial: boolean = false) => {
+        const filteredSale = { ...sale, items, _isWholeSaleReturn: isWholeSale, _isPartialReturn: isPartial } as any
 
-        const rules = itemsToCheck
+        const rules = items
             .filter(item => item.product && item.product.return_rules)
             .map(item => ({
                 productName: item.product?.name || item.product_name || 'Product',
@@ -186,13 +176,39 @@ export function Sales() {
             }))
 
         if (rules.length > 0) {
-            setSaleToReturn({ ...sale, _isWholeSaleReturn: isWholeSale } as any)
+            setSaleToReturn(filteredSale)
             setRulesQueue(rules)
             setCurrentRuleIndex(0)
         } else {
-            setSaleToReturn({ ...sale, _isWholeSaleReturn: isWholeSale } as any)
+            setSaleToReturn(filteredSale)
             setReturnModalOpen(true)
         }
+        setShowDeclineModal(false)
+    }
+
+    const initiateReturn = (sale: Sale, isWholeSale: boolean) => {
+        const itemsToCheck = sale.items || []
+        const nonReturnableItems = itemsToCheck.filter(item => item.product && item.product.can_be_returned === false)
+        const returnableItems = itemsToCheck.filter(item => !item.product || item.product.can_be_returned !== false)
+
+        const nonReturnableNames = nonReturnableItems.map(item => item.product?.name || item.product_name || 'Unknown Product')
+
+        if (nonReturnableNames.length > 0) {
+            setNonReturnableProducts(nonReturnableNames)
+            setSaleToReturn(sale)
+            setIsWholeSaleReturn(isWholeSale)
+
+            if (returnableItems.length > 0) {
+                setFilteredReturnItems(returnableItems)
+                setShowDeclineModal(true)
+            } else {
+                setFilteredReturnItems([])
+                setShowDeclineModal(true)
+            }
+            return
+        }
+
+        finalizeReturn(sale, itemsToCheck, isWholeSale, false)
     }
 
     const handleNextRule = () => {
@@ -238,103 +254,91 @@ export function Sales() {
 
         try {
             let error
+            const isPartialReturn = (saleToReturn as any)._isPartialReturn
+            const isIndividualItemReturn = saleToReturn?.items?.length === 1 && !(saleToReturn as any)._isWholeSaleReturn && !isPartialReturn
 
-            // Check if this is an individual item return (only 1 item in mock sale and not flagged as whole sale)
-            const isIndividualItemReturn = saleToReturn?.items?.length === 1 && !(saleToReturn as any)._isWholeSaleReturn
+            if (isIndividualItemReturn || isPartialReturn) {
+                // Partial or Individual Item Return
+                const itemsToReturn = saleToReturn.items || []
+                if (itemsToReturn.length === 0) return
 
-            if (isIndividualItemReturn) {
-                // Individual item return
-                const item = saleToReturn.items?.[0]
-                if (!item) return
-                const returnQty = quantity || 1
-                const { error: itemError } = await supabase.rpc('return_sale_items', {
-                    p_sale_item_ids: [item.id],
-                    p_return_quantities: [returnQty],
+                const itemIds = itemsToReturn.map(i => i.id)
+                // Use provided quantity for single item return, otherwise use full item quantity
+                const quantities = itemsToReturn.map(i =>
+                    quantity && itemsToReturn.length === 1 ? quantity : (i.quantity - (i.returned_quantity || 0))
+                )
+
+                const { data, error: itemError } = await supabase.rpc('return_sale_items', {
+                    p_sale_item_ids: itemIds,
+                    p_return_quantities: quantities,
                     p_return_reason: reason
                 })
                 error = itemError
 
-                // Update local state for the specific item
-                if (selectedSale?.id === saleToReturn.id) {
-                    setSelectedSale({
-                        ...selectedSale,
-                        total_amount: selectedSale.total_amount - (returnQty * (item.converted_unit_price || item.unit_price)),
-                        items: selectedSale.items?.map(i =>
-                            i.id === item.id
-                                ? {
-                                    ...i,
-                                    quantity: i.quantity - returnQty,
-                                    total_price: i.total_price - (returnQty * (i.total_price / i.quantity)),
-                                    returned_quantity: (i.returned_quantity || 0) + returnQty,
-                                    ...(returnQty === i.quantity ? {
-                                        is_returned: true,
-                                        return_reason: reason,
-                                        returned_at: new Date().toISOString()
-                                    } : {
-                                        return_reason: reason,
-                                        returned_at: new Date().toISOString()
-                                    })
-                                }
-                                : i
-                        )
-                    })
-                }
+                if (!error && data?.success) {
+                    const returnValue = data.return_value || 0
 
-                // Update sales list
-                setSales(sales.map(s =>
-                    s.id === saleToReturn.id
-                        ? {
+                    const updateSale = (s: Sale) => {
+                        if (s.id !== saleToReturn.id) return s
+                        const updatedItems = s.items?.map(i => {
+                            const returnedIdx = itemIds.indexOf(i.id)
+                            if (returnedIdx === -1) return i
+
+                            const q = quantities[returnedIdx]
+                            const newReturnedQty = (i.returned_quantity || 0) + q
+                            return {
+                                ...i,
+                                returned_quantity: newReturnedQty,
+                                is_returned: newReturnedQty >= i.quantity,
+                                return_reason: reason,
+                                returned_at: new Date().toISOString()
+                            }
+                        })
+
+                        return {
                             ...s,
-                            total_amount: s.total_amount - (returnQty * (item.converted_unit_price || item.unit_price)),
-                            items: s.items?.map(i =>
-                                i.id === item.id
-                                    ? {
-                                        ...i,
-                                        quantity: i.quantity - returnQty,
-                                        total_price: i.total_price - (returnQty * (i.total_price / i.quantity)),
-                                        returned_quantity: (i.returned_quantity || 0) + returnQty,
-                                        ...(returnQty === i.quantity ? {
-                                            is_returned: true,
-                                            return_reason: reason,
-                                            returned_at: new Date().toISOString()
-                                        } : {
-                                            return_reason: reason,
-                                            returned_at: new Date().toISOString()
-                                        })
-                                    }
-                                    : i
-                            )
+                            total_amount: s.total_amount - returnValue,
+                            is_returned: updatedItems?.every(i => i.is_returned) || false,
+                            items: updatedItems
                         }
-                        : s
-                ))
+                    }
+
+                    setSales(prev => prev.map(updateSale))
+                    if (selectedSale?.id === saleToReturn.id) {
+                        setSelectedSale(updateSale(selectedSale))
+                    }
+                }
             } else {
-                // Whole sale return
-                const { error: saleError } = await supabase.rpc('return_whole_sale', {
+                // Whole Sale Return
+                const { data, error: saleError } = await supabase.rpc('return_whole_sale', {
                     p_sale_id: saleToReturn.id,
                     p_return_reason: reason
                 })
                 error = saleError
 
-                // Update local state
-                setSales(sales.map(s =>
-                    s.id === saleToReturn.id
-                        ? { ...s, is_returned: true, return_reason: reason, returned_at: new Date().toISOString() }
-                        : s
-                ))
-
-                if (selectedSale?.id === saleToReturn.id) {
-                    setSelectedSale({
-                        ...selectedSale,
-                        is_returned: true,
-                        return_reason: reason,
-                        returned_at: new Date().toISOString(),
-                        items: selectedSale.items?.map(i => ({
-                            ...i,
+                if (!error && data?.success) {
+                    const updateSale = (s: Sale) => {
+                        if (s.id !== saleToReturn.id) return s
+                        return {
+                            ...s,
                             is_returned: true,
-                            return_reason: 'Whole sale returned: ' + reason,
-                            returned_at: new Date().toISOString()
-                        }))
-                    })
+                            total_amount: 0,
+                            return_reason: reason,
+                            returned_at: new Date().toISOString(),
+                            items: s.items?.map(i => ({
+                                ...i,
+                                is_returned: true,
+                                returned_quantity: i.quantity,
+                                return_reason: reason,
+                                returned_at: new Date().toISOString()
+                            }))
+                        }
+                    }
+
+                    setSales(prev => prev.map(updateSale))
+                    if (selectedSale?.id === saleToReturn.id) {
+                        setSelectedSale(updateSale(selectedSale))
+                    }
                 }
             }
 
@@ -586,26 +590,25 @@ export function Sales() {
                                         if ((item.returned_quantity || 0) > 0) return sum + (item.returned_quantity || 0)
                                         return sum
                                     }, 0) || 0
-                                    const hasReturnedItems = returnedItemsCount > 0
-                                    const hasPartialReturns = partialReturnedItemsCount > 0
+                                    const hasAnyReturn = returnedItemsCount > 0 || partialReturnedItemsCount > 0
 
                                     return (
                                         <TableRow
                                             key={sale.id}
-                                            className={sale.is_returned ? 'bg-destructive/10 border-destructive/20' : hasPartialReturns ? 'bg-orange-500/10 border-orange-500/20 dark:bg-orange-500/5 dark:border-orange-500/10' : ''}
+                                            className={sale.is_returned ? 'bg-destructive/10 border-destructive/20' : hasAnyReturn ? 'bg-orange-500/10 border-orange-500/20 dark:bg-orange-500/5 dark:border-orange-500/10' : ''}
                                         >
                                             <TableCell className="text-start font-mono text-sm">
                                                 <div className="flex items-center gap-2">
                                                     {formatDateTime(sale.created_at)}
                                                     {sale.is_returned && (
-                                                        <span className="px-2 py-1 text-xs font-medium bg-destructive/20 text-destructive dark:bg-destructive/30 dark:text-destructive-foreground rounded-full">
-                                                            RETURNED
+                                                        <span className="px-2 py-0.5 text-[10px] font-bold bg-destructive/20 text-destructive dark:bg-destructive/30 dark:text-destructive-foreground rounded-full border border-destructive/30">
+                                                            {(t('sales.return.returnedStatus') || 'RETURNED').toUpperCase()}
                                                         </span>
                                                     )}
-                                                    {hasPartialReturns && (
-                                                        <span className="px-2 py-1 text-xs font-medium bg-orange-500/20 text-orange-700 dark:bg-orange-500/10 dark:text-orange-400 rounded-full">
-                                                            -{totalReturnedQuantity} returned
-                                                        </span>
+                                                    {hasAnyReturn && !sale.is_returned && (
+                                                        <div className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800 dark:bg-orange-500/20 dark:text-orange-400 border border-orange-200 dark:border-orange-500/30">
+                                                            -{totalReturnedQuantity} {t('sales.return.returnedLabel') || 'returned'}
+                                                        </div>
                                                     )}
                                                 </div>
                                             </TableCell>
@@ -658,11 +661,7 @@ export function Sales() {
                                                         <Trash2 className="w-4 h-4" />
                                                     </Button>
                                                 )}
-                                                {hasReturnedItems && !sale.is_returned && (
-                                                    <div className="inline-flex items-center justify-center w-8 h-8 text-xs font-bold text-white bg-destructive rounded-full">
-                                                        {returnedItemsCount}
-                                                    </div>
-                                                )}
+                                                {/* Return badge moved to date cell */}
                                             </TableCell>
                                         </TableRow>
                                     )
@@ -674,262 +673,28 @@ export function Sales() {
             </Card>
 
             {/* Sale Details Modal */}
-            <Dialog open={!!selectedSale} onOpenChange={() => setSelectedSale(null)}>
-                <DialogContent className="max-w-2xl">
-                    <DialogHeader>
-                        <DialogTitle>{t('sales.details') || 'Sale Details'}</DialogTitle>
-                    </DialogHeader>
-                    {selectedSale && (
-                        <div className="space-y-4">
-                            {selectedSale.is_returned && (
-                                <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-lg">
-                                    <div className="flex items-center gap-2 text-destructive dark:text-destructive-foreground">
-                                        <XCircle className="w-5 h-5" />
-                                        <span className="font-medium">{t('sales.return.returnedMessage') || 'This sale has been returned'}</span>
-                                    </div>
-                                    {selectedSale.return_reason && (
-                                        <p className="text-sm text-destructive/80 dark:text-destructive-foreground/80 mt-1">
-                                            Reason: {selectedSale.return_reason}
-                                        </p>
-                                    )}
-                                    {selectedSale.returned_at && (
-                                        <p className="text-xs text-destructive/60 dark:text-destructive-foreground/60 mt-1">
-                                            Returned at: {formatDateTime(selectedSale.returned_at)}
-                                        </p>
-                                    )}
-                                </div>
-                            )}
-                            <div className="grid grid-cols-2 gap-4 text-sm">
-                                <div>
-                                    <span className="text-muted-foreground">{t('sales.date')}:</span>
-                                    <div className="font-medium">{formatDateTime(selectedSale.created_at)}</div>
-                                </div>
-                                <div>
-                                    <span className="text-muted-foreground">{t('sales.cashier')}:</span>
-                                    <div className="font-medium">{selectedSale.cashier_name}</div>
-                                </div>
-                                <div>
-                                    <span className="text-muted-foreground">{t('sales.id')}:</span>
-                                    <div className="font-mono text-xs text-muted-foreground">{selectedSale.id}</div>
-                                </div>
-                                <div>
-                                    <span className="text-muted-foreground">{t('pos.paymentMethod') || 'Payment Method'}:</span>
-                                    <div className="font-medium flex items-center gap-2">
-                                        {selectedSale.payment_method === 'fib' && (
-                                            <>
-                                                <img src="./icons/FIB24x24.jpg" alt="FIB" className="w-5 h-5 rounded" />
-                                                FIB
-                                            </>
-                                        )}
-                                        {selectedSale.payment_method === 'qicard' && (
-                                            <>
-                                                <img src="./icons/QIcard24x24.png" alt="QiCard" className="w-5 h-5 rounded" />
-                                                QiCard
-                                            </>
-                                        )}
-                                        {selectedSale.payment_method === 'zaincash' && (
-                                            <>
-                                                <img src="./icons/zain24x24.png" alt="ZainCash" className="w-5 h-5 rounded" />
-                                                ZainCash
-                                            </>
-                                        )}
-                                        {selectedSale.payment_method === 'fastpay' && (
-                                            <>
-                                                <img src="./icons/fastpay24x24.jpg" alt="FastPay" className="w-5 h-5 rounded" />
-                                                FastPay
-                                            </>
-                                        )}
-                                        {(!selectedSale.payment_method || selectedSale.payment_method === 'cash') && (
-                                            <span>{t('pos.cash') || 'Cash'}</span>
-                                        )}
-                                    </div>
-                                </div>
-                                {selectedSale.exchange_rates && selectedSale.exchange_rates.length > 0 ? (
-                                    <div className="col-span-2 space-y-2">
-                                        <div className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider mb-1">
-                                            {t('settings.exchangeRate.title')} {t('common.snapshots')}
-                                        </div>
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                                            {selectedSale.exchange_rates.map((rate: any, idx: number) => (
-                                                <div key={idx} className="p-2 bg-muted/30 rounded border border-border/50 flex flex-col gap-0.5">
-                                                    <div className="flex justify-between items-center">
-                                                        <span className="text-[10px] font-bold text-primary/70">{rate.pair}</span>
-                                                        <span className="text-[9px] text-muted-foreground italic uppercase">{rate.source}</span>
-                                                    </div>
-                                                    <div className="text-sm font-bold">
-                                                        100 {rate.pair.split('/')[0]} = {formatCurrency(rate.rate, rate.pair.split('/')[1].toLowerCase() as any, features.iqd_display_preference)}
-                                                    </div>
-                                                    <div className="text-[9px] text-muted-foreground opacity-70">
-                                                        {formatSnapshotTime(rate.timestamp)}
-                                                    </div>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
-                                ) : selectedSale.exchange_rate > 0 && (
-                                    <div className="p-3 bg-muted/30 rounded-lg col-span-2 flex items-center justify-between border border-border/50">
-                                        <div className="space-y-0.5">
-                                            <div className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">
-                                                {t('settings.exchangeRate.title')} ({selectedSale.exchange_source})
-                                            </div>
-                                            <div className="text-sm font-black">
-                                                100 USD = {formatCurrency(selectedSale.exchange_rate, 'iqd', features.iqd_display_preference)}
-                                            </div>
-                                        </div>
-                                        <div className="text-[10px] text-muted-foreground text-right">
-                                            {formatSnapshotTime(selectedSale.exchange_rate_timestamp)}
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-
-                            <div className="border rounded-md">
-                                <Table>
-                                    <TableHeader>
-                                        <TableRow>
-                                            <TableHead className="text-start">{t('products.table.name')}</TableHead>
-                                            <TableHead className="text-end">{t('common.quantity')}</TableHead>
-                                            <TableHead className="text-end">{t('common.price')}</TableHead>
-                                            <TableHead className="text-end">{t('common.total')}</TableHead>
-                                        </TableRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                        {selectedSale.items?.map((item) => {
-                                            const isConverted = item.original_currency && item.settlement_currency && item.original_currency !== item.settlement_currency
-                                            const hasNegotiated = item.negotiated_price !== undefined && item.negotiated_price !== null && item.negotiated_price > 0
-                                            const isReturned = item.is_returned || selectedSale.is_returned
-                                            const hasPartialReturn = (item.returned_quantity || 0) > 0 && !item.is_returned
-
-                                            // Determine display prices
-                                            // For display: show converted price as main, but show original->negotiated in original currency when negotiated
-                                            let displayUnitPrice: number
-                                            let displayCurrency: string
-
-                                            if (hasNegotiated) {
-                                                // Negotiated price exists, show converted negotiated price as main
-                                                displayUnitPrice = item.converted_unit_price || item.unit_price || 0
-                                                displayCurrency = selectedSale.settlement_currency || 'usd'
-                                            } else {
-                                                // No negotiated price, use converted price
-                                                displayUnitPrice = item.converted_unit_price || item.unit_price || 0
-                                                displayCurrency = selectedSale.settlement_currency || 'usd'
-                                            }
-
-                                            const originalUnitPrice = item.original_unit_price || item.unit_price || 0
-                                            const originalCurrency = item.original_currency || 'usd'
-                                            const negotiatedPrice = item.negotiated_price || 0
-
-                                            return (
-                                                <TableRow
-                                                    key={item.id}
-                                                    className={isReturned ? 'bg-destructive/10 opacity-75' : hasPartialReturn ? 'bg-orange-500/10 dark:bg-orange-500/5' : ''}
-                                                >
-                                                    <TableCell className="text-start">
-                                                        <div className="flex items-center gap-2">
-                                                            <div>
-                                                                <div className="font-medium">{item.product_name}</div>
-                                                                <div className="text-xs text-muted-foreground">{item.product_sku}</div>
-                                                                {hasNegotiated && (
-                                                                    <div className="text-[10px] text-emerald-600 font-medium">
-                                                                        {t('pos.negotiatedPrice') || 'Negotiated'}
-                                                                    </div>
-                                                                )}
-                                                            </div>
-                                                            {isReturned && (
-                                                                <span className="px-2 py-1 text-xs font-medium bg-destructive/20 text-destructive dark:bg-destructive/30 dark:text-destructive-foreground rounded-full">
-                                                                    RETURNED
-                                                                </span>
-                                                            )}
-                                                            {hasPartialReturn && (
-                                                                <span className="px-2 py-1 text-xs font-medium bg-orange-500/20 text-orange-700 dark:bg-orange-500/10 dark:text-orange-400 rounded-full">
-                                                                    PARTIAL RETURN
-                                                                </span>
-                                                            )}
-                                                            {!isReturned && !item.is_returned && (user?.role === 'admin' || user?.role === 'staff') && (
-                                                                <Button
-                                                                    size="sm"
-                                                                    variant="ghost"
-                                                                    onClick={() => handleReturnItem(item)}
-                                                                    className="h-6 w-6 p-0"
-                                                                    title={t('sales.return.returnItem') || 'Return Item'}
-                                                                >
-                                                                    <RotateCcw className="h-3 w-3" />
-                                                                </Button>
-                                                            )}
-                                                        </div>
-                                                    </TableCell>
-                                                    <TableCell className="text-end font-mono">
-                                                        {item.quantity}
-                                                        {hasPartialReturn && (
-                                                            <div className="text-[10px] text-orange-600 font-medium">
-                                                                -{item.returned_quantity} returned
-                                                            </div>
-                                                        )}
-                                                    </TableCell>
-                                                    <TableCell className="text-end">
-                                                        <div className="flex flex-col items-end">
-                                                            {/* Show negotiated/effective price */}
-                                                            <span className={hasNegotiated ? "font-medium text-emerald-600" : "font-medium"}>
-                                                                {formatCurrency(displayUnitPrice, displayCurrency, features.iqd_display_preference)}
-                                                            </span>
-                                                            {/* Show original -> negotiated price in original currency */}
-                                                            {hasNegotiated && (
-                                                                <span className="text-[10px] text-muted-foreground opacity-60">
-                                                                    <span className="line-through">{formatCurrency(originalUnitPrice, originalCurrency, features.iqd_display_preference)}</span> 🡆 <span className="font-bold">{formatCurrency(negotiatedPrice, originalCurrency, features.iqd_display_preference)}</span>
-                                                                </span>
-                                                            )}
-                                                            {/* Show original price if converted but not negotiated */}
-                                                            {!hasNegotiated && isConverted && (
-                                                                <span className="text-[10px] text-muted-foreground line-through opacity-60">
-                                                                    {formatCurrency(originalUnitPrice, originalCurrency, features.iqd_display_preference)}
-                                                                </span>
-                                                            )}
-                                                        </div>
-                                                    </TableCell>
-                                                    <TableCell className="text-end font-bold">
-                                                        <div className="flex flex-col items-end">
-                                                            <span className={hasNegotiated ? "text-emerald-600" : ""}>
-                                                                {formatCurrency(displayUnitPrice * item.quantity, displayCurrency, features.iqd_display_preference)}
-                                                            </span>
-                                                            {/* Show original -> negotiated total in original currency */}
-                                                            {hasNegotiated && (
-                                                                <span className="text-[10px] text-muted-foreground opacity-60">
-                                                                    <span className="line-through">{formatCurrency(originalUnitPrice * item.quantity, originalCurrency, features.iqd_display_preference)}</span> 🡆 <span className="font-bold">{formatCurrency(negotiatedPrice * item.quantity, originalCurrency, features.iqd_display_preference)}</span>
-                                                                </span>
-                                                            )}
-                                                            {/* Show original total if converted but not negotiated */}
-                                                            {!hasNegotiated && isConverted && (
-                                                                <span className="text-[10px] text-muted-foreground line-through opacity-50">
-                                                                    {formatCurrency(originalUnitPrice * item.quantity, originalCurrency, features.iqd_display_preference)}
-                                                                </span>
-                                                            )}
-                                                        </div>
-                                                    </TableCell>
-                                                </TableRow>
-                                            )
-                                        })}
-                                    </TableBody>
-                                </Table>
-                            </div>
-
-                            <div className="flex justify-between items-center pt-4 border-t">
-                                <div className="text-lg font-bold uppercase tracking-tight opacity-70">
-                                    {t('sales.total')} ({selectedSale.settlement_currency || 'usd'})
-                                </div>
-                                <div className="text-3xl font-black text-primary">
-                                    {formatCurrency(selectedSale.total_amount, selectedSale.settlement_currency || 'usd', features.iqd_display_preference)}
-                                </div>
-                            </div>
-                        </div>
-                    )}
-                </DialogContent>
-            </Dialog>
+            <SaleDetailsModal
+                isOpen={!!selectedSale}
+                onClose={() => setSelectedSale(null)}
+                sale={selectedSale}
+                onReturnItem={handleReturnItem}
+            />
 
             {/* Return Decline Modal */}
             <ReturnDeclineModal
                 isOpen={showDeclineModal}
-                onClose={() => setShowDeclineModal(false)}
+                onClose={() => {
+                    setShowDeclineModal(false)
+                    setFilteredReturnItems([])
+                    setSaleToReturn(null)
+                }}
                 products={nonReturnableProducts}
+                returnableProducts={filteredReturnItems.map(item => item.product?.name || item.product_name || 'Product')}
+                onContinue={filteredReturnItems.length > 0 ? () => {
+                    if (saleToReturn) {
+                        finalizeReturn(saleToReturn, filteredReturnItems, isWholeSaleReturn, true)
+                    }
+                } : undefined}
             />
 
             {/* Return Rules Sequence */}

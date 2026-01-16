@@ -17,10 +17,7 @@ import {
     TableHead,
     TableHeader,
     TableRow,
-    Dialog,
-    DialogContent,
-    DialogHeader,
-    DialogTitle
+    SaleDetailsModal
 } from '@/ui/components'
 import {
     TrendingUp,
@@ -103,7 +100,7 @@ export function Revenue() {
         sales.forEach(sale => {
             // Skip returned sales from revenue calculations
             if (sale.is_returned) return
-            
+
             const currency = sale.settlement_currency || 'usd'
             if (!statsByCurrency[currency]) {
                 statsByCurrency[currency] = { revenue: 0, cost: 0, salesCount: 0 }
@@ -114,12 +111,15 @@ export function Revenue() {
             let saleCost = 0
 
             sale.items?.forEach((item: SaleItem) => {
-                // Skip returned items from calculations
-                if (item.is_returned) return
-                
+                // Effective quantity for this item
+                const netQuantity = item.quantity - (item.returned_quantity || 0)
+
+                // If the item is fully returned, skip it
+                if (netQuantity <= 0) return
+
                 // Use the values already converted to settlement currency or the original ones if same
-                const itemRevenue = item.converted_unit_price * item.quantity
-                const itemCost = (item.converted_cost_price || 0) * item.quantity
+                const itemRevenue = item.converted_unit_price * netQuantity
+                const itemCost = (item.converted_cost_price || 0) * netQuantity
 
                 saleRevenue += itemRevenue
                 saleCost += itemCost
@@ -137,7 +137,8 @@ export function Revenue() {
                 margin: saleRevenue > 0 ? ((saleRevenue - saleCost) / saleRevenue) * 100 : 0,
                 currency: currency,
                 origin: sale.origin,
-                cashier: sale.cashier_name || 'Staff'
+                cashier: sale.cashier_name || 'Staff',
+                hasPartialReturn: sale.items?.some(item => (item.returned_quantity || 0) > 0 && !item.is_returned)
             })
         })
 
@@ -282,6 +283,11 @@ export function Revenue() {
                                         >
                                             {sale.id.split('-')[0]}
                                         </button>
+                                        {sale.hasPartialReturn && (
+                                            <span className="ms-2 px-1.5 py-0.5 rounded-full text-[8px] font-bold bg-orange-500/10 text-orange-600 border border-orange-500/20 uppercase">
+                                                {t('sales.return.partialReturn')}
+                                            </span>
+                                        )}
                                     </TableCell>
                                     <TableCell className="text-start">
                                         <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-secondary uppercase">
@@ -315,129 +321,11 @@ export function Revenue() {
             </Card>
 
             {/* Sale Details Modal */}
-            <Dialog open={!!selectedSale} onOpenChange={() => setSelectedSale(null)}>
-                <DialogContent className="max-w-2xl">
-                    <DialogHeader>
-                        <DialogTitle>{t('sales.details') || 'Sale Details'}</DialogTitle>
-                    </DialogHeader>
-                    {selectedSale && (
-                        <div className="space-y-4">
-                            <div className="grid grid-cols-2 gap-4 text-sm">
-                                <div>
-                                    <span className="text-muted-foreground">{t('sales.date')}:</span>
-                                    <div className="font-medium">{formatDateTime(selectedSale.created_at)}</div>
-                                </div>
-                                <div>
-                                    <span className="text-muted-foreground">{t('sales.cashier')}:</span>
-                                    <div className="font-medium">{selectedSale.cashier_name || 'Staff'}</div>
-                                </div>
-                                <div>
-                                    <span className="text-muted-foreground">{t('sales.id')}:</span>
-                                    <div className="font-mono text-xs text-muted-foreground">{selectedSale.id}</div>
-                                </div>
-                                {selectedSale.exchange_rates && selectedSale.exchange_rates.length > 0 ? (
-                                    <div className="col-span-2 space-y-2">
-                                        <div className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider mb-1">
-                                            {t('settings.exchangeRate.title')} {t('common.snapshots')}
-                                        </div>
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                                            {selectedSale.exchange_rates.map((rate: any, idx: number) => (
-                                                <div key={idx} className="p-2 bg-muted/30 rounded border border-border/50 flex flex-col gap-0.5">
-                                                    <div className="flex justify-between items-center">
-                                                        <span className="text-[10px] font-bold text-primary/70">{rate.pair}</span>
-                                                        <span className="text-[9px] text-muted-foreground italic uppercase">{rate.source}</span>
-                                                    </div>
-                                                    <div className="text-sm font-black">
-                                                        100 {rate.pair.split('/')[0]} = {formatCurrency(rate.rate, rate.pair.split('/')[1].toLowerCase() as any, features.iqd_display_preference)}
-                                                    </div>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
-                                ) : (selectedSale.exchange_rate ?? 0) > 0 && (
-                                    <div className="p-3 bg-muted/30 rounded-lg col-span-2 flex items-center justify-between border border-border/50">
-                                        <div className="space-y-0.5">
-                                            <div className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">
-                                                {t('settings.exchangeRate.title')} ({selectedSale.exchange_source})
-                                            </div>
-                                            <div className="text-sm font-black">
-                                                100 USD = {formatCurrency(selectedSale.exchange_rate, 'iqd', features.iqd_display_preference)}
-                                            </div>
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-
-                            <div className="border rounded-md">
-                                <Table>
-                                    <TableHeader>
-                                        <TableRow>
-                                            <TableHead className="text-start">{t('products.table.name')}</TableHead>
-                                            <TableHead className="text-end">{t('common.quantity')}</TableHead>
-                                            <TableHead className="text-end">{t('common.price')}</TableHead>
-                                            <TableHead className="text-end">{t('common.total')}</TableHead>
-                                        </TableRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                        {selectedSale.items?.map((item) => {
-                                            const isConverted = item.original_currency && item.settlement_currency && item.original_currency !== item.settlement_currency
-                                            return (
-                                                <TableRow key={item.id}>
-                                                    <TableCell className="text-start">
-                                                        <div className="font-medium">{item.product_name}</div>
-                                                        <div className="text-xs text-muted-foreground">{item.product_sku}</div>
-                                                    </TableCell>
-                                                    <TableCell className="text-end font-mono">
-                                                        {item.quantity}
-                                                    </TableCell>
-                                                    <TableCell className="text-end">
-                                                        <div className="flex flex-col items-end">
-                                                            <span className="font-medium">
-                                                                {formatCurrency(item.converted_unit_price || item.unit_price, selectedSale.settlement_currency || 'usd', features.iqd_display_preference)}
-                                                            </span>
-                                                            {item.negotiated_price && (
-                                                                <span className="text-[10px] text-emerald-600 font-bold">
-                                                                    {t('pos.negotiatedPrice') || 'Negotiated'}
-                                                                </span>
-                                                            )}
-                                                            {isConverted && (
-                                                                <span className="text-[10px] text-muted-foreground line-through opacity-70">
-                                                                    {formatCurrency(item.original_unit_price || item.unit_price, item.original_currency || 'usd', features.iqd_display_preference)}
-                                                                </span>
-                                                            )}
-                                                        </div>
-                                                    </TableCell>
-                                                    <TableCell className="text-end font-bold">
-                                                        <div className="flex flex-col items-end">
-                                                            <span>
-                                                                {formatCurrency((item.converted_unit_price || item.unit_price) * item.quantity, selectedSale.settlement_currency || 'usd', features.iqd_display_preference)}
-                                                            </span>
-                                                            {isConverted && (
-                                                                <span className="text-[10px] text-muted-foreground line-through opacity-50">
-                                                                    {formatCurrency((item.original_unit_price || item.unit_price) * item.quantity, item.original_currency || 'usd', features.iqd_display_preference)}
-                                                                </span>
-                                                            )}
-                                                        </div>
-                                                    </TableCell>
-                                                </TableRow>
-                                            )
-                                        })}
-                                    </TableBody>
-                                </Table>
-                            </div>
-
-                            <div className="flex justify-between items-center pt-4 border-t">
-                                <div className="text-lg font-bold uppercase tracking-tight opacity-70">
-                                    {t('sales.total')} ({selectedSale.settlement_currency || 'usd'})
-                                </div>
-                                <div className="text-3xl font-black text-primary">
-                                    {formatCurrency(selectedSale.total_amount, selectedSale.settlement_currency || 'usd', features.iqd_display_preference)}
-                                </div>
-                            </div>
-                        </div>
-                    )}
-                </DialogContent>
-            </Dialog>
+            <SaleDetailsModal
+                isOpen={!!selectedSale}
+                onClose={() => setSelectedSale(null)}
+                sale={selectedSale}
+            />
         </div>
     )
 }

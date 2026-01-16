@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { RotateCcw } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import {
     Dialog,
     DialogContent,
@@ -76,113 +78,171 @@ export function ReturnConfirmationModal({
 
     return (
         <Dialog open={isOpen} onOpenChange={handleClose}>
-            <DialogContent className="max-w-md">
+            <DialogContent className="max-w-xl dark:bg-zinc-950/90 backdrop-blur-xl border-zinc-200 dark:border-zinc-800 shadow-2xl animate-in fade-in zoom-in duration-300">
                 <DialogHeader>
-                    <DialogTitle>{title}</DialogTitle>
+                    <DialogTitle className="text-2xl font-black text-foreground tracking-tight flex items-center gap-2">
+                        <RotateCcw className="w-6 h-6 text-primary" />
+                        {title}
+                    </DialogTitle>
                 </DialogHeader>
 
-                {step === 'confirmation' && (
-                    <div className="space-y-4">
-                        <p className="text-muted-foreground">{message}</p>
-                        <DialogFooter>
-                            <Button variant="outline" onClick={handleClose}>
-                                {t('common.cancel') || 'Cancel'}
-                            </Button>
-                            <Button onClick={handleContinue}>
-                                {t('common.continue') || 'Continue'}
-                            </Button>
-                        </DialogFooter>
-                    </div>
-                )}
-
-                {step === 'quantity' && (
-                    <div className="space-y-4">
-                        <div>
-                            <Label className="text-sm font-medium">
-                                {t('sales.return.selectQuantity', { item: itemName }) || `How many "${itemName}" would you like to return?`}
-                            </Label>
-                            <div className="mt-3">
-                                <input
-                                    type="number"
-                                    min="1"
-                                    max={maxQuantity}
-                                    value={returnQuantity}
-                                    onChange={(e) => setReturnQuantity(Math.min(Math.max(1, parseInt(e.target.value) || 1), maxQuantity))}
-                                    className="w-full h-10 px-3 py-2 border border-input bg-background text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                                />
-                                <p className="text-xs text-muted-foreground mt-1">
-                                    {t('sales.return.maxQuantity', { max: maxQuantity }) || `Maximum quantity: ${maxQuantity}`}
-                                </p>
-                            </div>
+                <div className="py-4">
+                    {step === 'confirmation' && (
+                        <div className="space-y-6">
+                            <p className="text-lg text-muted-foreground font-medium leading-relaxed">
+                                {message}
+                            </p>
+                            {isItemReturn && itemName && (
+                                <div className="bg-muted/50 p-4 rounded-2xl border border-border/50">
+                                    <p className="text-sm font-bold text-foreground">
+                                        {itemName}
+                                    </p>
+                                    <p className="text-xs text-muted-foreground">
+                                        {t('sales.return.availableToReturn') || 'Available to return'}: {maxQuantity}
+                                    </p>
+                                </div>
+                            )}
+                            <DialogFooter className="gap-3 sm:gap-0">
+                                <Button variant="outline" onClick={handleClose} className="rounded-xl h-12 px-6 font-bold">
+                                    {t('common.cancel') || 'Cancel'}
+                                </Button>
+                                <Button onClick={handleContinue} className="rounded-xl h-12 px-8 font-black shadow-lg shadow-primary/20">
+                                    {t('common.continue') || 'Continue'}
+                                </Button>
+                            </DialogFooter>
                         </div>
+                    )}
 
-                        <DialogFooter>
-                            <Button variant="outline" onClick={() => setStep('confirmation')}>
-                                {t('common.back') || 'Back'}
-                            </Button>
-                            <Button onClick={handleQuantityContinue}>
-                                {t('common.continue') || 'Continue'}
-                            </Button>
-                        </DialogFooter>
-                    </div>
-                )}
-
-                {step === 'reason' && (
-                    <div className="space-y-4">
-                        <div>
-                            <Label className="text-sm font-medium">
-                                {t('sales.return.selectReason') || 'Please select a reason for this return:'}
-                            </Label>
-                            <div className="mt-3 space-y-2">
-                                {returnReasons.map((reason) => (
-                                    <div key={reason.value} className="flex items-center space-x-2">
-                                        <input
-                                            type="radio"
-                                            id={reason.value}
-                                            name="returnReason"
-                                            value={reason.value}
-                                            checked={selectedReason === reason.value}
-                                            onChange={(e) => setSelectedReason(e.target.value)}
-                                            className="h-4 w-4 rounded border border-primary text-primary focus:ring-primary"
-                                        />
-                                        <Label htmlFor={reason.value} className="text-sm cursor-pointer">
-                                            {reason.label}
-                                        </Label>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-
-                        {selectedReason === 'other' && (
-                            <div>
-                                <Label htmlFor="other-reason" className="text-sm font-medium">
-                                    {t('sales.return.specifyReason') || 'Please specify the reason:'}
+                    {step === 'quantity' && (
+                        <div className="space-y-6">
+                            <div className="space-y-4">
+                                <Label className="text-lg font-bold text-foreground block">
+                                    {t('sales.return.selectQuantity', { item: itemName }) || `How many "${itemName}" would you like to return?`}
                                 </Label>
-                                <Textarea
-                                    id="other-reason"
-                                    value={otherReason}
-                                    onChange={(e) => setOtherReason(e.target.value)}
-                                    placeholder={t('sales.return.reasonPlaceholder') || 'Enter reason...'}
-                                    className="mt-1"
-                                    rows={3}
-                                    maxLength={50}
-                                />
+                                <div className="flex flex-col gap-2">
+                                    <div className="relative">
+                                        <input
+                                            type="number"
+                                            min="1"
+                                            max={maxQuantity}
+                                            value={returnQuantity}
+                                            autoFocus
+                                            onChange={(e) => setReturnQuantity(Math.min(Math.max(1, parseInt(e.target.value) || 1), maxQuantity))}
+                                            className="w-full h-16 px-6 text-2xl font-black bg-muted/30 border-2 border-border/50 rounded-2xl focus:border-primary focus:ring-0 transition-all outline-none"
+                                        />
+                                        <div className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground font-bold">
+                                            / {maxQuantity}
+                                        </div>
+                                    </div>
+                                    <p className="text-sm text-muted-foreground font-medium px-2">
+                                        {t('sales.return.maxQuantity', { max: maxQuantity }) || `Maximum allowed: ${maxQuantity}`}
+                                    </p>
+                                </div>
+                                <div className="flex gap-2">
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => setReturnQuantity(1)}
+                                        className="h-9 px-4 rounded-lg font-bold"
+                                    >
+                                        1
+                                    </Button>
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => setReturnQuantity(maxQuantity)}
+                                        className="h-9 px-4 rounded-lg font-bold"
+                                    >
+                                        {t('common.all') || 'All'} ({maxQuantity})
+                                    </Button>
+                                    {maxQuantity > 2 && (
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => setReturnQuantity(Math.floor(maxQuantity / 2))}
+                                            className="h-9 px-4 rounded-lg font-bold"
+                                        >
+                                            50%
+                                        </Button>
+                                    )}
+                                </div>
                             </div>
-                        )}
 
-                        <DialogFooter>
-                            <Button variant="outline" onClick={() => setStep('confirmation')}>
-                                {t('common.back') || 'Back'}
-                            </Button>
-                            <Button
-                                onClick={handleReturnConfirm}
-                                disabled={selectedReason === 'other' && !otherReason.trim()}
-                            >
-                                {t('sales.return.confirmReturn') || 'Confirm Return'}
-                            </Button>
-                        </DialogFooter>
-                    </div>
-                )}
+                            <DialogFooter className="gap-3 sm:gap-0">
+                                <Button variant="outline" onClick={() => setStep('confirmation')} className="rounded-xl h-12 px-6 font-bold">
+                                    {t('common.back') || 'Back'}
+                                </Button>
+                                <Button onClick={handleQuantityContinue} className="rounded-xl h-12 px-8 font-black shadow-lg shadow-primary/20">
+                                    {t('common.continue') || 'Continue'}
+                                </Button>
+                            </DialogFooter>
+                        </div>
+                    )}
+
+                    {step === 'reason' && (
+                        <div className="space-y-6">
+                            <div className="space-y-4">
+                                <Label className="text-lg font-bold text-foreground block">
+                                    {t('sales.return.selectReason') || 'Specify reason for return'}
+                                </Label>
+                                <div className="grid grid-cols-1 gap-2">
+                                    {returnReasons.map((reason) => (
+                                        <label
+                                            key={reason.value}
+                                            className={cn(
+                                                "flex items-center gap-3 p-4 rounded-2xl border-2 cursor-pointer transition-all",
+                                                selectedReason === reason.value
+                                                    ? "bg-primary/5 border-primary shadow-sm"
+                                                    : "bg-muted/30 border-transparent hover:bg-muted/50 hover:border-border/50"
+                                            )}
+                                        >
+                                            <input
+                                                type="radio"
+                                                name="returnReason"
+                                                value={reason.value}
+                                                checked={selectedReason === reason.value}
+                                                onChange={(e) => setSelectedReason(e.target.value)}
+                                                className="h-5 w-5 text-primary border-zinc-300 focus:ring-primary"
+                                            />
+                                            <span className="text-sm font-bold text-foreground">
+                                                {reason.label}
+                                            </span>
+                                        </label>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {selectedReason === 'other' && (
+                                <div className="space-y-2 animate-in slide-in-from-top-2 duration-300">
+                                    <Label htmlFor="other-reason" className="text-sm font-bold text-foreground px-1">
+                                        {t('sales.return.specifyReason') || 'Please specify:'}
+                                    </Label>
+                                    <Textarea
+                                        id="other-reason"
+                                        value={otherReason}
+                                        onChange={(e) => setOtherReason(e.target.value)}
+                                        placeholder={t('sales.return.reasonPlaceholder') || 'Enter details...'}
+                                        className="rounded-2xl border-2 focus:border-primary transition-all resize-none min-h-[100px]"
+                                        maxLength={100}
+                                    />
+                                </div>
+                            )}
+
+                            <DialogFooter className="gap-3 sm:gap-0">
+                                <Button variant="outline" onClick={() => setStep(isItemReturn ? 'quantity' : 'confirmation')} className="rounded-xl h-12 px-6 font-bold">
+                                    {t('common.back') || 'Back'}
+                                </Button>
+                                <Button
+                                    onClick={handleReturnConfirm}
+                                    disabled={selectedReason === 'other' && !otherReason.trim()}
+                                    className="rounded-xl h-12 px-8 font-black shadow-lg shadow-primary/20"
+                                >
+                                    {t('sales.return.confirmReturn') || 'Confirm Return'}
+                                </Button>
+                            </DialogFooter>
+                        </div>
+                    )}
+                </div>
             </DialogContent>
         </Dialog>
     )

@@ -87,12 +87,108 @@ export function Products() {
     const [formData, setFormData] = useState<ProductFormData>(initialFormData)
     const [categoryFormData, setCategoryFormData] = useState({ name: '', description: '' })
     const [isLoading, setIsLoading] = useState(false)
+    const [pulseProductSubmit, setPulseProductSubmit] = useState(false)
+    const [pulseCategorySubmit, setPulseCategorySubmit] = useState(false)
     const [isElectron, setIsElectron] = useState(false)
     const [returnRulesModalOpen, setReturnRulesModalOpen] = useState(false)
+    const [outsideClickCount, setOutsideClickCount] = useState(0)
+    const [showUnsavedChangesModal, setShowUnsavedChangesModal] = useState(false)
+    const [unsavedChangesType, setUnsavedChangesType] = useState<'product' | 'category' | null>(null)
 
     useEffect(() => {
         window.electronAPI?.isElectron().then(setIsElectron).catch(() => setIsElectron(false));
     }, [])
+
+    const isProductDirty = () => {
+        if (!isDialogOpen) return false
+
+        const sourceData = editingProduct ? {
+            sku: editingProduct.sku,
+            name: editingProduct.name,
+            description: editingProduct.description,
+            categoryId: editingProduct.categoryId,
+            price: editingProduct.price,
+            costPrice: editingProduct.costPrice,
+            quantity: editingProduct.quantity,
+            minStockLevel: editingProduct.minStockLevel,
+            unit: editingProduct.unit,
+            currency: editingProduct.currency,
+            imageUrl: editingProduct.imageUrl || '',
+            canBeReturned: editingProduct.canBeReturned ?? true,
+            returnRules: editingProduct.returnRules || ''
+        } : initialFormData
+
+        return JSON.stringify(formData) !== JSON.stringify(sourceData)
+    }
+
+    const isCategoryDirty = () => {
+        if (!isCategoryDialogOpen) return false
+
+        const sourceData = editingCategory ? {
+            name: editingCategory.name,
+            description: editingCategory.description
+        } : { name: '', description: '' }
+
+        return JSON.stringify(categoryFormData) !== JSON.stringify(sourceData)
+    }
+
+    const handleProductOutsideClick = (e: Event) => {
+        if (isProductDirty()) {
+            e.preventDefault()
+            const newCount = outsideClickCount + 1
+            if (newCount >= 3) {
+                setUnsavedChangesType('product')
+                setShowUnsavedChangesModal(true)
+                setOutsideClickCount(0)
+            } else {
+                setOutsideClickCount(newCount)
+                setPulseProductSubmit(true)
+                setTimeout(() => setPulseProductSubmit(false), 1000)
+            }
+        }
+    }
+
+    const handleCategoryOutsideClick = (e: Event) => {
+        if (isCategoryDirty()) {
+            e.preventDefault()
+            const newCount = outsideClickCount + 1
+            if (newCount >= 3) {
+                setUnsavedChangesType('category')
+                setShowUnsavedChangesModal(true)
+                setOutsideClickCount(0)
+            } else {
+                setOutsideClickCount(newCount)
+                setPulseCategorySubmit(true)
+                setTimeout(() => setPulseCategorySubmit(false), 1000)
+            }
+        }
+    }
+
+    const handleDiscardChanges = () => {
+        if (unsavedChangesType === 'product') {
+            setIsDialogOpen(false)
+            setEditingProduct(null)
+            setFormData(initialFormData)
+        } else if (unsavedChangesType === 'category') {
+            setIsCategoryDialogOpen(false)
+            setEditingCategory(null)
+            setCategoryFormData({ name: '', description: '' })
+        }
+        setShowUnsavedChangesModal(false)
+        setUnsavedChangesType(null)
+        setOutsideClickCount(0)
+    }
+
+    const handleSaveDirtyChanges = () => {
+        setShowUnsavedChangesModal(false)
+        if (unsavedChangesType === 'product') {
+            handleSubmit({ preventDefault: () => { } } as React.FormEvent)
+        } else if (unsavedChangesType === 'category') {
+            handleCategorySubmit({ preventDefault: () => { } } as React.FormEvent)
+        }
+        setUnsavedChangesType(null)
+        setOutsideClickCount(0)
+    }
 
     const handleImageUpload = async () => {
         if (!window.electronAPI) return;
@@ -129,6 +225,7 @@ export function Products() {
     )
 
     const handleOpenDialog = (product?: Product) => {
+        setOutsideClickCount(0)
         if (product) {
             setEditingProduct(product)
             setFormData({
@@ -202,6 +299,7 @@ export function Products() {
     }
 
     const handleOpenCategoryDialog = (category?: Category) => {
+        setOutsideClickCount(0)
         if (category) {
             setEditingCategory(category)
             setCategoryFormData({ name: category.name, description: category.description || '' })
@@ -251,7 +349,7 @@ export function Products() {
 
             {/* Search */}
             <div className="relative max-w-md">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Search className="absolute left-3 top-1/3 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input
                     placeholder={t('products.searchPlaceholder') || "Search products..."}
                     value={search}
@@ -336,7 +434,10 @@ export function Products() {
 
             {/* Add/Edit Dialog */}
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-                <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+                <DialogContent
+                    className="max-w-2xl max-h-[90vh] overflow-y-auto"
+                    onPointerDownOutside={handleProductOutsideClick}
+                >
                     {/* ... Dialog Content ... */}
                     <DialogHeader>
                         <DialogTitle>{editingProduct ? t('common.edit') : t('products.addProduct')}</DialogTitle>
@@ -571,7 +672,11 @@ export function Products() {
                             <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
                                 {t('common.cancel')}
                             </Button>
-                            <Button type="submit" disabled={isLoading}>
+                            <Button
+                                type="submit"
+                                disabled={isLoading}
+                                className={cn(pulseProductSubmit && "animate-save-pulse")}
+                            >
                                 {isLoading ? t('common.loading') : editingProduct ? t('common.save') : t('common.create')}
                             </Button>
                         </DialogFooter>
@@ -581,7 +686,10 @@ export function Products() {
             {/* Category Dialog */}
             <Dialog open={isCategoryDialogOpen} onOpenChange={setIsCategoryDialogOpen}>
                 {/* ... existing Category Dialog content ... */}
-                <DialogContent className="max-w-md">
+                <DialogContent
+                    className="max-w-md"
+                    onPointerDownOutside={handleCategoryOutsideClick}
+                >
                     <DialogHeader>
                         <DialogTitle>{editingCategory ? t('categories.editCategory') : t('categories.addCategory')}</DialogTitle>
                     </DialogHeader>
@@ -635,7 +743,11 @@ export function Products() {
                                     Cancel Edit
                                 </Button>
                             )}
-                            <Button type="submit" disabled={isLoading}>
+                            <Button
+                                type="submit"
+                                disabled={isLoading}
+                                className={cn(pulseCategorySubmit && "animate-save-pulse")}
+                            >
                                 {isLoading ? t('common.loading') : editingCategory ? t('common.save') : t('common.create')}
                             </Button>
                         </DialogFooter>
@@ -681,6 +793,52 @@ export function Products() {
                         <Button type="button" onClick={() => setReturnRulesModalOpen(false)}>
                             {t('common.done') || 'Done'}
                         </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+            {/* Unsaved Changes Confirmation Modal */}
+            <Dialog open={showUnsavedChangesModal} onOpenChange={setShowUnsavedChangesModal}>
+                <DialogContent className="max-w-lg animate-in fade-in zoom-in duration-300 border-primary/20 shadow-2xl p-0 overflow-hidden">
+                    <div className="p-6 border-b bg-muted/30">
+                        <DialogHeader>
+                            <DialogTitle className="flex items-center gap-2 text-primary text-xl">
+                                <Info className="w-6 h-6" />
+                                {t('common.unsavedChanges.title') || 'Unsaved Changes'}
+                            </DialogTitle>
+                        </DialogHeader>
+                    </div>
+
+                    <div className="p-8">
+                        <p className="text-lg text-foreground/90 font-medium leading-relaxed">
+                            {t('common.unsavedChanges.message') || 'You have unsaved changes. Would you like to save them now or discard everything?'}
+                        </p>
+                    </div>
+
+                    <DialogFooter className="flex flex-col sm:flex-row gap-3 w-full p-6 bg-muted/20 border-t">
+                        <Button
+                            variant="ghost"
+                            onClick={() => setShowUnsavedChangesModal(false)}
+                            className="w-full sm:w-auto h-11 text-muted-foreground order-last sm:order-first px-6"
+                        >
+                            {t('common.unsavedChanges.continue') || 'Continue Editing'}
+                        </Button>
+
+                        <div className="flex flex-col sm:flex-row gap-3 flex-1">
+                            <Button
+                                variant="destructive"
+                                onClick={handleDiscardChanges}
+                                className="flex-1 h-11 text-base font-bold shadow-sm"
+                            >
+                                {t('common.unsavedChanges.discard') || 'Discard Changes'}
+                            </Button>
+                            <Button
+                                variant="default"
+                                onClick={handleSaveDirtyChanges}
+                                className="flex-1 h-11 text-base font-bold shadow-lg shadow-primary/20"
+                            >
+                                {t('common.unsavedChanges.save') || 'Save Changes'}
+                            </Button>
+                        </div>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
