@@ -77,6 +77,29 @@ function App() {
         if (isElectron) {
             console.log('[Tauri] Pre-loading all pages for snappy navigation...')
             pages.forEach(load => load())
+
+            const handleKeyDown = async (e: KeyboardEvent) => {
+                if (e.key === 'F11') {
+                    e.preventDefault()
+                    const { getCurrentWindow } = await import('@tauri-apps/api/window')
+                    const window = getCurrentWindow()
+                    const fullscreen = await window.isFullscreen()
+                    const maximized = await window.isMaximized()
+
+                    console.log('[Tauri] F11: Toggling fullscreen to:', !fullscreen, '(Maximized:', maximized, ')')
+
+                    // If we are entering fullscreen and currently maximized, unmaximize first
+                    // to ensure the OS taskbar hides correctly for undecorated windows.
+                    if (!fullscreen && maximized) {
+                        await window.unmaximize()
+                    }
+
+                    await window.setFullscreen(!fullscreen)
+                }
+            }
+
+            window.addEventListener('keydown', handleKeyDown)
+            return () => window.removeEventListener('keydown', handleKeyDown)
         }
     }, [])
 

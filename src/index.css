@@ -7,6 +7,15 @@
   /* Default variables (fallback) */
   :root {
     --radius: 0.5rem;
+    --titlebar-height: 0px;
+  }
+
+  [data-tauri="true"] {
+    --titlebar-height: 48px;
+  }
+
+  [data-fullscreen="true"] {
+    --titlebar-height: 0px !important;
   }
 
   /* Disable context menu in Tauri */
@@ -123,8 +132,16 @@
     @apply border-border;
   }
 
+  html,
   body {
-    @apply bg-background text-foreground;
+    @apply bg-transparent;
+    /* Transparent for acrylic */
+    overflow: hidden;
+    /* Prevent global scroll */
+  }
+
+  body {
+    @apply text-foreground;
     font-feature-settings: "rlig" 1, "calt" 1;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;

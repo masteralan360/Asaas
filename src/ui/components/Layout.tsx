@@ -122,11 +122,11 @@ export function Layout({ children }: LayoutProps) {
     const isTauri = !!window.__TAURI_INTERNALS__
 
     return (
-        <div className={cn("min-h-screen bg-background", isTauri && "pt-10")}>
+        <div className="h-screen overflow-hidden bg-transparent">
             {/* Mobile sidebar backdrop */}
             {mobileSidebarOpen && (
                 <div
-                    className={cn("fixed inset-0 z-40 bg-black/50 lg:hidden", isTauri && "top-10")}
+                    className={cn("fixed inset-0 z-40 bg-black/50 lg:hidden", isTauri && "top-[var(--titlebar-height)]")}
                     onClick={() => setMobileSidebarOpen(false)}
                 />
             )}
@@ -134,9 +134,9 @@ export function Layout({ children }: LayoutProps) {
             {/* Sidebar */}
             <aside
                 className={cn(
-                    'fixed z-50 w-64 transform transition-transform duration-300 ease-in-out',
+                    'fixed z-50 w-64 transition-transform duration-300 ease-in-out flex flex-col',
                     'glass sidebar-gradient shadow-2xl',
-                    isTauri ? 'top-10 bottom-0' : 'inset-y-0',
+                    isTauri ? 'top-[var(--titlebar-height)] h-[calc(100vh-var(--titlebar-height))]' : 'inset-y-0 h-full',
                     // Desktop state
                     desktopSidebarOpen ? 'lg:translate-x-0 lg:rtl:translate-x-0' : 'lg:-translate-x-full lg:rtl:translate-x-full',
                     // Positioning
@@ -173,7 +173,7 @@ export function Layout({ children }: LayoutProps) {
                 </div>
 
                 {/* Navigation */}
-                <nav className="flex-1 px-3 py-4 space-y-1">
+                <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto custom-scrollbar">
                     {navigation.map((item) => {
                         const isActive = location === item.href ||
                             (item.href !== '/' && location.startsWith(item.href))
@@ -197,56 +197,59 @@ export function Layout({ children }: LayoutProps) {
                             </Link>
                         )
                     })}
+
+                    {/* Workspace Members Section */}
+                    {user?.role === 'admin' && (
+                        <div className="pt-6 pb-2">
+                            <h2 className="px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+                                {t('auth.members')}
+                            </h2>
+
+                            {/* Workspace Code */}
+                            {user?.workspaceCode && (
+                                <div
+                                    className="mx-3 mb-4 p-2.5 bg-secondary/30 rounded-lg border border-border group hover:border-primary/50 transition-all cursor-pointer relative overflow-hidden"
+                                    onClick={() => copyToClipboard(user.workspaceCode)}
+                                >
+                                    <div className="relative z-10">
+                                        <p className="text-[10px] text-muted-foreground uppercase font-bold mb-1 flex items-center justify-between">
+                                            {t('auth.workspaceCode')}
+                                            {copied ? (
+                                                <span className="flex items-center gap-1 text-emerald-500 animate-in fade-in zoom-in duration-300">
+                                                    <Check className="w-3 h-3" />
+                                                    {t('auth.copied')}
+                                                </span>
+                                            ) : (
+                                                <Copy className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-all" />
+                                            )}
+                                        </p>
+                                        <p className="text-sm font-mono font-bold tracking-wider">{user.workspaceCode}</p>
+                                    </div>
+                                    <div className="absolute inset-0 bg-primary/5 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                </div>
+                            )}
+
+                            <div className="px-3 space-y-3">
+                                {members.map((member) => (
+                                    <div key={member.id} className="flex items-center gap-3">
+                                        <div className="w-7 h-7 rounded-full bg-secondary flex items-center justify-center text-xs font-medium">
+                                            {member.name?.charAt(0).toUpperCase() || 'M'}
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <p className="text-sm font-medium truncate">{member.name}</p>
+                                            <p className="text-[10px] text-muted-foreground capitalize">{member.role}</p>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
                 </nav>
 
                 {/* Workspace Members */}
-                <div className="mt-8 px-6">
-                    <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-4">
-                        {t('auth.members')}
-                    </h2>
-
-                    {/* Workspace Code */}
-                    {user?.workspaceCode && (
-                        <div
-                            className="mb-4 p-2.5 bg-secondary/30 rounded-lg border border-border group hover:border-primary/50 transition-all cursor-pointer relative overflow-hidden"
-                            onClick={() => copyToClipboard(user.workspaceCode)}
-                        >
-                            <div className="relative z-10">
-                                <p className="text-[10px] text-muted-foreground uppercase font-bold mb-1 flex items-center justify-between">
-                                    {t('auth.workspaceCode')}
-                                    {copied ? (
-                                        <span className="flex items-center gap-1 text-emerald-500 animate-in fade-in zoom-in duration-300">
-                                            <Check className="w-3 h-3" />
-                                            {t('auth.copied')}
-                                        </span>
-                                    ) : (
-                                        <Copy className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-all" />
-                                    )}
-                                </p>
-                                <p className="text-sm font-mono font-bold tracking-wider">{user.workspaceCode}</p>
-                            </div>
-                            {/* Hover effect background */}
-                            <div className="absolute inset-0 bg-primary/5 opacity-0 group-hover:opacity-100 transition-opacity" />
-                        </div>
-                    )}
-
-                    <div className="space-y-3">
-                        {members.map((member) => (
-                            <div key={member.id} className="flex items-center gap-3">
-                                <div className="w-7 h-7 rounded-full bg-secondary flex items-center justify-center text-xs font-medium">
-                                    {member.name?.charAt(0).toUpperCase() || 'M'}
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                    <p className="text-sm font-medium truncate">{member.name}</p>
-                                    <p className="text-[10px] text-muted-foreground capitalize">{member.role}</p>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-
-                {/* User info & Version */}
-                <div className="p-4 border-t border-border">
+                {/* Moved inside nav or separate scroll area if needed, but for now simplifying sidebar structure slightly or assuming it fits or sidebar has its own flex col structure */}
+                {/* Re-adding User Info fixed at bottom */}
+                <div className="p-4 border-t border-border bg-background/50 backdrop-blur-md shrink-0">
                     <div className="flex items-center gap-3 px-3 py-2">
                         <div className="w-9 h-9 rounded-full bg-gradient-to-br from-primary to-purple-600 flex items-center justify-center text-sm font-bold text-white">
                             {user?.name?.charAt(0).toUpperCase() || 'U'}
@@ -273,14 +276,17 @@ export function Layout({ children }: LayoutProps) {
                 </div>
             </aside>
 
-            {/* Main content */}
+            {/* Main content Scroll Container */}
             <div className={cn(
-                "transition-[padding] duration-300 ease-in-out",
+                "h-full overflow-y-auto custom-scrollbar bg-background transition-[padding] duration-300 ease-in-out",
+                isTauri && "mt-[var(--titlebar-height)] h-[calc(100vh-var(--titlebar-height))]", // Use CSS variable
                 desktopSidebarOpen ? "lg:pl-64 lg:rtl:pl-0 lg:rtl:pr-64" : "lg:pl-0"
             )}>
                 {/* Top bar */}
-                {/* Top bar */}
-                <header className="sticky top-0 z-30 flex items-center gap-4 px-4 py-3 bg-background/60 backdrop-blur-xl border-b border-border/50">
+                <header className={cn(
+                    "sticky z-30 flex items-center gap-4 px-4 py-3 bg-background/60 backdrop-blur-xl border-b border-border/50",
+                    "top-0" // Always top 0 relative to this container
+                )}>
                     {/* Mobile Toggle */}
                     <button
                         className="lg:hidden p-2 -ms-2 rounded-lg hover:bg-secondary"
