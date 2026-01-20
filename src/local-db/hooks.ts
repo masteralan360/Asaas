@@ -5,6 +5,7 @@ import type { Product, Category, Customer, Order, Invoice, OfflineMutation, Sale
 import { generateId, toSnakeCase, toCamelCase } from '@/lib/utils'
 import { supabase } from '@/auth/supabase'
 import { useNetworkStatus } from '@/hooks/useNetworkStatus'
+import { isOnline } from '@/lib/network'
 
 // ===================
 // CATEGORIES HOOKS
@@ -71,13 +72,13 @@ export async function createCategory(workspaceId: string, data: Omit<Category, '
         workspaceId,
         createdAt: now,
         updatedAt: now,
-        syncStatus: (navigator.onLine ? 'synced' : 'pending') as any, // Optimistic status
-        lastSyncedAt: navigator.onLine ? now : null,
+        syncStatus: (isOnline() ? 'synced' : 'pending') as any, // Optimistic status
+        lastSyncedAt: isOnline() ? now : null,
         version: 1,
         isDeleted: false
     }
 
-    if (navigator.onLine) {
+    if (isOnline()) {
         // ONLINE: Write directly to Supabase
         const payload = toSnakeCase({ ...category, syncStatus: undefined, lastSyncedAt: undefined })
         const { error } = await supabase.from('categories').insert(payload)
@@ -107,12 +108,12 @@ export async function updateCategory(id: string, data: Partial<Category>): Promi
         ...existing,
         ...data,
         updatedAt: now,
-        syncStatus: (navigator.onLine ? 'synced' : 'pending') as any,
-        lastSyncedAt: navigator.onLine ? now : existing.lastSyncedAt,
+        syncStatus: (isOnline() ? 'synced' : 'pending') as any,
+        lastSyncedAt: isOnline() ? now : existing.lastSyncedAt,
         version: existing.version + 1
     }
 
-    if (navigator.onLine) {
+    if (isOnline()) {
         // ONLINE: Update Supabase directly
         const payload = toSnakeCase({ ...data, updatedAt: now })
         const { error } = await supabase.from('categories').update(payload).eq('id', id)
@@ -136,11 +137,11 @@ export async function deleteCategory(id: string): Promise<void> {
         ...existing,
         isDeleted: true,
         updatedAt: now,
-        syncStatus: navigator.onLine ? 'synced' : 'pending',
+        syncStatus: isOnline() ? 'synced' : 'pending',
         version: existing.version + 1
     } as Category
 
-    if (navigator.onLine) {
+    if (isOnline()) {
         // ONLINE: Delete in Supabase (Soft Delete)
         const { error } = await supabase.from('categories').update({ is_deleted: true, updated_at: now }).eq('id', id)
         if (error) throw error
@@ -225,13 +226,13 @@ export async function createProduct(workspaceId: string, data: Omit<Product, 'id
         workspaceId,
         createdAt: now,
         updatedAt: now,
-        syncStatus: (navigator.onLine ? 'synced' : 'pending') as any, // Cast to any or SyncStatus to fix TS error
-        lastSyncedAt: navigator.onLine ? now : null,
+        syncStatus: (isOnline() ? 'synced' : 'pending') as any, // Cast to any or SyncStatus to fix TS error
+        lastSyncedAt: isOnline() ? now : null,
         version: 1,
         isDeleted: false
     }
 
-    if (navigator.onLine) {
+    if (isOnline()) {
         // ONLINE
         const payload = toSnakeCase({ ...product, syncStatus: undefined, lastSyncedAt: undefined })
         const { error } = await supabase.from('products').insert(payload)
@@ -260,12 +261,12 @@ export async function updateProduct(id: string, data: Partial<Product>): Promise
         ...existing,
         ...data,
         updatedAt: now,
-        syncStatus: (navigator.onLine ? 'synced' : 'pending') as any,
-        lastSyncedAt: navigator.onLine ? now : existing.lastSyncedAt,
+        syncStatus: (isOnline() ? 'synced' : 'pending') as any,
+        lastSyncedAt: isOnline() ? now : existing.lastSyncedAt,
         version: existing.version + 1
     }
 
-    if (navigator.onLine) {
+    if (isOnline()) {
         // ONLINE
         const payload = toSnakeCase({ ...data, updatedAt: now })
         const { error } = await supabase.from('products').update(payload).eq('id', id)
@@ -289,11 +290,11 @@ export async function deleteProduct(id: string): Promise<void> {
         ...existing,
         isDeleted: true,
         updatedAt: now,
-        syncStatus: (navigator.onLine ? 'synced' : 'pending') as any,
+        syncStatus: (isOnline() ? 'synced' : 'pending') as any,
         version: existing.version + 1
     } as Product
 
-    if (navigator.onLine) {
+    if (isOnline()) {
         // ONLINE
         const { error } = await supabase.from('products').update({ is_deleted: true, updated_at: now }).eq('id', id)
         if (error) throw error
@@ -373,15 +374,15 @@ export async function createCustomer(workspaceId: string, data: Omit<Customer, '
         workspaceId,
         createdAt: now,
         updatedAt: now,
-        syncStatus: (navigator.onLine ? 'synced' : 'pending') as any,
-        lastSyncedAt: navigator.onLine ? now : null,
+        syncStatus: (isOnline() ? 'synced' : 'pending') as any,
+        lastSyncedAt: isOnline() ? now : null,
         version: 1,
         isDeleted: false,
         totalOrders: 0,
         totalSpent: 0
     }
 
-    if (navigator.onLine) {
+    if (isOnline()) {
         // ONLINE
         const payload = toSnakeCase({ ...customer, syncStatus: undefined, lastSyncedAt: undefined })
         const { error } = await supabase.from('customers').insert(payload)
@@ -410,12 +411,12 @@ export async function updateCustomer(id: string, data: Partial<Customer>): Promi
         ...existing,
         ...data,
         updatedAt: now,
-        syncStatus: (navigator.onLine ? 'synced' : 'pending') as any,
-        lastSyncedAt: navigator.onLine ? now : existing.lastSyncedAt,
+        syncStatus: (isOnline() ? 'synced' : 'pending') as any,
+        lastSyncedAt: isOnline() ? now : existing.lastSyncedAt,
         version: existing.version + 1
     }
 
-    if (navigator.onLine) {
+    if (isOnline()) {
         // ONLINE
         const payload = toSnakeCase({ ...data, updatedAt: now })
         const { error } = await supabase.from('customers').update(payload).eq('id', id)
@@ -439,11 +440,11 @@ export async function deleteCustomer(id: string): Promise<void> {
         ...existing,
         isDeleted: true,
         updatedAt: now,
-        syncStatus: (navigator.onLine ? 'synced' : 'pending') as any,
+        syncStatus: (isOnline() ? 'synced' : 'pending') as any,
         version: existing.version + 1
     } as Customer
 
-    if (navigator.onLine) {
+    if (isOnline()) {
         // ONLINE
         const { error } = await supabase.from('customers').update({ is_deleted: true, updated_at: now }).eq('id', id)
         if (error) throw error
@@ -525,13 +526,13 @@ export async function createOrder(workspaceId: string, data: Omit<Order, 'id' | 
         orderNumber,
         createdAt: now,
         updatedAt: now,
-        syncStatus: (navigator.onLine ? 'synced' : 'pending') as any,
-        lastSyncedAt: navigator.onLine ? now : null,
+        syncStatus: (isOnline() ? 'synced' : 'pending') as any,
+        lastSyncedAt: isOnline() ? now : null,
         version: 1,
         isDeleted: false
     }
 
-    if (navigator.onLine) {
+    if (isOnline()) {
         // ONLINE
         const payload = toSnakeCase({ ...order, syncStatus: undefined, lastSyncedAt: undefined })
         const { error } = await supabase.from('orders').insert(payload)
@@ -571,12 +572,12 @@ export async function updateOrder(id: string, data: Partial<Order>): Promise<voi
         ...existing,
         ...data,
         updatedAt: now,
-        syncStatus: (navigator.onLine ? 'synced' : 'pending') as any,
-        lastSyncedAt: navigator.onLine ? now : existing.lastSyncedAt,
+        syncStatus: (isOnline() ? 'synced' : 'pending') as any,
+        lastSyncedAt: isOnline() ? now : existing.lastSyncedAt,
         version: existing.version + 1
     }
 
-    if (navigator.onLine) {
+    if (isOnline()) {
         // ONLINE
         const payload = toSnakeCase({ ...data, updatedAt: now })
         const { error } = await supabase.from('orders').update(payload).eq('id', id)
@@ -600,11 +601,11 @@ export async function deleteOrder(id: string): Promise<void> {
         ...existing,
         isDeleted: true,
         updatedAt: now,
-        syncStatus: (navigator.onLine ? 'synced' : 'pending') as any,
+        syncStatus: (isOnline() ? 'synced' : 'pending') as any,
         version: existing.version + 1
     } as Order
 
-    if (navigator.onLine) {
+    if (isOnline()) {
         // ONLINE
         const { error } = await supabase.from('orders').update({ is_deleted: true, updated_at: now }).eq('id', id)
         if (error) throw error
@@ -686,13 +687,13 @@ export async function createInvoice(workspaceId: string, data: Omit<Invoice, 'id
         invoiceNumber,
         createdAt: now,
         updatedAt: now,
-        syncStatus: (navigator.onLine ? 'synced' : 'pending') as any,
-        lastSyncedAt: navigator.onLine ? now : null,
+        syncStatus: (isOnline() ? 'synced' : 'pending') as any,
+        lastSyncedAt: isOnline() ? now : null,
         version: 1,
         isDeleted: false
     }
 
-    if (navigator.onLine) {
+    if (isOnline()) {
         // ONLINE
         const payload = toSnakeCase({ ...invoice, syncStatus: undefined, lastSyncedAt: undefined })
         const { error } = await supabase.from('invoices').insert(payload)
@@ -721,12 +722,12 @@ export async function updateInvoice(id: string, data: Partial<Invoice>): Promise
         ...existing,
         ...data,
         updatedAt: now,
-        syncStatus: (navigator.onLine ? 'synced' : 'pending') as any,
-        lastSyncedAt: navigator.onLine ? now : existing.lastSyncedAt,
+        syncStatus: (isOnline() ? 'synced' : 'pending') as any,
+        lastSyncedAt: isOnline() ? now : existing.lastSyncedAt,
         version: existing.version + 1
     }
 
-    if (navigator.onLine) {
+    if (isOnline()) {
         // ONLINE
         const payload = toSnakeCase({ ...data, updatedAt: now })
         const { error } = await supabase.from('invoices').update(payload).eq('id', id)
@@ -750,11 +751,11 @@ export async function deleteInvoice(id: string): Promise<void> {
         ...existing,
         isDeleted: true,
         updatedAt: now,
-        syncStatus: (navigator.onLine ? 'synced' : 'pending') as any,
+        syncStatus: (isOnline() ? 'synced' : 'pending') as any,
         version: existing.version + 1
     } as Invoice
 
-    if (navigator.onLine) {
+    if (isOnline()) {
         // ONLINE
         const { error } = await supabase.from('invoices').update({ is_deleted: true, updated_at: now }).eq('id', id)
         if (error) throw error

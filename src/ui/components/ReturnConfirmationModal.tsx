@@ -78,18 +78,18 @@ export function ReturnConfirmationModal({
 
     return (
         <Dialog open={isOpen} onOpenChange={handleClose}>
-            <DialogContent className="max-w-xl w-[95vw] sm:w-full max-h-[90vh] overflow-y-auto dark:bg-zinc-950/90 backdrop-blur-xl border-zinc-200 dark:border-zinc-800 shadow-2xl animate-in fade-in zoom-in duration-300">
+            <DialogContent className="max-w-lg w-[95vw] sm:w-full max-h-[90vh] overflow-y-auto dark:bg-zinc-950/90 backdrop-blur-xl border-zinc-200 dark:border-zinc-800 shadow-2xl animate-in fade-in zoom-in duration-300">
                 <DialogHeader>
-                    <DialogTitle className="text-2xl font-black text-foreground tracking-tight flex items-center gap-2">
-                        <RotateCcw className="w-6 h-6 text-primary" />
+                    <DialogTitle className="text-xl font-black text-foreground tracking-tight flex items-center gap-2">
+                        <RotateCcw className="w-5 h-5 text-primary" />
                         {title}
                     </DialogTitle>
                 </DialogHeader>
 
                 <div className="py-4">
                     {step === 'confirmation' && (
-                        <div className="space-y-6">
-                            <p className="text-lg text-muted-foreground font-medium leading-relaxed">
+                        <div className="space-y-4">
+                            <p className="text-base text-muted-foreground font-medium leading-relaxed">
                                 {message}
                             </p>
                             {isItemReturn && itemName && (
@@ -102,11 +102,18 @@ export function ReturnConfirmationModal({
                                     </p>
                                 </div>
                             )}
-                            <DialogFooter className="gap-3 sm:gap-0">
-                                <Button variant="outline" onClick={handleClose} className="rounded-xl h-12 px-6 font-bold">
+                            <DialogFooter className="flex flex-col sm:flex-row gap-3 pt-6">
+                                <Button
+                                    variant="ghost"
+                                    onClick={handleClose}
+                                    className="w-full sm:w-auto h-11 px-6 text-sm font-bold order-2 sm:order-1"
+                                >
                                     {t('common.cancel') || 'Cancel'}
                                 </Button>
-                                <Button onClick={handleContinue} className="rounded-xl h-12 px-8 font-black shadow-lg shadow-primary/20">
+                                <Button
+                                    onClick={handleContinue}
+                                    className="w-full sm:w-auto h-11 px-8 text-sm font-black shadow-lg shadow-primary/20 order-1 sm:order-2"
+                                >
                                     {t('common.continue') || 'Continue'}
                                 </Button>
                             </DialogFooter>
@@ -168,11 +175,18 @@ export function ReturnConfirmationModal({
                                 </div>
                             </div>
 
-                            <DialogFooter className="gap-3 sm:gap-0">
-                                <Button variant="outline" onClick={() => setStep('confirmation')} className="rounded-xl h-12 px-6 font-bold">
+                            <DialogFooter className="flex flex-col sm:flex-row gap-3 pt-6">
+                                <Button
+                                    variant="ghost"
+                                    onClick={() => setStep('confirmation')}
+                                    className="w-full sm:w-auto h-11 px-6 text-sm font-bold order-2 sm:order-1"
+                                >
                                     {t('common.back') || 'Back'}
                                 </Button>
-                                <Button onClick={handleQuantityContinue} className="rounded-xl h-12 px-8 font-black shadow-lg shadow-primary/20">
+                                <Button
+                                    onClick={handleQuantityContinue}
+                                    className="w-full sm:w-auto h-11 px-8 text-sm font-black shadow-lg shadow-primary/20 order-1 sm:order-2"
+                                >
                                     {t('common.continue') || 'Continue'}
                                 </Button>
                             </DialogFooter>
@@ -228,14 +242,18 @@ export function ReturnConfirmationModal({
                                 </div>
                             )}
 
-                            <DialogFooter className="gap-3 sm:gap-0">
-                                <Button variant="outline" onClick={() => setStep(isItemReturn ? 'quantity' : 'confirmation')} className="rounded-xl h-12 px-6 font-bold">
+                            <DialogFooter className="flex flex-col sm:flex-row gap-3 pt-6">
+                                <Button
+                                    variant="ghost"
+                                    onClick={() => setStep(isItemReturn ? 'quantity' : 'confirmation')}
+                                    className="w-full sm:w-auto h-11 px-6 text-sm font-bold order-2 sm:order-1"
+                                >
                                     {t('common.back') || 'Back'}
                                 </Button>
                                 <Button
                                     onClick={handleReturnConfirm}
                                     disabled={selectedReason === 'other' && !otherReason.trim()}
-                                    className="rounded-xl h-12 px-8 font-black shadow-lg shadow-primary/20"
+                                    className="w-full sm:w-auto h-11 px-8 text-sm font-black shadow-lg shadow-primary/20 order-1 sm:order-2"
                                 >
                                     {t('sales.return.confirmReturn') || 'Confirm Return'}
                                 </Button>

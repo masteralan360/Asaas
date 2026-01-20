@@ -119,6 +119,9 @@ export function POS() {
             (p.sku || '').toLowerCase().includes(search.toLowerCase())
 
         if (selectedCategory !== 'all') {
+            if (selectedCategory === 'none') {
+                return matchesSearch && !p.categoryId
+            }
             return matchesSearch && p.categoryId === selectedCategory
         }
         return matchesSearch
@@ -950,50 +953,73 @@ export function POS() {
 
                         <div className="flex-1 overflow-y-auto pr-2">
                             <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                                {filteredProducts.map((product, index) => (
-                                    <button
-                                        key={product.id}
-                                        ref={el => productRefs.current[index] = el}
-                                        onClick={() => addToCart(product)}
-                                        disabled={product.quantity <= 0}
-                                        className={cn(
-                                            "bg-card hover:bg-accent/50 transition-all duration-200 p-4 rounded-xl border border-border text-left flex flex-col gap-2 relative overflow-hidden group outline-none",
-                                            product.quantity <= 0 ? 'opacity-60 cursor-not-allowed' : '',
-                                            // Keyboard focus highlight (Electron only)
-                                            (isElectron && focusedSection === 'grid' && focusedProductIndex === index) ? "ring-2 ring-primary ring-offset-2 ring-offset-background scale-[1.02] shadow-lg z-10 box-shadow-[0_0_0_2px_hsl(var(--primary))]" : ""
-                                        )}
-                                    >
-                                        <div className="absolute top-2 right-2 bg-primary/10 text-primary px-2 py-0.5 rounded text-xs font-bold">
-                                            {product.quantity}
-                                        </div>
-                                        <div className="h-24 w-full bg-muted/20 rounded-lg mb-2 flex items-center justify-center text-muted-foreground overflow-hidden">
-                                            {product.imageUrl ? (
-                                                <img
-                                                    src={getDisplayImageUrl(product.imageUrl)}
-                                                    alt={product.name}
-                                                    className="w-full h-full object-cover"
-                                                    onError={(e) => {
-                                                        // Hide the image and show fallback
-                                                        (e.target as HTMLImageElement).style.display = 'none';
-                                                        const parent = (e.target as HTMLImageElement).parentElement;
-                                                        if (parent) {
-                                                            parent.innerHTML = `<span class="text-xs font-medium text-center px-2 line-clamp-3">${product.name}</span>`;
-                                                        }
-                                                    }}
-                                                />
-                                            ) : (
-                                                <Zap className="w-8 h-8 opacity-20" />
+                                {filteredProducts.map((product, index) => {
+                                    const cartItem = cart.find(i => i.product_id === product.id)
+                                    const inCartQuantity = cartItem?.quantity || 0
+                                    const remainingQuantity = product.quantity - inCartQuantity
+                                    const minStock = product.minStockLevel || 5
+                                    const isLowStock = remainingQuantity <= minStock
+                                    const isCriticalStock = remainingQuantity <= (minStock / 2)
+
+                                    return (
+                                        <button
+                                            key={product.id}
+                                            ref={el => productRefs.current[index] = el}
+                                            onClick={() => addToCart(product)}
+                                            disabled={remainingQuantity <= 0}
+                                            className={cn(
+                                                "bg-card hover:bg-accent/50 transition-all duration-200 p-4 rounded-xl border border-border text-left flex flex-col gap-2 relative overflow-hidden group outline-none",
+                                                remainingQuantity <= 0 ? 'opacity-60 cursor-not-allowed' : '',
+                                                // Keyboard focus highlight (Electron only)
+                                                (isElectron && focusedSection === 'grid' && focusedProductIndex === index) ? "ring-2 ring-primary ring-offset-2 ring-offset-background scale-[1.02] shadow-lg z-10 box-shadow-[0_0_0_2px_hsl(var(--primary))]" : ""
                                             )}
-                                        </div>
-                                        <div className="flex-1 min-w-0">
-                                            <h3 className="font-semibold truncate" title={product.name}>{product.name}</h3>
-                                            <p className="text-xs text-muted-foreground truncate">{product.sku}</p>
-                                        </div>
-                                        <div className="mt-auto font-bold text-lg text-primary">
-                                            {formatCurrency(product.price, product.currency, features.iqd_display_preference)}
-                                        </div>
-                                    </button>
-                                ))}
+                                        >
+                                            {inCartQuantity > 0 && (
+                                                <div className="absolute top-2 left-2 bg-emerald-500 text-white px-1.5 py-0.5 rounded text-[10px] font-black animate-pop-in border border-emerald-400 shadow-sm z-10">
+                                                    +{inCartQuantity}
+                                                </div>
+                                            )}
+                                            <div className={cn(
+                                                "absolute top-2 right-2 px-2 py-0.5 rounded text-xs font-bold transition-colors duration-300",
+                                                remainingQuantity <= 0
+                                                    ? "bg-destructive text-destructive-foreground"
+                                                    : isLowStock
+                                                        ? isCriticalStock
+                                                            ? "bg-red-500 text-white shadow-[0_0_8px_rgba(239,68,68,0.4)]"
+                                                            : "bg-amber-400 text-amber-950"
+                                                        : "bg-primary/10 text-primary"
+                                            )}>
+                                                {remainingQuantity}
+                                            </div>
+                                            <div className="h-24 w-full bg-muted/20 rounded-lg mb-2 flex items-center justify-center text-muted-foreground overflow-hidden">
+                                                {product.imageUrl ? (
+                                                    <img
+                                                        src={getDisplayImageUrl(product.imageUrl)}
+                                                        alt={product.name}
+                                                        className="w-full h-full object-cover"
+                                                        onError={(e) => {
+                                                            // Hide the image and show fallback
+                                                            (e.target as HTMLImageElement).style.display = 'none';
+                                                            const parent = (e.target as HTMLImageElement).parentElement;
+                                                            if (parent) {
+                                                                parent.innerHTML = `<span class="text-xs font-medium text-center px-2 line-clamp-3">${product.name}</span>`;
+                                                            }
+                                                        }}
+                                                    />
+                                                ) : (
+                                                    <Zap className="w-8 h-8 opacity-20" />
+                                                )}
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                                <h3 className="font-semibold truncate" title={product.name}>{product.name}</h3>
+                                                <p className="text-xs text-muted-foreground truncate">{product.sku}</p>
+                                            </div>
+                                            <div className="mt-auto font-bold text-lg text-primary">
+                                                {formatCurrency(product.price, product.currency, features.iqd_display_preference)}
+                                            </div>
+                                        </button>
+                                    )
+                                })}
                             </div>
                         </div>
                     </div>
@@ -1320,7 +1346,8 @@ export function POS() {
                         </div>
                     </div>
                 </>
-            )}
+            )
+            }
 
             {/* --- Shared Modals (Available in both Mobile & Desktop) --- */}
             {/* Barcode Scanner Modal */}
@@ -1527,7 +1554,7 @@ export function POS() {
                     })()}
                 </DialogContent>
             </Dialog>
-        </div>
+        </div >
     )
 }
 
@@ -1668,7 +1695,17 @@ const MobileGrid = ({ t, search, setSearch, setIsSkuModalOpen, setIsBarcodeModal
                     selectedCategory === 'all' ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20" : "bg-card border border-border text-muted-foreground"
                 )}
             >
-                All Items
+                {t('common.all') || 'All Items'}
+            </button>
+            <button
+                key="none"
+                onClick={() => setSelectedCategory('none')}
+                className={cn(
+                    "whitespace-nowrap px-6 py-2.5 rounded-full text-sm font-bold transition-all",
+                    selectedCategory === 'none' ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20" : "bg-card border border-border text-muted-foreground"
+                )}
+            >
+                {t('categories.noCategory') || 'No Category'}
             </button>
             {categories.map((cat) => (
                 <button
@@ -1688,13 +1725,19 @@ const MobileGrid = ({ t, search, setSearch, setIsSkuModalOpen, setIsBarcodeModal
         <div className="grid grid-cols-2 gap-4 p-4 pt-0 pb-32">
             {filteredProducts.map((product) => {
                 const cartItem = cart.find(i => i.product_id === product.id)
+                const inCartQuantity = cartItem?.quantity || 0
+                const remainingQuantity = product.quantity - inCartQuantity
+                const minStock = product.minStockLevel || 5
+                const isLowStock = remainingQuantity <= minStock
+                const isCriticalStock = remainingQuantity <= (minStock / 2)
+
                 return (
                     <div
                         key={product.id}
                         className="bg-card rounded-[2rem] border border-border p-3 shadow-sm flex flex-col gap-3 group active:scale-[0.98] transition-all"
                         onClick={(e) => {
                             if ((e.target as HTMLElement).closest('button')) return;
-                            addToCart(product);
+                            if (remainingQuantity > 0) addToCart(product);
                         }}
                     >
                         <div className="aspect-square bg-muted/30 rounded-[1.5rem] overflow-hidden relative">
@@ -1703,11 +1746,28 @@ const MobileGrid = ({ t, search, setSearch, setIsSkuModalOpen, setIsBarcodeModal
                             ) : (
                                 <Zap className="w-10 h-10 absolute inset-0 m-auto opacity-10" />
                             )}
+
+                            {inCartQuantity > 0 && (
+                                <div className="absolute top-2 left-2 bg-emerald-500 text-white px-2 py-1 rounded-xl text-[10px] font-black animate-pop-in border border-emerald-400 shadow-sm z-10">
+                                    +{inCartQuantity}
+                                </div>
+                            )}
+
                             {/* Stock Badge */}
-                            <div className="absolute top-2 right-2 bg-primary/20 backdrop-blur-md text-primary px-2.5 py-1 rounded-xl text-[10px] font-black border border-primary/20">
-                                {product.quantity}
+                            <div className={cn(
+                                "absolute top-2 right-2 backdrop-blur-md px-2.5 py-1 rounded-xl text-[10px] font-black border transition-colors duration-300",
+                                remainingQuantity <= 0
+                                    ? "bg-destructive text-destructive-foreground border-destructive/20"
+                                    : isLowStock
+                                        ? isCriticalStock
+                                            ? "bg-red-500 text-white border-red-400 shadow-[0_0_8px_rgba(239,68,68,0.4)]"
+                                            : "bg-amber-400 text-amber-950 border-amber-300/50"
+                                        : "bg-primary/20 text-primary border-primary/20"
+                            )}>
+                                {remainingQuantity}
                             </div>
-                            {product.quantity <= 0 && (
+
+                            {remainingQuantity <= 0 && (
                                 <div className="absolute inset-0 bg-background/60 backdrop-blur-[2px] flex items-center justify-center text-xs font-bold text-destructive">
                                     {t('pos.outOfStock') || 'Out of stock'}
                                 </div>
@@ -1719,7 +1779,10 @@ const MobileGrid = ({ t, search, setSearch, setIsSkuModalOpen, setIsBarcodeModal
                                 {formatCurrency(product.price, product.currency, features.iqd_display_preference)}
                             </div>
                         </div>
-                        <div className="flex items-center justify-between bg-muted/30 rounded-2xl p-1 mt-auto">
+                        <div
+                            className="flex items-center justify-between bg-muted/30 rounded-2xl p-1 mt-auto"
+                            onClick={(e) => e.stopPropagation()}
+                        >
                             <Button
                                 variant="ghost"
                                 size="icon"
@@ -1741,7 +1804,7 @@ const MobileGrid = ({ t, search, setSearch, setIsSkuModalOpen, setIsBarcodeModal
                                     e.stopPropagation();
                                     addToCart(product);
                                 }}
-                                disabled={product.quantity <= 0}
+                                disabled={remainingQuantity <= 0}
                             >
                                 <Plus className="w-3 h-3" />
                             </Button>

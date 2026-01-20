@@ -210,7 +210,7 @@ export function Products() {
     const getCategoryName = (id?: string) => {
         if (!id) return t('categories.noCategory')
         const cat = categories.find(c => c.id === id)
-        return cat?.name || t('categories.deletedCategory')
+        return cat?.name || t('categories.noCategory')
     }
 
     const filteredProducts = products.filter(
@@ -254,8 +254,13 @@ export function Products() {
         setIsLoading(true)
 
         try {
+            const categoryName = formData.categoryId
+                ? categories.find(c => c.id === formData.categoryId)?.name
+                : null
+
             const dataToSave = {
                 ...formData,
+                category: categoryName || undefined,
                 price: Number(formData.price) || 0,
                 costPrice: Number(formData.costPrice) || 0,
                 quantity: Number(formData.quantity) || 0,

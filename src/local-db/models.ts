@@ -37,6 +37,7 @@ export interface Product extends BaseEntity {
     name: string
     description: string
     categoryId?: string
+    category?: string
     price: number
     costPrice: number
     quantity: number
@@ -162,6 +163,10 @@ export interface Workspace extends BaseEntity {
     eur_conversion_enabled?: boolean
     try_conversion_enabled?: boolean
     locked_workspace: boolean
+    allow_pos: boolean
+    allow_customers: boolean
+    allow_orders: boolean
+    allow_invoices: boolean
 }
 
 export interface OfflineMutation {

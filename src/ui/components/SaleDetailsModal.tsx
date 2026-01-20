@@ -14,7 +14,8 @@ import {
     DialogTitle,
     Button
 } from '@/ui/components'
-import { XCircle, RotateCcw } from 'lucide-react'
+import { RotateCcw, ArrowRight, XCircle } from 'lucide-react'
+import { isMobile } from '@/lib/platform'
 import { useAuth } from '@/auth'
 import { useWorkspace } from '@/workspace'
 
@@ -157,57 +158,52 @@ export function SaleDetailsModal({ sale, isOpen, onClose, onReturnItem }: SaleDe
                         )}
                     </div>
 
-                    <div className="border rounded-md overflow-hidden">
-                        <Table>
-                            <TableHeader>
-                                <TableRow>
-                                    <TableHead className="text-start">{t('products.table.name')}</TableHead>
-                                    <TableHead className="text-end">{t('common.quantity')}</TableHead>
-                                    <TableHead className="text-end">{t('common.price')}</TableHead>
-                                    <TableHead className="text-end">{t('common.total')}</TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
+                    <div className="border rounded-xl overflow-hidden">
+                        {isMobile() ? (
+                            <div className="divide-y divide-border">
                                 {sale.items?.map((item) => {
-                                    const isConverted = item.original_currency && item.settlement_currency && item.original_currency !== item.settlement_currency
-                                    const hasNegotiated = item.negotiated_price !== undefined && item.negotiated_price !== null && item.negotiated_price > 0
                                     const isItemReturned = item.is_returned || sale.is_returned
                                     const hasItemPartialReturn = (item.returned_quantity || 0) > 0 && !item.is_returned
-
-                                    let displayUnitPrice: number = item.converted_unit_price || item.unit_price || 0
-                                    let displayCurrency: string = sale.settlement_currency || 'usd'
-
-                                    const originalUnitPrice = item.original_unit_price || item.unit_price || 0
-                                    const originalCurrency = item.original_currency || 'usd'
-                                    const negotiatedPrice = item.negotiated_price || 0
-
+                                    const displayUnitPrice = item.converted_unit_price || item.unit_price || 0
+                                    const displayCurrency = (sale.settlement_currency || 'usd') as any
                                     const netQuantity = item.quantity - (item.returned_quantity || 0)
 
+                                    const isConverted = item.original_currency && item.settlement_currency && item.original_currency !== item.settlement_currency
+                                    const hasNegotiated = item.negotiated_price !== undefined && item.negotiated_price !== null && item.negotiated_price > 0
+                                    const originalUnitPrice = item.original_unit_price || item.unit_price || 0
+                                    const originalCurrency = (item.original_currency || 'usd') as any
+                                    const negotiatedPrice = item.negotiated_price || 0
+
                                     return (
-                                        <TableRow
+                                        <div
                                             key={item.id}
-                                            className={isItemReturned ? 'bg-destructive/5 opacity-75' : hasItemPartialReturn ? 'bg-orange-500/5' : ''}
+                                            className={cn(
+                                                "p-4 space-y-3",
+                                                isItemReturned ? 'bg-destructive/5' : hasItemPartialReturn ? 'bg-orange-500/5' : ''
+                                            )}
                                         >
-                                            <TableCell className="text-start">
-                                                <div className="flex items-center gap-2">
-                                                    <div>
-                                                        <div className={cn("font-medium", isItemReturned && "line-through opacity-50")}>
+                                            <div className="flex justify-between items-start gap-2">
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="flex items-center gap-2 flex-wrap">
+                                                        <div className={cn("font-bold text-sm", isItemReturned && "line-through opacity-50")}>
                                                             {item.product_name}
                                                         </div>
-                                                        <div className="text-xs text-muted-foreground">{item.product_sku}</div>
                                                         {hasNegotiated && (
-                                                            <div className="text-[10px] text-emerald-600 font-medium">
+                                                            <span className="px-1.5 py-0.5 text-[8px] font-black bg-emerald-500/10 text-emerald-600 rounded-full uppercase">
                                                                 {t('pos.negotiatedPrice') || 'Negotiated'}
-                                                            </div>
+                                                            </span>
                                                         )}
                                                     </div>
+                                                    <div className="text-[10px] text-muted-foreground font-mono">{item.product_sku}</div>
+                                                </div>
+                                                <div className="flex gap-1 shrink-0">
                                                     {isItemReturned && (
-                                                        <span className="px-1.5 py-0.5 text-[9px] font-bold bg-destructive/10 text-destructive rounded-full uppercase">
+                                                        <span className="px-1.5 py-0.5 text-[8px] font-black bg-destructive/10 text-destructive rounded-full uppercase">
                                                             {t('sales.return.returnedStatus')}
                                                         </span>
                                                     )}
                                                     {hasItemPartialReturn && !isItemReturned && (
-                                                        <span className="px-1.5 py-0.5 text-[9px] font-bold bg-orange-500/10 text-orange-600 rounded-full uppercase">
+                                                        <span className="px-1.5 py-0.5 text-[8px] font-black bg-orange-500/10 text-orange-600 rounded-full uppercase">
                                                             {t('sales.return.partialReturn')}
                                                         </span>
                                                     )}
@@ -219,83 +215,238 @@ export function SaleDetailsModal({ sale, isOpen, onClose, onReturnItem }: SaleDe
                                                                 e.stopPropagation()
                                                                 onReturnItem(item)
                                                             }}
-                                                            className="h-6 w-6 p-0 text-orange-600 hover:text-orange-700 hover:bg-orange-50"
-                                                            title={t('sales.return.returnItem') || 'Return Item'}
+                                                            className="h-7 w-7 p-0 text-orange-600 hover:bg-orange-50 rounded-lg"
                                                         >
-                                                            <RotateCcw className="h-3 w-3" />
+                                                            <RotateCcw className="h-3.5 w-3.5" />
                                                         </Button>
                                                     )}
                                                 </div>
-                                            </TableCell>
-                                            <TableCell className="text-end font-mono">
-                                                <div className="flex flex-col items-end">
-                                                    <span className={cn("text-sm font-semibold", isItemReturned && "line-through opacity-50")}>
-                                                        {netQuantity}
-                                                    </span>
-                                                    {(hasItemPartialReturn || isItemReturned) && (
-                                                        <div className="text-[10px] text-muted-foreground opacity-60 line-through whitespace-nowrap">
-                                                            {item.quantity} {t('common.total') || 'Total'}
+                                            </div>
+
+                                            <div className="grid grid-cols-2 gap-4 mt-2">
+                                                <div className="space-y-1">
+                                                    <div className="text-[10px] text-muted-foreground uppercase font-bold tracking-tight">
+                                                        {t('common.quantity')}
+                                                    </div>
+                                                    <div className="flex flex-col">
+                                                        <div className="flex items-baseline gap-1.5">
+                                                            <span className={cn("text-base font-black", isItemReturned && "line-through opacity-50")}>
+                                                                {netQuantity}
+                                                            </span>
+                                                            {(hasItemPartialReturn || isItemReturned) && (
+                                                                <span className="text-[10px] text-muted-foreground opacity-60 line-through">
+                                                                    {item.quantity}
+                                                                </span>
+                                                            )}
                                                         </div>
-                                                    )}
-                                                    {hasItemPartialReturn && !isItemReturned && (
-                                                        <div className="text-[10px] text-orange-600 font-medium whitespace-nowrap">
-                                                            -{item.returned_quantity} {t('sales.return.returnedLabel') || 'returned'}
-                                                        </div>
-                                                    )}
+                                                        {hasItemPartialReturn && !isItemReturned && (
+                                                            <div className="text-[9px] text-orange-600 font-bold leading-none mt-0.5">
+                                                                -{item.returned_quantity} {t('sales.return.returnedLabel') || 'returned'}
+                                                            </div>
+                                                        )}
+                                                    </div>
                                                 </div>
-                                            </TableCell>
-                                            <TableCell className="text-end">
-                                                <div className="flex flex-col items-end">
-                                                    <span className={cn(
-                                                        hasNegotiated ? "font-medium text-emerald-600" : "font-medium",
-                                                        isItemReturned && "opacity-50"
-                                                    )}>
-                                                        {formatCurrency(displayUnitPrice, displayCurrency, features.iqd_display_preference)}
-                                                    </span>
-                                                    {hasNegotiated && (
-                                                        <span className="text-[10px] text-muted-foreground opacity-60">
-                                                            <span className="line-through">{formatCurrency(originalUnitPrice, originalCurrency, features.iqd_display_preference)}</span> 🡆 <span className="font-bold">{formatCurrency(negotiatedPrice, originalCurrency, features.iqd_display_preference)}</span>
+                                                <div className="space-y-1">
+                                                    <div className="text-[10px] text-muted-foreground uppercase font-bold tracking-tight text-right">
+                                                        {t('common.price')}
+                                                    </div>
+                                                    <div className="flex flex-col items-end">
+                                                        <span className={cn(
+                                                            "text-sm font-bold",
+                                                            hasNegotiated ? "text-emerald-600" : "text-foreground",
+                                                            isItemReturned && "opacity-50"
+                                                        )}>
+                                                            {formatCurrency(displayUnitPrice, displayCurrency, features.iqd_display_preference)}
                                                         </span>
-                                                    )}
-                                                    {!hasNegotiated && isConverted && (
-                                                        <span className="text-[10px] text-muted-foreground line-through opacity-60">
-                                                            {formatCurrency(originalUnitPrice, originalCurrency, features.iqd_display_preference)}
-                                                        </span>
-                                                    )}
+                                                        {hasNegotiated && (
+                                                            <div className="flex items-center justify-end gap-1 text-[9px] text-muted-foreground opacity-60 mt-0.5">
+                                                                <span className="line-through">{formatCurrency(originalUnitPrice, originalCurrency, features.iqd_display_preference)}</span>
+                                                                <ArrowRight className="w-2 h-2" />
+                                                                <span className="font-bold">{formatCurrency(negotiatedPrice, originalCurrency, features.iqd_display_preference)}</span>
+                                                            </div>
+                                                        )}
+                                                        {!hasNegotiated && isConverted && (
+                                                            <span className="text-[9px] text-muted-foreground line-through opacity-60 mt-0.5">
+                                                                {formatCurrency(originalUnitPrice, originalCurrency, features.iqd_display_preference)}
+                                                            </span>
+                                                        )}
+                                                    </div>
                                                 </div>
-                                            </TableCell>
-                                            <TableCell className="text-end font-bold">
-                                                <div className="flex flex-col items-end">
-                                                    <span className={cn(
-                                                        hasNegotiated ? "text-emerald-600" : "",
-                                                        isItemReturned && "line-through opacity-50"
-                                                    )}>
+                                            </div>
+
+                                            <div className="flex flex-col gap-1 pt-2 border-t border-border">
+                                                <div className="flex justify-between items-center">
+                                                    <div className="text-[10px] text-muted-foreground uppercase font-bold tracking-tight">
+                                                        {t('common.total')}
+                                                    </div>
+                                                    <div className={cn("text-base font-black text-primary", isItemReturned && "line-through opacity-50")}>
                                                         {formatCurrency(displayUnitPrice * netQuantity, displayCurrency, features.iqd_display_preference)}
-                                                    </span>
-
-                                                    {(hasItemPartialReturn || isItemReturned) && (
-                                                        <span className="text-[10px] text-muted-foreground opacity-40 line-through">
-                                                            {formatCurrency(displayUnitPrice * item.quantity, displayCurrency, features.iqd_display_preference)}
-                                                        </span>
-                                                    )}
-
-                                                    {hasNegotiated && (
-                                                        <span className={cn("text-[10px] text-muted-foreground opacity-60", isItemReturned && "opacity-30")}>
-                                                            <span className="line-through">{formatCurrency(originalUnitPrice * netQuantity, originalCurrency, features.iqd_display_preference)}</span> 🡆 <span className="font-bold">{formatCurrency(negotiatedPrice * netQuantity, originalCurrency, features.iqd_display_preference)}</span>
-                                                        </span>
-                                                    )}
-                                                    {!hasNegotiated && isConverted && (
-                                                        <span className={cn("text-[10px] text-muted-foreground line-through opacity-50", isItemReturned && "opacity-30")}>
-                                                            {formatCurrency(originalUnitPrice * netQuantity, originalCurrency, features.iqd_display_preference)}
-                                                        </span>
-                                                    )}
+                                                    </div>
                                                 </div>
-                                            </TableCell>
-                                        </TableRow>
+                                                {(hasNegotiated || isConverted) && (
+                                                    <div className="flex justify-end mt-[-4px]">
+                                                        {hasNegotiated ? (
+                                                            <div className={cn("flex items-center justify-end gap-1 text-[9px] text-muted-foreground opacity-60", isItemReturned && "opacity-30")}>
+                                                                <span className="line-through">{formatCurrency(originalUnitPrice * netQuantity, originalCurrency, features.iqd_display_preference)}</span>
+                                                                <ArrowRight className="w-2 h-2" />
+                                                                <span className="font-bold">{formatCurrency(negotiatedPrice * netQuantity, originalCurrency, features.iqd_display_preference)}</span>
+                                                            </div>
+                                                        ) : (
+                                                            <span className={cn("text-[9px] text-muted-foreground line-through opacity-50", isItemReturned && "opacity-30")}>
+                                                                {formatCurrency(originalUnitPrice * netQuantity, originalCurrency, features.iqd_display_preference)}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
                                     )
                                 })}
-                            </TableBody>
-                        </Table>
+                            </div>
+                        ) : (
+                            <Table>
+                                <TableHeader>
+                                    <TableRow>
+                                        <TableHead className="text-start">{t('products.table.name')}</TableHead>
+                                        <TableHead className="text-end">{t('common.quantity')}</TableHead>
+                                        <TableHead className="text-end">{t('common.price')}</TableHead>
+                                        <TableHead className="text-end">{t('common.total')}</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {sale.items?.map((item) => {
+                                        const isConverted = item.original_currency && item.settlement_currency && item.original_currency !== item.settlement_currency
+                                        const hasNegotiated = item.negotiated_price !== undefined && item.negotiated_price !== null && item.negotiated_price > 0
+                                        const isItemReturned = item.is_returned || sale.is_returned
+                                        const hasItemPartialReturn = (item.returned_quantity || 0) > 0 && !item.is_returned
+
+                                        let displayUnitPrice: number = item.converted_unit_price || item.unit_price || 0
+                                        let displayCurrency: string = sale.settlement_currency || 'usd'
+
+                                        const originalUnitPrice = item.original_unit_price || item.unit_price || 0
+                                        const originalCurrency = item.original_currency || 'usd'
+                                        const negotiatedPrice = item.negotiated_price || 0
+
+                                        const netQuantity = item.quantity - (item.returned_quantity || 0)
+
+                                        return (
+                                            <TableRow
+                                                key={item.id}
+                                                className={isItemReturned ? 'bg-destructive/5 opacity-75' : hasItemPartialReturn ? 'bg-orange-500/5' : ''}
+                                            >
+                                                <TableCell className="text-start">
+                                                    <div className="flex items-center gap-2">
+                                                        <div>
+                                                            <div className={cn("font-medium", isItemReturned && "line-through opacity-50")}>
+                                                                {item.product_name}
+                                                            </div>
+                                                            <div className="text-xs text-muted-foreground">{item.product_sku}</div>
+                                                            {hasNegotiated && (
+                                                                <div className="text-[10px] text-emerald-600 font-medium">
+                                                                    {t('pos.negotiatedPrice') || 'Negotiated'}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                        {isItemReturned && (
+                                                            <span className="px-1.5 py-0.5 text-[9px] font-bold bg-destructive/10 text-destructive rounded-full uppercase">
+                                                                {t('sales.return.returnedStatus')}
+                                                            </span>
+                                                        )}
+                                                        {hasItemPartialReturn && !isItemReturned && (
+                                                            <span className="px-1.5 py-0.5 text-[9px] font-bold bg-orange-500/10 text-orange-600 rounded-full uppercase">
+                                                                {t('sales.return.partialReturn')}
+                                                            </span>
+                                                        )}
+                                                        {!isItemReturned && !item.is_returned && onReturnItem && (user?.role === 'admin' || user?.role === 'staff') && (
+                                                            <Button
+                                                                size="sm"
+                                                                variant="ghost"
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation()
+                                                                    onReturnItem(item)
+                                                                }}
+                                                                className="h-6 w-6 p-0 text-orange-600 hover:text-orange-700 hover:bg-orange-50"
+                                                                title={t('sales.return.returnItem') || 'Return Item'}
+                                                            >
+                                                                <RotateCcw className="h-3 w-3" />
+                                                            </Button>
+                                                        )}
+                                                    </div>
+                                                </TableCell>
+                                                <TableCell className="text-end font-mono">
+                                                    <div className="flex flex-col items-end">
+                                                        <span className={cn("text-sm font-semibold", isItemReturned && "line-through opacity-50")}>
+                                                            {netQuantity}
+                                                        </span>
+                                                        {(hasItemPartialReturn || isItemReturned) && (
+                                                            <div className="text-[10px] text-muted-foreground opacity-60 line-through whitespace-nowrap">
+                                                                {item.quantity} {t('common.total') || 'Total'}
+                                                            </div>
+                                                        )}
+                                                        {hasItemPartialReturn && !isItemReturned && (
+                                                            <div className="text-[10px] text-orange-600 font-medium whitespace-nowrap">
+                                                                -{item.returned_quantity} {t('sales.return.returnedLabel') || 'returned'}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </TableCell>
+                                                <TableCell className="text-end">
+                                                    <div className="flex flex-col items-end">
+                                                        <span className={cn(
+                                                            hasNegotiated ? "font-medium text-emerald-600" : "font-medium",
+                                                            isItemReturned && "opacity-50"
+                                                        )}>
+                                                            {formatCurrency(displayUnitPrice, displayCurrency, features.iqd_display_preference)}
+                                                        </span>
+                                                        {hasNegotiated && (
+                                                            <div className="flex items-center justify-end gap-1 text-[10px] text-muted-foreground opacity-60">
+                                                                <span className="line-through">{formatCurrency(originalUnitPrice, originalCurrency, features.iqd_display_preference)}</span>
+                                                                <ArrowRight className="w-2.5 h-2.5" />
+                                                                <span className="font-bold">{formatCurrency(negotiatedPrice, originalCurrency, features.iqd_display_preference)}</span>
+                                                            </div>
+                                                        )}
+                                                        {!hasNegotiated && isConverted && (
+                                                            <span className="text-[10px] text-muted-foreground line-through opacity-60">
+                                                                {formatCurrency(originalUnitPrice, originalCurrency, features.iqd_display_preference)}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </TableCell>
+                                                <TableCell className="text-end font-bold">
+                                                    <div className="flex flex-col items-end">
+                                                        <span className={cn(
+                                                            hasNegotiated ? "text-emerald-600" : "",
+                                                            isItemReturned && "line-through opacity-50"
+                                                        )}>
+                                                            {formatCurrency(displayUnitPrice * netQuantity, displayCurrency, features.iqd_display_preference)}
+                                                        </span>
+
+                                                        {(hasItemPartialReturn || isItemReturned) && (
+                                                            <span className="text-[10px] text-muted-foreground opacity-40 line-through">
+                                                                {formatCurrency(displayUnitPrice * item.quantity, displayCurrency, features.iqd_display_preference)}
+                                                            </span>
+                                                        )}
+
+                                                        {hasNegotiated && (
+                                                            <div className={cn("flex items-center justify-end gap-1 text-[10px] text-muted-foreground opacity-60", isItemReturned && "opacity-30")}>
+                                                                <span className="line-through">{formatCurrency(originalUnitPrice * netQuantity, originalCurrency, features.iqd_display_preference)}</span>
+                                                                <ArrowRight className="w-2.5 h-2.5" />
+                                                                <span className="font-bold">{formatCurrency(negotiatedPrice * netQuantity, originalCurrency, features.iqd_display_preference)}</span>
+                                                            </div>
+                                                        )}
+                                                        {!hasNegotiated && isConverted && (
+                                                            <span className={cn("text-[10px] text-muted-foreground line-through opacity-50", isItemReturned && "opacity-30")}>
+                                                                {formatCurrency(originalUnitPrice * netQuantity, originalCurrency, features.iqd_display_preference)}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </TableCell>
+                                            </TableRow>
+                                        )
+                                    })}
+                                </TableBody>
+                            </Table>
+                        )}
                     </div>
 
                     <div className="flex justify-between items-center pt-4 border-t">

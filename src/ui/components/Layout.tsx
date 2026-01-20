@@ -144,6 +144,7 @@ export function Layout({ children }: LayoutProps) {
                     'fixed z-50 w-64 transition-transform duration-300 ease-in-out flex flex-col',
                     'glass sidebar-gradient shadow-2xl',
                     isTauri ? 'top-[var(--titlebar-height)] h-[calc(100vh-var(--titlebar-height))]' : 'inset-y-0 h-full',
+                    'pt-[var(--safe-area-top)] pb-[var(--safe-area-bottom)]',
                     // Desktop state
                     desktopSidebarOpen ? 'lg:translate-x-0 lg:rtl:translate-x-0' : 'lg:-translate-x-full lg:rtl:translate-x-full',
                     // Positioning
@@ -287,12 +288,14 @@ export function Layout({ children }: LayoutProps) {
             <div className={cn(
                 "h-full overflow-y-auto custom-scrollbar bg-background transition-[padding] duration-300 ease-in-out",
                 isTauri && "mt-[var(--titlebar-height)] h-[calc(100vh-var(--titlebar-height))]", // Use CSS variable
-                desktopSidebarOpen ? "lg:pl-64 lg:rtl:pl-0 lg:rtl:pr-64" : "lg:pl-0"
+                desktopSidebarOpen ? "lg:pl-64 lg:rtl:pl-0 lg:rtl:pr-64" : "lg:pl-0",
+                "pb-[var(--safe-area-bottom)]"
             )}>
                 {/* Top bar */}
                 <header className={cn(
                     "sticky z-30 flex items-center gap-4 px-4 py-3 bg-background/60 backdrop-blur-xl border-b border-border/50",
                     "top-0", // Always top 0 relative to this container
+                    "pt-[calc(0.75rem+var(--safe-area-top))]",
                     location === '/pos' && "hidden lg:flex" // Hide on mobile if POS
                 )}>
                     {/* Mobile Toggle */}
