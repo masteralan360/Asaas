@@ -71,13 +71,37 @@ jobs:
           VITE_SUPABASE_URL: ""
           VITE_SUPABASE_ANON_KEY: ""
 
+      - name: Sign Release APK
+        if: matrix.settings.platform == 'ubuntu-latest'
+        run: |
+          # Create keystore from secret
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > release.jks
+          
+          # Sign the universal production APK
+          # Note: We use the universal release APK found in the output folder
+          unsigned_apk=$(find src-tauri/gen/android/app/build/outputs/apk/universal/release -name "*.apk" | head -n 1)
+          
+          # Sign using apksigner
+          ${ANDROID_HOME}/build-tools/34.0.0/apksigner sign --ks release.jks \
+            --ks-pass pass:${{ secrets.ANDROID_KEY_PASSWORD }} \
+            --ks-key-alias ${{ secrets.ANDROID_KEY_ALIAS }} \
+            --out src-tauri/gen/android/app/build/outputs/apk/universal/release/IraqCore-Release-Signed.apk \
+            "$unsigned_apk"
+
+      - name: List APKs (Debug)
+        if: matrix.settings.platform == 'ubuntu-latest'
+        run: |
+          echo "Listing all generated APKs (including signed release):"
+          find src-tauri/gen/android/app/build/outputs/apk -name "*.apk"
+
       - name: Upload Android APKs
         if: matrix.settings.platform == 'ubuntu-latest'
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            src-tauri/gen/android/app/build/outputs/apk/universal/release/*.apk
+            src-tauri/gen/android/app/build/outputs/apk/universal/release/IraqCore-Release-Signed.apk
             src-tauri/gen/android/app/build/outputs/apk/debug/*.apk
           tag_name: ${{ github.ref_name }}
           name: "IraqCore ${{ github.ref_name }}"
           token: ${{ secrets.GITHUB_TOKEN }}
+          fail_on_unmatched_files: false
