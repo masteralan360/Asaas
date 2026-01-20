@@ -43,7 +43,8 @@ import {
 } from 'lucide-react'
 import { BarcodeScanner } from 'react-barcode-scanner'
 import 'react-barcode-scanner/polyfill'
-import { convertFileSrc } from '@tauri-apps/api/core';
+import { isDesktop } from '@/lib/platform'
+import { platformService } from '@/services/platformService'
 import { ExchangeRateList } from '@/ui/components' // Import ExchangeRateList
 
 export function POS() {
@@ -72,11 +73,11 @@ export function POS() {
         return Number(localStorage.getItem('scanner_scan_delay')) || 2500
     })
 
-    const [isMobile, setIsMobile] = useState(window.innerWidth < 1024)
+    const [isLayoutMobile, setIsLayoutMobile] = useState(window.innerWidth < 1024)
     const [mobileView, setMobileView] = useState<'grid' | 'cart'>('grid')
 
     useEffect(() => {
-        const handleResize = () => setIsMobile(window.innerWidth < 1024)
+        const handleResize = () => setIsLayoutMobile(window.innerWidth < 1024)
         window.addEventListener('resize', handleResize)
         return () => window.removeEventListener('resize', handleResize)
     }, [])
@@ -92,10 +93,8 @@ export function POS() {
     const lastEnterTime = useRef<number>(0)
 
     useEffect(() => {
-        // @ts-ignore
-        const isTauri = !!window.__TAURI_INTERNALS__;
-        setIsElectron(isTauri);
-        if (isTauri) setFocusedProductIndex(0);
+        setIsElectron(isDesktop());
+        if (isDesktop()) setFocusedProductIndex(0);
     }, [])
 
     // Calculate grid columns for ArrowUp/Down navigation
@@ -128,7 +127,9 @@ export function POS() {
     const getDisplayImageUrl = (url?: string) => {
         if (!url) return '';
         if (url.startsWith('http')) return url;
-        return convertFileSrc(url);
+        if (url.startsWith('data:')) return url;
+
+        return platformService.convertFileSrc(url);
     }
 
 
@@ -858,7 +859,7 @@ export function POS() {
 
     return (
         <div className="h-full flex flex-col lg:flex-row gap-4 overflow-hidden -m-4 lg:m-0">
-            {isMobile ? (
+            {isLayoutMobile ? (
                 <div className="flex-1 flex flex-col h-full bg-background relative">
                     <MobileHeader
                         mobileView={mobileView}
@@ -1580,7 +1581,7 @@ const MobileHeader = ({ mobileView, setMobileView, totalItems, refreshExchangeRa
                     </DialogHeader>
 
                     <div className="p-2">
-                        <ExchangeRateList isMobile />
+                        <ExchangeRateList isMobile={true} />
                     </div>
 
                     <div className="p-4 bg-secondary/30 flex flex-col gap-2">

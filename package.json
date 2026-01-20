@@ -1,7 +1,7 @@
 {
   "name": "erp-system",
   "private": true,
-  "version": "1.1.10",
+  "version": "1.1.11",
   "main": "electron/main.cjs",
   "type": "module",
   "repository": {
@@ -37,9 +37,20 @@
     "type-check": "tsc --noEmit",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build"
+    "tauri:build": "tauri build",
+    "cap:sync": "npx cap sync android",
+    "android:build": "npm run build && npx cap sync android && cd android && ./gradlew assembleDebug"
   },
   "dependencies": {
+    "@capacitor-community/bluetooth-le": "^7.3.0",
+    "@capacitor-mlkit/barcode-scanning": "^8.0.0",
+    "@capacitor/android": "^8.0.1",
+    "@capacitor/app": "^8.0.0",
+    "@capacitor/cli": "^8.0.1",
+    "@capacitor/core": "^8.0.1",
+    "@capacitor/dialog": "^8.0.0",
+    "@capacitor/filesystem": "^8.0.0",
+    "@capacitor/ios": "^8.0.1",
     "@radix-ui/react-alert-dialog": "^1.1.2",
     "@radix-ui/react-avatar": "^1.1.1",
     "@radix-ui/react-dialog": "^1.1.2",
@@ -73,9 +84,8 @@
     "react-is": "^19.2.3",
     "react-to-print": "^3.2.0",
     "recharts": "^3.6.0",
-    "tailwind-merge": "^2.5.4",
+    "tailwind-merge": "^3.4.0",
     "tailwindcss-animate": "^1.0.7",
-    "tauri-controls": "^0.4.0",
     "uuid": "^10.0.0",
     "wouter": "^3.3.5"
   },

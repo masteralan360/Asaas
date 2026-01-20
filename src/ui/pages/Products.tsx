@@ -35,10 +35,8 @@ import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/auth'
 import { useWorkspace } from '@/workspace'
 import { useEffect } from 'react'
-import { open } from '@tauri-apps/plugin-dialog';
-import { copyFile, mkdir, BaseDirectory } from '@tauri-apps/plugin-fs';
-import { convertFileSrc } from '@tauri-apps/api/core';
-import { appDataDir, join } from '@tauri-apps/api/path';
+import { isDesktop } from '@/lib/platform'
+import { platformService } from '@/services/platformService'
 
 const UNITS = ['pcs', 'kg', 'liter', 'box', 'pack']
 
@@ -100,8 +98,7 @@ export function Products() {
     const [unsavedChangesType, setUnsavedChangesType] = useState<'product' | 'category' | null>(null)
 
     useEffect(() => {
-        // @ts-ignore
-        setIsElectron(!!window.__TAURI_INTERNALS__);
+        setIsElectron(isDesktop());
     }, [])
 
     const isProductDirty = () => {
@@ -197,41 +194,17 @@ export function Products() {
 
     const handleImageUpload = async () => {
         if (!isElectron) return;
-        try {
-            const selected = await open({
-                multiple: false,
-                filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp'] }]
-            });
-
-            if (selected && typeof selected === 'string') {
-                const ext = selected.split('.').pop();
-                const fileName = `${Date.now()}.${ext}`;
-                const relativeDir = `product-images/${workspaceId}`;
-
-                await mkdir(relativeDir, { baseDir: BaseDirectory.AppData, recursive: true });
-
-                // Copy file to AppData
-                // We use relative path for destination with BaseDirectory.AppData
-                const relativeDest = `${relativeDir}/${fileName}`;
-                await copyFile(selected, relativeDest, { toPathBaseDir: BaseDirectory.AppData });
-
-                // Construct absolute path for storage (needed for convertFileSrc)
-                const appData = await appDataDir();
-                const targetDir = await join(appData, relativeDir);
-                const targetPath = await join(targetDir, fileName);
-
-                setFormData(prev => ({ ...prev, imageUrl: targetPath }));
-            }
-        } catch (error) {
-            console.error('Error uploading image:', error);
+        const targetPath = await platformService.pickAndSaveImage(workspaceId);
+        if (targetPath) {
+            setFormData(prev => ({ ...prev, imageUrl: targetPath }));
         }
     }
 
     const getDisplayImageUrl = (url?: string) => {
         if (!url) return '';
         if (url.startsWith('http')) return url;
-        // Local path - use Tauri's asset protocol
-        return convertFileSrc(url);
+        // Local path - use platform-specific conversion
+        return platformService.convertFileSrc(url);
     }
 
     const getCategoryName = (id?: string) => {
