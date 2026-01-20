@@ -14,9 +14,7 @@ jobs:
       matrix:
         settings:
           - platform: windows-latest
-            args: ""
           - platform: ubuntu-latest
-            args: "--target android"
 
     runs-on: ${{ matrix.settings.platform }}
 
@@ -40,11 +38,6 @@ jobs:
         if: matrix.settings.platform == 'ubuntu-latest'
         uses: android-actions/setup-android@v3
 
-      - name: Rust cache
-        uses: swatinem/rust-cache@v2
-        with:
-          workspaces: './src-tauri -> target'
-
       - name: Sync node version and setup cache
         uses: actions/setup-node@v4
         with:
@@ -54,20 +47,33 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci --legacy-peer-deps
 
-      - name: Build the app
+      - name: Build Windows
+        if: matrix.settings.platform == 'windows-latest'
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          # Clean Publish: Ensure these are empty to prevent baking in dev credentials
           VITE_SUPABASE_URL: ""
           VITE_SUPABASE_ANON_KEY: ""
         with:
           tagName: ${{ github.ref_name }}
           releaseName: "IraqCore ${{ github.ref_name }}"
-          # Ensure latest.json is generated
           includeUpdaterJson: true
-          args: ${{ matrix.settings.args }}
-          # Simplify release body
           releaseBody: "See the assets to download this version and install."
+
+      - name: Build Android
+        if: matrix.settings.platform == 'ubuntu-latest'
+        run: npm run android:build:release
+        env:
+          VITE_SUPABASE_URL: ""
+          VITE_SUPABASE_ANON_KEY: ""
+
+      - name: Upload Android APK
+        if: matrix.settings.platform == 'ubuntu-latest'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: src-tauri/gen/android/app/build/outputs/apk/universal/release/*.apk
+          tag_name: ${{ github.ref_name }}
+          name: "IraqCore ${{ github.ref_name }}"
+          token: ${{ secrets.GITHUB_TOKEN }}
