@@ -34,7 +34,7 @@ export function ReturnRulesDisplayModal({
 
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
-            <DialogContent className="max-w-2xl animate-in fade-in zoom-in duration-300">
+            <DialogContent className="max-w-2xl w-[95vw] sm:w-full max-h-[90vh] overflow-y-auto animate-in fade-in zoom-in duration-300">
                 <DialogHeader>
                     <DialogTitle className="flex items-center gap-2 text-xl">
                         <Info className="w-6 h-6 text-primary" />

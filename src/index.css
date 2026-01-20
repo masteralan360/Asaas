@@ -14,7 +14,8 @@
     --titlebar-height: 48px;
   }
 
-  [data-fullscreen="true"] {
+  [data-fullscreen="true"],
+  [data-mobile="true"] {
     --titlebar-height: 0px !important;
   }
 
@@ -171,6 +172,10 @@
 /* Premium Utilities */
 .glass {
   @apply bg-background/60 backdrop-blur-xl border-border/50;
+}
+
+[data-mobile="true"] .glass {
+  @apply backdrop-blur-md; /* Reduced blur for mobile performance */
 }
 
 .theme-modern .glass {

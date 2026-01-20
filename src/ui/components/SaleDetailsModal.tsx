@@ -38,7 +38,7 @@ export function SaleDetailsModal({ sale, isOpen, onClose, onReturnItem }: SaleDe
 
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
-            <DialogContent className="max-w-2xl">
+            <DialogContent className="max-w-2xl w-[95vw] sm:w-full max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                     <DialogTitle>{t('sales.details') || 'Sale Details'}</DialogTitle>
                 </DialogHeader>

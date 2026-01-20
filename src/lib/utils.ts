@@ -56,6 +56,15 @@ export function formatDateTime(date: Date | string): string {
     }).format(new Date(date))
 }
 
+export function formatCompactDateTime(date: Date | string): string {
+    const d = new Date(date)
+    const month = d.toLocaleString('en-US', { month: 'short' })
+    const day = d.getDate()
+    const hh = d.getHours().toString().padStart(2, '0')
+    const mm = d.getMinutes().toString().padStart(2, '0')
+    return `${day} ${month}, ${hh}:${mm}`
+}
+
 export function formatSnapshotTime(date: Date | string): string {
     const d = new Date(date)
     const yy = d.getFullYear().toString().slice(-2)

@@ -4,6 +4,7 @@ import { useAuth } from '@/auth/AuthContext'
 import type { CurrencyCode, IQDDisplayPreference } from '@/local-db/models'
 import { db } from '@/local-db/database'
 import { addToOfflineMutations } from '@/local-db/hooks'
+import { isMobile } from '@/lib/platform'
 
 export interface WorkspaceFeatures {
     allow_pos: boolean
@@ -72,7 +73,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                 const fs = await win.isFullscreen()
                 setIsFullscreen(fs)
 
-                if (fs) {
+                if (fs && !isMobile()) {
                     document.documentElement.setAttribute('data-fullscreen', 'true')
                 } else {
                     document.documentElement.removeAttribute('data-fullscreen')

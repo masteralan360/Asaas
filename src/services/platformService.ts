@@ -1,4 +1,4 @@
-import { isDesktop, isMobile, PlatformAPI } from '../lib/platform';
+import { isDesktop, isMobile, isTauri, PlatformAPI } from '../lib/platform';
 
 /**
  * Service to handle platform-specific operations
@@ -6,35 +6,25 @@ import { isDesktop, isMobile, PlatformAPI } from '../lib/platform';
 class PlatformService implements PlatformAPI {
 
     convertFileSrc(path: string): string {
-        if (isDesktop()) {
+        if (isTauri()) {
             const tauri = (window as any).__TAURI__;
             if (tauri?.core?.convertFileSrc) {
                 return tauri.core.convertFileSrc(path);
-            }
-        }
-        if (isMobile()) {
-            const cap = (window as any).Capacitor;
-            if (cap?.convertFileSrc) {
-                return cap.convertFileSrc(path);
             }
         }
         return path;
     }
 
     async getAppDataDir(): Promise<string> {
-        if (isDesktop()) {
+        if (isTauri()) {
             const { appDataDir } = await import('@tauri-apps/api/path');
             return appDataDir();
-        }
-        if (isMobile()) {
-            // Capacitor Filesystem usually defaults to app internal storage if not specified
-            return '';
         }
         return '';
     }
 
     async joinPath(...parts: string[]): Promise<string> {
-        if (isDesktop()) {
+        if (isTauri()) {
             const { join } = await import('@tauri-apps/api/path');
             return join(...parts);
         }
@@ -42,7 +32,7 @@ class PlatformService implements PlatformAPI {
     }
 
     async message(message: string, options?: { title?: string; type?: 'info' | 'warning' | 'error' }): Promise<void> {
-        if (isDesktop()) {
+        if (isTauri()) {
             const { message: tauriMessage } = await import('@tauri-apps/plugin-dialog');
             await tauriMessage(message, {
                 title: options?.title || 'ERP System',
@@ -50,46 +40,25 @@ class PlatformService implements PlatformAPI {
             });
             return;
         }
-        if (isMobile()) {
-            const { Dialog } = await import('@capacitor/dialog');
-            await Dialog.alert({
-                title: options?.title || 'ERP System',
-                message: message
-            });
-            return;
-        }
         alert(message);
     }
 
     async confirm(message: string, options?: { title?: string; type?: 'info' | 'warning' | 'error' }): Promise<boolean> {
-        if (isDesktop()) {
+        if (isTauri()) {
             const { ask } = await import('@tauri-apps/plugin-dialog');
             return ask(message, {
                 title: options?.title || 'ERP System',
                 kind: options?.type as any || 'info'
             });
         }
-        if (isMobile()) {
-            const { Dialog } = await import('@capacitor/dialog');
-            const { value } = await Dialog.confirm({
-                title: options?.title || 'ERP System',
-                message: message
-            });
-            return value;
-        }
         return window.confirm(message);
     }
 
     async getVersion(): Promise<string> {
         try {
-            if (isDesktop()) {
+            if (isTauri()) {
                 const { getVersion } = await import('@tauri-apps/api/app');
                 return await getVersion();
-            }
-            if (isMobile()) {
-                const { App } = await import('@capacitor/app');
-                const info = await App.getInfo();
-                return info.version;
             }
         } catch (e) {
             console.error("Failed to get version:", e);
@@ -108,7 +77,7 @@ class PlatformService implements PlatformAPI {
         }
     }
     async pickAndSaveImage(workspaceId: string): Promise<string | null> {
-        if (isDesktop()) {
+        if (isTauri()) {
             try {
                 const { open } = await import('@tauri-apps/plugin-dialog');
                 const { mkdir, copyFile, BaseDirectory } = await import('@tauri-apps/plugin-fs');
@@ -136,13 +105,8 @@ class PlatformService implements PlatformAPI {
                     return targetPath;
                 }
             } catch (error) {
-                console.error('Error picking/saving image on Desktop:', error);
+                console.error('Error picking/saving image in Tauri:', error);
             }
-        }
-
-        if (isMobile()) {
-            // Capacitor Camera/Filesystem implementation would go here
-            return null;
         }
 
         return null;

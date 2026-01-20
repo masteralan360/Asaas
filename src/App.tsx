@@ -8,6 +8,7 @@ import { useTranslation } from 'react-i18next'
 import { useWorkspace } from '@/workspace'
 import { ExchangeRateProvider } from '@/context/ExchangeRateContext'
 import { isSupabaseConfigured } from '@/auth/supabase'
+import { isMobile } from '@/lib/platform'
 
 // Lazy load pages
 const Dashboard = lazy(() => import('@/ui/pages/Dashboard').then(m => ({ default: m.Dashboard })))
@@ -31,7 +32,7 @@ const CurrencyConverter = lazy(() => import('@/ui/pages/CurrencyConverter').then
 const ConnectionConfiguration = lazy(() => import('@/ui/pages/ConnectionConfiguration').then(m => ({ default: m.ConnectionConfiguration })))
 
 // @ts-ignore
-const isElectron = !!window.__TAURI_INTERNALS__
+const isTauri = !!window.__TAURI_INTERNALS__
 
 // Preload list for Electron
 const pages = [
@@ -66,7 +67,7 @@ function UpdateHandler() {
     const { t } = useTranslation()
 
     const checkForUpdates = useCallback(async (isManual = false) => {
-        if (!isElectron) return
+        if (!isTauri || isMobile()) return
 
         try {
             const { check } = await import('@tauri-apps/plugin-updater')
@@ -132,7 +133,7 @@ function UpdateHandler() {
     }, [t, setPendingUpdate])
 
     useEffect(() => {
-        if (isElectron) {
+        if (isTauri) {
             // Delay startup check slightly to ensure network and WebView are fully ready
             const timer = setTimeout(() => {
                 checkForUpdates()
@@ -145,7 +146,7 @@ function UpdateHandler() {
             window.addEventListener('check-for-updates', handleManualCheck)
 
             const handleKeyDown = async (e: KeyboardEvent) => {
-                if (e.key === 'F11') {
+                if (e.key === 'F11' && !isMobile()) {
                     e.preventDefault()
                     const { getCurrentWindow } = await import('@tauri-apps/api/window')
                     const window = getCurrentWindow()
@@ -179,7 +180,13 @@ function UpdateHandler() {
 
 function App() {
     useEffect(() => {
-        if (isElectron) {
+        if (isMobile()) {
+            document.documentElement.setAttribute('data-mobile', 'true')
+        } else {
+            document.documentElement.removeAttribute('data-mobile')
+        }
+
+        if (isTauri && !isMobile()) {
             console.log('[Tauri] Pre-loading all pages for snappy navigation...')
             pages.forEach(load => load())
         }
@@ -189,8 +196,8 @@ function App() {
         <AuthProvider>
             <WorkspaceProvider>
                 <UpdateHandler />
-                <TitleBar />
-                {isElectron && !isSupabaseConfigured ? (
+                {(!isMobile()) && <TitleBar />}
+                {isTauri && !isSupabaseConfigured ? (
                     <Suspense fallback={<LoadingState />}>
                         <ConnectionConfiguration />
                     </Suspense>

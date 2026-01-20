@@ -109,35 +109,93 @@ class ReleaseApp:
         # Update message when version changes
         self.version_var.trace('w', self.update_msg)
         
+        # APK Release Options
+        self.apk_var = tk.BooleanVar(value=True)
+        self.apk_check = ttk.Checkbutton(root, text="Step 5: Release APK (IraqCore)", variable=self.apk_var)
+        self.apk_check.pack(pady=5)
+        
+        self.skip_build_var = tk.BooleanVar(value=False)
+        self.skip_build_check = ttk.Checkbutton(root, text="   └─ Skip Build (Use Existing)", variable=self.skip_build_var)
+        self.skip_build_check.pack(pady=2)
+        
         # Buttons
         btn_frame = ttk.Frame(root)
-        btn_frame.pack(pady=25)
+        btn_frame.pack(pady=15)
         
         ttk.Button(btn_frame, text="🚀 Release", command=self.release).pack(side=tk.LEFT, padx=10)
         ttk.Button(btn_frame, text="❌ Cancel", command=root.quit).pack(side=tk.LEFT, padx=10)
         
         # Status
         self.status_var = tk.StringVar(value="Ready")
-        ttk.Label(root, textvariable=self.status_var, foreground='gray').pack(pady=10)
+        ttk.Label(root, textvariable=self.status_var, foreground='gray').pack(pady=5)
     
     def update_msg(self, *args):
         self.msg_var.set(f"Release v{self.version_var.get()}")
     
+    def find_and_rename_apk(self):
+        """Locate generated APK and rename to IraqCore.apk"""
+        # Potential Tauri APK output paths
+        potential_paths = [
+            # Universal Release (User's actual path)
+            SCRIPT_DIR / "src-tauri" / "gen" / "android" / "app" / "build" / "outputs" / "apk" / "universal" / "release" / "app-universal-release-unsigned.apk",
+            # Standard Release
+            SCRIPT_DIR / "src-tauri" / "gen" / "android" / "app" / "build" / "outputs" / "apk" / "release" / "app-release-unsigned.apk",
+            # Standard Debug
+            SCRIPT_DIR / "src-tauri" / "gen" / "android" / "app" / "build" / "outputs" / "apk" / "debug" / "app-debug.apk"
+        ]
+        
+        apk_path = None
+        for p in potential_paths:
+            if p.exists():
+                apk_path = p
+                break
+        
+        output_apk = SCRIPT_DIR / "IraqCore.apk"
+        
+        if apk_path:
+            import shutil
+            shutil.copy2(apk_path, output_apk)
+            return True, f"Found APK at {apk_path.name} and renamed to IraqCore.apk"
+        else:
+            return False, "No APK found in build folders. Please build the APK first."
+
+    def build_apk(self):
+        """Run android build"""
+        try:
+            self.status_var.set("Building Android APK (Release)...")
+            self.root.update()
+            
+            # Run npm run android:build:release (tauri android build)
+            subprocess.run(['npm.cmd', 'run', 'android:build:release'], cwd=SCRIPT_DIR, check=True, shell=True)
+            return True, "Build successful"
+                
+        except subprocess.CalledProcessError as e:
+            return False, f"Build error: {e}"
+        except Exception as e:
+            return False, f"Unexpected error: {e}"
+
     def release(self):
         version = self.version_var.get()
         msg = self.msg_var.get()
+        release_apk = self.apk_var.get()
+        skip_build = self.skip_build_var.get()
         
         if not version or not msg:
             messagebox.showerror("Error", "Version and message are required!")
             return
         
+        steps = [
+            f"1. Update version to {version}",
+            f"2. Commit: {msg}",
+            f"3. Create tag v{version}",
+            f"4. Push to GitHub"
+        ]
+        if release_apk:
+            action = "Rename" if skip_build else "Build & Release"
+            steps.append(f"5. {action} IraqCore.apk")
+            
         if not messagebox.askyesno("Confirm Release", 
-            f"This will:\n\n"
-            f"1. Update version to {version}\n"
-            f"2. Commit: {msg}\n"
-            f"3. Create tag v{version}\n"
-            f"4. Push to GitHub\n\n"
-            f"Continue?"):
+            "This will:\n\n" + "\n".join(steps) + "\n\nContinue?"):
             return
         
         self.status_var.set("Updating version...")
@@ -145,13 +203,28 @@ class ReleaseApp:
         
         try:
             update_version(version)
+            
+            if release_apk:
+                if not skip_build:
+                    success, message = self.build_apk()
+                    if not success:
+                        if not messagebox.askyesno("Build Failed", f"{message}\n\nContinue with Git release anyway?"):
+                            return
+                
+                # Copy/Rename logic (always run if release_apk is checked)
+                success, message = self.find_and_rename_apk()
+                if not success:
+                    if not messagebox.askyesno("APK Error", f"{message}\n\nContinue with Git release anyway?"):
+                        return
+            
             self.status_var.set("Pushing to GitHub...")
             self.root.update()
             
             success, message = run_git_commands(version, msg)
             
             if success:
-                messagebox.showinfo("Success", message + "\n\nGo to GitHub to publish the release!")
+                apk_msg = "\n\nIraqCore.apk is ready!" if release_apk else ""
+                messagebox.showinfo("Success", message + apk_msg + "\n\nGo to GitHub to publish the release!")
                 self.root.quit()
             else:
                 messagebox.showerror("Error", message)

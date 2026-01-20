@@ -35,7 +35,7 @@ import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/auth'
 import { useWorkspace } from '@/workspace'
 import { useEffect } from 'react'
-import { isDesktop } from '@/lib/platform'
+import { isDesktop, isMobile } from '@/lib/platform'
 import { platformService } from '@/services/platformService'
 
 const UNITS = ['pcs', 'kg', 'liter', 'box', 'pack']
@@ -364,6 +364,74 @@ export function Products() {
                         <div className="text-center py-8 text-muted-foreground">
                             {products.length === 0 ? t('common.noData') : t('common.noData')}
                         </div>
+                    ) : isMobile() ? (
+                        <div className="grid grid-cols-1 gap-4">
+                            {filteredProducts.map((product) => (
+                                <div
+                                    key={product.id}
+                                    className="p-4 rounded-[2rem] border border-border shadow-sm bg-card space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300"
+                                >
+                                    <div className="flex gap-4">
+                                        <div className="w-16 h-16 rounded-[1.25rem] bg-muted/30 border border-border/50 overflow-hidden flex-shrink-0 flex items-center justify-center">
+                                            {product.imageUrl ? (
+                                                <img
+                                                    src={getDisplayImageUrl(product.imageUrl)}
+                                                    alt=""
+                                                    className="w-full h-full object-cover"
+                                                />
+                                            ) : (
+                                                <Package className="w-8 h-8 opacity-20 text-muted-foreground" />
+                                            )}
+                                        </div>
+                                        <div className="flex-1 min-w-0 flex flex-col justify-center">
+                                            <div className="text-[10px] font-mono font-bold text-muted-foreground uppercase tracking-wider">
+                                                {product.sku}
+                                            </div>
+                                            <div className="font-black text-foreground truncate text-base leading-tight">
+                                                {product.name}
+                                            </div>
+                                            <div className="text-[11px] text-primary font-bold mt-0.5 opacity-80 uppercase tracking-wide">
+                                                {getCategoryName(product.categoryId)}
+                                            </div>
+                                        </div>
+                                        <div className="text-right flex flex-col justify-center">
+                                            <div className="text-lg font-black text-primary leading-tight">
+                                                {formatCurrency(product.price, product.currency, features.iqd_display_preference)}
+                                            </div>
+                                            <div className={cn(
+                                                "text-[11px] font-black uppercase tracking-widest mt-0.5",
+                                                product.quantity <= product.minStockLevel ? "text-amber-500" : "text-muted-foreground/60"
+                                            )}>
+                                                {product.quantity} {product.unit}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="flex justify-end gap-2 pt-3 border-t border-border/50">
+                                        {canEdit && (
+                                            <Button
+                                                variant="secondary"
+                                                size="sm"
+                                                className="rounded-xl h-10 px-6 font-bold flex gap-2"
+                                                onClick={() => handleOpenDialog(product)}
+                                            >
+                                                <Pencil className="w-4 h-4" />
+                                                {t('common.edit')}
+                                            </Button>
+                                        )}
+                                        {canDelete && (
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                className="rounded-xl h-10 w-10 text-destructive hover:bg-destructive/5"
+                                                onClick={() => handleDelete(product.id)}
+                                            >
+                                                <Trash2 className="w-4 h-4" />
+                                            </Button>
+                                        )}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
                     ) : (
                         <Table>
                             <TableHeader>
@@ -431,7 +499,7 @@ export function Products() {
             {/* Add/Edit Dialog */}
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                 <DialogContent
-                    className="max-w-2xl max-h-[90vh] overflow-y-auto"
+                    className="max-w-2xl w-[95vw] sm:w-full max-h-[90vh] overflow-y-auto"
                     onPointerDownOutside={handleProductOutsideClick}
                 >
                     {/* ... Dialog Content ... */}

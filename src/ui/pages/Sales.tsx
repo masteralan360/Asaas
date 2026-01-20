@@ -3,8 +3,9 @@ import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/auth'
 import { supabase } from '@/auth/supabase'
 import { Sale } from '@/types'
-import { formatCurrency, formatDateTime, cn } from '@/lib/utils'
+import { formatCurrency, formatDateTime, formatCompactDateTime, cn } from '@/lib/utils'
 import { useWorkspace } from '@/workspace'
+import { isMobile } from '@/lib/platform'
 import {
     Table,
     TableBody,
@@ -569,6 +570,109 @@ export function Sales() {
                     ) : sales.length === 0 ? (
                         <div className="text-center py-8 text-muted-foreground">
                             {t('common.noData')}
+                        </div>
+                    ) : isMobile() ? (
+                        <div className="grid grid-cols-1 gap-4">
+                            {sales.map((sale) => {
+                                const returnedItemsCount = sale.items?.filter(item => item.is_returned).length || 0
+                                const partialReturnedItemsCount = sale.items?.filter(item => (item.returned_quantity || 0) > 0 && !item.is_returned).length || 0
+                                const totalReturnedQuantity = sale.items?.reduce((sum, item) => {
+                                    if (item.is_returned) return sum + (item.quantity || 0)
+                                    if ((item.returned_quantity || 0) > 0) return sum + (item.returned_quantity || 0)
+                                    return sum
+                                }, 0) || 0
+                                const hasAnyReturn = returnedItemsCount > 0 || partialReturnedItemsCount > 0
+
+                                return (
+                                    <div
+                                        key={sale.id}
+                                        className={cn(
+                                            "p-4 rounded-[2rem] border border-border shadow-sm space-y-4 transition-all active:scale-[0.98]",
+                                            sale.is_returned ? 'bg-destructive/5 border-destructive/20' : hasAnyReturn ? 'bg-orange-500/5' : 'bg-card'
+                                        )}
+                                    >
+                                        <div className="flex justify-between items-start">
+                                            <div className="space-y-2">
+                                                <div className="flex flex-col gap-1">
+                                                    <span className="text-[10px] font-mono font-bold text-muted-foreground uppercase tracking-wider">
+                                                        {formatCompactDateTime(sale.created_at)}
+                                                    </span>
+                                                    <div className="flex flex-wrap gap-1.5">
+                                                        {sale.is_returned && (
+                                                            <span className="px-2 py-0.5 text-[9px] font-bold bg-destructive/10 text-destructive rounded-full border border-destructive/20 uppercase">
+                                                                {t('sales.return.returnedStatus') || 'RETURNED'}
+                                                            </span>
+                                                        )}
+                                                        {hasAnyReturn && !sale.is_returned && (
+                                                            <span className="px-2 py-0.5 text-[9px] font-bold bg-orange-500/10 text-orange-600 rounded-full border border-orange-500/20 uppercase">
+                                                                -{totalReturnedQuantity} {t('sales.return.returnedLabel') || 'returned'}
+                                                            </span>
+                                                        )}
+                                                        <span className="px-2 py-0.5 text-[9px] font-bold bg-secondary text-secondary-foreground rounded-full uppercase">
+                                                            {sale.origin}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                                <div className="text-sm font-bold text-foreground/80">
+                                                    {t('sales.cashier')}: <span className="text-primary font-black">{sale.cashier_name}</span>
+                                                </div>
+                                            </div>
+                                            <div className="text-right">
+                                                <div className="text-xl font-black text-primary leading-none">
+                                                    {formatCurrency(sale.total_amount, sale.settlement_currency || 'usd', features.iqd_display_preference)}
+                                                </div>
+                                                <div className="text-[10px] font-bold text-primary/40 uppercase tracking-widest mt-1">
+                                                    {sale.settlement_currency || 'usd'}
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex items-center justify-between pt-3 border-t border-border/50 gap-2">
+                                            <div className="flex gap-2">
+                                                <Button
+                                                    variant="secondary"
+                                                    size="sm"
+                                                    className="h-10 px-4 rounded-xl font-bold flex gap-2"
+                                                    onClick={() => setSelectedSale(sale)}
+                                                >
+                                                    <Eye className="w-4 h-4" />
+                                                    {t('common.view')}
+                                                </Button>
+                                                <Button
+                                                    variant="outline"
+                                                    size="icon"
+                                                    className="h-10 w-10 rounded-xl"
+                                                    onClick={() => onPrintClick(sale)}
+                                                >
+                                                    <Printer className="w-4 h-4" />
+                                                </Button>
+                                            </div>
+                                            <div className="flex gap-1">
+                                                {!sale.is_returned && (user?.role === 'admin' || user?.role === 'staff') && (
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        className="h-10 w-10 rounded-xl text-orange-600 hover:bg-orange-50"
+                                                        onClick={() => handleReturnSale(sale)}
+                                                    >
+                                                        <RotateCcw className="w-4 h-4" />
+                                                    </Button>
+                                                )}
+                                                {user?.role === 'admin' && (
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        className="h-10 w-10 rounded-xl text-destructive hover:bg-destructive/5"
+                                                        onClick={() => handleDeleteSale(sale.id)}
+                                                    >
+                                                        <Trash2 className="w-4 h-4" />
+                                                    </Button>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                )
+                            })}
                         </div>
                     ) : (
                         <Table>

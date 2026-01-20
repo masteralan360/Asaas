@@ -409,7 +409,7 @@ export function POS() {
         }
     }, [isSkuModalOpen])
 
-    const addToCart = (product: Product) => {
+    const addToCart = useCallback((product: Product) => {
         if (product.quantity <= 0) return // Out of stock
 
         // Check EUR support
@@ -431,13 +431,10 @@ export function POS() {
             return
         }
 
-        // Mixed currency is now allowed.
-        // Conversion will be handled in calculations and checkout.
-
         setCart((prev) => {
             const existing = prev.find((item) => item.product_id === product.id)
             if (existing) {
-                // Check stock limit (assuming local DB is source of truth for immediate check)
+                // Check stock limit
                 if (existing.quantity >= product.quantity) return prev
 
                 return prev.map((item) =>
@@ -459,7 +456,7 @@ export function POS() {
                 }
             ]
         })
-    }
+    }, [features, t, toast])
 
     const removeFromCart = (productId: string) => {
         setCart((prev) => prev.filter((item) => item.product_id !== productId))
@@ -537,7 +534,7 @@ export function POS() {
         }
     }
 
-    const handleBarcodeDetected = (barcodes: any[]) => {
+    const handleBarcodeDetected = useCallback((barcodes: any[]) => {
         if (!isScannerAutoEnabled || barcodes.length === 0) return
         const text = barcodes[0].rawValue
 
@@ -570,7 +567,7 @@ export function POS() {
                 duration: 2000,
             })
         }
-    }
+    }, [isScannerAutoEnabled, scanDelay, products, addToCart, t, toast])
 
     const handleCheckout = async () => {
         if (cart.length === 0 || !user) return
@@ -1328,7 +1325,7 @@ export function POS() {
             {/* --- Shared Modals (Available in both Mobile & Desktop) --- */}
             {/* Barcode Scanner Modal */}
             <Dialog open={isBarcodeModalOpen} onOpenChange={setIsBarcodeModalOpen}>
-                <DialogContent className="sm:max-w-2xl">
+                <DialogContent className="sm:max-w-2xl w-[95vw] sm:w-full max-h-[90vh] overflow-y-auto">
                     <DialogHeader>
                         <DialogTitle className="flex items-center gap-2">
                             <Camera className="w-5 h-5 text-primary" />
@@ -1342,7 +1339,10 @@ export function POS() {
                             {isScannerAutoEnabled ? (
                                 <BarcodeScanner
                                     onCapture={handleBarcodeDetected}
-                                    trackConstraints={{ deviceId: selectedCameraId }}
+                                    trackConstraints={{
+                                        deviceId: selectedCameraId || undefined,
+                                        facingMode: selectedCameraId ? undefined : 'environment'
+                                    }}
                                     options={{
                                         formats: [
                                             'code_128',
@@ -1401,7 +1401,7 @@ export function POS() {
                                             setScanDelay(val)
                                             localStorage.setItem('scanner_scan_delay', String(val))
                                         }}
-                                        min={500}
+                                        min={0}
                                         max={10000}
                                         step={100}
                                         className="h-9"
@@ -1692,16 +1692,24 @@ const MobileGrid = ({ t, search, setSearch, setIsSkuModalOpen, setIsBarcodeModal
                     <div
                         key={product.id}
                         className="bg-card rounded-[2rem] border border-border p-3 shadow-sm flex flex-col gap-3 group active:scale-[0.98] transition-all"
+                        onClick={(e) => {
+                            if ((e.target as HTMLElement).closest('button')) return;
+                            addToCart(product);
+                        }}
                     >
-                        <div className="aspect-square bg-muted/30 rounded-[1.5rem] overflow-hidden relative" onClick={() => addToCart(product)}>
+                        <div className="aspect-square bg-muted/30 rounded-[1.5rem] overflow-hidden relative">
                             {product.imageUrl ? (
                                 <img src={getDisplayImageUrl(product.imageUrl)} className="w-full h-full object-cover" />
                             ) : (
                                 <Zap className="w-10 h-10 absolute inset-0 m-auto opacity-10" />
                             )}
+                            {/* Stock Badge */}
+                            <div className="absolute top-2 right-2 bg-primary/20 backdrop-blur-md text-primary px-2.5 py-1 rounded-xl text-[10px] font-black border border-primary/20">
+                                {product.quantity}
+                            </div>
                             {product.quantity <= 0 && (
                                 <div className="absolute inset-0 bg-background/60 backdrop-blur-[2px] flex items-center justify-center text-xs font-bold text-destructive">
-                                    Out of stock
+                                    {t('pos.outOfStock') || 'Out of stock'}
                                 </div>
                             )}
                         </div>
@@ -1716,7 +1724,10 @@ const MobileGrid = ({ t, search, setSearch, setIsSkuModalOpen, setIsBarcodeModal
                                 variant="ghost"
                                 size="icon"
                                 className="h-8 w-8 rounded-xl hover:bg-background"
-                                onClick={() => updateQuantity(product.id, -1)}
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    updateQuantity(product.id, -1);
+                                }}
                                 disabled={!cartItem}
                             >
                                 <Minus className="w-3 h-3" />
@@ -1726,7 +1737,10 @@ const MobileGrid = ({ t, search, setSearch, setIsSkuModalOpen, setIsBarcodeModal
                                 variant="ghost"
                                 size="icon"
                                 className="h-8 w-8 rounded-xl hover:bg-background text-primary"
-                                onClick={() => addToCart(product)}
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    addToCart(product);
+                                }}
                                 disabled={product.quantity <= 0}
                             >
                                 <Plus className="w-3 h-3" />
