@@ -1023,37 +1023,20 @@ export function POS() {
                                             onClick={() => addToCart(product)}
                                             disabled={remainingQuantity <= 0}
                                             className={cn(
-                                                "bg-card hover:bg-accent/50 transition-all duration-200 p-4 rounded-xl border border-border text-left flex flex-col gap-2 relative overflow-hidden group outline-none",
+                                                "group relative bg-card hover:bg-accent/5 rounded-[1.5rem] border border-border/50 p-4 transition-all duration-300 hover:shadow-2xl hover:shadow-primary/5 hover:-translate-y-1 flex flex-col gap-4 overflow-hidden text-left outline-none",
                                                 remainingQuantity <= 0 ? 'opacity-60 cursor-not-allowed' : '',
                                                 // Keyboard focus highlight (Electron only)
                                                 (isElectron && focusedSection === 'grid' && focusedProductIndex === index) ? "ring-2 ring-primary ring-offset-2 ring-offset-background scale-[1.02] shadow-lg z-10 box-shadow-[0_0_0_2px_hsl(var(--primary))]" : ""
                                             )}
                                         >
-                                            {inCartQuantity > 0 && (
-                                                <div className="absolute top-2 left-2 bg-emerald-500 text-white px-1.5 py-0.5 rounded text-[10px] font-black animate-pop-in border border-emerald-400 shadow-sm z-10">
-                                                    +{inCartQuantity}
-                                                </div>
-                                            )}
-                                            <div className={cn(
-                                                "absolute top-2 right-2 px-2 py-0.5 rounded text-xs font-bold transition-colors duration-300",
-                                                remainingQuantity <= 0
-                                                    ? "bg-destructive text-destructive-foreground"
-                                                    : isLowStock
-                                                        ? isCriticalStock
-                                                            ? "bg-red-500 text-white shadow-[0_0_8px_rgba(239,68,68,0.4)]"
-                                                            : "bg-amber-400 text-amber-950"
-                                                        : "bg-primary/10 text-primary"
-                                            )}>
-                                                {remainingQuantity}
-                                            </div>
-                                            <div className="h-24 w-full bg-muted/20 rounded-lg mb-2 flex items-center justify-center text-muted-foreground overflow-hidden">
+                                            {/* Product Image Wrapper */}
+                                            <div className="relative aspect-square rounded-2xl bg-muted/30 border border-border/20 overflow-hidden flex items-center justify-center">
                                                 {product.imageUrl ? (
                                                     <img
                                                         src={getDisplayImageUrl(product.imageUrl)}
                                                         alt={product.name}
-                                                        className="w-full h-full object-cover"
+                                                        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
                                                         onError={(e) => {
-                                                            // Hide the image and show fallback
                                                             (e.target as HTMLImageElement).style.display = 'none';
                                                             const parent = (e.target as HTMLImageElement).parentElement;
                                                             if (parent) {
@@ -1062,15 +1045,45 @@ export function POS() {
                                                         }}
                                                     />
                                                 ) : (
-                                                    <Zap className="w-8 h-8 opacity-20" />
+                                                    <Zap className="w-10 h-10 opacity-10 text-muted-foreground group-hover:scale-110 transition-transform duration-500" />
                                                 )}
+
+                                                {/* POS Indicators (Cart & Stock) */}
+                                                {inCartQuantity > 0 && (
+                                                    <div className="absolute top-2 left-2 bg-emerald-500 text-white px-2.5 py-1.5 rounded-2xl text-[12px] font-black animate-pop-in border border-emerald-400 shadow-md z-10">
+                                                        +{inCartQuantity}
+                                                    </div>
+                                                )}
+
+                                                <div className={cn(
+                                                    "absolute top-2 right-2 px-2.5 py-1.5 rounded-2xl text-[12px] font-black uppercase tracking-tighter shadow-md z-10",
+                                                    remainingQuantity <= 0
+                                                        ? "bg-destructive text-destructive-foreground"
+                                                        : isLowStock
+                                                            ? isCriticalStock
+                                                                ? "bg-red-500 text-white shadow-[0_0_8px_rgba(239,68,68,0.4)]"
+                                                                : "bg-amber-400 text-amber-950"
+                                                            : "bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 backdrop-blur-md"
+                                                )}>
+                                                    {remainingQuantity}
+                                                </div>
                                             </div>
-                                            <div className="flex-1 min-w-0">
-                                                <h3 className="font-semibold truncate" title={product.name}>{product.name}</h3>
-                                                <p className="text-xs text-muted-foreground truncate">{product.sku}</p>
+
+                                            {/* Product Info */}
+                                            <div className="flex-1 space-y-1">
+                                                <div className="text-[10px] font-mono font-bold text-muted-foreground uppercase tracking-widest opacity-60">
+                                                    {product.sku}
+                                                </div>
+                                                <h3 className="font-bold text-foreground text-sm line-clamp-2 leading-snug group-hover:text-primary transition-colors">
+                                                    {product.name}
+                                                </h3>
                                             </div>
-                                            <div className="mt-auto font-bold text-lg text-primary">
-                                                {formatCurrency(product.price, product.currency, features.iqd_display_preference)}
+
+                                            {/* Pricing */}
+                                            <div className="pt-2 border-t border-border/40">
+                                                <div className="text-lg font-black text-primary">
+                                                    {formatCurrency(product.price, product.currency, features.iqd_display_preference)}
+                                                </div>
                                             </div>
                                         </button>
                                     )
