@@ -1,13 +1,5 @@
 import { isDesktop, isMobile, isTauri, PlatformAPI } from '../lib/platform';
 
-// We'll try to import convertFileSrc dynamically or safely
-let tauriConvertFileSrc: ((path: string) => string) | null = null;
-if (isTauri()) {
-    import('@tauri-apps/api/core').then(m => {
-        tauriConvertFileSrc = m.convertFileSrc;
-    }).catch(console.error);
-}
-
 /**
  * Service to handle platform-specific operations
  */
@@ -15,26 +7,23 @@ class PlatformService implements PlatformAPI {
 
     convertFileSrc(path: string): string {
         if (isTauri()) {
-            // Priority 1: Use the pre-imported official Tauri v2 API
-            if (tauriConvertFileSrc) {
-                return tauriConvertFileSrc(path);
-            }
+            try {
+                // In Tauri v2, if withGlobalTauri is true, it's under window.__TAURI__.core
+                const tauri = (window as any).__TAURI__;
+                if (tauri?.core?.convertFileSrc) {
+                    return tauri.core.convertFileSrc(path);
+                }
 
-            // Priority 2: Use global Tauri if available (v2 or v1 compatibility)
-            const tauri = (window as any).__TAURI__;
-            if (tauri?.core?.convertFileSrc) {
-                return tauri.core.convertFileSrc(path);
+                // Fallback for newer Tauri 2 patterns
+                if ((window as any).__TAURI_INTERNALS__) {
+                    const normalizedPath = path.replace(/\\/g, '/');
+                    // In v2 on Windows, the protocol is typically https://asset.localhost/
+                    const assetUrl = `https://asset.localhost/${normalizedPath.startsWith('/') ? normalizedPath.substring(1) : normalizedPath}`;
+                    return assetUrl;
+                }
+            } catch (error) {
+                console.error('Error converting file src:', error);
             }
-            if (tauri?.convertFileSrc) {
-                return tauri.convertFileSrc(path);
-            }
-
-            // Priority 3: Manual Fallback for v2 on Windows
-            // Tauri v2 uses http://asset.localhost/<encoded_path> on Windows dev
-            const normalizedPath = path.replace(/\\/g, '/');
-            // Remove lead slash if present for drive letters (e.g. /C:/ -> C:/)
-            const cleanPath = normalizedPath.startsWith('/') ? normalizedPath.slice(1) : normalizedPath;
-            return `http://asset.localhost/${cleanPath}`;
         }
         return path;
     }

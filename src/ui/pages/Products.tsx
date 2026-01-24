@@ -842,8 +842,6 @@ export function Products() {
                                             value={formData.imageUrl}
                                             onChange={(e) => setFormData({ ...formData, imageUrl: e.target.value })}
                                             placeholder={t('products.form.imageUrlPlaceholder') || "Image URL or local path"}
-                                            readOnly={isElectron}
-                                            className={isElectron ? 'bg-muted/50' : ''}
                                         />
                                         {isElectron && (
                                             <Button
