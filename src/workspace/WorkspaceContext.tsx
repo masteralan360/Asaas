@@ -17,6 +17,7 @@ export interface WorkspaceFeatures {
     eur_conversion_enabled: boolean
     try_conversion_enabled: boolean
     locked_workspace: boolean
+    logo_url: string | null
     // Negotiated price limit (0-100 percentage, default 100 = no limit)
     max_discount_percent: number
 }
@@ -50,6 +51,7 @@ const defaultFeatures: WorkspaceFeatures = {
     eur_conversion_enabled: false,
     try_conversion_enabled: false,
     locked_workspace: false,
+    logo_url: null,
     max_discount_percent: 100
 }
 
@@ -124,6 +126,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                         eur_conversion_enabled: (localWorkspace as any).eur_conversion_enabled ?? false,
                         try_conversion_enabled: (localWorkspace as any).try_conversion_enabled ?? false,
                         locked_workspace: (localWorkspace as any).locked_workspace ?? false,
+                        logo_url: (localWorkspace as any).logo_url ?? null,
                         max_discount_percent: (localWorkspace as any).max_discount_percent ?? 100
                     })
                 } else {
@@ -142,6 +145,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                     eur_conversion_enabled: featureData.eur_conversion_enabled ?? false,
                     try_conversion_enabled: featureData.try_conversion_enabled ?? false,
                     locked_workspace: featureData.locked_workspace ?? false,
+                    logo_url: featureData.logo_url ?? null,
                     max_discount_percent: featureData.max_discount_percent ?? 100
                 }
                 setFeatures(fetchedFeatures)
@@ -162,6 +166,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                     allow_customers: fetchedFeatures.allow_customers,
                     allow_orders: fetchedFeatures.allow_orders,
                     allow_invoices: fetchedFeatures.allow_invoices,
+                    logo_url: fetchedFeatures.logo_url,
                     syncStatus: 'synced',
                     lastSyncedAt: new Date().toISOString(),
                     version: 1,

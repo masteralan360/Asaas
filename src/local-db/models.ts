@@ -175,6 +175,8 @@ export interface Workspace extends BaseEntity {
     allow_customers: boolean
     allow_orders: boolean
     allow_invoices: boolean
+    logo_url?: string | null
+    syncStatus: SyncStatus
     // Negotiated price limit (0-100 percentage)
     max_discount_percent?: number
 }

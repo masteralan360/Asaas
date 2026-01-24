@@ -40,7 +40,7 @@ export function WorkspaceConfiguration() {
     const { t } = useTranslation()
 
     const [isLoading, setIsLoading] = useState(false)
-    const [logoUrl, setLogoUrl] = useState('')
+    const [logoUrl, setLogoUrl] = useState(currentFeatures.logo_url || '')
     const isTauri = isTauriCheck()
     const workspaceId = user?.workspaceId || ''
 
@@ -51,10 +51,10 @@ export function WorkspaceConfiguration() {
     }
 
     const [features, setFeatures] = useState({
-        allow_pos: true,
-        allow_customers: true,
-        allow_orders: true,
-        allow_invoices: true
+        allow_pos: currentFeatures.allow_pos,
+        allow_customers: currentFeatures.allow_customers,
+        allow_orders: currentFeatures.allow_orders,
+        allow_invoices: currentFeatures.allow_invoices
     })
 
     const featureToggles: FeatureToggle[] = [
@@ -129,8 +129,8 @@ export function WorkspaceConfiguration() {
     }
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-background via-background to-primary/5 flex items-center justify-center p-4">
-            <Card className="w-full max-w-2xl shadow-xl border-border/50">
+        <div className="min-h-screen bg-gradient-to-br from-background via-background to-primary/5 p-4 flex flex-col items-center py-12 overflow-y-auto">
+            <Card className="w-full max-w-2xl shadow-xl border-border/50 shrink-0">
                 <CardHeader className="text-center pb-2">
                     <div className="mx-auto w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mb-4">
                         <ImagePlus className="w-8 h-8 text-primary" />

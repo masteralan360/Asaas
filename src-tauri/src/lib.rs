@@ -11,12 +11,15 @@ pub fn run() {
       use tauri::Manager;
       let window = app.get_webview_window("main").unwrap();
       
-      // Force disable decorations (Fix for persistent title bar)
-      let _ = window.set_decorations(false);
-      // let _ = window.set_shadow(true);
-      
-      // Show window after configuration
-      let _ = window.show();
+      #[cfg(desktop)]
+      {
+        // Force disable decorations (Fix for persistent title bar)
+        let _ = window.set_decorations(false);
+        // let _ = window.set_shadow(true);
+        
+        // Show window after configuration
+        let _ = window.show();
+      }
 
       if cfg!(debug_assertions) {
         app.handle().plugin(
