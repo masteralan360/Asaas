@@ -68,6 +68,7 @@
         "addProduct": "إضافة منتج",
         "addCategory": "إضافة فئة",
         "searchPlaceholder": "البحث عن منتجات...",
+        "inStock": "متوفر",
         "table": {
             "image": "الصورة",
             "name": "الاسم",
@@ -79,6 +80,10 @@
             "inStock": "متوفر",
             "lowStock": "مخزون منخفض",
             "outOfStock": "نفد المخزون"
+        },
+        "view": {
+            "table": "تفاصيل المنتج",
+            "grid": "تفاصيل المنتج"
         },
         "form": {
             "title": "تفاصيل المنتج",

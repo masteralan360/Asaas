@@ -30,7 +30,7 @@ import {
     CurrencySelector,
     Switch
 } from '@/ui/components'
-import { Plus, Pencil, Trash2, Package, Search, ImagePlus, Info, Settings } from 'lucide-react'
+import { Plus, Pencil, Trash2, Package, Search, ImagePlus, Info, Settings, LayoutGrid, List as ListIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/auth'
 import { useWorkspace } from '@/workspace'
@@ -96,10 +96,17 @@ export function Products() {
     const [outsideClickCount, setOutsideClickCount] = useState(0)
     const [showUnsavedChangesModal, setShowUnsavedChangesModal] = useState(false)
     const [unsavedChangesType, setUnsavedChangesType] = useState<'product' | 'category' | null>(null)
+    const [viewMode, setViewMode] = useState<'table' | 'grid'>(() => {
+        return (localStorage.getItem('products_view_mode') as 'table' | 'grid') || 'table'
+    })
 
     useEffect(() => {
         setIsElectron(isTauri());
     }, [])
+
+    useEffect(() => {
+        localStorage.setItem('products_view_mode', viewMode)
+    }, [viewMode])
 
     const isProductDirty = () => {
         if (!isDialogOpen) return false
@@ -334,18 +341,48 @@ export function Products() {
                     </h1>
                     <p className="text-muted-foreground">{t('products.subtitle') || 'Manage your inventory'}</p>
                 </div>
-                {canEdit && (
-                    <div className="flex gap-2">
-                        <Button variant="outline" onClick={() => setIsCategoryDialogOpen(true)}>
-                            <Plus className="w-4 h-4" />
-                            {t('products.addCategory')}
-                        </Button>
-                        <Button onClick={() => handleOpenDialog()}>
-                            <Plus className="w-4 h-4" />
-                            {t('products.addProduct')}
-                        </Button>
-                    </div>
-                )}
+                <div className="flex items-center gap-2">
+                    {!isMobile() && (
+                        <div className="flex items-center bg-muted/50 p-1 rounded-xl border border-border/50 mr-2">
+                            <Button
+                                variant={viewMode === 'table' ? 'secondary' : 'ghost'}
+                                size="sm"
+                                className={cn(
+                                    "rounded-lg h-8 px-3 font-bold flex gap-2 transition-all",
+                                    viewMode === 'table' && "shadow-sm bg-background"
+                                )}
+                                onClick={() => setViewMode('table')}
+                            >
+                                <ListIcon className="w-3.5 h-3.5" />
+                                {t('products.view.table') || 'Table'}
+                            </Button>
+                            <Button
+                                variant={viewMode === 'grid' ? 'secondary' : 'ghost'}
+                                size="sm"
+                                className={cn(
+                                    "rounded-lg h-8 px-3 font-bold flex gap-2 transition-all",
+                                    viewMode === 'grid' && "shadow-sm bg-background"
+                                )}
+                                onClick={() => setViewMode('grid')}
+                            >
+                                <LayoutGrid className="w-3.5 h-3.5" />
+                                {t('products.view.grid') || 'Grid'}
+                            </Button>
+                        </div>
+                    )}
+                    {canEdit && (
+                        <div className="flex gap-2">
+                            <Button variant="outline" onClick={() => setIsCategoryDialogOpen(true)}>
+                                <Plus className="w-4 h-4" />
+                                {t('products.addCategory')}
+                            </Button>
+                            <Button onClick={() => handleOpenDialog()}>
+                                <Plus className="w-4 h-4" />
+                                {t('products.addProduct')}
+                            </Button>
+                        </div>
+                    )}
+                </div>
             </div>
 
             {/* Search */}
@@ -365,144 +402,236 @@ export function Products() {
                     <CardTitle>{t('products.title')}</CardTitle>
                 </CardHeader>
                 <CardContent>
-                    {filteredProducts.length === 0 ? (
-                        <div className="text-center py-8 text-muted-foreground">
-                            {products.length === 0 ? t('common.noData') : t('common.noData')}
-                        </div>
-                    ) : isMobile() ? (
-                        <div className="grid grid-cols-1 gap-4">
-                            {filteredProducts.map((product) => (
-                                <div
-                                    key={product.id}
-                                    className="p-4 rounded-[2rem] border border-border shadow-sm bg-card space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300"
-                                >
-                                    <div className="flex gap-4">
-                                        <div className="w-16 h-16 rounded-[1.25rem] bg-muted/30 border border-border/50 overflow-hidden flex-shrink-0 flex items-center justify-center">
-                                            {product.imageUrl ? (
-                                                <img
-                                                    src={getDisplayImageUrl(product.imageUrl)}
-                                                    alt=""
-                                                    className="w-full h-full object-cover"
-                                                />
-                                            ) : (
-                                                <Package className="w-8 h-8 opacity-20 text-muted-foreground" />
-                                            )}
-                                        </div>
-                                        <div className="flex-1 min-w-0 flex flex-col justify-center">
-                                            <div className="text-[10px] font-mono font-bold text-muted-foreground uppercase tracking-wider">
-                                                {product.sku}
-                                            </div>
-                                            <div className="font-black text-foreground truncate text-base leading-tight">
-                                                {product.name}
-                                            </div>
-                                            <div className="text-[11px] text-primary font-bold mt-0.5 opacity-80 uppercase tracking-wide">
-                                                {getCategoryName(product.categoryId)}
-                                            </div>
-                                        </div>
-                                        <div className="text-right flex flex-col justify-center">
-                                            <div className="text-lg font-black text-primary leading-tight">
-                                                {formatCurrency(product.price, product.currency, features.iqd_display_preference)}
-                                            </div>
-                                            <div className={cn(
-                                                "text-[11px] font-black uppercase tracking-widest mt-0.5",
-                                                product.quantity <= product.minStockLevel ? "text-amber-500" : "text-muted-foreground/60"
-                                            )}>
-                                                {product.quantity} {product.unit}
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div className="flex justify-end gap-2 pt-3 border-t border-border/50">
-                                        {canEdit && (
-                                            <Button
-                                                variant="secondary"
-                                                size="sm"
-                                                className="rounded-xl h-10 px-6 font-bold flex gap-2"
-                                                onClick={() => handleOpenDialog(product)}
+                    {
+                        filteredProducts.length === 0 ? (
+                            <div className="text-center py-8 text-muted-foreground">
+                                {products.length === 0 ? t('common.noData') : t('common.noData')}
+                            </div>
+                        ) : (
+                            <>
+                                {/* Mobile View */}
+                                {isMobile() && (
+                                    <div className="grid grid-cols-1 gap-4">
+                                        {filteredProducts.map((product) => (
+                                            <div
+                                                key={product.id}
+                                                className="p-4 rounded-[2rem] border border-border shadow-sm bg-card space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300"
                                             >
-                                                <Pencil className="w-4 h-4" />
-                                                {t('common.edit')}
-                                            </Button>
-                                        )}
-                                        {canDelete && (
-                                            <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                className="rounded-xl h-10 w-10 text-destructive hover:bg-destructive/5"
-                                                onClick={() => handleDelete(product.id)}
-                                            >
-                                                <Trash2 className="w-4 h-4" />
-                                            </Button>
-                                        )}
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    ) : (
-                        <Table>
-                            <TableHeader>
-                                <TableRow>
-                                    <TableHead className="w-[80px]">{t('products.table.image') || 'Image'}</TableHead>
-                                    <TableHead>{t('products.table.sku')}</TableHead>
-                                    <TableHead>{t('products.table.name')}</TableHead>
-                                    <TableHead>{t('products.table.category')}</TableHead>
-                                    <TableHead className="text-right">{t('products.table.price')}</TableHead>
-                                    <TableHead className="text-right">{t('products.table.stock')}</TableHead>
-                                    {(canEdit || canDelete) && <TableHead className="text-right">{t('common.actions')}</TableHead>}
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {filteredProducts.map((product) => (
-                                    <TableRow key={product.id}>
-                                        <TableCell>
-                                            <div className="w-10 h-10 rounded border bg-muted flex items-center justify-center overflow-hidden">
-                                                {product.imageUrl ? (
-                                                    <img
-                                                        src={getDisplayImageUrl(product.imageUrl)}
-                                                        alt=""
-                                                        className="w-full h-full object-cover"
-                                                    />
-                                                ) : (
-                                                    <Package className="w-5 h-5 text-muted-foreground/30" />
-                                                )}
-                                            </div>
-                                        </TableCell>
-                                        <TableCell className="font-mono text-sm">{product.sku}</TableCell>
-                                        <TableCell className="font-medium">{product.name}</TableCell>
-                                        <TableCell>{getCategoryName(product.categoryId)}</TableCell>
-                                        <TableCell className="text-right">
-                                            {formatCurrency(product.price, product.currency, features.iqd_display_preference)}
-                                        </TableCell>
-                                        <TableCell className="text-right">
-                                            <span className={product.quantity <= product.minStockLevel ? 'text-amber-500 font-medium' : ''}>
-                                                {product.quantity} {product.unit}
-                                            </span>
-                                        </TableCell>
-                                        {(canEdit || canDelete) && (
-                                            <TableCell className="text-right">
-                                                <div className="flex justify-end gap-2">
+                                                <div className="flex gap-4">
+                                                    <div className="w-16 h-16 rounded-[1.25rem] bg-muted/30 border border-border/50 overflow-hidden flex-shrink-0 flex items-center justify-center">
+                                                        {product.imageUrl ? (
+                                                            <img
+                                                                src={getDisplayImageUrl(product.imageUrl)}
+                                                                alt=""
+                                                                className="w-full h-full object-cover"
+                                                            />
+                                                        ) : (
+                                                            <Package className="w-8 h-8 opacity-20 text-muted-foreground" />
+                                                        )}
+                                                    </div>
+                                                    <div className="flex-1 min-w-0 flex flex-col justify-center">
+                                                        <div className="text-[10px] font-mono font-bold text-muted-foreground uppercase tracking-wider">
+                                                            {product.sku}
+                                                        </div>
+                                                        <div className="font-black text-foreground truncate text-base leading-tight">
+                                                            {product.name}
+                                                        </div>
+                                                        <div className="text-[11px] text-primary font-bold mt-0.5 opacity-80 uppercase tracking-wide">
+                                                            {getCategoryName(product.categoryId)}
+                                                        </div>
+                                                    </div>
+                                                    <div className="text-right flex flex-col justify-center">
+                                                        <div className="text-lg font-black text-primary leading-tight">
+                                                            {formatCurrency(product.price, product.currency, features.iqd_display_preference)}
+                                                        </div>
+                                                        <div className={cn(
+                                                            "text-[11px] font-black uppercase tracking-widest mt-0.5",
+                                                            product.quantity <= product.minStockLevel ? "text-amber-500" : "text-muted-foreground/60"
+                                                        )}>
+                                                            {product.quantity} {product.unit}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div className="flex justify-end gap-2 pt-3 border-t border-border/50">
                                                     {canEdit && (
-                                                        <Button variant="ghost" size="icon" onClick={() => handleOpenDialog(product)}>
+                                                        <Button
+                                                            variant="secondary"
+                                                            size="sm"
+                                                            className="rounded-xl h-10 px-6 font-bold flex gap-2"
+                                                            onClick={() => handleOpenDialog(product)}
+                                                        >
                                                             <Pencil className="w-4 h-4" />
+                                                            {t('common.edit')}
                                                         </Button>
                                                     )}
                                                     {canDelete && (
-                                                        <Button variant="ghost" size="icon" onClick={() => handleDelete(product.id)}>
-                                                            <Trash2 className="w-4 h-4 text-destructive" />
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            className="rounded-xl h-10 w-10 text-destructive hover:bg-destructive/5"
+                                                            onClick={() => handleDelete(product.id)}
+                                                        >
+                                                            <Trash2 className="w-4 h-4" />
                                                         </Button>
                                                     )}
                                                 </div>
-                                            </TableCell>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+
+                                {/* Desktop Views */}
+                                {!isMobile() && (
+                                    <>
+                                        {viewMode === 'grid' ? (
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
+                                                {filteredProducts.map((product) => (
+                                                    <div
+                                                        key={product.id}
+                                                        className="group relative bg-card hover:bg-accent/5 rounded-[1.5rem] border border-border/50 p-4 transition-all duration-300 hover:shadow-2xl hover:shadow-primary/5 hover:-translate-y-1 flex flex-col gap-4 overflow-hidden"
+                                                    >
+                                                        {/* Product Image Wrapper */}
+                                                        <div className="relative aspect-square rounded-2xl bg-muted/30 border border-border/20 overflow-hidden flex items-center justify-center">
+                                                            {product.imageUrl ? (
+                                                                <img
+                                                                    src={getDisplayImageUrl(product.imageUrl)}
+                                                                    alt={product.name}
+                                                                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                                                                />
+                                                            ) : (
+                                                                <Package className="w-12 h-12 opacity-10 text-muted-foreground" />
+                                                            )}
+
+                                                            {/* Status Badge */}
+                                                            <div className={cn(
+                                                                "absolute top-2 right-2 px-2 py-1 rounded-lg text-[10px] font-black uppercase tracking-tighter shadow-sm",
+                                                                product.quantity <= product.minStockLevel ? "bg-amber-500 text-white" : "bg-emerald-500/10 text-emerald-600 border border-emerald-500/20"
+                                                            )}>
+                                                                {product.quantity <= product.minStockLevel ? (t('products.lowStock') || 'Low Stock') : (t('products.inStock') || 'In Stock')}
+                                                            </div>
+                                                        </div>
+
+                                                        {/* Product Info */}
+                                                        <div className="flex-1 space-y-1">
+                                                            <div className="text-[10px] font-mono font-bold text-muted-foreground uppercase tracking-widest opacity-60">
+                                                                {product.sku}
+                                                            </div>
+                                                            <h3 className="font-bold text-foreground text-sm line-clamp-2 leading-snug group-hover:text-primary transition-colors">
+                                                                {product.name}
+                                                            </h3>
+                                                            <div className="text-[11px] font-bold text-primary/70 uppercase tracking-wide">
+                                                                {getCategoryName(product.categoryId)}
+                                                            </div>
+                                                        </div>
+
+                                                        {/* Pricing and Actions */}
+                                                        <div className="pt-3 border-t border-border/40 flex items-center justify-between">
+                                                            <div>
+                                                                <div className="text-lg font-black text-primary">
+                                                                    {formatCurrency(product.price, product.currency, features.iqd_display_preference)}
+                                                                </div>
+                                                                <div className="text-[11px] text-muted-foreground font-medium">
+                                                                    {product.quantity} {product.unit}
+                                                                </div>
+                                                            </div>
+
+                                                            <div className="flex gap-1">
+                                                                {canEdit && (
+                                                                    <Button
+                                                                        variant="ghost"
+                                                                        size="icon"
+                                                                        className="w-8 h-8 rounded-lg hover:bg-primary/10 hover:text-primary transition-colors"
+                                                                        onClick={() => handleOpenDialog(product)}
+                                                                    >
+                                                                        <Pencil className="w-3.5 h-3.5" />
+                                                                    </Button>
+                                                                )}
+                                                                {canDelete && (
+                                                                    <Button
+                                                                        variant="ghost"
+                                                                        size="icon"
+                                                                        className="w-8 h-8 rounded-lg hover:bg-destructive/10 hover:text-destructive transition-colors"
+                                                                        onClick={() => handleDelete(product.id)}
+                                                                    >
+                                                                        <Trash2 className="w-3.5 h-3.5" />
+                                                                    </Button>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <Table>
+                                                <TableHeader>
+                                                    <TableRow>
+                                                        <TableHead className="w-[80px]">{t('products.table.image') || 'Image'}</TableHead>
+                                                        <TableHead>{t('products.table.sku')}</TableHead>
+                                                        <TableHead>{t('products.table.name')}</TableHead>
+                                                        <TableHead>{t('products.table.category')}</TableHead>
+                                                        <TableHead className="text-right">{t('products.table.price')}</TableHead>
+                                                        <TableHead className="text-right">{t('products.table.stock')}</TableHead>
+                                                        {(canEdit || canDelete) && <TableHead className="text-right">{t('common.actions')}</TableHead>}
+                                                    </TableRow>
+                                                </TableHeader>
+                                                <TableBody>
+                                                    {filteredProducts.map((product) => (
+                                                        <TableRow key={product.id}>
+                                                            <TableCell>
+                                                                <div className="w-10 h-10 rounded border bg-muted flex items-center justify-center overflow-hidden">
+                                                                    {product.imageUrl ? (
+                                                                        <img
+                                                                            src={getDisplayImageUrl(product.imageUrl)}
+                                                                            alt=""
+                                                                            className="w-full h-full object-cover"
+                                                                        />
+                                                                    ) : (
+                                                                        <Package className="w-5 h-5 text-muted-foreground/30" />
+                                                                    )}
+                                                                </div>
+                                                            </TableCell>
+                                                            <TableCell className="font-mono text-sm">{product.sku}</TableCell>
+                                                            <TableCell className="font-medium">{product.name}</TableCell>
+                                                            <TableCell>{getCategoryName(product.categoryId)}</TableCell>
+                                                            <TableCell className="text-right">
+                                                                {formatCurrency(product.price, product.currency, features.iqd_display_preference)}
+                                                            </TableCell>
+                                                            <TableCell className="text-right">
+                                                                <span className={product.quantity <= product.minStockLevel ? 'text-amber-500 font-medium' : ''}>
+                                                                    {product.quantity} {product.unit}
+                                                                </span>
+                                                            </TableCell>
+                                                            {(canEdit || canDelete) && (
+                                                                <TableCell className="text-right">
+                                                                    <div className="flex justify-end gap-2">
+                                                                        {canEdit && (
+                                                                            <Button variant="ghost" size="icon" onClick={() => handleOpenDialog(product)}>
+                                                                                <Pencil className="w-4 h-4" />
+                                                                            </Button>
+                                                                        )}
+                                                                        {canDelete && (
+                                                                            <Button variant="ghost" size="icon" onClick={() => handleDelete(product.id)}>
+                                                                                <Trash2 className="w-4 h-4 text-destructive" />
+                                                                            </Button>
+                                                                        )}
+                                                                    </div>
+                                                                </TableCell>
+                                                            )}
+                                                        </TableRow>
+                                                    ))}
+                                                </TableBody>
+                                            </Table>
                                         )}
-                                    </TableRow>
-                                ))}
-                            </TableBody>
-                        </Table>
-                    )}
-                </CardContent>
+                                    </>
+                                )}
+                            </>
+                        )
+                    }
+                </CardContent >
             </Card>
 
             {/* Add/Edit Dialog */}
-            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+            < Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen} >
                 <DialogContent
                     className="max-w-2xl w-[95vw] sm:w-full max-h-[90vh] overflow-y-auto"
                     onPointerDownOutside={handleProductOutsideClick}
@@ -751,11 +880,11 @@ export function Products() {
                         </DialogFooter>
                     </form>
                 </DialogContent>
-            </Dialog>
+            </Dialog >
             {/* Category Dialog */}
-            <Dialog open={isCategoryDialogOpen} onOpenChange={setIsCategoryDialogOpen}>
+            < Dialog open={isCategoryDialogOpen} onOpenChange={setIsCategoryDialogOpen} >
                 {/* ... existing Category Dialog content ... */}
-                <DialogContent
+                < DialogContent
                     className="max-w-md"
                     onPointerDownOutside={handleCategoryOutsideClick}
                 >
@@ -821,11 +950,11 @@ export function Products() {
                             </Button>
                         </DialogFooter>
                     </form>
-                </DialogContent>
-            </Dialog>
+                </DialogContent >
+            </Dialog >
 
             {/* Return Rules Modal */}
-            <Dialog open={returnRulesModalOpen} onOpenChange={setReturnRulesModalOpen}>
+            < Dialog open={returnRulesModalOpen} onOpenChange={setReturnRulesModalOpen} >
                 <DialogContent className="max-w-md animate-in fade-in zoom-in duration-300">
                     <DialogHeader>
                         <DialogTitle className="flex items-center gap-2">
@@ -864,9 +993,9 @@ export function Products() {
                         </Button>
                     </DialogFooter>
                 </DialogContent>
-            </Dialog>
+            </Dialog >
             {/* Unsaved Changes Confirmation Modal */}
-            <Dialog open={showUnsavedChangesModal} onOpenChange={setShowUnsavedChangesModal}>
+            < Dialog open={showUnsavedChangesModal} onOpenChange={setShowUnsavedChangesModal} >
                 <DialogContent className="max-w-lg animate-in fade-in zoom-in duration-300 border-primary/20 shadow-2xl p-0 overflow-hidden">
                     <div className="p-6 border-b bg-muted/30">
                         <DialogHeader>
@@ -910,7 +1039,7 @@ export function Products() {
                         </div>
                     </DialogFooter>
                 </DialogContent>
-            </Dialog>
-        </div>
+            </Dialog >
+        </div >
     )
 }

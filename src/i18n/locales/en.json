@@ -77,6 +77,7 @@
         "addProduct": "Add Product",
         "addCategory": "Add Category",
         "searchPlaceholder": "Search products...",
+        "inStock": "In Stock",
         "receipt": {
             "title": "Sale Receipt",
             "date": "Date",
@@ -92,6 +93,10 @@
             "cashier": "Cashier",
             "thankYou": "Thank you for your business!",
             "reprint": "Reprint Receipt"
+        },
+        "view": {
+            "table": "Product Details",
+            "grid": "Product Grid"
         },
         "table": {
             "image": "Image",

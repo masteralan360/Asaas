@@ -57,7 +57,9 @@ export function POS() {
     const [search, setSearch] = useState('')
     const [cart, setCart] = useState<CartItem[]>([])
     const [isSkuModalOpen, setIsSkuModalOpen] = useState(false)
-    const [selectedCategory, setSelectedCategory] = useState<string>('all')
+    const [selectedCategory, setSelectedCategory] = useState<string>(() => {
+        return localStorage.getItem('pos_selected_category') || 'all'
+    })
     const categories = useCategories(user?.workspaceId)
     const [skuInput, setSkuInput] = useState('')
     const [isLoading, setIsLoading] = useState(false)
@@ -75,7 +77,17 @@ export function POS() {
     })
 
     const [isLayoutMobile, setIsLayoutMobile] = useState(window.innerWidth < 1024)
-    const [mobileView, setMobileView] = useState<'grid' | 'cart'>('grid')
+    const [mobileView, setMobileView] = useState<'grid' | 'cart'>(() => {
+        return (localStorage.getItem('pos_mobile_view') as 'grid' | 'cart') || 'grid'
+    })
+
+    useEffect(() => {
+        localStorage.setItem('pos_selected_category', selectedCategory)
+    }, [selectedCategory])
+
+    useEffect(() => {
+        localStorage.setItem('pos_mobile_view', mobileView)
+    }, [mobileView])
 
     useEffect(() => {
         const handleResize = () => setIsLayoutMobile(window.innerWidth < 1024)
@@ -114,6 +126,7 @@ export function POS() {
     // Payment Method State
     const [paymentType, setPaymentType] = useState<'cash' | 'digital'>('cash')
     const [digitalProvider, setDigitalProvider] = useState<'fib' | 'qicard' | 'zaincash' | 'fastpay'>('fib')
+
     // Filter products
     const filteredProducts = products.filter((p) => {
         const matchesSearch = (p.name || '').toLowerCase().includes(search.toLowerCase()) ||

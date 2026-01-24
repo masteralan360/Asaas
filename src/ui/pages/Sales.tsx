@@ -54,16 +54,34 @@ export function Sales() {
     const [printingSale, setPrintingSale] = useState<Sale | null>(null)
     const [returnModalOpen, setReturnModalOpen] = useState(false)
     const [saleToReturn, setSaleToReturn] = useState<Sale | null>(null)
-    const [dateRange, setDateRange] = useState<'today' | 'month' | 'custom'>('month')
+    const [dateRange, setDateRange] = useState<'today' | 'month' | 'custom'>(() => {
+        return (localStorage.getItem('sales_date_range') as 'today' | 'month' | 'custom') || 'month'
+    })
     const [customDates, setCustomDates] = useState({ start: '', end: '' })
-    const [selectedCashier, setSelectedCashier] = useState<string>('all')
+    const [selectedCashier, setSelectedCashier] = useState<string>(() => {
+        return localStorage.getItem('sales_selected_cashier') || 'all'
+    })
     const [availableCashiers, setAvailableCashiers] = useState<Array<{ id: string; name: string }>>([])
     const [rulesQueue, setRulesQueue] = useState<Array<{ productName: string; rules: string }>>([])
     const [currentRuleIndex, setCurrentRuleIndex] = useState(-1)
     const [showDeclineModal, setShowDeclineModal] = useState(false)
     const [nonReturnableProducts, setNonReturnableProducts] = useState<string[]>([])
     const [filteredReturnItems, setFilteredReturnItems] = useState<SaleItem[]>([])
-    const [printFormat, setPrintFormat] = useState<'receipt' | 'a4'>('receipt')
+    const [printFormat, setPrintFormat] = useState<'receipt' | 'a4'>(() => {
+        return (localStorage.getItem('sales_print_format') as 'receipt' | 'a4') || 'receipt'
+    })
+
+    useEffect(() => {
+        localStorage.setItem('sales_date_range', dateRange)
+    }, [dateRange])
+
+    useEffect(() => {
+        localStorage.setItem('sales_selected_cashier', selectedCashier)
+    }, [selectedCashier])
+
+    useEffect(() => {
+        localStorage.setItem('sales_print_format', printFormat)
+    }, [printFormat])
     const [showPrintModal, setShowPrintModal] = useState(false)
     const [saleToPrintSelection, setSaleToPrintSelection] = useState<Sale | null>(null)
     const printRef = useRef<HTMLDivElement>(null)

