@@ -11,9 +11,16 @@ class WhatsAppWebviewManager {
     private creationPromise: Promise<Webview | null> | null = null;
     private lastBounds = { x: 0, y: 0, width: 0, height: 0 };
     private notificationOffset = 0;
+    private enabled = true; // Session-based enabled state
 
     async getOrCreate(x: number, y: number, width: number, height: number): Promise<Webview | null> {
         this.lastBounds = { x, y, width, height };
+
+        // If disabled, don't create or return anything
+        if (!this.enabled) {
+            console.log('[WhatsApp Manager] getOrCreate called while disabled, returning null');
+            return null;
+        }
 
         // If already exists, just return it
         if (this.webview) {
@@ -100,6 +107,32 @@ class WhatsAppWebviewManager {
                 console.warn('[WhatsApp Manager] Hide failed (probably not created yet):', e);
             }
         }
+    }
+
+    async setEnabled(val: boolean) {
+        if (this.enabled === val) return; // Idempotency
+
+        console.log(`[WhatsApp Manager] Setting enabled: ${val}`);
+        this.enabled = val;
+
+        if (!val && this.webview) {
+            try {
+                // Completely terminate the webview process
+                await this.webview.close();
+                this.webview = null;
+                console.log('[WhatsApp Manager] Webview terminated completely');
+            } catch (e) {
+                console.warn('[WhatsApp Manager] Failed to close webview:', e);
+                // Fallback: null it anyway so we re-create later
+                this.webview = null;
+            }
+        }
+        // Broadcast change for UI components
+        window.dispatchEvent(new CustomEvent('whatsapp-enabled-change', { detail: { enabled: val } }));
+    }
+
+    isEnabled(): boolean {
+        return this.enabled;
     }
 
     async reload() {

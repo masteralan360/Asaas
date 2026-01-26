@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { whatsappManager } from '@/lib/whatsappWebviewManager'
-import { Loader2 } from 'lucide-react'
+import { Loader2, MessageSquare, RotateCw } from 'lucide-react'
+import { Button } from '@/ui/components/button'
 
 export default function WhatsAppWeb() {
     const containerRef = useRef<HTMLDivElement>(null);
     const [status, setStatus] = useState('Loading...');
+    const [isEnabled, setIsEnabled] = useState(whatsappManager.isEnabled());
 
     useEffect(() => {
         let isUnmounted = false;
@@ -58,10 +60,47 @@ export default function WhatsAppWeb() {
             clearInterval(syncInterval);
             window.removeEventListener('resize', syncPosition);
 
-            // HIDE (not destroy) when navigating away
+            // HIDE when unmounting or toggling off
             whatsappManager.hide();
         };
+    }, [isEnabled]); // REDUCED: The one true source of initialization logic
+
+    // Separate effect for state sync
+    useEffect(() => {
+        const handleStatusChange = (e: any) => {
+            const nowEnabled = e.detail.enabled;
+            console.log(`[WhatsApp Page] Status event received: ${nowEnabled}`);
+            setIsEnabled(nowEnabled);
+        };
+        window.addEventListener('whatsapp-enabled-change', handleStatusChange);
+        return () => window.removeEventListener('whatsapp-enabled-change', handleStatusChange);
     }, []);
+
+    if (!isEnabled) {
+        return (
+            <div className="w-full h-full flex flex-col items-center justify-center bg-background p-8 text-center bg-secondary/5">
+                <div className="max-w-md space-y-6 animate-in fade-in zoom-in duration-500">
+                    <div className="w-20 h-20 rounded-3xl bg-red-500/10 flex items-center justify-center mx-auto border border-red-500/20 shadow-lg">
+                        <MessageSquare className="w-10 h-10 text-red-500" />
+                    </div>
+                    <div className="space-y-2">
+                        <h2 className="text-2xl font-bold tracking-tight">WhatsApp is Off</h2>
+                        <p className="text-muted-foreground">
+                            The WhatsApp webview is currently disabled for this session. Use the toggle in the top bar to turn it back on.
+                        </p>
+                    </div>
+                    <Button
+                        variant="outline"
+                        onClick={() => whatsappManager.setEnabled(true)}
+                        className="rounded-xl border-emerald-500/20 text-emerald-500 hover:bg-emerald-500/5 px-8"
+                    >
+                        <RotateCw className="w-4 h-4 mr-2" />
+                        Turn On Now
+                    </Button>
+                </div>
+            </div>
+        )
+    }
 
     return (
         // Use fixed dimensions that match the content area layout

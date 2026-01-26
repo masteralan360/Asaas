@@ -59,6 +59,7 @@ export function Layout({ children }: LayoutProps) {
     const [logoError, setLogoError] = useState(false)
     const [copied, setCopied] = useState(false)
     const [version, setVersion] = useState('')
+    const [isWhatsAppEnabled, setIsWhatsAppEnabled] = useState(whatsappManager.isEnabled())
 
     const copyToClipboard = (text: string) => {
         navigator.clipboard.writeText(text)
@@ -93,7 +94,17 @@ export function Layout({ children }: LayoutProps) {
         // Handle mobile sidebar trigger from child components
         const handleOpen = () => setMobileSidebarOpen(true)
         window.addEventListener('open-mobile-sidebar', handleOpen)
-        return () => window.removeEventListener('open-mobile-sidebar', handleOpen)
+
+        // Handle WhatsApp enabled state changes from other components
+        const handleWhatsAppChange = (e: any) => {
+            setIsWhatsAppEnabled(e.detail.enabled);
+        }
+        window.addEventListener('whatsapp-enabled-change', handleWhatsAppChange);
+
+        return () => {
+            window.removeEventListener('open-mobile-sidebar', handleOpen)
+            window.removeEventListener('whatsapp-enabled-change', handleWhatsAppChange)
+        }
     }, [user?.workspaceId])
 
     // @ts-ignore
@@ -310,16 +321,14 @@ export function Layout({ children }: LayoutProps) {
 
             {/* Main content Scroll Container */}
             <div className={cn(
-                "h-full bg-background transition-[padding] duration-300 ease-in-out",
-                location === '/whatsapp' ? "overflow-hidden" : "overflow-y-auto custom-scrollbar",
-                isTauri && "mt-[var(--titlebar-height)] h-[calc(100vh-var(--titlebar-height))]", // Use CSS variable
+                "h-full bg-background transition-[padding] duration-300 ease-in-out flex flex-col overflow-hidden",
+                isTauri && "mt-[var(--titlebar-height)] h-[calc(100vh-var(--titlebar-height))]",
                 desktopSidebarOpen ? "lg:pl-64 lg:rtl:pl-0 lg:rtl:pr-64" : "lg:pl-0",
                 "pb-[var(--safe-area-bottom)]"
             )}>
                 {/* Top bar */}
                 <header className={cn(
-                    "sticky z-30 flex items-center gap-4 px-4 py-3 bg-background/60 backdrop-blur-xl border-b border-border/50",
-                    "top-0", // Always top 0 relative to this container
+                    "flex-shrink-0 z-30 flex items-center gap-4 px-4 py-3 bg-background/60 backdrop-blur-xl border-b border-border/50",
                     "pt-[calc(0.75rem+var(--safe-area-top))]",
                     location === '/pos' && "hidden lg:flex" // Hide on mobile if POS
                 )}>
@@ -354,6 +363,27 @@ export function Layout({ children }: LayoutProps) {
                     </div>
 
                     <div className="flex items-center gap-3">
+                        {isTauri && location === '/whatsapp' && (
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => whatsappManager.setEnabled(!whatsappManager.isEnabled())}
+                                className={cn(
+                                    "h-8 px-2 gap-2 border-border/50 hover:bg-secondary/50 transition-all duration-300",
+                                    isWhatsAppEnabled ? "text-emerald-500" : "text-red-500"
+                                )}
+                                title={isWhatsAppEnabled ? "Turn Off WhatsApp Webview" : "Turn On WhatsApp Webview"}
+                            >
+                                <div className={cn(
+                                    "w-2 h-2 rounded-full",
+                                    isWhatsAppEnabled ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" : "bg-red-500"
+                                )} />
+                                <MessageSquare className="w-4 h-4" />
+                                <span className="text-[10px] font-bold uppercase tracking-wider hidden sm:inline">
+                                    {isWhatsAppEnabled ? "Live" : "Off"}
+                                </span>
+                            </Button>
+                        )}
                         <ExchangeRateIndicator />
                         <div className="w-px h-4 bg-border mx-1" />
                         <SyncStatusIndicator />
@@ -373,8 +403,8 @@ export function Layout({ children }: LayoutProps) {
 
                 {/* Page content */}
                 <main className={cn(
-                    "page-enter",
-                    location === '/whatsapp' ? "p-0 h-full" : "p-4 lg:p-6"
+                    "page-enter flex-1 min-h-0",
+                    location === '/whatsapp' ? "p-0" : "p-4 lg:p-6 overflow-y-auto custom-scrollbar"
                 )}>
                     <Suspense fallback={<PageLoading />}>
                         {children}
