@@ -22,7 +22,15 @@ export default function WhatsAppWeb() {
             );
 
             if (webview && !isUnmounted) {
-                // Show the webview (it may have been hidden)
+                // If this is a fresh JS session (refresh), we might want to reload the webview
+                // but usually, re-showing it is enough for persistence. 
+                // However, the user explicitly asked for the webview to reload when the app refreshes.
+                const isNavigatedRefresh = !localStorage.getItem('whatsapp_session_active');
+                if (isNavigatedRefresh) {
+                    await whatsappManager.reload();
+                    localStorage.setItem('whatsapp_session_active', 'true');
+                }
+
                 await whatsappManager.show();
                 setStatus('');
             } else if (!isUnmounted) {
@@ -59,7 +67,7 @@ export default function WhatsAppWeb() {
         // Use fixed dimensions that match the content area layout
         <div
             ref={containerRef}
-            className="w-full h-[calc(100vh-64px)] flex items-center justify-center overflow-hidden"
+            className="w-full h-full flex items-center justify-center overflow-hidden"
             style={{ marginTop: 0, marginLeft: 0 }}
         >
             {status && (

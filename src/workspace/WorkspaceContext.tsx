@@ -57,13 +57,50 @@ const defaultFeatures: WorkspaceFeatures = {
     allow_whatsapp: false
 }
 
+const WORKSPACE_CACHE_KEY = 'erp_workspace_cache'
+
 const WorkspaceContext = createContext<WorkspaceContextType | undefined>(undefined)
 
 export function WorkspaceProvider({ children }: { children: ReactNode }) {
     const { user, isAuthenticated, isLoading: authLoading } = useAuth()
-    const [features, setFeatures] = useState<WorkspaceFeatures>(defaultFeatures)
-    const [workspaceName, setWorkspaceName] = useState<string | null>(null)
-    const [isLoading, setIsLoading] = useState(true)
+
+    // Initialize state from LocalStorage for instant hydration
+    const [features, setFeatures] = useState<WorkspaceFeatures>(() => {
+        if (typeof window !== 'undefined') {
+            const cached = localStorage.getItem(WORKSPACE_CACHE_KEY)
+            if (cached) {
+                try {
+                    const parsed = JSON.parse(cached)
+                    return { ...defaultFeatures, ...parsed.features }
+                } catch (e) {
+                    return defaultFeatures
+                }
+            }
+        }
+        return defaultFeatures
+    })
+
+    const [workspaceName, setWorkspaceName] = useState<string | null>(() => {
+        if (typeof window !== 'undefined') {
+            const cached = localStorage.getItem(WORKSPACE_CACHE_KEY)
+            if (cached) {
+                try {
+                    return JSON.parse(cached).workspaceName || null
+                } catch (e) {
+                    return null
+                }
+            }
+        }
+        return null
+    })
+
+    // If cache exists, we start as "not loading" to avoid flashes
+    const [isLoading, setIsLoading] = useState(() => {
+        if (typeof window !== 'undefined') {
+            return !localStorage.getItem(WORKSPACE_CACHE_KEY)
+        }
+        return true
+    })
     const [pendingUpdate, setPendingUpdate] = useState<UpdateInfo | null>(null)
     const [isFullscreen, setIsFullscreen] = useState(false)
 
@@ -138,11 +175,11 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             } else if (data) {
                 const featureData = data as any
                 const fetchedFeatures: WorkspaceFeatures = {
-                    allow_pos: featureData.allow_pos ?? false,
-                    allow_customers: featureData.allow_customers ?? false,
-                    allow_orders: featureData.allow_orders ?? false,
-                    allow_invoices: featureData.allow_invoices ?? false,
-                    is_configured: featureData.is_configured ?? false,
+                    allow_pos: featureData.allow_pos ?? true,
+                    allow_customers: featureData.allow_customers ?? true,
+                    allow_orders: featureData.allow_orders ?? true,
+                    allow_invoices: featureData.allow_invoices ?? true,
+                    is_configured: featureData.is_configured ?? true,
                     default_currency: featureData.default_currency || 'usd',
                     iqd_display_preference: featureData.iqd_display_preference || 'IQD',
                     eur_conversion_enabled: featureData.eur_conversion_enabled ?? false,
@@ -154,6 +191,12 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                 }
                 setFeatures(fetchedFeatures)
                 setWorkspaceName(featureData.workspace_name || 'My Workspace')
+
+                // Update Local Cache for next refresh
+                localStorage.setItem(WORKSPACE_CACHE_KEY, JSON.stringify({
+                    features: fetchedFeatures,
+                    workspaceName: featureData.workspace_name || 'My Workspace'
+                }))
 
                 // Cache in local DB for offline access
                 await db.workspaces.put({
@@ -213,7 +256,14 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         if (!workspaceId) return
 
         // Optimistically update local state
-        setFeatures(prev => ({ ...prev, ...settings }))
+        const newFeatures = { ...features, ...settings }
+        setFeatures(newFeatures)
+
+        // Update Local Cache
+        localStorage.setItem(WORKSPACE_CACHE_KEY, JSON.stringify({
+            features: newFeatures,
+            workspaceName
+        }))
 
         // Update local DB cache
         const existing = await db.workspaces.get(workspaceId)

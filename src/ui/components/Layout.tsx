@@ -7,6 +7,7 @@ import { SyncStatusIndicator } from './SyncStatusIndicator'
 import { ExchangeRateIndicator } from './ExchangeRateIndicator'
 import { GlobalSearch } from './GlobalSearch'
 import { platformService } from '@/services/platformService'
+import { whatsappManager } from '@/lib/whatsappWebviewManager'
 
 import {
     LayoutDashboard,
@@ -95,6 +96,20 @@ export function Layout({ children }: LayoutProps) {
         return () => window.removeEventListener('open-mobile-sidebar', handleOpen)
     }, [user?.workspaceId])
 
+    // @ts-ignore
+    const isTauri = typeof window !== 'undefined' && !!window.__TAURI_INTERNALS__
+
+    // WhatsApp Webview Global Visibility Sync
+    useEffect(() => {
+        if (!isTauri) return;
+
+        // If user is NOT on the whatsapp page, ensure the webview is hidden
+        // This acts as a global fail-safe during navigation or refreshes
+        if (location !== '/whatsapp') {
+            whatsappManager.hide().catch(() => { });
+        }
+    }, [location, isTauri]);
+
     const navigation = [
         { name: t('nav.dashboard'), href: '/', icon: LayoutDashboard },
         // POS - requires feature flag AND role
@@ -132,9 +147,6 @@ export function Layout({ children }: LayoutProps) {
             { name: t('nav.settings'), href: '/settings', icon: Settings }
         ] : []),
     ]
-
-    // @ts-ignore
-    const isTauri = !!window.__TAURI_INTERNALS__
 
     return (
         <div className="h-screen overflow-hidden bg-transparent">
@@ -269,9 +281,6 @@ export function Layout({ children }: LayoutProps) {
                     )}
                 </nav>
 
-                {/* Workspace Members */}
-                {/* Moved inside nav or separate scroll area if needed, but for now simplifying sidebar structure slightly or assuming it fits or sidebar has its own flex col structure */}
-                {/* Re-adding User Info fixed at bottom */}
                 <div className="p-4 border-t border-border bg-background/50 backdrop-blur-md shrink-0">
                     <div className="flex items-center gap-3 px-3 py-2">
                         <div className="w-9 h-9 rounded-full bg-gradient-to-br from-primary to-purple-600 flex items-center justify-center text-sm font-bold text-white">
@@ -301,7 +310,8 @@ export function Layout({ children }: LayoutProps) {
 
             {/* Main content Scroll Container */}
             <div className={cn(
-                "h-full overflow-y-auto custom-scrollbar bg-background transition-[padding] duration-300 ease-in-out",
+                "h-full bg-background transition-[padding] duration-300 ease-in-out",
+                location === '/whatsapp' ? "overflow-hidden" : "overflow-y-auto custom-scrollbar",
                 isTauri && "mt-[var(--titlebar-height)] h-[calc(100vh-var(--titlebar-height))]", // Use CSS variable
                 desktopSidebarOpen ? "lg:pl-64 lg:rtl:pl-0 lg:rtl:pr-64" : "lg:pl-0",
                 "pb-[var(--safe-area-bottom)]"
@@ -362,7 +372,10 @@ export function Layout({ children }: LayoutProps) {
                 </header>
 
                 {/* Page content */}
-                <main className="p-4 lg:p-6 page-enter">
+                <main className={cn(
+                    "page-enter",
+                    location === '/whatsapp' ? "p-0 h-full" : "p-4 lg:p-6"
+                )}>
                     <Suspense fallback={<PageLoading />}>
                         {children}
                     </Suspense>

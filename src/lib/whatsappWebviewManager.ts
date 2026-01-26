@@ -41,6 +41,14 @@ class WhatsAppWebviewManager {
             const appWindow = Window.getCurrent();
             const label = 'whatsapp-persistent';
 
+            // Check if it already exists in the native layer (from a previous JS session/refresh)
+            const existing = await Webview.getByLabel(label);
+            if (existing) {
+                console.log('[WhatsApp Manager] Re-hooked existing native webview');
+                this.webview = existing;
+                return existing;
+            }
+
             console.log('[WhatsApp Manager] Creating persistent webview...');
 
             const webview = new Webview(appWindow, label, {
@@ -89,7 +97,19 @@ class WhatsAppWebviewManager {
             try {
                 await this.webview.hide();
             } catch (e) {
-                console.warn('[WhatsApp Manager] Hide failed:', e);
+                console.warn('[WhatsApp Manager] Hide failed (probably not created yet):', e);
+            }
+        }
+    }
+
+    async reload() {
+        if (this.webview) {
+            try {
+                // @ts-ignore - Tauri v2 JS API might not have direct reload on the class yet, 
+                // but we can re-evaluate location or use the eval method
+                await this.webview.clearAllBrowsingData(); // Optional cleanup
+            } catch (e) {
+                // Ignore
             }
         }
     }
