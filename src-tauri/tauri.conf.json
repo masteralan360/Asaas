@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "IraqCore",
-  "version": "1.3.6",
+  "version": "1.3.7",
   "identifier": "com.iraqcore.app",
   "build": {
     "frontendDist": "../dist",
@@ -62,7 +62,7 @@
       "windows": {
         "installMode": "passive"
       },
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDg2OUREMEUyOEM3MTczMDMKUldRRGMzR000dENkaHBNM3RlKzVhaUlpSTdUamxLdE0vNGpQODMrN1pWUzFlZEpydlVCX3FLOWEK"
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEUwOTQ3MENENDBDQTNBRjIKUldUeU9zcEF6WENVNEkzd3FGOFlKckMzMmN6YWNEQjU4ZDFKYXl5dTRnZWsxMzJYZ1ZxenBKdDcK"
     }
   }
 }

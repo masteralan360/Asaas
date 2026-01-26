@@ -29,4 +29,6 @@ tauri-plugin-dialog = "2"
 tauri-plugin-http = "2"
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
+
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 window-vibrancy = "0.7.1"

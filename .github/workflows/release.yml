@@ -64,9 +64,7 @@ jobs:
 
       - name: Build Android
         if: matrix.settings.platform == 'ubuntu-latest'
-        run: |
-          npm run android:build:release
-          npm run android:build
+        run: npm run android:build:release
         env:
           VITE_SUPABASE_URL: ""
           VITE_SUPABASE_ANON_KEY: ""
