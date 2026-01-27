@@ -368,6 +368,16 @@
         "never": "Never",
         "syncNow": "Sync Now",
         "syncing": "Syncing...",
+        "syncMedia": "Sync Media",
+        "syncingMedia": "Syncing Media...",
+        "syncMediaModal": {
+            "title": "Sync All Media",
+            "desc": "This will upload all local product images and the workspace logo to the cloud so they can be synced to other devices in your workspace.",
+            "expiry": "Expiration Time (Hours)",
+            "expiryDesc": "Hours until the temporary cloud buffer is cleared.",
+            "note": "Note: Other devices must be online during this period to receive the media.",
+            "confirm": "Start Upload"
+        },
         "clearQueue": "Clear Queue",
         "localData": "Local Data",
         "localDataDesc": "Manage your local database",
@@ -379,7 +389,10 @@
         "builtWith": "Built with React, Vite, Dexie.js, and Supabase",
         "messages": {
             "clearQueueConfirm": "Clear all pending sync items? This cannot be undone.",
-            "clearDataConfirm": "This will delete ALL local data including products, customers, orders, and invoices. Are you sure?"
+            "clearDataConfirm": "This will delete ALL local data including products, customers, orders, and invoices. Are you sure?",
+            "noMediaToSync": "No local media found to sync.",
+            "mediaSyncComplete": "Media sync complete! {{count}} files queued.",
+            "onlineRequired": "Internet connection is required for media sync."
         },
         "pos": {
             "title": "POS Configuration",

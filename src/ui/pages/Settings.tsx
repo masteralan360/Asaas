@@ -1,6 +1,6 @@
 import { useAuth } from '@/auth'
 import { useSyncStatus, clearQueue } from '@/sync'
-import { clearDatabase } from '@/local-db'
+import { db, clearDatabase } from '@/local-db'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, Button, Label, LanguageSwitcher, Input, CurrencySelector, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Tabs, TabsList, TabsTrigger, TabsContent, Switch, Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/ui/components'
 import { useTranslation } from 'react-i18next'
 import { useWorkspace } from '@/workspace'
@@ -41,6 +41,10 @@ export function Settings() {
     const [isWebConnectionUnlocked, setIsWebConnectionUnlocked] = useState(false)
     const [isUnlockModalOpen, setIsUnlockModalOpen] = useState(false)
     const [webPasskeyInput, setWebPasskeyInput] = useState('')
+
+    const [isSyncMediaModalOpen, setIsSyncMediaModalOpen] = useState(false)
+    const [expiryHours, setExpiryHours] = useState(24)
+    const [mediaSyncProgress, setMediaSyncProgress] = useState<{ total: number, current: number, fileName: string } | null>(null)
 
     const activeSupabaseUrl = customUrl || import.meta.env.VITE_SUPABASE_URL || ''
     const activeSupabaseKey = customKey || import.meta.env.VITE_SUPABASE_ANON_KEY || ''
@@ -185,6 +189,52 @@ export function Settings() {
             await setAppSetting('supabase_url', '')
             await setAppSetting('supabase_anon_key', '')
             window.location.reload()
+        }
+    }
+
+    const handleSyncMedia = async () => {
+        setIsSyncMediaModalOpen(false)
+        if (!isOnline) {
+            alert(t('settings.messages.onlineRequired') || 'Internet connection is required for media sync.')
+            return
+        }
+
+        try {
+            const products = await db.products.where('workspaceId').equals(user.workspaceId).and(p => !p.isDeleted).toArray()
+            // Filter products with local image paths
+            const productImages = products
+                .filter(p => p.imageUrl && !p.imageUrl.startsWith('http'))
+                .map(p => ({ path: p.imageUrl!, name: p.name }))
+
+            const itemsToSync = [...productImages]
+
+            // Add workspace logo if it exists locally
+            if (features.logo_url && !features.logo_url.startsWith('http')) {
+                itemsToSync.push({ path: features.logo_url, name: 'Workspace Logo' })
+            }
+
+            if (itemsToSync.length === 0) {
+                alert(t('settings.messages.noMediaToSync') || 'No local media found to sync.')
+                return
+            }
+
+            setMediaSyncProgress({ total: itemsToSync.length, current: 0, fileName: '' })
+
+            let successCount = 0
+            for (let i = 0; i < itemsToSync.length; i++) {
+                const item = itemsToSync[i]
+                setMediaSyncProgress(prev => prev ? { ...prev, current: i + 1, fileName: item.name } : null)
+
+                const success = await p2pSyncManager.uploadFromPath(item.path, expiryHours)
+                if (success) successCount++
+            }
+
+            alert(t('settings.messages.mediaSyncComplete', { count: successCount }) || `Media sync complete! ${successCount} files queued.`)
+        } catch (error) {
+            console.error('Media sync failed:', error)
+            alert('Media sync failed: ' + error)
+        } finally {
+            setMediaSyncProgress(null)
         }
     }
 
@@ -559,6 +609,19 @@ export function Settings() {
                                     <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
                                     {isSyncing ? t('settings.syncing') : t('settings.syncNow')}
                                 </Button>
+                                {isElectron && (
+                                    <Button
+                                        variant="outline"
+                                        onClick={() => setIsSyncMediaModalOpen(true)}
+                                        disabled={!isOnline || !isSupabaseConfigured || mediaSyncProgress !== null}
+                                        className="gap-2"
+                                    >
+                                        <ImageIcon className={cn("w-4 h-4", mediaSyncProgress && "animate-pulse")} />
+                                        {mediaSyncProgress
+                                            ? `${t('settings.syncingMedia') || 'Syncing...'} (${mediaSyncProgress.current}/${mediaSyncProgress.total})`
+                                            : t('settings.syncMedia') || 'Sync Media'}
+                                    </Button>
+                                )}
                                 {pendingCount > 0 && (
                                     <Button variant="outline" onClick={handleClearSyncQueue}>
                                         {t('settings.clearQueue')}
@@ -567,6 +630,53 @@ export function Settings() {
                             </div>
                         </CardContent>
                     </Card>
+
+                    {/* Media Sync Modal */}
+                    <Dialog open={isSyncMediaModalOpen} onOpenChange={setIsSyncMediaModalOpen}>
+                        <DialogContent className="max-w-md">
+                            <DialogHeader>
+                                <DialogTitle className="flex items-center gap-2">
+                                    <ImageIcon className="w-5 h-5 text-primary" />
+                                    {t('settings.syncMediaModal.title') || 'Sync All Media'}
+                                </DialogTitle>
+                                <DialogDescription>
+                                    {t('settings.syncMediaModal.desc') || 'This will upload all local product images and the workspace logo to the cloud so they can be synced to other devices in your workspace.'}
+                                </DialogDescription>
+                            </DialogHeader>
+
+                            <div className="space-y-4 py-4">
+                                <div className="space-y-2">
+                                    <Label>{t('settings.syncMediaModal.expiry') || 'Expiration Time (Hours)'}</Label>
+                                    <div className="flex items-center gap-4">
+                                        <Input
+                                            type="number"
+                                            min={1}
+                                            max={48}
+                                            value={expiryHours}
+                                            onChange={(e) => setExpiryHours(Math.max(1, Math.min(48, parseInt(e.target.value) || 24)))}
+                                            className="w-24"
+                                        />
+                                        <span className="text-sm text-muted-foreground">
+                                            {t('settings.syncMediaModal.expiryDesc') || 'Hours until the temporary cloud buffer is cleared.'}
+                                        </span>
+                                    </div>
+                                    <p className="text-[11px] text-amber-500 font-medium italic">
+                                        {t('settings.syncMediaModal.note') || 'Note: Other devices must be online during this period to receive the media.'}
+                                    </p>
+                                </div>
+                            </div>
+
+                            <DialogFooter>
+                                <Button variant="ghost" onClick={() => setIsSyncMediaModalOpen(false)}>
+                                    {t('common.cancel')}
+                                </Button>
+                                <Button onClick={handleSyncMedia} className="gap-2">
+                                    <Cloud className="w-4 h-4" />
+                                    {t('settings.syncMediaModal.confirm') || 'Start Upload'}
+                                </Button>
+                            </DialogFooter>
+                        </DialogContent>
+                    </Dialog>
 
                     {/* POS Settings */}
                     <Card>

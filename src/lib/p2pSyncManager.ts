@@ -310,7 +310,7 @@ class P2PSyncManager {
     /**
      * Upload a file to the sync queue for other users
      */
-    async uploadFile(file: File, customFileName?: string): Promise<boolean> {
+    async uploadFile(file: File, customFileName?: string, expiryHours?: number): Promise<boolean> {
         if (!isSupabaseConfigured || !this.workspaceId || !this.userId) {
             console.error('[P2PSync] Not initialized');
             return false;
@@ -338,17 +338,25 @@ class P2PSyncManager {
             }
 
             // Create sync queue entry
+            const insertData: any = {
+                uploader_id: this.userId,
+                uploader_session_id: this.sessionId,
+                workspace_id: this.workspaceId,
+                file_name: (customFileName || file.name).replace(/\\/g, '/'),
+                storage_path: storagePath,
+                file_size: file.size,
+                synced_by: [this.sessionId]
+            };
+
+            if (expiryHours) {
+                const expiresAt = new Date();
+                expiresAt.setHours(expiresAt.getHours() + expiryHours);
+                insertData.expires_at = expiresAt.toISOString();
+            }
+
             const { error: insertError } = await supabase
                 .from('sync_queue')
-                .insert({
-                    uploader_id: this.userId,
-                    uploader_session_id: this.sessionId,
-                    workspace_id: this.workspaceId,
-                    file_name: (customFileName || file.name).replace(/\\/g, '/'),
-                    storage_path: storagePath,
-                    file_size: file.size,
-                    synced_by: [this.sessionId]
-                });
+                .insert(insertData);
 
             if (insertError) {
                 console.error('[P2PSync] Queue insert error:', insertError);
@@ -372,7 +380,7 @@ class P2PSyncManager {
      * Upload a file from a local path (for Tauri/Mobile)
      * This reads the file from disk and uploads it to P2P sync
      */
-    async uploadFromPath(filePath: string): Promise<boolean> {
+    async uploadFromPath(filePath: string, expiryHours?: number): Promise<boolean> {
         if (!isTauri()) {
             console.warn('[P2PSync] uploadFromPath only works in Tauri');
             return false;
@@ -406,7 +414,7 @@ class P2PSyncManager {
             const file = new File([fileData], fileName, { type: mimeType });
 
             // Use existing uploadFile method - passing full relative path to preserve it
-            return await this.uploadFile(file, filePath);
+            return await this.uploadFile(file, filePath, expiryHours);
         } catch (e) {
             console.error('[P2PSync] uploadFromPath error:', e);
             this.emitProgress({ status: 'error', error: String(e) });

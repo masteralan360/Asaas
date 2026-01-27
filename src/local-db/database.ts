@@ -58,10 +58,10 @@ export async function exportDatabase(): Promise<{
     invoices: Invoice[]
 }> {
     const [products, customers, orders, invoices] = await Promise.all([
-        db.products.where('isDeleted').equals(0).toArray(),
-        db.customers.where('isDeleted').equals(0).toArray(),
-        db.orders.where('isDeleted').equals(0).toArray(),
-        db.invoices.where('isDeleted').equals(0).toArray(),
+        db.products.where('isDeleted').equals(false as any).toArray(),
+        db.customers.where('isDeleted').equals(false as any).toArray(),
+        db.orders.where('isDeleted').equals(false as any).toArray(),
+        db.invoices.where('isDeleted').equals(false as any).toArray(),
     ])
 
     return { products, customers, orders, invoices }
