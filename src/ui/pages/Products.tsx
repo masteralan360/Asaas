@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useProducts, createProduct, updateProduct, deleteProduct, useCategories, createCategory, updateCategory, deleteCategory, type Product, type Category } from '@/local-db'
 import type { CurrencyCode } from '@/local-db/models'
 import { formatCurrency, cn } from '@/lib/utils'
+import { p2pSyncManager } from '@/lib/p2pSyncManager'
 import {
     Table,
     TableBody,
@@ -204,6 +205,13 @@ export function Products() {
         const targetPath = await platformService.pickAndSaveImage(workspaceId);
         if (targetPath) {
             setFormData(prev => ({ ...prev, imageUrl: targetPath }));
+
+            // Trigger P2P sync for other workspace users
+            p2pSyncManager.uploadFromPath(targetPath).then(success => {
+                if (success) {
+                    console.log('[Products] Image synced to workspace users');
+                }
+            }).catch(console.error);
         }
     }
 

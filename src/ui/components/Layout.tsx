@@ -6,6 +6,8 @@ import { useWorkspace } from '@/workspace'
 import { SyncStatusIndicator } from './SyncStatusIndicator'
 import { ExchangeRateIndicator } from './ExchangeRateIndicator'
 import { GlobalSearch } from './GlobalSearch'
+import { P2PSyncIndicator } from './P2PSyncStatus'
+import { p2pSyncManager } from '@/lib/p2pSyncManager'
 import { platformService } from '@/services/platformService'
 import { whatsappManager } from '@/lib/whatsappWebviewManager'
 
@@ -82,6 +84,11 @@ export function Layout({ children }: LayoutProps) {
         }
 
         fetchMembers()
+
+        // Initialize P2P Sync Manager
+        if (user?.id && user?.workspaceId) {
+            p2pSyncManager.initialize(user.id, user.workspaceId).catch(console.error);
+        }
 
         // Fetch App Version
         // @ts-ignore
@@ -384,6 +391,7 @@ export function Layout({ children }: LayoutProps) {
                                 </span>
                             </Button>
                         )}
+                        <P2PSyncIndicator />
                         <ExchangeRateIndicator />
                         <div className="w-px h-4 bg-border mx-1" />
                         <SyncStatusIndicator />
