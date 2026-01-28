@@ -1,4 +1,5 @@
 import { useAuth } from '@/auth'
+import { supabase } from '@/auth/supabase'
 import { useSyncStatus, clearQueue } from '@/sync'
 import { db, clearDatabase } from '@/local-db'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, Button, Label, LanguageSwitcher, Input, CurrencySelector, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Tabs, TabsList, TabsTrigger, TabsContent, Switch, Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/ui/components'
@@ -18,7 +19,7 @@ import { Image as ImageIcon } from 'lucide-react'
 import { p2pSyncManager } from '@/lib/p2pSyncManager'
 
 export function Settings() {
-    const { user, sessionId, signOut, isSupabaseConfigured } = useAuth()
+    const { user, sessionId, signOut, isSupabaseConfigured, updateUser } = useAuth()
     const { syncState, pendingCount, lastSyncTime, sync, isSyncing, isOnline } = useSyncStatus()
     const { theme, setTheme, style, setStyle } = useTheme()
     const { features, updateSettings } = useWorkspace()
@@ -255,6 +256,58 @@ export function Settings() {
         }
     }
 
+    const handleProfilePictureUpload = async () => {
+        if (!user?.id || !user?.workspaceId) return
+
+        try {
+            // 1. Pick and save image
+            const targetPath = await platformService.pickAndSaveImage(user.workspaceId, 'profile-images')
+            if (!targetPath) return
+
+            // 2. Resize image for optimization (512px max width)
+            const resizedPath = await platformService.resizeImage(targetPath, 512)
+
+            // 3. Update Supabase profile
+            if (isSupabaseConfigured) {
+                // Update the profiles table
+                const { error: profileError } = await supabase
+                    .from('profiles')
+                    .update({ profile_url: resizedPath })
+                    .eq('id', user.id)
+
+                if (profileError) {
+                    console.error('[Settings] Error updating Supabase profile:', profileError)
+                    alert('Error updating cloud profile: ' + profileError.message)
+                }
+
+                // Update Auth metadata so it persists across refreshes
+                const { error: authError } = await supabase.auth.updateUser({
+                    data: { profile_url: resizedPath }
+                })
+
+                if (authError) {
+                    console.error('[Settings] Error updating Auth metadata:', authError)
+                }
+            }
+
+            // 4. Update local state
+            updateUser({ profileUrl: resizedPath })
+
+            // 5. Dispatch global event for immediate UI updates
+            window.dispatchEvent(new CustomEvent('profile-updated'))
+
+            // 6. Trigger P2P sync for other workspace users
+            p2pSyncManager.uploadFromPath(resizedPath).then(success => {
+                if (success) console.log('[Settings] Profile picture synced via P2P')
+            })
+
+            console.log('[Settings] Profile picture updated successfully:', resizedPath)
+        } catch (error) {
+            console.error('[Settings] Profile picture upload failed:', error)
+            alert('Upload failed: ' + error)
+        }
+    }
+
     const getDisplayLogoUrl = (url?: string | null) => {
         if (!url) return ''
         if (url.startsWith('http')) return url
@@ -275,13 +328,15 @@ export function Settings() {
             <Tabs defaultValue="general" className="w-full space-y-6">
                 <TabsList className={cn(
                     "grid w-full max-w-[500px]",
-                    (user?.role === 'admin' || user?.role === 'staff') ? "grid-cols-3" : "grid-cols-2"
+                    user?.role === 'admin' ? "grid-cols-3" : "grid-cols-2"
                 )}>
                     <TabsTrigger value="general">{t('settings.tabs.general') || 'General'}</TabsTrigger>
                     {(user?.role === 'admin' || user?.role === 'staff') && (
                         <TabsTrigger value="profile">{t('settings.tabs.profile') || 'Profile Settings'}</TabsTrigger>
                     )}
-                    <TabsTrigger value="advanced">{t('settings.tabs.advanced') || 'Advanced'}</TabsTrigger>
+                    {user?.role === 'admin' && (
+                        <TabsTrigger value="advanced">{t('settings.tabs.advanced') || 'Advanced'}</TabsTrigger>
+                    )}
                 </TabsList>
 
                 <TabsContent value="general" className="space-y-6 mt-0">
@@ -415,223 +470,231 @@ export function Settings() {
                         </Card>
                     )}
 
-                    {/* Currency Settings */}
-                    <Card>
-                        <CardHeader>
-                            <CardTitle className="flex items-center gap-2">
-                                <Coins className="w-5 h-5" />
-                                {t('settings.currency.title') || 'Currency Settings'}
-                            </CardTitle>
-                            <CardDescription>
-                                {t('settings.currency.desc') || 'Configure default currency and display preferences for your workspace.'}
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent className="space-y-6">
-                            <div className="grid gap-6 md:grid-cols-2">
-                                <CurrencySelector
-                                    label={t('settings.currency.default') || 'Default Currency'}
-                                    value={features.default_currency}
-                                    onChange={(val) => updateSettings({ default_currency: val })}
-                                    iqdDisplayPreference={features.iqd_display_preference}
-                                />
+                    {/* Currency Settings (Admin Only) */}
+                    {user?.role === 'admin' && (
+                        <Card>
+                            <CardHeader>
+                                <CardTitle className="flex items-center gap-2">
+                                    <Coins className="w-5 h-5" />
+                                    {t('settings.currency.title') || 'Currency Settings'}
+                                </CardTitle>
+                                <CardDescription>
+                                    {t('settings.currency.desc') || 'Configure default currency and display preferences for your workspace.'}
+                                </CardDescription>
+                            </CardHeader>
+                            <CardContent className="space-y-6">
+                                <div className="grid gap-6 md:grid-cols-2">
+                                    <CurrencySelector
+                                        label={t('settings.currency.default') || 'Default Currency'}
+                                        value={features.default_currency}
+                                        onChange={(val) => updateSettings({ default_currency: val })}
+                                        iqdDisplayPreference={features.iqd_display_preference}
+                                    />
 
-                                {features.default_currency === 'iqd' && (
-                                    <div className="space-y-2">
-                                        <Label>{t('settings.currency.iqdPreference') || 'IQD Display Preference'}</Label>
-                                        <Select
-                                            value={features.iqd_display_preference}
-                                            onValueChange={(val) => updateSettings({ iqd_display_preference: val as IQDDisplayPreference })}
-                                        >
-                                            <SelectTrigger>
-                                                <SelectValue />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="IQD">IQD (English)</SelectItem>
-                                                <SelectItem value="د.ع">د.ع (Arabic)</SelectItem>
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
-                                )}
-                            </div>
-                        </CardContent>
-                    </Card>
-
-                    {/* Exchange Rate Settings */}
-                    <Card>
-                        <CardHeader>
-                            <CardTitle className="flex items-center gap-2">
-                                <Globe className="w-5 h-5" />
-                                {t('settings.exchangeRate.title') || 'Exchange Rate Source'}
-                            </CardTitle>
-                            <CardDescription>
-                                {t('settings.exchangeRate.primaryDesc') || 'Select which website to use for live market rates.'}
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="space-y-4 max-w-md">
-                                <div className="space-y-2">
-                                    <Label>{t('settings.exchangeRate.primary') || 'Primary Source'}</Label>
-                                    <Select value={exchangeRateSource} onValueChange={handleExchangeRateSourceChange}>
-                                        <SelectTrigger>
-                                            <SelectValue />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="xeiqd">
-                                                {t('settings.exchangeRate.xeiqd') || 'xeiqd.com / Sulaymaniyah'}
-                                            </SelectItem>
-                                            <SelectItem value="forexfy">
-                                                {t('settings.exchangeRate.forexfy') || 'Forexfy.app / Black Market'}
-                                            </SelectItem>
-                                            <SelectItem value="dolardinar">
-                                                {t('settings.exchangeRate.dolardinar') || 'DolarDinar.com / Market Sheet'}
-                                            </SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-
-                                <div className="pt-2 space-y-4 border-t border-border/50">
-                                    <div className="flex items-center justify-between">
-                                        <div className="space-y-0.5">
-                                            <Label className="text-base">{t('settings.exchangeRate.eurEnable') || 'Enable Euro Support'}</Label>
-                                            <p className="text-sm text-muted-foreground">
-                                                {t('settings.exchangeRate.eurEnableDesc') || 'Allow POS to handle EUR products and conversions.'}
-                                            </p>
-                                        </div>
-                                        <Switch
-                                            checked={features.eur_conversion_enabled}
-                                            onCheckedChange={(val: boolean) => updateSettings({ eur_conversion_enabled: val })}
-                                            disabled={user?.role !== 'admin'}
-                                        />
-                                    </div>
-
-                                    {features.eur_conversion_enabled && (
-                                        <div className="space-y-2 animate-in fade-in slide-in-from-top-1">
-                                            <Label>{t('settings.exchangeRate.eurSource') || 'Euro Exchange Source'}</Label>
-                                            <Select value={eurExchangeRateSource} onValueChange={handleEurExchangeRateSourceChange}>
+                                    {features.default_currency === 'iqd' && (
+                                        <div className="space-y-2">
+                                            <Label>{t('settings.currency.iqdPreference') || 'IQD Display Preference'}</Label>
+                                            <Select
+                                                value={features.iqd_display_preference}
+                                                onValueChange={(val) => updateSettings({ iqd_display_preference: val as IQDDisplayPreference })}
+                                            >
                                                 <SelectTrigger>
                                                     <SelectValue />
                                                 </SelectTrigger>
                                                 <SelectContent>
-                                                    <SelectItem value="forexfy">
-                                                        {t('settings.exchangeRate.forexfy_eur') || 'Forexfy EUR/IQD (Faster & More Reliable)'}
-                                                    </SelectItem>
-                                                    <SelectItem value="dolardinar">
-                                                        {t('settings.exchangeRate.dolardinar_eur') || 'DolarDinar.com EUR/IQD (Market Sheet)'}
-                                                    </SelectItem>
+                                                    <SelectItem value="IQD">IQD (English)</SelectItem>
+                                                    <SelectItem value="د.ع">د.ع (Arabic)</SelectItem>
                                                 </SelectContent>
                                             </Select>
-                                            <p className="text-[11px] text-muted-foreground italic">
-                                                {t('settings.exchangeRate.eurSourceAdminOnly') || 'Forexfy and DolarDinar are currently the supported sources for Euro rates.'}
-                                            </p>
                                         </div>
                                     )}
+                                </div>
+                            </CardContent>
+                        </Card>
+                    )}
+
+                    {/* Exchange Rate Settings (Admin Only) */}
+                    {user?.role === 'admin' && (
+                        <Card>
+                            <CardHeader>
+                                <CardTitle className="flex items-center gap-2">
+                                    <Globe className="w-5 h-5" />
+                                    {t('settings.exchangeRate.title') || 'Exchange Rate Source'}
+                                </CardTitle>
+                                <CardDescription>
+                                    {t('settings.exchangeRate.primaryDesc') || 'Select which website to use for live market rates.'}
+                                </CardDescription>
+                            </CardHeader>
+                            <CardContent>
+                                <div className="space-y-4 max-w-md">
+                                    <div className="space-y-2">
+                                        <Label>{t('settings.exchangeRate.primary') || 'Primary Source'}</Label>
+                                        <Select value={exchangeRateSource} onValueChange={handleExchangeRateSourceChange}>
+                                            <SelectTrigger>
+                                                <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="xeiqd">
+                                                    {t('settings.exchangeRate.xeiqd') || 'xeiqd.com / Sulaymaniyah'}
+                                                </SelectItem>
+                                                <SelectItem value="forexfy">
+                                                    {t('settings.exchangeRate.forexfy') || 'Forexfy.app / Black Market'}
+                                                </SelectItem>
+                                                <SelectItem value="dolardinar">
+                                                    {t('settings.exchangeRate.dolardinar') || 'DolarDinar.com / Market Sheet'}
+                                                </SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
 
                                     <div className="pt-2 space-y-4 border-t border-border/50">
                                         <div className="flex items-center justify-between">
                                             <div className="space-y-0.5">
-                                                <Label className="text-base">{t('settings.exchangeRate.tryEnable') || 'Enable TRY Support'}</Label>
+                                                <Label className="text-base">{t('settings.exchangeRate.eurEnable') || 'Enable Euro Support'}</Label>
                                                 <p className="text-sm text-muted-foreground">
-                                                    {t('settings.exchangeRate.tryEnableDesc') || 'Allow POS to handle TRY products and conversions.'}
+                                                    {t('settings.exchangeRate.eurEnableDesc') || 'Allow POS to handle EUR products and conversions.'}
                                                 </p>
                                             </div>
                                             <Switch
-                                                checked={features.try_conversion_enabled}
-                                                onCheckedChange={(val: boolean) => updateSettings({ try_conversion_enabled: val })}
+                                                checked={features.eur_conversion_enabled}
+                                                onCheckedChange={(val: boolean) => updateSettings({ eur_conversion_enabled: val })}
                                                 disabled={user?.role !== 'admin'}
                                             />
                                         </div>
 
-                                        {features.try_conversion_enabled && (
+                                        {features.eur_conversion_enabled && (
                                             <div className="space-y-2 animate-in fade-in slide-in-from-top-1">
-                                                <Label>{t('settings.exchangeRate.trySource') || 'TRY Exchange Source'}</Label>
-                                                <Select value={tryExchangeRateSource} onValueChange={handleTryExchangeRateSourceChange}>
+                                                <Label>{t('settings.exchangeRate.eurSource') || 'Euro Exchange Source'}</Label>
+                                                <Select value={eurExchangeRateSource} onValueChange={handleEurExchangeRateSourceChange}>
                                                     <SelectTrigger>
                                                         <SelectValue />
                                                     </SelectTrigger>
                                                     <SelectContent>
                                                         <SelectItem value="forexfy">
-                                                            {t('settings.exchangeRate.forexfy_try') || 'Forexfy TRY/IQD (Black Market)'}
+                                                            {t('settings.exchangeRate.forexfy_eur') || 'Forexfy EUR/IQD (Faster & More Reliable)'}
                                                         </SelectItem>
                                                         <SelectItem value="dolardinar">
-                                                            {t('settings.exchangeRate.dolardinar_try') || 'DolarDinar.com TRY/IQD (Market Sheet)'}
+                                                            {t('settings.exchangeRate.dolardinar_eur') || 'DolarDinar.com EUR/IQD (Market Sheet)'}
                                                         </SelectItem>
                                                     </SelectContent>
                                                 </Select>
+                                                <p className="text-[11px] text-muted-foreground italic">
+                                                    {t('settings.exchangeRate.eurSourceAdminOnly') || 'Forexfy and DolarDinar are currently the supported sources for Euro rates.'}
+                                                </p>
                                             </div>
                                         )}
+
+                                        <div className="pt-2 space-y-4 border-t border-border/50">
+                                            <div className="flex items-center justify-between">
+                                                <div className="space-y-0.5">
+                                                    <Label className="text-base">{t('settings.exchangeRate.tryEnable') || 'Enable TRY Support'}</Label>
+                                                    <p className="text-sm text-muted-foreground">
+                                                        {t('settings.exchangeRate.tryEnableDesc') || 'Allow POS to handle TRY products and conversions.'}
+                                                    </p>
+                                                </div>
+                                                <div className="space-y-2">
+                                                    <Switch
+                                                        checked={features.try_conversion_enabled}
+                                                        onCheckedChange={(val: boolean) => updateSettings({ try_conversion_enabled: val })}
+                                                        disabled={user?.role !== 'admin'}
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            {features.try_conversion_enabled && (
+                                                <div className="space-y-2 animate-in fade-in slide-in-from-top-1">
+                                                    <Label>{t('settings.exchangeRate.trySource') || 'TRY Exchange Source'}</Label>
+                                                    <Select value={tryExchangeRateSource} onValueChange={handleTryExchangeRateSourceChange}>
+                                                        <SelectTrigger>
+                                                            <SelectValue />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            <SelectItem value="forexfy">
+                                                                {t('settings.exchangeRate.forexfy_try') || 'Forexfy TRY/IQD (Black Market)'}
+                                                            </SelectItem>
+                                                            <SelectItem value="dolardinar">
+                                                                {t('settings.exchangeRate.dolardinar_try') || 'DolarDinar.com TRY/IQD (Market Sheet)'}
+                                                            </SelectItem>
+                                                        </SelectContent>
+                                                    </Select>
+                                                </div>
+                                            )}
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
-                        </CardContent>
-                    </Card>
+                            </CardContent>
+                        </Card>
+                    )}
 
-                    {/* Sync Status */}
-                    <Card>
-                        <CardHeader>
-                            <CardTitle className="flex items-center gap-2">
-                                <Cloud className="w-5 h-5" />
-                                {t('settings.syncStatus')}
-                            </CardTitle>
-                            <CardDescription>{t('settings.syncDesc')}</CardDescription>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
-                            <div className="grid gap-4 md:grid-cols-2">
-                                <div>
-                                    <Label className="text-muted-foreground">{t('settings.connection')}</Label>
-                                    <p className={`font-medium ${isOnline ? 'text-emerald-500' : 'text-red-500'}`}>
-                                        {isOnline ? t('settings.online') : t('settings.offline')}
-                                    </p>
+                    {/* Sync Status (Admin Only) */}
+                    {user?.role === 'admin' && (
+                        <Card>
+                            <CardHeader>
+                                <CardTitle className="flex items-center gap-2">
+                                    <Cloud className="w-5 h-5" />
+                                    {t('settings.syncStatus')}
+                                </CardTitle>
+                                <CardDescription>{t('settings.syncDesc')}</CardDescription>
+                            </CardHeader>
+                            <CardContent className="space-y-4">
+                                <div className="grid gap-4 md:grid-cols-2">
+                                    <div>
+                                        <Label className="text-muted-foreground">{t('settings.connection')}</Label>
+                                        <p className={`font-medium ${isOnline ? 'text-emerald-500' : 'text-red-500'}`}>
+                                            {isOnline ? t('settings.online') : t('settings.offline')}
+                                        </p>
+                                    </div>
+                                    <div>
+                                        <Label className="text-muted-foreground">{t('settings.syncState')}</Label>
+                                        <p className="font-medium capitalize">{syncState}</p>
+                                    </div>
+                                    <div>
+                                        <Label className="text-muted-foreground">{t('settings.pendingChanges')}</Label>
+                                        <p className="font-medium">{pendingCount} items</p>
+                                    </div>
+                                    <div>
+                                        <Label className="text-muted-foreground">{t('settings.lastSynced')}</Label>
+                                        <p className="font-medium">
+                                            {lastSyncTime ? formatDateTime(lastSyncTime) : t('settings.never')}
+                                        </p>
+                                    </div>
                                 </div>
-                                <div>
-                                    <Label className="text-muted-foreground">{t('settings.syncState')}</Label>
-                                    <p className="font-medium capitalize">{syncState}</p>
-                                </div>
-                                <div>
-                                    <Label className="text-muted-foreground">{t('settings.pendingChanges')}</Label>
-                                    <p className="font-medium">{pendingCount} items</p>
-                                </div>
-                                <div>
-                                    <Label className="text-muted-foreground">{t('settings.lastSynced')}</Label>
-                                    <p className="font-medium">
-                                        {lastSyncTime ? formatDateTime(lastSyncTime) : t('settings.never')}
-                                    </p>
-                                </div>
-                            </div>
 
-                            {!isSupabaseConfigured && (
-                                <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
-                                    <p className="text-sm text-amber-500">
-                                        Supabase is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to enable cloud sync.
-                                    </p>
-                                </div>
-                            )}
-
-                            <div className="flex gap-2">
-                                <Button onClick={sync} disabled={isSyncing || !isOnline || !isSupabaseConfigured}>
-                                    <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
-                                    {isSyncing ? t('settings.syncing') : t('settings.syncNow')}
-                                </Button>
-                                {isElectron && (
-                                    <Button
-                                        variant="outline"
-                                        onClick={() => setIsSyncMediaModalOpen(true)}
-                                        disabled={!isOnline || !isSupabaseConfigured || mediaSyncProgress !== null}
-                                        className="gap-2"
-                                    >
-                                        <ImageIcon className={cn("w-4 h-4", mediaSyncProgress && "animate-pulse")} />
-                                        {mediaSyncProgress
-                                            ? `${t('settings.syncingMedia') || 'Syncing...'} (${mediaSyncProgress.current}/${mediaSyncProgress.total})`
-                                            : t('settings.syncMedia') || 'Sync Media'}
-                                    </Button>
+                                {!isSupabaseConfigured && (
+                                    <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                                        <p className="text-sm text-amber-500">
+                                            Supabase is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to enable cloud sync.
+                                        </p>
+                                    </div>
                                 )}
-                                {pendingCount > 0 && (
-                                    <Button variant="outline" onClick={handleClearSyncQueue}>
-                                        {t('settings.clearQueue')}
+
+                                <div className="flex gap-2">
+                                    <Button onClick={sync} disabled={isSyncing || !isOnline || !isSupabaseConfigured}>
+                                        <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
+                                        {isSyncing ? t('settings.syncing') : t('settings.syncNow')}
                                     </Button>
-                                )}
-                            </div>
-                        </CardContent>
-                    </Card>
+                                    {isElectron && (
+                                        <Button
+                                            variant="outline"
+                                            onClick={() => setIsSyncMediaModalOpen(true)}
+                                            disabled={!isOnline || !isSupabaseConfigured || mediaSyncProgress !== null}
+                                            className="gap-2"
+                                        >
+                                            <ImageIcon className={cn("w-4 h-4", mediaSyncProgress && "animate-pulse")} />
+                                            {mediaSyncProgress
+                                                ? `${t('settings.syncingMedia') || 'Syncing...'} (${mediaSyncProgress.current}/${mediaSyncProgress.total})`
+                                                : t('settings.syncMedia') || 'Sync Media'}
+                                        </Button>
+                                    )}
+                                    {pendingCount > 0 && (
+                                        <Button variant="outline" onClick={handleClearSyncQueue}>
+                                            {t('settings.clearQueue')}
+                                        </Button>
+                                    )}
+                                </div>
+                            </CardContent>
+                        </Card>
+                    )}
 
                     {/* Media Sync Modal */}
                     <Dialog open={isSyncMediaModalOpen} onOpenChange={setIsSyncMediaModalOpen}>
@@ -731,8 +794,35 @@ export function Settings() {
                             </CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-6">
-                            {/* User Profile Section (Read-only for now as per POS pattern) */}
+                            {/* Profile Picture Section */}
                             <div className="space-y-4">
+                                <Label className="text-sm font-bold uppercase tracking-wider text-muted-foreground">Profile Picture</Label>
+                                <div className="flex items-center gap-6">
+                                    <div className="w-24 h-24 rounded-full bg-gradient-to-br from-primary to-purple-600 flex items-center justify-center text-3xl font-bold text-white overflow-hidden shadow-lg border-2 border-background">
+                                        {user?.profileUrl ? (
+                                            <img
+                                                src={platformService.convertFileSrc(user.profileUrl)}
+                                                alt={user.name}
+                                                className="w-full h-full object-cover"
+                                            />
+                                        ) : (
+                                            user?.name?.charAt(0).toUpperCase() || 'U'
+                                        )}
+                                    </div>
+                                    <div className="flex flex-col gap-2">
+                                        <Button variant="outline" size="sm" onClick={handleProfilePictureUpload} className="gap-2">
+                                            <ImageIcon className="w-4 h-4" />
+                                            {t('settings.profile.change_picture') || 'Change Picture'}
+                                        </Button>
+                                        <p className="text-[11px] text-muted-foreground max-w-[200px]">
+                                            Optimized for all devices. Syncs automatically.
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* User Information Section */}
+                            <div className="pt-6 border-t border-border/50 space-y-4">
                                 <Label className="text-sm font-bold uppercase tracking-wider text-muted-foreground">User Information</Label>
                                 <div className="grid gap-4 md:grid-cols-2">
                                     <div className="space-y-1">
@@ -808,132 +898,134 @@ export function Settings() {
                 </TabsContent>
 
                 <TabsContent value="advanced" className="space-y-6 mt-0">
-                    {/* WhatsApp Integration Setting */}
                     {user?.role === 'admin' && (
-                        <Card className="border-primary/20 bg-primary/5">
-                            <CardHeader>
-                                <CardTitle className="flex items-center gap-2">
-                                    <MessageSquare className="w-5 h-5 text-primary" />
-                                    WhatsApp Integration
-                                </CardTitle>
-                                <CardDescription>
-                                    Enable WhatsApp chat for Admins and Staff. Chat history is stored locally on each device.
-                                </CardDescription>
-                            </CardHeader>
-                            <CardContent>
-                                <div className="flex items-center justify-between">
-                                    <div className="space-y-0.5">
-                                        <Label className="text-base text-primary">Enable WhatsApp Feature</Label>
-                                        <p className="text-sm text-muted-foreground max-w-md">
-                                            Allow text-only communication with customers. Staff will inherit this setting.
-                                        </p>
+                        <>
+                            {/* WhatsApp Integration Setting */}
+                            <Card className="border-primary/20 bg-primary/5">
+                                <CardHeader>
+                                    <CardTitle className="flex items-center gap-2">
+                                        <MessageSquare className="w-5 h-5 text-primary" />
+                                        WhatsApp Integration
+                                    </CardTitle>
+                                    <CardDescription>
+                                        Enable WhatsApp chat for Admins and Staff. Chat history is stored locally on each device.
+                                    </CardDescription>
+                                </CardHeader>
+                                <CardContent>
+                                    <div className="flex items-center justify-between">
+                                        <div className="space-y-0.5">
+                                            <Label className="text-base text-primary">Enable WhatsApp Feature</Label>
+                                            <p className="text-sm text-muted-foreground max-w-md">
+                                                Allow text-only communication with customers. Staff will inherit this setting.
+                                            </p>
+                                        </div>
+                                        <Switch
+                                            checked={features.allow_whatsapp}
+                                            onCheckedChange={(val: boolean) => updateSettings({ allow_whatsapp: val })}
+                                        />
                                     </div>
-                                    <Switch
-                                        checked={features.allow_whatsapp}
-                                        onCheckedChange={(val: boolean) => updateSettings({ allow_whatsapp: val })}
-                                    />
-                                </div>
-                            </CardContent>
-                        </Card>
-                    )}
+                                </CardContent>
+                            </Card>
 
-                    {/* User Info */}
-                    <Card>
-                        <CardHeader>
-                            <CardTitle className="flex items-center gap-2">
-                                <User className="w-5 h-5" />
-                                {t('settings.account')}
-                            </CardTitle>
-                            <CardDescription>{t('settings.accountDesc')}</CardDescription>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
-                            <div className="grid gap-4 md:grid-cols-2">
-                                <div>
-                                    <Label className="text-muted-foreground">{t('auth.name') || 'Name'}</Label>
-                                    <p className="font-medium">{user?.name}</p>
-                                </div>
-                                <div>
-                                    <Label className="text-muted-foreground">{t('auth.email')}</Label>
-                                    <p className="font-medium">{user?.email}</p>
-                                </div>
-                                <div>
-                                    <Label className="text-muted-foreground">{t('settings.role')}</Label>
-                                    <p className="font-medium capitalize">{user?.role}</p>
-                                </div>
-                                <div>
-                                    <Label className="text-muted-foreground">{t('settings.authMode')}</Label>
-                                    <p className="font-medium">{isSupabaseConfigured ? 'Supabase' : t('settings.demo')}</p>
-                                </div>
-                                {isSupabaseConfigured && sessionId && (
-                                    <div className="md:col-span-2">
-                                        <Label className="text-muted-foreground">Session ID</Label>
-                                        <div
-                                            className="flex items-center gap-2 mt-1 px-3 py-2 bg-secondary/20 rounded-lg border border-border group cursor-pointer hover:border-primary/50 transition-colors w-full max-w-sm"
-                                            onClick={() => copyToClipboard(sessionId)}
-                                        >
-                                            <p className="font-mono text-xs truncate flex-1">{sessionId}</p>
-                                            <Button variant="ghost" size="icon" className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                <Copy className="h-3.5 w-3.5" />
-                                            </Button>
+                            {/* User Info */}
+                            <Card>
+                                <CardHeader>
+                                    <CardTitle className="flex items-center gap-2">
+                                        <User className="w-5 h-5" />
+                                        {t('settings.account')}
+                                    </CardTitle>
+                                    <CardDescription>{t('settings.accountDesc')}</CardDescription>
+                                </CardHeader>
+                                <CardContent className="space-y-4">
+                                    <div className="grid gap-4 md:grid-cols-2">
+                                        <div>
+                                            <Label className="text-muted-foreground">{t('auth.name') || 'Name'}</Label>
+                                            <p className="font-medium">{user?.name}</p>
+                                        </div>
+                                        <div>
+                                            <Label className="text-muted-foreground">{t('auth.email')}</Label>
+                                            <p className="font-medium">{user?.email}</p>
+                                        </div>
+                                        <div>
+                                            <Label className="text-muted-foreground">{t('settings.role')}</Label>
+                                            <p className="font-medium capitalize">{user?.role}</p>
+                                        </div>
+                                        <div>
+                                            <Label className="text-muted-foreground">{t('settings.authMode')}</Label>
+                                            <p className="font-medium">{isSupabaseConfigured ? 'Supabase' : t('settings.demo')}</p>
+                                        </div>
+                                        {isSupabaseConfigured && sessionId && (
+                                            <div className="md:col-span-2">
+                                                <Label className="text-muted-foreground">Session ID</Label>
+                                                <div
+                                                    className="flex items-center gap-2 mt-1 px-3 py-2 bg-secondary/20 rounded-lg border border-border group cursor-pointer hover:border-primary/50 transition-colors w-full max-w-sm"
+                                                    onClick={() => copyToClipboard(sessionId)}
+                                                >
+                                                    <p className="font-mono text-xs truncate flex-1">{sessionId}</p>
+                                                    <Button variant="ghost" size="icon" className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                        <Copy className="h-3.5 w-3.5" />
+                                                    </Button>
+                                                </div>
+                                            </div>
+                                        )}
+                                        <div className="md:col-span-2">
+                                            <Label className="text-muted-foreground">{t('auth.workspaceCode')}</Label>
+                                            <div
+                                                className="flex items-center gap-3 mt-1 p-3 bg-secondary/30 rounded-lg border border-border group hover:border-primary/50 transition-all cursor-pointer w-full max-w-sm"
+                                                onClick={() => user?.workspaceCode && copyToClipboard(user.workspaceCode)}
+                                            >
+                                                <span className="font-mono font-bold tracking-wider flex-1">{user?.workspaceCode}</span>
+                                                {copied ? (
+                                                    <span className="flex items-center gap-1.5 text-emerald-500 text-sm font-medium animate-in fade-in slide-in-from-right-2">
+                                                        <Check className="w-4 h-4" />
+                                                        {t('auth.copied')}
+                                                    </span>
+                                                ) : (
+                                                    <Button variant="ghost" size="sm" className="h-8 gap-2 group-hover:bg-primary/10 group-hover:text-primary">
+                                                        <Copy className="w-4 h-4" />
+                                                        {t('auth.copyCode')}
+                                                    </Button>
+                                                )}
+                                            </div>
                                         </div>
                                     </div>
-                                )}
-                                <div className="md:col-span-2">
-                                    <Label className="text-muted-foreground">{t('auth.workspaceCode')}</Label>
-                                    <div
-                                        className="flex items-center gap-3 mt-1 p-3 bg-secondary/30 rounded-lg border border-border group hover:border-primary/50 transition-all cursor-pointer w-full max-w-sm"
-                                        onClick={() => user?.workspaceCode && copyToClipboard(user.workspaceCode)}
-                                    >
-                                        <span className="font-mono font-bold tracking-wider flex-1">{user?.workspaceCode}</span>
-                                        {copied ? (
-                                            <span className="flex items-center gap-1.5 text-emerald-500 text-sm font-medium animate-in fade-in slide-in-from-right-2">
-                                                <Check className="w-4 h-4" />
-                                                {t('auth.copied')}
-                                            </span>
-                                        ) : (
-                                            <Button variant="ghost" size="sm" className="h-8 gap-2 group-hover:bg-primary/10 group-hover:text-primary">
-                                                <Copy className="w-4 h-4" />
-                                                {t('auth.copyCode')}
-                                            </Button>
-                                        )}
-                                    </div>
-                                </div>
-                            </div>
-                            <Button variant="destructive" onClick={signOut}>
-                                {t('auth.signOut')}
-                            </Button>
-                        </CardContent>
-                    </Card>
+                                    <Button variant="destructive" onClick={signOut}>
+                                        {t('auth.signOut')}
+                                    </Button>
+                                </CardContent>
+                            </Card>
 
-                    {/* Data Management */}
-                    <Card>
-                        <CardHeader>
-                            <CardTitle className="flex items-center gap-2">
-                                <Database className="w-5 h-5" />
-                                {t('settings.localData')}
-                            </CardTitle>
-                            <CardDescription>{t('settings.localDataDesc')}</CardDescription>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
-                            <p className="text-sm text-muted-foreground">
-                                {t('settings.localDataInfo')}
-                            </p>
-                            <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20">
-                                <div className="flex items-start gap-3">
-                                    <Trash2 className="w-5 h-5 text-destructive mt-0.5" />
-                                    <div>
-                                        <p className="font-medium text-destructive">{t('settings.dangerZone')}</p>
-                                        <p className="text-sm text-muted-foreground mb-3">
-                                            {t('settings.clearDataWarning')}
-                                        </p>
-                                        <Button variant="destructive" onClick={handleClearLocalData}>
-                                            {t('settings.clearData')}
-                                        </Button>
+                            {/* Data Management */}
+                            <Card>
+                                <CardHeader>
+                                    <CardTitle className="flex items-center gap-2">
+                                        <Database className="w-5 h-5" />
+                                        {t('settings.localData')}
+                                    </CardTitle>
+                                    <CardDescription>{t('settings.localDataDesc')}</CardDescription>
+                                </CardHeader>
+                                <CardContent className="space-y-4">
+                                    <p className="text-sm text-muted-foreground">
+                                        {t('settings.localDataInfo')}
+                                    </p>
+                                    <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20">
+                                        <div className="flex items-start gap-3">
+                                            <Trash2 className="w-5 h-5 text-destructive mt-0.5" />
+                                            <div>
+                                                <p className="font-medium text-destructive">{t('settings.dangerZone')}</p>
+                                                <p className="text-sm text-muted-foreground mb-3">
+                                                    {t('settings.clearDataWarning')}
+                                                </p>
+                                                <Button variant="destructive" onClick={handleClearLocalData}>
+                                                    {t('settings.clearData')}
+                                                </Button>
+                                            </div>
+                                        </div>
                                     </div>
-                                </div>
-                            </div>
-                        </CardContent>
-                    </Card>
+                                </CardContent>
+                            </Card>
+                        </>
+                    )}
 
                     {/* Connection Settings (Electron Only) */}
                     {isElectron && (

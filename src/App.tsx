@@ -329,7 +329,7 @@ function App() {
                                         </ProtectedRoute>
                                     </Route>
                                     <Route path="/members">
-                                        <ProtectedRoute allowedRoles={['admin']}>
+                                        <ProtectedRoute allowedRoles={['admin', 'staff']}>
                                             <Layout>
                                                 <Members />
                                             </Layout>
@@ -341,7 +341,7 @@ function App() {
                                         </ProtectedRoute>
                                     </Route>
                                     <Route path="/settings">
-                                        <ProtectedRoute allowedRoles={['admin']}>
+                                        <ProtectedRoute allowedRoles={['admin', 'staff']}>
                                             <Layout>
                                                 <Settings />
                                             </Layout>

@@ -34,4 +34,8 @@ export interface PlatformAPI {
     // App info
     getVersion: () => Promise<string>;
     relaunch: () => Promise<void>;
+
+    // Media
+    pickAndSaveImage: (workspaceId: string, subDir?: string) => Promise<string | null>;
+    resizeImage: (filePath: string, maxWidth?: number) => Promise<string>;
 }

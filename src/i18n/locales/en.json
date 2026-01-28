@@ -335,10 +335,6 @@
             "profile": "Profile Settings",
             "advanced": "Advanced Settings"
         },
-        "profile": {
-            "title": "Profile Settings",
-            "desc": "Manage your personal and workspace profile information."
-        },
         "appearance": "Appearance",
         "appearanceDesc": "Customize the look and feel of the application",
         "language": "Language",
@@ -426,6 +422,16 @@
             "forexfy_try": "Forexfy TRY/IQD (Black Market)",
             "dolardinar_try": "DolarDinar.com TRY/IQD (Market Sheet)",
             "lastUpdated": "Last Updated"
+        },
+        "profile": {
+            "title": "Profile Settings",
+            "desc": "Manage your personal and workspace profile information.",
+            "change_picture": "Change Picture",
+            "user_info": "User Information",
+            "store_employee": "Store Employee",
+            "email": "Email Address",
+            "role": "Account Role",
+            "optimized_note": "Optimized for all devices. Syncs automatically."
         }
     },
     "sync": {

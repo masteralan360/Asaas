@@ -57,7 +57,7 @@ export function Layout({ children }: LayoutProps) {
         }
         return true
     })
-    const [members, setMembers] = useState<{ id: string, name: string, role: string }[]>([])
+    const [members, setMembers] = useState<{ id: string, name: string, role: string, profile_url?: string }[]>([])
     const { t } = useTranslation()
     const [logoError, setLogoError] = useState(false)
     const [copied, setCopied] = useState(false)
@@ -76,7 +76,7 @@ export function Layout({ children }: LayoutProps) {
         const fetchMembers = async () => {
             const { data, error } = await supabase
                 .from('profiles')
-                .select('id, name, role')
+                .select('id, name, role, profile_url')
                 .eq('workspace_id', user.workspaceId)
 
             if (!error && data) {
@@ -102,6 +102,7 @@ export function Layout({ children }: LayoutProps) {
         // Handle mobile sidebar trigger from child components
         const handleOpen = () => setMobileSidebarOpen(true)
         window.addEventListener('open-mobile-sidebar', handleOpen)
+        window.addEventListener('profile-updated', fetchMembers)
 
         // Handle WhatsApp enabled state changes from other components
         const handleWhatsAppChange = (e: any) => {
@@ -111,6 +112,7 @@ export function Layout({ children }: LayoutProps) {
 
         return () => {
             window.removeEventListener('open-mobile-sidebar', handleOpen)
+            window.removeEventListener('profile-updated', fetchMembers)
             window.removeEventListener('whatsapp-enabled-change', handleWhatsAppChange)
         }
     }, [user?.workspaceId])
@@ -160,9 +162,11 @@ export function Layout({ children }: LayoutProps) {
         ...(hasFeature('allow_invoices') ? [
             { name: t('nav.invoices'), href: '/invoices', icon: FileText }
         ] : []),
-        // Admin-only routes
-        ...(user?.role === 'admin' ? [
+        // Admin/Staff routes
+        ...((user?.role === 'admin' || user?.role === 'staff') ? [
             { name: t('members.title'), href: '/members', icon: UsersRound },
+        ] : []),
+        ...((user?.role === 'admin' || user?.role === 'staff') ? [
             { name: t('nav.settings'), href: '/settings', icon: Settings }
         ] : []),
     ]
@@ -254,7 +258,7 @@ export function Layout({ children }: LayoutProps) {
                     })}
 
                     {/* Workspace Members Section */}
-                    {user?.role === 'admin' && (
+                    {(user?.role === 'admin' || user?.role === 'staff') && (
                         <div className="pt-6 pb-2">
                             <h2 className="px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
                                 {t('auth.members')}
@@ -285,17 +289,32 @@ export function Layout({ children }: LayoutProps) {
                             )}
 
                             <div className="px-3 space-y-3">
-                                {members.map((member) => (
-                                    <div key={member.id} className="flex items-center gap-3">
-                                        <div className="w-7 h-7 rounded-full bg-secondary flex items-center justify-center text-xs font-medium">
-                                            {member.name?.charAt(0).toUpperCase() || 'M'}
+                                {members.map((member) => {
+                                    // Use dynamic user profile for the current user to ensure immediate updates
+                                    const profileUrl = member.id === user?.id && user?.profileUrl
+                                        ? user.profileUrl
+                                        : member.profile_url;
+
+                                    return (
+                                        <div key={member.id} className="flex items-center gap-3">
+                                            <div className="w-7 h-7 rounded-full bg-secondary flex items-center justify-center text-xs font-medium overflow-hidden">
+                                                {profileUrl ? (
+                                                    <img
+                                                        src={platformService.convertFileSrc(profileUrl)}
+                                                        alt={member.name}
+                                                        className="w-full h-full object-cover"
+                                                    />
+                                                ) : (
+                                                    member.name?.charAt(0).toUpperCase() || 'M'
+                                                )}
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                                <p className="text-sm font-medium truncate">{member.name}</p>
+                                                <p className="text-[10px] text-muted-foreground capitalize">{member.role}</p>
+                                            </div>
                                         </div>
-                                        <div className="flex-1 min-w-0">
-                                            <p className="text-sm font-medium truncate">{member.name}</p>
-                                            <p className="text-[10px] text-muted-foreground capitalize">{member.role}</p>
-                                        </div>
-                                    </div>
-                                ))}
+                                    )
+                                })}
                             </div>
                         </div>
                     )}
@@ -303,8 +322,16 @@ export function Layout({ children }: LayoutProps) {
 
                 <div className="p-4 border-t border-border bg-background/50 backdrop-blur-md shrink-0">
                     <div className="flex items-center gap-3 px-3 py-2">
-                        <div className="w-9 h-9 rounded-full bg-gradient-to-br from-primary to-purple-600 flex items-center justify-center text-sm font-bold text-white">
-                            {user?.name?.charAt(0).toUpperCase() || 'U'}
+                        <div className="w-9 h-9 rounded-full bg-gradient-to-br from-primary to-purple-600 flex items-center justify-center text-sm font-bold text-white overflow-hidden shadow-sm">
+                            {user?.profileUrl ? (
+                                <img
+                                    src={user.profileUrl.startsWith('http') ? user.profileUrl : platformService.convertFileSrc(user.profileUrl)}
+                                    alt={user.name}
+                                    className="w-full h-full object-cover"
+                                />
+                            ) : (
+                                user?.name?.charAt(0).toUpperCase() || 'U'
+                            )}
                         </div>
                         <div className="flex-1 min-w-0">
                             <p className="text-sm font-medium truncate text-start">{user?.name}</p>

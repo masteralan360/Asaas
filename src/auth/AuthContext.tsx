@@ -11,7 +11,7 @@ interface AuthUser {
     workspaceId: string
     workspaceCode: string
     workspaceName?: string
-    avatarUrl?: string
+    profileUrl?: string
     isConfigured?: boolean
 }
 
@@ -50,7 +50,7 @@ const DEMO_USER: AuthUser = {
     workspaceId: 'demo-workspace',
     workspaceCode: 'DEMO-1234',
     workspaceName: 'Demo Workspace',
-    avatarUrl: undefined
+    profileUrl: undefined
 }
 
 function parseUserFromSupabase(user: User): AuthUser {
@@ -62,7 +62,7 @@ function parseUserFromSupabase(user: User): AuthUser {
         workspaceId: user.user_metadata?.workspace_id ?? '',
         workspaceCode: user.user_metadata?.workspace_code ?? '',
         workspaceName: user.user_metadata?.workspace_name,
-        avatarUrl: user.user_metadata?.avatar_url,
+        profileUrl: user.user_metadata?.profile_url,
         isConfigured: user.user_metadata?.is_configured
     }
 }
@@ -91,34 +91,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
 
         // Get initial session
-        supabase.auth.getSession().then(({ data: { session } }) => {
+        supabase.auth.getSession().then(async ({ data: { session } }) => {
             setSession(session)
             const parsedUser = session?.user ? parseUserFromSupabase(session.user) : null
 
-            // If we have a user but no workspaceCode, fetch it
-            if (parsedUser && parsedUser.workspaceId && !parsedUser.workspaceCode) {
-                supabase
-                    .from('workspaces')
-                    .select('code, is_configured')
-                    .eq('id', parsedUser.workspaceId)
-                    .single()
-                    .then(({ data }) => {
-                        if (data) {
-                            parsedUser.workspaceCode = data.code
-                            parsedUser.isConfigured = data.is_configured
-                            setUser({ ...parsedUser })
-                        } else {
-                            setUser(parsedUser)
-                        }
-                    })
-            } else {
-                setUser(parsedUser)
+            if (parsedUser && parsedUser.workspaceId) {
+                // Fetch workspace and profile data in parallel for robustness
+                const [wsResult, profileResult] = await Promise.all([
+                    supabase
+                        .from('workspaces')
+                        .select('code, name, is_configured')
+                        .eq('id', parsedUser.workspaceId)
+                        .single(),
+                    supabase
+                        .from('profiles')
+                        .select('profile_url')
+                        .eq('id', parsedUser.id)
+                        .single()
+                ])
+
+                if (wsResult.data) {
+                    parsedUser.workspaceCode = wsResult.data.code
+                    parsedUser.workspaceName = wsResult.data.name
+                    parsedUser.isConfigured = wsResult.data.is_configured
+                }
+                if (profileResult.data?.profile_url) {
+                    parsedUser.profileUrl = profileResult.data.profile_url
+                }
             }
+
+            setUser(parsedUser)
             setIsLoading(false)
         })
 
         // Listen for auth changes
-        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
             console.log(`[Auth] State change: ${_event}`, session?.user?.id)
             setSession(session)
             const parsedUser = session?.user ? parseUserFromSupabase(session.user) : null
@@ -128,32 +135,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 return
             }
 
-            if (parsedUser.workspaceId && !parsedUser.workspaceCode) {
-                supabase
-                    .from('workspaces')
-                    .select('code, is_configured')
-                    .eq('id', parsedUser.workspaceId)
-                    .single()
-                    .then(({ data }) => {
-                        // CRITICAL: Only update if the user we fetched for is still the current user
-                        // and we haven't signed out in the meantime
-                        if (data) {
-                            parsedUser.workspaceCode = data.code
-                            parsedUser.isConfigured = data.is_configured
+            if (parsedUser.workspaceId) {
+                // Fetch workspace and profile data
+                const [wsResult, profileResult] = await Promise.all([
+                    supabase
+                        .from('workspaces')
+                        .select('code, name, is_configured')
+                        .eq('id', parsedUser.workspaceId)
+                        .single(),
+                    supabase
+                        .from('profiles')
+                        .select('profile_url')
+                        .eq('id', parsedUser.id)
+                        .single()
+                ])
 
-                            // Check again if we're still logged in as this user
-                            supabase.auth.getSession().then(({ data: { session: currentSession } }) => {
-                                if (currentSession?.user?.id === parsedUser.id) {
-                                    setUser({ ...parsedUser })
-                                }
-                            })
-                        } else {
-                            setUser(parsedUser)
-                        }
-                    }, (e: any) => {
-                        console.error('[Auth] Error fetching workspace code during auth change:', e)
-                        setUser(parsedUser)
-                    })
+                if (wsResult.data) {
+                    parsedUser.workspaceCode = wsResult.data.code
+                    parsedUser.workspaceName = wsResult.data.name
+                    parsedUser.isConfigured = wsResult.data.is_configured
+                }
+                if (profileResult.data?.profile_url) {
+                    parsedUser.profileUrl = profileResult.data.profile_url
+                }
+
+                // Final verify of session to ensure we haven't logged out
+                const { data: { session: currentSession } } = await supabase.auth.getSession()
+                if (currentSession?.user?.id === parsedUser.id) {
+                    setUser({ ...parsedUser })
+                }
             } else {
                 setUser(parsedUser)
             }
@@ -299,16 +309,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
             const parsedUser = parseUserFromSupabase(session.user)
 
-            // Fetch workspace code if we have workspace_id
-            if (parsedUser.workspaceId && !parsedUser.workspaceCode) {
-                const { data: wsData } = await supabase
-                    .from('workspaces')
-                    .select('code, name')
-                    .eq('id', parsedUser.workspaceId)
-                    .single()
-                if (wsData) {
-                    parsedUser.workspaceCode = wsData.code
-                    parsedUser.workspaceName = wsData.name
+            // Fetch latest profile and workspace data from DB
+            if (parsedUser.workspaceId) {
+                const [wsResult, profileResult] = await Promise.all([
+                    supabase
+                        .from('workspaces')
+                        .select('code, name, is_configured')
+                        .eq('id', parsedUser.workspaceId)
+                        .single(),
+                    supabase
+                        .from('profiles')
+                        .select('profile_url')
+                        .eq('id', parsedUser.id)
+                        .single()
+                ])
+
+                if (wsResult.data) {
+                    parsedUser.workspaceCode = wsResult.data.code
+                    parsedUser.workspaceName = wsResult.data.name
+                    parsedUser.isConfigured = wsResult.data.is_configured
+                }
+                if (profileResult.data?.profile_url) {
+                    parsedUser.profileUrl = profileResult.data.profile_url
                 }
             }
 

@@ -244,6 +244,74 @@ class PlatformService implements PlatformAPI {
         }
         return null;
     }
+
+    async resizeImage(filePath: string, maxWidth: number = 512): Promise<string> {
+        if (!isTauri()) return filePath;
+
+        try {
+            const { readFile, writeFile, BaseDirectory } = await import('@tauri-apps/plugin-fs');
+
+            // 1. Read the original file
+            const fileData = await readFile(filePath, { baseDir: BaseDirectory.AppData });
+
+            // 2. Load into a blob and then an Image object
+            const blob = new Blob([fileData]);
+            const url = URL.createObjectURL(blob);
+
+            return new Promise((resolve, reject) => {
+                const img = new Image();
+                img.onload = async () => {
+                    URL.revokeObjectURL(url);
+
+                    // Calculate new dimensions
+                    let width = img.width;
+                    let height = img.height;
+
+                    if (width > maxWidth) {
+                        height = (maxWidth / width) * height;
+                        width = maxWidth;
+                    }
+
+                    // 3. Draw to canvas
+                    const canvas = document.createElement('canvas');
+                    canvas.width = width;
+                    canvas.height = height;
+                    const ctx = canvas.getContext('2d');
+                    if (!ctx) {
+                        reject(new Error('Failed to get canvas context'));
+                        return;
+                    }
+
+                    ctx.drawImage(img, 0, 0, width, height);
+
+                    // 4. Convert back to blob/arraybuffer
+                    canvas.toBlob(async (resizedBlob) => {
+                        if (!resizedBlob) {
+                            reject(new Error('Failed to create blob from canvas'));
+                            return;
+                        }
+
+                        const resizedBuffer = await resizedBlob.arrayBuffer();
+
+                        // 5. Overwrite the file with resized version
+                        // Note: To be safe, we could use a new filename, but for profile pics, overwriting is fine
+                        await writeFile(filePath, new Uint8Array(resizedBuffer), { baseDir: BaseDirectory.AppData });
+
+                        console.log(`[PlatformService] Resized image to ${width}x${height}`);
+                        resolve(filePath);
+                    }, 'image/jpeg', 0.85); // Use JPEG with 85% quality
+                };
+                img.onerror = () => {
+                    URL.revokeObjectURL(url);
+                    reject(new Error('Failed to load image for resizing'));
+                };
+                img.src = url;
+            });
+        } catch (error) {
+            console.error('[PlatformService] Resize error:', error);
+            return filePath; // Return original on error
+        }
+    }
 }
 
 export const platformService = new PlatformService();

@@ -27,7 +27,7 @@ export interface User extends BaseEntity {
     email: string
     name: string
     role: UserRole
-    avatarUrl?: string
+    profileUrl?: string
     monthlyTarget?: number
     monthlyProgress?: number
 }

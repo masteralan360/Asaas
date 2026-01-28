@@ -23,11 +23,13 @@ import {
 import { UsersRound, UserMinus, Loader2, Shield, Eye, Briefcase } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { formatDate } from '@/lib/utils'
+import { platformService } from '@/services/platformService'
 
 interface Member {
     id: string
     name: string
     role: string
+    profile_url?: string
     created_at: string
 }
 
@@ -59,7 +61,7 @@ export function Members() {
         try {
             const { data, error } = await supabase
                 .from('profiles')
-                .select('id, name, role, created_at')
+                .select('id, name, role, created_at, profile_url')
                 .eq('workspace_id', user.workspaceId)
                 .order('created_at', { ascending: true })
 
@@ -165,8 +167,16 @@ export function Members() {
                                         <TableRow key={member.id}>
                                             <TableCell>
                                                 <div className="flex items-center gap-3">
-                                                    <div className="w-9 h-9 rounded-full bg-gradient-to-br from-primary to-purple-600 flex items-center justify-center text-sm font-bold text-white">
-                                                        {member.name?.charAt(0).toUpperCase() || 'M'}
+                                                    <div className="w-9 h-9 rounded-full bg-gradient-to-br from-primary to-purple-600 flex items-center justify-center text-sm font-bold text-white overflow-hidden shadow-sm">
+                                                        {member.profile_url ? (
+                                                            <img
+                                                                src={member.profile_url.startsWith('http') ? member.profile_url : platformService.convertFileSrc(member.profile_url)}
+                                                                alt={member.name}
+                                                                className="w-full h-full object-cover"
+                                                            />
+                                                        ) : (
+                                                            member.name?.charAt(0).toUpperCase() || 'M'
+                                                        )}
                                                     </div>
                                                     <div>
                                                         <p className="font-medium">
