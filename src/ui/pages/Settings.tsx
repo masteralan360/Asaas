@@ -267,7 +267,20 @@ export function Settings() {
             // 2. Resize image for optimization (512px max width)
             const resizedPath = await platformService.resizeImage(targetPath, 512)
 
-            // 3. Update Supabase profile
+            // 3. Trigger P2P sync for other workspace users IMMEDIATELY
+            // We do this before DB updates to ensure the file is available/queued
+            try {
+                const syncSuccess = await p2pSyncManager.uploadFromPath(resizedPath)
+                if (syncSuccess) {
+                    console.log('[Settings] Profile picture queued for P2P sync')
+                } else {
+                    console.warn('[Settings] Profile picture P2P sync failed or queued locally only')
+                }
+            } catch (syncError) {
+                console.error('[Settings] P2P sync error (non-blocking):', syncError)
+            }
+
+            // 4. Update Supabase profile
             if (isSupabaseConfigured) {
                 // Update the profiles table
                 const { error: profileError } = await supabase
@@ -290,16 +303,11 @@ export function Settings() {
                 }
             }
 
-            // 4. Update local state
+            // 5. Update local state
             updateUser({ profileUrl: resizedPath })
 
-            // 5. Dispatch global event for immediate UI updates
+            // 6. Dispatch global event for immediate UI updates
             window.dispatchEvent(new CustomEvent('profile-updated'))
-
-            // 6. Trigger P2P sync for other workspace users
-            p2pSyncManager.uploadFromPath(resizedPath).then(success => {
-                if (success) console.log('[Settings] Profile picture synced via P2P')
-            })
 
             console.log('[Settings] Profile picture updated successfully:', resizedPath)
         } catch (error) {
@@ -383,7 +391,14 @@ export function Settings() {
 
                                 <div className="flex flex-col gap-2 mt-4 pt-4 border-t border-border/50">
                                     <Label>{t('settings.theme.style')}</Label>
-                                    <div className="grid grid-cols-2 gap-2 max-w-md">
+                                    <div className="grid grid-cols-3 gap-2 max-w-md">
+                                        <Button
+                                            variant={style === 'primary' ? 'default' : 'outline'}
+                                            className="flex items-center gap-2 justify-center"
+                                            onClick={() => setStyle('primary')}
+                                        >
+                                            {t('settings.theme.primary', 'Primary')}
+                                        </Button>
                                         <Button
                                             variant={style === 'modern' ? 'default' : 'outline'}
                                             className="flex items-center gap-2 justify-center"

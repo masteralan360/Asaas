@@ -6,13 +6,15 @@ import { useTheme } from '@/ui/components/theme-provider'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 import { GlobalSearch } from './GlobalSearch'
+import { useLogo } from '@/hooks/useFavicon'
 
 
 export function TitleBar() {
     const [isMaximized, setIsMaximized] = useState(false)
     const { workspaceName, pendingUpdate, isFullscreen } = useWorkspace()
-    const { theme, setTheme } = useTheme()
-    const { t } = useTranslation()
+    const { theme, setTheme, style } = useTheme()
+    const { t, i18n } = useTranslation()
+    const logoPath = useLogo(i18n.language, style)
     // @ts-ignore
     const isTauri = !!window.__TAURI_INTERNALS__
 
@@ -81,11 +83,8 @@ export function TitleBar() {
             "fixed top-0 left-0 right-0 h-[48px] z-[100] flex items-center justify-between px-3 select-none bg-background/80 backdrop-blur-md border-b border-white/10 transition-all duration-300",
             isFullscreen && "opacity-0 pointer-events-none -translate-y-full"
         )}>
-            {/* Left: Title / Logo */}
             <div data-tauri-drag-region className="flex items-center gap-3 w-1/3">
-                <div className="w-8 h-8 rounded-md bg-primary/20 flex items-center justify-center pointer-events-none">
-                    <img src="./logo.png" alt="Logo" className="w-5 h-5 opacity-80" onError={(e) => e.currentTarget.style.display = 'none'} />
-                </div>
+                <img src={logoPath} alt="Logo" className="w-8 h-8 opacity-90 rounded-sm" onError={(e) => e.currentTarget.style.display = 'none'} />
                 <span data-tauri-drag-region className="text-sm font-medium opacity-80 truncate">
                     {workspaceName || 'ERP System'}
                 </span>

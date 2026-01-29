@@ -9,6 +9,8 @@ import { useWorkspace } from '@/workspace'
 import { ExchangeRateProvider } from '@/context/ExchangeRateContext'
 import { isSupabaseConfigured } from '@/auth/supabase'
 import { isMobile } from '@/lib/platform'
+import { useTheme } from '@/ui/components/theme-provider'
+import { useFavicon } from '@/hooks/useFavicon'
 
 // Lazy load pages
 const Dashboard = lazy(() => import('@/ui/pages/Dashboard').then(m => ({ default: m.Dashboard })))
@@ -179,6 +181,16 @@ function UpdateHandler() {
     return null
 }
 
+/**
+ * FaviconHandler - Updates favicon based on language and theme style
+ */
+function FaviconHandler() {
+    const { i18n } = useTranslation()
+    const { style } = useTheme()
+    useFavicon(i18n.language, style)
+    return null
+}
+
 
 
 
@@ -217,6 +229,7 @@ function App() {
         <AuthProvider>
             <WorkspaceProvider>
                 <UpdateHandler />
+                <FaviconHandler />
                 {(!isMobile()) && <TitleBar />}
                 {isTauri && !isSupabaseConfigured ? (
                     <Suspense fallback={<LoadingState />}>

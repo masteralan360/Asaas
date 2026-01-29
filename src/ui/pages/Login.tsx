@@ -5,16 +5,22 @@ import { Button, Input, Label, Card, CardContent, CardHeader, CardTitle, CardDes
 import { Boxes, Mail, Lock, Loader2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
+import { useTheme } from '@/ui/components/theme-provider'
+import { useFavicon } from '@/hooks/useFavicon'
 
 export function Login() {
     const [, setLocation] = useLocation()
     const { signIn, isSupabaseConfigured } = useAuth()
-    const { t } = useTranslation()
+    const { t, i18n } = useTranslation()
+    const { style } = useTheme()
     const [email, setEmail] = useState('')
     const [password, setPassword] = useState('')
     const [error, setError] = useState('')
     const [isLoading, setIsLoading] = useState(false)
     const [showAdminShortcut, setShowAdminShortcut] = useState(false)
+
+    // Dynamic favicon based on language and theme
+    useFavicon(i18n.language, style)
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()

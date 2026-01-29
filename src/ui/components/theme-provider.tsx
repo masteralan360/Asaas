@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState } from "react"
 
 type Theme = "dark" | "light" | "system"
-type ThemeStyle = "modern" | "legacy"
+type ThemeStyle = "modern" | "legacy" | "primary"
 
 type ThemeProviderProps = {
     children: React.ReactNode
@@ -60,7 +60,7 @@ export function ThemeProvider({
 
     useEffect(() => {
         const root = window.document.documentElement
-        root.classList.remove("theme-modern", "theme-legacy")
+        root.classList.remove("theme-modern", "theme-legacy", "theme-primary")
         root.classList.add(`theme-${style}`)
     }, [style])
 

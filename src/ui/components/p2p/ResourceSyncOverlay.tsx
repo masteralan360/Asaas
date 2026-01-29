@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { p2pSyncManager } from '@/lib/p2pSyncManager';
 import { isMobile } from '@/lib/platform';
 import { Loader2 } from 'lucide-react';
-import { cn } from '@/lib/utils'; // Assuming cn exists, else stick to template literals
+import { cn } from '@/lib/utils';
+import { ProgressWithLabel } from '../progress-with-label';
 
 export function ResourceSyncOverlay() {
     const [isVisible, setIsVisible] = useState(false);
@@ -44,11 +45,17 @@ export function ResourceSyncOverlay() {
                     <Loader2 className="w-12 h-12 animate-spin text-primary relative z-10" />
                 </div>
 
-                <div className="text-center space-y-2">
+                <div className="text-center space-y-2 w-full max-w-sm">
                     <h2 className="text-2xl font-bold tracking-tight">Downloading Resources</h2>
-                    <p className="text-muted-foreground">
-                        Syncing workspace assets... {stats.pending > 0 && `(${stats.pending} remaining)`}
+                    <p className="text-muted-foreground pb-4">
+                        Syncing workspace assets...
                     </p>
+
+                    <ProgressWithLabel
+                        value={stats.total > 0 ? Math.round(((stats.total - stats.pending) / stats.total) * 100) : 0}
+                        label="Sync Progress"
+                        details={`${stats.total - stats.pending} of ${stats.total} files downloaded`}
+                    />
                 </div>
             </div>
         </div>
