@@ -54,7 +54,7 @@ export function ConnectionConfiguration() {
                     </div>
                     <CardTitle className="text-3xl font-bold tracking-tight">Backend Configuration</CardTitle>
                     <CardDescription className="text-base">
-                        Setup your Supabase connection to start using the ERP System.
+                        Setup your Supabase connection to start using Asaas.
                     </CardDescription>
                 </CardHeader>
                 <CardContent>

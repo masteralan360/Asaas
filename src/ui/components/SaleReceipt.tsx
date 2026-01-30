@@ -58,7 +58,7 @@ export const SaleReceipt = forwardRef<HTMLDivElement, SaleReceiptProps>(
                         </div>
                     )}
                     <h1 className="text-2xl font-bold uppercase tracking-widest mb-4">
-                        {workspaceName || 'ERP System'}
+                        {workspaceName || 'Asaas'}
                     </h1>
                     <div className="flex justify-between items-start text-xs text-gray-600 mb-4 border-b border-gray-200 pb-4">
                         <div className="text-start space-y-1">

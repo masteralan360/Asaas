@@ -125,7 +125,7 @@ class PlatformService implements PlatformAPI {
         if (isTauri()) {
             const { message: tauriMessage } = await import('@tauri-apps/plugin-dialog');
             await tauriMessage(message, {
-                title: options?.title || 'ERP System',
+                title: options?.title || 'Asaas',
                 kind: options?.type as any || 'info'
             });
             return;
@@ -137,7 +137,7 @@ class PlatformService implements PlatformAPI {
         if (isTauri()) {
             const { ask } = await import('@tauri-apps/plugin-dialog');
             return ask(message, {
-                title: options?.title || 'ERP System',
+                title: options?.title || 'Asaas',
                 kind: options?.type as any || 'info'
             });
         }

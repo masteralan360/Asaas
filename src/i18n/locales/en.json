@@ -275,8 +275,8 @@
         "deleteWarning": "Deleting this invoice will remove the financial record. The underlying order will remain."
     },
     "auth": {
-        "systemName": "Asas System",
-        "titleName": "Asas System ┃ The Foundation of Your Business",
+        "systemName": "Asaas System",
+        "titleName": "Asaas System ┃ The Foundation of Your Business",
         "systemSubtitle": "The Foundation of Your Business Excellence",
         "login": "Login",
         "register": "Register",
@@ -339,7 +339,7 @@
         "downloadMedia": "Download Media",
         "updater": {
             "title": "Application Updates",
-            "description": "Check for the latest version of the ERP System.",
+            "description": "Check for the latest version of Asaas.",
             "status": "Update Status",
             "checking": "Checking for updates...",
             "available": "Update available! Downloading...",

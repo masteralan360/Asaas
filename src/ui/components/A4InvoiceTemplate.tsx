@@ -227,7 +227,7 @@ export const A4InvoiceTemplate = forwardRef<HTMLDivElement, A4InvoiceTemplatePro
 
                     {/* Site Footer */}
                     <div className="mt-8 border-t border-gray-200 pt-3 text-center text-xs text-neutral-500">
-                        ERP System
+                        Asaas
                         <span className="text-slate-300 px-2">|</span>
                         Generated Automatically
                     </div>

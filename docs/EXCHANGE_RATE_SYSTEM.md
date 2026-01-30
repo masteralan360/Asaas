@@ -1,6 +1,6 @@
 # Exchange Rate System
 
-The ERP System includes a robust, client-side live exchange rate integration for converting between USD and IQD. This system is designed to be highly reliable by utilizing multiple data sources and a smart fallback mechanism.
+Asaas includes a robust, client-side live exchange rate integration for converting between USD and IQD. This system is designed to be highly reliable by utilizing multiple data sources and a smart fallback mechanism.
 
 ## Overview
 

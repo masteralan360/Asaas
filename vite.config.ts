@@ -12,7 +12,7 @@ export default defineConfig({
             registerType: 'autoUpdate',
             includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'mask-icon.svg'],
             manifest: {
-                name: 'ERP System',
+                name: 'Asaas',
                 short_name: 'ERP',
                 description: 'Offline-first Enterprise Resource Planning System',
                 theme_color: '#0f172a',

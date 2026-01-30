@@ -243,7 +243,7 @@ export function Layout({ children }: LayoutProps) {
 
                     {!(isMini && !mobileSidebarOpen) && (
                         <div>
-                            <h1 className="text-lg font-bold gradient-text">{workspaceName || 'ERP System'}</h1>
+                            <h1 className="text-lg font-bold gradient-text">{workspaceName || 'Asaas'}</h1>
                             <p className="text-xs text-muted-foreground">Workspace</p>
                         </div>
                     )}

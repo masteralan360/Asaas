@@ -1,4 +1,4 @@
-// Data Models for ERP System
+// Data Models for Asaas
 // All entities include sync metadata for offline-first architecture
 
 export type SyncStatus = 'pending' | 'synced' | 'conflict'

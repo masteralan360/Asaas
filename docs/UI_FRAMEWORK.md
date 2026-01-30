@@ -1,6 +1,6 @@
 # UI Framework & Internationalization
 
-The ERP System's frontend is a responsive, accessibility-conscious React application built for a global audience, with deep support for RTL (Right-to-Left) languages.
+Asaas's frontend is a responsive, accessibility-conscious React application built for a global audience, with deep support for RTL (Right-to-Left) languages.
 
 ## 🎨 UI Architecture
 

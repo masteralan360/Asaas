@@ -1,6 +1,6 @@
-# ERP System Documentation: High-Level Overview
+# Asaas Documentation: High-Level Overview
 
-This document provides a comprehensive A-to-Z overview of the ERP System, a modern, offline-first enterprise resource planning application.
+This document provides a comprehensive A-to-Z overview of Asaas, a modern, offline-first enterprise resource planning application.
 
 ## 🚀 Tech Stack
 - **Frontend**: React (with Vite)

@@ -1,6 +1,6 @@
 # Security, RLS & API Reference
 
-Security in the ERP System is enforced at both the application and database levels, ensuring data privacy in a multi-tenant environment.
+Security in Asaas is enforced at both the application and database levels, ensuring data privacy in a multi-tenant environment.
 
 ## 🛡 Security Architecture
 

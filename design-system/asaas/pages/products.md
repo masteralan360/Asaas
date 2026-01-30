@@ -1,6 +1,6 @@
 # Products Page Overrides
 
-> **PROJECT:** ERP System
+> **PROJECT:** Asaas
 > **Generated:** 2026-01-24 23:48:39
 > **Page Type:** Dashboard / Data View
 

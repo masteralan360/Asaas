@@ -248,8 +248,8 @@
         "deleteWarning": "حذف هذه الفاتورة سيزيل السجل المالي. سيبقى الطلب الأساسي."
     },
     "auth": {
-        "systemName": "Asas System",
-        "titleName": "Asas System ┃ نضام اساس",
+        "systemName": "Asaas System",
+        "titleName": "Asaas System ┃ نظام أساس",
         "systemSubtitle": "أساس تميز أعمالك",
         "login": "تسجيل الدخول",
         "register": "تسجيل جديد",
@@ -310,7 +310,7 @@
         "downloadMedia": "تحميل الوسائط",
         "updater": {
             "title": "تحديثات التطبيق",
-            "description": "تحقق من أحدث إصدار من نظام إدارة المخزون.",
+            "description": "تحقق من أحدث إصدار من أساس.",
             "status": "حالة التحديث",
             "checking": "جاري البحث عن التحديثات...",
             "available": "تم العثور على تحديث! جاري التحميل...",

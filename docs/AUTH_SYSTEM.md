@@ -1,6 +1,6 @@
 # Authentication & Multi-tenancy
 
-The ERP System uses a robust multi-tenant authentication model powered by **Supabase Auth** and logic-based **Workspaces**.
+Asaas uses a robust multi-tenant authentication model powered by **Supabase Auth** and logic-based **Workspaces**.
 
 ## 🔑 Core Concepts
 

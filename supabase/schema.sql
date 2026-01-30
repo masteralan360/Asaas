@@ -1,4 +1,4 @@
--- Supabase Schema for ERP System
+-- Supabase Schema for Asaas
 -- Run this in your Supabase SQL Editor
 
 -- Enable UUID extension

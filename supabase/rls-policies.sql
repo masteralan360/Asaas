@@ -1,4 +1,4 @@
--- Row Level Security (RLS) Policies for ERP System
+-- Row Level Security (RLS) Policies for Asaas
 -- Run this after schema.sql in your Supabase SQL Editor
 
 -- Enable RLS on all tables

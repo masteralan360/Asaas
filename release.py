@@ -1,5 +1,5 @@
 """
-IraqCore Release Helper
+Asaas Release Helper
 A simple GUI to automate version bumping and release tagging.
 Run with: python release.py
 """
@@ -75,7 +75,7 @@ def run_git_commands(version, commit_msg):
 class ReleaseApp:
     def __init__(self, root):
         self.root = root
-        root.title("IraqCore Release Helper")
+        root.title("Asaas Release Helper")
         root.geometry("400x450")
         root.resizable(False, False)
         
@@ -174,13 +174,13 @@ class ReleaseApp:
                     apk_path = p
                     break
             
-            output_apk = SCRIPT_DIR / "IraqCore.apk"
+            output_apk = SCRIPT_DIR / "Asaas.apk"
             
             if apk_path:
                 import shutil
                 shutil.copy2(apk_path, output_apk)
                 self.status_var.set("Ready")
-                return True, "APK built and renamed to IraqCore.apk"
+                return True, "APK built and renamed to Asaas.apk"
             else:
                 self.status_var.set("Failed")
                 return False, f"APK not found at {apk_path}"

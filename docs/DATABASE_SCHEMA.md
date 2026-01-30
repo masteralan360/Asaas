@@ -1,6 +1,6 @@
 # Database Schema Mapping
 
-The ERP System maintains a mirrored schema between the local **Dexie.js** (IndexedDB) and the remote **Supabase** (PostgreSQL).
+Asaas maintains a mirrored schema between the local **Dexie.js** (IndexedDB) and the remote **Supabase** (PostgreSQL).
 
 ## 📊 Core Entities
 

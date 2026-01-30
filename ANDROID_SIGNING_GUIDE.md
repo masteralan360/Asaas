@@ -1,4 +1,4 @@
-# Android Release Signing Configuration
+# Android Release Signing Configuration (Asaas)
 
 To automate APK signing on GitHub, add the following secrets to your repository.
 
