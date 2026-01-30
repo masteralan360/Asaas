@@ -295,6 +295,7 @@
     "settings": {
         "title": "الإعدادات",
         "subtitle": "إدارة إعدادات حسابك والتطبيق",
+        "downloadMedia": "تحميل الوسائط",
         "updater": {
             "title": "تحديثات التطبيق",
             "description": "تحقق من أحدث إصدار من نظام إدارة المخزون.",
@@ -612,25 +613,26 @@
         }
     },
     "revenue": {
-        "title": "صافي الإيرادات والأرباح",
-        "subtitle": "مراقبة أرباح عملك وهوامش الربح",
+        "title": "تحليلات الإيرادات",
+        "subtitle": "تتبع مبيعاتك وربحيتك",
         "grossRevenue": "إجمالي الإيرادات",
         "totalCost": "إجمالي التكلفة",
         "netProfit": "صافي الربح",
         "profitMargin": "هامش الربح",
-        "dailyProfit": "اتجاه الأرباح اليومي",
-        "listTitle": "تحليل أرباح المبيعات الأخيرة",
+        "detailedAnalysis": "تحليل مفصل للأداء والاتجاهات",
+        "trendTitle": "اتجاه الأداء",
+        "categorySplit": "توزيع الفئات",
+        "topPerforming": "المنتجات الأكثر مبيعاً",
+        "highestCost": "المنتجات الأعلى تكلفة",
+        "targetCurrency": "عملة العرض",
         "table": {
             "date": "التاريخ",
-            "origin": "المصدر",
-            "revenue": "الإيرادات",
+            "revenue": "الإيراد",
             "cost": "التكلفة",
             "profit": "الربح",
-            "margin": "الهامش"
-        },
-        "stats": {
-            "totalSales": "إجمالي المبيعات",
-            "avgOrderValue": "متوسط ربح البيع"
+            "margin": "الهامش",
+            "origin": "المصدر",
+            "cashier": "الكاشير"
         }
     },
     "performance": {

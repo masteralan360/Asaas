@@ -1,18 +1,24 @@
 import { createClient } from '@supabase/supabase-js'
 import { getAppSettingSync } from '@/local-db/settings'
-import { decrypt } from '@/lib/encryption'
+import { decrypt, encrypt } from '@/lib/encryption'
 
-const rawUrl = (getAppSettingSync('supabase_url') || '').trim()
-const rawKey = (getAppSettingSync('supabase_anon_key') || '').trim()
+// Custom storage adapter that encrypts everything in local storage
+const EncryptedStorage = {
+    getItem: (key: string): string | null => {
+        const value = localStorage.getItem(key)
+        if (!value) return null
+        return decrypt(value)
+    },
+    setItem: (key: string, value: string): void => {
+        localStorage.setItem(key, encrypt(value))
+    },
+    removeItem: (key: string): void => {
+        localStorage.removeItem(key)
+    }
+}
 
-console.log('[Supabase Config] Raw URL starts with:', rawUrl.substring(0, 10))
-console.log('[Supabase Config] Raw Key starts with:', rawKey.substring(0, 10))
-
-const supabaseUrl = decrypt(rawUrl).trim()
-const supabaseAnonKey = decrypt(rawKey).trim()
-
-console.log('[Supabase Config] Decrypted URL starts with:', supabaseUrl.substring(0, 10))
-console.log('[Supabase Config] Decrypted Key starts with:', supabaseAnonKey.substring(0, 10))
+const supabaseUrl = getAppSettingSync('supabase_url') || import.meta.env.VITE_SUPABASE_URL || ''
+const supabaseAnonKey = getAppSettingSync('supabase_anon_key') || import.meta.env.VITE_SUPABASE_ANON_KEY || ''
 
 // Check if Supabase is configured with valid values
 const isUrlValid = supabaseUrl && supabaseUrl.startsWith('https://') && !supabaseUrl.includes('your_supabase_url')
@@ -29,7 +35,8 @@ export const supabase = createClient(clientUrl, clientKey, {
     auth: {
         persistSession: true,
         autoRefreshToken: true,
-        detectSessionInUrl: true
+        detectSessionInUrl: true,
+        storage: EncryptedStorage
     }
 })
 // Database table types for Supabase

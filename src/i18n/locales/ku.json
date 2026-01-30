@@ -320,6 +320,7 @@
     "settings": {
         "title": "ڕێکخستنەکان",
         "subtitle": "بەڕێوەبردنی ڕێکخستنەکانی هەژمار و بەرنامە",
+        "downloadMedia": "داگرتنی وێنەکان",
         "updater": {
             "title": "ئەپدەیتکردنی بەرنامە",
             "description": "گەڕان بەدوای ئەپدەیتی نوێ",
@@ -598,25 +599,26 @@
         }
     },
     "revenue": {
-        "title": "داهات و قازانجی پوختە",
-        "subtitle": "چاودێری داهات و رێژەی قازانجی کارەکەت بکە",
+        "title": "شیکردنەوەی داهات",
+        "subtitle": "شوێنکەوتنی ئەدای فرۆشتن و قازانج",
         "grossRevenue": "کۆی داهات",
         "totalCost": "کۆی تێچوو",
-        "netProfit": "قازانجی پوختە",
+        "netProfit": "قازانجی سافی",
         "profitMargin": "ڕێژەی قازانج",
-        "dailyProfit": "ئاراستەی قازانجی ڕۆژانە",
-        "listTitle": "شیکردنەوەی قازانجی فرۆشتنە دوایینەکان",
+        "detailedAnalysis": "شیکردنەوەی وردی ئەدا و ئاڕاستەکان",
+        "trendTitle": "ئاڕاستەی ئەدا",
+        "categorySplit": "دابەشبوونی جۆرەکان",
+        "topPerforming": "باشترین بەرهەمەکان",
+        "highestCost": "گرانترین بەرهەمەکان",
+        "targetCurrency": "دراوی نیشاندان",
         "table": {
             "date": "بەروار",
-            "origin": "سەرچاوە",
             "revenue": "داهات",
             "cost": "تێچوو",
             "profit": "قازانج",
-            "margin": "ڕێژە"
-        },
-        "stats": {
-            "totalSales": "کۆی فرۆشتن",
-            "avgOrderValue": "تێکڕای قازانجی فرۆشتن"
+            "margin": "ڕێژە",
+            "origin": "سەرچاوە",
+            "cashier": "کاشێر"
         }
     },
     "performance": {

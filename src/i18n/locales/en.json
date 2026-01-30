@@ -322,6 +322,7 @@
     "settings": {
         "title": "Settings",
         "subtitle": "Manage your account and application settings",
+        "downloadMedia": "Download Media",
         "updater": {
             "title": "Application Updates",
             "description": "Check for the latest version of the ERP System.",
@@ -607,25 +608,26 @@
         }
     },
     "revenue": {
-        "title": "Net Revenue & Profit",
-        "subtitle": "Monitor your business earnings and margins",
+        "title": "Revenue Analytics",
+        "subtitle": "Track your sales performance and profitability",
         "grossRevenue": "Gross Revenue",
         "totalCost": "Total Cost (COGS)",
         "netProfit": "Net Profit",
         "profitMargin": "Profit Margin",
-        "dailyProfit": "Daily Profit Trend",
-        "listTitle": "Recent Sales Profit Analysis",
+        "detailedAnalysis": "Detailed performance analysis and trends",
+        "trendTitle": "Performance Trend",
+        "categorySplit": "Category Split",
+        "topPerforming": "Top Performing Products",
+        "highestCost": "Highest Cost Products",
+        "targetCurrency": "Display Currency",
         "table": {
             "date": "Date",
-            "origin": "Source",
             "revenue": "Revenue",
             "cost": "Cost",
             "profit": "Profit",
-            "margin": "Margin"
-        },
-        "stats": {
-            "totalSales": "Total Sales",
-            "avgOrderValue": "Avg. Sale Profit"
+            "margin": "Margin",
+            "origin": "Origin",
+            "cashier": "Cashier"
         }
     },
     "performance": {

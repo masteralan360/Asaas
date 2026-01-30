@@ -23,9 +23,11 @@ export interface SaleItem {
     product?: {
         name: string
         sku: string
+        category?: string
         can_be_returned: boolean
         return_rules?: string
     }
+    product_category?: string
 }
 
 export interface Sale {
@@ -53,6 +55,7 @@ export interface Sale {
     system_verified?: boolean
     system_review_status?: 'approved' | 'flagged' | 'inconsistent'
     system_review_reason?: string | null
+    has_partial_return?: boolean
 }
 
 export interface CartItem {

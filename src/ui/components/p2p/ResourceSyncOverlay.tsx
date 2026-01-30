@@ -7,7 +7,7 @@ import { ProgressWithLabel } from '../progress-with-label';
 
 export function ResourceSyncOverlay() {
     const [isVisible, setIsVisible] = useState(false);
-    const [stats, setStats] = useState({ total: 0, pending: 0 });
+    const [stats, setStats] = useState({ total: 0, pending: 0, progress: 0 });
 
     useEffect(() => {
         // Subscribe to sync status
@@ -15,7 +15,8 @@ export function ResourceSyncOverlay() {
             setIsVisible(!!status.isInitialSync);
             setStats({
                 total: status.totalPending || 0,
-                pending: status.totalPending || 0
+                pending: status.totalPending || 0,
+                progress: status.progress || 0
             });
         });
 
@@ -52,7 +53,7 @@ export function ResourceSyncOverlay() {
                     </p>
 
                     <ProgressWithLabel
-                        value={stats.total > 0 ? Math.round(((stats.total - stats.pending) / stats.total) * 100) : 0}
+                        value={stats.progress}
                         label="Sync Progress"
                         details={`${stats.total - stats.pending} of ${stats.total} files downloaded`}
                     />

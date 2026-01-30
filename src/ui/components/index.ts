@@ -13,6 +13,7 @@ export {
     DialogFooter,
     DialogTitle,
     DialogDescription,
+    ScrollIndicator
 } from './dialog'
 export {
     Select,
@@ -55,4 +56,5 @@ export { SaleDetailsModal } from './SaleDetailsModal'
 export { GlobalSearch } from './GlobalSearch'
 export { ExchangeRateIndicator, ExchangeRateList } from './ExchangeRateIndicator'
 export { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from './ui/tooltip'
+export { MetricDetailModal } from './MetricDetailModal'
 

@@ -5,18 +5,18 @@ const KEY = 'iraqcore-supabase-key';
 /**
  * Encrypts a string using AES
  */
-export const encrypt = (text: string): string => {
+export const encrypt = (text: string | null | undefined): string => {
     if (!text) return '';
     try {
+        const str = String(text).trim();
         // If it starts with this prefix, it's likely already encrypted.
-        // Returning as-is to prevent double-encryption.
-        if (text.startsWith('U2FsdGVkX1')) {
-            return text;
+        if (str.startsWith('U2FsdGVkX1')) {
+            return str;
         }
-        return CryptoJS.AES.encrypt(text, KEY).toString();
+        return CryptoJS.AES.encrypt(str, KEY).toString();
     } catch (error) {
         console.error('Encryption failed:', error);
-        return text;
+        return String(text || '');
     }
 };
 
@@ -24,28 +24,22 @@ export const encrypt = (text: string): string => {
  * Decrypts a string using AES. 
  * If decryption fails or the input is not encrypted, returns the original input.
  */
-export const decrypt = (ciphertext: string): string => {
+export const decrypt = (ciphertext: string | null | undefined): string => {
     if (!ciphertext) return '';
+    const str = String(ciphertext).trim();
     try {
-        console.log('[Encryption] Attempting to decrypt:', ciphertext.substring(0, 10) + '...');
         // Simple check to see if it looks like an AES encrypted string (starts with U2FsdGVkX1)
-        if (!ciphertext.startsWith('U2FsdGVkX1')) {
-            console.log('[Encryption] Not an encrypted string, returning as-is.');
-            return ciphertext;
+        if (!str.startsWith('U2FsdGVkX1')) {
+            return str;
         }
 
-        const bytes = CryptoJS.AES.decrypt(ciphertext, KEY);
+        const bytes = CryptoJS.AES.decrypt(str, KEY);
         const originalText = bytes.toString(CryptoJS.enc.Utf8);
 
-        if (!originalText) {
-            console.warn('[Encryption] Decryption resulted in empty string, may be wrong key or corrupted data.');
-            return ciphertext;
-        }
-
-        console.log('[Encryption] Decryption successful.');
-        return originalText;
+        // If decryption result is empty, it might have failed or input was invalid
+        return originalText || str;
     } catch (error) {
-        console.error('[Encryption] Decryption error:', error);
-        return ciphertext;
+        // Fallback to original string if decryption fails
+        return str;
     }
 };

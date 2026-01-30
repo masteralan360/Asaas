@@ -183,7 +183,7 @@ export function TeamPerformance() {
         sales.forEach(sale => {
             // Skip returned sales from performance calculations
             if (sale.is_returned) return
-            
+
             const cashierId = sale.cashier_id
             if (!perfMap[cashierId]) return
 
@@ -194,18 +194,36 @@ export function TeamPerformance() {
             statsByCurrency[currency] = (statsByCurrency[currency] || 0) + sale.total_amount
             perfMap[cashierId].revenueByCurrency[currency] = (perfMap[cashierId].revenueByCurrency[currency] || 0) + sale.total_amount
 
-            // Calculate revenue in USD for comparison
-            // Assuming settlement_currency and total_amount are available
-            let revenueInUsd = sale.total_amount
-            if (sale.settlement_currency !== 'usd' && sale.exchange_rate) {
-                revenueInUsd = sale.total_amount / (sale.exchange_rate / 100)
+            // Project revenue into DEFAULT CURRENCY for the trend chart
+            const defaultCurrency = features.default_currency || 'usd'
+            let revenueInDefault = sale.total_amount
+
+            if (currency !== defaultCurrency) {
+                if (defaultCurrency === 'iqd' && currency === 'usd' && sale.exchange_rate) {
+                    revenueInDefault = sale.total_amount * (sale.exchange_rate / 100)
+                } else if (defaultCurrency === 'usd' && currency === 'iqd' && sale.exchange_rate) {
+                    revenueInDefault = sale.total_amount / (sale.exchange_rate / 100)
+                } else {
+                    // Basic fallback for other conversions if rate is available, 
+                    // though system primarily handles USD/IQD for now
+                    let revenueInUsd = sale.total_amount
+                    if (currency !== 'usd' && sale.exchange_rate) {
+                        revenueInUsd = sale.total_amount / (sale.exchange_rate / 100)
+                    }
+
+                    if (defaultCurrency === 'usd') {
+                        revenueInDefault = revenueInUsd
+                    } else if (defaultCurrency === 'iqd' && sale.exchange_rate) {
+                        revenueInDefault = revenueInUsd * (sale.exchange_rate / 100)
+                    }
+                }
             }
 
-            perfMap[cashierId].totalRevenue += revenueInUsd
+            perfMap[cashierId].totalRevenue += revenueInDefault
 
-            // Track daily for trend
+            // Track daily for trend in default currency
             const date = new Date(sale.created_at).toISOString().split('T')[0]
-            perfMap[cashierId].dailySales[date] = (perfMap[cashierId].dailySales[date] || 0) + revenueInUsd
+            perfMap[cashierId].dailySales[date] = (perfMap[cashierId].dailySales[date] || 0) + revenueInDefault
         })
 
         // Finalize progress
@@ -590,7 +608,7 @@ export function TeamPerformance() {
                                 axisLine={false}
                                 tickLine={false}
                                 tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
-                                tickFormatter={(val) => `$${val}`}
+                                tickFormatter={(val) => formatCurrency(val, features.default_currency, features.iqd_display_preference)}
                             />
                             <Tooltip
                                 contentStyle={{
@@ -598,6 +616,10 @@ export function TeamPerformance() {
                                     borderColor: 'hsl(var(--border))',
                                     borderRadius: '8px'
                                 }}
+                                formatter={(value: number) => [
+                                    formatCurrency(value, features.default_currency, features.iqd_display_preference),
+                                    t('performance.table.totalRevenue') || 'Revenue'
+                                ]}
                             />
                             <Legend />
                             {performanceData.map((p, index) => (

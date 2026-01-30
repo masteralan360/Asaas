@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/auth'
 import { supabase } from '@/auth/supabase'
@@ -22,14 +22,18 @@ import {
     TooltipTrigger,
     TooltipContent,
     TooltipProvider,
-    SaleDetailsModal
+    SaleDetailsModal,
+    MetricDetailModal
 } from '@/ui/components'
+import type { MetricType } from '@/ui/components/MetricDetailModal'
 import {
     TrendingUp,
     DollarSign,
-    BarChart3,
     Loader2,
-    Info
+    Info,
+    ArrowRight,
+    Package,
+    Percent
 } from 'lucide-react'
 
 export function Revenue() {
@@ -39,6 +43,13 @@ export function Revenue() {
     const [sales, setSales] = useState<Sale[]>([])
     const [isLoading, setIsLoading] = useState(true)
     const [selectedSale, setSelectedSale] = useState<Sale | null>(null)
+    const [selectedMetric, setSelectedMetric] = useState<MetricType | null>(null)
+    const [isMetricModalOpen, setIsMetricModalOpen] = useState(false)
+
+    const openMetricModal = (type: MetricType) => {
+        setSelectedMetric(type)
+        setIsMetricModalOpen(true)
+    }
 
     const fetchSales = async () => {
         setIsLoading(true)
@@ -49,7 +60,7 @@ export function Revenue() {
                     *,
                     items:sale_items(
                         *,
-                        product:product_id(name, sku)
+                        product:product_id(name, sku, category, cost_price)
                     )
                 `)
                 .order('created_at', { ascending: false })
@@ -67,20 +78,22 @@ export function Revenue() {
                     .in('id', cashierIds)
 
                 if (profiles) {
-                    profilesMap = profiles.reduce((acc: any, curr: any) => ({
+                    profilesMap = profiles.reduce((acc: Record<string, string>, curr: { id: string, name: string }) => ({
                         ...acc,
                         [curr.id]: curr.name
                     }), {})
                 }
             }
 
-            const formattedSales = (data || []).map((sale: any) => ({
+
+            const formattedSales: Sale[] = (data || []).map((sale: any) => ({
                 ...sale,
-                cashier_name: profilesMap[sale.cashier_id] || 'Staff',
+                cashier_name: profilesMap[sale.cashier_id || ''] || 'Staff',
                 items: sale.items?.map((item: any) => ({
                     ...item,
                     product_name: item.product?.name || 'Unknown Product',
-                    product_sku: item.product?.sku || ''
+                    product_sku: item.product?.sku || '',
+                    product_category: item.product?.category || 'Uncategorized'
                 }))
             }))
 
@@ -98,41 +111,86 @@ export function Revenue() {
         }
     }, [user?.workspaceId])
 
-    // Calculations
-    const calculateStats = () => {
-        const statsByCurrency: Record<string, { revenue: number, cost: number, salesCount: number }> = {}
-        const saleStats: any[] = []
+    const calculateStats = (salesData: Sale[], defaultCurrency: string) => {
+        const statsByCurrency: Record<string, {
+            revenue: number,
+            cost: number,
+            salesCount: number,
+            dailyTrend: Record<string, { revenue: number, cost: number, profit: number }>,
+            categoryRevenue: Record<string, number>,
+            productPerformance: Record<string, { name: string, revenue: number, cost: number, quantity: number }>
+        }> = {}
+        const saleStats: {
+            id: string,
+            date: string,
+            revenue: number,
+            cost: number,
+            profit: number,
+            margin: number,
+            currency: string,
+            origin: string,
+            cashier: string,
+            hasPartialReturn?: boolean
+        }[] = []
 
-        sales.forEach(sale => {
-            // Skip returned sales from revenue calculations
+        salesData.forEach(sale => {
             if (sale.is_returned) return
 
-            const currency = sale.settlement_currency || 'usd'
+            const currency = sale.settlement_currency || defaultCurrency
             if (!statsByCurrency[currency]) {
-                statsByCurrency[currency] = { revenue: 0, cost: 0, salesCount: 0 }
+                statsByCurrency[currency] = {
+                    revenue: 0,
+                    cost: 0,
+                    salesCount: 0,
+                    dailyTrend: {},
+                    categoryRevenue: {},
+                    productPerformance: {}
+                }
             }
             statsByCurrency[currency].salesCount++
 
             let saleRevenue = 0
             let saleCost = 0
+            const date = new Date(sale.created_at).toISOString().split('T')[0]
+
+            if (!statsByCurrency[currency].dailyTrend[date]) {
+                statsByCurrency[currency].dailyTrend[date] = { revenue: 0, cost: 0, profit: 0 }
+            }
 
             sale.items?.forEach((item: SaleItem) => {
-                // Effective quantity for this item
                 const netQuantity = item.quantity - (item.returned_quantity || 0)
-
-                // If the item is fully returned, skip it
                 if (netQuantity <= 0) return
 
-                // Use the values already converted to settlement currency or the original ones if same
                 const itemRevenue = item.converted_unit_price * netQuantity
                 const itemCost = (item.converted_cost_price || 0) * netQuantity
 
                 saleRevenue += itemRevenue
                 saleCost += itemCost
+
+                // Category tracking
+                const cat = item.product_category || 'Uncategorized'
+                statsByCurrency[currency].categoryRevenue[cat] = (statsByCurrency[currency].categoryRevenue[cat] || 0) + itemRevenue
+
+                // Product performance tracking
+                const prodId = item.product_id
+                if (!statsByCurrency[currency].productPerformance[prodId]) {
+                    statsByCurrency[currency].productPerformance[prodId] = {
+                        name: item.product_name || 'Unknown Product',
+                        revenue: 0,
+                        cost: 0,
+                        quantity: 0
+                    }
+                }
+                statsByCurrency[currency].productPerformance[prodId].revenue += itemRevenue
+                statsByCurrency[currency].productPerformance[prodId].cost += itemCost
+                statsByCurrency[currency].productPerformance[prodId].quantity += netQuantity
             })
 
             statsByCurrency[currency].revenue += saleRevenue
             statsByCurrency[currency].cost += saleCost
+            statsByCurrency[currency].dailyTrend[date].revenue += saleRevenue
+            statsByCurrency[currency].dailyTrend[date].cost += saleCost
+            statsByCurrency[currency].dailyTrend[date].profit += (saleRevenue - saleCost)
 
             saleStats.push({
                 id: sale.id,
@@ -144,7 +202,7 @@ export function Revenue() {
                 currency: currency,
                 origin: sale.origin,
                 cashier: sale.cashier_name || 'Staff',
-                hasPartialReturn: sale.items?.some(item => (item.returned_quantity || 0) > 0 && !item.is_returned)
+                hasPartialReturn: sale.has_partial_return
             })
         })
 
@@ -154,7 +212,25 @@ export function Revenue() {
         }
     }
 
-    const stats = calculateStats()
+    const stats = useMemo(() => {
+        if (!sales) return { statsByCurrency: {}, saleStats: [] }
+        const { statsByCurrency, saleStats } = calculateStats(sales, features.default_currency || 'usd')
+        return { statsByCurrency, saleStats }
+    }, [sales, features.default_currency])
+
+    const currencySettings = useMemo(() => ({
+        currency: Object.keys(stats.statsByCurrency)[0] || features.default_currency || 'usd',
+        iqdPreference: features.iqd_display_preference
+    }), [stats.statsByCurrency, features.default_currency, features.iqd_display_preference])
+
+    const primaryStats = useMemo(() => stats.statsByCurrency[currencySettings.currency] || {
+        revenue: 0,
+        cost: 0,
+        salesCount: 0,
+        dailyTrend: {},
+        categoryRevenue: {},
+        productPerformance: {}
+    }, [stats.statsByCurrency, currencySettings.currency])
 
     if (isLoading) {
         return (
@@ -175,80 +251,104 @@ export function Revenue() {
                     <p className="text-muted-foreground">{t('revenue.subtitle')}</p>
                 </div>
 
-                {/* KPI Cards */}
+                {/* KPI Cards Section */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                    <Card className="bg-primary/5 border-primary/20">
+                    {/* Gross Revenue */}
+                    <Card
+                        className="bg-blue-500/5 dark:bg-blue-500/10 border-blue-500/20 cursor-pointer hover:scale-[1.02] transition-all hover:bg-blue-500/10 hover:shadow-[0_0_20px_-5px_rgba(59,130,246,0.3)] active:scale-95 group relative overflow-hidden rounded-3xl"
+                        onClick={() => openMetricModal('grossRevenue')}
+                    >
+                        <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <ArrowRight className="w-4 h-4 text-blue-500" />
+                        </div>
                         <CardHeader className="pb-2">
-                            <CardTitle className="text-sm font-medium text-primary flex items-center gap-2">
+                            <CardTitle className="text-sm font-black text-blue-600 dark:text-blue-400 flex items-center gap-2 uppercase tracking-widest">
                                 <DollarSign className="w-4 h-4" />
                                 {t('revenue.grossRevenue')}
                             </CardTitle>
                         </CardHeader>
-                        <CardContent className="space-y-2">
-                            {Object.entries(stats.statsByCurrency).map(([curr, data]) => (
-                                <div key={curr}>
-                                    <div className="text-2xl font-bold">{formatCurrency(data.revenue, curr, features.iqd_display_preference)}</div>
-                                </div>
-                            ))}
-                            {Object.keys(stats.statsByCurrency).length === 0 && <div className="text-2xl font-bold">{formatCurrency(0, 'usd')}</div>}
+                        <CardContent>
+                            <div className="text-2xl font-black tracking-tighter tabular-nums text-blue-700 dark:text-blue-300">
+                                {formatCurrency(primaryStats.revenue, currencySettings.currency, currencySettings.iqdPreference)}
+                            </div>
+                            <p className="text-[10px] font-bold text-blue-600/60 dark:text-blue-400/60 uppercase tracking-wider mt-1">
+                                {primaryStats.salesCount} {t('pos.totalItems')}
+                            </p>
                         </CardContent>
                     </Card>
 
-                    <Card className="bg-orange-500/5 border-orange-500/20">
+                    {/* Total Cost */}
+                    <Card
+                        className="bg-orange-500/5 dark:bg-orange-500/10 border-orange-500/20 cursor-pointer hover:scale-[1.02] transition-all hover:bg-orange-500/10 hover:shadow-[0_0_20px_-5px_rgba(249,115,22,0.3)] active:scale-95 group relative overflow-hidden rounded-3xl"
+                        onClick={() => openMetricModal('totalCost')}
+                    >
+                        <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <ArrowRight className="w-4 h-4 text-orange-500" />
+                        </div>
                         <CardHeader className="pb-2">
-                            <CardTitle className="text-sm font-medium text-orange-600 flex items-center gap-2">
-                                <BarChart3 className="w-4 h-4" />
+                            <CardTitle className="text-sm font-black text-orange-600 dark:text-orange-400 flex items-center gap-2 uppercase tracking-widest">
+                                <Package className="w-4 h-4" />
                                 {t('revenue.totalCost')}
                             </CardTitle>
                         </CardHeader>
-                        <CardContent className="space-y-2">
-                            {Object.entries(stats.statsByCurrency).map(([curr, data]) => (
-                                <div key={curr}>
-                                    <div className="text-2xl font-bold">{formatCurrency(data.cost, curr, features.iqd_display_preference)}</div>
-                                </div>
-                            ))}
-                            {Object.keys(stats.statsByCurrency).length === 0 && <div className="text-2xl font-bold">{formatCurrency(0, 'usd')}</div>}
+                        <CardContent>
+                            <div className="text-2xl font-black tracking-tighter tabular-nums text-orange-700 dark:text-orange-300">
+                                {formatCurrency(primaryStats.cost, currencySettings.currency, currencySettings.iqdPreference)}
+                            </div>
+                            <p className="text-[10px] font-bold text-orange-600/60 dark:text-orange-400/60 uppercase tracking-wider mt-1">
+                                {((primaryStats.cost / (primaryStats.revenue || 1)) * 100).toFixed(1)}% {t('revenue.table.cost')}
+                            </p>
                         </CardContent>
                     </Card>
 
-                    <Card className="bg-emerald-500/5 border-emerald-500/20">
+                    {/* Net Profit */}
+                    <Card
+                        className="bg-emerald-500/5 dark:bg-emerald-500/10 border-emerald-500/20 cursor-pointer hover:scale-[1.02] transition-all hover:bg-emerald-500/10 hover:shadow-[0_0_20px_-5px_rgba(16,185,129,0.3)] active:scale-95 group relative overflow-hidden rounded-3xl"
+                        onClick={() => openMetricModal('netProfit')}
+                    >
+                        <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <ArrowRight className="w-4 h-4 text-emerald-500" />
+                        </div>
                         <CardHeader className="pb-2">
-                            <CardTitle className="text-sm font-medium text-emerald-600 flex items-center gap-2">
+                            <CardTitle className="text-sm font-black text-emerald-600 dark:text-emerald-400 flex items-center gap-2 uppercase tracking-widest">
                                 <TrendingUp className="w-4 h-4" />
                                 {t('revenue.netProfit')}
                             </CardTitle>
                         </CardHeader>
-                        <CardContent className="space-y-2">
-                            {Object.entries(stats.statsByCurrency).map(([curr, data]) => (
-                                <div key={curr}>
-                                    <div className="text-2xl font-bold text-emerald-600">
-                                        {formatCurrency(data.revenue - data.cost, curr, features.iqd_display_preference)}
-                                    </div>
-                                </div>
-                            ))}
-                            {Object.keys(stats.statsByCurrency).length === 0 && <div className="text-2xl font-bold text-emerald-600">{formatCurrency(0, 'usd')}</div>}
+                        <CardContent>
+                            <div className="text-2xl font-black tracking-tighter tabular-nums text-emerald-700 dark:text-emerald-300">
+                                {formatCurrency(primaryStats.revenue - primaryStats.cost, currencySettings.currency, currencySettings.iqdPreference)}
+                            </div>
+                            <p className="text-[10px] font-bold text-emerald-600/60 dark:text-emerald-400/60 uppercase tracking-wider mt-1">
+                                {t('revenue.detailedAnalysis')}
+                            </p>
                         </CardContent>
                     </Card>
 
-                    <Card className="bg-purple-500/5 border-purple-500/20">
+                    {/* Profit Margin */}
+                    <Card
+                        className="bg-purple-500/5 dark:bg-purple-500/10 border-purple-500/20 cursor-pointer hover:scale-[1.02] transition-all hover:bg-purple-500/10 hover:shadow-[0_0_20px_-5px_rgba(139,92,246,0.3)] active:scale-95 group relative overflow-hidden rounded-3xl"
+                        onClick={() => openMetricModal('profitMargin')}
+                    >
+                        <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <ArrowRight className="w-4 h-4 text-purple-500" />
+                        </div>
                         <CardHeader className="pb-2">
-                            <CardTitle className="text-sm font-medium text-purple-600 flex items-center gap-2">
-                                <TrendingUp className="w-4 h-4" />
+                            <CardTitle className="text-sm font-black text-purple-600 dark:text-purple-400 flex items-center gap-2 uppercase tracking-widest">
+                                <Percent className="w-4 h-4" />
                                 {t('revenue.profitMargin')}
                             </CardTitle>
                         </CardHeader>
-                        <CardContent className="space-y-2">
-                            {Object.entries(stats.statsByCurrency).map(([curr, data]) => {
-                                const margin = data.revenue > 0 ? ((data.revenue - data.cost) / data.revenue) * 100 : 0
-                                return (
-                                    <div key={curr}>
-                                        <div className="text-2xl font-bold text-purple-600">
-                                            {margin.toFixed(1)}% <span className="text-xs uppercase opacity-60">({curr})</span>
-                                        </div>
-                                    </div>
-                                )
-                            })}
-                            {Object.keys(stats.statsByCurrency).length === 0 && <div className="text-2xl font-bold text-purple-600">0.0%</div>}
+                        <CardContent>
+                            <div className="text-2xl font-black tracking-tighter tabular-nums text-purple-700 dark:text-purple-300">
+                                {((primaryStats.revenue - primaryStats.cost) / (primaryStats.revenue || 1) * 100).toFixed(1)}%
+                            </div>
+                            <div className="w-full bg-purple-500/10 rounded-full h-1.5 mt-2">
+                                <div
+                                    className="bg-purple-500 h-1.5 rounded-full transition-all duration-1000"
+                                    style={{ width: `${Math.min(((primaryStats.revenue - primaryStats.cost) / (primaryStats.revenue || 1)) * 100, 100)}%` }}
+                                />
+                            </div>
                         </CardContent>
                     </Card>
                 </div>
@@ -423,6 +523,16 @@ export function Revenue() {
                     isOpen={!!selectedSale}
                     onClose={() => setSelectedSale(null)}
                     sale={selectedSale}
+                />
+
+                {/* Metric Analytics Deep-Dive Modal */}
+                <MetricDetailModal
+                    isOpen={isMetricModalOpen}
+                    onClose={() => setIsMetricModalOpen(false)}
+                    metricType={selectedMetric}
+                    currency={Object.keys(stats.statsByCurrency)[0] || features.default_currency || 'usd'}
+                    iqdPreference={features.iqd_display_preference}
+                    data={selectedMetric ? (stats.statsByCurrency[Object.keys(stats.statsByCurrency)[0] || 'usd'] || null) : null}
                 />
             </div>
         </TooltipProvider>

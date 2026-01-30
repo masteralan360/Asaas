@@ -47,6 +47,7 @@ export function Settings() {
     const [isSyncMediaModalOpen, setIsSyncMediaModalOpen] = useState(false)
     const [expiryHours, setExpiryHours] = useState(24)
     const [mediaSyncProgress, setMediaSyncProgress] = useState<{ total: number, current: number, fileName: string } | null>(null)
+    const [localMediaCount, setLocalMediaCount] = useState<number | null>(null)
 
     const activeSupabaseUrl = customUrl || import.meta.env.VITE_SUPABASE_URL || ''
     const activeSupabaseKey = customKey || import.meta.env.VITE_SUPABASE_ANON_KEY || ''
@@ -191,6 +192,24 @@ export function Settings() {
             await setAppSetting('supabase_url', '')
             await setAppSetting('supabase_anon_key', '')
             window.location.reload()
+        }
+    }
+
+    const handleOpenSyncMediaModal = async () => {
+        if (!user) return
+        setIsSyncMediaModalOpen(true)
+
+        // Calculate count
+        try {
+            const products = await db.products.where('workspaceId').equals(user.workspaceId).and(p => !p.isDeleted).toArray()
+            const productImages = products.filter(p => p.imageUrl && !p.imageUrl.startsWith('http'))
+            let count = productImages.length
+            if (features.logo_url && !features.logo_url.startsWith('http')) {
+                count++
+            }
+            setLocalMediaCount(count)
+        } catch (e) {
+            console.error('Failed to count media:', e)
         }
     }
 
@@ -642,8 +661,8 @@ export function Settings() {
                         </Card>
                     )}
 
-                    {/* Sync Status (Admin Only) */}
-                    {user?.role === 'admin' && (
+                    {/* Sync Status (Admin & Staff Only) */}
+                    {(user?.role === 'admin' || user?.role === 'staff') && (
                         <Card>
                             <CardHeader>
                                 <CardTitle className="flex items-center gap-2">
@@ -690,17 +709,30 @@ export function Settings() {
                                         {isSyncing ? t('settings.syncing') : t('settings.syncNow')}
                                     </Button>
                                     {isElectron && (
-                                        <Button
-                                            variant="outline"
-                                            onClick={() => setIsSyncMediaModalOpen(true)}
-                                            disabled={!isOnline || !isSupabaseConfigured || mediaSyncProgress !== null}
-                                            className="gap-2"
-                                        >
-                                            <ImageIcon className={cn("w-4 h-4", mediaSyncProgress && "animate-pulse")} />
-                                            {mediaSyncProgress
-                                                ? `${t('settings.syncingMedia') || 'Syncing...'} (${mediaSyncProgress.current}/${mediaSyncProgress.total})`
-                                                : t('settings.syncMedia') || 'Sync Media'}
-                                        </Button>
+                                        <>
+                                            <Button
+                                                variant="outline"
+                                                onClick={handleOpenSyncMediaModal}
+                                                disabled={!isOnline || !isSupabaseConfigured || mediaSyncProgress !== null}
+                                                className="gap-2"
+                                            >
+                                                <ImageIcon className={cn("w-4 h-4", mediaSyncProgress && "animate-pulse")} />
+                                                {mediaSyncProgress
+                                                    ? `${t('settings.syncingMedia') || 'Syncing...'} (${mediaSyncProgress.current}/${mediaSyncProgress.total})`
+                                                    : t('settings.syncMedia') || 'Upload Media'}
+                                            </Button>
+
+                                            <Button
+                                                variant="secondary"
+                                                onClick={() => p2pSyncManager.triggerManualDownloadCheck()}
+                                                disabled={!isOnline || !isSupabaseConfigured}
+                                                className="gap-2"
+                                                title="Check for new media from other devices"
+                                            >
+                                                <Download className="w-4 h-4" />
+                                                {t('settings.downloadMedia') || 'Download Media'}
+                                            </Button>
+                                        </>
                                     )}
                                     {pendingCount > 0 && (
                                         <Button variant="outline" onClick={handleClearSyncQueue}>
@@ -721,7 +753,9 @@ export function Settings() {
                                     {t('settings.syncMediaModal.title') || 'Sync All Media'}
                                 </DialogTitle>
                                 <DialogDescription>
-                                    {t('settings.syncMediaModal.desc') || 'This will upload all local product images and the workspace logo to the cloud so they can be synced to other devices in your workspace.'}
+                                    {localMediaCount !== null
+                                        ? `${t('settings.syncMediaModal.countDesc', { count: localMediaCount }) || `Found ${localMediaCount} local files ready to sync.`} ${t('settings.syncMediaModal.desc') || 'This will upload all local product images and the workspace logo to the cloud.'}`
+                                        : t('settings.syncMediaModal.desc') || 'This will upload all local product images and the workspace logo to the cloud so they can be synced to other devices in your workspace.'}
                                 </DialogDescription>
                             </DialogHeader>
 

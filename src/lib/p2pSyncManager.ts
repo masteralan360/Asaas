@@ -30,6 +30,7 @@ export interface SyncProgress {
     totalPending?: number;
     error?: string;
     isInitialSync?: boolean;
+    cooldownRemaining?: number; // Seconds remaining in cooldown
 }
 
 type SyncEventListener = (progress: SyncProgress) => void;
@@ -46,8 +47,39 @@ class P2PSyncManager {
     private downloadQueue: SyncQueueItem[] = [];
     private isProcessingQueue = false;
     private isInitialSync = false;
+    private initialBatchTotal = 0;
+    private lastCheckTime = 0;
+    private cooldownInterval: any = null;
 
-    private constructor() { }
+    private constructor() {
+        // Load last check time from storage to survive refreshes
+        try {
+            const stored = localStorage.getItem('p2p_last_sync_check');
+            if (stored) {
+                const parsed = parseInt(stored, 10);
+                if (!isNaN(parsed)) {
+                    this.lastCheckTime = parsed;
+                    console.log('[P2PSync] Loaded lastCheckTime from storage:', new Date(this.lastCheckTime).toLocaleTimeString());
+                }
+            }
+        } catch (e) {
+            console.warn('[P2PSync] Could not load lastCheckTime:', e);
+        }
+
+        // Initialize cooldown timer if we are still within the window
+        const now = Date.now();
+        const diff = now - this.lastCheckTime;
+        if (diff < 10000) {
+            // Delay emit slightly to allow UI listeners to register
+            setTimeout(() => {
+                const remaining = Math.ceil((10000 - diff) / 1000);
+                if (remaining > 0) {
+                    console.log('[P2PSync] Initializing with cooldown:', remaining, 's');
+                    this.startCooldownTimer(remaining);
+                }
+            }, 1000); // 1s delay is safer for React mount
+        }
+    }
 
     static getInstance(): P2PSyncManager {
         if (!P2PSyncManager.instance) {
@@ -68,9 +100,8 @@ class P2PSyncManager {
         this.workspaceId = workspaceId;
         this.sessionId = sessionId;
         this.isInitialized = true;
-        this.isInitialSync = true;
-        this.emitProgress({ status: 'idle', isInitialSync: true });
 
+        // Don't set isInitialSync=true yet, wait until we know if there are actually files to download
         console.log('[P2PSync] Initializing for user:', userId, 'workspace:', workspaceId);
 
         // Subscribe to realtime changes
@@ -110,12 +141,14 @@ class P2PSyncManager {
     }
 
     private emitProgress(progress: SyncProgress) {
-        // Merge with existing state to persist flags like isInitialSync
+        // Merge with existing state
         this.currentProgress = {
             ...this.currentProgress,
             ...progress,
-            isInitialSync: this.isInitialSync // Always reflect current flag
         };
+        // Always ensure isInitialSync flag is synchronized from internal state
+        this.currentProgress.isInitialSync = this.isInitialSync;
+
         this.listeners.forEach(listener => listener(this.currentProgress));
     }
 
@@ -135,6 +168,24 @@ class P2PSyncManager {
     private async checkPendingDownloads() {
         if (!this.userId || !this.workspaceId) return;
 
+        const now = Date.now();
+        const diff = now - this.lastCheckTime;
+
+        console.log(`[P2PSync] Download Check: Diff=${diff}ms, Last=${this.lastCheckTime}`);
+
+        if (diff < 10000) {
+            console.log('[P2PSync] On cooldown. Skipping check.');
+            this.startCooldownTimer(Math.ceil((10000 - diff) / 1000));
+            return;
+        }
+
+        this.lastCheckTime = now;
+        localStorage.setItem('p2p_last_sync_check', String(now));
+
+        // Start cooldown timer visually immediately
+        this.startCooldownTimer(10);
+
+        console.log('[P2PSync] Checking for pending resources...');
         try {
             // Fetch files not synced by this session
             const { data, error } = await supabase
@@ -153,14 +204,15 @@ class P2PSyncManager {
 
             if (pending.length > 0) {
                 console.log('[P2PSync] Found pending downloads:', pending.length);
+                this.isInitialSync = true; // NOW we show the overlay
+                this.initialBatchTotal = pending.length;
                 this.downloadQueue.push(...pending);
                 this.processDownloadQueue();
             } else {
-                // If no pending items, initial sync is done
-                if (this.isInitialSync) {
-                    this.isInitialSync = false;
-                    this.emitProgress({ status: 'idle', isInitialSync: false });
-                }
+                // If no pending items, initial sync is done/not needed
+                this.isInitialSync = false;
+                this.initialBatchTotal = 0;
+                this.emitProgress({ status: 'idle', isInitialSync: false });
             }
         } catch (e) {
             console.error('[P2PSync] Error in checkPendingDownloads:', e);
@@ -181,7 +233,10 @@ class P2PSyncManager {
         this.isProcessingQueue = true;
         this.emitProgress({
             status: 'downloading',
-            totalPending: this.downloadQueue.length
+            totalPending: this.downloadQueue.length,
+            progress: this.initialBatchTotal > 0
+                ? Math.round(((this.initialBatchTotal - this.downloadQueue.length) / this.initialBatchTotal) * 100)
+                : 100
         });
 
         while (this.downloadQueue.length > 0) {
@@ -197,12 +252,11 @@ class P2PSyncManager {
 
         this.isProcessingQueue = false;
 
-        // If queue is empty and we were in initial sync, mark it detailed
-        if (this.isInitialSync) {
-            this.isInitialSync = false;
-        }
+        // Reset flags
+        this.isInitialSync = false;
+        this.initialBatchTotal = 0;
 
-        this.emitProgress({ status: 'idle', isInitialSync: false });
+        this.emitProgress({ status: 'idle', isInitialSync: false, totalPending: 0, progress: 100 });
     }
 
     /**
@@ -214,7 +268,10 @@ class P2PSyncManager {
         this.emitProgress({
             status: 'downloading',
             currentFile: item.file_name,
-            totalPending: this.downloadQueue.length
+            totalPending: this.downloadQueue.length,
+            progress: this.initialBatchTotal > 0
+                ? Math.round(((this.initialBatchTotal - this.downloadQueue.length) / this.initialBatchTotal) * 100)
+                : 0
         });
 
         console.log('[P2PSync] Downloading:', item.file_name);
@@ -435,12 +492,37 @@ class P2PSyncManager {
 
 
     /**
+     * Start a countdown timer for the cooldown UI
+     */
+    private startCooldownTimer(seconds: number) {
+        if (this.cooldownInterval) clearInterval(this.cooldownInterval);
+
+        let remaining = seconds;
+        this.emitProgress({ status: this.currentProgress.status, cooldownRemaining: remaining });
+
+        this.cooldownInterval = setInterval(() => {
+            remaining--;
+            if (remaining <= 0) {
+                clearInterval(this.cooldownInterval);
+                this.cooldownInterval = null;
+                this.emitProgress({ status: this.currentProgress.status, cooldownRemaining: 0 });
+            } else {
+                this.emitProgress({ status: this.currentProgress.status, cooldownRemaining: remaining });
+            }
+        }, 1000);
+    }
+
+    /**
      * Cleanup on logout/unmount
      */
     async destroy(): Promise<void> {
         if (this.channel) {
             await this.channel.unsubscribe();
             this.channel = null;
+        }
+        if (this.cooldownInterval) {
+            clearInterval(this.cooldownInterval);
+            this.cooldownInterval = null;
         }
         this.isInitialized = false;
         this.userId = null;
@@ -449,6 +531,14 @@ class P2PSyncManager {
         this.downloadQueue = [];
         this.listeners.clear();
         console.log('[P2PSync] Destroyed');
+    }
+
+    /**
+     * Public method to manually trigger a download check
+     * Useful for "Download Media" button in UI
+     */
+    public triggerManualDownloadCheck() {
+        return this.checkPendingDownloads();
     }
 
     /**

@@ -17,8 +17,10 @@ export function P2PSyncStatus() {
         return () => unsubscribe();
     }, []);
 
-    // Don't render if idle
-    if (progress.status === 'idle') {
+    const isOnCooldown = (progress.cooldownRemaining || 0) > 0;
+
+    // Don't render if idle and not on cooldown
+    if (progress.status === 'idle' && !isOnCooldown) {
         return null;
     }
 
@@ -37,12 +39,15 @@ export function P2PSyncStatus() {
             case 'error':
                 return <AlertCircle className="w-4 h-4" />;
             default:
-                return <Cloud className="w-4 h-4" />;
+                return isOnCooldown ? <Cloud className="w-4 h-4 text-emerald-500" /> : <Cloud className="w-4 h-4" />;
         }
     };
 
     const getMessage = () => {
         const fileName = formatFileName(progress.currentFile);
+        if (isOnCooldown && progress.status === 'idle') {
+            return `Refreshed. Cooldown: ${progress.cooldownRemaining}s`;
+        }
         switch (progress.status) {
             case 'uploading':
                 return `Uploading ${fileName || 'file'}...`;
@@ -64,11 +69,15 @@ export function P2PSyncStatus() {
         error: 'bg-red-500/10 text-red-600'
     };
 
+    const cooldownStyle = isOnCooldown && progress.status === 'idle'
+        ? 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 animate-in fade-in duration-300'
+        : statusColors[progress.status];
+
     return (
         <div
             className={cn(
-                'flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium transition-all',
-                statusColors[progress.status]
+                'flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium transition-all shadow-sm',
+                cooldownStyle
             )}
         >
             {getIcon()}
@@ -88,7 +97,9 @@ export function P2PSyncIndicator() {
         return () => unsubscribe();
     }, []);
 
-    if (progress.status === 'idle') {
+    const isOnCooldown = (progress.cooldownRemaining || 0) > 0;
+
+    if (progress.status === 'idle' && !isOnCooldown) {
         return null;
     }
 
@@ -96,7 +107,8 @@ export function P2PSyncIndicator() {
         'w-4 h-4',
         progress.status === 'error' && 'text-red-500',
         progress.status === 'uploading' && 'text-blue-500 animate-pulse',
-        progress.status === 'downloading' && 'text-green-500 animate-pulse'
+        progress.status === 'downloading' && 'text-green-500 animate-pulse',
+        (isOnCooldown && progress.status === 'idle') && 'text-emerald-500'
     );
 
     const formatFileName = (name?: string) => {
@@ -110,10 +122,11 @@ export function P2PSyncIndicator() {
             {progress.status === 'uploading' && <CloudUpload className={iconClass} />}
             {progress.status === 'downloading' && <CloudDownload className={iconClass} />}
             {progress.status === 'error' && <AlertCircle className={iconClass} />}
+            {(isOnCooldown && progress.status === 'idle') && <Cloud className={iconClass} />}
 
             {/* Tooltip */}
             <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
-                {formatFileName(progress.currentFile) || progress.status}
+                {isOnCooldown && progress.status === 'idle' ? `Cooldown: ${progress.cooldownRemaining}s` : (formatFileName(progress.currentFile) || progress.status)}
                 {progress.totalPending && progress.totalPending > 1 && (
                     <span> ({progress.totalPending} pending)</span>
                 )}
