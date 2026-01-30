@@ -37,23 +37,33 @@ import { DollarSign, TrendingUp, BarChart3, PieChart as PieChartIcon, ArrowUpRig
 
 export type MetricType = 'grossRevenue' | 'totalCost' | 'netProfit' | 'profitMargin'
 
+interface CurrencyStats {
+    revenue: number
+    cost: number
+    salesCount: number
+    dailyTrend: Record<string, { revenue: number, cost: number, profit: number }>
+    categoryRevenue: Record<string, number>
+    productPerformance: Record<string, { name: string, revenue: number, cost: number, quantity: number }>
+}
+
 interface MetricDetailModalProps {
     isOpen: boolean
     onClose: () => void
     metricType: MetricType | null
     currency: string
     iqdPreference: 'IQD' | 'د.ع'
-    data: {
-        revenue: number
-        cost: number
-        salesCount: number
-        dailyTrend: Record<string, { revenue: number, cost: number, profit: number }>
-        categoryRevenue: Record<string, number>
-        productPerformance: Record<string, { name: string, revenue: number, cost: number, quantity: number }>
-    } | null
+    data: Record<string, CurrencyStats> | null
 }
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316']
+
+// Map of currency to color for multi-line charts
+const CURRENCY_COLORS: Record<string, string> = {
+    usd: '#3b82f6', // Blue
+    iqd: '#10b981', // Emerald
+    eur: '#8b5cf6', // Violet
+    try: '#f59e0b', // Amber
+}
 
 const METRIC_COLORS: Record<MetricType, { stroke: string, fill: string, gradient: string }> = {
     grossRevenue: { stroke: '#3b82f6', fill: '#3b82f6', gradient: 'colorRevenue' },
@@ -65,27 +75,72 @@ const METRIC_COLORS: Record<MetricType, { stroke: string, fill: string, gradient
 export function MetricDetailModal({ isOpen, onClose, metricType, currency, iqdPreference, data }: MetricDetailModalProps) {
     const { t } = useTranslation()
 
+    const activeCurrencies = useMemo(() => data ? Object.keys(data) : [], [data])
+
     const trendData = useMemo(() => {
-        if (!data?.dailyTrend) return []
-        return Object.entries(data.dailyTrend)
-            .sort(([a], [b]) => a.localeCompare(b))
-            .map(([date, values]) => ({
-                date: new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-                ...values,
-                margin: values.revenue > 0 ? ((values.revenue - values.cost) / values.revenue) * 100 : 0
-            }))
-    }, [data?.dailyTrend])
+        if (!data) return []
+
+        // Collect all unique dates across all currencies
+        const allDates = new Set<string>()
+        Object.values(data).forEach(currData => {
+            Object.keys(currData.dailyTrend).forEach(date => allDates.add(date))
+        })
+
+        return Array.from(allDates)
+            .sort()
+            .map(date => {
+                const row: any = {
+                    date: new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+                }
+
+                activeCurrencies.forEach(curr => {
+                    const values = data[curr].dailyTrend[date] || { revenue: 0, cost: 0, profit: 0 }
+                    if (metricType === 'profitMargin') {
+                        row[`${curr}_value`] = values.revenue > 0 ? ((values.revenue - values.cost) / values.revenue) * 100 : 0
+                        // For percentage, normalized is the same
+                        row[`${curr}_normalized`] = row[`${curr}_value`]
+                    } else {
+                        const rawVal = metricType === 'netProfit' ? values.profit : metricType === 'totalCost' ? values.cost : values.revenue
+                        row[`${curr}_value`] = rawVal
+
+                        let normalized = rawVal
+                        // Simple normalization for visualization purposes
+                        if (curr === 'iqd') {
+                            // Assuming ~1500 IQD = 1 USD for visual scaling
+                            normalized = normalized / 1500
+                        } else if (curr === 'eur') {
+                            // Assuming ~1.1 USD = 1 EUR
+                            normalized = normalized * 1.1
+                        } else if (curr === 'try') {
+                            // Assuming ~30 TRY = 1 USD
+                            normalized = normalized / 30
+                        }
+                        row[`${curr}_normalized`] = normalized
+                    }
+                })
+                return row
+            })
+    }, [data, metricType, activeCurrencies])
 
     const categoryData = useMemo(() => {
-        if (!data?.categoryRevenue) return []
-        return Object.entries(data.categoryRevenue)
+        if (!data) return []
+
+        // Aggregating by category across ALL currencies for now, 
+        // using primary currency as base or just showing count? 
+        // Let's just aggregate values—ideally they'd be converted, 
+        // but for a pie chart of 'Revenue Share', we just show the selected or sum.
+        // User asked for "different lines" in graphs (Trend), 
+        // for pie/table we'll just show the main currency or first active one.
+        const mainCurr = activeCurrencies[0] || currency
+        return Object.entries(data[mainCurr]?.categoryRevenue || {})
             .map(([name, value]) => ({ name, value }))
             .sort((a, b) => b.value - a.value)
-    }, [data?.categoryRevenue])
+    }, [data, currency, activeCurrencies])
 
     const topProducts = useMemo(() => {
-        if (!data?.productPerformance) return []
-        return Object.entries(data.productPerformance)
+        const mainCurr = activeCurrencies[0] || currency
+        if (!data?.[mainCurr]?.productPerformance) return []
+        return Object.entries(data[mainCurr].productPerformance)
             .map(([id, stats]) => ({
                 id,
                 ...stats,
@@ -98,7 +153,7 @@ export function MetricDetailModal({ isOpen, onClose, metricType, currency, iqdPr
                 return b.revenue - a.revenue
             })
             .slice(0, 5)
-    }, [data?.productPerformance, metricType])
+    }, [data, metricType, currency, activeCurrencies])
 
     if (!metricType || !data) return null
 
@@ -122,17 +177,33 @@ export function MetricDetailModal({ isOpen, onClose, metricType, currency, iqdPr
     }
 
     const getPrimaryValue = () => {
-        switch (metricType) {
-            case 'grossRevenue': return formatCurrency(data.revenue, currency, iqdPreference)
-            case 'totalCost': return formatCurrency(data.cost, currency, iqdPreference)
-            case 'netProfit': return formatCurrency(data.revenue - data.cost, currency, iqdPreference)
-            case 'profitMargin':
-                const margin = data.revenue > 0 ? ((data.revenue - data.cost) / data.revenue) * 100 : 0
-                return `${margin.toFixed(1)}%`
-        }
-    }
+        return (
+            <div className="space-y-1">
+                {activeCurrencies.map(curr => {
+                    const currData = data[curr]
+                    let val = 0
+                    if (metricType === 'grossRevenue') val = currData.revenue
+                    else if (metricType === 'totalCost') val = currData.cost
+                    else if (metricType === 'netProfit') val = currData.revenue - currData.cost
+                    else if (metricType === 'profitMargin') {
+                        val = currData.revenue > 0 ? ((currData.revenue - currData.cost) / currData.revenue) * 100 : 0
+                        return <div key={curr} className="text-3xl font-black tabular-nums tracking-tighter text-purple-600 dark:text-purple-400">{val.toFixed(1)}% ({curr.toUpperCase()})</div>
+                    }
 
-    const activeColors = METRIC_COLORS[metricType]
+                    return (
+                        <div key={curr} className={cn(
+                            "text-3xl font-black tabular-nums tracking-tighter leading-none",
+                            metricType === 'grossRevenue' && "text-blue-600 dark:text-blue-400",
+                            metricType === 'totalCost' && "text-orange-600 dark:text-orange-400",
+                            metricType === 'netProfit' && "text-emerald-600 dark:text-emerald-400"
+                        )}>
+                            {formatCurrency(val, curr as any, iqdPreference)}
+                        </div>
+                    )
+                })}
+            </div>
+        )
+    }
 
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
@@ -157,50 +228,44 @@ export function MetricDetailModal({ isOpen, onClose, metricType, currency, iqdPr
                             </div>
                         </div>
                         <div className="text-right">
-                            <div className={cn(
-                                "text-3xl font-black tabular-nums tracking-tighter",
-                                metricType === 'grossRevenue' && "text-blue-600 dark:text-blue-400",
-                                metricType === 'totalCost' && "text-orange-600 dark:text-orange-400",
-                                metricType === 'netProfit' && "text-emerald-600 dark:text-emerald-400",
-                                metricType === 'profitMargin' && "text-purple-600 dark:text-purple-400"
-                            )}>
-                                {getPrimaryValue()}
-                            </div>
-                            <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest opacity-70">
-                                {t('revenue.targetCurrency')} ({currency.toUpperCase()})
-                            </div>
+                            {getPrimaryValue()}
                         </div>
                     </DialogHeader>
 
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                         {/* Primary Trend Chart */}
                         <Card className="lg:col-span-2 bg-card/40 border-border/30 backdrop-blur-md overflow-hidden rounded-[2.5rem] shadow-sm">
-                            <CardHeader className="pb-2">
+                            <CardHeader className="pb-2 flex flex-row items-center justify-between">
                                 <CardTitle className="text-xs font-black uppercase tracking-[0.2em] text-muted-foreground/70 flex items-center gap-2">
                                     <TrendingUp className="w-3.5 h-3.5" />
                                     {t('revenue.trendTitle')}
                                 </CardTitle>
+                                {/* Multi-Currency Legend */}
+                                <div className="flex items-center gap-2">
+                                    {activeCurrencies.map(curr => (
+                                        <div
+                                            key={curr}
+                                            className="px-2 py-1 rounded-full bg-background/50 border border-border/50 flex items-center gap-1.5 text-[9px] font-black uppercase tracking-tight shadow-sm"
+                                        >
+                                            <div
+                                                className="w-2 h-2 rounded-full"
+                                                style={{ backgroundColor: CURRENCY_COLORS[curr] || '#94a3b8' }}
+                                            />
+                                            {curr.toUpperCase()}{curr === 'usd' ? '$' : curr === 'iqd' ? 'د.ع' : ''}
+                                        </div>
+                                    ))}
+                                </div>
                             </CardHeader>
                             <CardContent className="h-[320px] p-0 pr-6 pb-6">
                                 <ResponsiveContainer width="100%" height="100%">
                                     <AreaChart data={trendData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                                         <defs>
-                                            <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
-                                                <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.4} />
-                                                <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
-                                            </linearGradient>
-                                            <linearGradient id="colorCost" x1="0" y1="0" x2="0" y2="1">
-                                                <stop offset="5%" stopColor="#f97316" stopOpacity={0.4} />
-                                                <stop offset="95%" stopColor="#f97316" stopOpacity={0} />
-                                            </linearGradient>
-                                            <linearGradient id="colorProfit" x1="0" y1="0" x2="0" y2="1">
-                                                <stop offset="5%" stopColor="#10b981" stopOpacity={0.4} />
-                                                <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
-                                            </linearGradient>
-                                            <linearGradient id="colorMargin" x1="0" y1="0" x2="0" y2="1">
-                                                <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.4} />
-                                                <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0} />
-                                            </linearGradient>
+                                            {activeCurrencies.map(curr => (
+                                                <linearGradient key={`grad-${curr}`} id={`color-${curr}`} x1="0" y1="0" x2="0" y2="1">
+                                                    <stop offset="5%" stopColor={CURRENCY_COLORS[curr] || '#94a3b8'} stopOpacity={0.3} />
+                                                    <stop offset="95%" stopColor={CURRENCY_COLORS[curr] || '#94a3b8'} stopOpacity={0} />
+                                                </linearGradient>
+                                            ))}
                                         </defs>
 
                                         <CartesianGrid strokeDasharray="4 4" vertical={false} stroke="currentColor" className="text-border/50" />
@@ -217,7 +282,7 @@ export function MetricDetailModal({ isOpen, onClose, metricType, currency, iqdPr
                                             tickLine={false}
                                             tick={{ fontSize: 10, fontWeight: 700, fill: 'currentColor' }}
                                             className="text-muted-foreground/60"
-                                            tickFormatter={(val) => metricType === 'profitMargin' ? `${val}%` : formatCurrency(val, currency, iqdPreference).split(' ')[0]}
+                                            tickFormatter={(val) => metricType === 'profitMargin' ? `${val}%` : val >= 1000 ? `${(val / 1000).toFixed(0)}k` : val}
                                         />
                                         <Tooltip
                                             contentStyle={{
@@ -227,22 +292,32 @@ export function MetricDetailModal({ isOpen, onClose, metricType, currency, iqdPr
                                                 boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)',
                                                 padding: '12px'
                                             }}
-                                            itemStyle={{ fontSize: '12px', fontWeight: 'bold' }}
-                                            labelStyle={{ fontSize: '10px', fontWeight: 'black', textTransform: 'uppercase', marginBottom: '4px', opacity: 0.6 }}
-                                            formatter={(value: any) => [
-                                                metricType === 'profitMargin' ? `${Number(value).toFixed(1)}%` : formatCurrency(value, currency, iqdPreference),
-                                                getMetricTitle()
-                                            ]}
+                                            itemStyle={{ fontSize: '11px', fontWeight: 'bold', padding: '2px 0' }}
+                                            labelStyle={{ fontSize: '10px', fontWeight: 'black', textTransform: 'uppercase', marginBottom: '8px', opacity: 0.6 }}
+                                            formatter={(value: any, name: any, props: any) => {
+                                                const curr = String(name).split('_')[0]
+                                                const originalValue = props.payload[`${curr}_value`] || value
+
+                                                return [
+                                                    metricType === 'profitMargin'
+                                                        ? `${Number(originalValue).toFixed(1)}%`
+                                                        : formatCurrency(originalValue, curr.toLowerCase() as any, iqdPreference),
+                                                    curr.toUpperCase()
+                                                ]
+                                            }}
                                         />
-                                        <Area
-                                            type="monotone"
-                                            dataKey={metricType === 'profitMargin' ? 'margin' : metricType === 'netProfit' ? 'profit' : metricType === 'totalCost' ? 'cost' : 'revenue'}
-                                            stroke={activeColors.stroke}
-                                            strokeWidth={4}
-                                            fillOpacity={1}
-                                            fill={`url(#${activeColors.gradient})`}
-                                            animationDuration={1500}
-                                        />
+                                        {activeCurrencies.map(curr => (
+                                            <Area
+                                                key={curr}
+                                                type="monotone"
+                                                dataKey={`${curr}_normalized`}
+                                                stroke={CURRENCY_COLORS[curr] || '#94a3b8'}
+                                                strokeWidth={3}
+                                                fillOpacity={1}
+                                                fill={`url(#color-${curr})`}
+                                                animationDuration={1500}
+                                            />
+                                        ))}
                                     </AreaChart>
                                 </ResponsiveContainer>
                             </CardContent>
@@ -284,7 +359,7 @@ export function MetricDetailModal({ isOpen, onClose, metricType, currency, iqdPr
                                                 border: '1px solid hsl(var(--border))',
                                                 padding: '12px'
                                             }}
-                                            formatter={(value: any) => formatCurrency(value, currency, iqdPreference)}
+                                            formatter={(value: any) => formatCurrency(value, (activeCurrencies[0] || currency) as any, iqdPreference)}
                                         />
                                         <Legend
                                             verticalAlign="bottom"
@@ -302,6 +377,9 @@ export function MetricDetailModal({ isOpen, onClose, metricType, currency, iqdPr
                             <CardHeader className="pb-2">
                                 <CardTitle className="text-xs font-black uppercase tracking-[0.2em] text-muted-foreground/70">
                                     {metricType === 'totalCost' ? t('revenue.highestCost') : t('revenue.topPerforming')}
+                                    <span className="ml-2 text-[9px] lowercase font-medium opacity-60">
+                                        ({t('common.showingIn')} {(activeCurrencies[0] || currency).toUpperCase()})
+                                    </span>
                                 </CardTitle>
                             </CardHeader>
                             <CardContent className="p-0">
@@ -321,10 +399,10 @@ export function MetricDetailModal({ isOpen, onClose, metricType, currency, iqdPr
                                             <TableRow key={p.id} className="hover:bg-primary/5 transition-colors border-border/40 group">
                                                 <TableCell className="font-bold pl-8 py-4 group-hover:text-primary transition-colors">{p.name}</TableCell>
                                                 <TableCell className="text-center font-black tabular-nums">{p.quantity}</TableCell>
-                                                <TableCell className="text-right tabular-nums font-semibold">{formatCurrency(p.revenue, currency, iqdPreference)}</TableCell>
-                                                <TableCell className="text-right tabular-nums text-muted-foreground font-medium">{formatCurrency(p.cost, currency, iqdPreference)}</TableCell>
+                                                <TableCell className="text-right tabular-nums font-semibold">{formatCurrency(p.revenue, (activeCurrencies[0] || currency) as any, iqdPreference)}</TableCell>
+                                                <TableCell className="text-right tabular-nums text-muted-foreground font-medium">{formatCurrency(p.cost, (activeCurrencies[0] || currency) as any, iqdPreference)}</TableCell>
                                                 <TableCell className="text-right tabular-nums font-black text-emerald-600 dark:text-emerald-400">
-                                                    {formatCurrency(p.profit, currency, iqdPreference)}
+                                                    {formatCurrency(p.profit, (activeCurrencies[0] || currency) as any, iqdPreference)}
                                                 </TableCell>
                                                 <TableCell className="text-right pr-8">
                                                     <span className={cn(

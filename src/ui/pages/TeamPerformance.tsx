@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/auth'
 import { supabase } from '@/auth/supabase'
@@ -38,8 +38,8 @@ import {
     PieChart as PieIcon
 } from 'lucide-react'
 import {
-    BarChart,
-    Bar,
+    AreaChart,
+    Area,
     XAxis,
     YAxis,
     CartesianGrid,
@@ -162,6 +162,7 @@ export function TeamPerformance() {
     const calculatePerformance = () => {
         const perfMap: Record<string, StaffPerformance> = {}
         const statsByCurrency: Record<string, number> = {}
+        const globalDailyTrend: Record<string, Record<string, number>> = {}
 
         // Initialize with all members if admin, or just self if staff
         members.forEach(m => {
@@ -204,8 +205,6 @@ export function TeamPerformance() {
                 } else if (defaultCurrency === 'usd' && currency === 'iqd' && sale.exchange_rate) {
                     revenueInDefault = sale.total_amount / (sale.exchange_rate / 100)
                 } else {
-                    // Basic fallback for other conversions if rate is available, 
-                    // though system primarily handles USD/IQD for now
                     let revenueInUsd = sale.total_amount
                     if (currency !== 'usd' && sale.exchange_rate) {
                         revenueInUsd = sale.total_amount / (sale.exchange_rate / 100)
@@ -219,10 +218,18 @@ export function TeamPerformance() {
                 }
             }
 
-            perfMap[cashierId].totalRevenue += revenueInDefault
-
-            // Track daily for trend in default currency
+            // Global Daily Trend by Currency (Original & Normalized)
             const date = new Date(sale.created_at).toISOString().split('T')[0]
+            if (!globalDailyTrend[date]) globalDailyTrend[date] = {}
+
+            // Original amount (for tooltip/display)
+            globalDailyTrend[date][currency] = (globalDailyTrend[date][currency] || 0) + sale.total_amount
+
+            // Normalized amount (for graph scaling)
+            const normalizedKey = `${currency}_normalized`
+            globalDailyTrend[date][normalizedKey] = (globalDailyTrend[date][normalizedKey] || 0) + revenueInDefault
+
+            perfMap[cashierId].totalRevenue += revenueInDefault
             perfMap[cashierId].dailySales[date] = (perfMap[cashierId].dailySales[date] || 0) + revenueInDefault
         })
 
@@ -230,15 +237,14 @@ export function TeamPerformance() {
         Object.values(perfMap).forEach(p => {
             if (p.target > 0) {
                 p.progress = (p.salesCount / p.target) * 100
-
-                // Save progress to Dexie asynchronously
                 db.users.update(p.id, { monthlyProgress: p.progress }).catch(console.error)
             }
         })
 
         return {
             performanceData: Object.values(perfMap).sort((a, b) => b.totalRevenue - a.totalRevenue),
-            statsByCurrency
+            statsByCurrency,
+            globalDailyTrend
         }
     }
 
@@ -254,7 +260,7 @@ export function TeamPerformance() {
         return ''
     }
 
-    const { performanceData, statsByCurrency } = calculatePerformance()
+    const { performanceData, statsByCurrency, globalDailyTrend } = calculatePerformance()
 
     // Chart Data Preparation
     const pieData = performanceData.map(p => ({
@@ -264,14 +270,21 @@ export function TeamPerformance() {
 
     const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d']
 
-    const trendDataMap: Record<string, any> = {}
-    performanceData.forEach(p => {
-        Object.entries(p.dailySales).forEach(([date, amount]) => {
-            if (!trendDataMap[date]) trendDataMap[date] = { date }
-            trendDataMap[date][p.name] = amount
-        })
-    })
-    const trendData = Object.values(trendDataMap).sort((a, b) => a.date.localeCompare(b.date))
+    const trendData = useMemo(() => {
+        return Object.entries(globalDailyTrend)
+            .map(([date, currencies]) => ({
+                date,
+                ...currencies
+            }))
+            .sort((a, b) => a.date.localeCompare(b.date))
+    }, [globalDailyTrend])
+
+    const CURRENCY_COLORS: Record<string, string> = {
+        usd: '#3b82f6', // Blue
+        iqd: '#10b981', // Emerald
+        eur: '#8b5cf6', // Violet
+        try: '#f59e0b'  // Amber
+    }
 
     const handleUpdateTarget = async () => {
         if (!selectedMember) return
@@ -594,44 +607,81 @@ export function TeamPerformance() {
                     <p className="text-xs text-muted-foreground">{t('performance.charts.revenueTrendDesc')}</p>
                 </CardHeader>
                 <CardContent className="h-[400px]">
+                    <div className="flex flex-wrap gap-4 mb-4 px-2">
+                        {Object.keys(statsByCurrency).map(curr => (
+                            <div key={curr} className="flex items-center gap-1.5 bg-secondary/30 px-2 py-1 rounded-lg border border-border/50">
+                                <div
+                                    className="w-2 h-2 rounded-full"
+                                    style={{ backgroundColor: CURRENCY_COLORS[curr] || '#94a3b8' }}
+                                />
+                                <span className="text-[10px] font-black uppercase tracking-tight opacity-70">
+                                    {curr}
+                                </span>
+                            </div>
+                        ))}
+                    </div>
                     <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={trendData}>
-                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
+                        <AreaChart data={trendData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                            <defs>
+                                {Object.keys(statsByCurrency).map(curr => (
+                                    <linearGradient key={`grad-${curr}`} id={`color-${curr}`} x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="5%" stopColor={CURRENCY_COLORS[curr] || '#94a3b8'} stopOpacity={0.3} />
+                                        <stop offset="95%" stopColor={CURRENCY_COLORS[curr] || '#94a3b8'} stopOpacity={0} />
+                                    </linearGradient>
+                                ))}
+                            </defs>
+                            <CartesianGrid strokeDasharray="4 4" vertical={false} stroke="currentColor" className="text-border/50" />
                             <XAxis
                                 dataKey="date"
                                 axisLine={false}
                                 tickLine={false}
-                                tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
+                                tick={{ fontSize: 10, fontWeight: 700, fill: 'currentColor' }}
+                                className="text-muted-foreground/60"
                                 tickFormatter={(val) => new Date(val).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}
+                                dy={10}
                             />
                             <YAxis
                                 axisLine={false}
                                 tickLine={false}
-                                tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
-                                tickFormatter={(val) => formatCurrency(val, features.default_currency, features.iqd_display_preference)}
+                                tick={{ fontSize: 10, fontWeight: 700, fill: 'currentColor' }}
+                                className="text-muted-foreground/60"
+                                tickFormatter={(val) => val >= 1000 ? `${(val / 1000).toFixed(0)}k` : val}
                             />
                             <Tooltip
                                 contentStyle={{
                                     backgroundColor: 'hsl(var(--card))',
-                                    borderColor: 'hsl(var(--border))',
-                                    borderRadius: '8px'
+                                    borderRadius: '20px',
+                                    border: '1px solid hsl(var(--border))',
+                                    boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)',
+                                    padding: '12px'
                                 }}
-                                formatter={(value: number) => [
-                                    formatCurrency(value, features.default_currency, features.iqd_display_preference),
-                                    t('performance.table.totalRevenue') || 'Revenue'
-                                ]}
+                                itemStyle={{ fontSize: '11px', fontWeight: 'bold', padding: '2px 0' }}
+                                labelStyle={{ fontSize: '10px', fontWeight: 'black', textTransform: 'uppercase', marginBottom: '8px', opacity: 0.6 }}
+                                formatter={(value: any, name: any, props: any) => {
+                                    // Extract currency from normalized key (e.g., "iqd_normalized" -> "iqd")
+                                    const curr = String(name).replace('_normalized', '')
+                                    // Get original value from payload if available
+                                    const originalValue = props.payload[curr] || value
+
+                                    return [
+                                        formatCurrency(originalValue, curr.toLowerCase() as any, features.iqd_display_preference),
+                                        curr.toUpperCase()
+                                    ]
+                                }}
                             />
-                            <Legend />
-                            {performanceData.map((p, index) => (
-                                <Bar
-                                    key={p.id}
-                                    dataKey={p.name}
-                                    stackId="a"
-                                    fill={COLORS[index % COLORS.length]}
-                                    radius={[4, 4, 0, 0]}
+                            {Object.keys(statsByCurrency).map(curr => (
+                                <Area
+                                    key={curr}
+                                    type="monotone"
+                                    dataKey={`${curr}_normalized`}
+                                    stroke={CURRENCY_COLORS[curr] || '#94a3b8'}
+                                    strokeWidth={3}
+                                    fillOpacity={1}
+                                    fill={`url(#color-${curr})`}
+                                    animationDuration={1500}
                                 />
                             ))}
-                        </BarChart>
+                        </AreaChart>
                     </ResponsiveContainer>
                 </CardContent>
             </Card>

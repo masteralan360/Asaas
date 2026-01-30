@@ -268,11 +268,15 @@ export function Revenue() {
                             </CardTitle>
                         </CardHeader>
                         <CardContent>
-                            <div className="text-2xl font-black tracking-tighter tabular-nums text-blue-700 dark:text-blue-300">
-                                {formatCurrency(primaryStats.revenue, currencySettings.currency, currencySettings.iqdPreference)}
+                            <div className="space-y-1">
+                                {Object.entries(stats.statsByCurrency).map(([curr, s]) => (
+                                    <div key={curr} className="text-2xl font-black tracking-tighter tabular-nums text-blue-700 dark:text-blue-300 leading-none">
+                                        {formatCurrency(s.revenue, curr as any, currencySettings.iqdPreference)}
+                                    </div>
+                                ))}
                             </div>
                             <p className="text-[10px] font-bold text-blue-600/60 dark:text-blue-400/60 uppercase tracking-wider mt-1">
-                                {primaryStats.salesCount} {t('pos.totalItems')}
+                                {Object.values(stats.statsByCurrency).reduce((acc, s) => acc + s.salesCount, 0)} {t('pos.totalItems')}
                             </p>
                         </CardContent>
                     </Card>
@@ -292,11 +296,15 @@ export function Revenue() {
                             </CardTitle>
                         </CardHeader>
                         <CardContent>
-                            <div className="text-2xl font-black tracking-tighter tabular-nums text-orange-700 dark:text-orange-300">
-                                {formatCurrency(primaryStats.cost, currencySettings.currency, currencySettings.iqdPreference)}
+                            <div className="space-y-1">
+                                {Object.entries(stats.statsByCurrency).map(([curr, s]) => (
+                                    <div key={curr} className="text-2xl font-black tracking-tighter tabular-nums text-orange-700 dark:text-orange-300 leading-none">
+                                        {formatCurrency(s.cost, curr as any, currencySettings.iqdPreference)}
+                                    </div>
+                                ))}
                             </div>
                             <p className="text-[10px] font-bold text-orange-600/60 dark:text-orange-400/60 uppercase tracking-wider mt-1">
-                                {((primaryStats.cost / (primaryStats.revenue || 1)) * 100).toFixed(1)}% {t('revenue.table.cost')}
+                                {((Object.values(stats.statsByCurrency).reduce((acc, s) => acc + s.cost, 0) / (Object.values(stats.statsByCurrency).reduce((acc, s) => acc + s.revenue, 0) || 1)) * 100).toFixed(1)}% {t('revenue.table.cost')}
                             </p>
                         </CardContent>
                     </Card>
@@ -316,8 +324,12 @@ export function Revenue() {
                             </CardTitle>
                         </CardHeader>
                         <CardContent>
-                            <div className="text-2xl font-black tracking-tighter tabular-nums text-emerald-700 dark:text-emerald-300">
-                                {formatCurrency(primaryStats.revenue - primaryStats.cost, currencySettings.currency, currencySettings.iqdPreference)}
+                            <div className="space-y-1">
+                                {Object.entries(stats.statsByCurrency).map(([curr, s]) => (
+                                    <div key={curr} className="text-2xl font-black tracking-tighter tabular-nums text-emerald-700 dark:text-emerald-300 leading-none">
+                                        {formatCurrency(s.revenue - s.cost, curr as any, currencySettings.iqdPreference)}
+                                    </div>
+                                ))}
                             </div>
                             <p className="text-[10px] font-bold text-emerald-600/60 dark:text-emerald-400/60 uppercase tracking-wider mt-1">
                                 {t('revenue.detailedAnalysis')}
@@ -532,7 +544,7 @@ export function Revenue() {
                     metricType={selectedMetric}
                     currency={Object.keys(stats.statsByCurrency)[0] || features.default_currency || 'usd'}
                     iqdPreference={features.iqd_display_preference}
-                    data={selectedMetric ? (stats.statsByCurrency[Object.keys(stats.statsByCurrency)[0] || 'usd'] || null) : null}
+                    data={stats.statsByCurrency}
                 />
             </div>
         </TooltipProvider>
