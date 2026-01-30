@@ -13,7 +13,7 @@ import { useTheme } from '@/ui/components/theme-provider'
 import { Moon, Sun, Monitor, Unlock, Server, MessageSquare } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import { getAppSettingSync, setAppSetting } from '@/local-db/settings'
-import { encrypt, decrypt } from '@/lib/encryption'
+import { decrypt } from '@/lib/encryption'
 import { check } from '@tauri-apps/plugin-updater';
 import { platformService } from '@/services/platformService'
 import { Image as ImageIcon } from 'lucide-react'
@@ -180,8 +180,8 @@ export function Settings() {
 
     const handleSaveConnection = async () => {
         if (confirm("Changing connection settings will reload the app. Continue?")) {
-            await setAppSetting('supabase_url', encrypt(customUrl))
-            await setAppSetting('supabase_anon_key', encrypt(customKey))
+            await setAppSetting('supabase_url', decrypt(customUrl))
+            await setAppSetting('supabase_anon_key', decrypt(customKey))
             window.location.reload()
         }
     }

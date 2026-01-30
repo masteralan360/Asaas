@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, Button, Input, Label } from '@/ui/components'
 import { setAppSetting } from '@/local-db/settings'
-import { encrypt } from '@/lib/encryption'
+import { decrypt } from '@/lib/encryption'
 import { Server, Globe, Shield, RefreshCw, AlertCircle } from 'lucide-react'
 import { relaunch } from '@tauri-apps/plugin-process';
 
@@ -15,20 +15,25 @@ export function ConnectionConfiguration() {
         e.preventDefault()
         setError(null)
 
-        if (!url || !anonKey) {
+        const trimmedUrl = url.trim()
+        const trimmedKey = anonKey.trim()
+
+        if (!trimmedUrl || !trimmedKey) {
             setError('Please fill in both URL and Anon Key')
             return
         }
 
-        if (!url.startsWith('https://') && !url.startsWith('U2FsdGVkX1')) {
+        // Allow if starts with https:// OR looks like a CryptoJS AES encrypted string
+        const isEncrypted = /^U2FsdGVkX1/.test(trimmedUrl)
+        if (!trimmedUrl.startsWith('https://') && !isEncrypted) {
             setError('URL must start with https://')
             return
         }
 
         try {
             setIsSaving(true)
-            await setAppSetting('supabase_url', encrypt(url.trim()))
-            await setAppSetting('supabase_anon_key', encrypt(anonKey.trim()))
+            await setAppSetting('supabase_url', decrypt(trimmedUrl))
+            await setAppSetting('supabase_anon_key', decrypt(trimmedKey))
 
             // Reload the app to apply changes
             await relaunch();
