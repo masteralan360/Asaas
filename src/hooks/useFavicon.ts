@@ -10,13 +10,17 @@ type ThemeStyle = 'modern' | 'legacy' | 'primary'
  * - Kurdish + Modern: ku-purple.ico
  */
 function getFaviconPath(language: string, themeStyle: ThemeStyle): string {
+    const color = themeStyle === 'modern' ? 'purple' : 'blue'
     if (language === 'ar') {
-        return '/ar.ico'
+        return `/logoICO/ar-${color}.ico`
     }
     if (language === 'ku') {
-        return themeStyle === 'legacy' ? '/ku-blue.ico' : '/ku-purple.ico'
+        return `/logoICO/ku-${color}.ico`
     }
-    return '/en-default.ico'
+    if (language === 'en' && themeStyle === 'primary') {
+        return `/logo.ico`
+    }
+    return `/logoICO/en-${color}.ico`
 }
 
 /**
@@ -24,13 +28,17 @@ function getFaviconPath(language: string, themeStyle: ThemeStyle): string {
  * Uses the same mapping as favicon but with .png extension for UI display.
  */
 function getLogoPath(language: string, themeStyle: ThemeStyle): string {
+    const color = themeStyle === 'modern' ? 'purple' : 'blue'
     if (language === 'ar') {
-        return '/ar.ico'
+        return `/logoPNG/ar-${color}.png`
     }
     if (language === 'ku') {
-        return themeStyle === 'legacy' ? '/ku-blue.ico' : '/ku-purple.ico'
+        return `/logoPNG/ku-${color}.png`
     }
-    return '/en-default.ico'
+    if (language === 'en' && themeStyle === 'primary') {
+        return `/logo.png`
+    }
+    return `/logoPNG/en-${color}.png`
 }
 
 /**

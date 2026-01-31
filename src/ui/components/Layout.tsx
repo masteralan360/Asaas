@@ -232,7 +232,7 @@ export function Layout({ children }: LayoutProps) {
                         />
                     ) : !logoError ? (
                         <img
-                            src={isTauri ? '/en-default.ico' : logoPath}
+                            src={logoPath}
                             alt="Logo"
                             className="w-10 h-10 object-contain rounded-sm"
                             onError={() => setLogoError(true)}
