@@ -192,24 +192,40 @@ export function TeamPerformance() {
 
             perfMap[cashierId].salesCount++
 
+            // Calculate net revenue (accounting for partial returns)
+            let saleRevenue = 0
+            const saleItems = (sale as any).sale_items || []
+
+            if (saleItems.length > 0) {
+                saleItems.forEach((item: any) => {
+                    const netQuantity = item.quantity - (item.returned_quantity || 0)
+                    if (netQuantity > 0) {
+                        saleRevenue += (item.converted_unit_price || 0) * netQuantity
+                    }
+                })
+            } else {
+                // Fallback to total_amount if items are missing from query/data
+                saleRevenue = sale.total_amount
+            }
+
             // Multi-currency aggregation
             const currency = sale.settlement_currency || 'usd'
-            statsByCurrency[currency] = (statsByCurrency[currency] || 0) + sale.total_amount
-            perfMap[cashierId].revenueByCurrency[currency] = (perfMap[cashierId].revenueByCurrency[currency] || 0) + sale.total_amount
+            statsByCurrency[currency] = (statsByCurrency[currency] || 0) + saleRevenue
+            perfMap[cashierId].revenueByCurrency[currency] = (perfMap[cashierId].revenueByCurrency[currency] || 0) + saleRevenue
 
             // Project revenue into DEFAULT CURRENCY for the trend chart
             const defaultCurrency = features.default_currency || 'usd'
-            let revenueInDefault = sale.total_amount
+            let revenueInDefault = saleRevenue
 
             if (currency !== defaultCurrency) {
                 if (defaultCurrency === 'iqd' && currency === 'usd' && sale.exchange_rate) {
-                    revenueInDefault = sale.total_amount * (sale.exchange_rate / 100)
+                    revenueInDefault = saleRevenue * (sale.exchange_rate / 100)
                 } else if (defaultCurrency === 'usd' && currency === 'iqd' && sale.exchange_rate) {
-                    revenueInDefault = sale.total_amount / (sale.exchange_rate / 100)
+                    revenueInDefault = saleRevenue / (sale.exchange_rate / 100)
                 } else {
-                    let revenueInUsd = sale.total_amount
+                    let revenueInUsd = saleRevenue
                     if (currency !== 'usd' && sale.exchange_rate) {
-                        revenueInUsd = sale.total_amount / (sale.exchange_rate / 100)
+                        revenueInUsd = saleRevenue / (sale.exchange_rate / 100)
                     }
 
                     if (defaultCurrency === 'usd') {

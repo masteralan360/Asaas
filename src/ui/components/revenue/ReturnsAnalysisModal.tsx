@@ -139,7 +139,7 @@ export function ReturnsAnalysisModal({ isOpen, onClose, sales, iqdPreference, de
                 "max-w-4xl p-0 bg-background/95 backdrop-blur-3xl overflow-hidden rounded-[2.5rem] shadow-2xl transition-all duration-500",
                 "border-[3px] border-red-500/50 shadow-red-500/10"
             )}>
-                <div className="p-6 md:p-8 space-y-6 max-h-[90vh] overflow-y-auto custom-scrollbar">
+                <div className="p-6 md:p-8 space-y-6 max-h-[90vh] overflow-y-auto custom-scrollbar [print-color-adjust:exact] -webkit-print-color-adjust:exact">
                     <DialogHeader className="flex flex-row items-center justify-between space-y-0">
                         <div className="flex items-center gap-4">
                             <div className="p-4 rounded-2xl shadow-inner bg-red-500/10">

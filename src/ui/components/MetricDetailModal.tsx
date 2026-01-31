@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
     Dialog,
@@ -16,6 +16,7 @@ import {
     TableHead,
     TableHeader,
     TableRow,
+    Button,
 } from '@/ui/components'
 import {
     AreaChart,
@@ -31,7 +32,8 @@ import {
     Legend
 } from 'recharts'
 import { formatCurrency, cn } from '@/lib/utils'
-import { DollarSign, TrendingUp, BarChart3, PieChart as PieChartIcon } from 'lucide-react'
+import { DollarSign, TrendingUp, BarChart3, PieChart as PieChartIcon, Printer } from 'lucide-react'
+import { useReactToPrint } from 'react-to-print'
 
 export type MetricType = 'grossRevenue' | 'totalCost' | 'netProfit' | 'profitMargin'
 
@@ -66,6 +68,31 @@ const CURRENCY_COLORS: Record<string, string> = {
 export function MetricDetailModal({ isOpen, onClose, metricType, currency, iqdPreference, data }: MetricDetailModalProps) {
     const { t, i18n } = useTranslation()
     const isRtl = i18n.dir() === 'rtl'
+    const printRef = useRef<HTMLDivElement>(null)
+
+    const getMetricTitle = () => {
+        switch (metricType) {
+            case 'grossRevenue': return t('revenue.grossRevenue')
+            case 'totalCost': return t('revenue.totalCost')
+            case 'netProfit': return t('revenue.netProfit')
+            case 'profitMargin': return t('revenue.profitMargin')
+            default: return ''
+        }
+    }
+
+    const getMetricIcon = () => {
+        switch (metricType) {
+            case 'grossRevenue': return <DollarSign className="w-5 h-5 text-blue-500" />
+            case 'totalCost': return <BarChart3 className="w-5 h-5 text-orange-500" />
+            case 'netProfit': return <TrendingUp className="w-5 h-5 text-emerald-500" />
+            case 'profitMargin': return <PieChartIcon className="w-5 h-5 text-purple-500" />
+        }
+    }
+
+    const handlePrint = useReactToPrint({
+        contentRef: printRef,
+        documentTitle: `${getMetricTitle()}_Report_${new Date().toISOString().split('T')[0]}`,
+    })
 
     const activeCurrencies = useMemo(() => data ? Object.keys(data) : [], [data])
 
@@ -149,24 +176,6 @@ export function MetricDetailModal({ isOpen, onClose, metricType, currency, iqdPr
 
     if (!metricType || !data) return null
 
-    const getMetricTitle = () => {
-        switch (metricType) {
-            case 'grossRevenue': return t('revenue.grossRevenue')
-            case 'totalCost': return t('revenue.totalCost')
-            case 'netProfit': return t('revenue.netProfit')
-            case 'profitMargin': return t('revenue.profitMargin')
-            default: return ''
-        }
-    }
-
-    const getMetricIcon = () => {
-        switch (metricType) {
-            case 'grossRevenue': return <DollarSign className="w-5 h-5 text-blue-500" />
-            case 'totalCost': return <BarChart3 className="w-5 h-5 text-orange-500" />
-            case 'netProfit': return <TrendingUp className="w-5 h-5 text-emerald-500" />
-            case 'profitMargin': return <PieChartIcon className="w-5 h-5 text-purple-500" />
-        }
-    }
 
     const getPrimaryValue = () => {
         return (
@@ -207,7 +216,7 @@ export function MetricDetailModal({ isOpen, onClose, metricType, currency, iqdPr
                 metricType === 'netProfit' && "border-emerald-500/50 shadow-emerald-500/10",
                 metricType === 'profitMargin' && "border-purple-500/50 shadow-purple-500/10"
             )}>
-                <div className="p-6 md:p-8 space-y-8 max-h-[90vh] overflow-y-auto custom-scrollbar">
+                <div ref={printRef} className="p-6 md:p-8 space-y-8 max-h-[90vh] overflow-y-auto custom-scrollbar [print-color-adjust:exact] -webkit-print-color-adjust:exact">
                     <DialogHeader className="flex flex-row items-center justify-between space-y-0">
                         <div className="flex items-center gap-4">
                             <div className={cn(
@@ -225,9 +234,41 @@ export function MetricDetailModal({ isOpen, onClose, metricType, currency, iqdPr
                                     {t('revenue.detailedAnalysis')}
                                 </DialogDescription>
                             </div>
+                            {/* Desktop Print Button (Metric Designated Color Placement) */}
+                            <Button
+                                variant="outline"
+                                size="icon"
+                                onClick={() => handlePrint()}
+                                className={cn(
+                                    "hidden md:flex w-9 h-9 rounded-xl transition-all duration-300 border-2 ml-2",
+                                    metricType === 'grossRevenue' && "bg-blue-500/10 border-blue-500/20 text-blue-600 dark:text-blue-400 hover:bg-blue-500/20",
+                                    metricType === 'totalCost' && "bg-orange-500/10 border-orange-500/20 text-orange-600 dark:text-orange-400 hover:bg-orange-500/20",
+                                    metricType === 'netProfit' && "bg-emerald-500/10 border-emerald-500/20 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20",
+                                    metricType === 'profitMargin' && "bg-purple-500/10 border-purple-500/20 text-purple-600 dark:text-purple-400 hover:bg-purple-500/20"
+                                )}
+                            >
+                                <Printer className="w-4 h-4" />
+                            </Button>
                         </div>
-                        <div className="text-right">
-                            {getPrimaryValue()}
+                        <div className="flex items-center gap-3">
+                            <div className="text-right">
+                                {getPrimaryValue()}
+                            </div>
+                            {/* Mobile Print Button */}
+                            <Button
+                                variant="outline"
+                                size="icon"
+                                onClick={() => handlePrint()}
+                                className={cn(
+                                    "md:hidden w-9 h-9 rounded-xl transition-all duration-300 border-2",
+                                    metricType === 'grossRevenue' && "bg-blue-500/10 border-blue-500/20 text-blue-600 dark:text-blue-400",
+                                    metricType === 'totalCost' && "bg-orange-500/10 border-orange-500/20 text-orange-600 dark:text-orange-400",
+                                    metricType === 'netProfit' && "bg-emerald-500/10 border-emerald-500/20 text-emerald-600 dark:text-emerald-400",
+                                    metricType === 'profitMargin' && "bg-purple-500/10 border-purple-500/20 text-purple-600 dark:text-purple-400"
+                                )}
+                            >
+                                <Printer className="w-4 h-4" />
+                            </Button>
                         </div>
                     </DialogHeader>
 
@@ -361,7 +402,13 @@ export function MetricDetailModal({ isOpen, onClose, metricType, currency, iqdPr
                                                     borderRadius: '20px',
                                                     border: '1px solid hsl(var(--border))',
                                                     padding: '12px',
-                                                    textAlign: 'left'
+                                                    textAlign: 'left',
+                                                    color: 'hsl(var(--foreground))'
+                                                }}
+                                                itemStyle={{
+                                                    color: 'hsl(var(--foreground))',
+                                                    fontSize: '11px',
+                                                    fontWeight: 'bold'
                                                 }}
                                                 formatter={(value: any) => formatCurrency(value, (activeCurrencies[0] || currency) as any, iqdPreference)}
                                             />

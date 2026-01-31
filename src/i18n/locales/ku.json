@@ -120,6 +120,7 @@
             "stock": "بڕی کۆگا",
             "minStock": "کەمترین بڕی کۆگا",
             "category": "جۆر",
+            "imageError": "Image upload failed. Please try again.",
             "unit": "یەکە",
             "description": "پێناسە",
             "currency": "دراو",
@@ -602,6 +603,8 @@
     },
     "revenue": {
         "title": "شیکردنەوەی داهات",
+        "listTitle": "لیستی داهات",
+        "printList": "چاپکردنی لیستی داهات",
         "subtitle": "شوێنکەوتنی ئەدای فرۆشتن و قازانج",
         "grossRevenue": "کۆی داهات",
         "totalCost": "کۆی تێچوو",

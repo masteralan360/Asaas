@@ -120,6 +120,7 @@
             "sku": "SKU",
             "price": "Selling Price",
             "cost": "Cost Price",
+            "imageError": "Image upload failed. Please try again.",
             "stock": "Initial Stock",
             "minStock": "Min Stock Level",
             "category": "Category",
@@ -629,6 +630,7 @@
     "revenue": {
         "title": "Revenue Analytics",
         "listTitle": "Revenue List",
+        "printList": "Print Revenue List",
         "subtitle": "Track your sales performance and profitability",
         "grossRevenue": "Gross Revenue",
         "totalCost": "Total Cost (COGS)",

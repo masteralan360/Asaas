@@ -103,6 +103,7 @@ export function Products() {
     })
     const [deleteModalOpen, setDeleteModalOpen] = useState(false)
     const [itemToDelete, setItemToDelete] = useState<{ id: string, name: string, type: 'product' | 'category' } | null>(null)
+    const [imageError, setImageError] = useState(false)
 
     useEffect(() => {
         setIsElectron(isTauri());
@@ -208,6 +209,7 @@ export function Products() {
         const targetPath = await platformService.pickAndSaveImage(workspaceId);
         if (targetPath) {
             setFormData(prev => ({ ...prev, imageUrl: targetPath }));
+            setImageError(false);
 
             // Trigger P2P sync for other workspace users
             p2pSyncManager.uploadFromPath(targetPath).then(success => {
@@ -264,6 +266,7 @@ export function Products() {
                 currency: features.default_currency
             })
         }
+        setImageError(false)
         setIsDialogOpen(true)
     }
 
@@ -843,22 +846,20 @@ export function Products() {
                             <div className="flex flex-col sm:flex-row gap-4 items-start">
                                 {/* Preview Thumbnail */}
                                 <div className="w-32 h-32 rounded-lg border bg-muted flex items-center justify-center overflow-hidden shrink-0">
-                                    {formData.imageUrl ? (
+                                    {!formData.imageUrl ? (
+                                        <Package className="w-12 h-12 text-muted-foreground/30" />
+                                    ) : imageError ? (
+                                        <div className="flex flex-col items-center gap-1 px-2 text-center">
+                                            <Package className="w-8 h-8 text-destructive/30" />
+                                            <span className="text-[10px] font-bold text-destructive/60 uppercase">{t('products.form.imageError') || 'Image Error'}</span>
+                                        </div>
+                                    ) : (
                                         <img
                                             src={getDisplayImageUrl(formData.imageUrl)}
                                             alt="Preview"
-                                            className="w-full h-full object-cover"
-                                            onError={(e) => {
-                                                // Hide the image and show fallback icon
-                                                (e.target as HTMLImageElement).style.display = 'none';
-                                                const parent = (e.target as HTMLImageElement).parentElement;
-                                                if (parent) {
-                                                    parent.innerHTML = `<span class="text-xs font-medium text-center px-2 text-muted-foreground">Image Error</span>`;
-                                                }
-                                            }}
+                                            className="w-full h-full object-cover animate-in fade-in duration-300"
+                                            onError={() => setImageError(true)}
                                         />
-                                    ) : (
-                                        <Package className="w-12 h-12 text-muted-foreground/30" />
                                     )}
                                 </div>
 
@@ -867,7 +868,10 @@ export function Products() {
                                         <Input
                                             id="imageUrl"
                                             value={formData.imageUrl}
-                                            onChange={(e) => setFormData({ ...formData, imageUrl: e.target.value })}
+                                            onChange={(e) => {
+                                                setFormData({ ...formData, imageUrl: e.target.value });
+                                                setImageError(false);
+                                            }}
                                             placeholder={t('products.form.imageUrlPlaceholder') || "Image URL or local path"}
                                         />
                                         {isElectron && (

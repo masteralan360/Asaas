@@ -103,6 +103,7 @@ export function POS() {
     const searchInputRef = useRef<HTMLInputElement>(null)
     const productRefs = useRef<(HTMLButtonElement | null)[]>([])
     const cartItemRefs = useRef<(HTMLDivElement | null)[]>([])
+    const cartContainerRef = useRef<HTMLDivElement>(null)
     const lastEnterTime = useRef<number>(0)
 
     useEffect(() => {
@@ -425,6 +426,16 @@ export function POS() {
             setTimeout(() => skuInputRef.current?.focus(), 100)
         }
     }, [isSkuModalOpen])
+
+    // Auto-scroll cart to bottom on desktop when items are added
+    useEffect(() => {
+        if (!isLayoutMobile && cart.length > 0 && cartContainerRef.current) {
+            cartContainerRef.current.scrollTo({
+                top: cartContainerRef.current.scrollHeight,
+                behavior: 'smooth'
+            });
+        }
+    }, [cart.length, isLayoutMobile])
 
     const addToCart = useCallback((product: Product) => {
         if (product.quantity <= 0) return // Out of stock
@@ -1031,22 +1042,13 @@ export function POS() {
                                         >
                                             {/* Product Image Wrapper */}
                                             <div className="relative aspect-square rounded-2xl bg-muted/30 border border-border/20 overflow-hidden flex items-center justify-center">
-                                                {product.imageUrl ? (
-                                                    <img
-                                                        src={getDisplayImageUrl(product.imageUrl)}
-                                                        alt={product.name}
-                                                        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
-                                                        onError={(e) => {
-                                                            (e.target as HTMLImageElement).style.display = 'none';
-                                                            const parent = (e.target as HTMLImageElement).parentElement;
-                                                            if (parent) {
-                                                                parent.innerHTML = `<span class="text-xs font-medium text-center px-2 line-clamp-3">${product.name}</span>`;
-                                                            }
-                                                        }}
-                                                    />
-                                                ) : (
-                                                    <Zap className="w-10 h-10 opacity-10 text-muted-foreground group-hover:scale-110 transition-transform duration-500" />
-                                                )}
+                                                <ProductImage
+                                                    url={product.imageUrl}
+                                                    name={product.name}
+                                                    getDisplayImageUrl={getDisplayImageUrl}
+                                                    className="w-full h-full group-hover:scale-110"
+                                                    fallbackIcon={<Zap className="w-10 h-10 opacity-10 text-muted-foreground group-hover:scale-110 transition-transform duration-500" />}
+                                                />
 
                                                 {/* POS Indicators (Cart & Stock) */}
                                                 {inCartQuantity > 0 && (
@@ -1104,7 +1106,7 @@ export function POS() {
                             </div>
                         </div>
 
-                        <div className="flex-1 p-4 overflow-y-auto">
+                        <div className="flex-1 p-4 overflow-y-auto" ref={cartContainerRef}>
                             <div className="space-y-3">
                                 {cart.length === 0 ? (
                                     <div className="h-full flex flex-col items-center justify-center text-muted-foreground opacity-50 space-y-2 py-12">
@@ -1626,6 +1628,47 @@ export function POS() {
     )
 }
 
+// --- Shared Components ---
+
+interface ProductImageProps {
+    url?: string
+    name: string
+    getDisplayImageUrl: (url?: string) => string
+    className?: string
+    fallbackIcon?: React.ReactNode
+}
+
+const ProductImage = ({ url, name, getDisplayImageUrl, className, fallbackIcon }: ProductImageProps) => {
+    const [error, setError] = useState(false)
+
+    // Reset error when URL changes
+    useEffect(() => {
+        setError(false)
+    }, [url])
+
+    if (!url) {
+        return <div className={cn("flex items-center justify-center bg-muted/30", className)}>
+            {fallbackIcon || <Zap className="w-10 h-10 opacity-10 text-muted-foreground" />}
+        </div>
+    }
+
+    if (error) {
+        return <div className={cn("flex flex-col items-center justify-center bg-muted/50 p-2 text-center gap-1", className)}>
+            <Zap className="w-6 h-6 opacity-20 text-destructive" />
+            <span className="text-[10px] font-bold text-destructive/60 line-clamp-2 leading-tight uppercase font-mono">{name}</span>
+        </div>
+    }
+
+    return (
+        <img
+            src={getDisplayImageUrl(url)}
+            alt={name}
+            className={cn("object-cover transition-transform duration-500", className)}
+            onError={() => setError(true)}
+        />
+    )
+}
+
 // --- Mobile UI Components ---
 
 interface MobileHeaderProps {
@@ -1718,7 +1761,7 @@ interface MobileGridProps {
     addToCart: (p: Product) => void
     updateQuantity: (id: string, d: number) => void
     features: WorkspaceFeatures
-    getDisplayImageUrl: (url: string) => string
+    getDisplayImageUrl: (url?: string) => string
     categories: Category[]
     selectedCategory: string
     setSelectedCategory: (id: string) => void
@@ -1812,11 +1855,13 @@ const MobileGrid = ({ t, search, setSearch, setIsSkuModalOpen, setIsBarcodeModal
                         }}
                     >
                         <div className="aspect-square bg-muted/30 rounded-[1.5rem] overflow-hidden relative">
-                            {product.imageUrl ? (
-                                <img src={getDisplayImageUrl(product.imageUrl)} className="w-full h-full object-cover" />
-                            ) : (
-                                <Zap className="w-10 h-10 absolute inset-0 m-auto opacity-10" />
-                            )}
+                            <ProductImage
+                                url={product.imageUrl}
+                                name={product.name}
+                                getDisplayImageUrl={getDisplayImageUrl}
+                                className="w-full h-full"
+                                fallbackIcon={<Zap className="w-10 h-10 absolute inset-0 m-auto opacity-10" />}
+                            />
 
                             {inCartQuantity > 0 && (
                                 <div className="absolute top-2 left-2 bg-emerald-500 text-white px-2 py-1 rounded-xl text-[10px] font-black animate-pop-in border border-emerald-400 shadow-sm z-10">
@@ -1900,7 +1945,7 @@ interface MobileCartProps {
     setDigitalProvider: (p: 'fib' | 'qicard' | 'zaincash' | 'fastpay') => void
     handleCheckout: () => void
     isLoading: boolean
-    getDisplayImageUrl: (url: string) => string
+    getDisplayImageUrl: (url?: string) => string
     products: Product[]
     convertPrice: (amount: number, from: CurrencyCode, to: CurrencyCode) => number
     openPriceEdit: (productId: string, currentPrice: number) => void
@@ -1927,13 +1972,13 @@ const MobileCart = ({ cart, removeFromCart, updateQuantity, features, totalAmoun
                     return (
                         <div key={item.product_id} className="flex gap-4 bg-card p-4 rounded-[2rem] border border-border shadow-sm group">
                             <div className="w-20 h-20 bg-muted/30 rounded-2xl overflow-hidden shrink-0">
-                                {item.imageUrl ? (
-                                    <img src={getDisplayImageUrl(item.imageUrl)} className="w-full h-full object-cover" />
-                                ) : (
-                                    <div className="w-full h-full flex items-center justify-center opacity-10">
-                                        <Zap className="w-8 h-8" />
-                                    </div>
-                                )}
+                                <ProductImage
+                                    url={item.imageUrl}
+                                    name={item.name}
+                                    getDisplayImageUrl={getDisplayImageUrl}
+                                    className="w-full h-full"
+                                    fallbackIcon={<Zap className="w-8 h-8 opacity-10" />}
+                                />
                             </div>
                             <div className="flex-1 min-w-0 flex flex-col justify-between py-0.5">
                                 <div className="flex justify-between items-start gap-2">
