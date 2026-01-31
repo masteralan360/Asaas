@@ -555,6 +555,9 @@
         "backToPos": "Back to POS",
         "outOfStock": "Out of Stock"
     },
+    "print": {
+        "clickToExpand": "Click to expand"
+    },
     "sales": {
         "title": "Sales History",
         "subtitle": "View past transactions",
@@ -700,7 +703,9 @@
             "thisMonth": "This Month",
             "custom": "Custom Range",
             "start": "Start Date",
-            "end": "End Date"
+            "end": "End Date",
+            "from": "From",
+            "to": "To"
         },
         "table": {
             "name": "Staff Name",

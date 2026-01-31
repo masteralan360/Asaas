@@ -3,9 +3,11 @@ import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/auth'
 import { supabase } from '@/auth/supabase'
 import { Sale } from '@/types'
-import { formatCurrency, formatDateTime, formatCompactDateTime, cn } from '@/lib/utils'
+import { formatCurrency, formatDateTime, formatCompactDateTime, formatDate, cn } from '@/lib/utils'
 import { useWorkspace } from '@/workspace'
 import { isMobile } from '@/lib/platform'
+import { useDateRange } from '@/context/DateRangeContext'
+import { DateRangeFilters } from '@/ui/components/DateRangeFilters'
 import {
     Table,
     TableBody,
@@ -23,7 +25,6 @@ import {
     ReturnConfirmationModal,
     ReturnDeclineModal,
     ReturnRulesDisplayModal,
-    Input,
     Select,
     SelectContent,
     SelectItem,
@@ -31,7 +32,8 @@ import {
     SelectValue,
     PrintSelectionModal,
     A4InvoiceTemplate,
-    DeleteConfirmationModal
+    DeleteConfirmationModal,
+    PrintPreviewModal
 } from '@/ui/components'
 import { SaleItem } from '@/types'
 import {
@@ -41,7 +43,6 @@ import {
     Trash2,
     Printer,
     RotateCcw,
-    Calendar,
     Filter
 } from 'lucide-react'
 
@@ -55,10 +56,7 @@ export function Sales() {
     const [printingSale, setPrintingSale] = useState<Sale | null>(null)
     const [returnModalOpen, setReturnModalOpen] = useState(false)
     const [saleToReturn, setSaleToReturn] = useState<Sale | null>(null)
-    const [dateRange, setDateRange] = useState<'today' | 'month' | 'custom'>(() => {
-        return (localStorage.getItem('sales_date_range') as 'today' | 'month' | 'custom') || 'month'
-    })
-    const [customDates, setCustomDates] = useState({ start: '', end: '' })
+    const { dateRange, customDates } = useDateRange()
     const [selectedCashier, setSelectedCashier] = useState<string>(() => {
         return localStorage.getItem('sales_selected_cashier') || 'all'
     })
@@ -96,6 +94,31 @@ export function Sales() {
         return sale.total_amount
     }
 
+    const getDateDisplay = () => {
+        if (dateRange === 'today') {
+            return formatDate(new Date())
+        }
+        if (dateRange === 'month') {
+            const now = new Date()
+            return new Intl.DateTimeFormat(navigator.language || 'en-US', {
+                month: 'short',
+                year: 'numeric'
+            }).format(now)
+        }
+        if (dateRange === 'custom') {
+            if (sales && sales.length > 0) {
+                const dates = sales.map(s => new Date(s.created_at).getTime())
+                const minDate = new Date(Math.min(...dates))
+                const maxDate = new Date(Math.max(...dates))
+                return `${t('performance.filters.from')} ${formatDate(minDate)} ${t('performance.filters.to')} ${formatDate(maxDate)}`
+            }
+            if (customDates.start && customDates.end) {
+                return `${t('performance.filters.from')} ${formatDate(customDates.start)} ${t('performance.filters.to')} ${formatDate(customDates.end)}`
+            }
+        }
+        return ''
+    }
+
     const [rulesQueue, setRulesQueue] = useState<Array<{ productName: string; rules: string }>>([])
     const [currentRuleIndex, setCurrentRuleIndex] = useState(-1)
     const [showDeclineModal, setShowDeclineModal] = useState(false)
@@ -105,9 +128,6 @@ export function Sales() {
         return (localStorage.getItem('sales_print_format') as 'receipt' | 'a4') || 'receipt'
     })
 
-    useEffect(() => {
-        localStorage.setItem('sales_date_range', dateRange)
-    }, [dateRange])
 
     useEffect(() => {
         localStorage.setItem('sales_selected_cashier', selectedCashier)
@@ -118,78 +138,10 @@ export function Sales() {
     }, [printFormat])
     const [showPrintModal, setShowPrintModal] = useState(false)
     const [saleToPrintSelection, setSaleToPrintSelection] = useState<Sale | null>(null)
+    const [showPrintPreview, setShowPrintPreview] = useState(false)
     const printRef = useRef<HTMLDivElement>(null)
 
-    const handlePrint = () => {
-        if (!printRef.current) return
 
-        const content = printRef.current.innerHTML
-        const iframe = document.createElement('iframe')
-
-        iframe.style.position = 'absolute'
-        iframe.style.width = '0px'
-        iframe.style.height = '0px'
-        iframe.style.border = 'none'
-
-        document.body.appendChild(iframe)
-
-        const doc = iframe.contentWindow?.document
-        if (doc) {
-            // Gather all styles from the main document (Tailwind, local styles, etc.)
-            const styles = Array.from(document.querySelectorAll("style, link[rel='stylesheet']"))
-                .map(node => node.outerHTML)
-                .join("")
-
-            doc.open()
-            doc.write(`
-                <html dir="${document.dir}">
-                    <head>
-                        <title>Print ${printFormat === 'a4' ? 'Invoice' : 'Receipt'}</title>
-                        ${styles}
-                        <style>
-                            @media print {
-                                @page { size: ${printFormat === 'a4' ? 'A4' : '80mm auto'}; margin: 0; }
-                                body { margin: 0; padding: ${printFormat === 'a4' ? '0' : '10px'}; }
-                                html, body { height: auto; overflow: visible; }
-                            }
-                            body { 
-                                font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; 
-                                background: white;
-                            }
-                        </style>
-                    </head>
-                    <body>
-                        ${content}
-                    </body>
-                </html>
-            `)
-            doc.close()
-
-            // Wait for resources (styles/images) to load
-            const print = () => {
-                iframe.contentWindow?.focus()
-                iframe.contentWindow?.print()
-                setPrintingSale(null)
-                // Cleanup
-                setTimeout(() => {
-                    if (document.body.contains(iframe)) {
-                        document.body.removeChild(iframe)
-                    }
-                }, 1000)
-            }
-
-            if (iframe.contentWindow) {
-                // Try onload
-                iframe.contentWindow.onload = print
-                // Fallback timeout in case onload doesn't fire
-                setTimeout(() => {
-                    if (document.body.contains(iframe)) {
-                        print()
-                    }
-                }, 1500)
-            }
-        }
-    }
 
     const onPrintClick = (sale: Sale) => {
         setSaleToPrintSelection(sale)
@@ -201,20 +153,17 @@ export function Sales() {
         setShowPrintModal(false)
         if (saleToPrintSelection) {
             setPrintingSale(saleToPrintSelection)
-            setSaleToPrintSelection(null)
+            setShowPrintPreview(true) // Open preview instead of printing directly
         }
     }
 
-    useEffect(() => {
-        if (printingSale) {
-            // Small timeout to ensure DOM is ready and styles are applied
-            setTimeout(() => {
-                if (printRef.current) {
-                    handlePrint()
-                }
-            }, 100)
-        }
-    }, [printingSale])
+    const handleConfirmPrint = () => {
+        // PrintPreviewModal handles printing internally via react-to-print
+        // We just need to clean up state after print is confirmed
+        setShowPrintPreview(false)
+        setPrintingSale(null)
+        setSaleToPrintSelection(null)
+    }
 
     const handleDeleteSale = (sale: Sale) => {
         setSaleToDelete(sale)
@@ -543,46 +492,27 @@ export function Sales() {
         <div className="space-y-6">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
-                    <h1 className="text-2xl font-bold flex items-center gap-2">
-                        <Receipt className="w-6 h-6 text-primary" />
-                        {t('sales.title') || 'Sales History'}
-                        {isLoading && (
-                            <Loader2 className="w-4 h-4 animate-spin text-primary/50 ml-1" />
+                    <div className="flex items-center gap-3">
+                        <h1 className="text-2xl font-bold flex items-center gap-2">
+                            <Receipt className="w-6 h-6 text-primary" />
+                            {t('sales.title') || 'Sales History'}
+                            {isLoading && (
+                                <Loader2 className="w-4 h-4 animate-spin text-primary/50 ml-1" />
+                            )}
+                        </h1>
+                        {getDateDisplay() && (
+                            <div className="px-3 py-1 text-sm font-bold bg-primary text-primary-foreground rounded-lg shadow-sm animate-pop-in">
+                                {getDateDisplay()}
+                            </div>
                         )}
-                    </h1>
+                    </div>
                     <p className="text-muted-foreground">
                         {t('sales.subtitle') || 'View past transactions'}
                     </p>
                 </div>
 
                 <div className="flex flex-wrap items-center gap-3">
-                    <div className="bg-secondary/50 p-1 rounded-lg flex items-center gap-1 shadow-sm border border-border/50">
-                        <Button
-                            variant={dateRange === 'today' ? 'default' : 'ghost'}
-                            size="sm"
-                            onClick={() => setDateRange('today')}
-                            className={cn("text-xs h-8 px-4 transition-all duration-200", dateRange === 'today' && "shadow-sm")}
-                        >
-                            {t('performance.filters.today')}
-                        </Button>
-                        <Button
-                            variant={dateRange === 'month' ? 'default' : 'ghost'}
-                            size="sm"
-                            onClick={() => setDateRange('month')}
-                            className={cn("text-xs h-8 px-4 transition-all duration-200", dateRange === 'month' && "shadow-sm")}
-                        >
-                            {t('performance.filters.thisMonth')}
-                        </Button>
-                        <Button
-                            variant={dateRange === 'custom' ? 'default' : 'ghost'}
-                            size="sm"
-                            onClick={() => setDateRange('custom')}
-                            className={cn("text-xs h-8 px-4 gap-1.5 transition-all duration-200", dateRange === 'custom' && "shadow-sm")}
-                        >
-                            <Calendar className="w-3.5 h-3.5" />
-                            {t('performance.filters.custom')}
-                        </Button>
-                    </div>
+                    <DateRangeFilters />
 
                     {availableCashiers.length > 0 && (
                         <div className="flex items-center gap-2 bg-secondary/30 p-1 px-3 rounded-lg border border-border/50">
@@ -605,30 +535,6 @@ export function Sales() {
                                     ))}
                                 </SelectContent>
                             </Select>
-                        </div>
-                    )}
-
-                    {dateRange === 'custom' && (
-                        <div className="flex items-center gap-2 bg-secondary/30 p-1 px-3 rounded-lg border border-border/50 animate-in fade-in slide-in-from-left-2 duration-300">
-                            <div className="flex items-center gap-2">
-                                <span className="text-[10px] uppercase font-bold text-muted-foreground whitespace-nowrap">{t('performance.filters.start')}</span>
-                                <Input
-                                    type="date"
-                                    value={customDates.start}
-                                    onChange={(e) => setCustomDates(prev => ({ ...prev, start: e.target.value }))}
-                                    className="h-8 text-xs w-36 bg-background/50 border-none focus-visible:ring-1 focus-visible:ring-primary/50 transition-all font-mono"
-                                />
-                            </div>
-                            <div className="w-px h-4 bg-border/50 mx-1" />
-                            <div className="flex items-center gap-2">
-                                <span className="text-[10px] uppercase font-bold text-muted-foreground whitespace-nowrap">{t('performance.filters.end')}</span>
-                                <Input
-                                    type="date"
-                                    value={customDates.end}
-                                    onChange={(e) => setCustomDates(prev => ({ ...prev, end: e.target.value }))}
-                                    className="h-8 text-xs w-36 bg-background/50 border-none focus-visible:ring-1 focus-visible:ring-primary/50 transition-all font-mono"
-                                />
-                            </div>
                         </div>
                     )}
                 </div>
@@ -981,6 +887,32 @@ export function Sales() {
                 title={t('sales.confirmDelete')}
                 description={t('sales.deleteWarning')}
             />
+
+            {/* Print Preview Modal */}
+            <PrintPreviewModal
+                isOpen={showPrintPreview}
+                onClose={() => {
+                    setShowPrintPreview(false)
+                    setPrintingSale(null)
+                    setSaleToPrintSelection(null)
+                }}
+                onConfirm={handleConfirmPrint}
+                title={printFormat === 'a4' ? (t('sales.print.a4') || 'A4 Invoice') : (t('sales.print.receipt') || 'Receipt')}
+            >
+                {printingSale && (
+                    printFormat === 'a4' ? (
+                        <A4InvoiceTemplate
+                            sale={printingSale}
+                            features={features}
+                        />
+                    ) : (
+                        <SaleReceipt
+                            sale={printingSale}
+                            features={features}
+                        />
+                    )
+                )}
+            </PrintPreviewModal>
         </div>
     )
 }
