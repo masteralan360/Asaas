@@ -8,6 +8,15 @@ import './i18n/config'
 import { platformService } from '@/services/platformService'
 
 // Initialize platform service (cache paths etc)
+// Global error handler for lazy loading failures (chunks)
+window.addEventListener('unhandledrejection', (event) => {
+    if (event.reason?.message?.includes('Failed to fetch dynamically imported module') ||
+        event.reason?.message?.includes('Importing a stopped module')) {
+        console.error('[Critical] Chunk load failed. Auto-reloading...', event.reason);
+        window.location.reload();
+    }
+});
+
 // Initialize platform service and then render
 const init = async () => {
     try {

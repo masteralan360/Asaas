@@ -14,6 +14,7 @@
         "edit": "Edit",
         "create": "Create",
         "search": "Search...",
+        "searchBox": "Search",
         "actions": "Actions",
         "confirm": "Confirm",
         "error": "Error",
@@ -69,7 +70,11 @@
         "sales": "Sales History",
         "revenue": "Net Revenue",
         "performance": "Team Performance",
-        "settings": "Settings"
+        "settings": "Settings",
+        "whatsapp": "WhatsApp",
+        "currencyConverter": "Currency Converter",
+        "tools": "Tools",
+        "actions": "Actions"
     },
     "report": {
         "print": "Print Performance Report",
@@ -328,11 +333,13 @@
         "lowStock": "Low Stock Items",
         "recentActivity": "Recent Activity",
         "recentOrders": "Recent Orders",
+        "recentSales": "Recent Sales",
         "pendingInvoices": "Pending Invoices",
         "totalProducts": "Total Products",
         "totalOrders": "Total Orders",
         "allStocked": "All products are well stocked",
-        "noPendingInvoices": "No pending invoices"
+        "noPendingInvoices": "No pending invoices",
+        "dailyTrends": "Daily Trends"
     },
     "settings": {
         "title": "Settings",

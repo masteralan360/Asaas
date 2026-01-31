@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from './database'
-import type { Product, Category, Customer, Order, Invoice, OfflineMutation, Sale } from './models'
+import type { Product, Category, Customer, Order, Invoice, OfflineMutation, Sale, SaleItem } from './models'
 import { generateId, toSnakeCase, toCamelCase } from '@/lib/utils'
 import { supabase } from '@/auth/supabase'
 import { useNetworkStatus } from '@/hooks/useNetworkStatus'
@@ -785,25 +785,36 @@ export function useSales(workspaceId: string | undefined) {
             if (isOnline && workspaceId) {
                 const { data, error } = await supabase
                     .from('sales')
-                    .select('*')
+                    .select('*, sale_items(*)')
                     .eq('workspace_id', workspaceId)
 
                 if (data && !error) {
-                    await db.transaction('rw', db.sales, async () => {
+                    await db.transaction('rw', [db.sales, db.sale_items], async () => {
                         const remoteIds = new Set(data.map(d => d.id))
                         const localItems = await db.sales.where('workspaceId').equals(workspaceId).toArray()
 
                         for (const local of localItems) {
                             if (!remoteIds.has(local.id) && local.syncStatus === 'synced') {
                                 await db.sales.delete(local.id)
+                                // Also delete associated items
+                                await db.sale_items.where('saleId').equals(local.id).delete()
                             }
                         }
 
-                        for (const remoteItem of data) {
-                            const localItem = toCamelCase(remoteItem as any) as unknown as Sale
-                            localItem.syncStatus = 'synced'
-                            localItem.lastSyncedAt = new Date().toISOString()
-                            await db.sales.put(localItem)
+                        for (const remoteSale of data) {
+                            const { sale_items, ...saleData } = remoteSale as any
+                            const localSale = toCamelCase(saleData) as unknown as Sale
+                            localSale.syncStatus = 'synced'
+                            localSale.lastSyncedAt = new Date().toISOString()
+                            await db.sales.put(localSale)
+
+                            // Force sync sale items
+                            if (sale_items) {
+                                for (const item of sale_items) {
+                                    const localItem = toCamelCase(item) as unknown as SaleItem
+                                    await db.sale_items.put(localItem)
+                                }
+                            }
                         }
                     })
                 }
@@ -911,34 +922,78 @@ export async function clearOfflineMutations(): Promise<void> {
 export function useDashboardStats(workspaceId: string | undefined) {
     const stats = useLiveQuery(async () => {
         if (!workspaceId) return null
+
+        const thirtyDaysAgo = new Date()
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
+        const thirtyDaysAgoStr = thirtyDaysAgo.toISOString()
+
         const [
             productCount,
             categoryCount,
             customerCount,
             orderCount,
             invoiceCount,
-            recentOrders,
+            recentSales,
             pendingInvoices,
             lowStockProducts,
-            sales
+            allSales
         ] = await Promise.all([
             db.products.where('workspaceId').equals(workspaceId).and(p => !p.isDeleted).count(),
             db.categories.where('workspaceId').equals(workspaceId).and(c => !c.isDeleted).count(),
             db.customers.where('workspaceId').equals(workspaceId).and(c => !c.isDeleted).count(),
             db.orders.where('workspaceId').equals(workspaceId).and(o => !o.isDeleted).count(),
             db.invoices.where('workspaceId').equals(workspaceId).and(i => !i.isDeleted).count(),
-            db.orders.where('workspaceId').equals(workspaceId).and(o => !o.isDeleted).reverse().sortBy('createdAt').then(orders => orders.slice(0, 5)),
+            db.sales.where('workspaceId').equals(workspaceId).and(s => !s.isDeleted).reverse().sortBy('createdAt').then(sales => sales.slice(0, 3)),
             db.invoices.where('workspaceId').equals(workspaceId).and(inv => !inv.isDeleted && (inv.status === 'sent' || inv.status === 'overdue')).toArray(),
             db.products.where('workspaceId').equals(workspaceId).and(p => !p.isDeleted && p.quantity <= p.minStockLevel).toArray(),
-            db.sales.where('workspaceId').equals(workspaceId).toArray()
+            db.sales.where('workspaceId').equals(workspaceId).and(s => !s.isDeleted && s.createdAt >= thirtyDaysAgoStr).toArray()
         ])
 
+        // Fetch items for recent sales and trend sales to calculate cost
+        const saleIds = Array.from(new Set([...recentSales.map(s => s.id), ...allSales.map(s => s.id)]))
+        const allItems = await db.sale_items.where('saleId').anyOf(saleIds).toArray()
+        const itemsBySaleId = allItems.reduce((acc, item) => {
+            if (!acc[item.saleId]) acc[item.saleId] = []
+            acc[item.saleId].push(item)
+            return acc
+        }, {} as Record<string, any[]>)
 
-        // Calculate multi-currency gross revenue from sales
-        const grossRevenueByCurrency: Record<string, number> = {}
-        sales.forEach(sale => {
+        // Calculate multi-currency gross revenue, cost, and profit
+        const statsByCurrency: Record<string, { revenue: number, cost: number, profit: number, dailyTrend: Record<string, { revenue: number, cost: number, profit: number }> }> = {}
+
+        allSales.forEach(sale => {
+            if (sale.isReturned) return
+
             const curr = sale.settlementCurrency || 'usd'
-            grossRevenueByCurrency[curr] = (grossRevenueByCurrency[curr] || 0) + sale.totalAmount
+            if (!statsByCurrency[curr]) {
+                statsByCurrency[curr] = { revenue: 0, cost: 0, profit: 0, dailyTrend: {} }
+            }
+
+            const saleItems = itemsBySaleId[sale.id] || []
+            let saleRevenue = 0
+            let saleCost = 0
+
+            saleItems.forEach(item => {
+                const netQuantity = item.quantity - (item.returnedQuantity || 0)
+                if (netQuantity <= 0) return
+
+                saleRevenue += (item.convertedUnitPrice || 0) * netQuantity
+                saleCost += (item.convertedCostPrice || 0) * netQuantity
+            })
+
+            let saleProfit = saleRevenue - saleCost
+
+            statsByCurrency[curr].revenue += saleRevenue
+            statsByCurrency[curr].cost += saleCost
+            statsByCurrency[curr].profit += saleProfit
+
+            const date = sale.createdAt.split('T')[0]
+            if (!statsByCurrency[curr].dailyTrend[date]) {
+                statsByCurrency[curr].dailyTrend[date] = { revenue: 0, cost: 0, profit: 0 }
+            }
+            statsByCurrency[curr].dailyTrend[date].revenue += saleRevenue
+            statsByCurrency[curr].dailyTrend[date].cost += saleCost
+            statsByCurrency[curr].dailyTrend[date].profit += saleProfit
         })
 
         return {
@@ -947,10 +1002,11 @@ export function useDashboardStats(workspaceId: string | undefined) {
             customerCount,
             orderCount,
             invoiceCount,
-            recentOrders,
+            recentSales,
             pendingInvoices,
             lowStockProducts,
-            grossRevenueByCurrency
+            statsByCurrency,
+            grossRevenueByCurrency: Object.fromEntries(Object.entries(statsByCurrency).map(([c, s]) => [c, s.revenue]))
         }
     }, [workspaceId])
 
@@ -960,9 +1016,11 @@ export function useDashboardStats(workspaceId: string | undefined) {
         customerCount: 0,
         orderCount: 0,
         invoiceCount: 0,
-        recentOrders: [],
+        recentSales: [],
         pendingInvoices: [],
         lowStockProducts: [],
+        statsByCurrency: {},
         grossRevenueByCurrency: {}
     }
 }
+

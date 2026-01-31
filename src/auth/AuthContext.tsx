@@ -90,39 +90,55 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             return
         }
 
-        // Get initial session
-        supabase.auth.getSession().then(async ({ data: { session } }) => {
-            setSession(session)
-            const parsedUser = session?.user ? parseUserFromSupabase(session.user) : null
+        // Get initial session with safety timeout
+        const fetchInitialSession = async () => {
+            try {
+                // 10s timeout for initial session fetch
+                const sessionPromise = supabase.auth.getSession();
+                const timeoutPromise = new Promise((_, reject) =>
+                    setTimeout(() => reject(new Error('Session fetch timed out')), 10000)
+                );
 
-            if (parsedUser && parsedUser.workspaceId) {
-                // Fetch workspace and profile data in parallel for robustness
-                const [wsResult, profileResult] = await Promise.all([
-                    supabase
-                        .from('workspaces')
-                        .select('code, name, is_configured')
-                        .eq('id', parsedUser.workspaceId)
-                        .single(),
-                    supabase
-                        .from('profiles')
-                        .select('profile_url')
-                        .eq('id', parsedUser.id)
-                        .single()
-                ])
+                const { data: { session } } = await Promise.race([sessionPromise, timeoutPromise]) as any;
 
-                if (wsResult.data) {
-                    parsedUser.workspaceCode = wsResult.data.code
-                    parsedUser.workspaceName = wsResult.data.name
-                    parsedUser.isConfigured = wsResult.data.is_configured
+                setSession(session)
+                const parsedUser = session?.user ? parseUserFromSupabase(session.user) : null
+
+                if (parsedUser && parsedUser.workspaceId) {
+                    // Fetch workspace and profile data in parallel for robustness
+                    const [wsResult, profileResult] = await Promise.all([
+                        supabase
+                            .from('workspaces')
+                            .select('code, name, is_configured')
+                            .eq('id', parsedUser.workspaceId)
+                            .single(),
+                        supabase
+                            .from('profiles')
+                            .select('profile_url')
+                            .eq('id', parsedUser.id)
+                            .single()
+                    ])
+
+                    if (wsResult.data) {
+                        parsedUser.workspaceCode = wsResult.data.code
+                        parsedUser.workspaceName = wsResult.data.name
+                        parsedUser.isConfigured = wsResult.data.is_configured
+                    }
+                    if (profileResult.data?.profile_url) {
+                        parsedUser.profileUrl = profileResult.data.profile_url
+                    }
                 }
-                if (profileResult.data?.profile_url) {
-                    parsedUser.profileUrl = profileResult.data.profile_url
-                }
+
+                setUser(parsedUser)
+            } catch (e) {
+                console.error('[Auth] Initial session fetch failed:', e);
+                // On total failure, we at least stop loading so the user can see the SlowLoadingNotice
+            } finally {
+                setIsLoading(false)
             }
+        }
 
-            setUser(parsedUser)
-            setIsLoading(false)
-        })
+        fetchInitialSession();
 
         // Listen for auth changes
         const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {

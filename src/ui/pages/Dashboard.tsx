@@ -1,11 +1,12 @@
 import { useDashboardStats, useSales } from '@/local-db'
 import { Card, CardContent, CardHeader, CardTitle } from '@/ui/components'
 import { formatCurrency, formatDate } from '@/lib/utils'
-import { Package, Users, ShoppingCart, FileText, DollarSign, AlertTriangle } from 'lucide-react'
+import { Package, Users, ShoppingCart, FileText, DollarSign, AlertTriangle, Receipt } from 'lucide-react'
 import { Link } from 'wouter'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/auth'
 import { useWorkspace } from '@/workspace/WorkspaceContext'
+import { DashboardSalesOverview } from '@/ui/components/DashboardSalesOverview'
 
 export function Dashboard() {
     const { user } = useAuth()
@@ -53,39 +54,43 @@ export function Dashboard() {
     ]
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-6 pb-12">
             {/* Page Header */}
-            <div>
-                <h1 className="text-2xl font-bold">{t('dashboard.title')}</h1>
-                <p className="text-muted-foreground">{t('dashboard.subtitle') || 'Overview of your business metrics'}</p>
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                    <h1 className="text-3xl font-black tracking-tight">{t('dashboard.title')}</h1>
+                    <p className="text-muted-foreground font-medium">{t('dashboard.subtitle') || 'Overview of your business metrics'}</p>
+                </div>
             </div>
 
             {/* Stats Grid */}
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
                 {statCards.map((stat) => (
                     <Link key={stat.title} href={stat.href}>
-                        <Card className="cursor-pointer card-hover">
+                        <Card className="cursor-pointer card-hover border-border/50 bg-card/50 backdrop-blur-sm rounded-[1.5rem] overflow-hidden">
                             <CardHeader className="flex flex-row items-center justify-between pb-2">
-                                <CardTitle className="text-sm font-medium text-muted-foreground">
+                                <CardTitle className="text-xs font-black uppercase tracking-widest text-muted-foreground/70">
                                     {stat.title}
                                 </CardTitle>
-                                <div className={`p-2 rounded-lg ${stat.bgColor}`}>
+                                <div className={`p-2.5 rounded-xl ${stat.bgColor} shadow-inner`}>
                                     <stat.icon className={`w-4 h-4 ${stat.color}`} />
                                 </div>
                             </CardHeader>
                             <CardContent>
-                                <div className="text-2xl font-bold">
+                                <div className="text-2xl font-black tracking-tight">
                                     {stat.isRevenue ? (
                                         <div className="flex flex-col gap-0.5">
                                             {Object.entries(stat.value || {}).map(([curr, val]) => (
-                                                <div key={curr} className="text-lg md:text-xl line-clamp-1">
-                                                    {formatCurrency(val as number, curr, features.iqd_display_preference)}
+                                                <div key={curr} className="text-lg md:text-xl line-clamp-1 tabular-nums">
+                                                    {formatCurrency(val as number, curr as any, features.iqd_display_preference)}
                                                 </div>
                                             ))}
-                                            {Object.keys(stat.value || {}).length === 0 && formatCurrency(0, 'usd')}
+                                            {Object.keys(stat.value || {}).length === 0 && (
+                                                <div className="text-lg md:text-xl tabular-nums">{formatCurrency(0, 'usd')}</div>
+                                            )}
                                         </div>
                                     ) : (
-                                        stat.value as any
+                                        <span className="tabular-nums">{stat.value as any}</span>
                                     )}
                                 </div>
                             </CardContent>
@@ -95,109 +100,145 @@ export function Dashboard() {
             </div>
 
             <div className="grid gap-6 lg:grid-cols-2">
-                {/* Recent Orders */}
-                <Card>
-                    <CardHeader>
-                        <CardTitle className="flex items-center gap-2">
-                            <ShoppingCart className="w-5 h-5 text-primary" />
-                            {t('dashboard.recentOrders') || 'Recent Orders'}
+                {/* Recent Sales (Replaces Recent Orders) */}
+                <Card className="bg-card/40 border-border/30 backdrop-blur-md rounded-[2rem] overflow-hidden">
+                    <CardHeader className="pb-3">
+                        <CardTitle className="flex items-center gap-3 text-lg font-black">
+                            <div className="p-2 rounded-xl bg-primary/10">
+                                <Receipt className="w-5 h-5 text-primary" />
+                            </div>
+                            {t('dashboard.recentSales') || 'Recent Sales'}
                         </CardTitle>
                     </CardHeader>
                     <CardContent>
-                        {stats.recentOrders.length === 0 ? (
-                            <p className="text-sm text-muted-foreground text-center py-4">
-                                {t('common.noData') || 'No orders yet'}
-                            </p>
+                        {stats.recentSales.length === 0 ? (
+                            <div className="flex flex-col items-center justify-center py-12 opacity-40">
+                                <Receipt className="w-12 h-12 mb-2" />
+                                <p className="text-sm font-bold uppercase tracking-widest">
+                                    {t('common.noData') || 'No sales yet'}
+                                </p>
+                            </div>
                         ) : (
-                            <div className="space-y-3">
-                                {stats.recentOrders.map((order) => (
+                            <div className="space-y-4">
+                                {stats.recentSales.map((sale) => (
                                     <div
-                                        key={order.id}
-                                        className="flex items-center justify-between p-3 rounded-lg bg-secondary/50"
+                                        key={sale.id}
+                                        className="flex items-center justify-between p-4 rounded-3xl bg-secondary/30 hover:bg-secondary/50 transition-colors border border-transparent hover:border-border/50"
                                     >
-                                        <div>
-                                            <p className="font-medium">{order.orderNumber}</p>
-                                            <p className="text-sm text-muted-foreground">{order.customerName}</p>
+                                        <div className="flex items-center gap-4">
+                                            <div className="w-10 h-10 rounded-2xl bg-background flex items-center justify-center font-black text-xs shadow-sm border border-border/20">
+                                                #{sale.sequenceId || sale.id.slice(0, 4)}
+                                            </div>
+                                            <div>
+                                                <p className="font-black text-sm uppercase tracking-tight">{t('common.sales')}</p>
+                                                <p className="text-xs font-bold text-muted-foreground/60">
+                                                    {formatDate(sale.createdAt)}
+                                                </p>
+                                            </div>
                                         </div>
                                         <div className="text-right">
-                                            <p className="font-medium">{formatCurrency(order.total)}</p>
-                                            <p className="text-xs text-muted-foreground">
-                                                {formatDate(order.createdAt)}
+                                            <p className="font-black text-primary tabular-nums">
+                                                {formatCurrency(sale.totalAmount, sale.settlementCurrency, features.iqd_display_preference)}
+                                            </p>
+                                            <p className="text-[10px] font-bold uppercase text-muted-foreground/60 tracking-wider">
+                                                {sale.origin || 'pos'}
                                             </p>
                                         </div>
                                     </div>
                                 ))}
                             </div>
                         )}
+                        <Link href="/sales" className="block mt-6 text-center text-xs font-black uppercase tracking-[0.2em] text-primary hover:text-primary/70 transition-colors">
+                            {t('common.viewAll') || 'View All Sales'}
+                        </Link>
                     </CardContent>
                 </Card>
 
                 {/* Low Stock Alert */}
-                <Card>
-                    <CardHeader>
-                        <CardTitle className="flex items-center gap-2">
-                            <AlertTriangle className="w-5 h-5 text-amber-500" />
+                <Card className="bg-card/40 border-border/30 backdrop-blur-md rounded-[2rem] overflow-hidden">
+                    <CardHeader className="pb-3">
+                        <CardTitle className="flex items-center gap-3 text-lg font-black">
+                            <div className="p-2 rounded-xl bg-amber-500/10">
+                                <AlertTriangle className="w-5 h-5 text-amber-500" />
+                            </div>
                             {t('dashboard.lowStock')}
                         </CardTitle>
                     </CardHeader>
                     <CardContent>
                         {stats.lowStockProducts.length === 0 ? (
-                            <p className="text-sm text-muted-foreground text-center py-4">
-                                All products are well stocked
-                            </p>
+                            <div className="flex flex-col items-center justify-center py-12 opacity-40">
+                                <Package className="w-12 h-12 mb-2" />
+                                <p className="text-sm font-bold uppercase tracking-widest">
+                                    {t('dashboard.allStocked') || 'All products well stocked'}
+                                </p>
+                            </div>
                         ) : (
-                            <div className="space-y-3">
-                                {stats.lowStockProducts.slice(0, 5).map((product) => (
+                            <div className="space-y-4">
+                                {stats.lowStockProducts.slice(0, 3).map((product) => (
                                     <div
                                         key={product.id}
-                                        className="flex items-center justify-between p-3 rounded-lg bg-amber-500/10"
+                                        className="flex items-center justify-between p-4 rounded-3xl bg-amber-500/5 border border-amber-500/10"
                                     >
-                                        <div>
-                                            <p className="font-medium">{product.name}</p>
-                                            <p className="text-sm text-muted-foreground">SKU: {product.sku}</p>
+                                        <div className="flex items-center gap-4">
+                                            <div className="w-10 h-10 rounded-2xl bg-background flex items-center justify-center font-black text-xs shadow-sm border border-amber-500/20 text-amber-600">
+                                                {product.quantity}
+                                            </div>
+                                            <div>
+                                                <p className="font-black text-sm tracking-tight line-clamp-1">{product.name}</p>
+                                                <p className="text-[10px] font-bold text-muted-foreground/60 uppercase tracking-widest">SKU: {product.sku}</p>
+                                            </div>
                                         </div>
                                         <div className="text-right">
-                                            <p className="font-bold text-amber-500">
-                                                {product.quantity} / {product.minStockLevel}
+                                            <p className="text-xs font-black text-amber-600 dark:text-amber-400">
+                                                {t('products.table.lowStock')}
                                             </p>
-                                            <p className="text-xs text-muted-foreground">{product.unit}</p>
+                                            <p className="text-[10px] font-bold text-muted-foreground/40 uppercase tracking-wider">
+                                                Limit: {product.minStockLevel}
+                                            </p>
                                         </div>
                                     </div>
                                 ))}
+                                <Link href="/products" className="block mt-6 text-center text-xs font-black uppercase tracking-[0.2em] text-amber-500 hover:text-amber-600 transition-colors">
+                                    {t('common.view') || 'Manage Inventory'}
+                                </Link>
                             </div>
                         )}
                     </CardContent>
                 </Card>
 
                 {/* Pending Invoices */}
-                <Card className="lg:col-span-2">
-                    <CardHeader>
-                        <CardTitle className="flex items-center gap-2">
-                            <FileText className="w-5 h-5 text-primary" />
+                <Card className="lg:col-span-2 bg-card/40 border-border/30 backdrop-blur-md rounded-[2.5rem] overflow-hidden">
+                    <CardHeader className="pb-3 px-8 pt-8">
+                        <CardTitle className="flex items-center gap-3 text-lg font-black">
+                            <div className="p-2 rounded-xl bg-blue-500/10">
+                                <FileText className="w-5 h-5 text-blue-500" />
+                            </div>
                             {t('dashboard.pendingInvoices') || 'Pending Invoices'}
                         </CardTitle>
                     </CardHeader>
-                    <CardContent>
+                    <CardContent className="px-8 pb-8">
                         {stats.pendingInvoices.length === 0 ? (
-                            <p className="text-sm text-muted-foreground text-center py-4">
-                                No pending invoices
-                            </p>
+                            <div className="flex flex-col items-center justify-center py-8 opacity-40">
+                                <p className="text-sm font-bold uppercase tracking-widest">
+                                    {t('dashboard.noPendingInvoices') || 'No pending invoices'}
+                                </p>
+                            </div>
                         ) : (
-                            <div className="grid gap-3 md:grid-cols-2">
+                            <div className="grid gap-4 md:grid-cols-2">
                                 {stats.pendingInvoices.slice(0, 4).map((invoice) => (
                                     <div
                                         key={invoice.id}
-                                        className="flex items-center justify-between p-3 rounded-lg bg-secondary/50"
+                                        className="flex items-center justify-between p-4 rounded-[1.5rem] bg-secondary/30 hover:bg-secondary/50 transition-all border border-transparent hover:border-border/30"
                                     >
                                         <div>
-                                            <p className="font-medium">{invoice.invoiceNumber}</p>
-                                            <p className="text-sm text-muted-foreground">{invoice.customerName}</p>
+                                            <p className="font-black text-sm">{invoice.invoiceNumber}</p>
+                                            <p className="text-xs font-bold text-muted-foreground/60">{invoice.customerName}</p>
                                         </div>
                                         <div className="text-right">
-                                            <p className="font-medium">{formatCurrency(invoice.total)}</p>
-                                            <p className={`text-xs ${invoice.status === 'overdue' ? 'text-red-500' : 'text-muted-foreground'
+                                            <p className="font-black text-sm tabular-nums text-foreground/80">{formatCurrency(invoice.total)}</p>
+                                            <p className={`text-[10px] font-black uppercase tracking-tighter ${invoice.status === 'overdue' ? 'text-red-500' : 'text-muted-foreground'
                                                 }`}>
-                                                Due: {formatDate(invoice.dueDate)}
+                                                {invoice.status === 'overdue' ? 'Overdue' : 'Due'}: {formatDate(invoice.dueDate)}
                                             </p>
                                         </div>
                                     </div>
@@ -206,7 +247,14 @@ export function Dashboard() {
                         )}
                     </CardContent>
                 </Card>
+
+                {/* Dashboard Sales Overview (Full width below Pending Invoices) */}
+                <DashboardSalesOverview
+                    data={stats.statsByCurrency}
+                    iqdPreference={features.iqd_display_preference}
+                />
             </div>
         </div>
     )
 }
+

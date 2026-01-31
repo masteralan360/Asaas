@@ -3,7 +3,8 @@ import { useHashLocation } from '@/hooks/useHashLocation'
 import { AuthProvider, ProtectedRoute, GuestRoute } from '@/auth'
 import { WorkspaceProvider } from '@/workspace'
 import { Layout, Toaster, TitleBar } from '@/ui/components'
-import { lazy, Suspense, useEffect, useCallback } from 'react'
+import { lazy, Suspense, useEffect, useCallback, useState } from 'react'
+import { RotateCw } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useWorkspace } from '@/workspace'
 import { ExchangeRateProvider } from '@/context/ExchangeRateContext'
@@ -37,32 +38,56 @@ const WhatsApp = lazy(() => import('@/ui/pages/WhatsAppWeb').then(m => ({ defaul
 // @ts-ignore
 const isTauri = !!window.__TAURI_INTERNALS__
 
-// Preload list for Electron
-const pages = [
-    () => import('@/ui/pages/Login'),
-    () => import('@/ui/pages/Register'),
-    () => import('@/ui/pages/Dashboard'),
-    () => import('@/ui/pages/Products'),
-    () => import('@/ui/pages/Customers'),
-    () => import('@/ui/pages/Orders'),
-    () => import('@/ui/pages/Invoices'),
-    () => import('@/ui/pages/POS'),
-    () => import('@/ui/pages/Sales'),
-    () => import('@/ui/pages/Revenue'),
-    () => import('@/ui/pages/TeamPerformance'),
-    () => import('@/ui/pages/Settings'),
-    () => import('@/ui/pages/Members'),
-    () => import('@/ui/pages/WorkspaceConfiguration'),
-    () => import('@/ui/pages/CurrencyConverter'),
-    () => import('@/ui/pages/WhatsAppWeb'),
-]
 
 function LoadingState() {
+    const [isSlow, setIsSlow] = useState(false)
+    const { t } = useTranslation()
+
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            setIsSlow(true)
+            console.warn('[Diagnostics] Loading is taking longer than 7s. Displaying safety refresh button.')
+        }, 7000)
+        return () => clearTimeout(timer)
+    }, [])
+
+    const handleRefresh = () => {
+        console.log('[Diagnostics] User triggered manual refresh from SlowLoadingNotice.')
+        window.location.reload()
+    }
+
     return (
         <div className="min-h-screen flex items-center justify-center bg-background">
-            <div className="flex flex-col items-center gap-4">
-                <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin" />
-                <p className="text-muted-foreground font-medium animate-pulse">Loading...</p>
+            <div className="flex flex-col items-center gap-6 max-w-sm text-center px-6">
+                <div className="relative">
+                    <div className="w-12 h-12 border-4 border-primary/20 border-t-primary rounded-full animate-spin" />
+                    {isSlow && (
+                        <div className="absolute inset-0 flex items-center justify-center animate-pulse">
+                            <RotateCw className="w-5 h-5 text-primary" />
+                        </div>
+                    )}
+                </div>
+
+                <div className="space-y-2">
+                    <p className="text-foreground font-medium animate-pulse">
+                        {isSlow ? t('common.loadingSlow') || 'Taking longer than usual...' : t('common.loading') || 'Loading...'}
+                    </p>
+                    {isSlow && (
+                        <p className="text-sm text-muted-foreground animate-in fade-in slide-in-from-top-2 duration-700">
+                            {t('common.loadingStuckMessage') || 'The connection might be slow or interrupted. Try refreshing the application.'}
+                        </p>
+                    )}
+                </div>
+
+                {isSlow && (
+                    <button
+                        onClick={handleRefresh}
+                        className="flex items-center gap-2 px-6 py-2.5 rounded-full bg-primary text-primary-foreground hover:bg-primary/90 transition-all font-medium shadow-lg animate-in fade-in zoom-in duration-500"
+                    >
+                        <RotateCw className="w-4 h-4" />
+                        {t('common.refresh') || 'Refresh App'}
+                    </button>
+                )}
             </div>
         </div>
     )
@@ -205,23 +230,30 @@ function App() {
 
         if (isTauri && !isMobile()) {
             console.log('[Tauri] Initializing staggered page pre-loading...')
-            // Load pages sequentially with a small delay to avoid freezing the UI
-            // This prevents the "too slow" feeling on startup while still warming up the cache
+
+            // Priority pages only to avoid WebView starvation
+            const priorityPages = [
+                () => import('@/ui/pages/POS'),
+                () => import('@/ui/pages/Dashboard'),
+                () => import('@/ui/pages/Products'),
+                () => import('@/ui/pages/Sales'),
+            ]
+
             const loadNext = (index: number) => {
-                if (index >= pages.length) {
-                    console.log('[Tauri] All pages pre-loaded.')
+                if (index >= priorityPages.length) {
+                    console.log('[Tauri] Priority pages pre-loaded.')
                     return
                 }
 
-                // Load current page
-                pages[index]()
+                // Load current priority page
+                priorityPages[index]()
 
-                // Schedule next load
-                setTimeout(() => loadNext(index + 1), 200)
+                // Schedule next load with larger stagger (500ms)
+                setTimeout(() => loadNext(index + 1), 500)
             }
 
-            // Start loading after initial render is settling
-            setTimeout(() => loadNext(0), 1000)
+            // Start loading much later (5s) after initial render has fully settled
+            setTimeout(() => loadNext(0), 5000)
         }
     }, [])
 

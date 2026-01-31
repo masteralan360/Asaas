@@ -8,10 +8,29 @@ class PlatformService implements PlatformAPI {
 
     async initialize() {
         if (isTauri()) {
+            // Priority 1: Hydrate from cache immediately
+            const cachedPath = localStorage.getItem('asaas_app_data_path');
+            if (cachedPath) {
+                this.appDataPath = cachedPath;
+                console.log('[PlatformService] Hydrated AppData path from cache:', this.appDataPath);
+            }
+
             try {
-                const { appDataDir } = await import('@tauri-apps/api/path');
-                this.appDataPath = await appDataDir();
-                console.log('[PlatformService] Initialized AppData path:', this.appDataPath);
+                // Priority 2: Refetch and refresh cache with a timeout to prevent hanging
+                const initPromise = (async () => {
+                    const { appDataDir } = await import('@tauri-apps/api/path');
+                    const freshPath = await appDataDir();
+                    this.appDataPath = freshPath;
+                    localStorage.setItem('asaas_app_data_path', freshPath);
+                    console.log('[PlatformService] Initialized AppData path:', this.appDataPath);
+                })();
+
+                // 2s safety timeout - if it takes longer, we just keep using the cached path (or empty)
+                // and avoid blocking the entire app initialization
+                await Promise.race([
+                    initPromise,
+                    new Promise((_, reject) => setTimeout(() => reject(new Error('Init Timeout')), 2000))
+                ]);
 
                 // On mobile, proactively request basic permissions if needed
                 if (isMobile()) {

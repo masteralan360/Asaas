@@ -110,6 +110,10 @@ export interface Invoice extends BaseEntity {
     paidAt?: string
     notes?: string
     currency: CurrencyCode
+    // Print-to-Invoice tracking
+    origin?: 'pos' | 'revenue' | 'inventory' | 'manual'
+    createdBy?: string
+    printMetadata?: Record<string, unknown>
 }
 
 export interface Sale extends BaseEntity {
@@ -128,6 +132,7 @@ export interface Sale extends BaseEntity {
     systemVerified: boolean
     systemReviewStatus: 'approved' | 'flagged' | 'inconsistent'
     systemReviewReason: string | null
+    isReturned?: boolean
 }
 
 export interface SaleItem {
@@ -146,6 +151,7 @@ export interface SaleItem {
     negotiatedPrice?: number
     // Immutable inventory snapshot at checkout
     inventorySnapshot: number
+    returnedQuantity?: number
 }
 
 

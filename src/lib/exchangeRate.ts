@@ -26,21 +26,17 @@ export async function fetchUSDToIQDRate(primarySource?: ExchangeRateSource): Pro
         const isFallback = i > 0;
 
         try {
-            console.log(`[ExchangeRate] Fetching from ${isFallback ? 'Fallback' : 'Primary'} Source (${currentSource})...`);
             let rate = 0;
             if (currentSource === 'xeiqd') rate = await fetchFromXEIQD();
             else if (currentSource === 'forexfy') rate = await fetchFromForexfy();
             else if (currentSource === 'dolardinar') rate = await fetchFromDolarDinar();
 
             if (rate < 100000) {
-                console.warn(`[ExchangeRate] Rate from ${currentSource} is suspiciously low (${rate}), triggering fallback.`);
                 throw new Error('Rate sanity check failed (< 100000)');
             }
 
-            console.log(`[ExchangeRate] ${currentSource} Success! Rate:`, rate);
             return { rate, source: currentSource, isFallback };
         } catch (error) {
-            console.warn(`[ExchangeRate] Source (${currentSource}) Failed:`, error);
         }
     }
 
@@ -65,19 +61,15 @@ export async function fetchEURToIQDRate(primarySource?: ExchangeRateSource): Pro
         const isFallback = i > 0;
 
         try {
-            console.log(`[ExchangeRate] Fetching EUR from ${isFallback ? 'Fallback' : 'Primary'} Source (${currentSource})...`);
             const usdEur = await fetchCrossRate(currentSource, 'USD-to-EUR');
             const eurIqd = await fetchCrossRate(currentSource, 'EUR-to-IQD');
 
             if (eurIqd < 100000) {
-                console.warn(`[ExchangeRate] EUR Rate from ${currentSource} is suspiciously low (${eurIqd}), triggering fallback.`);
                 throw new Error('EUR Rate sanity check failed (< 100000)');
             }
 
-            console.log(`[ExchangeRate] EUR ${currentSource} Success!`, { usdEur, eurIqd });
             return { usdEur, eurIqd, source: currentSource, isFallback };
         } catch (error) {
-            console.warn(`[ExchangeRate] EUR Source (${currentSource}) Failed:`, error);
         }
     }
 
@@ -101,7 +93,6 @@ export async function fetchTRYToIQDRate(primarySource?: ExchangeRateSource): Pro
         const isFallback = i > 0;
 
         try {
-            console.log(`[ExchangeRate] Fetching TRY from ${isFallback ? 'Fallback' : 'Primary'} Source (${currentSource})...`);
 
             // For TRY we need both USD-TRY (for cross calc if needed) and TRY-IQD
             // If source is Forexfy, we can get TRY-IQD directly from the blackmarket page
@@ -116,7 +107,6 @@ export async function fetchTRYToIQDRate(primarySource?: ExchangeRateSource): Pro
                 try {
                     usdTry = await fetchEgRate('USD-to-TRY');
                 } catch (e) {
-                    console.warn('[ExchangeRate] Failed to fetch USD-to-TRY from Forexfy, calculating from USD-IQD/TRY-IQD', e);
                     // Fallback calculation: USD-TRY = USD-IQD / TRY-IQD
                     const usdIqd = await fetchUSDToIQDRate('forexfy');
                     if (tryIqd > 0) usdTry = Math.round((usdIqd.rate / tryIqd) * 100) / 100; // keep logical precision
@@ -130,10 +120,8 @@ export async function fetchTRYToIQDRate(primarySource?: ExchangeRateSource): Pro
                 usdTry = await fetchCrossRate('dolardinar', 'USD-to-TRY');
             }
 
-            console.log(`[ExchangeRate] TRY ${currentSource} Success!`, { usdTry, tryIqd });
             return { usdTry, tryIqd, source: currentSource, isFallback };
         } catch (error) {
-            console.warn(`[ExchangeRate] TRY Source (${currentSource}) Failed:`, error);
         }
     }
 
@@ -155,7 +143,6 @@ async function fetchUrl(url: string, isApiProxy = false): Promise<string> {
             if (url.includes('api-xeiqd')) targetUrl = 'https://xeiqd.com' + url.replace('/api-xeiqd', '');
             else if (url.includes('api-forexfy')) targetUrl = 'https://forexfy.app' + url.replace('/api-forexfy', '');
         }
-        console.log(`[ExchangeRate] Tauri detected, fulfilling via Native HTTP: ${targetUrl}`);
 
         try {
             const response = await tauriFetch(targetUrl, {
@@ -168,7 +155,6 @@ async function fetchUrl(url: string, isApiProxy = false): Promise<string> {
             if (!response.ok) throw new Error(`HTTP Error ${response.status}`);
             return await response.text();
         } catch (e) {
-            console.error('[ExchangeRate] Tauri fetch failed:', e);
             throw e;
         }
     }

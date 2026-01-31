@@ -64,7 +64,11 @@
         "sales": "المبيعات",
         "revenue": "صافي الإيرادات",
         "performance": "أداء الفريق",
-        "settings": "الإعدادات"
+        "settings": "الإعدادات",
+        "whatsapp": "واتساب",
+        "currencyConverter": "محول العملات",
+        "tools": "أدوات",
+        "actions": "إجراءات"
     },
     "products": {
         "title": "المنتجات",
@@ -299,11 +303,13 @@
         "lowStock": "منتجات منخفضة المخزون",
         "recentActivity": "النشاط الحديث",
         "recentOrders": "الطلبات الحديثة",
+        "recentSales": "المبيعات الأخيرة",
         "pendingInvoices": "الفواتير المعلقة",
         "totalProducts": "إجمالي المنتجات",
         "totalOrders": "إجمالي الطلبات",
         "allStocked": "جميع المنتجات متوفرة بشكل جيد",
-        "noPendingInvoices": "لا توجد فواتير معلقة"
+        "noPendingInvoices": "لا توجد فواتير معلقة",
+        "dailyTrends": "الاتجاهات اليومية"
     },
     "settings": {
         "title": "الإعدادات",

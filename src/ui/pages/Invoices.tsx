@@ -28,7 +28,7 @@ import {
     SelectValue,
     DeleteConfirmationModal
 } from '@/ui/components'
-import { Plus, Pencil, Trash2, FileText, Search } from 'lucide-react'
+import { Pencil, Trash2, FileText, Search } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/auth'
 import { useWorkspace } from '@/workspace'
@@ -148,15 +148,6 @@ export function Invoices() {
             setIsLoading(false)
         }
     }
-
-    const totalRevenue = invoices
-        .filter(i => i.status === 'paid')
-        .reduce((sum, i) => sum + i.total, 0)
-
-    const pendingAmount = invoices
-        .filter(i => i.status === 'sent' || i.status === 'overdue')
-        .reduce((sum, i) => sum + i.total, 0)
-
     return (
         <div className="space-y-6">
             {/* Header */}
@@ -168,36 +159,6 @@ export function Invoices() {
                     </h1>
                     <p className="text-muted-foreground">{invoices.length} {t('invoices.subtitle')}</p>
                 </div>
-            </div>
-            {canEdit && (
-                <Button onClick={() => handleOpenDialog()} disabled={availableOrders.length === 0}>
-                    <Plus className="w-4 h-4" />
-                    {t('invoices.createInvoice')}
-                </Button>
-            )}
-
-            {/* Stats */}
-            <div className="grid gap-4 md:grid-cols-2">
-                <Card>
-                    <CardContent className="p-4 flex items-center justify-between">
-                        <div>
-                            <p className="text-sm text-muted-foreground">{t('invoices.stats.revenue')}</p>
-                            <p className="text-2xl font-bold text-emerald-500">
-                                {formatCurrency(totalRevenue, features.default_currency, features.iqd_display_preference)}
-                            </p>
-                        </div>
-                    </CardContent>
-                </Card>
-                <Card>
-                    <CardContent className="p-4 flex items-center justify-between">
-                        <div>
-                            <p className="text-sm text-muted-foreground">{t('invoices.stats.pending')}</p>
-                            <p className="text-2xl font-bold text-amber-500">
-                                {formatCurrency(pendingAmount, features.default_currency, features.iqd_display_preference)}
-                            </p>
-                        </div>
-                    </CardContent>
-                </Card>
             </div>
 
             {/* Search */}

@@ -60,3 +60,4 @@ export { ExchangeRateIndicator, ExchangeRateList } from './ExchangeRateIndicator
 export { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from './ui/tooltip'
 export { MetricDetailModal } from './MetricDetailModal'
 export { TopProductsModal, SalesOverviewModal, PeakTradingModal, ReturnsAnalysisModal } from './revenue'
+export { PrintPreviewModal } from './PrintPreviewModal'

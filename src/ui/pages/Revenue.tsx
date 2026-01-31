@@ -27,7 +27,8 @@ import {
     TopProductsModal,
     SalesOverviewModal,
     PeakTradingModal,
-    ReturnsAnalysisModal
+    ReturnsAnalysisModal,
+    PrintPreviewModal
 } from '@/ui/components'
 import type { MetricType } from '@/ui/components/MetricDetailModal'
 import {
@@ -46,8 +47,6 @@ import {
 } from 'lucide-react'
 import { Button, Input } from '@/ui/components'
 
-import { useReactToPrint } from 'react-to-print'
-
 export function Revenue() {
     const { user } = useAuth()
     const { t } = useTranslation()
@@ -63,13 +62,13 @@ export function Revenue() {
     const [isReturnsOpen, setIsReturnsOpen] = useState(false)
     const [dateRange, setDateRange] = useState<'today' | 'month' | 'custom'>('month')
     const [customDates, setCustomDates] = useState({ start: '', end: '' })
+    const [isPrintPreviewOpen, setIsPrintPreviewOpen] = useState(false)
 
     const listRef = useRef<HTMLDivElement>(null)
 
-    const handlePrintList = useReactToPrint({
-        contentRef: listRef,
-        documentTitle: `Revenue_List_${new Date().toISOString().split('T')[0]}`,
-    })
+    const handleOpenPrintPreview = () => {
+        setIsPrintPreviewOpen(true)
+    }
 
     const openMetricModal = (type: MetricType) => {
         setSelectedMetric(type)
@@ -172,6 +171,7 @@ export function Revenue() {
             currency: string,
             origin: string,
             cashier: string,
+            sequence_id?: number,
             hasPartialReturn?: boolean
         }[] = []
 
@@ -244,6 +244,7 @@ export function Revenue() {
                 currency: currency,
                 origin: sale.origin,
                 cashier: sale.cashier_name || 'Staff',
+                sequence_id: sale.sequence_id,
                 hasPartialReturn: sale.has_partial_return
             })
         })
@@ -575,7 +576,7 @@ export function Revenue() {
                                 <Button
                                     variant="outline"
                                     size="sm"
-                                    onClick={() => handlePrintList()}
+                                    onClick={handleOpenPrintPreview}
                                     className="gap-2 h-8 text-xs bg-primary/5 hover:bg-primary/10 border-primary/20 text-primary transition-all duration-200"
                                 >
                                     <Printer className="w-3.5 h-3.5" />
@@ -619,7 +620,7 @@ export function Revenue() {
                                                         </div>
                                                         <div className="flex items-center gap-2 flex-wrap">
                                                             <span className="text-xs font-mono font-black text-primary">
-                                                                #{sale.id.split('-')[0]}
+                                                                #{sale.sequence_id ? sale.sequence_id.toString().padStart(5, '0') : sale.id.split('-')[0]}
                                                             </span>
                                                             <Tooltip>
                                                                 <TooltipTrigger asChild>
@@ -729,7 +730,7 @@ export function Revenue() {
                                                                 }}
                                                                 className="font-mono text-[10px] text-primary hover:underline"
                                                             >
-                                                                {sale.id.split('-')[0]}
+                                                                #{sale.sequence_id ? sale.sequence_id.toString().padStart(5, '0') : sale.id.split('-')[0]}
                                                             </button>
                                                             <Tooltip>
                                                                 <TooltipTrigger asChild>
@@ -839,6 +840,61 @@ export function Revenue() {
                         iqdPreference={features.iqd_display_preference}
                         defaultCurrency={features.default_currency || 'usd'}
                     />
+
+                    {/* Print Preview Modal */}
+                    <PrintPreviewModal
+                        isOpen={isPrintPreviewOpen}
+                        onClose={() => setIsPrintPreviewOpen(false)}
+                        title={t('revenue.printList') || 'Print Revenue List'}
+                        onConfirm={() => setIsPrintPreviewOpen(false)}
+                    >
+                        <div ref={listRef} className="p-4 bg-white dark:bg-zinc-900">
+                            <h2 className="text-xl font-bold mb-4">{t('revenue.listTitle') || 'Revenue List'}</h2>
+                            <Table>
+                                <TableHeader>
+                                    <TableRow>
+                                        <TableHead>{t('sales.date') || 'Date'}</TableHead>
+                                        <TableHead>{t('sales.id') || 'Sale ID'}</TableHead>
+                                        <TableHead className="text-end">{t('revenue.table.revenue')}</TableHead>
+                                        <TableHead className="text-end">{t('revenue.table.cost')}</TableHead>
+                                        <TableHead className="text-end">{t('revenue.table.profit')}</TableHead>
+                                        <TableHead className="text-end">{t('revenue.table.margin')}</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {stats.saleStats.map((sale, idx) => (
+                                        <TableRow key={sale.id || idx}>
+                                            <TableCell className="font-mono text-xs">
+                                                {formatDateTime(sale.date)}
+                                            </TableCell>
+                                            <TableCell className="font-mono text-xs">
+                                                #{sale.sequence_id ? sale.sequence_id.toString().padStart(5, '0') : sale.id.split('-')[0]}
+                                            </TableCell>
+                                            <TableCell className="text-end">
+                                                {formatCurrency(sale.revenue, sale.currency, features.iqd_display_preference)}
+                                            </TableCell>
+                                            <TableCell className="text-end text-muted-foreground">
+                                                {formatCurrency(sale.cost, sale.currency, features.iqd_display_preference)}
+                                            </TableCell>
+                                            <TableCell className="text-end font-bold text-emerald-600">
+                                                {formatCurrency(sale.profit, sale.currency, features.iqd_display_preference)}
+                                            </TableCell>
+                                            <TableCell className="text-end">
+                                                <span className={cn(
+                                                    "px-2 py-0.5 rounded-full text-[10px] font-bold",
+                                                    sale.margin > 20 ? "bg-emerald-500/10 text-emerald-600" :
+                                                        sale.margin > 0 ? "bg-orange-500/10 text-orange-600" :
+                                                            "bg-destructive/10 text-destructive"
+                                                )}>
+                                                    {sale.margin.toFixed(1)}%
+                                                </span>
+                                            </TableCell>
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                        </div>
+                    </PrintPreviewModal>
                 </div>
             </div>
         </TooltipProvider>
