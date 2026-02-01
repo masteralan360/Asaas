@@ -3,7 +3,9 @@ import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/auth'
 import { supabase } from '@/auth/supabase'
 import { Sale } from '@/types'
+import { mapSaleToUniversal } from '@/lib/mappings'
 import { formatCurrency, formatDateTime, formatCompactDateTime, formatDate, cn } from '@/lib/utils'
+
 import { useWorkspace } from '@/workspace'
 import { isMobile } from '@/lib/platform'
 import { useDateRange } from '@/context/DateRangeContext'
@@ -856,12 +858,12 @@ export function Sales() {
                     {printingSale && (
                         printFormat === 'a4' ? (
                             <A4InvoiceTemplate
-                                sale={printingSale}
+                                data={mapSaleToUniversal(printingSale)}
                                 features={features}
                             />
                         ) : (
                             <SaleReceipt
-                                sale={printingSale}
+                                data={mapSaleToUniversal(printingSale)}
                                 features={features}
                             />
                         )
@@ -898,16 +900,33 @@ export function Sales() {
                 }}
                 onConfirm={handleConfirmPrint}
                 title={printFormat === 'a4' ? (t('sales.print.a4') || 'A4 Invoice') : (t('sales.print.receipt') || 'Receipt')}
+                invoiceData={printingSale ? {
+                    items: printingSale.items?.map(item => ({
+                        productId: item.product_id,
+                        productName: item.product_name || 'Unknown Product',
+                        quantity: item.quantity,
+                        unitPrice: item.converted_unit_price || item.unit_price,
+                        total: item.converted_unit_price ? (item.converted_unit_price * item.quantity) : item.total_price,
+                        currency: (printingSale.settlement_currency || 'usd') as any
+                    })) || [],
+                    subtotal: printingSale.total_amount,
+                    discount: 0,
+                    total: printingSale.total_amount,
+                    currency: (printingSale.settlement_currency || 'usd') as any,
+                    origin: 'pos',
+                    cashierName: printingSale.cashier_name,
+                    createdByName: user?.name || 'Unknown'
+                } : undefined}
             >
                 {printingSale && (
                     printFormat === 'a4' ? (
                         <A4InvoiceTemplate
-                            sale={printingSale}
+                            data={mapSaleToUniversal(printingSale)}
                             features={features}
                         />
                     ) : (
                         <SaleReceipt
-                            sale={printingSale}
+                            data={mapSaleToUniversal(printingSale)}
                             features={features}
                         />
                     )

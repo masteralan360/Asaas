@@ -675,27 +675,33 @@ export function useInvoice(id: string | undefined) {
     return invoice
 }
 
-export async function createInvoice(workspaceId: string, data: Omit<Invoice, 'id' | 'workspaceId' | 'createdAt' | 'updatedAt' | 'syncStatus' | 'lastSyncedAt' | 'version' | 'isDeleted' | 'invoiceNumber'>): Promise<Invoice> {
+export async function createInvoice(workspaceId: string, data: Omit<Invoice, 'id' | 'workspaceId' | 'createdAt' | 'updatedAt' | 'syncStatus' | 'lastSyncedAt' | 'version' | 'isDeleted' | 'invoiceid'>): Promise<Invoice> {
     const now = new Date().toISOString()
-    const invoiceNumber = `INV-${Date.now().toString(36).toUpperCase()}`
+    const invoiceid = `INV-${Date.now().toString(36).toUpperCase()}`
     const id = generateId()
 
     const invoice: Invoice = {
         ...data,
         id,
         workspaceId,
-        invoiceNumber,
+        invoiceid,
         createdAt: now,
         updatedAt: now,
         syncStatus: (isOnline() ? 'synced' : 'pending') as any,
         lastSyncedAt: isOnline() ? now : null,
         version: 1,
-        isDeleted: false
+        isDeleted: false,
+        createdByName: data.createdByName,
+        cashierName: data.cashierName
     }
+
 
     if (isOnline()) {
         // ONLINE
-        const payload = toSnakeCase({ ...invoice, syncStatus: undefined, lastSyncedAt: undefined })
+        // Omit createdBy to prevent mapping to system created_by UUID column
+        // We use cashierName instead for the Sold By string
+        const { createdBy, ...rest } = invoice
+        const payload = toSnakeCase({ ...rest, syncStatus: undefined, lastSyncedAt: undefined })
         const { error } = await supabase.from('invoices').insert(payload)
 
         if (error) {
@@ -711,6 +717,17 @@ export async function createInvoice(workspaceId: string, data: Omit<Invoice, 'id
     }
 
     return invoice
+}
+
+/**
+ * Specifically for automated Invoice snapshots from Print Preview
+ */
+export async function saveInvoiceFromSnapshot(workspaceId: string, data: Omit<Invoice, 'id' | 'workspaceId' | 'createdAt' | 'updatedAt' | 'syncStatus' | 'lastSyncedAt' | 'version' | 'isDeleted' | 'invoiceid'>): Promise<Invoice> {
+
+    return createInvoice(workspaceId, {
+        ...data,
+        isSnapshot: true
+    })
 }
 
 export async function updateInvoice(id: string, data: Partial<Invoice>): Promise<void> {
@@ -944,7 +961,7 @@ export function useDashboardStats(workspaceId: string | undefined) {
             db.orders.where('workspaceId').equals(workspaceId).and(o => !o.isDeleted).count(),
             db.invoices.where('workspaceId').equals(workspaceId).and(i => !i.isDeleted).count(),
             db.sales.where('workspaceId').equals(workspaceId).and(s => !s.isDeleted).reverse().sortBy('createdAt').then(sales => sales.slice(0, 3)),
-            db.invoices.where('workspaceId').equals(workspaceId).and(inv => !inv.isDeleted && (inv.status === 'sent' || inv.status === 'overdue')).toArray(),
+            db.invoices.where('workspaceId').equals(workspaceId).and(inv => !inv.isDeleted).reverse().sortBy('createdAt').then(inv => inv.slice(0, 4)),
             db.products.where('workspaceId').equals(workspaceId).and(p => !p.isDeleted && p.quantity <= p.minStockLevel).toArray(),
             db.sales.where('workspaceId').equals(workspaceId).and(s => !s.isDeleted && s.createdAt >= thirtyDaysAgoStr).toArray()
         ])
@@ -1003,7 +1020,7 @@ export function useDashboardStats(workspaceId: string | undefined) {
             orderCount,
             invoiceCount,
             recentSales,
-            pendingInvoices,
+            recentInvoices: pendingInvoices,
             lowStockProducts,
             statsByCurrency,
             grossRevenueByCurrency: Object.fromEntries(Object.entries(statsByCurrency).map(([c, s]) => [c, s.revenue]))
@@ -1017,7 +1034,7 @@ export function useDashboardStats(workspaceId: string | undefined) {
         orderCount: 0,
         invoiceCount: 0,
         recentSales: [],
-        pendingInvoices: [],
+        recentInvoices: [],
         lowStockProducts: [],
         statsByCurrency: {},
         grossRevenueByCurrency: {}

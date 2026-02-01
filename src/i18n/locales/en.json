@@ -245,7 +245,7 @@
         "searchPlaceholder": "Search invoices...",
         "listTitle": "Invoice List",
         "table": {
-            "invoiceNumber": "Invoice #",
+            "invoiceid": "Invoice #",
             "customer": "Customer",
             "status": "Status",
             "total": "Total",

@@ -7,10 +7,14 @@ import {
     DialogHeader,
     DialogTitle,
     DialogFooter,
-    Button
+    Button,
+    useToast
 } from '@/ui/components'
-import { Printer, X, Maximize2, Minimize2 } from 'lucide-react'
+import { Printer, X, Maximize2, Minimize2, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { saveInvoiceFromSnapshot } from '@/local-db/hooks'
+import { useAuth } from '@/auth'
+import { Invoice } from '@/local-db/models'
 
 interface PrintPreviewModalProps {
     isOpen: boolean
@@ -20,6 +24,8 @@ interface PrintPreviewModalProps {
     children: ReactNode
     showSaveButton?: boolean
     saveButtonText?: string
+    invoiceData?: Omit<Invoice, 'id' | 'workspaceId' | 'createdAt' | 'updatedAt' | 'syncStatus' | 'lastSyncedAt' | 'version' | 'isDeleted' | 'invoiceid'>
+
 }
 
 export function PrintPreviewModal({
@@ -29,10 +35,15 @@ export function PrintPreviewModal({
     title,
     children,
     showSaveButton = true,
-    saveButtonText
+    saveButtonText,
+    invoiceData
 }: PrintPreviewModalProps) {
     const { t } = useTranslation()
+    const { toast } = useToast()
+    const { user } = useAuth()
+    const workspaceId = user?.workspaceId
     const [isExpanded, setIsExpanded] = useState(false)
+    const [isSaving, setIsSaving] = useState(false)
     const printRef = useRef<HTMLDivElement>(null)
 
     const handlePrint = useReactToPrint({
@@ -43,8 +54,30 @@ export function PrintPreviewModal({
         }
     })
 
-    const handlePrintAndSave = () => {
+    const handlePrintAndSave = async () => {
+        // Trigger OS Print Dialog first (or concurrently)
         handlePrint()
+
+        // If we have invoice data, save it as a snapshot
+        if (invoiceData && workspaceId) {
+            setIsSaving(true)
+            try {
+                await saveInvoiceFromSnapshot(workspaceId, invoiceData)
+                toast({
+                    title: t('print.saveSuccess') || 'Invoice Saved',
+                    description: t('print.saveSuccessDesc') || 'A record of this invoice has been added to history.',
+                })
+            } catch (error) {
+                console.error('Error saving invoice snapshot:', error)
+                toast({
+                    title: t('print.saveError') || 'Save Failed',
+                    description: t('print.saveErrorDesc') || 'Could not save invoice record.',
+                    variant: 'destructive'
+                })
+            } finally {
+                setIsSaving(false)
+            }
+        }
     }
 
     return (
@@ -107,8 +140,12 @@ export function PrintPreviewModal({
                         {t('common.cancel')}
                     </Button>
                     {showSaveButton && (
-                        <Button onClick={handlePrintAndSave}>
-                            <Printer className="w-4 h-4 mr-2" />
+                        <Button onClick={handlePrintAndSave} disabled={isSaving}>
+                            {isSaving ? (
+                                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                            ) : (
+                                <Printer className="w-4 h-4 mr-2" />
+                            )}
                             {saveButtonText || t('print.printAndSave') || 'Print & Save'}
                         </Button>
                     )}

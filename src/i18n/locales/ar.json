@@ -217,7 +217,7 @@
         "searchPlaceholder": "البحث عن فواتير...",
         "listTitle": "قائمة الفواتير",
         "table": {
-            "invoiceNumber": "رقم الفاتورة",
+            "invoiceid": "رقم الفاتورة",
             "customer": "العميل",
             "status": "الحالة",
             "total": "الإجمالي",

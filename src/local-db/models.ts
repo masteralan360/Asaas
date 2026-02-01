@@ -93,28 +93,26 @@ export interface Order extends BaseEntity {
     currency: CurrencyCode
 }
 
-export type InvoiceStatus = 'draft' | 'sent' | 'paid' | 'overdue' | 'cancelled'
+export type InvoiceStatus = 'sent' | 'paid' | 'overdue' | 'cancelled' | 'draft'
 
 export interface Invoice extends BaseEntity {
-    invoiceNumber: string
-    orderId: string
-    customerId: string
-    customerName: string
+    invoiceid: string
     items: OrderItem[]
     subtotal: number
-    tax: number
     discount: number
     total: number
-    status: InvoiceStatus
-    dueDate: string
-    paidAt?: string
-    notes?: string
     currency: CurrencyCode
+    // Snapshot indicator
+    isSnapshot?: boolean
     // Print-to-Invoice tracking
     origin?: 'pos' | 'revenue' | 'inventory' | 'manual'
+    /** @deprecated Use cashierName for the name string. createdBy might map to system UUID. */
     createdBy?: string
+    cashierName?: string
+    createdByName?: string
     printMetadata?: Record<string, unknown>
 }
+
 
 export interface Sale extends BaseEntity {
     cashierId: string
@@ -220,5 +218,6 @@ export function isOrder(entity: BaseEntity): entity is Order {
 }
 
 export function isInvoice(entity: BaseEntity): entity is Invoice {
-    return 'invoiceNumber' in entity && 'dueDate' in entity
+    return 'invoiceid' in entity && 'dueDate' in entity
+
 }

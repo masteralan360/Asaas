@@ -177,7 +177,7 @@ export function Layout({ children }: LayoutProps) {
         ] : []),
         // Invoices - requires feature flag
         ...(hasFeature('allow_invoices') ? [
-            { name: t('nav.invoices'), href: '/invoices', icon: FileText }
+            { name: t('nav.invoicesHistory') || 'Invoices History', href: '/invoices-history', icon: FileText }
         ] : []),
         // Admin/Staff routes
         ...((user?.role === 'admin' || user?.role === 'staff') ? [

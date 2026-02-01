@@ -1,19 +1,19 @@
 import { forwardRef } from 'react'
-import { Sale } from '@/types'
+import { UniversalInvoice } from '@/types'
 import { formatCurrency, formatDateTime } from '@/lib/utils'
 import { platformService } from '@/services/platformService'
 
 interface A4InvoiceTemplateProps {
-    sale: Sale
+    data: UniversalInvoice
     features: any
 }
 
 export const A4InvoiceTemplate = forwardRef<HTMLDivElement, A4InvoiceTemplateProps>(
-    ({ sale, features }, ref) => {
-        const items = sale.items || []
+    ({ data, features }, ref) => {
+        const items = data.items || []
 
         // Extract Multi-Currency Data for Footer
-        const settlementCurrency = sale.settlement_currency || 'usd'
+        const settlementCurrency = data.settlement_currency || 'usd'
         const uniqueOriginalCurrencies = Array.from(new Set(items.map(i => i.original_currency || 'usd')))
             .filter(c => c !== settlementCurrency)
 
@@ -68,12 +68,12 @@ export const A4InvoiceTemplate = forwardRef<HTMLDivElement, A4InvoiceTemplatePro
                                                 <tr>
                                                     <td className="border-r pr-4 text-right">
                                                         <p className="whitespace-nowrap text-slate-400 text-xs uppercase font-semibold">Date</p>
-                                                        <p className="whitespace-nowrap font-bold text-main">{formatDateTime(sale.created_at)}</p>
+                                                        <p className="whitespace-nowrap font-bold text-main">{formatDateTime(data.created_at)}</p>
                                                     </td>
                                                     <td className="pl-4 text-right">
                                                         <p className="whitespace-nowrap text-slate-400 text-xs uppercase font-semibold">Invoice #</p>
                                                         <p className="whitespace-nowrap font-bold text-main text-lg">
-                                                            #{String(sale.sequence_id || 0).padStart(5, '0')}
+                                                            {data.invoiceid}
                                                         </p>
                                                     </td>
                                                 </tr>
@@ -93,13 +93,13 @@ export const A4InvoiceTemplate = forwardRef<HTMLDivElement, A4InvoiceTemplatePro
                             <tr>
                                 <td className="w-1/2 align-top text-neutral-600">
                                     <p className="font-bold text-black mb-1">Sold To:</p>
+                                    <p className="font-medium text-black">{data.customer_name}</p>
                                     <div className="h-6 w-full border-b border-gray-300 mb-1"></div>
                                     <div className="h-6 w-full border-b border-gray-300 mb-1"></div>
-                                    <div className="h-6 w-1/2 border-b border-gray-300"></div>
                                 </td>
                                 <td className="w-1/2 align-top text-right text-neutral-600">
                                     <p className="font-bold text-black mb-1">Sold By: </p>
-                                    <p className="font-mono font-bold text-main text-lg">{sale.cashier_name?.slice(0, 8) || 'STAFF'}</p>
+                                    <p className="font-mono font-bold text-main text-lg">{data.cashier_name?.slice(0, 8) || 'STAFF'}</p>
                                     <p className="text-xs mt-1">Shipped To: ________________</p>
                                     <p className="text-xs">Via: ______________________</p>
                                 </td>
@@ -123,16 +123,10 @@ export const A4InvoiceTemplate = forwardRef<HTMLDivElement, A4InvoiceTemplatePro
                         </thead>
                         <tbody>
                             {items.map((item, idx) => {
-                                const finalUnitPrice = item.converted_unit_price || item.unit_price || 0
-                                const hasNegotiation = item.negotiated_price !== undefined && item.negotiated_price !== null && item.negotiated_price !== item.original_unit_price
-
-                                // Calculate Original and Discount in settlement currency
-                                // We use the ratio from the original product currency prices to derive the converted original price
-                                const discountRatio = hasNegotiation ? (item.negotiated_price! / item.original_unit_price) : 1
-                                const priceToShow = hasNegotiation ? (finalUnitPrice / discountRatio) : finalUnitPrice
-                                const discountAmount = priceToShow - finalUnitPrice
-
-                                const total = finalUnitPrice * item.quantity
+                                const finalUnitPrice = item.unit_price || 0
+                                const total = item.total_price || (finalUnitPrice * item.quantity)
+                                const discountAmount = item.discount_amount || 0
+                                const priceToShow = finalUnitPrice + (discountAmount / item.quantity)
 
                                 return (
                                     <tr key={idx} className="text-neutral-700">
@@ -167,11 +161,11 @@ export const A4InvoiceTemplate = forwardRef<HTMLDivElement, A4InvoiceTemplatePro
                                 </div>
                             </div>
 
-                            {sale.exchange_rates && sale.exchange_rates.length > 0 && (
+                            {data.exchange_rates && data.exchange_rates.length > 0 && (
                                 <div>
                                     <p className="text-main font-bold uppercase text-xs mb-1">Exchange Rates</p>
                                     <div className="grid grid-cols-2 gap-2 text-xs">
-                                        {sale.exchange_rates.slice(0, 4).map((rate: any, i: number) => (
+                                        {data.exchange_rates.slice(0, 4).map((rate: any, i: number) => (
                                             <div key={i} className="flex justify-between bg-gray-50 px-2 py-1 rounded">
                                                 <span>{rate.pair}</span>
                                                 <span className="font-mono font-bold">{rate.rate}</span>
@@ -192,7 +186,7 @@ export const A4InvoiceTemplate = forwardRef<HTMLDivElement, A4InvoiceTemplatePro
                                         </td>
                                         <td className="border-b p-3 text-right">
                                             <div className="whitespace-nowrap font-bold text-main text-lg">
-                                                {formatCurrency(sale.total_amount, settlementCurrency, features.iqd_display_preference)}
+                                                {formatCurrency(data.subtotal_amount || data.total_amount, settlementCurrency, features.iqd_display_preference)}
                                             </div>
                                         </td>
                                     </tr>
@@ -216,7 +210,7 @@ export const A4InvoiceTemplate = forwardRef<HTMLDivElement, A4InvoiceTemplatePro
                                         </td>
                                         <td className="bg-main p-3 text-right">
                                             <div className="whitespace-nowrap font-bold text-white text-xl">
-                                                {formatCurrency(sale.total_amount, settlementCurrency, features.iqd_display_preference)}
+                                                {formatCurrency(data.total_amount, settlementCurrency, features.iqd_display_preference)}
                                             </div>
                                         </td>
                                     </tr>
@@ -227,7 +221,7 @@ export const A4InvoiceTemplate = forwardRef<HTMLDivElement, A4InvoiceTemplatePro
 
                     {/* Site Footer */}
                     <div className="mt-8 border-t border-gray-200 pt-3 text-center text-xs text-neutral-500">
-                        Asaas
+                        {data.origin === 'pos' ? 'POS System' : 'Asaas'}
                         <span className="text-slate-300 px-2">|</span>
                         Generated Automatically
                     </div>

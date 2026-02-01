@@ -217,28 +217,28 @@ export function Dashboard() {
                         </CardTitle>
                     </CardHeader>
                     <CardContent className="px-8 pb-8">
-                        {stats.pendingInvoices.length === 0 ? (
+                        {stats.recentInvoices.length === 0 ? (
                             <div className="flex flex-col items-center justify-center py-8 opacity-40">
                                 <p className="text-sm font-bold uppercase tracking-widest">
-                                    {t('dashboard.noPendingInvoices') || 'No pending invoices'}
+                                    {t('dashboard.noInvoices') || 'No invoices'}
                                 </p>
                             </div>
                         ) : (
                             <div className="grid gap-4 md:grid-cols-2">
-                                {stats.pendingInvoices.slice(0, 4).map((invoice) => (
+                                {stats.recentInvoices.slice(0, 4).map((invoice) => (
                                     <div
                                         key={invoice.id}
                                         className="flex items-center justify-between p-4 rounded-[1.5rem] bg-secondary/30 hover:bg-secondary/50 transition-all border border-transparent hover:border-border/30"
                                     >
                                         <div>
-                                            <p className="font-black text-sm">{invoice.invoiceNumber}</p>
-                                            <p className="text-xs font-bold text-muted-foreground/60">{invoice.customerName}</p>
+                                            <p className="font-black text-sm">{invoice.invoiceid}</p>
+                                            <p className="text-[10px] font-bold text-muted-foreground/60 uppercase tracking-widest">{formatDate(invoice.createdAt)}</p>
                                         </div>
+
                                         <div className="text-right">
                                             <p className="font-black text-sm tabular-nums text-foreground/80">{formatCurrency(invoice.total)}</p>
-                                            <p className={`text-[10px] font-black uppercase tracking-tighter ${invoice.status === 'overdue' ? 'text-red-500' : 'text-muted-foreground'
-                                                }`}>
-                                                {invoice.status === 'overdue' ? 'Overdue' : 'Due'}: {formatDate(invoice.dueDate)}
+                                            <p className="text-[10px] font-bold text-muted-foreground/40 uppercase tracking-wider">
+                                                {invoice.items.length} Items
                                             </p>
                                         </div>
                                     </div>

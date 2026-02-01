@@ -68,3 +68,40 @@ export interface CartItem {
     negotiated_price?: number
     imageUrl?: string
 }
+
+export interface UniversalInvoiceItem {
+    product_id: string
+    product_name: string
+    product_sku?: string
+    quantity: number
+    unit_price: number
+    total_price: number
+    original_unit_price?: number
+    original_currency?: string
+    settlement_currency?: string
+    discount_amount?: number
+}
+
+export interface UniversalInvoice {
+    id: string
+    sequence_id?: number
+    invoiceid?: string
+    created_at: string
+
+    cashier_name?: string
+    customer_name?: string
+    items: UniversalInvoiceItem[]
+    total_amount: number
+    subtotal_amount?: number
+    tax_amount?: number
+    discount_amount?: number
+    settlement_currency: string
+    payment_method?: string
+    exchange_rates?: any[]
+    exchange_rate?: number
+    exchange_source?: string
+    exchange_rate_timestamp?: string
+    origin?: string
+    created_by_name?: string
+}
+

@@ -231,7 +231,7 @@
         "searchPlaceholder": "گەڕان بۆ فاتوورە...",
         "listTitle": "لیستی فاتوورەکان",
         "table": {
-            "invoiceNumber": "ژمارەی فاتوورە",
+            "invoiceid": "ژمارەی فاتوورە",
             "customer": "مەشتەری",
             "status": "دۆخ",
             "total": "کۆی گشتی",

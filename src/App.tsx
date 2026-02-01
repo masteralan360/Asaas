@@ -21,7 +21,7 @@ const Register = lazy(() => import('@/ui/pages/Register').then(m => ({ default: 
 const Products = lazy(() => import('@/ui/pages/Products').then(m => ({ default: m.Products })))
 const Customers = lazy(() => import('@/ui/pages/Customers').then(m => ({ default: m.Customers })))
 const Orders = lazy(() => import('@/ui/pages/Orders').then(m => ({ default: m.Orders })))
-const Invoices = lazy(() => import('@/ui/pages/Invoices').then(m => ({ default: m.Invoices })))
+const InvoicesHistory = lazy(() => import('@/ui/pages/InvoicesHistory').then(m => ({ default: m.InvoicesHistory })))
 const Members = lazy(() => import('@/ui/pages/Members').then(m => ({ default: m.Members })))
 const Settings = lazy(() => import('@/ui/pages/Settings').then(m => ({ default: m.Settings })))
 const Admin = lazy(() => import('@/ui/pages/Admin').then(m => ({ default: m.Admin })))
@@ -361,10 +361,10 @@ function App() {
                                             </ProtectedRoute>
                                         </Route>
 
-                                        <Route path="/invoices">
+                                        <Route path="/invoices-history">
                                             <ProtectedRoute requiredFeature="allow_invoices">
                                                 <Layout>
-                                                    <Invoices />
+                                                    <InvoicesHistory />
                                                 </Layout>
                                             </ProtectedRoute>
                                         </Route>

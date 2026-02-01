@@ -99,22 +99,18 @@ export type SupabaseOrder = {
 
 export type SupabaseInvoice = {
     id: string
-    invoice_number: string
-    order_id: string
-    customer_id: string
-    customer_name: string
+    invoiceid: string
     items: object[]
     subtotal: number
-    tax: number
     discount: number
     total: number
-    status: string
-    due_date: string
-    paid_at: string | null
-    notes: string | null
+    currency: string
     created_at: string
     updated_at: string
     version: number
     is_deleted: boolean
     user_id: string
+    created_by_name?: string
+    cashier_name?: string
 }
+
