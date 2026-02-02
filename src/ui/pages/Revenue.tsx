@@ -44,7 +44,10 @@ import {
     Percent,
     Clock,
     RotateCcw,
-    Printer
+    Printer,
+    Check,
+    Square,
+    X
 } from 'lucide-react'
 import { Button } from '@/ui/components'
 
@@ -63,8 +66,14 @@ export function Revenue() {
     const [isReturnsOpen, setIsReturnsOpen] = useState(false)
     const { dateRange, customDates } = useDateRange()
     const [showPrintPreview, setShowPrintPreview] = useState(false)
+    const [selectedSaleIds, setSelectedSaleIds] = useState<Set<string>>(new Set())
 
     const listRef = useRef<HTMLDivElement>(null)
+
+    // Clear selection when date filters change
+    useEffect(() => {
+        setSelectedSaleIds(new Set())
+    }, [dateRange, customDates])
 
 
     const getDateDisplay = () => {
@@ -73,7 +82,7 @@ export function Revenue() {
         }
         if (dateRange === 'month') {
             const now = new Date()
-            return new Intl.DateTimeFormat(navigator.language || 'en-US', {
+            return new Intl.DateTimeFormat('en-GB', {
                 month: 'short',
                 year: 'numeric'
             }).format(now)
@@ -301,6 +310,55 @@ export function Revenue() {
         categoryRevenue: {},
         productPerformance: {}
     }, [stats.statsByCurrency, currencySettings.currency])
+
+    // Calculate aggregated stats for selected sales (grouped by currency)
+    const selectionSummary = useMemo(() => {
+        if (selectedSaleIds.size === 0) return null
+
+        const summaryByCurrency: Record<string, { revenue: number; cost: number; profit: number }> = {}
+
+        stats.saleStats.forEach(sale => {
+            if (selectedSaleIds.has(sale.id)) {
+                const currency = sale.currency || 'usd'
+                if (!summaryByCurrency[currency]) {
+                    summaryByCurrency[currency] = { revenue: 0, cost: 0, profit: 0 }
+                }
+                summaryByCurrency[currency].revenue += sale.revenue
+                summaryByCurrency[currency].cost += sale.cost
+                summaryByCurrency[currency].profit += sale.profit
+            }
+        })
+
+        return {
+            count: selectedSaleIds.size,
+            byCurrency: summaryByCurrency
+        }
+    }, [selectedSaleIds, stats.saleStats])
+
+    // Selection toggle handlers
+    const toggleSaleSelection = (saleId: string) => {
+        setSelectedSaleIds(prev => {
+            const newSet = new Set(prev)
+            if (newSet.has(saleId)) {
+                newSet.delete(saleId)
+            } else {
+                newSet.add(saleId)
+            }
+            return newSet
+        })
+    }
+
+    const toggleSelectAll = () => {
+        if (selectedSaleIds.size === stats.saleStats.length) {
+            setSelectedSaleIds(new Set())
+        } else {
+            setSelectedSaleIds(new Set(stats.saleStats.map(s => s.id)))
+        }
+    }
+
+    const clearSelection = () => {
+        setSelectedSaleIds(new Set())
+    }
 
     // Only show global loader on initial fetch
     if (isLoading && sales.length === 0) {
@@ -544,13 +602,39 @@ export function Revenue() {
                     {/* Sale Profitability Table */}
                     <Card>
                         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
-                            <CardTitle className="text-lg flex items-center gap-2">
+                            <CardTitle className="text-lg flex items-center gap-2 flex-wrap">
                                 <TrendingUp className="w-5 h-5 text-primary" />
                                 {t('revenue.listTitle') || 'Recent Sales Profit Analysis'}
                                 {getDateDisplay() && (
                                     <span className="ml-2 px-2 py-0.5 text-xs font-semibold bg-primary/10 text-primary border border-primary/20 rounded-full">
                                         {getDateDisplay()}
                                     </span>
+                                )}
+                                {/* Selection Summary - styled like ExchangeRateIndicator */}
+                                {selectionSummary && (
+                                    <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 transition-all animate-in fade-in slide-in-from-left-2 duration-200">
+                                        <Check className="w-4 h-4" />
+                                        <div className="text-xs font-bold font-mono flex items-center gap-3">
+                                            <span>{selectionSummary.count} {t('common.selected') || 'selected'}</span>
+                                            <span className="w-px h-3 bg-emerald-500/20" />
+                                            {Object.entries(selectionSummary.byCurrency).map(([currency, data], idx) => (
+                                                <div key={currency} className="flex items-center gap-3">
+                                                    {idx > 0 && <span className="w-px h-3 bg-emerald-500/20" />}
+                                                    <span>{t('revenue.table.revenue') || 'Revenue'}: {formatCurrency(data.revenue, currency, features.iqd_display_preference)}</span>
+                                                    <span className="w-px h-3 bg-emerald-500/20" />
+                                                    <span>{t('revenue.table.cost') || 'Cost'}: {formatCurrency(data.cost, currency, features.iqd_display_preference)}</span>
+                                                    <span className="w-px h-3 bg-emerald-500/20" />
+                                                    <span>{t('revenue.table.profit') || 'Profit'}: {formatCurrency(data.profit, currency, features.iqd_display_preference)}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                        <button
+                                            onClick={clearSelection}
+                                            className="p-0.5 rounded hover:bg-emerald-500/20 transition-colors"
+                                        >
+                                            <X className="w-3.5 h-3.5" />
+                                        </button>
+                                    </div>
                                 )}
                             </CardTitle>
                             {user?.role === 'admin' && (
@@ -669,6 +753,24 @@ export function Revenue() {
                                 <Table>
                                     <TableHeader>
                                         <TableRow>
+                                            {/* Master Checkbox */}
+                                            <TableHead className="w-10 text-center print:hidden">
+                                                <button
+                                                    onClick={toggleSelectAll}
+                                                    className="p-1.5 rounded hover:bg-secondary transition-colors"
+                                                    title={selectedSaleIds.size === stats.saleStats.length ? 'Deselect all' : 'Select all'}
+                                                >
+                                                    {selectedSaleIds.size === stats.saleStats.length && stats.saleStats.length > 0 ? (
+                                                        <Check className="w-4 h-4 text-emerald-500" />
+                                                    ) : selectedSaleIds.size > 0 ? (
+                                                        <div className="w-4 h-4 border-2 border-emerald-500 rounded flex items-center justify-center">
+                                                            <div className="w-2 h-1 bg-emerald-500" />
+                                                        </div>
+                                                    ) : (
+                                                        <Square className="w-4 h-4 text-muted-foreground" />
+                                                    )}
+                                                </button>
+                                            </TableHead>
                                             <TableHead className="text-start">{t('sales.date') || 'Date'}</TableHead>
                                             <TableHead className="text-start">{t('sales.id') || 'Sale ID'}</TableHead>
                                             <TableHead className="text-start">{t('sales.origin') || 'Origin'}</TableHead>
@@ -695,11 +797,38 @@ export function Revenue() {
                                             }, 0) || 0
 
                                             return (
-                                                <TableRow key={sale.id || idx} className={cn(
-                                                    isFullyReturned ? 'bg-red-500/10 dark:bg-red-500/20 border-red-500/20' :
-                                                        hasAnyReturn ? 'bg-orange-500/10 border-orange-500/20 dark:bg-orange-500/5 dark:border-orange-500/10' : '',
-                                                    "print:bg-opacity-100"
-                                                )}>
+                                                <TableRow
+                                                    key={sale.id || idx}
+                                                    className={cn(
+                                                        "group",
+                                                        isFullyReturned ? 'bg-red-500/10 dark:bg-red-500/20 border-red-500/20' :
+                                                            hasAnyReturn ? 'bg-orange-500/10 border-orange-500/20 dark:bg-orange-500/5 dark:border-orange-500/10' : '',
+                                                        selectedSaleIds.has(sale.id) && 'bg-emerald-500/5 hover:bg-emerald-500/10',
+                                                        "print:bg-opacity-100"
+                                                    )}
+                                                >
+                                                    {/* Row Checkbox - visible on hover or when selected */}
+                                                    <TableCell className="w-10 text-center print:hidden">
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation()
+                                                                toggleSaleSelection(sale.id)
+                                                            }}
+                                                            className={cn(
+                                                                "p-1.5 rounded transition-all",
+                                                                selectedSaleIds.has(sale.id)
+                                                                    ? "opacity-100"
+                                                                    : "opacity-0 group-hover:opacity-100",
+                                                                "hover:bg-secondary"
+                                                            )}
+                                                        >
+                                                            {selectedSaleIds.has(sale.id) ? (
+                                                                <Check className="w-4 h-4 text-emerald-500" />
+                                                            ) : (
+                                                                <Square className="w-4 h-4 text-muted-foreground" />
+                                                            )}
+                                                        </button>
+                                                    </TableCell>
                                                     <TableCell className="text-start font-mono text-xs">
                                                         {formatDateTime(sale.date)}
                                                     </TableCell>

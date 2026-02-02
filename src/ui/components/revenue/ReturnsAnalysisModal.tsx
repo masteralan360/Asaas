@@ -113,7 +113,7 @@ export function ReturnsAnalysisModal({ isOpen, onClose, sales, iqdPreference, de
         const trendData = Object.entries(dailyReturns)
             .sort(([a], [b]) => a.localeCompare(b))
             .map(([date, data]) => ({
-                date: new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+                date: new Date(date).toLocaleDateString('en-GB', { month: 'short', day: 'numeric' }),
                 count: data.count,
                 amount: data.amount
             }))

@@ -109,7 +109,7 @@ export function MetricDetailModal({ isOpen, onClose, metricType, currency, iqdPr
             .sort()
             .map(date => {
                 const row: any = {
-                    date: new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+                    date: new Date(date).toLocaleDateString('en-GB', { month: 'short', day: 'numeric' }),
                 }
 
                 activeCurrencies.forEach(curr => {

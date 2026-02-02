@@ -111,6 +111,8 @@ export interface Invoice extends BaseEntity {
     cashierName?: string
     createdByName?: string
     printMetadata?: Record<string, unknown>
+    sequenceId?: number
+    printFormat?: 'a4' | 'receipt'
 }
 
 
@@ -218,6 +220,5 @@ export function isOrder(entity: BaseEntity): entity is Order {
 }
 
 export function isInvoice(entity: BaseEntity): entity is Invoice {
-    return 'invoiceid' in entity && 'dueDate' in entity
-
+    return 'invoiceid' in entity && 'items' in entity
 }

@@ -65,7 +65,7 @@ export function DashboardSalesOverview({ data, iqdPreference }: DashboardSalesOv
                 })
 
                 return {
-                    date: new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+                    date: new Date(date).toLocaleDateString('en-GB', { month: 'short', day: 'numeric' }),
                     revenue,
                     cost,
                     profit

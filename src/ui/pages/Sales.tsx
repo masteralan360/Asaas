@@ -102,7 +102,7 @@ export function Sales() {
         }
         if (dateRange === 'month') {
             const now = new Date()
-            return new Intl.DateTimeFormat(navigator.language || 'en-US', {
+            return new Intl.DateTimeFormat('en-GB', {
                 month: 'short',
                 year: 'numeric'
             }).format(now)
@@ -901,6 +901,7 @@ export function Sales() {
                 onConfirm={handleConfirmPrint}
                 title={printFormat === 'a4' ? (t('sales.print.a4') || 'A4 Invoice') : (t('sales.print.receipt') || 'Receipt')}
                 invoiceData={printingSale ? {
+                    sequenceId: printingSale.sequence_id,
                     items: printingSale.items?.map(item => ({
                         productId: item.product_id,
                         productName: item.product_name || 'Unknown Product',
@@ -915,7 +916,18 @@ export function Sales() {
                     currency: (printingSale.settlement_currency || 'usd') as any,
                     origin: 'pos',
                     cashierName: printingSale.cashier_name,
-                    createdByName: user?.name || 'Unknown'
+                    createdByName: user?.name || 'Unknown',
+                    printMetadata: {
+                        exchange_rates: printingSale.exchange_rates,
+                        exchange_rate: printingSale.exchange_rate,
+                        exchange_source: printingSale.exchange_source,
+                        origin: printingSale.origin || 'pos',
+                        items: printingSale.items?.map(item => ({
+                            product_id: item.product_id,
+                            original_currency: item.original_currency
+                        }))
+                    },
+                    printFormat: printFormat
                 } : undefined}
             >
                 {printingSale && (

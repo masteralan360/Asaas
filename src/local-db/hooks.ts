@@ -675,7 +675,7 @@ export function useInvoice(id: string | undefined) {
     return invoice
 }
 
-export async function createInvoice(workspaceId: string, data: Omit<Invoice, 'id' | 'workspaceId' | 'createdAt' | 'updatedAt' | 'syncStatus' | 'lastSyncedAt' | 'version' | 'isDeleted' | 'invoiceid'>): Promise<Invoice> {
+export async function createInvoice(workspaceId: string, data: Omit<Invoice, 'id' | 'workspaceId' | 'createdAt' | 'updatedAt' | 'syncStatus' | 'lastSyncedAt' | 'version' | 'isDeleted' | 'invoiceid'> & { sequenceId?: number }): Promise<Invoice> {
     const now = new Date().toISOString()
     const invoiceid = `INV-${Date.now().toString(36).toUpperCase()}`
     const id = generateId()
@@ -692,7 +692,9 @@ export async function createInvoice(workspaceId: string, data: Omit<Invoice, 'id
         version: 1,
         isDeleted: false,
         createdByName: data.createdByName,
-        cashierName: data.cashierName
+        cashierName: data.cashierName,
+        sequenceId: data.sequenceId,
+        printFormat: data.printFormat
     }
 
 

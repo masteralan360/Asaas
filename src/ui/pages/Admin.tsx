@@ -11,7 +11,8 @@ import {
     Building2,
     CheckCircle2,
     XCircle,
-    Lock
+    Lock,
+    Phone
 } from 'lucide-react'
 import {
     Button,
@@ -28,6 +29,7 @@ import {
 import { supabase, isSupabaseConfigured } from '@/auth/supabase'
 import { useLocation } from 'wouter'
 import { useTranslation } from 'react-i18next'
+import { formatDate } from '@/lib/utils'
 
 const SESSION_DURATION = 60 // seconds
 
@@ -38,6 +40,8 @@ interface AdminUser {
     created_at: string
     email?: string
     workspace_name?: string
+    profileUrl?: string
+    phone?: string
 }
 
 interface AdminWorkspace {
@@ -336,7 +340,7 @@ export function Admin() {
                                     <thead>
                                         <tr className="bg-muted/30">
                                             <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">User</th>
-                                            <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">Username</th>
+                                            <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">Contact</th>
                                             <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">Role</th>
                                             <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">Workspace</th>
                                             <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">Joined</th>
@@ -361,9 +365,17 @@ export function Admin() {
                                                     </div>
                                                 </td>
                                                 <td className="px-6 py-4">
-                                                    <span className="px-2 py-1 rounded bg-muted text-xs font-mono">
-                                                        @{user.name?.toLowerCase().replace(/\s+/g, '')}
-                                                    </span>
+                                                    <div className="flex flex-col gap-1">
+                                                        <span className="px-2 py-1 rounded bg-muted text-[10px] font-mono w-fit">
+                                                            @{user.name?.toLowerCase().replace(/\s+/g, '')}
+                                                        </span>
+                                                        {user.phone && (
+                                                            <div className="text-[10px] text-muted-foreground flex items-center gap-1 font-mono">
+                                                                <Phone className="w-2.5 h-2.5" />
+                                                                {user.phone}
+                                                            </div>
+                                                        )}
+                                                    </div>
                                                 </td>
                                                 <td className="px-6 py-4">
                                                     <span className="capitalize text-sm font-medium">
@@ -382,7 +394,7 @@ export function Admin() {
                                                 <td className="px-6 py-4">
                                                     <div className="text-sm flex items-center gap-1.5 text-muted-foreground">
                                                         <Calendar className="w-3.5 h-3.5" />
-                                                        {new Date(user.created_at).toLocaleDateString()}
+                                                        {formatDate(user.created_at)}
                                                     </div>
                                                 </td>
                                                 <td className="px-6 py-4 text-right">

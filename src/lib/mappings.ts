@@ -35,9 +35,12 @@ export function mapSaleToUniversal(sale: Sale): UniversalInvoice {
 }
 
 export function mapInvoiceToUniversal(invoice: Invoice): UniversalInvoice {
+    const sequenceId = invoice.sequenceId ? String(invoice.sequenceId).padStart(5, '0') : invoice.id.slice(0, 8)
+
     return {
         id: invoice.id,
-        invoiceid: invoice.invoiceid,
+        sequence_id: invoice.sequenceId,
+        invoiceid: `#${sequenceId}`,
         created_at: invoice.createdAt,
         items: invoice.items.map(i => ({
             product_id: i.productId,
@@ -45,13 +48,19 @@ export function mapInvoiceToUniversal(invoice: Invoice): UniversalInvoice {
             quantity: i.quantity,
             unit_price: i.unitPrice,
             total_price: i.total,
-            discount_amount: 0, // Fallback as we removed item-level discount tracking if it was there, or keep 0
-            product_sku: ''
+            discount_amount: 0,
+            product_sku: '',
+            // If we have original currency info in metadata, we should map it here
+            original_currency: (invoice.printMetadata?.items as any[])?.find(mi => mi.product_id === i.productId)?.original_currency
         })),
         total_amount: invoice.total,
         settlement_currency: invoice.currency,
-        cashier_name: invoice.cashierName || invoice.createdBy || 'System', // Sold By
-        created_by_name: invoice.createdByName, // The person who generated the invoice
-        customer_name: undefined
+        cashier_name: invoice.cashierName || invoice.createdBy || 'System',
+        created_by_name: invoice.createdByName,
+        customer_name: undefined,
+        exchange_rates: invoice.printMetadata?.exchange_rates as any[],
+        exchange_rate: invoice.printMetadata?.exchange_rate as number,
+        exchange_source: invoice.printMetadata?.exchange_source as string,
+        origin: invoice.origin
     }
 }

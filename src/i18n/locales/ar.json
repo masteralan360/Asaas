@@ -520,7 +520,32 @@
         "outOfStock": "نفذ المخزون"
     },
     "print": {
-        "clickToExpand": "اضغط للتوسيع"
+        "clickToExpand": "اضغط للتوسيع",
+        "printAndSave": "طباعة وحفظ",
+        "previewTitle": "معاينة الطباعة",
+        "saveSuccess": "تم حفظ الفاتورة",
+        "saveSuccessDesc": "تمت إضافة سجل لهذه الفاتورة إلى السجل.",
+        "saveError": "فشل الحفظ",
+        "saveErrorDesc": "لم يتمكن من حفظ سجل الفاتورة."
+    },
+    "invoice": {
+        "date": "التاريخ",
+        "number": "رقم الفاتورة",
+        "soldTo": "بيع إلى:",
+        "soldBy": "بواسطة:",
+        "shippedTo": "شحن إلى:",
+        "via": "عبر:",
+        "qty": "الكمية",
+        "productName": "اسم المنتج",
+        "description": "الوصف",
+        "price": "السعر",
+        "discount": "الخصم",
+        "total": "الإجمالي",
+        "subtotal": "المجموع الفرعي",
+        "terms": "الشروط والأحكام",
+        "exchangeRates": "أسعار الصرف",
+        "generated": "تم إنشاؤه تلقائياً",
+        "posSystem": "نظام نقطة البيع"
     },
     "sales": {
         "title": "سجل المبيعات",

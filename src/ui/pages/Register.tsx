@@ -7,19 +7,17 @@ import type { UserRole } from '@/local-db/models'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 import { useTheme } from '@/ui/components/theme-provider'
+import { useLogo } from '@/hooks/useFavicon'
+import { Phone } from 'lucide-react'
 
 export function Register() {
     const [, setLocation] = useLocation()
     const { signUp, isSupabaseConfigured } = useAuth()
     const { t, i18n } = useTranslation()
     const { style } = useTheme()
-    const getAuthLogo = () => {
-        if (i18n.language === 'ar') return '/logoPNG/ar.png'
-        if (i18n.language === 'ku') return style === 'modern' ? '/logoPNG/ku-purple.png' : '/logoPNG/ku-blue.png'
-        return '/logoPNG/en.png'
-    }
-    const logoPath = getAuthLogo()
+    const logoPath = useLogo(i18n.language, style)
     const [name, setName] = useState('')
+    const [phone, setPhone] = useState('')
     const [email, setEmail] = useState('')
     const [password, setPassword] = useState('')
     const [passkey, setPasskey] = useState('')
@@ -41,6 +39,7 @@ export function Register() {
                 name,
                 role,
                 passkey,
+                phone,
                 workspaceName: role === 'admin' ? workspaceName : undefined,
                 workspaceCode: role !== 'admin' ? workspaceCode : undefined
             })
@@ -118,6 +117,21 @@ export function Register() {
                                             onChange={(e) => setName(e.target.value)}
                                             className="pl-10"
                                             required
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <Label htmlFor="phone">{t('auth.phoneNumber') || 'Phone Number'}</Label>
+                                    <div className="relative">
+                                        <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                                        <Input
+                                            id="phone"
+                                            type="text"
+                                            placeholder="+1 (555) 000-0000"
+                                            value={phone}
+                                            onChange={(e) => setPhone(e.target.value)}
+                                            className="pl-10"
                                         />
                                     </div>
                                 </div>

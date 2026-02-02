@@ -121,7 +121,11 @@ export function PrintPreviewModal({
                         ref={printRef}
                         className={cn(
                             "print:p-0 [print-color-adjust:exact] -webkit-print-color-adjust:exact",
-                            !isExpanded && "scale-[0.6] origin-top-left w-[166%]"
+                            !isExpanded && (
+                                document.dir === 'rtl' 
+                                    ? "scale-[0.6] origin-top-right w-[166%]" 
+                                    : "scale-[0.6] origin-top-left w-[166%]"
+                            )
                         )}
                     >
                         {children}

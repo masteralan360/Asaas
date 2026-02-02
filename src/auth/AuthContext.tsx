@@ -12,6 +12,7 @@ interface AuthUser {
     workspaceCode: string
     workspaceName?: string
     profileUrl?: string
+    phone?: string
     isConfigured?: boolean
 }
 
@@ -32,6 +33,7 @@ interface AuthContextType {
         passkey: string;
         workspaceName?: string;
         workspaceCode?: string;
+        phone?: string;
     }) => Promise<{ error: Error | null }>
     signOut: () => Promise<void>
     hasRole: (roles: UserRole[]) => boolean
@@ -63,6 +65,7 @@ function parseUserFromSupabase(user: User): AuthUser {
         workspaceCode: user.user_metadata?.workspace_code ?? '',
         workspaceName: user.user_metadata?.workspace_name,
         profileUrl: user.user_metadata?.profile_url,
+        phone: user.user_metadata?.phone,
         isConfigured: user.user_metadata?.is_configured
     }
 }
@@ -203,7 +206,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { error: error as Error | null }
     }
 
-    const signUp = async ({ email, password, name, role = 'viewer', passkey, workspaceName, workspaceCode }: {
+    const signUp = async ({ email, password, name, role = 'viewer', passkey, workspaceName, workspaceCode, phone }: {
         email: string;
         password: string;
         name: string;
@@ -211,9 +214,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         passkey: string;
         workspaceName?: string;
         workspaceCode?: string;
+        phone?: string;
     }) => {
         if (!isSupabaseConfigured) {
-            setUser({ ...DEMO_USER, email, name, role, workspaceName: workspaceName || 'Local Workspace' })
+            setUser({ ...DEMO_USER, email, name, role, phone, workspaceName: workspaceName || 'Local Workspace' })
             return { error: null }
         }
 
@@ -261,6 +265,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                         name,
                         role,
                         passkey,
+                        phone,
                         workspace_id: workspaceId,
                         workspace_code: resolvedWorkspaceCode,
                         workspace_name: resolvedWorkspaceName

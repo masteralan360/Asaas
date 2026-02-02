@@ -13,6 +13,7 @@
         "delete": "Delete",
         "edit": "Edit",
         "create": "Create",
+        "selected": "Selected",
         "search": "Search...",
         "searchBox": "Search",
         "actions": "Actions",
@@ -70,6 +71,7 @@
         "sales": "Sales History",
         "revenue": "Net Revenue",
         "performance": "Team Performance",
+        "invoicesHistory": "Invoices History",
         "settings": "Settings",
         "whatsapp": "WhatsApp",
         "currencyConverter": "Currency Converter",
@@ -239,46 +241,17 @@
         "deleteWarning": "This will permanently remove the order record. Associated invoices should be checked."
     },
     "invoices": {
-        "title": "Invoices",
-        "subtitle": "invoices total",
-        "createInvoice": "Create Invoice",
-        "searchPlaceholder": "Search invoices...",
+        "historyTitle": "Invoices History",
+        "historySubtitle": "invoices total",
+        "searchPlaceholder": "Search invoices",
         "listTitle": "Invoice List",
         "table": {
-            "invoiceid": "Invoice #",
-            "customer": "Customer",
-            "status": "Status",
-            "total": "Total",
-            "dueDate": "Due Date",
-            "created": "Created"
-        },
-        "stats": {
-            "revenue": "Total Revenue (Paid)",
-            "pending": "Pending Amount"
-        },
-        "status": {
-            "draft": "Draft",
-            "sent": "Sent",
-            "paid": "Paid",
-            "overdue": "Overdue",
-            "cancelled": "Cancelled"
-        },
-        "form": {
-            "createTitle": "Create Invoice from Order",
-            "editTitle": "Edit Invoice",
-            "selectOrder": "Select Order",
-            "selectOrderPlaceholder": "Select an order...",
-            "customer": "Customer",
-            "total": "Total",
-            "status": "Status",
-            "dueDate": "Due Date",
-            "notes": "Notes (Optional)"
-        },
-        "messages": {
-            "deleteConfirm": "Are you sure you want to delete this invoice?"
-        },
-        "confirmDelete": "Delete Invoice",
-        "deleteWarning": "Deleting this invoice will remove the financial record. The underlying order will remain."
+            "created": "Creation date",
+            "invoiceid": "Invoice ID",
+            "createdBy": "Created By",
+            "origin": "Origin",
+            "total": "Total"
+        }
     },
     "auth": {
         "systemName": "Asaas System",
@@ -556,7 +529,32 @@
         "outOfStock": "Out of Stock"
     },
     "print": {
-        "clickToExpand": "Click to expand"
+        "clickToExpand": "Click to expand",
+        "printAndSave": "Print & Save",
+        "previewTitle": "Print Preview",
+        "saveSuccess": "Invoice Saved",
+        "saveSuccessDesc": "A record of this invoice has been added to history.",
+        "saveError": "Save Failed",
+        "saveErrorDesc": "Could not save invoice record."
+    },
+    "invoice": {
+        "date": "Date",
+        "number": "Invoice #",
+        "soldTo": "Sold To:",
+        "soldBy": "Sold By:",
+        "shippedTo": "Shipped To:",
+        "via": "Via:",
+        "qty": "Qty",
+        "productName": "Product Name",
+        "description": "Description",
+        "price": "Price",
+        "discount": "Discount",
+        "total": "Total",
+        "subtotal": "Subtotal",
+        "terms": "Terms & Conditions",
+        "exchangeRates": "Exchange Rates",
+        "generated": "Generated Automatically",
+        "posSystem": "POS System"
     },
     "sales": {
         "title": "Sales History",

@@ -5,7 +5,7 @@ import { supabase } from '@/auth/supabase'
 import { User } from '@/local-db/models'
 import { db } from '@/local-db/database'
 import { Sale } from '@/types'
-import { formatCurrency, formatDate } from '@/lib/utils'
+import { formatCurrency, formatDateTime, formatDate } from '@/lib/utils'
 import { cn } from '@/lib/utils'
 import { useWorkspace } from '@/workspace'
 import { useDateRange } from '@/context/DateRangeContext'
@@ -290,7 +290,7 @@ export function TeamPerformance() {
         }
         if (dateRange === 'month') {
             const now = new Date()
-            return new Intl.DateTimeFormat(navigator.language || 'en-US', {
+            return new Intl.DateTimeFormat('en-GB', {
                 month: 'short',
                 year: 'numeric'
             }).format(now)
@@ -637,7 +637,7 @@ export function TeamPerformance() {
                                 tickLine={false}
                                 tick={{ fontSize: 10, fontWeight: 700, fill: 'currentColor' }}
                                 className="text-muted-foreground/60"
-                                tickFormatter={(val) => new Date(val).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}
+                                tickFormatter={(val) => new Date(val).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
                                 dy={10}
                             />
                             <YAxis
@@ -722,7 +722,7 @@ export function TeamPerformance() {
                             <p className="text-sm font-black">{getDateRangeDisplay()}</p>
                             <div className="mt-2">
                                 <p className="text-[9px] uppercase font-bold text-gray-400">{t('performance.report.generatedOn')}</p>
-                                <p className="text-xs">{new Date().toLocaleString()}</p>
+                                <p className="text-xs">{formatDateTime(new Date())}</p>
                             </div>
                         </div>
                     </div>

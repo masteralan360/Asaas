@@ -39,18 +39,18 @@ export function formatCurrency(
 }
 
 export function formatDate(date: Date | string): string {
-    return new Intl.DateTimeFormat('en-US', {
+    return new Intl.DateTimeFormat('en-GB', {
+        day: '2-digit',
+        month: '2-digit',
         year: 'numeric',
-        month: 'short',
-        day: 'numeric',
     }).format(new Date(date))
 }
 
 export function formatDateTime(date: Date | string): string {
-    return new Intl.DateTimeFormat('en-US', {
+    return new Intl.DateTimeFormat('en-GB', {
+        day: '2-digit',
+        month: '2-digit',
         year: 'numeric',
-        month: 'short',
-        day: 'numeric',
         hour: '2-digit',
         minute: '2-digit',
     }).format(new Date(date))
@@ -72,7 +72,7 @@ export function formatSnapshotTime(date: Date | string): string {
     const dd = d.getDate().toString().padStart(2, '0')
     const hh = d.getHours().toString().padStart(2, '0')
     const min = d.getMinutes().toString().padStart(2, '0')
-    return `${yy}/${mm}/${dd} ${hh}:${min}`
+    return `${dd}/${mm}/${yy} ${hh}:${min}`
 }
 
 export function generateId(): string {

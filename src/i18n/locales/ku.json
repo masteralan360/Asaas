@@ -529,7 +529,32 @@
         "outOfStock": "لەکۆگا نەماوە"
     },
     "print": {
-        "clickToExpand": "دەستاکری بکە بۆ فراوانکردن"
+        "clickToExpand": "داگرە بۆ گەورەکردن",
+        "printAndSave": "چاپکردن و پاشەکەوت",
+        "previewTitle": "پێشبینینی چاپ",
+        "saveSuccess": "پسوڵە پاشەکەوت کرا",
+        "saveSuccessDesc": "تۆمارێکی ئەم پسوڵەیە زیادکرا بۆ مێژوو.",
+        "saveError": "پاشەکەوتکردن سەرکەوتوو نەبوو",
+        "saveErrorDesc": "نەتوانرا تۆماری پسوڵەکە پاشەکەوت بکرێت."
+    },
+    "invoice": {
+        "date": "بەروار",
+        "number": "پسوڵە #",
+        "soldTo": "فرۆشرا بۆ:",
+        "soldBy": "فرۆشرا لەلایەن:",
+        "shippedTo": "نێردرا بۆ:",
+        "via": "لەرێگەی:",
+        "qty": "عدد",
+        "productName": "ناوی بەرهەم",
+        "description": "پێناسه",
+        "price": "نرخ",
+        "discount": "داشکاندن",
+        "total": "کۆی گشتی",
+        "subtotal": "کۆی گشتی",
+        "terms": "مەرج و رێساکان",
+        "exchangeRates": "نرخی دراوەکان",
+        "generated": "بە شێوەیەکی خۆکار دروستکراوە",
+        "posSystem": "سیستەمی فرۆشتن"
     },
     "sales": {
         "title": "مێژووی فرۆشتن",

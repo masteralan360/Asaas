@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useInvoices, type Invoice } from '@/local-db'
-import { formatCurrency, formatDateTime } from '@/lib/utils'
+import { formatCurrency, formatDateTime, formatDate } from '@/lib/utils'
 import {
     Table,
     TableBody,
@@ -22,6 +22,8 @@ import { FileText, Search, Printer, Eye } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/auth'
 import { useWorkspace } from '@/workspace'
+import { useDateRange } from '@/context/DateRangeContext'
+import { DateRangeFilters } from '@/ui/components/DateRangeFilters'
 import { mapInvoiceToUniversal } from '@/lib/mappings'
 
 
@@ -31,10 +33,36 @@ export function InvoicesHistory() {
     const invoices = useInvoices(user?.workspaceId)
     const { features } = useWorkspace()
     const { t } = useTranslation()
+    const { dateRange, customDates } = useDateRange()
     const [search, setSearch] = useState('')
     const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null)
     const [printFormat, setPrintFormat] = useState<'a4' | 'receipt'>('a4')
     const [showPrintPreview, setShowPrintPreview] = useState(false)
+
+    const getDateDisplay = () => {
+        if (dateRange === 'today') {
+            return formatDate(new Date())
+        }
+        if (dateRange === 'month') {
+            const now = new Date()
+            return new Intl.DateTimeFormat('en-GB', {
+                month: 'short',
+                year: 'numeric'
+            }).format(now)
+        }
+        if (dateRange === 'custom') {
+            if (filteredInvoices && filteredInvoices.length > 0) {
+                const dates = filteredInvoices.map(i => new Date(i.createdAt).getTime())
+                const minDate = new Date(Math.min(...dates))
+                const maxDate = new Date(Math.max(...dates))
+                return `${t('performance.filters.from') || 'From'} ${formatDate(minDate)} ${t('performance.filters.to') || 'To'} ${formatDate(maxDate)}`
+            }
+            if (customDates.start && customDates.end) {
+                return `${t('performance.filters.from') || 'From'} ${formatDate(customDates.start)} ${t('performance.filters.to') || 'To'} ${formatDate(customDates.end)}`
+            }
+        }
+        return ''
+    }
 
     const handleView = (invoice: Invoice, format: 'a4' | 'receipt') => {
         setPrintFormat(format)
@@ -43,8 +71,30 @@ export function InvoicesHistory() {
     }
 
     const filteredInvoices = invoices.filter(
-        (i) =>
-            i.invoiceid.toLowerCase().includes(search.toLowerCase())
+        (i) => {
+            const matchesSearch = i.invoiceid.toLowerCase().includes(search.toLowerCase())
+
+            // Date filtering logic
+            const invoiceDate = new Date(i.createdAt)
+            const now = new Date()
+            let matchesDate = true
+
+            if (dateRange === 'today') {
+                const startOfDay = new Date(now.setHours(0, 0, 0, 0))
+                matchesDate = invoiceDate >= startOfDay
+            } else if (dateRange === 'month') {
+                const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+                matchesDate = invoiceDate >= startOfMonth
+            } else if (dateRange === 'custom' && customDates.start && customDates.end) {
+                const start = new Date(customDates.start)
+                start.setHours(0, 0, 0, 0)
+                const end = new Date(customDates.end)
+                end.setHours(23, 59, 59, 999)
+                matchesDate = invoiceDate >= start && invoiceDate <= end
+            }
+
+            return matchesSearch && matchesDate
+        }
     ).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
 
     return (
@@ -52,29 +102,39 @@ export function InvoicesHistory() {
             {/* Header */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
-                    <h1 className="text-2xl font-bold flex items-center gap-2">
-                        <FileText className="w-6 h-6 text-primary" />
-                        {t('invoices.historyTitle') || 'Invoices History'}
-                    </h1>
+                    <div className="flex items-center gap-3">
+                        <h1 className="text-2xl font-bold flex items-center gap-2">
+                            <FileText className="w-6 h-6 text-primary" />
+                            {t('invoices.historyTitle') || 'Invoices History'}
+                        </h1>
+                        {getDateDisplay() && (
+                            <div className="px-3 py-1 text-sm font-bold bg-primary text-primary-foreground rounded-lg shadow-sm animate-pop-in">
+                                {getDateDisplay()}
+                            </div>
+                        )}
+                    </div>
                     <p className="text-muted-foreground">
                         {t('invoices.historySubtitle', { count: invoices.length }) || `${invoices.length} historical records`}
                     </p>
                 </div>
             </div>
 
-            {/* Search */}
-            <div className="relative max-w-md">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input
-                    placeholder={t('invoices.searchPlaceholder') || "Search by ID..."}
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    className="pl-10 rounded-xl"
-                />
+            {/* Filters */}
+            <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
+                <div className="relative w-full max-w-md">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Input
+                        placeholder={t('invoices.searchPlaceholder') || "Search by ID..."}
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
+                        className="pl-10 rounded-xl"
+                    />
+                </div>
+                <DateRangeFilters />
             </div>
 
             {/* Invoices Table */}
-            <Card className="rounded-[2rem] overflow-hidden border-2 shadow-sm">
+            <Card className="rounded-2xl overflow-hidden border-2 shadow-sm">
                 <CardHeader className="bg-muted/30 border-b">
                     <CardTitle className="text-lg font-bold flex items-center gap-2">
                         <FileText className="w-5 h-5 text-primary/70" />
@@ -106,7 +166,7 @@ export function InvoicesHistory() {
                                             {formatDateTime(invoice.createdAt)}
                                         </TableCell>
                                         <TableCell className="font-mono text-xs font-bold text-primary">
-                                            {invoice.invoiceid}
+                                            {invoice.sequenceId ? `#${String(invoice.sequenceId).padStart(5, '0')}` : invoice.invoiceid}
                                         </TableCell>
 
                                         <TableCell className="text-center text-xs font-medium">
@@ -123,24 +183,28 @@ export function InvoicesHistory() {
                                         </TableCell>
                                         <TableCell className="text-right pr-6">
                                             <div className="flex justify-end gap-2">
-                                                <Button
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    className="rounded-xl hover:bg-primary/10 hover:text-primary transition-all flex items-center gap-2 px-3"
-                                                    onClick={() => handleView(invoice, 'a4')}
-                                                >
-                                                    <Eye className="w-4 h-4" />
-                                                    <span className="text-xs font-bold font-mono">A4</span>
-                                                </Button>
-                                                <Button
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    className="rounded-xl hover:bg-primary/10 hover:text-primary transition-all flex items-center gap-2 px-3"
-                                                    onClick={() => handleView(invoice, 'receipt')}
-                                                >
-                                                    <Printer className="w-4 h-4" />
-                                                    <span className="text-xs font-bold font-mono">Receipt</span>
-                                                </Button>
+                                                {(!invoice.printFormat || invoice.printFormat === 'a4') && (
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        className="rounded-xl hover:bg-primary/10 hover:text-primary transition-all flex items-center gap-2 px-3"
+                                                        onClick={() => handleView(invoice, 'a4')}
+                                                    >
+                                                        <Eye className="w-4 h-4" />
+                                                        <span className="text-xs font-bold font-mono">A4</span>
+                                                    </Button>
+                                                )}
+                                                {(!invoice.printFormat || invoice.printFormat === 'receipt') && (
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        className="rounded-xl hover:bg-primary/10 hover:text-primary transition-all flex items-center gap-2 px-3"
+                                                        onClick={() => handleView(invoice, 'receipt')}
+                                                    >
+                                                        <Printer className="w-4 h-4" />
+                                                        <span className="text-xs font-bold font-mono">Receipt</span>
+                                                    </Button>
+                                                )}
                                             </div>
                                         </TableCell>
                                     </TableRow>
