@@ -17,8 +17,6 @@ import { useLogo } from '@/hooks/useFavicon'
 import {
     LayoutDashboard,
     Package,
-    Users,
-    ShoppingCart,
     FileText,
     Settings,
     LogOut,
@@ -167,14 +165,6 @@ export function Layout({ children }: LayoutProps) {
         ] : []),
         // Products - always visible
         { name: t('nav.products'), href: '/products', icon: Package },
-        // Customers - requires feature flag
-        ...(hasFeature('allow_customers') ? [
-            { name: t('nav.customers'), href: '/customers', icon: Users }
-        ] : []),
-        // Orders - requires feature flag
-        ...(hasFeature('allow_orders') ? [
-            { name: t('nav.orders'), href: '/orders', icon: ShoppingCart }
-        ] : []),
         // Invoices - requires feature flag
         ...(hasFeature('allow_invoices') ? [
             { name: t('nav.invoicesHistory') || 'Invoices History', href: '/invoices-history', icon: FileText }

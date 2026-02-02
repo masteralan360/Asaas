@@ -1,120 +1,126 @@
-# Asaas - Offline-First Enterprise Resource Planning
+# Asaas - Offline-First ERP & Point of Sale
 
-A modern, offline-first enterprise resource planning web application built with React, Vite, and Supabase.
+[![Version](https://img.shields.io/badge/version-1.6.6-blue.svg)](https://github.com/masteralan360/Asaas/releases)
+[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux%20%7C%20Android%20%7C%20Web-lightgrey.svg)]()
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-## Features
+A modern, **offline-first** Enterprise Resource Planning and Point-of-Sale system built with Tauri, React, and Supabase.
 
-- 🔌 **Offline-First**: Works fully offline with local IndexedDB storage
-- 🔄 **Auto Sync**: Automatically syncs data when online
-- 🔐 **Authentication**: Supabase Auth with role-based access
-- 📦 **Inventory Management**: Products with stock tracking
-- 👥 **Customer Management**: Full customer database
-- 🛒 **Order Management**: Create and track orders
-- 📄 **Invoice Generation**: Generate invoices from orders
-- 📱 **PWA Ready**: Installable as a Progressive Web App
+## ✨ Features
 
-## Tech Stack
+- 🛒 **Point of Sale** - Fast checkout with barcode scanning, keyboard navigation
+- 📦 **Product Management** - Stock tracking, categories, low-stock alerts
+- 💰 **Multi-Currency** - USD, EUR, IQD, TRY with real-time exchange rates
+- 📊 **Revenue Analytics** - Net profit, margins, cashier performance
+- 🔌 **Offline-First** - Works without internet, syncs when online
+- 📱 **Cross-Platform** - Windows, macOS, Linux, Android, Web
+- 👥 **Team Management** - Roles, targets, workspace isolation
+- 🌍 **Multi-Language** - English, Arabic, Kurdish
 
-- **Frontend**: React 18, TypeScript, Vite
-- **Styling**: Tailwind CSS, shadcn/ui
-- **Local Storage**: Dexie.js (IndexedDB)
-- **Cloud Sync**: Supabase (PostgreSQL + Auth)
-- **Routing**: Wouter
-- **PWA**: vite-plugin-pwa
+## 🚀 Quick Start
 
-## Quick Start
+### Prerequisites
 
-### 1. Install Dependencies
+- Node.js 18+
+- Rust (for desktop builds)
+- Supabase account (optional)
+
+### Installation
 
 ```bash
+# Clone repository
+git clone https://github.com/masteralan360/Asaas.git
+cd Asaas
+
+# Install dependencies
 npm install
+
+# Configure environment
+cp .env.example .env
+# Edit .env with your Supabase credentials
 ```
 
-### 2. Configure Environment
-
-Create a `.env` file:
-
-```env
-VITE_SUPABASE_URL=https://your-project.supabase.co
-VITE_SUPABASE_ANON_KEY=your-anon-public-key
-```
-
-> If you don't have Supabase configured, the app runs in demo mode with local-only storage.
-
-### 3. Set Up Supabase (Optional)
-
-Run the SQL files in your Supabase SQL Editor:
-1. `supabase/schema.sql` - Creates tables
-2. `supabase/rls-policies.sql` - Sets up Row Level Security
-
-### 4. Start Development Server
+### Development
 
 ```bash
+# Web development
 npm run dev
+
+# Desktop (Tauri)
+npm run tauri dev
+
+# Android
+npm run android:dev
 ```
 
-Visit `http://localhost:5173`
-
-## Project Structure
-
-```
-src/
-├── auth/           # Authentication (Supabase)
-├── local-db/       # IndexedDB layer (Dexie)
-├── sync/           # Sync engine
-├── ui/
-│   ├── components/ # Reusable UI components
-│   └── pages/      # Page components
-├── lib/            # Utilities
-├── App.tsx         # Main app component
-└── main.tsx        # Entry point
-```
-
-## Modules
-
-### Dashboard
-- Overview statistics
-- Recent orders
-- Low stock alerts
-- Pending invoices
-
-### Products
-- CRUD operations
-- Category management
-- Stock tracking
-- Low stock warnings
-
-### Customers
-- Customer database
-- Contact information
-- Order history tracking
-
-### Orders
-- Create orders with products
-- Status management
-- Customer association
-
-### Invoices
-- Generate from orders
-- Status tracking (draft, sent, paid, overdue)
-- Revenue tracking
-
-## Offline Capabilities
-
-All data is stored locally in IndexedDB. When online, the app syncs with Supabase:
-
-1. **Create/Update/Delete** → Immediate local write, queued for sync
-2. **Online Detection** → Auto-sync when connection restored
-3. **Conflict Resolution** → Last-write-wins strategy
-
-## Building for Production
+### Production Build
 
 ```bash
+# Web
 npm run build
+
+# Desktop
+npm run tauri build
+
+# Android
+npm run android:build:release
 ```
 
-Deploy the `dist` folder to Vercel, Netlify, or any static host.
+## 📁 Project Structure
 
-## License
+```
+asaas/
+├── src/                    # React application
+│   ├── auth/               # Authentication (Supabase)
+│   ├── local-db/           # IndexedDB layer (Dexie)
+│   ├── sync/               # Cloud sync engine
+│   ├── lib/                # Utilities
+│   ├── ui/
+│   │   ├── components/     # Reusable components
+│   │   └── pages/          # Page components
+│   └── workspace/          # Workspace management
+├── src-tauri/              # Tauri backend (Rust)
+├── supabase/               # SQL migrations
+├── docs/                   # Documentation
+└── public/                 # Static assets
+```
 
-MIT
+## 🛠 Tech Stack
+
+| Layer | Technology |
+|-------|------------|
+| Frontend | React 18, TypeScript, Vite |
+| Desktop | Tauri 2.x |
+| Styling | Tailwind CSS, shadcn/ui |
+| Local DB | Dexie.js (IndexedDB) |
+| Cloud | Supabase (PostgreSQL, Auth, Storage) |
+| Routing | Wouter |
+| i18n | i18next |
+| Charts | Recharts |
+
+## 📖 Documentation
+
+Full documentation available in [`/docs`](./docs/):
+
+- [Overview](./docs/OVERVIEW.md) - Architecture and concepts
+- [Database](./docs/DATABASE.md) - Schema and models
+- [Sync Engine](./docs/SYNC_ENGINE.md) - Offline sync system
+- [Authentication](./docs/AUTHENTICATION.md) - Auth and roles
+- [Features](./docs/FEATURES.md) - Module documentation
+- [API Reference](./docs/API_REFERENCE.md) - Supabase functions
+- [Deployment](./docs/DEPLOYMENT.md) - Build and deploy
+
+## 🔐 Security
+
+- Row-Level Security on all database tables
+- Workspace isolation with passkey system
+- JWT-based authentication
+- Encrypted configuration storage
+
+## 📄 License
+
+MIT License - see [LICENSE](LICENSE) for details.
+
+---
+
+Built with ❤️ using [Tauri](https://tauri.app), [React](https://react.dev), and [Supabase](https://supabase.com)

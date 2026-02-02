@@ -19,8 +19,6 @@ const Dashboard = lazy(() => import('@/ui/pages/Dashboard').then(m => ({ default
 const Login = lazy(() => import('@/ui/pages/Login').then(m => ({ default: m.Login })))
 const Register = lazy(() => import('@/ui/pages/Register').then(m => ({ default: m.Register })))
 const Products = lazy(() => import('@/ui/pages/Products').then(m => ({ default: m.Products })))
-const Customers = lazy(() => import('@/ui/pages/Customers').then(m => ({ default: m.Customers })))
-const Orders = lazy(() => import('@/ui/pages/Orders').then(m => ({ default: m.Orders })))
 const InvoicesHistory = lazy(() => import('@/ui/pages/InvoicesHistory').then(m => ({ default: m.InvoicesHistory })))
 const Members = lazy(() => import('@/ui/pages/Members').then(m => ({ default: m.Members })))
 const Settings = lazy(() => import('@/ui/pages/Settings').then(m => ({ default: m.Settings })))
@@ -346,20 +344,7 @@ function App() {
                                                 </Layout>
                                             </ProtectedRoute>
                                         </Route>
-                                        <Route path="/customers">
-                                            <ProtectedRoute requiredFeature="allow_customers">
-                                                <Layout>
-                                                    <Customers />
-                                                </Layout>
-                                            </ProtectedRoute>
-                                        </Route>
-                                        <Route path="/orders">
-                                            <ProtectedRoute requiredFeature="allow_orders">
-                                                <Layout>
-                                                    <Orders />
-                                                </Layout>
-                                            </ProtectedRoute>
-                                        </Route>
+
 
                                         <Route path="/invoices-history">
                                             <ProtectedRoute requiredFeature="allow_invoices">

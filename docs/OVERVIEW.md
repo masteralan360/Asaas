@@ -1,41 +1,131 @@
-# Asaas Documentation: High-Level Overview
+# Asaas Overview
 
-This document provides a comprehensive A-to-Z overview of Asaas, a modern, offline-first enterprise resource planning application.
+## What is Asaas?
 
-## 🚀 Tech Stack
-- **Frontend**: React (with Vite)
-- **State Management**: React Context (for Auth) & Dexie.js (for local state)
-- **Database (Local)**: Dexie.js (IndexedDB)
-- **Database/Backend (Remote)**: Supabase (PostgreSQL, Auth, RLS)
-- **Styling**: Tailwind CSS & Lucide Icons
-- **Routing**: Wouter
-- **Internationalization**: i18next
-- **Language**: TypeScript
+Asaas is an **offline-first Enterprise Resource Planning (ERP) and Point-of-Sale (POS) system** designed for retail businesses. It works fully offline with local data storage and automatically synchronizes with the cloud when connectivity is available.
 
-## 🏗 System Architecture
+## Key Features
 
-The application follows an **Offline-First Multi-Tenant Architecture**. It is designed to be fully functional without an internet connection, synchronizing data to a central Supabase backend when connectivity is available.
+### 🛒 Point of Sale (POS)
+- Fast product lookup via search, SKU, or barcode scanning
+- Category-based product filtering
+- Multi-currency support (USD, EUR, IQD, TRY)
+- Real-time exchange rate integration
+- Negotiable pricing with configurable discount limits
+- Keyboard navigation for rapid checkout
+- Receipt and A4 invoice printing
 
-### Core Modules
-1. **Authentication & Multi-tenancy** (`src/auth`): Handles user sessions, roles (Admin, Staff, Viewer), and workspace isolation.
-2. **Offline Database** (`src/local-db`): A persistent local store using Dexie.js that mirrors the Supabase schema.
-3. **Sync Engine** (`src/sync`): Orchestrates the bi-directional synchronization between Dexie and Supabase.
-4. **UI Layer** (`src/ui`): A responsive, component-based interface with RTL support for Arabic and Kurdish.
+### 📦 Product Management
+- Full CRUD operations for products
+- Category organization
+- Stock level tracking with low-stock alerts
+- Barcode support
+- Product image management with P2P sync
+- Return rules configuration
 
-### Data Flow
-1. **User Action**: The UI calls a hook (e.g., `useProducts`) to perform a mutation.
-2. **Local Write**: The mutation is written immediately to **Dexie.js**. The record's `syncStatus` is set to `pending`.
-3. **Queueing**: A background task adds the operation to the **Sync Queue**.
-4. **Synchronization**: The **Sync Engine** periodically (or on demand) pushes pending changes to **Supabase** and pulls updates from other users in the same workspace.
-5. **Reconciliation**: Version control (Last Write Wins) ensures data consistency across devices.
+### 💰 Sales & Revenue
+- Complete sales history with filtering
+- Return processing (full or partial)
+- Revenue analytics with profit margins
+- Date range filtering
+- Cashier performance tracking
+- System verification for transaction integrity
 
-## 📂 Project Structure
-- `src/auth/`: Supabase client and AuthContext.
-- `src/local-db/`: Dexie schema definition and repository hooks.
-- `src/sync/`: Logic for pushing/pulling data and managing the queue.
-- `src/ui/`: Components, Layout, and Pages.
-- `src/i18n/`: Localization configuration and translation files.
-- `supabase/`: SQL migrations, RLS policies, and RPC definitions.
+### 📊 Dashboard & Analytics
+- Real-time sales statistics
+- Low stock alerts
+- Trading time heatmaps
+- Team performance metrics
+- Revenue trends
 
----
-*Next: See [AUTH_SYSTEM.md](./AUTH_SYSTEM.md) for detailed authentication logic.*
+### 👥 Team Management
+- Multi-user workspaces
+- Role-based access (Admin, Staff, Viewer)
+- Member invitation via workspace codes
+- Monthly sales targets per member
+
+### ⚙️ Settings & Configuration
+- Workspace branding (logo, name)
+- Currency preferences
+- Feature toggles (POS, Invoices, etc.)
+- Theme customization (light/dark/system)
+- Language selection (English, Arabic, Kurdish)
+
+## Technology Stack
+
+| Layer | Technology | Purpose |
+|-------|------------|---------|
+| **UI Framework** | React 18 + TypeScript | Component-based frontend |
+| **Build Tool** | Vite 5 | Fast development and bundling |
+| **Desktop Runtime** | Tauri 2.x | Native desktop wrapper |
+| **Styling** | Tailwind CSS | Utility-first CSS |
+| **Components** | shadcn/ui + Radix | Accessible UI primitives |
+| **Local Storage** | Dexie.js (IndexedDB) | Offline data persistence |
+| **Cloud Backend** | Supabase | PostgreSQL + Auth + Realtime |
+| **Routing** | Wouter | Lightweight hash-based routing |
+| **i18n** | i18next | Multi-language support |
+| **Charts** | Recharts | Data visualization |
+
+## Platform Support
+
+| Platform | Status | Notes |
+|----------|--------|-------|
+| Windows | ✅ Production | Auto-update via GitHub releases |
+| macOS | ✅ Supported | Requires code signing for distribution |
+| Linux | ✅ Supported | AppImage and deb packages |
+| Android | ✅ Supported | APK and AAB builds |
+| iOS | 🔜 Planned | Tauri iOS target available |
+| Web (PWA) | ✅ Supported | Vercel deployment |
+
+## Project Structure
+
+```
+asaas/
+├── src/                    # React application source
+│   ├── auth/               # Authentication (Supabase Auth)
+│   ├── context/            # React contexts (ExchangeRate, DateRange)
+│   ├── hooks/              # Custom React hooks
+│   ├── i18n/               # Internationalization
+│   │   └── locales/        # EN, AR, KU translations
+│   ├── lib/                # Utilities and managers
+│   │   ├── exchangeRate.ts # Multi-source exchange rates
+│   │   ├── p2pSyncManager.ts # P2P file synchronization
+│   │   └── platform.ts     # Platform detection
+│   ├── local-db/           # Dexie database layer
+│   │   ├── database.ts     # IndexedDB schema
+│   │   ├── hooks.ts        # Data access hooks
+│   │   └── models.ts       # TypeScript interfaces
+│   ├── sync/               # Cloud sync engine
+│   ├── services/           # Platform services
+│   ├── ui/
+│   │   ├── components/     # Reusable UI components
+│   │   └── pages/          # Page-level components
+│   └── workspace/          # Workspace context and features
+├── src-tauri/              # Tauri backend (Rust)
+├── supabase/               # SQL migrations and functions
+├── public/                 # Static assets
+└── docs/                   # Documentation (you are here)
+```
+
+## Core Concepts
+
+### Offline-First Architecture
+
+1. **All writes go to IndexedDB first** - Immediate local persistence
+2. **Changes queued as mutations** - Tracked for later sync
+3. **Background sync when online** - Pushes mutations, pulls remote changes
+4. **Conflict resolution** - Last-write-wins with version tracking
+
+### Workspace Isolation
+
+- Each workspace has a unique ID and invite code
+- All data is scoped to `workspace_id`
+- Users belong to exactly one workspace
+- Supabase RLS enforces isolation at database level
+
+### Multi-Currency Support
+
+- Products priced in their native currency (USD, EUR, IQD, TRY)
+- Sales settled in workspace's preferred currency
+- Real-time exchange rates from multiple sources
+- Historical rate snapshots stored with each sale
