@@ -61,6 +61,33 @@
         "saleCompleted": "Sale completed successfully",
         "success": "Success"
     },
+    "exchange": {
+        "manual": "Manual",
+        "marketAverage": "Market Average",
+        "manualEntryTitle": "Manual Exchange Rate Entry",
+        "manualRate": "Manual Rate (IQD per 100 units)",
+        "manualRateHint": "This rate will be used for all calculations when source is set to MANUAL ENTRY.",
+        "discrepancyTitle": "Rate Discrepancy Detected",
+        "discrepancyDesc": "Your manual entry differs significantly from the live market average.",
+        "manualEntry": "Your Entry",
+        "marketAvg": "Market Avg",
+        "difference": "Difference",
+        "editManual": "Open Manual Editor",
+        "switchToLive": "Switch to Live Rates",
+        "ignoreSnooze": "Ignore & Snooze",
+        "snoozeTitle": "Snooze Notifications",
+        "snoozeDesc": "How long should we hide this warning?",
+        "snooze": {
+            "ignore": "Ignore (Default)",
+            "15m": "15 Minutes",
+            "30m": "30 Minutes",
+            "2h": "2 Hours",
+            "6h": "6 Hours",
+            "24h": "Until Tomorrow (24h)"
+        },
+        "enterNumber": "Enter a Number",
+        "averagePlaceholder": "Average: {{rate}}"
+    },
     "nav": {
         "dashboard": "Dashboard",
         "products": "Products",
@@ -482,7 +509,11 @@
             "trySource": "TRY/IQD Source",
             "forexfy_try": "Forexfy TRY/IQD (Black Market)",
             "dolardinar_try": "DolarDinar.com TRY/IQD (Market Sheet)",
-            "lastUpdated": "Last Updated"
+            "lastUpdated": "Last Updated",
+            "addManual": "Add Exchange rate Manually",
+            "manual": "MANUAL ENTRY",
+            "threshold": "Manual Rate Alert Threshold (IQD)",
+            "thresholdDesc": "Trigger alert if manual rate differs from market average by more than this amount."
         },
         "profile": {
             "title": "Profile Settings",

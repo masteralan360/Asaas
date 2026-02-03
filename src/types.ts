@@ -103,5 +103,8 @@ export interface UniversalInvoice {
     exchange_rate_timestamp?: string
     origin?: string
     created_by_name?: string
+    status?: string
+    customer_id?: string
+    order_id?: string
 }
 

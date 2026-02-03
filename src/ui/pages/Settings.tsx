@@ -10,8 +10,9 @@ import type { IQDDisplayPreference } from '@/local-db/models'
 import { Settings as SettingsIcon, Database, Cloud, Trash2, RefreshCw, User, Copy, Check, CreditCard, Globe, Download, AlertCircle } from 'lucide-react'
 import { formatDateTime, cn } from '@/lib/utils'
 import { useTheme } from '@/ui/components/theme-provider'
-import { Moon, Sun, Monitor, Unlock, Server, MessageSquare } from 'lucide-react'
+import { Moon, Sun, Monitor, Unlock, Server, MessageSquare, Bell } from 'lucide-react'
 import { useState, useEffect } from 'react'
+import { useExchangeRate } from '@/context/ExchangeRateContext'
 import { getAppSettingSync, setAppSetting } from '@/local-db/settings'
 import { decrypt } from '@/lib/encryption'
 import { check } from '@tauri-apps/plugin-updater';
@@ -25,12 +26,14 @@ export function Settings() {
     const { theme, setTheme, style, setStyle } = useTheme()
     const { features, updateSettings } = useWorkspace()
     const { t } = useTranslation()
+    const { alerts, forceAlert } = useExchangeRate()
     const [copied, setCopied] = useState(false)
     const [posHotkey, setPosHotkey] = useState(localStorage.getItem('pos_hotkey') || 'p')
     const [barcodeHotkey, setBarcodeHotkey] = useState(localStorage.getItem('barcode_hotkey') || 'k')
     const [exchangeRateSource, setExchangeRateSource] = useState(localStorage.getItem('primary_exchange_rate_source') || 'xeiqd')
     const [eurExchangeRateSource, setEurExchangeRateSource] = useState(localStorage.getItem('primary_eur_exchange_rate_source') || 'forexfy')
     const [tryExchangeRateSource, setTryExchangeRateSource] = useState(localStorage.getItem('primary_try_exchange_rate_source') || 'forexfy')
+    const [exchangeRateThreshold, setExchangeRateThreshold] = useState(localStorage.getItem('exchange_rate_threshold') || '2500')
 
     // Connection Settings State
     const [isElectron, setIsElectron] = useState(false)
@@ -121,7 +124,25 @@ export function Settings() {
         localStorage.setItem('barcode_hotkey', val)
     }
 
+    // Sync local state when localStorage changes from other components (like Manual Editor Modal)
+    useEffect(() => {
+        const syncSources = () => {
+            setExchangeRateSource(localStorage.getItem('primary_exchange_rate_source') || 'xeiqd')
+            setEurExchangeRateSource(localStorage.getItem('primary_eur_exchange_rate_source') || 'forexfy')
+            setTryExchangeRateSource(localStorage.getItem('primary_try_exchange_rate_source') || 'forexfy')
+        }
+        window.addEventListener('exchange-rate-refresh', syncSources)
+        return () => window.removeEventListener('exchange-rate-refresh', syncSources)
+    }, [])
+
     const handleExchangeRateSourceChange = (val: string) => {
+        if (val === 'manual') {
+            const currentRate = localStorage.getItem('manual_rate_usd_iqd');
+            if (!currentRate || parseInt(currentRate) === 0) {
+                openManualEditor('USD');
+                return;
+            }
+        }
         setExchangeRateSource(val)
         localStorage.setItem('primary_exchange_rate_source', val)
         // Notify the indicator to refresh instantly
@@ -129,15 +150,38 @@ export function Settings() {
     }
 
     const handleEurExchangeRateSourceChange = (val: string) => {
+        if (val === 'manual') {
+            const currentRate = localStorage.getItem('manual_rate_eur_iqd');
+            if (!currentRate || parseInt(currentRate) === 0) {
+                openManualEditor('EUR');
+                return;
+            }
+        }
         setEurExchangeRateSource(val)
         localStorage.setItem('primary_eur_exchange_rate_source', val)
         window.dispatchEvent(new CustomEvent('exchange-rate-refresh'))
     }
 
     const handleTryExchangeRateSourceChange = (val: string) => {
+        if (val === 'manual') {
+            const currentRate = localStorage.getItem('manual_rate_try_iqd');
+            if (!currentRate || parseInt(currentRate) === 0) {
+                openManualEditor('TRY');
+                return;
+            }
+        }
         setTryExchangeRateSource(val)
         localStorage.setItem('primary_try_exchange_rate_source', val)
         window.dispatchEvent(new CustomEvent('exchange-rate-refresh'))
+    }
+
+    const handleThresholdChange = (val: string) => {
+        setExchangeRateThreshold(val)
+        localStorage.setItem('exchange_rate_threshold', val)
+    }
+
+    const openManualEditor = (currency: 'USD' | 'EUR' | 'TRY' = 'USD') => {
+        window.dispatchEvent(new CustomEvent('open-manual-rate-editor', { detail: { currency } }))
     }
 
     const copyToClipboard = (text: string) => {
@@ -564,22 +608,44 @@ export function Settings() {
                                 <div className="space-y-4 max-w-md">
                                     <div className="space-y-2">
                                         <Label>{t('settings.exchangeRate.primary') || 'Primary Source'}</Label>
-                                        <Select value={exchangeRateSource} onValueChange={handleExchangeRateSourceChange}>
-                                            <SelectTrigger>
-                                                <SelectValue />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="xeiqd">
-                                                    {t('settings.exchangeRate.xeiqd') || 'xeiqd.com / Sulaymaniyah'}
-                                                </SelectItem>
-                                                <SelectItem value="forexfy">
-                                                    {t('settings.exchangeRate.forexfy') || 'Forexfy.app / Black Market'}
-                                                </SelectItem>
-                                                <SelectItem value="dolardinar">
-                                                    {t('settings.exchangeRate.dolardinar') || 'DolarDinar.com / Market Sheet'}
-                                                </SelectItem>
-                                            </SelectContent>
-                                        </Select>
+                                        <div className="flex items-center gap-2">
+                                            <Select value={exchangeRateSource} onValueChange={handleExchangeRateSourceChange}>
+                                                <SelectTrigger className="flex-1">
+                                                    <SelectValue />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <Button
+                                                        variant="ghost"
+                                                        className="w-full justify-start font-bold text-emerald-600 border-b rounded-none px-2 mb-1"
+                                                        onClick={() => openManualEditor('USD')}
+                                                    >
+                                                        + {t('settings.exchangeRate.addManual')}
+                                                    </Button>
+                                                    <SelectItem value="manual">
+                                                        {t('settings.exchangeRate.manual')}
+                                                    </SelectItem>
+                                                    <SelectItem value="xeiqd">
+                                                        {t('settings.exchangeRate.xeiqd')}
+                                                    </SelectItem>
+                                                    <SelectItem value="forexfy">
+                                                        {t('settings.exchangeRate.forexfy')}
+                                                    </SelectItem>
+                                                    <SelectItem value="dolardinar">
+                                                        {t('settings.exchangeRate.dolardinar')}
+                                                    </SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                            {alerts.snoozedPairs.includes('USD/IQD') && (
+                                                <Button
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    className="text-yellow-500 animate-pulse shrink-0 h-10 w-10"
+                                                    onClick={() => forceAlert('USD/IQD')}
+                                                >
+                                                    <Bell className="w-5 h-5 fill-yellow-500" />
+                                                </Button>
+                                            )}
+                                        </div>
                                     </div>
 
                                     <div className="pt-2 space-y-4 border-t border-border/50">
@@ -600,19 +666,41 @@ export function Settings() {
                                         {features.eur_conversion_enabled && (
                                             <div className="space-y-2 animate-in fade-in slide-in-from-top-1">
                                                 <Label>{t('settings.exchangeRate.eurSource') || 'Euro Exchange Source'}</Label>
-                                                <Select value={eurExchangeRateSource} onValueChange={handleEurExchangeRateSourceChange}>
-                                                    <SelectTrigger>
-                                                        <SelectValue />
-                                                    </SelectTrigger>
-                                                    <SelectContent>
-                                                        <SelectItem value="forexfy">
-                                                            {t('settings.exchangeRate.forexfy_eur') || 'Forexfy EUR/IQD (Faster & More Reliable)'}
-                                                        </SelectItem>
-                                                        <SelectItem value="dolardinar">
-                                                            {t('settings.exchangeRate.dolardinar_eur') || 'DolarDinar.com EUR/IQD (Market Sheet)'}
-                                                        </SelectItem>
-                                                    </SelectContent>
-                                                </Select>
+                                                <div className="flex items-center gap-2">
+                                                    <Select value={eurExchangeRateSource} onValueChange={handleEurExchangeRateSourceChange}>
+                                                        <SelectTrigger className="flex-1">
+                                                            <SelectValue />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            <Button
+                                                                variant="ghost"
+                                                                className="w-full justify-start font-bold text-emerald-600 border-b rounded-none px-2 mb-1"
+                                                                onClick={() => openManualEditor('EUR')}
+                                                            >
+                                                                + {t('settings.exchangeRate.addManual')}
+                                                            </Button>
+                                                            <SelectItem value="manual">
+                                                                {t('settings.exchangeRate.manual')}
+                                                            </SelectItem>
+                                                            <SelectItem value="forexfy">
+                                                                {t('settings.exchangeRate.forexfy_eur')}
+                                                            </SelectItem>
+                                                            <SelectItem value="dolardinar">
+                                                                {t('settings.exchangeRate.dolardinar_eur')}
+                                                            </SelectItem>
+                                                        </SelectContent>
+                                                    </Select>
+                                                    {alerts.snoozedPairs.includes('EUR/IQD') && (
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            className="text-yellow-500 animate-pulse shrink-0 h-10 w-10"
+                                                            onClick={() => forceAlert('EUR/IQD')}
+                                                        >
+                                                            <Bell className="w-5 h-5 fill-yellow-500" />
+                                                        </Button>
+                                                    )}
+                                                </div>
                                                 <p className="text-[11px] text-muted-foreground italic">
                                                     {t('settings.exchangeRate.eurSourceAdminOnly') || 'Forexfy and DolarDinar are currently the supported sources for Euro rates.'}
                                                 </p>
@@ -639,21 +727,58 @@ export function Settings() {
                                             {features.try_conversion_enabled && (
                                                 <div className="space-y-2 animate-in fade-in slide-in-from-top-1">
                                                     <Label>{t('settings.exchangeRate.trySource') || 'TRY Exchange Source'}</Label>
-                                                    <Select value={tryExchangeRateSource} onValueChange={handleTryExchangeRateSourceChange}>
-                                                        <SelectTrigger>
-                                                            <SelectValue />
-                                                        </SelectTrigger>
-                                                        <SelectContent>
-                                                            <SelectItem value="forexfy">
-                                                                {t('settings.exchangeRate.forexfy_try') || 'Forexfy TRY/IQD (Black Market)'}
-                                                            </SelectItem>
-                                                            <SelectItem value="dolardinar">
-                                                                {t('settings.exchangeRate.dolardinar_try') || 'DolarDinar.com TRY/IQD (Market Sheet)'}
-                                                            </SelectItem>
-                                                        </SelectContent>
-                                                    </Select>
+                                                    <div className="flex items-center gap-2">
+                                                        <Select value={tryExchangeRateSource} onValueChange={handleTryExchangeRateSourceChange}>
+                                                            <SelectTrigger className="flex-1">
+                                                                <SelectValue />
+                                                            </SelectTrigger>
+                                                            <SelectContent>
+                                                                <Button
+                                                                    variant="ghost"
+                                                                    className="w-full justify-start font-bold text-emerald-600 border-b rounded-none px-2 mb-1"
+                                                                    onClick={() => openManualEditor('TRY')}
+                                                                >
+                                                                    + {t('settings.exchangeRate.addManual')}
+                                                                </Button>
+                                                                <SelectItem value="manual">
+                                                                    {t('settings.exchangeRate.manual')}
+                                                                </SelectItem>
+                                                                <SelectItem value="forexfy">
+                                                                    {t('settings.exchangeRate.forexfy_try')}
+                                                                </SelectItem>
+                                                                <SelectItem value="dolardinar">
+                                                                    {t('settings.exchangeRate.dolardinar_try')}
+                                                                </SelectItem>
+                                                            </SelectContent>
+                                                        </Select>
+                                                        {alerts.snoozedPairs.includes('TRY/IQD') && (
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="icon"
+                                                                className="text-yellow-500 animate-pulse shrink-0 h-10 w-10"
+                                                                onClick={() => forceAlert('TRY/IQD')}
+                                                            >
+                                                                <Bell className="w-5 h-5 fill-yellow-500" />
+                                                            </Button>
+                                                        )}
+                                                    </div>
                                                 </div>
                                             )}
+                                        </div>
+
+                                        <div className="pt-4 mt-4 border-t border-border/50 space-y-2">
+                                            <Label>{t('settings.exchangeRate.threshold')}</Label>
+                                            <div className="flex items-center gap-4">
+                                                <Input
+                                                    type="number"
+                                                    value={exchangeRateThreshold}
+                                                    onChange={(e) => handleThresholdChange(e.target.value)}
+                                                    className="w-32"
+                                                />
+                                                <p className="text-xs text-muted-foreground italic">
+                                                    {t('settings.exchangeRate.thresholdDesc')}
+                                                </p>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>

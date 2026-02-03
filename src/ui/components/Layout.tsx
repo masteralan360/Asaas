@@ -13,6 +13,7 @@ import { whatsappManager } from '@/lib/whatsappWebviewManager'
 import { ResourceSyncOverlay } from './p2p/ResourceSyncOverlay'
 import { useTheme } from './theme-provider'
 import { useLogo } from '@/hooks/useFavicon'
+import { ManualRateModals } from './exchange/ManualRateModals'
 
 import {
     LayoutDashboard,
@@ -196,6 +197,7 @@ export function Layout({ children }: LayoutProps) {
     return (
         <div className="h-screen overflow-hidden bg-transparent">
             <ResourceSyncOverlay />
+            <ManualRateModals />
             {/* Mobile sidebar backdrop */}
             {mobileSidebarOpen && (
                 <div

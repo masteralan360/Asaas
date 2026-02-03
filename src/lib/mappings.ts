@@ -30,7 +30,10 @@ export function mapSaleToUniversal(sale: Sale): UniversalInvoice {
             settlement_currency: item.settlement_currency,
             discount_amount: (item.original_unit_price && item.negotiated_price) ?
                 (item.original_unit_price - item.negotiated_price) * item.quantity : 0
-        }))
+        })),
+        status: 'paid',
+        customer_id: (sale as any).customerId || (sale as any).customer_id || '',
+        order_id: (sale as any).orderId || (sale as any).order_id || ''
     }
 }
 
@@ -61,6 +64,9 @@ export function mapInvoiceToUniversal(invoice: Invoice): UniversalInvoice {
         exchange_rates: invoice.printMetadata?.exchange_rates as any[],
         exchange_rate: invoice.printMetadata?.exchange_rate as number,
         exchange_source: invoice.printMetadata?.exchange_source as string,
-        origin: invoice.origin
+        origin: invoice.origin,
+        status: invoice.status,
+        customer_id: invoice.customerId,
+        order_id: invoice.orderId
     }
 }

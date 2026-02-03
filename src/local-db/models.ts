@@ -187,23 +187,26 @@ export interface SalesOrder extends BaseEntity {
 export type InvoiceStatus = 'sent' | 'paid' | 'overdue' | 'cancelled' | 'draft'
 
 export interface Invoice extends BaseEntity {
-    invoiceid: string
-    items: OrderItem[]
-    subtotal: number
-    discount: number
-    total: number
-    currency: CurrencyCode
+    invoiceid: string;
+    orderId?: string;
+    customerId?: string;
+    items: OrderItem[];
+    subtotal: number;
+    discount: number;
+    total: number;
+    currency: CurrencyCode;
+    status?: InvoiceStatus;
     // Snapshot indicator
-    isSnapshot?: boolean
+    isSnapshot?: boolean;
     // Print-to-Invoice tracking
-    origin?: 'pos' | 'revenue' | 'inventory' | 'manual'
+    origin?: 'pos' | 'revenue' | 'inventory' | 'manual';
     /** @deprecated Use cashierName for the name string. createdBy might map to system UUID. */
-    createdBy?: string
-    cashierName?: string
-    createdByName?: string
-    printMetadata?: Record<string, unknown>
-    sequenceId?: number
-    printFormat?: 'a4' | 'receipt'
+    createdBy?: string;
+    cashierName?: string;
+    createdByName?: string;
+    printMetadata?: Record<string, unknown>;
+    sequenceId?: number;
+    printFormat?: 'a4' | 'receipt';
 }
 
 

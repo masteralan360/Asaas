@@ -1,10 +1,11 @@
-export type ExchangeRateSource = 'xeiqd' | 'forexfy' | 'dolardinar';
+export type ExchangeRateSource = 'xeiqd' | 'forexfy' | 'dolardinar' | 'manual';
 
 export interface ExchangeRateResult {
     rate: number;
     source: ExchangeRateSource;
     isFallback: boolean;
     timestamp?: string;
+    averageRate?: number; // Added for validation baseline
 }
 
 export async function fetchUSDToIQDRate(primarySource?: ExchangeRateSource): Promise<ExchangeRateResult> {
@@ -12,12 +13,18 @@ export async function fetchUSDToIQDRate(primarySource?: ExchangeRateSource): Pro
         throw new Error('Offline: Cannot fetch live exchange rate');
     }
 
+    // If manual mode, return the value from localStorage
+    if (primarySource === 'manual' || (!primarySource && localStorage.getItem('primary_exchange_rate_source') === 'manual')) {
+        const manualRate = parseInt(localStorage.getItem('manual_rate_usd_iqd') || '0');
+        return { rate: manualRate, source: 'manual', isFallback: false };
+    }
+
     // Get primary from localStorage if not provided (for direct calls from component)
     const favoredSource = primarySource || (localStorage.getItem('primary_exchange_rate_source') as ExchangeRateSource) || 'xeiqd';
 
     const sources: ExchangeRateSource[] = [
         favoredSource,
-        ...(['xeiqd', 'forexfy', 'dolardinar'] as ExchangeRateSource[]).filter(s => s !== favoredSource)
+        ...(['xeiqd', 'forexfy', 'dolardinar'] as ExchangeRateSource[]).filter(s => s !== favoredSource && s !== 'manual')
     ];
 
     // --- TRY SOURCES IN ORDER ---
@@ -48,12 +55,19 @@ export async function fetchEURToIQDRate(primarySource?: ExchangeRateSource): Pro
         throw new Error('Offline: Cannot fetch live exchange rate');
     }
 
+    // If manual mode, return the values from localStorage
+    if (primarySource === 'manual' || (!primarySource && localStorage.getItem('primary_eur_exchange_rate_source') === 'manual')) {
+        const usdEur = parseFloat(localStorage.getItem('manual_rate_usd_eur') || '0');
+        const eurIqd = parseInt(localStorage.getItem('manual_rate_eur_iqd') || '0');
+        return { usdEur, eurIqd, source: 'manual', isFallback: false };
+    }
+
     const favoredSource = primarySource || (localStorage.getItem('primary_eur_exchange_rate_source') as ExchangeRateSource) || 'forexfy';
 
     // XEIQD doesn't easily provide EUR, so we fallback to others
     const sources: ExchangeRateSource[] = [
         favoredSource,
-        ...(['forexfy', 'dolardinar'] as ExchangeRateSource[]).filter(s => s !== favoredSource)
+        ...(['forexfy', 'dolardinar'] as ExchangeRateSource[]).filter(s => s !== favoredSource && s !== 'manual')
     ];
 
     for (let i = 0; i < sources.length; i++) {
@@ -81,11 +95,18 @@ export async function fetchTRYToIQDRate(primarySource?: ExchangeRateSource): Pro
         throw new Error('Offline: Cannot fetch live exchange rate');
     }
 
+    // If manual mode, return the values from localStorage
+    if (primarySource === 'manual' || (!primarySource && localStorage.getItem('primary_try_exchange_rate_source') === 'manual')) {
+        const usdTry = parseFloat(localStorage.getItem('manual_rate_usd_try') || '0');
+        const tryIqd = parseInt(localStorage.getItem('manual_rate_try_iqd') || '0');
+        return { usdTry, tryIqd, source: 'manual', isFallback: false };
+    }
+
     const favoredSource = primarySource || (localStorage.getItem('primary_try_exchange_rate_source') as ExchangeRateSource) || 'forexfy';
 
     const sources: ExchangeRateSource[] = [
         favoredSource,
-        ...(['forexfy', 'dolardinar'] as ExchangeRateSource[]).filter(s => s !== favoredSource)
+        ...(['forexfy', 'dolardinar'] as ExchangeRateSource[]).filter(s => s !== favoredSource && s !== 'manual')
     ];
 
     for (let i = 0; i < sources.length; i++) {
@@ -400,4 +421,45 @@ export async function fetchCrossRate(source: ExchangeRateSource, path: ExchangeP
     }
 
     throw new Error(`Unsupported source/path combination: ${source}/${path}`);
+}
+
+export async function fetchRatesFromAllSources(): Promise<{
+    usd_iqd: { xeiqd?: number; forexfy?: number; dolardinar?: number; average?: number };
+    eur_iqd: { forexfy?: number; dolardinar?: number; average?: number };
+    try_iqd: { forexfy?: number; dolardinar?: number; average?: number };
+}> {
+    const results: any = { usd_iqd: {}, eur_iqd: {}, try_iqd: {} };
+
+    // USD/IQD
+    const usdPromises = [
+        fetchFromXEIQD().then(r => results.usd_iqd.xeiqd = r).catch(() => { }),
+        fetchFromForexfy().then(r => results.usd_iqd.forexfy = r).catch(() => { }),
+        fetchFromDolarDinar('USD').then(r => results.usd_iqd.dolardinar = r).catch(() => { })
+    ];
+
+    // EUR/IQD
+    const eurPromises = [
+        fetchEgRate('EUR-to-IQD').then(r => results.eur_iqd.forexfy = r).catch(() => { }),
+        fetchFromDolarDinar('EUR').then(r => results.eur_iqd.dolardinar = r).catch(() => { })
+    ];
+
+    // TRY/IQD
+    const tryPromises = [
+        fetchEgRate('TRY-to-IQD').then(r => results.try_iqd.forexfy = r).catch(() => { }),
+        fetchFromDolarDinar('TRY').then(r => results.try_iqd.dolardinar = r).catch(() => { })
+    ];
+
+    await Promise.all([...usdPromises, ...eurPromises, ...tryPromises]);
+
+    // Calculate averages
+    const calcAvg = (obj: any) => {
+        const vals = Object.values(obj).filter(v => typeof v === 'number') as number[];
+        return vals.length > 0 ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length) : undefined;
+    };
+
+    results.usd_iqd.average = calcAvg(results.usd_iqd);
+    results.eur_iqd.average = calcAvg(results.eur_iqd);
+    results.try_iqd.average = calcAvg(results.try_iqd);
+
+    return results;
 }
