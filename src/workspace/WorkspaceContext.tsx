@@ -9,6 +9,7 @@ import { isMobile } from '@/lib/platform'
 export interface WorkspaceFeatures {
     allow_pos: boolean
     allow_customers: boolean
+    allow_suppliers: boolean
     allow_orders: boolean
     allow_invoices: boolean
     is_configured: boolean
@@ -36,14 +37,16 @@ interface WorkspaceContextType {
     pendingUpdate: UpdateInfo | null
     setPendingUpdate: (update: UpdateInfo | null) => void
     isFullscreen: boolean
-    hasFeature: (feature: 'allow_pos' | 'allow_customers' | 'allow_orders' | 'allow_invoices' | 'allow_whatsapp') => boolean
+    hasFeature: (feature: 'allow_pos' | 'allow_customers' | 'allow_suppliers' | 'allow_orders' | 'allow_invoices' | 'allow_whatsapp') => boolean
     refreshFeatures: () => Promise<void>
     updateSettings: (settings: Partial<Pick<WorkspaceFeatures, 'default_currency' | 'iqd_display_preference' | 'eur_conversion_enabled' | 'try_conversion_enabled' | 'allow_whatsapp' | 'logo_url'>>) => Promise<void>
+    activeWorkspace: { id: string } | undefined
 }
 
 const defaultFeatures: WorkspaceFeatures = {
     allow_pos: true,
     allow_customers: true,
+    allow_suppliers: true,
     allow_orders: true,
     allow_invoices: true,
     is_configured: true,
@@ -157,6 +160,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                     setFeatures({
                         allow_pos: localWorkspace.allow_pos ?? true,
                         allow_customers: localWorkspace.allow_customers ?? true,
+                        allow_suppliers: localWorkspace.allow_suppliers ?? true,
                         allow_orders: localWorkspace.allow_orders ?? true,
                         allow_invoices: localWorkspace.allow_invoices ?? true,
                         is_configured: true,
@@ -177,6 +181,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                 const fetchedFeatures: WorkspaceFeatures = {
                     allow_pos: featureData.allow_pos ?? true,
                     allow_customers: featureData.allow_customers ?? true,
+                    allow_suppliers: featureData.allow_suppliers ?? true,
                     allow_orders: featureData.allow_orders ?? true,
                     allow_invoices: featureData.allow_invoices ?? true,
                     is_configured: featureData.is_configured ?? true,
@@ -211,6 +216,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                     locked_workspace: fetchedFeatures.locked_workspace,
                     allow_pos: fetchedFeatures.allow_pos,
                     allow_customers: fetchedFeatures.allow_customers,
+                    allow_suppliers: fetchedFeatures.allow_suppliers,
                     allow_orders: fetchedFeatures.allow_orders,
                     allow_invoices: fetchedFeatures.allow_invoices,
                     allow_whatsapp: fetchedFeatures.allow_whatsapp,
@@ -242,7 +248,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         }
     }, [isAuthenticated, user?.workspaceId, authLoading])
 
-    const hasFeature = (feature: 'allow_pos' | 'allow_customers' | 'allow_orders' | 'allow_invoices' | 'allow_whatsapp'): boolean => {
+    const hasFeature = (feature: 'allow_pos' | 'allow_customers' | 'allow_suppliers' | 'allow_orders' | 'allow_invoices' | 'allow_whatsapp'): boolean => {
         return features[feature] === true
     }
 
@@ -284,6 +290,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                 locked_workspace: false,
                 allow_pos: true,
                 allow_customers: true,
+                allow_suppliers: true,
                 allow_orders: true,
                 allow_invoices: true,
                 syncStatus: 'pending',
@@ -321,7 +328,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             isFullscreen,
             hasFeature,
             refreshFeatures,
-            updateSettings
+            updateSettings,
+            activeWorkspace: user?.workspaceId ? { id: user.workspaceId } : undefined
         }}>
             {children}
         </WorkspaceContext.Provider>

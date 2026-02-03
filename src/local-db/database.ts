@@ -1,12 +1,14 @@
 import Dexie, { type EntityTable } from 'dexie'
-import type { Product, Category, Customer, Order, Invoice, User, SyncQueueItem, Sale, SaleItem, OfflineMutation, Workspace, AppSetting } from './models'
+import type { Product, Category, Customer, Supplier, PurchaseOrder, SalesOrder, Invoice, User, SyncQueueItem, Sale, SaleItem, OfflineMutation, Workspace, AppSetting } from './models'
 
 // Asaas Database using Dexie.js for IndexedDB
 export class AsaasDatabase extends Dexie {
     products!: EntityTable<Product, 'id'>
     categories!: EntityTable<Category, 'id'>
+    suppliers!: EntityTable<Supplier, 'id'>
     customers!: EntityTable<Customer, 'id'>
-    orders!: EntityTable<Order, 'id'>
+    purchaseOrders!: EntityTable<PurchaseOrder, 'id'>
+    salesOrders!: EntityTable<SalesOrder, 'id'>
     invoices!: EntityTable<Invoice, 'id'>
     users!: EntityTable<User, 'id'>
     sales!: EntityTable<Sale, 'id'>
@@ -19,11 +21,13 @@ export class AsaasDatabase extends Dexie {
     constructor() {
         super('AsaasDatabase')
 
-        this.version(19).stores({
+        this.version(20).stores({
             products: 'id, sku, name, categoryId, workspaceId, currency, syncStatus, updatedAt, isDeleted, canBeReturned',
             categories: 'id, name, workspaceId, syncStatus, updatedAt, isDeleted',
-            customers: 'id, name, email, workspaceId, syncStatus, updatedAt, isDeleted',
-            orders: 'id, orderNumber, customerId, status, workspaceId, syncStatus, updatedAt, isDeleted',
+            suppliers: 'id, name, workspaceId, syncStatus, updatedAt, isDeleted',
+            customers: 'id, name, phone, email, workspaceId, syncStatus, updatedAt, isDeleted',
+            purchaseOrders: 'id, orderNumber, supplierId, status, workspaceId, syncStatus, updatedAt, isDeleted',
+            salesOrders: 'id, orderNumber, customerId, status, workspaceId, syncStatus, updatedAt, isDeleted',
             invoices: 'id, invoiceid, orderId, customerId, status, workspaceId, syncStatus, updatedAt, isDeleted, origin, createdBy, cashierName, createdByName, isSnapshot, sequenceId, printFormat',
 
             users: 'id, email, role, workspaceId, syncStatus, updatedAt, isDeleted, monthlyTarget',
@@ -42,11 +46,13 @@ export const db = new AsaasDatabase()
 
 // Database utility functions
 export async function clearDatabase(): Promise<void> {
-    await db.transaction('rw', [db.products, db.categories, db.customers, db.orders, db.invoices, db.syncQueue], async () => {
+    await db.transaction('rw', [db.products, db.categories, db.suppliers, db.customers, db.purchaseOrders, db.salesOrders, db.invoices, db.syncQueue], async () => {
         await db.products.clear()
         await db.categories.clear()
+        await db.suppliers.clear()
         await db.customers.clear()
-        await db.orders.clear()
+        await db.purchaseOrders.clear()
+        await db.salesOrders.clear()
         await db.invoices.clear()
         await db.syncQueue.clear()
     })
@@ -54,18 +60,22 @@ export async function clearDatabase(): Promise<void> {
 
 export async function exportDatabase(): Promise<{
     products: Product[]
+    suppliers: Supplier[]
     customers: Customer[]
-    orders: Order[]
+    purchaseOrders: PurchaseOrder[]
+    salesOrders: SalesOrder[]
     invoices: Invoice[]
 }> {
-    const [products, customers, orders, invoices] = await Promise.all([
+    const [products, consumers, suppliers, purchaseOrders, salesOrders, invoices] = await Promise.all([
         db.products.where('isDeleted').equals(false as any).toArray(),
         db.customers.where('isDeleted').equals(false as any).toArray(),
-        db.orders.where('isDeleted').equals(false as any).toArray(),
+        db.suppliers.where('isDeleted').equals(false as any).toArray(),
+        db.purchaseOrders.where('isDeleted').equals(false as any).toArray(),
+        db.salesOrders.where('isDeleted').equals(false as any).toArray(),
         db.invoices.where('isDeleted').equals(false as any).toArray(),
     ])
 
-    return { products, customers, orders, invoices }
+    return { products, suppliers, customers: consumers, purchaseOrders, salesOrders, invoices }
 }
 
 // Get pending sync count

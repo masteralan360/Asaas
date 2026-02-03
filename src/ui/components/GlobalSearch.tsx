@@ -1,4 +1,4 @@
-import { Search, Command, LayoutDashboard, ShoppingCart, Package, ListOrdered, Users, Settings as SettingsIcon, BarChart3, Users2, Globe, MessageSquare, Moon, Sun, LogOut, ChevronRight } from 'lucide-react'
+import { Search, Command, LayoutDashboard, ShoppingCart, Package, ListOrdered, Users, Settings as SettingsIcon, BarChart3, Users2, Globe, MessageSquare, Moon, Sun, LogOut, ChevronRight, Truck, ShoppingBag } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useState, useEffect, useRef } from 'react'
 import { useHashLocation } from '@/hooks/useHashLocation'
@@ -41,6 +41,8 @@ export function GlobalSearch({ className, placeholder }: GlobalSearchProps) {
         { id: 'nav-settings', title: t('nav.settings'), category: 'Navigation', icon: SettingsIcon, action: () => setLocation('/settings') },
         { id: 'nav-revenue', title: t('nav.revenue'), category: 'Navigation', icon: BarChart3, action: () => setLocation('/revenue') },
         { id: 'nav-performance', title: t('nav.performance'), category: 'Navigation', icon: Users2, action: () => setLocation('/performance') },
+        { id: 'nav-suppliers', title: t('nav.suppliers') || 'Suppliers', category: 'Navigation', icon: Truck, action: () => setLocation('/suppliers') },
+        { id: 'nav-orders', title: t('nav.orders') || 'Orders', category: 'Navigation', icon: ShoppingBag, action: () => setLocation('/orders') },
 
         // Tools
         { id: 'tool-currency', title: t('nav.currencyConverter'), category: 'Tools', icon: Globe, action: () => setLocation('/currency-converter') },
@@ -134,7 +136,7 @@ export function GlobalSearch({ className, placeholder }: GlobalSearchProps) {
                         "placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
                         "pl-9 pr-12 text-center focus:text-left focus:bg-background/80 focus:shadow-lg"
                     )}
-                    placeholder={placeholder || t('common.searchBox') || "Search... (Ctrl+K)"}
+                    placeholder={placeholder || t('common.search', 'Search...') + ' (Ctrl+K)'}
                     spellCheck={false}
                 />
                 <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none hidden sm:flex">
@@ -151,7 +153,7 @@ export function GlobalSearch({ className, placeholder }: GlobalSearchProps) {
                         {filteredCommands.length === 0 ? (
                             <div className="px-4 py-8 text-center text-muted-foreground">
                                 <Command className="w-8 h-8 mx-auto mb-2 opacity-20" />
-                                <p className="text-sm">No commands found for "{query}"</p>
+                                <p className="text-sm">{t('common.noData', 'No commands found for')} "{query}"</p>
                             </div>
                         ) : (
                             <div className="space-y-4 px-2">

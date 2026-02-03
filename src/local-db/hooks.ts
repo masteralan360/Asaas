@@ -1,7 +1,8 @@
 import { useEffect } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
+
 import { db } from './database'
-import type { Product, Category, Customer, Order, Invoice, OfflineMutation, Sale, SaleItem } from './models'
+import type { Product, Category, Customer, Supplier, PurchaseOrder, SalesOrder, Invoice, OfflineMutation, Sale, SaleItem } from './models'
 import { generateId, toSnakeCase, toCamelCase } from '@/lib/utils'
 import { supabase } from '@/auth/supabase'
 import { useNetworkStatus } from '@/hooks/useNetworkStatus'
@@ -306,6 +307,137 @@ export async function deleteProduct(id: string): Promise<void> {
         await addToOfflineMutations('products', id, 'delete', { id }, existing.workspaceId)
     }
 }
+// ===================
+// SUPPLIERS HOOKS
+// ===================
+
+export function useSuppliers(workspaceId: string | undefined) {
+    const isOnline = useNetworkStatus()
+
+    const suppliers = useLiveQuery(
+        () => workspaceId ? db.suppliers.where('workspaceId').equals(workspaceId).and(s => !s.isDeleted).toArray() : [],
+        [workspaceId]
+    )
+
+    useEffect(() => {
+        async function fetchFromSupabase() {
+            if (isOnline && workspaceId) {
+                const { data, error } = await supabase
+                    .from('suppliers')
+                    .select('*')
+                    .eq('workspace_id', workspaceId)
+                    .eq('is_deleted', false)
+
+                if (data && !error) {
+                    await db.transaction('rw', db.suppliers, async () => {
+                        const remoteIds = new Set(data.map(d => d.id))
+                        const localItems = await db.suppliers.where('workspaceId').equals(workspaceId).toArray()
+
+                        for (const local of localItems) {
+                            if (!remoteIds.has(local.id) && local.syncStatus === 'synced') {
+                                await db.suppliers.delete(local.id)
+                            }
+                        }
+
+                        for (const remoteItem of data) {
+                            const localItem = toCamelCase(remoteItem as any) as unknown as Supplier
+                            localItem.syncStatus = 'synced'
+                            localItem.lastSyncedAt = new Date().toISOString()
+                            await db.suppliers.put(localItem)
+                        }
+                    })
+                }
+            }
+        }
+        fetchFromSupabase()
+    }, [isOnline, workspaceId])
+
+    return suppliers ?? []
+}
+
+export function useSupplier(id: string | undefined) {
+    return useLiveQuery(() => id ? db.suppliers.get(id) : undefined, [id])
+}
+
+export async function createSupplier(workspaceId: string, data: Omit<Supplier, 'id' | 'workspaceId' | 'createdAt' | 'updatedAt' | 'syncStatus' | 'lastSyncedAt' | 'version' | 'isDeleted' | 'totalPurchases' | 'totalSpent'>): Promise<Supplier> {
+    const now = new Date().toISOString()
+    const id = generateId()
+
+    const supplier: Supplier = {
+        ...data,
+        id,
+        workspaceId,
+        createdAt: now,
+        updatedAt: now,
+        syncStatus: (isOnline() ? 'synced' : 'pending') as any,
+        lastSyncedAt: isOnline() ? now : null,
+        version: 1,
+        isDeleted: false,
+        totalPurchases: 0,
+        totalSpent: 0
+    }
+
+    if (isOnline()) {
+        const payload = toSnakeCase({ ...supplier, syncStatus: undefined, lastSyncedAt: undefined })
+        const { error } = await supabase.from('suppliers').insert(payload)
+        if (error) throw error
+        await db.suppliers.add(supplier)
+    } else {
+        await db.suppliers.add(supplier)
+        await addToOfflineMutations('suppliers', id, 'create', supplier as unknown as Record<string, unknown>, workspaceId)
+    }
+
+    return supplier
+}
+
+export async function updateSupplier(id: string, data: Partial<Supplier>): Promise<void> {
+    const now = new Date().toISOString()
+    const existing = await db.suppliers.get(id)
+    if (!existing) throw new Error('Supplier not found')
+
+    const updated = {
+        ...existing,
+        ...data,
+        updatedAt: now,
+        syncStatus: (isOnline() ? 'synced' : 'pending') as any,
+        lastSyncedAt: isOnline() ? now : existing.lastSyncedAt,
+        version: existing.version + 1
+    }
+
+    if (isOnline()) {
+        const payload = toSnakeCase({ ...data, updatedAt: now })
+        const { error } = await supabase.from('suppliers').update(payload).eq('id', id)
+        if (error) throw error
+        await db.suppliers.put(updated)
+    } else {
+        await db.suppliers.put(updated)
+        await addToOfflineMutations('suppliers', id, 'update', updated as unknown as Record<string, unknown>, existing.workspaceId)
+    }
+}
+
+export async function deleteSupplier(id: string): Promise<void> {
+    const now = new Date().toISOString()
+    const existing = await db.suppliers.get(id)
+    if (!existing) return
+
+    const updated = {
+        ...existing,
+        isDeleted: true,
+        updatedAt: now,
+        syncStatus: (isOnline() ? 'synced' : 'pending') as any,
+        version: existing.version + 1
+    } as Supplier
+
+    if (isOnline()) {
+        const { error } = await supabase.from('suppliers').update({ is_deleted: true, updated_at: now }).eq('id', id)
+        if (error) throw error
+        await db.suppliers.put(updated)
+    } else {
+        await db.suppliers.put(updated)
+        await addToOfflineMutations('suppliers', id, 'delete', { id }, existing.workspaceId)
+    }
+}
+
 
 // ===================
 // CUSTOMERS HOOKS
@@ -364,7 +496,7 @@ export function useCustomer(id: string | undefined) {
     return customer
 }
 
-export async function createCustomer(workspaceId: string, data: Omit<Customer, 'id' | 'workspaceId' | 'createdAt' | 'updatedAt' | 'syncStatus' | 'lastSyncedAt' | 'version' | 'isDeleted' | 'totalOrders' | 'totalSpent'>): Promise<Customer> {
+export async function createCustomer(workspaceId: string, data: Omit<Customer, 'id' | 'workspaceId' | 'createdAt' | 'updatedAt' | 'syncStatus' | 'lastSyncedAt' | 'version' | 'isDeleted' | 'totalOrders' | 'totalSpent' | 'outstandingBalance'>): Promise<Customer> {
     const now = new Date().toISOString()
     const id = generateId()
 
@@ -379,7 +511,8 @@ export async function createCustomer(workspaceId: string, data: Omit<Customer, '
         version: 1,
         isDeleted: false,
         totalOrders: 0,
-        totalSpent: 0
+        totalSpent: 0,
+        outstandingBalance: 0
     }
 
     if (isOnline()) {
@@ -461,65 +594,37 @@ export async function deleteCustomer(id: string): Promise<void> {
 // ORDERS HOOKS
 // ===================
 
-export function useOrders(workspaceId: string | undefined) {
-    const isOnline = useNetworkStatus()
 
+// ===================
+// PURCHASE ORDERS HOOKS
+// ===================
+
+export function usePurchaseOrders(workspaceId: string | undefined) {
+    const isOnline = useNetworkStatus()
     const orders = useLiveQuery(
-        () => workspaceId ? db.orders.where('workspaceId').equals(workspaceId).and(o => !o.isDeleted).toArray() : [],
+        () => workspaceId ? db.purchaseOrders.where('workspaceId').equals(workspaceId).and(o => !o.isDeleted).toArray() : [],
         [workspaceId]
     )
 
     useEffect(() => {
-        async function fetchFromSupabase() {
-            if (isOnline && workspaceId) {
-                const { data, error } = await supabase
-                    .from('orders')
-                    .select('*')
-                    .eq('workspace_id', workspaceId)
-                    .eq('is_deleted', false)
-
-                if (data && !error) {
-                    await db.transaction('rw', db.orders, async () => {
-                        const remoteIds = new Set(data.map(d => d.id))
-                        const localItems = await db.orders.where('workspaceId').equals(workspaceId).toArray()
-
-                        // Delete local items that are 'synced' but missing from server
-                        for (const local of localItems) {
-                            if (!remoteIds.has(local.id) && local.syncStatus === 'synced') {
-                                await db.orders.delete(local.id)
-                            }
-                        }
-
-                        for (const remoteItem of data) {
-                            const localItem = toCamelCase(remoteItem as any) as unknown as Order
-                            localItem.syncStatus = 'synced'
-                            localItem.lastSyncedAt = new Date().toISOString()
-                            await db.orders.put(localItem)
-                        }
-                    })
-                }
-            }
+        if (isOnline && workspaceId) {
+            fetchTableFromSupabase('purchase_orders', db.purchaseOrders, workspaceId)
         }
-        fetchFromSupabase()
     }, [isOnline, workspaceId])
 
     return orders ?? []
 }
 
-export function useOrder(id: string | undefined) {
-    const order = useLiveQuery(
-        () => id ? db.orders.get(id) : undefined,
-        [id]
-    )
-    return order
+export function usePurchaseOrder(id: string | undefined) {
+    return useLiveQuery(() => id ? db.purchaseOrders.get(id) : undefined, [id])
 }
 
-export async function createOrder(workspaceId: string, data: Omit<Order, 'id' | 'workspaceId' | 'createdAt' | 'updatedAt' | 'syncStatus' | 'lastSyncedAt' | 'version' | 'isDeleted' | 'orderNumber'>): Promise<Order> {
+export async function createPurchaseOrder(workspaceId: string, data: Omit<PurchaseOrder, 'id' | 'workspaceId' | 'createdAt' | 'updatedAt' | 'syncStatus' | 'lastSyncedAt' | 'version' | 'isDeleted' | 'orderNumber'>): Promise<PurchaseOrder> {
     const now = new Date().toISOString()
-    const orderNumber = `ORD-${Date.now().toString(36).toUpperCase()}`
+    const orderNumber = `PO-${Date.now().toString(36).toUpperCase()}`
     const id = generateId()
 
-    const order: Order = {
+    const order: PurchaseOrder = {
         ...data,
         id,
         workspaceId,
@@ -532,41 +637,133 @@ export async function createOrder(workspaceId: string, data: Omit<Order, 'id' | 
         isDeleted: false
     }
 
-    if (isOnline()) {
-        // ONLINE
-        const payload = toSnakeCase({ ...order, syncStatus: undefined, lastSyncedAt: undefined })
-        const { error } = await supabase.from('orders').insert(payload)
+    await saveEntity('purchase_orders', db.purchaseOrders, order, workspaceId)
 
-        if (error) {
-            console.error('Supabase write failed:', error)
-            throw error
-        }
-
-        await db.orders.add(order)
-    } else {
-        // OFFLINE
-        await db.orders.add(order)
-        await addToOfflineMutations('orders', id, 'create', order as unknown as Record<string, unknown>, workspaceId)
-    }
-
-    // Update customer stats (Locally always, maybe server triggers too but local needs consistency)
-    // Ideally this should be an atomic transaction or handled by server function if online.
-    // But for hybrid, we do local update.
-    const customer = await db.customers.get(data.customerId)
-    if (customer) {
-        await db.customers.update(data.customerId, {
-            totalOrders: customer.totalOrders + 1,
-            totalSpent: customer.totalSpent + data.total
+    // Increment supplier stats
+    const supplier = await db.suppliers.get(data.supplierId)
+    if (supplier) {
+        await updateSupplier(supplier.id, {
+            totalPurchases: (supplier.totalPurchases || 0) + 1,
+            totalSpent: (supplier.totalSpent || 0) + data.total // Consider currency? Usually we track raw total or convert if simple for now
         })
     }
 
     return order
 }
 
-export async function updateOrder(id: string, data: Partial<Order>): Promise<void> {
+export async function updatePurchaseOrder(id: string, data: Partial<PurchaseOrder>): Promise<void> {
+    await updateEntity('purchase_orders', db.purchaseOrders, id, data)
+}
+
+
+// ===================
+// SALES ORDERS HOOKS
+// ===================
+
+export function useSalesOrders(workspaceId: string | undefined) {
+    const isOnline = useNetworkStatus()
+    const orders = useLiveQuery(
+        () => workspaceId ? db.salesOrders.where('workspaceId').equals(workspaceId).and(o => !o.isDeleted).toArray() : [],
+        [workspaceId]
+    )
+
+    useEffect(() => {
+        if (isOnline && workspaceId) {
+            fetchTableFromSupabase('sales_orders', db.salesOrders, workspaceId)
+        }
+    }, [isOnline, workspaceId])
+
+    return orders ?? []
+}
+
+export function useSalesOrder(id: string | undefined) {
+    return useLiveQuery(() => id ? db.salesOrders.get(id) : undefined, [id])
+}
+
+export async function createSalesOrder(workspaceId: string, data: Omit<SalesOrder, 'id' | 'workspaceId' | 'createdAt' | 'updatedAt' | 'syncStatus' | 'lastSyncedAt' | 'version' | 'isDeleted' | 'orderNumber'>): Promise<SalesOrder> {
     const now = new Date().toISOString()
-    const existing = await db.orders.get(id)
-    if (!existing) throw new Error('Order not found')
+    const orderNumber = `SO-${Date.now().toString(36).toUpperCase()}`
+    const id = generateId()
+
+    const order: SalesOrder = {
+        ...data,
+        id,
+        workspaceId,
+        orderNumber,
+        createdAt: now,
+        updatedAt: now,
+        syncStatus: (isOnline() ? 'synced' : 'pending') as any,
+        lastSyncedAt: isOnline() ? now : null,
+        version: 1,
+        isDeleted: false
+    }
+
+    await saveEntity('sales_orders', db.salesOrders, order, workspaceId)
+
+    // Increment customer stats
+    const customer = await db.customers.get(data.customerId)
+    if (customer) {
+        await updateCustomer(customer.id, {
+            totalOrders: (customer.totalOrders || 0) + 1,
+            totalSpent: (customer.totalSpent || 0) + data.total
+        })
+    }
+
+    return order
+}
+
+export async function updateSalesOrder(id: string, data: Partial<SalesOrder>): Promise<void> {
+    await updateEntity('sales_orders', db.salesOrders, id, data)
+}
+
+// Helpers for repetitive logic
+async function fetchTableFromSupabase<T extends { id: string, syncStatus: any, lastSyncedAt: any }>(tableName: string, table: any, workspaceId: string) {
+    const { data, error } = await supabase
+        .from(tableName)
+        .select('*')
+        .eq('workspace_id', workspaceId)
+        .eq('is_deleted', false)
+
+    if (data && !error) {
+        await db.transaction('rw', table, async () => {
+            const remoteIds = new Set(data.map(d => d.id))
+            const localItems = await table.where('workspaceId').equals(workspaceId).toArray()
+
+            for (const local of (localItems as any[])) {
+                if (!remoteIds.has(local.id) && local.syncStatus === 'synced') {
+                    await table.delete(local.id)
+                }
+            }
+
+            for (const remoteItem of data) {
+                const localItem = toCamelCase(remoteItem as any) as unknown as T
+                localItem.syncStatus = 'synced'
+                localItem.lastSyncedAt = new Date().toISOString()
+                await table.put(localItem)
+            }
+        })
+    }
+}
+
+async function saveEntity<T extends { id: string }>(tableName: string, table: any, entity: T, workspaceId: string) {
+    if (isOnline()) {
+        const payload = toSnakeCase({ ...entity, syncStatus: undefined, lastSyncedAt: undefined })
+        const { error } = await supabase.from(tableName).insert(payload)
+        if (error) {
+            console.error('Supabase write failed:', error)
+            throw error
+        }
+        await table.add(entity)
+    } else {
+        await table.add(entity)
+        await addToOfflineMutations(tableName as any, entity.id, 'create', entity as unknown as Record<string, unknown>, workspaceId)
+    }
+}
+
+async function updateEntity<T extends { id: string, workspaceId: string, version: number, lastSyncedAt: any }>(tableName: string, table: any, id: string, data: Partial<T>) {
+    const now = new Date().toISOString()
+    const existing = await table.get(id)
+    if (!existing) throw new Error('Entity not found')
 
     const updated = {
         ...existing,
@@ -578,43 +775,13 @@ export async function updateOrder(id: string, data: Partial<Order>): Promise<voi
     }
 
     if (isOnline()) {
-        // ONLINE
         const payload = toSnakeCase({ ...data, updatedAt: now })
-        const { error } = await supabase.from('orders').update(payload).eq('id', id)
-
+        const { error } = await supabase.from(tableName).update(payload).eq('id', id)
         if (error) throw error
-
-        await db.orders.put(updated)
+        await table.put(updated)
     } else {
-        // OFFLINE
-        await db.orders.put(updated)
-        await addToOfflineMutations('orders', id, 'update', updated as unknown as Record<string, unknown>, existing.workspaceId)
-    }
-}
-
-export async function deleteOrder(id: string): Promise<void> {
-    const now = new Date().toISOString()
-    const existing = await db.orders.get(id)
-    if (!existing) return
-
-    const updated = {
-        ...existing,
-        isDeleted: true,
-        updatedAt: now,
-        syncStatus: (isOnline() ? 'synced' : 'pending') as any,
-        version: existing.version + 1
-    } as Order
-
-    if (isOnline()) {
-        // ONLINE
-        const { error } = await supabase.from('orders').update({ is_deleted: true, updated_at: now }).eq('id', id)
-        if (error) throw error
-
-        await db.orders.put(updated)
-    } else {
-        // OFFLINE
-        await db.orders.put(updated)
-        await addToOfflineMutations('orders', id, 'delete', { id }, existing.workspaceId)
+        await table.put(updated)
+        await addToOfflineMutations(tableName as any, id, 'update', updated as unknown as Record<string, unknown>, existing.workspaceId)
     }
 }
 
@@ -960,7 +1127,7 @@ export function useDashboardStats(workspaceId: string | undefined) {
             db.products.where('workspaceId').equals(workspaceId).and(p => !p.isDeleted).count(),
             db.categories.where('workspaceId').equals(workspaceId).and(c => !c.isDeleted).count(),
             db.customers.where('workspaceId').equals(workspaceId).and(c => !c.isDeleted).count(),
-            db.orders.where('workspaceId').equals(workspaceId).and(o => !o.isDeleted).count(),
+            db.salesOrders.where('workspaceId').equals(workspaceId).and(o => !o.isDeleted).count(),
             db.invoices.where('workspaceId').equals(workspaceId).and(i => !i.isDeleted).count(),
             db.sales.where('workspaceId').equals(workspaceId).and(s => !s.isDeleted).reverse().sortBy('createdAt').then(sales => sales.slice(0, 3)),
             db.invoices.where('workspaceId').equals(workspaceId).and(inv => !inv.isDeleted).reverse().sortBy('createdAt').then(inv => inv.slice(0, 4)),

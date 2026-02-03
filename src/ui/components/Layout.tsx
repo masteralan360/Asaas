@@ -33,7 +33,10 @@ import {
     ChevronRight,
     BarChart3,
     RotateCw,
-    MessageSquare
+    MessageSquare,
+    Truck,
+    Users,
+    ShoppingBag
 } from 'lucide-react'
 import { useState } from 'react'
 import { Button } from './button'
@@ -161,10 +164,22 @@ export function Layout({ children }: LayoutProps) {
         ] : []),
         // WhatsApp - requires feature flag AND role AND desktop platform
         ...((user?.role === 'admin' || user?.role === 'staff') && hasFeature('allow_whatsapp') && isDesktop() ? [
-            { name: 'WhatsApp', href: '/whatsapp', icon: MessageSquare }
+            { name: t('nav.whatsapp'), href: '/whatsapp', icon: MessageSquare }
         ] : []),
         // Products - always visible
         { name: t('nav.products'), href: '/products', icon: Package },
+        // Suppliers
+        ...(hasFeature('allow_suppliers') ? [
+            { name: t('nav.suppliers') || 'Suppliers', href: '/suppliers', icon: Truck }
+        ] : []),
+        // Customers
+        ...(hasFeature('allow_customers') ? [
+            { name: t('nav.customers') || 'Customers', href: '/customers', icon: Users }
+        ] : []),
+        // Orders
+        ...(hasFeature('allow_orders') ? [
+            { name: t('nav.orders') || 'Orders', href: '/orders', icon: ShoppingBag }
+        ] : []),
         // Invoices - requires feature flag
         ...(hasFeature('allow_invoices') ? [
             { name: t('nav.invoicesHistory') || 'Invoices History', href: '/invoices-history', icon: FileText }
@@ -527,10 +542,11 @@ export function Layout({ children }: LayoutProps) {
 }
 
 function PageLoading() {
+    const { t } = useTranslation()
     return (
         <div className="flex flex-col items-center justify-center py-12 gap-4">
             <div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin" />
-            <p className="text-sm text-muted-foreground animate-pulse font-medium">Loading Page...</p>
+            <p className="text-sm text-muted-foreground animate-pulse font-medium">{t('common.loading', 'Loading Page...')}</p>
         </div>
     )
 }

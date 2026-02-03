@@ -63,10 +63,13 @@
         "pos": "نقاط البيع",
         "sales": "المبيعات",
         "revenue": "صافي الإيرادات",
+        "suppliers": "الموردين",
+        "invoicesHistory": "سجل الفواتير",
         "performance": "أداء الفريق",
         "settings": "الإعدادات",
         "whatsapp": "واتساب",
         "currencyConverter": "محول العملات",
+        "members": "الأعضاء",
         "tools": "أدوات",
         "actions": "إجراءات"
     },
@@ -131,10 +134,46 @@
         "confirmDelete": "حذف المنتج",
         "deleteWarning": "حذف هذا المنتج سيزيله من المخزون. لا يمكن التراجع عن هذا الإجراء."
     },
+    "suppliers": {
+        "title": "الموردين",
+        "subtitle": "إدارة الموردين الخاص بك",
+        "addSupplier": "إضافة مورد",
+        "editSupplier": "تعديل المورد",
+        "searchPlaceholder": "البحث عن موردين...",
+        "table": {
+            "company": "الشركة",
+            "contact": "جهة الاتصال",
+            "email": "البريد الإلكتروني",
+            "phone": "رقم الهاتف",
+            "currency": "العملة",
+            "actions": "إجراءات"
+        },
+        "form": {
+            "name": "اسم الشركة",
+            "contactName": "اسم جهة الاتصال",
+            "email": "البريد الإلكتروني",
+            "phone": "رقم الهاتف",
+            "defaultCurrency": "العملة الافتراضية",
+            "creditLimit": "الحد الائتماني",
+            "address": "العنوان",
+            "city": "المدينة",
+            "country": "البلد",
+            "notes": "ملاحظات (اختياري)"
+        },
+        "messages": {
+            "addSuccess": "تم إضافة المورد بنجاح",
+            "updateSuccess": "تم تحديث المورد بنجاح",
+            "deleteSuccess": "تم حذف المورد بنجاح",
+            "deleteConfirm": "هل أنت متأكد أنك تريد حذف هذا المورد؟"
+        },
+        "confirmDelete": "حذف المورد",
+        "deleteWarning": "سيتم إزالة جميع بيانات المورد وسجل المعاملات نهائياً."
+    },
     "customers": {
         "title": "العملاء",
         "subtitle": "عملاء في قاعدة البيانات",
         "addCustomer": "إضافة عميل",
+        "editCustomer": "تعديل العميل",
         "searchPlaceholder": "البحث عن عملاء...",
         "table": {
             "name": "الاسم",
@@ -148,6 +187,8 @@
             "name": "الاسم الكامل",
             "email": "البريد الإلكتروني",
             "phone": "رقم الهاتف",
+            "defaultCurrency": "العملة الافتراضية",
+            "creditLimit": "الحد الائتماني",
             "country": "البلد",
             "city": "المدينة",
             "address": "العنوان",
@@ -156,6 +197,7 @@
         "messages": {
             "addSuccess": "تم إضافة العميل بنجاح",
             "updateSuccess": "تم تحديث بيانات العميل بنجاح",
+            "deleteSuccess": "تم حذف العميل بنجاح",
             "deleteConfirm": "هل أنت متأكد أنك تريد حذف هذا العميل؟"
         },
         "confirmDelete": "حذف العميل",
@@ -181,22 +223,43 @@
             "processing": "جاري المعالجة",
             "shipped": "تم الشحن",
             "delivered": "تم التوصيل",
-            "cancelled": "ملغي"
+            "cancelled": "ملغي",
+            "completed": "مكتمل",
+            "draft": "مسودة"
+        },
+        "tabs": {
+            "sales": "طلبات البيع",
+            "purchase": "طلبات الشراء"
+        },
+        "placeholder": {
+            "searchSales": "البحث في طلبات البيع...",
+            "searchPurchase": "البحث في طلبات الشراء..."
         },
         "form": {
             "createTitle": "إنشاء طلب جديد",
             "editTitle": "تعديل الطلب",
+            "newPurchaseOrder": "طلب شراء جديد",
+            "editPurchaseOrder": "تعديل طلب شراء",
+            "newSalesOrder": "طلب بيع جديد",
+            "editSalesOrder": "تعديل طلب بيع",
             "customer": "العميل",
+            "supplier": "المورد",
             "selectCustomer": "اختر العميل",
+            "selectSupplier": "اختر المورد",
+            "selectProduct": "اختر المنتج",
             "status": "الحالة",
+            "date": "التاريخ",
+            "currency": "العملة",
             "addProducts": "إضافة منتجات",
-            "selectProduct": "اختر منتجاً للإضافة...",
             "table": {
                 "product": "المنتج",
                 "qty": "الكمية",
                 "price": "السعر",
                 "total": "الإجمالي"
             },
+            "noItems": "لا توجد عناصر مضافة.",
+            "addItem": "إضافة عنصر",
+            "saveOrder": "حفظ الطلب",
             "discount": "الخصم",
             "tax": "الضريبة",
             "total": "الإجمالي",
