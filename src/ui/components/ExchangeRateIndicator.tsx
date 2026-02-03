@@ -108,38 +108,42 @@ export function ExchangeRateIndicator() {
     const direction = i18n.dir()
 
     return (
-        <div className="flex items-center gap-2">
-            {/* Desktop View */}
-            <div className="hidden md:flex items-center gap-2">
-                <button
-                    onClick={() => setLocation('/currency-converter')}
-                    className="p-1.5 rounded-lg hover:bg-secondary border border-transparent hover:border-border transition-all group"
-                    title="Currency Converter"
-                >
-                    <Calculator className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors" />
-                </button>
+        <Dialog open={isOpen} onOpenChange={setIsOpen}>
+            <div className="flex items-center gap-2">
+                {/* Desktop View */}
+                <div className="hidden md:flex items-center gap-2">
+                    <button
+                        onClick={() => setLocation('/currency-converter')}
+                        className="p-1.5 rounded-lg hover:bg-secondary border border-transparent hover:border-border transition-all group"
+                        title="Currency Converter"
+                    >
+                        <Calculator className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors" />
+                    </button>
 
-                <ExchangeRateList />
+                    <DialogTrigger asChild>
+                        <div className="cursor-pointer hover:opacity-80 transition-opacity">
+                            <ExchangeRateList />
+                        </div>
+                    </DialogTrigger>
 
-                <button
-                    onClick={refresh}
-                    disabled={status === 'loading'}
-                    className={cn(
-                        "p-1.5 rounded-lg hover:bg-secondary border border-transparent hover:border-border transition-all group",
-                        status === 'loading' && "opacity-50 cursor-not-allowed"
-                    )}
-                    title="Refresh Exchange Rate"
-                >
-                    <RefreshCw className={cn(
-                        "w-4 h-4 text-muted-foreground group-hover:text-foreground transition-transform",
-                        status === 'loading' && "animate-spin"
-                    )} />
-                </button>
-            </div>
+                    <button
+                        onClick={refresh}
+                        disabled={status === 'loading'}
+                        className={cn(
+                            "p-1.5 rounded-lg hover:bg-secondary border border-transparent hover:border-border transition-all group",
+                            status === 'loading' && "opacity-50 cursor-not-allowed"
+                        )}
+                        title="Refresh Exchange Rate"
+                    >
+                        <RefreshCw className={cn(
+                            "w-4 h-4 text-muted-foreground group-hover:text-foreground transition-transform",
+                            status === 'loading' && "animate-spin"
+                        )} />
+                    </button>
+                </div>
 
-            {/* Mobile View */}
-            <div className="md:hidden">
-                <Dialog open={isOpen} onOpenChange={setIsOpen}>
+                {/* Mobile View */}
+                <div className="md:hidden">
                     <DialogTrigger asChild>
                         <Button
                             variant="outline"
@@ -154,52 +158,56 @@ export function ExchangeRateIndicator() {
                             <span className="text-xs font-bold uppercase tracking-tight">Live Rate</span>
                         </Button>
                     </DialogTrigger>
-                    <DialogContent dir={direction} className="max-w-[calc(100vw-2rem)] rounded-2xl p-0 overflow-hidden border-emerald-500/20">
-                        <DialogHeader className="p-6 border-b bg-emerald-500/5 items-start rtl:items-start text-start rtl:text-start">
-                            <DialogTitle className="flex items-center gap-2 text-emerald-600">
-                                <Coins className="w-5 h-5" />
-                                {t('common.exchangeRates')}
-                            </DialogTitle>
-                        </DialogHeader>
-
-                        <div className="p-2">
-                            <ExchangeRateList isMobile />
-                        </div>
-
-                        <div className="p-4 bg-secondary/30 flex flex-col gap-2">
-                            <div className="flex gap-2 w-full">
-                                <Button
-                                    variant="outline"
-                                    className="flex-1"
-                                    onClick={() => {
-                                        setIsOpen(false)
-                                        setLocation('/currency-converter')
-                                    }}
-                                >
-                                    <Calculator className="w-4 h-4 mr-2" />
-                                    Converter
-                                </Button>
-                                <Button
-                                    className="flex-1"
-                                    onClick={() => refresh()}
-                                    disabled={status === 'loading'}
-                                >
-                                    <RefreshCw className={cn("w-4 h-4 mr-2", status === 'loading' && "animate-spin")} />
-                                    {t('common.refresh')}
-                                </Button>
-                            </div>
-                            <Button
-                                variant="ghost"
-                                className="w-full text-muted-foreground"
-                                onClick={() => setIsOpen(false)}
-                            >
-                                <X className="w-4 h-4 mr-2" />
-                                {t('common.done')}
-                            </Button>
-                        </div>
-                    </DialogContent>
-                </Dialog>
+                </div>
             </div>
-        </div>
+
+            <DialogContent dir={direction} className="max-w-[calc(100vw-2rem)] sm:max-w-md rounded-2xl p-0 overflow-hidden border-emerald-500/20 shadow-2xl animate-in zoom-in duration-300">
+                <DialogHeader className="p-6 border-b bg-emerald-500/5 items-start rtl:items-start text-start rtl:text-start relative overflow-hidden">
+                    {/* Decorative background for modal header */}
+                    <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/10 rounded-full -mr-12 -mt-12 blur-2xl" />
+
+                    <DialogTitle className="flex items-center gap-2 text-emerald-600 font-black tracking-tight text-xl">
+                        <Coins className="w-6 h-6" />
+                        {t('common.exchangeRates')}
+                    </DialogTitle>
+                </DialogHeader>
+
+                <div className="p-2">
+                    <ExchangeRateList isMobile />
+                </div>
+
+                <div className="p-4 bg-secondary/30 flex flex-col gap-2 border-t">
+                    <div className="flex gap-2 w-full">
+                        <Button
+                            variant="outline"
+                            className="flex-1 rounded-xl h-11 font-bold shadow-sm"
+                            onClick={() => {
+                                setIsOpen(false)
+                                setLocation('/currency-converter')
+                            }}
+                        >
+                            <Calculator className="w-4 h-4 mr-2 opacity-60" />
+                            Converter
+                        </Button>
+                        <Button
+                            className="flex-1 rounded-xl h-11 bg-emerald-500 hover:bg-emerald-600 text-white font-black shadow-lg shadow-emerald-500/20"
+                            onClick={() => refresh()}
+                            disabled={status === 'loading'}
+                        >
+                            <RefreshCw className={cn("w-4 h-4 mr-2", status === 'loading' && "animate-spin")} />
+                            {t('common.refresh')}
+                        </Button>
+                    </div>
+                    <Button
+                        variant="ghost"
+                        className="w-full text-muted-foreground h-10 hover:bg-transparent"
+                        onClick={() => setIsOpen(false)}
+                    >
+                        <X className="w-4 h-4 mr-2 opacity-40" />
+                        {t('common.done')}
+                    </Button>
+                </div>
+            </DialogContent>
+        </Dialog>
     )
 }

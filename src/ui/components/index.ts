@@ -61,4 +61,7 @@ export { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from './ui/t
 export { MetricDetailModal } from './MetricDetailModal'
 export { TopProductsModal, SalesOverviewModal, PeakTradingModal, ReturnsAnalysisModal } from './revenue'
 export { PrintPreviewModal } from './PrintPreviewModal'
+export { CheckoutSuccessModal } from './pos/CheckoutSuccessModal'
+export { HeldSalesModal } from './pos/HeldSalesModal'
+export type { HeldSale } from './pos/HeldSalesModal'
 

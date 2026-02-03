@@ -551,6 +551,8 @@
         "currencyError": "Currency Error",
         "currencyErrorDesc": "Please set a default currency in the settings.",
         "title": "Point of Sale",
+        "saleSuccessful": "Sale Successful",
+        "newSale": "Continue",
         "searchPlaceholder": "Search products...",
         "currentSale": "Current Sale",
         "checkout": "Checkout",

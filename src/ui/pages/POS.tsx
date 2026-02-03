@@ -40,13 +40,17 @@ import {
     Pencil,
     Coins,
     RefreshCw,
-    X
+    X,
+    Archive
 } from 'lucide-react'
 import { BarcodeScanner } from 'react-barcode-scanner'
 import 'react-barcode-scanner/polyfill'
 import { isDesktop } from '@/lib/platform'
 import { platformService } from '@/services/platformService'
 import { ExchangeRateList } from '@/ui/components' // Import ExchangeRateList
+import { CheckoutSuccessModal, HeldSalesModal, type HeldSale } from '@/ui/components'
+import { mapSaleToUniversal } from '@/lib/mappings'
+
 
 export function POS() {
     const { toast } = useToast()
@@ -124,9 +128,22 @@ export function POS() {
     const [negotiatedPriceInput, setNegotiatedPriceInput] = useState('')
     const isAdmin = user?.role === 'admin'
 
-    // Payment Method State
     const [paymentType, setPaymentType] = useState<'cash' | 'digital'>('cash')
     const [digitalProvider, setDigitalProvider] = useState<'fib' | 'qicard' | 'zaincash' | 'fastpay'>('fib')
+
+    // Held Sales State
+    const [heldSales, setHeldSales] = useState<HeldSale[]>(() => {
+        const saved = localStorage.getItem('pos_held_sales')
+        return saved ? JSON.parse(saved) : []
+    })
+    const [isHeldSalesModalOpen, setIsHeldSalesModalOpen] = useState(false)
+    const [restoredSale, setRestoredSale] = useState<HeldSale | null>(null)
+    const [isSuccessModalOpen, setIsSuccessModalOpen] = useState(false)
+    const [completedSaleData, setCompletedSaleData] = useState<any>(null)
+
+    useEffect(() => {
+        localStorage.setItem('pos_held_sales', JSON.stringify(heldSales))
+    }, [heldSales])
 
     // Filter products
     const filteredProducts = products.filter((p) => {
@@ -152,7 +169,26 @@ export function POS() {
 
 
     // Exchange Rate for advisory display and calculations
-    const { exchangeData, eurRates, tryRates, status, refresh: refreshExchangeRate } = useExchangeRate()
+    const { exchangeData: globalExchangeData, eurRates: globalEurRates, tryRates: globalTryRates, status, refresh: refreshExchangeRate } = useExchangeRate()
+
+    // Use restored rates if available (historical persistence), otherwise use global live rates
+    const exchangeData = restoredSale ? {
+        rate: restoredSale.rates.usd_iqd * 100,
+        source: restoredSale.rates.sources.usd_iqd,
+        timestamp: restoredSale.timestamp,
+        isFallback: false
+    } as ExchangeRateResult : globalExchangeData
+
+    const eurRates = restoredSale ? {
+        usd_eur: { rate: restoredSale.rates.usd_eur * 100, source: restoredSale.rates.sources.usd_eur, timestamp: restoredSale.timestamp, isFallback: false },
+        eur_iqd: { rate: restoredSale.rates.eur_iqd * 100, source: restoredSale.rates.sources.eur_iqd, timestamp: restoredSale.timestamp, isFallback: false }
+    } : globalEurRates
+
+    const tryRates = restoredSale ? {
+        usd_try: globalTryRates.usd_try, // Fallback to live or null for irrelevant pairs
+        try_iqd: { rate: restoredSale.rates.try_iqd * 100, source: restoredSale.rates.sources.try_iqd, timestamp: restoredSale.timestamp, isFallback: false }
+    } : globalTryRates
+
     const settlementCurrency = features.default_currency || 'usd'
 
     const convertPrice = useCallback((amount: number, from: CurrencyCode, to: CurrencyCode) => {
@@ -597,6 +633,71 @@ export function POS() {
         }
     }, [isScannerAutoEnabled, scanDelay, products, addToCart, t, toast])
 
+    const handleHoldSale = () => {
+        if (cart.length === 0) return
+
+        const newHeldSale: HeldSale = {
+            id: generateId(),
+            items: [...cart],
+            rates: {
+                usd_iqd: exchangeData ? exchangeData.rate / 100 : 0,
+                eur_iqd: eurRates.eur_iqd ? eurRates.eur_iqd.rate / 100 : 0,
+                usd_eur: eurRates.usd_eur ? eurRates.usd_eur.rate / 100 : 0,
+                try_iqd: tryRates.try_iqd ? tryRates.try_iqd.rate / 100 : 0,
+                sources: {
+                    usd_iqd: exchangeData?.source || 'unknown',
+                    eur_iqd: eurRates.eur_iqd?.source || 'unknown',
+                    usd_eur: eurRates.usd_eur?.source || 'unknown',
+                    try_iqd: tryRates.try_iqd?.source || 'unknown',
+                }
+            },
+            settlementCurrency,
+            paymentType,
+            digitalProvider,
+            timestamp: new Date().toISOString(),
+            total: totalAmount
+        }
+
+        setHeldSales(prev => [...prev, newHeldSale])
+        setCart([])
+        setRestoredSale(null)
+        setPaymentType('cash')
+
+        toast({
+            title: t('pos.saleHeld', 'Sale Held'),
+            description: t('pos.saleHeldDesc', 'Current sale has been put on hold.'),
+            duration: 3000
+        })
+    }
+
+    const handleRestoreSale = (sale: HeldSale) => {
+        if (cart.length > 0) {
+            // Confirm with user if they want to override current cart
+            if (!window.confirm(t('pos.confirmRestore', 'Restoring this sale will overwrite the current cart. Continue?'))) {
+                return
+            }
+        }
+
+        setCart(sale.items)
+        setRestoredSale(sale)
+        // Settlement currency is handled by features.default_currency, which we already use.
+        // If we needed to force it, we'd need more state, but for now we assume it matches.
+        setPaymentType(sale.paymentType)
+        setDigitalProvider(sale.digitalProvider as any)
+        setHeldSales(prev => prev.filter(s => s.id !== sale.id))
+        setIsHeldSalesModalOpen(false)
+
+        toast({
+            title: t('pos.saleRestored', 'Sale Restored'),
+            description: t('pos.saleRestoredDesc', 'Held sale has been restored with its original rates.'),
+            duration: 3000
+        })
+    }
+
+    const handleDeleteHeldSale = (id: string) => {
+        setHeldSales(prev => prev.filter(s => s.id !== id))
+    }
+
     const handleCheckout = async () => {
         if (cart.length === 0 || !user) return
 
@@ -741,6 +842,8 @@ export function POS() {
 
             return {
                 product_id: item.product_id,
+                product_name: product?.name || 'Unknown',
+                product_sku: product?.sku || '',
                 quantity: item.quantity,
                 unit_price: effectivePrice, // negotiated or original
                 total_price: effectivePrice * item.quantity,
@@ -799,7 +902,7 @@ export function POS() {
                 throw error
             }
 
-            // Update local inventory
+            // 1. Update local inventory
             await Promise.all(cart.map(async (item) => {
                 const product = products.find(p => p.id === item.product_id)
                 if (product) {
@@ -809,12 +912,51 @@ export function POS() {
                 }
             }))
 
-            setCart([])
-            toast({
-                title: t('messages.success'),
-                description: t('messages.saleCompleted'),
-                duration: 3000,
+            // 2. Add to Local Invoice History (for Record Keeping)
+            await db.invoices.add({
+                id: saleId,
+                invoiceid: `#${saleId.slice(0, 8)}`,
+                workspaceId: user?.workspaceId || '',
+                customerId: '', // POS sales are guest by default
+                status: 'paid',
+                currency: settlementCurrency,
+                subtotal: totalAmount,
+                discount: 0,
+                total: totalAmount,
+                origin: 'pos',
+                cashierName: user?.name || 'System',
+                createdByName: user?.name || 'System',
+                createdAt: snapshotTimestamp,
+                updatedAt: snapshotTimestamp,
+                items: cart.map(item => ({
+                    productId: item.product_id,
+                    productName: item.name,
+                    quantity: item.quantity,
+                    unitPrice: item.negotiated_price ?? item.price,
+                    total: (item.negotiated_price ?? item.price) * item.quantity,
+                    currency: settlementCurrency
+                })),
+                printMetadata: {
+                    exchange_rate: snapshotRate,
+                    exchange_source: snapshotSource,
+                    exchange_rates: exchangeRatesSnapshot
+                },
+                syncStatus: 'synced',
+                lastSyncedAt: snapshotTimestamp,
+                version: 1,
+                isDeleted: false
             })
+
+            setCart([])
+            setCompletedSaleData(mapSaleToUniversal({
+                ...checkoutPayload,
+                created_at: snapshotTimestamp,
+                workspace_id: user?.workspaceId || '',
+                cashier_id: user?.id || '',
+                cashier_name: user?.name || ''
+            } as any))
+            setIsSuccessModalOpen(true)
+
             // Refresh exchange rate for the next sale
             refreshExchangeRate()
         } catch (err: any) {
@@ -889,7 +1031,42 @@ export function POS() {
                         }
                     }))
 
-                    // 4. Add to Sync Queue (include verification fields)
+                    // 4. Add to Local Invoice History (for Record Keeping)
+                    await db.invoices.add({
+                        id: saleId,
+                        invoiceid: `#${saleId.slice(0, 8)}`,
+                        workspaceId: user?.workspaceId || '',
+                        customerId: '',
+                        status: 'paid',
+                        currency: settlementCurrency,
+                        subtotal: totalAmount,
+                        discount: 0,
+                        total: totalAmount,
+                        origin: 'pos',
+                        cashierName: user?.name || 'System',
+                        createdByName: user?.name || 'System',
+                        createdAt: snapshotTimestamp,
+                        updatedAt: snapshotTimestamp,
+                        items: cart.map(item => ({
+                            productId: item.product_id,
+                            productName: item.name,
+                            quantity: item.quantity,
+                            unitPrice: item.negotiated_price ?? item.price,
+                            total: (item.negotiated_price ?? item.price) * item.quantity,
+                            currency: settlementCurrency
+                        })),
+                        printMetadata: {
+                            exchange_rate: snapshotRate,
+                            exchange_source: snapshotSource,
+                            exchange_rates: exchangeRatesSnapshot
+                        },
+                        syncStatus: 'pending',
+                        lastSyncedAt: null,
+                        version: 1,
+                        isDeleted: false
+                    })
+
+                    // 5. Add to Sync Queue (include verification fields)
                     await addToOfflineMutations('sales', saleId, 'create', {
                         ...checkoutPayload,
                         system_verified: verificationResult.verified,
@@ -898,11 +1075,14 @@ export function POS() {
                     }, user.workspaceId)
 
                     setCart([])
-                    toast({
-                        title: t('pos.offlineTitle') || 'Saved Offline',
-                        description: t('pos.offlineDesc') || 'Sale saved locally and will sync when online.',
-                        duration: 5000,
-                    })
+                    setCompletedSaleData(mapSaleToUniversal({
+                        ...checkoutPayload,
+                        created_at: snapshotTimestamp,
+                        workspace_id: user?.workspaceId || '',
+                        cashier_id: user?.id || '',
+                        cashier_name: user?.name || ''
+                    } as any))
+                    setIsSuccessModalOpen(true)
                     return
                 } catch (saveErr: any) {
                     console.error('Offline save failed:', saveErr)
@@ -933,10 +1113,12 @@ export function POS() {
                         totalItems={totalItems}
                         refreshExchangeRate={refreshExchangeRate}
                         exchangeData={exchangeData}
+                        heldSalesCount={heldSales.length}
+                        onOpenHeldSales={() => setIsHeldSalesModalOpen(true)}
                         t={t}
                         toast={toast}
                     />
-                    <div className="flex-1 overflow-y-auto">
+                    <div className="flex-1 overflow-hidden relative">
                         {mobileView === 'grid' ? (
                             <MobileGrid
                                 t={t}
@@ -967,11 +1149,13 @@ export function POS() {
                                 digitalProvider={digitalProvider}
                                 setDigitalProvider={setDigitalProvider}
                                 handleCheckout={handleCheckout}
+                                handleHoldSale={handleHoldSale}
                                 isLoading={isLoading}
                                 getDisplayImageUrl={getDisplayImageUrl}
                                 products={products}
                                 convertPrice={convertPrice}
                                 openPriceEdit={openPriceEdit}
+                                isAdmin={isAdmin}
                                 clearNegotiatedPrice={clearNegotiatedPrice}
                             />
                         )}
@@ -1097,10 +1281,23 @@ export function POS() {
                     {/* Cart Sidebar */}
                     <div className="w-96 bg-card border border-border rounded-xl flex flex-col shadow-xl">
                         <div className="p-4 border-b border-border bg-muted/5">
-                            <h2 className="text-xl font-bold flex items-center gap-2">
-                                <ShoppingCart className="w-5 h-5" />
-                                {t('pos.currentSale') || 'Current Sale'}
-                            </h2>
+                            <div className="flex items-center justify-between">
+                                <h2 className="text-xl font-bold flex items-center gap-2">
+                                    <ShoppingCart className="w-5 h-5" />
+                                    {t('pos.currentSale') || 'Current Sale'}
+                                </h2>
+                                {heldSales.length > 0 && (
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => setIsHeldSalesModalOpen(true)}
+                                        className="h-8 rounded-lg bg-primary/5 border-primary/20 text-primary font-bold flex items-center gap-2 hover:bg-primary/10 transition-all border-2"
+                                    >
+                                        <Archive className="w-3.5 h-3.5" />
+                                        <span>{heldSales.length}</span>
+                                    </Button>
+                                )}
+                            </div>
                             <div className="text-xs text-muted-foreground mt-1">
                                 {totalItems} items
                             </div>
@@ -1169,10 +1366,10 @@ export function POS() {
                                                         {isAdmin && (
                                                             <button
                                                                 onClick={() => openPriceEdit(item.product_id, item.negotiated_price ?? item.price)}
-                                                                className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 hover:bg-muted rounded"
+                                                                className="transition-opacity p-1 hover:bg-muted rounded bg-muted/30 border border-border/50"
                                                                 title={t('pos.modifyPrice') || 'Modify Price'}
                                                             >
-                                                                <Pencil className="w-3 h-3 text-primary" />
+                                                                <Pencil className="w-3.5 h-3.5 text-primary" />
                                                             </button>
                                                         )}
                                                     </div>
@@ -1204,10 +1401,10 @@ export function POS() {
                                                     <Button
                                                         variant="ghost"
                                                         size="icon"
-                                                        className="h-6 w-6 rounded-md text-destructive opacity-0 group-hover:opacity-100 transition-opacity ml-1"
+                                                        className="h-7 w-7 rounded-md text-destructive transition-opacity ml-1 bg-destructive/10 border border-destructive/20"
                                                         onClick={() => removeFromCart(item.product_id)}
                                                     >
-                                                        <Trash2 className="w-3 h-3" />
+                                                        <Trash2 className="w-3.5 h-3.5" />
                                                     </Button>
                                                 </div>
                                             </div>
@@ -1400,19 +1597,31 @@ export function POS() {
                                 )}
                             </div>
 
-                            <Button
-                                size="lg"
-                                className="w-full h-14 text-xl shadow-lg shadow-primary/20"
-                                onClick={handleCheckout}
-                                disabled={cart.length === 0 || isLoading || (cart.some(item => products.find(p => p.id === item.product_id)?.currency !== settlementCurrency) && (status === 'error' || !exchangeData))}
-                            >
-                                {isLoading ? (
-                                    <Loader2 className="w-6 h-6 animate-spin mr-2" />
-                                ) : (
-                                    <CreditCard className="w-6 h-6 mr-2" />
-                                )}
-                                {t('pos.checkout') || 'Checkout'}
-                            </Button>
+                            <div className="flex gap-2">
+                                <Button
+                                    size="lg"
+                                    className="flex-[3] h-14 text-xl shadow-lg shadow-primary/20 rounded-2xl"
+                                    onClick={handleCheckout}
+                                    disabled={cart.length === 0 || isLoading || (cart.some(item => products.find(p => p.id === item.product_id)?.currency !== settlementCurrency) && (status === 'error' || !exchangeData))}
+                                >
+                                    {isLoading ? (
+                                        <Loader2 className="w-6 h-6 animate-spin mr-2" />
+                                    ) : (
+                                        <CreditCard className="w-6 h-6 mr-2" />
+                                    )}
+                                    {t('pos.checkout') || 'Checkout'}
+                                </Button>
+                                <Button
+                                    variant="outline"
+                                    size="lg"
+                                    className="w-14 h-14 rounded-2xl border-2 hover:bg-primary/5 hover:text-primary transition-all group flex-none px-0"
+                                    onClick={handleHoldSale}
+                                    disabled={cart.length === 0 || isLoading}
+                                    title={t('pos.holdDescription', 'Put current sale on hold')}
+                                >
+                                    <Archive className="w-6 h-6 group-hover:scale-110 transition-transform" />
+                                </Button>
+                            </div>
                         </div>
                     </div>
                 </>
@@ -1624,6 +1833,27 @@ export function POS() {
                     })()}
                 </DialogContent>
             </Dialog>
+
+            <HeldSalesModal
+                isOpen={isHeldSalesModalOpen}
+                onOpenChange={setIsHeldSalesModalOpen}
+                heldSales={heldSales}
+                onRestore={handleRestoreSale}
+                onDelete={handleDeleteHeldSale}
+                iqdPreference={features.iqd_display_preference}
+            />
+
+            <CheckoutSuccessModal
+                isOpen={isSuccessModalOpen}
+                onClose={() => {
+                    setIsSuccessModalOpen(false)
+                    setCompletedSaleData(null)
+                    // Reset POS focus if needed
+                    if (isElectron) searchInputRef.current?.focus()
+                }}
+                saleData={completedSaleData}
+                features={features}
+            />
         </div >
     )
 }
@@ -1677,11 +1907,13 @@ interface MobileHeaderProps {
     totalItems: number
     refreshExchangeRate: () => void
     exchangeData: ExchangeRateResult | null
+    heldSalesCount: number
+    onOpenHeldSales: () => void
     t: any
     toast: any
 }
 
-const MobileHeader = ({ mobileView, setMobileView, totalItems, refreshExchangeRate, exchangeData, t, toast }: MobileHeaderProps) => {
+const MobileHeader = ({ mobileView, setMobileView, totalItems, refreshExchangeRate, exchangeData, heldSalesCount, onOpenHeldSales, t, toast }: MobileHeaderProps) => {
     return (
         <div className={cn(
             "flex items-center justify-between px-4 py-3 bg-card border-b border-border sticky top-0 z-50 lg:hidden",
@@ -1706,46 +1938,61 @@ const MobileHeader = ({ mobileView, setMobileView, totalItems, refreshExchangeRa
                 )}
             </button>
 
-            {/* Live Rate Modal (Mobile) */}
-            <Dialog>
-                <DialogTrigger asChild>
-                    <button className="p-2 -me-2 rounded-xl hover:bg-secondary transition-colors cursor-pointer">
-                        <TrendingUp className="w-6 h-6 text-muted-foreground" />
+            {/* Actions Area */}
+            <div className="flex items-center gap-1 -me-2">
+                {/* Held Sales Button (Mobile) */}
+                {heldSalesCount > 0 && (
+                    <button
+                        className="p-2 rounded-xl hover:bg-secondary transition-colors relative"
+                        onClick={onOpenHeldSales}
+                    >
+                        <Archive className="w-5 h-5 text-primary" />
+                        <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-primary rounded-full border border-background shadow-sm" />
                     </button>
-                </DialogTrigger>
-                <DialogContent className="max-w-[calc(100vw-2rem)] rounded-2xl p-0 overflow-hidden border-emerald-500/20">
-                    <DialogHeader className="p-6 border-b bg-emerald-500/5 items-start rtl:items-start text-start rtl:text-start">
-                        <DialogTitle className="flex items-center gap-2 text-emerald-600">
-                            <Coins className="w-5 h-5" />
-                            {t('common.exchangeRates')}
-                        </DialogTitle>
-                    </DialogHeader>
+                )}
 
-                    <div className="p-2">
-                        <ExchangeRateList isMobile={true} />
-                    </div>
+                {/* Live Rate Modal (Mobile) */}
+                <Dialog>
+                    <DialogTrigger asChild>
+                        <button className="p-2 rounded-xl hover:bg-secondary transition-colors cursor-pointer text-muted-foreground">
+                            <TrendingUp className="w-6 h-6" />
+                        </button>
+                    </DialogTrigger>
+                    <DialogContent className="max-w-[calc(100vw-2rem)] rounded-2xl p-0 overflow-hidden border-emerald-500/20">
 
-                    <div className="p-4 bg-secondary/30 flex flex-col gap-2">
-                        <div className="flex gap-2 w-full">
-                            <div className="flex-1" /> {/* Spacer since converter needs location hook not available here easily unless simplified */}
-                            <Button
-                                className="flex-1"
-                                onClick={() => {
-                                    refreshExchangeRate();
-                                    toast({
-                                        title: t('pos.ratesUpdated') || 'Rates Updated',
-                                        description: `USD/IQD: ${exchangeData?.rate || '...'}`,
-                                        duration: 2000
-                                    });
-                                }}
-                            >
-                                <RefreshCw className="w-4 h-4 mr-2" />
-                                {t('common.refresh')}
-                            </Button>
+                        <DialogHeader className="p-6 border-b bg-emerald-500/5 items-start rtl:items-start text-start rtl:text-start">
+                            <DialogTitle className="flex items-center gap-2 text-emerald-600">
+                                <Coins className="w-5 h-5" />
+                                {t('common.exchangeRates')}
+                            </DialogTitle>
+                        </DialogHeader>
+
+                        <div className="p-2">
+                            <ExchangeRateList isMobile={true} />
                         </div>
-                    </div>
-                </DialogContent>
-            </Dialog>
+
+                        <div className="p-4 bg-secondary/30 flex flex-col gap-2">
+                            <div className="flex gap-2 w-full">
+                                <div className="flex-1" /> {/* Spacer since converter needs location hook not available here easily unless simplified */}
+                                <Button
+                                    className="flex-1"
+                                    onClick={() => {
+                                        refreshExchangeRate();
+                                        toast({
+                                            title: t('pos.ratesUpdated') || 'Rates Updated',
+                                            description: `USD/IQD: ${exchangeData?.rate || '...'}`,
+                                            duration: 2000
+                                        });
+                                    }}
+                                >
+                                    <RefreshCw className="w-4 h-4 mr-2" />
+                                    {t('common.refresh')}
+                                </Button>
+                            </div>
+                        </div>
+                    </DialogContent>
+                </Dialog>
+            </div>
         </div>
     )
 }
@@ -1944,15 +2191,17 @@ interface MobileCartProps {
     digitalProvider: 'fib' | 'qicard' | 'zaincash' | 'fastpay'
     setDigitalProvider: (p: 'fib' | 'qicard' | 'zaincash' | 'fastpay') => void
     handleCheckout: () => void
+    handleHoldSale: () => void
     isLoading: boolean
     getDisplayImageUrl: (url?: string) => string
     products: Product[]
     convertPrice: (amount: number, from: CurrencyCode, to: CurrencyCode) => number
     openPriceEdit: (productId: string, currentPrice: number) => void
     clearNegotiatedPrice: (productId: string) => void
+    isAdmin: boolean
 }
 
-const MobileCart = ({ cart, removeFromCart, updateQuantity, features, totalAmount, settlementCurrency, paymentType, setPaymentType, digitalProvider, setDigitalProvider, handleCheckout, isLoading, getDisplayImageUrl, products, convertPrice, openPriceEdit, clearNegotiatedPrice }: MobileCartProps) => (
+const MobileCart = ({ cart, removeFromCart, updateQuantity, features, totalAmount, settlementCurrency, paymentType, setPaymentType, digitalProvider, setDigitalProvider, handleCheckout, handleHoldSale, isLoading, getDisplayImageUrl, products, convertPrice, openPriceEdit, clearNegotiatedPrice, isAdmin }: MobileCartProps) => (
     <div className="flex flex-col h-full animate-in fade-in slide-in-from-left-4 duration-300">
         <div className="flex-1 overflow-y-auto p-4 space-y-4 pb-40">
             {cart.length === 0 ? (
@@ -1987,12 +2236,14 @@ const MobileCart = ({ cart, removeFromCart, updateQuantity, features, totalAmoun
                                             <h3 className="font-bold text-sm truncate flex-1">{item.name}</h3>
                                             <div className="text-primary font-black text-sm whitespace-nowrap flex items-center gap-1">
                                                 {formatCurrency(convertedUnitPrice * item.quantity, settlementCurr, features.iqd_display_preference)}
-                                                <button
-                                                    onClick={() => openPriceEdit(item.product_id, item.negotiated_price ?? item.price)}
-                                                    className="p-1 rounded-md hover:bg-muted text-primary/40 hover:text-primary transition-colors"
-                                                >
-                                                    <Pencil className="w-3 h-3" />
-                                                </button>
+                                                {isAdmin && (
+                                                    <button
+                                                        onClick={() => openPriceEdit(item.product_id, item.negotiated_price ?? item.price)}
+                                                        className="p-1.5 rounded-lg bg-primary/10 text-primary border border-primary/20 transition-colors"
+                                                    >
+                                                        <Pencil className="w-3.5 h-3.5" />
+                                                    </button>
+                                                )}
                                             </div>
                                         </div>
 
@@ -2023,7 +2274,10 @@ const MobileCart = ({ cart, removeFromCart, updateQuantity, features, totalAmoun
                                             )}
                                         </div>
                                     </div>
-                                    <button onClick={() => removeFromCart(item.product_id)} className="p-1 -me-1 text-muted-foreground/30 hover:text-destructive transition-colors shrink-0">
+                                    <button
+                                        onClick={() => removeFromCart(item.product_id)}
+                                        className="p-2 -me-1 bg-destructive/10 text-destructive border border-destructive/20 rounded-xl transition-colors shrink-0"
+                                    >
                                         <Trash2 className="w-4 h-4" />
                                     </button>
                                 </div>
@@ -2110,9 +2364,9 @@ const MobileCart = ({ cart, removeFromCart, updateQuantity, features, totalAmoun
                 </div>
             </div>
 
-            <div className="flex gap-4 pt-2">
+            <div className="flex gap-2 pt-2">
                 <Button
-                    className="flex-1 h-14 rounded-2xl text-lg font-black shadow-xl shadow-primary/20 active:scale-95 transition-all text-white"
+                    className="flex-[4] h-14 rounded-2xl text-lg font-black shadow-xl shadow-primary/20 active:scale-95 transition-all text-white"
                     onClick={handleCheckout}
                     disabled={cart.length === 0 || isLoading}
                 >
@@ -2122,6 +2376,14 @@ const MobileCart = ({ cart, removeFromCart, updateQuantity, features, totalAmoun
                             <Plus className="w-5 h-5" />
                         </div>
                     )}
+                </Button>
+                <Button
+                    variant="outline"
+                    className="flex-1 h-14 rounded-2xl border-2 hover:bg-primary/5 hover:text-primary transition-all group px-0"
+                    onClick={handleHoldSale}
+                    disabled={cart.length === 0 || isLoading}
+                >
+                    <Archive className="w-6 h-6 group-hover:scale-110 transition-transform" />
                 </Button>
             </div>
         </div>
