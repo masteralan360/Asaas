@@ -10,6 +10,8 @@ export interface ExchangeSnapshot {
     isFallback: boolean
 }
 
+export type CurrencyStatus = 'loading' | 'live' | 'error' | 'manual'
+
 interface ExchangeRateContextType {
     exchangeData: ExchangeRateResult | null
     eurRates: {
@@ -21,6 +23,11 @@ interface ExchangeRateContextType {
         try_iqd: ExchangeSnapshot | null
     }
     status: 'loading' | 'live' | 'error'
+    currencyStatus: {
+        usd: CurrencyStatus
+        eur: CurrencyStatus
+        try: CurrencyStatus
+    }
     lastUpdated: string | null
     allRates: any | null // Average baseline data
     refresh: () => Promise<void>
@@ -53,6 +60,11 @@ export function ExchangeRateProvider({ children }: { children: React.ReactNode }
         try_iqd: null
     })
     const [status, setStatus] = useState<'loading' | 'live' | 'error'>('loading')
+    const [currencyStatus, setCurrencyStatus] = useState<ExchangeRateContextType['currencyStatus']>({
+        usd: 'loading',
+        eur: 'loading',
+        try: 'loading'
+    })
     const [lastUpdated, setLastUpdated] = useState<string | null>(null)
     const [allRates, setAllRates] = useState<any | null>(null)
     const [alert, setAlert] = useState<ExchangeRateContextType['alerts']>({
@@ -69,47 +81,147 @@ export function ExchangeRateProvider({ children }: { children: React.ReactNode }
 
     const refresh = useCallback(async () => {
         setStatus('loading')
-        try {
-            // 1. Fetch USD/IQD (Existing)
-            const usdIqdResult = await fetchUSDToIQDRate()
-            setExchangeData(usdIqdResult)
+        setCurrencyStatus({ usd: 'loading', eur: 'loading', try: 'loading' })
 
-            // 2. Fetch EUR rates if enabled
-            if (features.eur_conversion_enabled) {
-                try {
+        let usdSuccess = false
+        let eurSuccess = false
+        let trySuccess = false
+
+        // 1. Fetch USD/IQD
+        try {
+            // Check if manual rate is set
+            const usdSource = localStorage.getItem('primary_exchange_rate_source')
+            if (usdSource === 'manual') {
+                const manualRate = parseInt(localStorage.getItem('manual_rate_usd_iqd') || '0')
+                if (manualRate > 0) {
+                    setExchangeData({ rate: manualRate, source: 'manual', isFallback: false })
+                    usdSuccess = true
+                }
+            }
+
+            if (!usdSuccess) {
+                const usdIqdResult = await fetchUSDToIQDRate()
+                setExchangeData(usdIqdResult)
+                usdSuccess = true
+            }
+        } catch (error) {
+            console.error('ExchangeRateProvider: Failed to fetch USD/IQD rate', error)
+            // Check if we have a manual fallback
+            const manualRate = parseInt(localStorage.getItem('manual_rate_usd_iqd') || '0')
+            if (manualRate > 0) {
+                setExchangeData({ rate: manualRate, source: 'manual', isFallback: true })
+                usdSuccess = true
+            }
+        }
+
+        // 2. Fetch EUR rates if enabled
+        if (features.eur_conversion_enabled) {
+            try {
+                const eurSource = localStorage.getItem('primary_eur_exchange_rate_source')
+                if (eurSource === 'manual') {
+                    const manualRate = parseInt(localStorage.getItem('manual_rate_eur_iqd') || '0')
+                    if (manualRate > 0) {
+                        const timestamp = new Date().toISOString()
+                        setEurRates({
+                            usd_eur: { rate: 0, source: 'manual', timestamp, isFallback: false },
+                            eur_iqd: { rate: manualRate, source: 'manual', timestamp, isFallback: false }
+                        })
+                        eurSuccess = true
+                    }
+                }
+
+                if (!eurSuccess) {
                     const eurResult = await fetchEURToIQDRate()
                     const timestamp = new Date().toISOString()
-
                     setEurRates({
                         usd_eur: { rate: eurResult.usdEur, source: eurResult.source, timestamp, isFallback: eurResult.isFallback },
                         eur_iqd: { rate: eurResult.eurIqd, source: eurResult.source, timestamp, isFallback: eurResult.isFallback }
                     })
-                } catch (error) {
-                    console.error('ExchangeRateProvider: Failed to fetch EUR rates', error)
+                    eurSuccess = true
+                }
+            } catch (error) {
+                console.error('ExchangeRateProvider: Failed to fetch EUR rates', error)
+                // Check for manual fallback
+                const manualRate = parseInt(localStorage.getItem('manual_rate_eur_iqd') || '0')
+                if (manualRate > 0) {
+                    const timestamp = new Date().toISOString()
+                    setEurRates({
+                        usd_eur: { rate: 0, source: 'manual', timestamp, isFallback: true },
+                        eur_iqd: { rate: manualRate, source: 'manual', timestamp, isFallback: true }
+                    })
+                    eurSuccess = true
                 }
             }
+        } else {
+            eurSuccess = true // Not enabled, so not an error
+        }
 
-            // 3. Fetch TRY rates if enabled
-            if (features.try_conversion_enabled) {
-                try {
-                    // We need to import fetchTRYToIQDRate
+        // 3. Fetch TRY rates if enabled
+        if (features.try_conversion_enabled) {
+            try {
+                const trySource = localStorage.getItem('primary_try_exchange_rate_source')
+                if (trySource === 'manual') {
+                    const manualRate = parseInt(localStorage.getItem('manual_rate_try_iqd') || '0')
+                    if (manualRate > 0) {
+                        const timestamp = new Date().toISOString()
+                        setTryRates({
+                            usd_try: { rate: 0, source: 'manual', timestamp, isFallback: false },
+                            try_iqd: { rate: manualRate, source: 'manual', timestamp, isFallback: false }
+                        })
+                        trySuccess = true
+                    }
+                }
+
+                if (!trySuccess) {
                     const tryResult = await fetchTRYToIQDRate()
                     const timestamp = new Date().toISOString()
-
                     setTryRates({
                         usd_try: { rate: tryResult.usdTry, source: tryResult.source, timestamp, isFallback: tryResult.isFallback },
                         try_iqd: { rate: tryResult.tryIqd, source: tryResult.source, timestamp, isFallback: tryResult.isFallback }
                     })
-                } catch (error) {
-                    console.error('ExchangeRateProvider: Failed to fetch TRY rates', error)
+                    trySuccess = true
+                }
+            } catch (error) {
+                console.error('ExchangeRateProvider: Failed to fetch TRY rates', error)
+                // Check for manual fallback
+                const manualRate = parseInt(localStorage.getItem('manual_rate_try_iqd') || '0')
+                if (manualRate > 0) {
+                    const timestamp = new Date().toISOString()
+                    setTryRates({
+                        usd_try: { rate: 0, source: 'manual', timestamp, isFallback: true },
+                        try_iqd: { rate: manualRate, source: 'manual', timestamp, isFallback: true }
+                    })
+                    trySuccess = true
                 }
             }
+        } else {
+            trySuccess = true // Not enabled, so not an error
+        }
 
-            // 4. Validation Check (Average of all sources)
-            const all = await fetchRatesFromAllSources()
+        // Update per-currency status
+        const getStatus = (success: boolean, source: string | null): CurrencyStatus => {
+            if (!success) return 'error'
+            if (source === 'manual') return 'manual'
+            return 'live'
+        }
+
+        setCurrencyStatus({
+            usd: getStatus(usdSuccess, localStorage.getItem('primary_exchange_rate_source')),
+            eur: getStatus(eurSuccess, localStorage.getItem('primary_eur_exchange_rate_source')),
+            try: getStatus(trySuccess, localStorage.getItem('primary_try_exchange_rate_source'))
+        })
+
+        // 4. Validation Check (Average of all sources) - best effort
+        let all: any = null
+        try {
+            all = await fetchRatesFromAllSources()
             setAllRates(all)
+        } catch (e) {
+            console.error('Failed to fetch all rates for validation', e)
+        }
 
-            // 5. Discrepancy Monitoring
+        // 5. Discrepancy Monitoring
+        if (all) {
             const checkDiscrepancy = () => {
                 const threshold = parseInt(localStorage.getItem('exchange_rate_threshold') || '2500')
                 const snoozeUntil = localStorage.getItem('exchange_rate_snooze_until')
@@ -157,13 +269,15 @@ export function ExchangeRateProvider({ children }: { children: React.ReactNode }
             }
 
             checkDiscrepancy()
+        }
 
+        // Determine global status: live if at least USD works, partial if some fail, error if all fail
+        if (usdSuccess) {
             setStatus('live')
-            setLastUpdated(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }))
-        } catch (error) {
-            console.error('ExchangeRateProvider: Failed to fetch rate', error)
+        } else {
             setStatus('error')
         }
+        setLastUpdated(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }))
     }, [features.eur_conversion_enabled, features.try_conversion_enabled])
 
     useEffect(() => {
@@ -201,9 +315,10 @@ export function ExchangeRateProvider({ children }: { children: React.ReactNode }
     }
 
     return (
-        <ExchangeRateContext.Provider value={{ exchangeData, eurRates, tryRates, status: effectiveStatus, lastUpdated, refresh, allRates, alerts: alert, snooze, forceAlert }}>
+        <ExchangeRateContext.Provider value={{ exchangeData, eurRates, tryRates, status: effectiveStatus, currencyStatus, lastUpdated, refresh, allRates, alerts: alert, snooze, forceAlert }}>
             {children}
         </ExchangeRateContext.Provider>
+
     )
 }
 

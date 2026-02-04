@@ -406,11 +406,22 @@ export async function fetchCrossRate(source: ExchangeRateSource, path: ExchangeP
         if (path === 'USD-to-IQD') {
             return await fetchFromDolarDinar('USD');
         } else if (path === 'USD-to-EUR') {
-            const usd = await fetchFromDolarDinar('USD');
-            const eur = await fetchFromDolarDinar('EUR');
-            return Math.round((usd / eur) * 100); // Approximation
+            // EUR row in DolarDinar sheet returns EUR/USD ratio (e.g., 0.88)
+            const eurPerUsd = await fetchFromDolarDinar('EUR');
+            // Convert to USD-per-EUR (reciprocal), result already scaled by 100
+            return eurPerUsd > 0 ? Math.round(10000 / eurPerUsd * 100) : 0;
         } else if (path === 'EUR-to-IQD') {
-            return await fetchFromDolarDinar('EUR');
+            // EUR row in DolarDinar sheet returns EUR/USD ratio (e.g., 0.88)
+            // We need EUR/IQD = USD/IQD / EUR_per_USD
+            const usdIqd = await fetchFromDolarDinar('USD');
+            const eurPerUsd = await fetchFromDolarDinar('EUR');
+            // eurPerUsd is scaled by 100 (e.g., 88 for 0.88), so divide by 100 first
+            const eurUsdRatio = eurPerUsd / 100;
+            if (eurUsdRatio > 0) {
+                // EUR/IQD = USD/IQD / EUR_per_USD (e.g., 148000 / 0.88 ≈ 168181)
+                return Math.round(usdIqd / eurUsdRatio);
+            }
+            throw new Error('Invalid EUR/USD ratio from DolarDinar');
         } else if (path === 'TRY-to-IQD') {
             return await fetchFromDolarDinar('TRY');
         } else if (path === 'USD-to-TRY') {
@@ -419,6 +430,7 @@ export async function fetchCrossRate(source: ExchangeRateSource, path: ExchangeP
             return Math.round((usd / tryRate) * 100);
         }
     }
+
 
     throw new Error(`Unsupported source/path combination: ${source}/${path}`);
 }
@@ -440,8 +452,10 @@ export async function fetchRatesFromAllSources(): Promise<{
     // EUR/IQD
     const eurPromises = [
         fetchEgRate('EUR-to-IQD').then(r => results.eur_iqd.forexfy = r).catch(() => { }),
-        fetchFromDolarDinar('EUR').then(r => results.eur_iqd.dolardinar = r).catch(() => { })
+        // Use fetchCrossRate to get correctly calculated EUR/IQD (not raw EUR/USD ratio)
+        fetchCrossRate('dolardinar', 'EUR-to-IQD').then(r => results.eur_iqd.dolardinar = r).catch(() => { })
     ];
+
 
     // TRY/IQD
     const tryPromises = [

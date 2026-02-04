@@ -199,11 +199,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             return { error: null }
         }
 
-        const { error } = await supabase.auth.signInWithPassword({
-            email,
-            password
-        })
-        return { error: error as Error | null }
+        try {
+            const signInPromise = supabase.auth.signInWithPassword({
+                email,
+                password
+            })
+            // 15s timeout for sign in (network can be slow)
+            const timeoutPromise = new Promise((_, reject) =>
+                setTimeout(() => reject(new Error('Connection timed out. Please check your network.')), 15000)
+            )
+
+            const { error } = await Promise.race([signInPromise, timeoutPromise]) as any
+            return { error: error as Error | null }
+        } catch (err: any) {
+            console.error('[Auth] Sign in failed/timeout:', err)
+            return { error: err }
+        }
     }
 
     const signUp = async ({ email, password, name, role = 'viewer', passkey, workspaceName, workspaceCode, phone }: {

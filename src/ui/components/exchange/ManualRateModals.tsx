@@ -16,14 +16,15 @@ export function ManualRateModals() {
     useEffect(() => {
         if (alerts.hasDiscrepancy) {
             setDiscrepancyOpen(true);
-            if (alerts.discrepancyData?.pair) {
+            // Only update editor currency from discrepancy if not already typing
+            if (alerts.discrepancyData?.pair && !editorOpen) {
                 const currency = alerts.discrepancyData.pair.split('/')[0] as 'USD' | 'EUR' | 'TRY';
                 setEditorCurrency(currency);
             }
         } else {
             setDiscrepancyOpen(false);
         }
-    }, [alerts.hasDiscrepancy, alerts.discrepancyData?.pair]);
+    }, [alerts.hasDiscrepancy, alerts.discrepancyData?.pair, editorOpen]);
 
     const [editorCurrency, setEditorCurrency] = useState<'USD' | 'EUR' | 'TRY'>('USD');
 

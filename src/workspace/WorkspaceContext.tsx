@@ -151,7 +151,14 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         }
 
         try {
-            const { data, error } = await supabase.rpc('get_workspace_features').single()
+            // Add timeout for robustness (5 seconds)
+            const rpcPromise = supabase.rpc('get_workspace_features').single()
+            const timeoutPromise = new Promise((_, reject) =>
+                setTimeout(() => reject(new Error('Workspace features fetch timed out')), 5000)
+            )
+
+            const { data, error } = await Promise.race([rpcPromise, timeoutPromise]) as any
+
             if (error) {
                 console.error('Error fetching workspace features from Supabase:', error)
                 // Try to load from local DB if Supabase fails

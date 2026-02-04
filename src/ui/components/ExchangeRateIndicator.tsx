@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { RefreshCw, Globe, AlertCircle, Loader2, Calculator, Coins, X, Pencil } from 'lucide-react'
+import { RefreshCw, Globe, AlertCircle, Loader2, Calculator, Coins, X, Pencil, AlertTriangle, Plus } from 'lucide-react'
 import { useLocation } from 'wouter'
 import { useExchangeRate } from '@/context/ExchangeRateContext'
 import { useWorkspace } from '@/workspace'
@@ -14,38 +14,104 @@ import {
 } from './dialog'
 import { Button } from './button'
 
+// Component for showing offline/error state for a specific currency
+function CurrencyOfflineRow({ currency, isMobile }: { currency: 'USD' | 'EUR' | 'TRY', isMobile: boolean }) {
+    const { t } = useTranslation()
+
+    const handleAddManually = (e: React.MouseEvent) => {
+        e.stopPropagation()
+        window.dispatchEvent(new CustomEvent('open-manual-rate-editor', { detail: { currency } }))
+    }
+
+    // Desktop: compact inline display (same size as regular currency rows)
+    if (!isMobile) {
+        return (
+            <div className="flex items-center gap-1.5 text-amber-600">
+                <span className="w-px h-3 bg-amber-500/30" />
+                <AlertTriangle className="w-3 h-3" />
+                <span>{currency}/IQD:</span>
+                <button
+                    onClick={handleAddManually}
+                    className="text-[10px] underline underline-offset-2 hover:text-amber-500 transition-colors"
+                >
+                    + {t('exchange.addManual', 'Add')}
+                </button>
+            </div>
+        )
+    }
+
+    // Mobile: full row with button
+    return (
+        <div className="w-full flex justify-between items-center p-3 border-t border-amber-500/20 rounded-xl bg-amber-500/5">
+            <div className="flex flex-col items-start gap-1">
+                <span className="text-amber-600 flex items-center gap-1.5">
+                    <AlertTriangle className="w-3.5 h-3.5" />
+                    {currency}/IQD: {t('exchange.sourceOffline', 'Source Offline')}
+                </span>
+                <span className="text-[10px] text-amber-600/70">{t('exchange.addManualFallback', 'Add a rate manually')}</span>
+            </div>
+            <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 px-3 rounded-full bg-amber-500/10 text-amber-600 hover:bg-amber-500/20 hover:text-amber-700"
+                onClick={handleAddManually}
+            >
+                <Plus className="w-3.5 h-3.5 mr-1" />
+                {t('exchange.addManual', 'Add')}
+            </Button>
+        </div>
+    )
+}
 
 export function ExchangeRateList({ isMobile = false }: { isMobile?: boolean }) {
-    const { exchangeData, eurRates, tryRates, status, lastUpdated, allRates } = useExchangeRate()
+    const { exchangeData, eurRates, tryRates, status, currencyStatus, lastUpdated, allRates } = useExchangeRate()
     const { features } = useWorkspace()
     const { t } = useTranslation()
+
+    // Primary currency status determines overall indicator color
+    // Desktop: Always green if USD works (even if secondary currencies are offline)
+    // Only show red if ALL currencies fail
+    const usdWorks = currencyStatus.usd !== 'error' && !!exchangeData
+    const isLoading = status === 'loading'
+    const allFailed = currencyStatus.usd === 'error' &&
+        (!features.eur_conversion_enabled || currencyStatus.eur === 'error') &&
+        (!features.try_conversion_enabled || currencyStatus.try === 'error')
 
     return (
         <div className={cn(
             "flex items-center gap-2 px-3 py-1.5 rounded-full transition-all border w-fit",
-            status === 'live' && 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500',
-            status === 'error' && 'bg-red-500/10 border-red-500/20 text-red-500',
-            status === 'loading' && 'bg-secondary border-border text-muted-foreground',
+            !isLoading && usdWorks && 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500',
+            !isLoading && !usdWorks && !allFailed && 'bg-amber-500/10 border-amber-500/20 text-amber-600',
+            !isLoading && allFailed && 'bg-red-500/10 border-red-500/20 text-red-500',
+            isLoading && 'bg-secondary border-border text-muted-foreground',
             isMobile && "flex-col items-start rtl:items-start rounded-xl p-2 w-full gap-2 border-none bg-transparent"
         )}>
             <div className="flex items-center gap-2">
-                {status === 'loading' ? (
+                {isLoading ? (
                     <Loader2 className="w-4 h-4 animate-spin" />
-                ) : status === 'live' ? (
+                ) : usdWorks ? (
                     <Globe className="w-4 h-4" />
-                ) : (
+                ) : allFailed ? (
                     <AlertCircle className="w-4 h-4" />
+                ) : (
+                    <AlertTriangle className="w-4 h-4" />
                 )}
                 {isMobile && <span className="font-bold text-sm uppercase tracking-wider">{t('common.exchangeRates')}</span>}
             </div>
+
 
             <div className={cn(
                 "text-xs font-bold font-mono flex items-center gap-3",
                 isMobile && "flex-col items-start rtl:items-start text-base w-full gap-4"
             )}>
-                {status === 'live' ? (
+                {isLoading ? (
+                    <span>{t('common.loading')}</span>
+                ) : (
                     <>
-                        {exchangeData && (
+                        {/* USD/IQD Section */}
+                        {currencyStatus.usd === 'error' ? (
+                            <CurrencyOfflineRow currency="USD" isMobile={isMobile} />
+                        ) : exchangeData && (
                             <div className={cn("flex items-center gap-2", isMobile && "w-full justify-between p-3 rounded-xl hover:bg-emerald-500/5 transition-colors")}>
                                 <div className="flex flex-col items-start gap-1">
                                     <span>USD/IQD: {exchangeData.rate.toLocaleString()}</span>
@@ -73,78 +139,90 @@ export function ExchangeRateList({ isMobile = false }: { isMobile?: boolean }) {
                                 </div>
                             </div>
                         )}
-                        {features.eur_conversion_enabled && eurRates.eur_iqd && (
-                            <div className={cn("flex items-center gap-3", isMobile && "w-full justify-between p-3 border-t border-emerald-500/10 rounded-xl hover:bg-emerald-500/5 transition-colors")}>
-                                {!isMobile && <span className="w-px h-3 bg-current/20" />}
-                                <div className="flex flex-col items-start gap-1">
-                                    <span>EUR/IQD: {eurRates.eur_iqd.rate.toLocaleString()}</span>
-                                    {isMobile && allRates?.eur_iqd?.average && (
-                                        <span className="text-[10px] text-muted-foreground">{t('exchange.marketAverage')}: {allRates.eur_iqd.average.toLocaleString()}</span>
-                                    )}
+
+                        {/* EUR/IQD Section */}
+                        {features.eur_conversion_enabled && (
+                            currencyStatus.eur === 'error' ? (
+                                <CurrencyOfflineRow currency="EUR" isMobile={isMobile} />
+                            ) : eurRates.eur_iqd && (
+                                <div className={cn("flex items-center gap-3", isMobile && "w-full justify-between p-3 border-t border-emerald-500/10 rounded-xl hover:bg-emerald-500/5 transition-colors")}>
+                                    {!isMobile && <span className="w-px h-3 bg-current/20" />}
+                                    <div className="flex flex-col items-start gap-1">
+                                        <span>EUR/IQD: {eurRates.eur_iqd.rate.toLocaleString()}</span>
+                                        {isMobile && allRates?.eur_iqd?.average && (
+                                            <span className="text-[10px] text-muted-foreground">{t('exchange.marketAverage')}: {allRates.eur_iqd.average.toLocaleString()}</span>
+                                        )}
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-[10px] opacity-70 font-normal uppercase">
+                                            {eurRates.eur_iqd.source === 'manual' ? t('exchange.manual') : eurRates.eur_iqd.source}
+                                        </span>
+                                        {isMobile && (
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                className="h-8 w-8 rounded-full"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    window.dispatchEvent(new CustomEvent('open-manual-rate-editor', { detail: { currency: 'EUR' } }));
+                                                }}
+                                            >
+                                                <Pencil className="w-3.5 h-3.5" />
+                                            </Button>
+                                        )}
+                                    </div>
                                 </div>
-                                <div className="flex items-center gap-2">
-                                    <span className="text-[10px] opacity-70 font-normal uppercase">
-                                        {eurRates.eur_iqd.source === 'manual' ? t('exchange.manual') : eurRates.eur_iqd.source}
-                                    </span>
-                                    {isMobile && (
-                                        <Button
-                                            variant="ghost"
-                                            size="icon"
-                                            className="h-8 w-8 rounded-full"
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                window.dispatchEvent(new CustomEvent('open-manual-rate-editor', { detail: { currency: 'EUR' } }));
-                                            }}
-                                        >
-                                            <Pencil className="w-3.5 h-3.5" />
-                                        </Button>
-                                    )}
-                                </div>
-                            </div>
+                            )
                         )}
-                        {features.try_conversion_enabled && tryRates.try_iqd && (
-                            <div className={cn("flex items-center gap-3", isMobile && "w-full justify-between p-3 border-t border-emerald-500/10 rounded-xl hover:bg-emerald-500/5 transition-colors")}>
-                                {!isMobile && <span className="w-px h-3 bg-current/20" />}
-                                <div className="flex flex-col items-start gap-1">
-                                    <span>TRY/IQD: {tryRates.try_iqd.rate.toLocaleString()}</span>
-                                    {isMobile && allRates?.try_iqd?.average && (
-                                        <span className="text-[10px] text-muted-foreground">{t('exchange.marketAverage')}: {allRates.try_iqd.average.toLocaleString()}</span>
-                                    )}
+
+                        {/* TRY/IQD Section */}
+                        {features.try_conversion_enabled && (
+                            currencyStatus.try === 'error' ? (
+                                <CurrencyOfflineRow currency="TRY" isMobile={isMobile} />
+                            ) : tryRates.try_iqd && (
+                                <div className={cn("flex items-center gap-3", isMobile && "w-full justify-between p-3 border-t border-emerald-500/10 rounded-xl hover:bg-emerald-500/5 transition-colors")}>
+                                    {!isMobile && <span className="w-px h-3 bg-current/20" />}
+                                    <div className="flex flex-col items-start gap-1">
+                                        <span>TRY/IQD: {tryRates.try_iqd.rate.toLocaleString()}</span>
+                                        {isMobile && allRates?.try_iqd?.average && (
+                                            <span className="text-[10px] text-muted-foreground">{t('exchange.marketAverage')}: {allRates.try_iqd.average.toLocaleString()}</span>
+                                        )}
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-[10px] opacity-70 font-normal uppercase">
+                                            {tryRates.try_iqd.source === 'manual' ? t('exchange.manual') : tryRates.try_iqd.source}
+                                        </span>
+                                        {isMobile && (
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                className="h-8 w-8 rounded-full"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    window.dispatchEvent(new CustomEvent('open-manual-rate-editor', { detail: { currency: 'TRY' } }));
+                                                }}
+                                            >
+                                                <Pencil className="w-3.5 h-3.5" />
+                                            </Button>
+                                        )}
+                                    </div>
                                 </div>
-                                <div className="flex items-center gap-2">
-                                    <span className="text-[10px] opacity-70 font-normal uppercase">
-                                        {tryRates.try_iqd.source === 'manual' ? t('exchange.manual') : tryRates.try_iqd.source}
-                                    </span>
-                                    {isMobile && (
-                                        <Button
-                                            variant="ghost"
-                                            size="icon"
-                                            className="h-8 w-8 rounded-full"
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                window.dispatchEvent(new CustomEvent('open-manual-rate-editor', { detail: { currency: 'TRY' } }));
-                                            }}
-                                        >
-                                            <Pencil className="w-3.5 h-3.5" />
-                                        </Button>
-                                    )}
-                                </div>
-                            </div>
+                            )
                         )}
                     </>
-                ) : status === 'loading' ? (
-                    <span>{t('common.loading')}</span>
-                ) : (
-                    <span>{t('common.error')}</span>
                 )}
             </div>
 
             <div className={cn("flex items-center gap-2", isMobile && "mt-auto w-full pt-4 border-t border-emerald-500/20 justify-between")}>
-                {status === 'live' && (
-                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                {!isLoading && (usdWorks || !allFailed) && (
+                    <div className={cn(
+                        "w-1.5 h-1.5 rounded-full animate-pulse",
+                        usdWorks ? "bg-emerald-500" : "bg-amber-500"
+                    )} />
                 )}
 
-                {status === 'live' && lastUpdated && (
+
+                {!isLoading && lastUpdated && (
                     <span className="text-[10px] font-medium opacity-60">
                         {lastUpdated}
                     </span>
