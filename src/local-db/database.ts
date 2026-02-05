@@ -1,5 +1,5 @@
 import Dexie, { type EntityTable } from 'dexie'
-import type { Product, Category, Customer, Supplier, PurchaseOrder, SalesOrder, Invoice, User, SyncQueueItem, Sale, SaleItem, OfflineMutation, Workspace, AppSetting } from './models'
+import type { Product, Category, Customer, Supplier, PurchaseOrder, SalesOrder, Invoice, User, SyncQueueItem, Sale, SaleItem, OfflineMutation, Workspace, AppSetting, Storage } from './models'
 
 // Asaas Database using Dexie.js for IndexedDB
 export class AsaasDatabase extends Dexie {
@@ -14,6 +14,7 @@ export class AsaasDatabase extends Dexie {
     sales!: EntityTable<Sale, 'id'>
     sale_items!: EntityTable<SaleItem, 'id'>
     workspaces!: EntityTable<Workspace, 'id'>
+    storages!: EntityTable<Storage, 'id'>
     syncQueue!: EntityTable<SyncQueueItem, 'id'>
     offline_mutations!: EntityTable<OfflineMutation, 'id'>
     app_settings!: EntityTable<AppSetting, 'key'>
@@ -21,8 +22,8 @@ export class AsaasDatabase extends Dexie {
     constructor() {
         super('AsaasDatabase')
 
-        this.version(20).stores({
-            products: 'id, sku, name, categoryId, workspaceId, currency, syncStatus, updatedAt, isDeleted, canBeReturned',
+        this.version(21).stores({
+            products: 'id, sku, name, categoryId, storageId, workspaceId, currency, syncStatus, updatedAt, isDeleted, canBeReturned',
             categories: 'id, name, workspaceId, syncStatus, updatedAt, isDeleted',
             suppliers: 'id, name, workspaceId, syncStatus, updatedAt, isDeleted',
             customers: 'id, name, phone, email, workspaceId, syncStatus, updatedAt, isDeleted',
@@ -34,12 +35,14 @@ export class AsaasDatabase extends Dexie {
             sales: 'id, cashierId, workspaceId, settlementCurrency, syncStatus, createdAt',
             sale_items: 'id, saleId, productId',
             workspaces: 'id, name, code, syncStatus, updatedAt, isDeleted',
+            storages: 'id, name, workspaceId, isSystem, isProtected, syncStatus, updatedAt, isDeleted',
             syncQueue: 'id, entityType, entityId, operation, timestamp',
             offline_mutations: 'id, workspaceId, entityType, entityId, status, createdAt, [entityType+entityId+status]',
             app_settings: 'key'
         })
     }
 }
+
 
 // Singleton database instance
 export const db = new AsaasDatabase()

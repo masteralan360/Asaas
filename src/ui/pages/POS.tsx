@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/auth'
 import { supabase } from '@/auth/supabase'
-import { addToOfflineMutations, useProducts, useCategories, type Product, type Category, type CurrencyCode } from '@/local-db'
+import { addToOfflineMutations, useProducts, useCategories, useStorages, type Product, type Category, type CurrencyCode } from '@/local-db'
 import { db } from '@/local-db/database'
 import { formatCurrency, generateId, cn } from '@/lib/utils'
 import { CartItem } from '@/types'
@@ -48,7 +48,7 @@ import 'react-barcode-scanner/polyfill'
 import { isDesktop } from '@/lib/platform'
 import { platformService } from '@/services/platformService'
 import { ExchangeRateList } from '@/ui/components' // Import ExchangeRateList
-import { CheckoutSuccessModal, HeldSalesModal, type HeldSale } from '@/ui/components'
+import { CheckoutSuccessModal, HeldSalesModal, type HeldSale, StorageSelector, CrossStorageWarningModal } from '@/ui/components'
 import { mapSaleToUniversal } from '@/lib/mappings'
 
 
@@ -58,6 +58,14 @@ export function POS() {
     const { t } = useTranslation()
     const { features } = useWorkspace()
     const products = useProducts(user?.workspaceId)
+    const storages = useStorages(user?.workspaceId)
+    const [selectedStorageId, setSelectedStorageId] = useState<string>(() => {
+        return localStorage.getItem('pos_selected_storage') || ''
+    })
+    const [crossStorageWarning, setCrossStorageWarning] = useState<{
+        product: Product;
+        foundStorageName: string;
+    } | null>(null)
     const [search, setSearch] = useState('')
     const [cart, setCart] = useState<CartItem[]>([])
     const [isSkuModalOpen, setIsSkuModalOpen] = useState(false)
@@ -81,6 +89,19 @@ export function POS() {
     })
 
     const [isLayoutMobile, setIsLayoutMobile] = useState(window.innerWidth < 1024)
+    useEffect(() => {
+        if (selectedStorageId) {
+            localStorage.setItem('pos_selected_storage', selectedStorageId)
+        }
+    }, [selectedStorageId])
+
+    useEffect(() => {
+        if (storages.length > 0 && (!selectedStorageId || !storages.find(s => s.id === selectedStorageId))) {
+            const mainStorage = storages.find(s => s.isSystem && s.name === 'Main') || storages[0]
+            if (mainStorage) setSelectedStorageId(mainStorage.id)
+        }
+    }, [storages, selectedStorageId])
+
     const [mobileView, setMobileView] = useState<'grid' | 'cart'>(() => {
         return (localStorage.getItem('pos_mobile_view') as 'grid' | 'cart') || 'grid'
     })
@@ -149,6 +170,11 @@ export function POS() {
     const filteredProducts = products.filter((p) => {
         const matchesSearch = (p.name || '').toLowerCase().includes(search.toLowerCase()) ||
             (p.sku || '').toLowerCase().includes(search.toLowerCase())
+
+        // Storage Filter
+        if (selectedStorageId && p.storageId !== selectedStorageId) {
+            return false
+        }
 
         if (selectedCategory !== 'all') {
             if (selectedCategory === 'none') {
@@ -578,22 +604,33 @@ export function POS() {
 
     const handleSkuSubmit = (e: React.FormEvent) => {
         e.preventDefault()
-        const product = products.find((p) => p.sku.toLowerCase() === skuInput.toLowerCase())
+        const term = skuInput.toLowerCase()
+        const candidates = products.filter((p) => p.sku.toLowerCase() === term)
 
-        if (product) {
-            addToCart(product)
+        const exactMatch = candidates.find(p => p.storageId === selectedStorageId)
+        const otherMatch = candidates.find(p => p.storageId !== selectedStorageId)
+
+        if (exactMatch) {
+            addToCart(exactMatch)
             setSkuInput('')
             setIsSkuModalOpen(false)
             toast({
                 title: t('messages.success'),
-                description: `${product.name} ${t('common.added')}`,
+                description: `${exactMatch.name} ${t('common.added')}`,
                 duration: 2000,
             })
+        } else if (otherMatch) {
+            // Found in another storage
+            const storageName = storages.find(s => s.id === otherMatch.storageId)?.name || 'Unknown'
+            setCrossStorageWarning({ product: otherMatch, foundStorageName: storageName })
+            setSkuInput('')
+            setIsSkuModalOpen(false)
         } else {
             toast({
                 variant: 'destructive',
                 title: t('messages.error'),
-                description: t('pos.skuNotFound') || 'Product not found',
+                description: `${t('pos.skuNotFound')}: ${term}`,
+                duration: 2000,
             })
         }
     }
@@ -611,18 +648,25 @@ export function POS() {
         lastScannedCode.current = text
         lastScannedTime.current = now
 
-        const product = products.find((p) =>
+        const term = text.toLowerCase()
+        const candidates = products.filter((p) =>
             (p.barcode && p.barcode === text) ||
-            p.sku.toLowerCase() === text.toLowerCase()
+            p.sku.toLowerCase() === term
         )
 
-        if (product) {
-            addToCart(product)
+        const exactMatch = candidates.find(p => p.storageId === selectedStorageId)
+        const otherMatch = candidates.find(p => p.storageId !== selectedStorageId)
+
+        if (exactMatch) {
+            addToCart(exactMatch)
             toast({
                 title: t('messages.success'),
-                description: `${product.name} ${t('common.added')}`,
+                description: `${exactMatch.name} ${t('common.added')}`,
                 duration: 2000,
             })
+        } else if (otherMatch) {
+            const storageName = storages.find(s => s.id === otherMatch.storageId)?.name || 'Unknown'
+            setCrossStorageWarning({ product: otherMatch, foundStorageName: storageName })
         } else {
             toast({
                 variant: 'destructive',
@@ -631,7 +675,7 @@ export function POS() {
                 duration: 2000,
             })
         }
-    }, [isScannerAutoEnabled, scanDelay, products, addToCart, t, toast])
+    }, [isScannerAutoEnabled, scanDelay, products, addToCart, t, toast, selectedStorageId, storages])
 
     const handleHoldSale = () => {
         if (cart.length === 0) return
@@ -1167,6 +1211,11 @@ export function POS() {
                     {/* Products Grid */}
                     <div className="flex-1 flex flex-col gap-4">
                         <div className="flex items-center gap-4 bg-card p-4 rounded-xl border border-border shadow-sm">
+                            <StorageSelector
+                                storages={storages}
+                                selectedStorageId={selectedStorageId}
+                                onSelect={setSelectedStorageId}
+                            />
                             <div className="relative flex-1">
                                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                                 <Input
@@ -1853,6 +1902,20 @@ export function POS() {
                 }}
                 saleData={completedSaleData}
                 features={features}
+            />
+
+            <CrossStorageWarningModal
+                isOpen={!!crossStorageWarning}
+                onOpenChange={(open: boolean) => !open && setCrossStorageWarning(null)}
+                productName={crossStorageWarning?.product.name || ''}
+                currentStorageName={storages.find(s => s.id === selectedStorageId)?.name || 'Current'}
+                foundInStorageName={crossStorageWarning?.foundStorageName || 'Unknown'}
+                onConfirm={() => {
+                    if (crossStorageWarning) {
+                        addToCart(crossStorageWarning.product)
+                        setCrossStorageWarning(null)
+                    }
+                }}
             />
         </div >
     )

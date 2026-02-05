@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useProducts, createProduct, updateProduct, deleteProduct, useCategories, createCategory, updateCategory, deleteCategory, type Product, type Category } from '@/local-db'
+import { useProducts, createProduct, updateProduct, deleteProduct, useCategories, createCategory, updateCategory, deleteCategory, useStorages, type Product, type Category } from '@/local-db'
 import type { CurrencyCode } from '@/local-db/models'
 import { formatCurrency, cn } from '@/lib/utils'
 import { p2pSyncManager } from '@/lib/p2pSyncManager'
@@ -56,6 +56,7 @@ type ProductFormData = {
     imageUrl: string
     canBeReturned: boolean
     returnRules: string
+    storageId: string
 }
 
 const initialFormData: ProductFormData = {
@@ -71,7 +72,8 @@ const initialFormData: ProductFormData = {
     currency: 'usd',
     imageUrl: '',
     canBeReturned: true,
-    returnRules: ''
+    returnRules: '',
+    storageId: ''
 }
 
 export function Products() {
@@ -80,6 +82,7 @@ export function Products() {
     const categories = useCategories(user?.workspaceId)
     const { features } = useWorkspace()
     const { t } = useTranslation()
+    const storages = useStorages(user?.workspaceId)
     const canEdit = user?.role === 'admin' || user?.role === 'staff'
     const canDelete = user?.role === 'admin'
     const workspaceId = user?.workspaceId || ''
@@ -129,7 +132,8 @@ export function Products() {
             currency: editingProduct.currency,
             imageUrl: editingProduct.imageUrl || '',
             canBeReturned: editingProduct.canBeReturned ?? true,
-            returnRules: editingProduct.returnRules || ''
+            returnRules: editingProduct.returnRules || '',
+            storageId: editingProduct.storageId || ''
         } : initialFormData
 
         return JSON.stringify(formData) !== JSON.stringify(sourceData)
@@ -227,7 +231,7 @@ export function Products() {
         return platformService.convertFileSrc(url);
     }
 
-    const getCategoryName = (id?: string) => {
+    const getCategoryName = (id?: string | null) => {
         if (!id) return t('categories.noCategory')
         const cat = categories.find(c => c.id === id)
         return cat?.name || t('categories.noCategory')
@@ -237,8 +241,28 @@ export function Products() {
         (p) =>
             p.name.toLowerCase().includes(search.toLowerCase()) ||
             p.sku.toLowerCase().includes(search.toLowerCase()) ||
-            getCategoryName(p.categoryId).toLowerCase().includes(search.toLowerCase())
+            getCategoryName(p.categoryId ? p.categoryId : undefined).toLowerCase().includes(search.toLowerCase()) ||
+            getStorageName(p.storageId).toLowerCase().includes(search.toLowerCase())
     )
+
+    const handleProductDialogChange = (open: boolean) => {
+        if (!open) {
+            if (isProductDirty()) {
+                setShowUnsavedChangesModal(true)
+                setUnsavedChangesType('product')
+                return
+            }
+            setEditingProduct(null)
+            setFormData(initialFormData)
+        }
+        setIsDialogOpen(open)
+    }
+
+    const getStorageName = (id?: string | null) => {
+        if (!id) return ''
+        const s = storages.find(s => s.id === id)
+        return s ? s.name : ''
+    }
 
     const handleOpenDialog = (product?: Product) => {
         setOutsideClickCount(0)
@@ -248,7 +272,7 @@ export function Products() {
                 sku: product.sku,
                 name: product.name,
                 description: product.description,
-                categoryId: product.categoryId,
+                categoryId: product.categoryId || undefined,
                 price: product.price,
                 costPrice: product.costPrice,
                 quantity: product.quantity,
@@ -257,12 +281,15 @@ export function Products() {
                 currency: product.currency,
                 imageUrl: product.imageUrl || '',
                 canBeReturned: product.canBeReturned ?? true,
-                returnRules: product.returnRules || ''
+                returnRules: product.returnRules || '',
+                storageId: product.storageId || ''
             })
         } else {
             setEditingProduct(null)
+            const mainStorage = storages.find(s => s.name === 'Main' && s.isSystem) || storages[0]
             setFormData({
                 ...initialFormData,
+                storageId: mainStorage?.id || '',
                 currency: features.default_currency
             })
         }
@@ -278,10 +305,16 @@ export function Products() {
             const categoryName = formData.categoryId
                 ? categories.find(c => c.id === formData.categoryId)?.name
                 : null
+            const storageName = formData.storageId
+                ? storages.find(s => s.id === formData.storageId)?.name
+                : null
 
             const dataToSave = {
                 ...formData,
                 category: categoryName || undefined,
+                storageName: storageName || undefined,
+                categoryId: formData.categoryId || null,
+                storageId: formData.storageId || null,
                 price: Number(formData.price) || 0,
                 costPrice: Number(formData.costPrice) || 0,
                 quantity: Number(formData.quantity) || 0,
@@ -550,7 +583,10 @@ export function Products() {
                                                                 {product.name}
                                                             </h3>
                                                             <div className="text-[11px] font-bold text-primary/70 uppercase tracking-wide">
-                                                                {getCategoryName(product.categoryId)}
+                                                                {getCategoryName(product.categoryId ? product.categoryId : undefined)}
+                                                            </div>
+                                                            <div className="text-[10px] font-medium text-muted-foreground/80 flex items-center gap-1 mt-1">
+                                                                {getStorageName(product.storageId)}
                                                             </div>
                                                         </div>
 
@@ -599,6 +635,7 @@ export function Products() {
                                                         <TableHead>{t('products.table.sku')}</TableHead>
                                                         <TableHead>{t('products.table.name')}</TableHead>
                                                         <TableHead>{t('products.table.category')}</TableHead>
+                                                        <TableHead>{t('storages.title') || 'Storage'}</TableHead>
                                                         <TableHead className="text-right">{t('products.table.price')}</TableHead>
                                                         <TableHead className="text-right">{t('products.table.stock')}</TableHead>
                                                         {(canEdit || canDelete) && <TableHead className="text-right">{t('common.actions')}</TableHead>}
@@ -608,11 +645,11 @@ export function Products() {
                                                     {filteredProducts.map((product) => (
                                                         <TableRow key={product.id}>
                                                             <TableCell>
-                                                                <div className="w-10 h-10 rounded border bg-muted flex items-center justify-center overflow-hidden">
+                                                                <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center overflow-hidden">
                                                                     {product.imageUrl ? (
                                                                         <img
                                                                             src={getDisplayImageUrl(product.imageUrl)}
-                                                                            alt=""
+                                                                            alt={product.name}
                                                                             className="w-full h-full object-cover"
                                                                         />
                                                                     ) : (
@@ -623,6 +660,7 @@ export function Products() {
                                                             <TableCell className="font-mono text-sm">{product.sku}</TableCell>
                                                             <TableCell className="font-medium">{product.name}</TableCell>
                                                             <TableCell>{getCategoryName(product.categoryId)}</TableCell>
+                                                            <TableCell>{getStorageName(product.storageId)}</TableCell>
                                                             <TableCell className="text-right">
                                                                 {formatCurrency(product.price, product.currency, features.iqd_display_preference)}
                                                             </TableCell>
@@ -661,7 +699,7 @@ export function Products() {
             </Card>
 
             {/* Add/Edit Dialog */}
-            < Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen} >
+            < Dialog open={isDialogOpen} onOpenChange={handleProductDialogChange} >
                 <DialogContent
                     className="max-w-2xl w-[95vw] sm:w-full max-h-[90vh] overflow-y-auto"
                     onPointerDownOutside={handleProductOutsideClick}
@@ -733,6 +771,26 @@ export function Products() {
                                     </SelectContent>
                                 </Select>
                             </div>
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label htmlFor="storage">{t('storages.title') || 'Storage'}</Label>
+                            <Select
+                                value={formData.storageId}
+                                onValueChange={(value) => setFormData({ ...formData, storageId: value })}
+                                disabled={!!editingProduct && !isDialogOpen} // Only allow changing on creation or explicit edit
+                            >
+                                <SelectTrigger>
+                                    <SelectValue placeholder={t('storages.selectStorage') || 'Select Storage'} />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {storages.map((storage) => (
+                                        <SelectItem key={storage.id} value={storage.id}>
+                                            {storage.name} {storage.isSystem ? `(${t('storages.system') || 'System'})` : ''}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
                         </div>
 
                         <div className="grid gap-4 md:grid-cols-3">

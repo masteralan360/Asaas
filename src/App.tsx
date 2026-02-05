@@ -36,6 +36,9 @@ const WhatsApp = lazy(() => import('@/ui/pages/WhatsAppWeb').then(m => ({ defaul
 const Suppliers = lazy(() => import('@/ui/pages/Suppliers').then(m => ({ default: m.default })))
 const Customers = lazy(() => import('@/ui/pages/Customers').then(m => ({ default: m.default })))
 const Orders = lazy(() => import('@/ui/pages/Orders').then(m => ({ default: m.default })))
+const Storages = lazy(() => import('@/ui/pages/Storages').then(m => ({ default: m.default })))
+const InventoryTransfer = lazy(() => import('@/ui/pages/InventoryTransfer').then(m => ({ default: m.default })))
+
 
 // @ts-ignore
 const isTauri = !!window.__TAURI_INTERNALS__
@@ -369,6 +372,20 @@ function App() {
                                             </ProtectedRoute>
                                         </Route>
 
+                                        <Route path="/storages">
+                                            <ProtectedRoute>
+                                                <Layout>
+                                                    <Storages />
+                                                </Layout>
+                                            </ProtectedRoute>
+                                        </Route>
+                                        <Route path="/inventory-transfer">
+                                            <ProtectedRoute>
+                                                <Layout>
+                                                    <InventoryTransfer />
+                                                </Layout>
+                                            </ProtectedRoute>
+                                        </Route>
 
                                         <Route path="/invoices-history">
                                             <ProtectedRoute requiredFeature="allow_invoices">

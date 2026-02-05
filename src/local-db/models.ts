@@ -36,8 +36,10 @@ export interface Product extends BaseEntity {
     sku: string
     name: string
     description: string
-    categoryId?: string
+    categoryId?: string | null
     category?: string
+    storageId?: string | null
+    storageName?: string
     price: number
     costPrice: number
     quantity: number
@@ -55,6 +57,13 @@ export interface Category extends BaseEntity {
     name: string
     description?: string
 }
+
+export interface Storage extends BaseEntity {
+    name: string
+    isSystem: boolean
+    isProtected: boolean
+}
+
 
 export interface Supplier extends BaseEntity {
     name: string
@@ -252,7 +261,7 @@ export interface SaleItem {
 // Sync Queue Item for tracking pending changes
 export interface SyncQueueItem {
     id: string
-    entityType: 'products' | 'customers' | 'suppliers' | 'purchase_orders' | 'sales_orders' | 'invoices' | 'users' | 'sales' | 'categories'
+    entityType: 'products' | 'customers' | 'suppliers' | 'purchase_orders' | 'sales_orders' | 'invoices' | 'users' | 'sales' | 'categories' | 'storages'
     entityId: string
     operation: 'create' | 'update' | 'delete'
     data: Record<string, unknown>
@@ -286,7 +295,7 @@ export interface Workspace extends BaseEntity {
 export interface OfflineMutation {
     id: string
     workspaceId: string
-    entityType: 'products' | 'customers' | 'suppliers' | 'purchase_orders' | 'sales_orders' | 'invoices' | 'users' | 'sales' | 'categories' | 'workspaces'
+    entityType: 'products' | 'customers' | 'suppliers' | 'purchase_orders' | 'sales_orders' | 'invoices' | 'users' | 'sales' | 'categories' | 'workspaces' | 'storages'
     entityId: string
     operation: 'create' | 'update' | 'delete'
     payload: Record<string, unknown>

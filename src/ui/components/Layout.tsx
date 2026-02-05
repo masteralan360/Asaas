@@ -37,7 +37,9 @@ import {
     MessageSquare,
     Truck,
     Users,
-    ShoppingBag
+    ShoppingBag,
+    Warehouse,
+    ArrowRightLeft
 } from 'lucide-react'
 import { useState } from 'react'
 import { Button } from './button'
@@ -169,6 +171,10 @@ export function Layout({ children }: LayoutProps) {
         ] : []),
         // Products - always visible
         { name: t('nav.products'), href: '/products', icon: Package },
+        // Storages - always visible
+        { name: t('nav.storages') || 'Storages', href: '/storages', icon: Warehouse },
+        // Inventory Transfer
+        { name: t('nav.inventoryTransfer') || 'Transfer', href: '/inventory-transfer', icon: ArrowRightLeft },
         // Suppliers
         ...(hasFeature('allow_suppliers') ? [
             { name: t('nav.suppliers') || 'Suppliers', href: '/suppliers', icon: Truck }

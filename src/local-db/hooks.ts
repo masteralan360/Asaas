@@ -235,7 +235,7 @@ export async function createProduct(workspaceId: string, data: Omit<Product, 'id
 
     if (isOnline()) {
         // ONLINE
-        const payload = toSnakeCase({ ...product, syncStatus: undefined, lastSyncedAt: undefined })
+        const payload = toSnakeCase({ ...product, syncStatus: undefined, lastSyncedAt: undefined, storageName: undefined })
         const { error } = await supabase.from('products').insert(payload)
 
         if (error) {
@@ -269,7 +269,7 @@ export async function updateProduct(id: string, data: Partial<Product>): Promise
 
     if (isOnline()) {
         // ONLINE
-        const payload = toSnakeCase({ ...data, updatedAt: now })
+        const payload = toSnakeCase({ ...data, updatedAt: now, storageName: undefined })
         const { error } = await supabase.from('products').update(payload).eq('id', id)
 
         if (error) throw error
@@ -1208,5 +1208,195 @@ export function useDashboardStats(workspaceId: string | undefined) {
         statsByCurrency: {},
         grossRevenueByCurrency: {}
     }
+}
+
+// ===================
+// STORAGES HOOKS
+// ===================
+
+import type { Storage } from './models'
+
+export function useStorages(workspaceId: string | undefined) {
+    const online = useNetworkStatus()
+
+    const storages = useLiveQuery(
+        () => workspaceId ? db.storages.where('workspaceId').equals(workspaceId).and(s => !s.isDeleted).toArray() : [],
+        [workspaceId]
+    )
+
+    useEffect(() => {
+        async function fetchFromSupabase() {
+            if (online && workspaceId) {
+                const { data, error } = await supabase
+                    .from('storages')
+                    .select('*')
+                    .eq('workspace_id', workspaceId)
+                    .eq('is_deleted', false)
+
+                if (data && !error) {
+                    await db.transaction('rw', db.storages, async () => {
+                        const remoteIds = new Set(data.map(d => d.id))
+                        const localItems = await db.storages.where('workspaceId').equals(workspaceId).toArray()
+
+                        for (const local of localItems) {
+                            if (!remoteIds.has(local.id) && local.syncStatus === 'synced') {
+                                await db.storages.delete(local.id)
+                            }
+                        }
+
+                        for (const remoteItem of data) {
+                            const localItem = toCamelCase(remoteItem as any) as unknown as Storage
+                            localItem.syncStatus = 'synced'
+                            localItem.lastSyncedAt = new Date().toISOString()
+                            await db.storages.put(localItem)
+                        }
+                    })
+                }
+            }
+        }
+        fetchFromSupabase()
+    }, [online, workspaceId])
+
+    return storages ?? []
+}
+
+export async function createStorage(workspaceId: string, data: { name: string }): Promise<Storage> {
+    const now = new Date().toISOString()
+    const id = generateId()
+
+    const storage: Storage = {
+        id,
+        workspaceId,
+        name: data.name,
+        isSystem: false,
+        isProtected: false,
+        createdAt: now,
+        updatedAt: now,
+        syncStatus: (isOnline() ? 'synced' : 'pending') as any,
+        lastSyncedAt: isOnline() ? now : null,
+        version: 1,
+        isDeleted: false
+    }
+
+    await db.storages.put(storage)
+
+    await db.storages.put(storage)
+
+    if (isOnline()) {
+        const payload = toSnakeCase({
+            ...storage,
+            syncStatus: undefined,
+            lastSyncedAt: undefined,
+            version: undefined
+        })
+
+        const { error } = await supabase
+            .from('storages')
+            .insert(payload as any)
+
+        if (error) {
+            console.error('[Storage] Create sync failed:', error)
+            await db.storages.update(id, { syncStatus: 'pending' })
+            await addToOfflineMutations('storages', id, 'create', payload as any, workspaceId)
+        }
+    } else {
+        const payload = toSnakeCase({
+            ...storage,
+            syncStatus: undefined,
+            lastSyncedAt: undefined,
+            version: undefined
+        })
+        await addToOfflineMutations('storages', id, 'create', payload as any, workspaceId)
+    }
+
+    return storage
+}
+
+export async function updateStorage(id: string, data: Partial<Pick<Storage, 'name'>>): Promise<void> {
+    const existing = await db.storages.get(id)
+    if (!existing) return
+
+    // Protect system storages from name changes
+    if (existing.isSystem && data.name) {
+        console.warn('[Storage] Cannot rename system storage')
+        return
+    }
+
+    const now = new Date().toISOString()
+    await db.storages.update(id, { ...data, updatedAt: now, syncStatus: 'pending' })
+
+    if (isOnline()) {
+        const { error } = await supabase
+            .from('storages')
+            .update({ ...toSnakeCase(data), updated_at: now })
+            .eq('id', id)
+
+        if (!error) {
+            await db.storages.update(id, { syncStatus: 'synced', lastSyncedAt: now })
+        } else {
+            await addToOfflineMutations('storages', id, 'update', toSnakeCase(data) as any, existing.workspaceId)
+        }
+    } else {
+        await addToOfflineMutations('storages', id, 'update', toSnakeCase(data) as any, existing.workspaceId)
+    }
+}
+
+export async function deleteStorage(id: string, moveProductsToStorageId: string): Promise<{ success: boolean, movedCount: number }> {
+    const existing = await db.storages.get(id)
+    if (!existing) return { success: false, movedCount: 0 }
+
+    // Protect system storages
+    if (existing.isProtected || existing.isSystem) {
+        console.warn('[Storage] Cannot delete protected/system storage')
+        return { success: false, movedCount: 0 }
+    }
+
+    // Move all products in this storage to the target storage
+    const productsToMove = await db.products.where('storageId').equals(id).toArray()
+    const now = new Date().toISOString()
+
+    for (const product of productsToMove) {
+        await db.products.update(product.id, { storageId: moveProductsToStorageId, updatedAt: now, syncStatus: 'pending' })
+
+        if (isOnline()) {
+            const { error } = await supabase
+                .from('products')
+                .update({ storage_id: moveProductsToStorageId, updated_at: now })
+                .eq('id', product.id)
+
+            if (!error) {
+                await db.products.update(product.id, { syncStatus: 'synced', lastSyncedAt: now })
+            } else {
+                await addToOfflineMutations('products', product.id, 'update', { storage_id: moveProductsToStorageId }, existing.workspaceId)
+            }
+        } else {
+            await addToOfflineMutations('products', product.id, 'update', { storage_id: moveProductsToStorageId }, existing.workspaceId)
+        }
+    }
+
+    // Soft delete the storage
+    await db.storages.update(id, { isDeleted: true, updatedAt: now, syncStatus: 'pending' })
+
+    if (isOnline()) {
+        const { error } = await supabase
+            .from('storages')
+            .update({ is_deleted: true, updated_at: now })
+            .eq('id', id)
+
+        if (!error) {
+            await db.storages.update(id, { syncStatus: 'synced', lastSyncedAt: now })
+        } else {
+            await addToOfflineMutations('storages', id, 'update', { is_deleted: true } as any, existing.workspaceId)
+        }
+    } else {
+        await addToOfflineMutations('storages', id, 'update', { is_deleted: true } as any, existing.workspaceId)
+    }
+
+    return { success: true, movedCount: productsToMove.length }
+}
+
+export async function getReserveStorageId(workspaceId: string): Promise<string | null> {
+    const reserve = await db.storages.where('workspaceId').equals(workspaceId).and(s => s.name === 'Reserve' && !s.isDeleted).first()
+    return reserve?.id ?? null
 }
 
