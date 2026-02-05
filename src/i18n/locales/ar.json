@@ -13,7 +13,9 @@
         "delete": "حذف",
         "edit": "تعديل",
         "create": "إنشاء",
+        "selected": "مختار",
         "search": "بحث...",
+        "searchBox": "صندوق البحث",
         "actions": "إجراءات",
         "confirm": "تأكيد",
         "error": "خطأ",
@@ -26,9 +28,12 @@
         "price": "السعر",
         "total": "الإجمالي",
         "signOut": "الخروح من الحساب",
-        "offline": "غير متصل",
+        "add": "إضافة",
+        "each": "لكل",
         "snapshots": "في وقت البيع",
+        "added": "تمت الإضافة",
         "to": "إلى",
+        "offline": "غير متصل",
         "continue": "متابعة",
         "back": "رجوع",
         "done": "تم",
@@ -37,8 +42,13 @@
         "view": "عرض",
         "all": "الكل",
         "print": "طباعة",
+        "messages": {
+            "deleteConfirm": "هل أنت متأكد أنك تريد حذف هذا العنصر؟",
+            "deleteSuccess": "تم حذف العنصر بنجاح",
+            "deleteError": "فشل حذف العنصر"
+        },
         "unsavedChanges": {
-            "title": "تغييرات غير محفوظة",
+            "title": "تغيير غير محفوظ",
             "message": "لديك تغييرات غير محفوظة. هل ترغب في حفظها الآن أم تجاهل كل شيء؟",
             "save": "حفظ التغييرات",
             "discard": "تجاهل التغييرات",
@@ -49,10 +59,7 @@
     },
     "messages": {
         "saleCompleted": "تم إتمام البيع بنجاح",
-        "success": "نجاح",
-        "error": "خطأ",
-        "warning": "تحذير",
-        "info": "معلومات"
+        "success": "نجاح"
     },
     "exchange": {
         "manual": "يدوي",
@@ -89,16 +96,22 @@
         "invoices": "الفواتير",
         "pos": "نقاط البيع",
         "sales": "المبيعات",
-        "revenue": "صافي الإيرادات",
+        "storages": "المخازن",
+        "inventoryTransfer": "انتقال المخزون",
         "suppliers": "الموردين",
-        "invoicesHistory": "سجل الفواتير",
+        "revenue": "صافي الإيرادات",
         "performance": "أداء الفريق",
+        "invoicesHistory": "سجل الفواتير",
         "settings": "الإعدادات",
         "whatsapp": "واتساب",
         "currencyConverter": "محول العملات",
         "members": "الأعضاء",
         "tools": "أدوات",
         "actions": "إجراءات"
+    },
+    "report": {
+        "print": "طباعة تقرير الأداء",
+        "generatedOn": "تم إنشاء التقرير في"
     },
     "products": {
         "title": "المنتجات",
@@ -107,6 +120,26 @@
         "addCategory": "إضافة فئة",
         "searchPlaceholder": "البحث عن منتجات...",
         "inStock": "متوفر",
+        "receipt": {
+            "title": "وصل البيع",
+            "date": "التاريخ",
+            "time": "الوقت",
+            "orderId": "رقم الطلب",
+            "product": "المنتج",
+            "qty": "الكمية",
+            "price": "السعر",
+            "total": "الإجمالي",
+            "subtotal": "المجموع الفرعي",
+            "discount": "الخصم",
+            "payment": "طريقة الدفع",
+            "cashier": "الكاشير",
+            "thankYou": "شكراً لتعاملكم معنا!",
+            "reprint": "إعادة طباعة الوصل"
+        },
+        "view": {
+            "table": "تفاصيل المنتج",
+            "grid": "شبكة المنتجات"
+        },
         "table": {
             "image": "الصورة",
             "name": "الاسم",
@@ -119,19 +152,15 @@
             "lowStock": "مخزون منخفض",
             "outOfStock": "نفد المخزون"
         },
-        "view": {
-            "table": "تفاصيل المنتج",
-            "grid": "تفاصيل المنتج"
-        },
         "form": {
             "title": "تفاصيل المنتج",
             "name": "اسم المنتج",
             "sku": "رمز الصنف (SKU)",
-            "price": "السعر",
-            "cost": "التكلفة",
-            "stock": "كمية المخزون",
-            "minStock": "الحد الأدنى للمخزون",
+            "price": "سعر البيع",
+            "cost": "سعر التكلفة",
             "imageError": "فشل رفع الصورة. يرجى المحاولة مرة أخرى.",
+            "stock": "المخزون الأولي",
+            "minStock": "الحد الأدنى للمخزون",
             "category": "الفئة",
             "unit": "الوحدة",
             "description": "الوصف (اختياري)",
@@ -156,6 +185,7 @@
         "messages": {
             "addSuccess": "تم إضافة المنتج بنجاح",
             "updateSuccess": "تم تحديث المنتج بنجاح",
+            "deleteSuccess": "تم حذف المنتج بنجاح",
             "deleteConfirm": "هل أنت متأكد أنك تريد حذف هذا المنتج؟"
         },
         "confirmDelete": "حذف المنتج",
@@ -281,7 +311,7 @@
             "table": {
                 "product": "المنتج",
                 "qty": "الكمية",
-                "price": "السعر",
+                "price": "سعر الوحدة",
                 "total": "الإجمالي"
             },
             "noItems": "لا توجد عناصر مضافة.",
@@ -301,46 +331,17 @@
         "deleteWarning": "سيؤدي هذا إلى إزالة سجل الطلب نهائياً. يجب التحقق من الفواتير المرتبطة."
     },
     "invoices": {
-        "title": "الفواتير",
-        "subtitle": "إجمالي الفواتير",
-        "createInvoice": "إنشاء فاتورة",
-        "searchPlaceholder": "البحث عن فواتير...",
+        "historyTitle": "سجل الفواتير",
+        "historySubtitle": "إجمالي الفواتير",
+        "searchPlaceholder": "البحث عن فواتير",
         "listTitle": "قائمة الفواتير",
         "table": {
+            "created": "تاريخ الإنشاء",
             "invoiceid": "رقم الفاتورة",
-            "customer": "العميل",
-            "status": "الحالة",
-            "total": "الإجمالي",
-            "dueDate": "تاريخ الاستحقاق",
-            "created": "تاريخ الإنشاء"
-        },
-        "stats": {
-            "revenue": "إجمالي الإيرادات (المدفوعة)",
-            "pending": "المبالغ المعلقة"
-        },
-        "status": {
-            "draft": "مسودة",
-            "sent": "مرسلة",
-            "paid": "مدفوعة",
-            "overdue": "متأخرة",
-            "cancelled": "ملغية"
-        },
-        "form": {
-            "createTitle": "إنشاء فاتورة من طلب",
-            "editTitle": "تعديل الفاتورة",
-            "selectOrder": "اختر الطلب",
-            "selectOrderPlaceholder": "اختر طلباً...",
-            "customer": "العميل",
-            "total": "الإجمالي",
-            "status": "الحالة",
-            "dueDate": "تاريخ الاستحقاق",
-            "notes": "ملاحظات (اختياري)"
-        },
-        "messages": {
-            "deleteConfirm": "هل أنت متأكد أنك تريد حذف هذه الفاتورة؟"
-        },
-        "confirmDelete": "حذف الفاتورة",
-        "deleteWarning": "حذف هذه الفاتورة سيزيل السجل المالي. سيبقى الطلب الأساسي."
+            "createdBy": "بواسطة",
+            "origin": "المصدر",
+            "total": "الإجمالي"
+        }
     },
     "auth": {
         "systemName": "Asaas System",
@@ -373,6 +374,8 @@
         "role": "الدور",
         "workspaceName": "اسم مساحة العمل",
         "workspaceCode": "رمز مساحة العمل",
+        "uploadLogo": "رفع الشعار",
+        "logoNote": "الصور مخزنة محلياً على هذا الجهاز",
         "copyCode": "نسخ الرمز",
         "copied": "تم النسخ!",
         "members": "أعضاء مساحة العمل",
@@ -418,8 +421,8 @@
         },
         "tabs": {
             "general": "الإعدادات العامة",
-            "advanced": "الإعدادات المتقدمة",
-            "profile": "إعدادات الملف الشخصي"
+            "profile": "إعدادات الملف الشخصي",
+            "advanced": "الإعدادات المتقدمة"
         },
         "appearance": "المظهر",
         "appearanceDesc": "تخصيص شكل ومظهر التطبيق",
@@ -428,7 +431,7 @@
         "theme": {
             "title": "تفضيلات السمة",
             "style": "نمط السمة",
-            "primary": "نمط الرئيسي",
+            "primary": "الأساسي",
             "modern": "عصري (بريميوم)",
             "legacy": "تقليدي (كلاسيكي)",
             "light": "فاتح",
@@ -488,7 +491,7 @@
             "title": "العملة",
             "desc": "تعيين العملة الافتراضية لمساحة العمل الخاصة بك.",
             "default": "العملة الافتراضية",
-            "iqdPreference": "إظهار العملة"
+            "iqdPreference": "تفضيلات عرض الدينار"
         },
         "exchangeRate": {
             "title": "مصدر سعر الصرف",
@@ -508,7 +511,7 @@
             "trySource": "مصدر الليرة التركية/دينار",
             "forexfy_try": "Forexfy الليرة التركية (السوق السوداء)",
             "dolardinar_try": "DolarDinar.com ليرة (ورقة السوق)",
-            "lastUpdate": "آخر تحديث",
+            "lastUpdated": "آخر تحديث",
             "addManual": "إضافة سعر صرف يدوياً",
             "manual": "إدخال يدوياً",
             "threshold": "حد تنبيه السعر اليدوي (دينار)",
@@ -536,7 +539,7 @@
         "allSynced": "تمت مزامنة جميع البيانات!",
         "syncNow": "مزامنة الآن",
         "syncingBtn": "جاري المزامنة...",
-        "discardBtn": "⚠️تجاهل التغييرات",
+        "discardBtn": "تجاهل التغييرات",
         "confirmDiscard": "تأكيد التجاهل",
         "discardDescription": "هل أنت متأكد من رغبتك في تجاهل {{count}} تغييرات معلقة؟ لا يمكن التراجع عن هذا الإجراء وستفقد تعديلاتك غير المتصلة بشكل دائم.",
         "yesDiscard": "نعم، تجاهل الكل",
@@ -565,6 +568,9 @@
         "cannotKickAdmin": "لا يمكن طرد مسؤولين آخرين",
         "you": "أنت"
     },
+    "return": {
+        "continueWithReturnable": "المتابعة مع المنتجات القابلة للإرجاع"
+    },
     "workspaceRegistration": {
         "title": "الانضمام إلى مساحة عمل",
         "subtitle": "أدخل رمز مساحة العمل للانضمام",
@@ -575,14 +581,16 @@
         "codeHint": "اطلب رمز مساحة العمل من المسؤول"
     },
     "pos": {
-        "error": "حدث خطأ",
-        "exchangeRateError": "سعر الصرف غير متاح. تم إيقاف الدفع.",
-        "eurDisabled": "تحويل اليورو معطل.",
-        "tryDisabled": "تحويل الليرة التركية معطل.",
+        "currencyError": "خطأ في العملة",
+        "currencyErrorDesc": "يرجى تعيين العملة الافتراضية في الإعدادات.",
         "title": "نقطة البيع",
-        "searchPlaceholder": "البحث عن المنتجات...",
+        "saleSuccessful": "تم البيع بنجاح",
+        "newSale": "متابعة",
+        "searchPlaceholder": "البحث عن منتجات...",
         "currentSale": "البيع الحالي",
         "checkout": "إتمام البيع",
+        "offlineTitle": "تم الحفظ بدون اتصال",
+        "offlineDesc": "تم حفظ عملية البيع محلياً وستتم مزامنتها عند الاتصال بالإنترنت.",
         "enterSku": "أدخل SKU",
         "skuNotFound": "المنتج غير موجود",
         "sku": "SKU",
@@ -596,6 +604,9 @@
         "scannerDisabled": "الماسح معطل",
         "cameraNotFound": "لم يتم العثور على كاميرا",
         "permissionDenied": "تم رفض الوصول للكاميرا",
+        "exchangeRateError": "سعر الصرف غير متاح. تم إيقاف الدفع.",
+        "eurDisabled": "تحويل اليورو معطل.",
+        "tryDisabled": "تحويل الليرة التركية معطل.",
         "modifyPrice": "تعديل السعر",
         "negotiatedPrice": "سعر التفاوض",
         "originalPriceLabel": "السعر الأصلي",
@@ -650,40 +661,23 @@
         "origin": "المصدر",
         "total": "المجموع",
         "details": "تفاصيل البيع",
+        "flagged": "بيع مشبوه",
         "id": "رقم البيع",
         "paymentMethod": "طريقة الدفع",
-        "flagged": "بيع مشبوه",
         "filters": {
             "cashier": "الكاشير",
             "allCashiers": "جميع الكاشير"
         },
         "print": {
-            "receipt": "طباعة وصل ",
+            "receipt": "طباعة وصل",
             "a4": "طباعة A4",
             "receiptdesc": "وصل 80mm",
-            "a4desc": "A4 وصل"
+            "a4desc": "وصل A4 مفصل"
         },
         "return": {
-            "title": "إرجاع المنتجات",
-            "selectItems": "اختر المنتجات المراد إرجاعها",
-            "confirm": "تأكيد الإرجاع",
-            "reason": "سبب الإرجاع",
-            "quantity": "الكمية",
-            "max": "الحد الأقصى",
-            "select_quantity": "اختر الكمية المراد إرجاعها من {{name}} (الحد الأقصى {{max}})",
-            "customer_returned": "إرجاع العميل",
-            "wrong_item": "منتج خاطئ",
-            "pricing_mistake": "خطأ في التسعير",
-            "damaged_product": "منتج تالف",
-            "duplicate_sale": "بيع مكرر",
-            "other": "أخرى",
-            "restrictions": {
-                "title": "لا يمكن إرجاع بعض المنتجات",
-                "message": "لا يمكن إرجاع المنتجات التالية وفقاً لسياسة المتجر أو طبيعة المنتج:",
-                "sequential_rules": "قواعد الإرجاع لـ {{product}}"
-            },
-            "continueWithReturnable": "المتابعة مع المنتجات القابلة للإرجاع",
+            "returnedMessage": "لقد تم إرجاع هذا البيع",
             "confirmTitle": "إرجاع البيع",
+            "partialReturnDetected": "تم إرجاع هذا البيع جزئياً بالفعل",
             "confirmMessage": "هل أنت متأكد من أنك تريد إرجاع هذا البيع؟",
             "confirmReturn": "تأكيد الإرجاع",
             "selectReason": "حدد سبب الإرجاع",
@@ -716,27 +710,6 @@
         "thankYou": "شكراً لتسوقكم معنا!",
         "keepRecord": "يرجى الاحتفاظ بهذا الإيصال لسجلاتك."
     },
-    "offlineTitle": "تم الحفظ بدون اتصال",
-    "offlineDesc": "تم حفظ عملية البيع محلياً وستتم مزامنتها عند الاتصال بالإنترنت.",
-    "workspaceConfig": {
-        "title": "إعداد مساحة العمل",
-        "subtitle": "اختر الميزات التي تريد تفعيلها لمساحة عملك. يمكنك تغيير هذه الإعدادات لاحقاً.",
-        "workspaceName": "مساحة العمل",
-        "uploadLogo": "رفع الشعار",
-        "logoNote": "يتم تخزين الصور محلياً على هذا الجهاز",
-        "continue": "المتابعة إلى لوحة التحكم",
-        "note": "المنتجات وسجل المبيعات مفعلة دائماً. يمكنك تعديل هذه الإعدادات في أي وقت من صفحة الإعدادات.",
-        "features": {
-            "pos": "نقطة البيع (POS)",
-            "posDesc": "تفعيل وظائف البيع السريع والدفع",
-            "customers": "إدارة العملاء",
-            "customersDesc": "تتبع وإدارة معلومات العملاء",
-            "orders": "إدارة الطلبات",
-            "ordersDesc": "إنشاء وتتبع طلبات العملاء",
-            "invoices": "الفواتير",
-            "invoicesDesc": "إنشاء وإدارة الفواتير"
-        }
-    },
     "categories": {
         "title": "الفئات",
         "subtitle": "إدارة فئات المنتجات",
@@ -752,6 +725,7 @@
             "addSuccess": "تم إضافة الفئة بنجاح",
             "updateSuccess": "تم تحديث الفئة بنجاح",
             "deleteSuccess": "تم حذف الفئة بنجاح",
+            "deleteConfirm": "هل أنت متأكد أنك تريد حذف هذه الفئة؟ ستبقى المنتجات ولكن بدون فئة.",
             "duplicateName": "هناك فئة بهذا الاسم موجودة بالفعل."
         },
         "confirmDelete": "حذف الفئة",
@@ -763,7 +737,7 @@
         "printList": "طباعة قائمة الإيرادات",
         "subtitle": "تتبع مبيعاتك وربحيتك",
         "grossRevenue": "إجمالي الإيرادات",
-        "totalCost": "إجمالي التكلفة",
+        "totalCost": "إجمالي التكلفة (COGS)",
         "netProfit": "صافي الربح",
         "profitMargin": "هامش الربح",
         "detailedAnalysis": "تحليل مفصل للأداء والاتجاهات",
@@ -789,14 +763,14 @@
         "peakTimesDesc": "توزيع المبيعات حسب ساعات اليوم",
         "peakHour": "ساعة الذروة",
         "totalTransactions": "إجمالي المعاملات",
-        "hourlyDistribution": "التوزيع بالساعة",
+        "transactions": "المعاملات",
         "hourly": "بالساعة",
         "heatmap": "خريطة حرارية",
         "weeklyHeatmap": "خريطة حرارية أسبوعية",
         "less": "أقل",
         "more": "أكثر",
         "salesCount": "مبيعات",
-        "transactions": "المعاملات",
+        "hourlyDistribution": "التوزيع بالساعة",
         "returns": "تحليل المرتجعات",
         "returnsDesc": "تتبع المبالغ المستردة والمرتجعات",
         "totalReturns": "إجمالي المرتجعات",
@@ -866,6 +840,83 @@
             "description": "يلخص هذا التقرير أداء المبيعات للفترة المختارة. يتم حساب الإيرادات بناءً على إجمالي التسويات لكل موظف. يتم تحديد الأهداف بناءً على عدد المبيعات المكتملة.",
             "signature": "التوقيع المعتمد"
         }
+    },
+    "workspaceConfig": {
+        "title": "إعداد مساحة العمل",
+        "subtitle": "اختر الميزات التي تريد تفعيلها لمساحة عملك. يمكنك تغيير هذه الإعدادات لاحقاً.",
+        "workspaceName": "مساحة العمل",
+        "uploadLogo": "رفع الشعار",
+        "logoNote": "الصور مخزنة محلياً على هذا الجهاز",
+        "continue": "المتابعة إلى لوحة التحكم",
+        "note": "المنتجات وسجل المبيعات مفعلة دائماً. يمكنك تعديل هذه الإعدادات في أي وقت من صفحة الإعدادات.",
+        "features": {
+            "pos": "نقطة البيع (POS)",
+            "posDesc": "تفعيل وظائف البيع السريع والدفع",
+            "customers": "إدارة العملاء",
+            "customersDesc": "تتبع وإدارة معلومات العملاء",
+            "orders": "إدارة الطلبات",
+            "ordersDesc": "إنشاء وتتبع طلبات العملاء",
+            "invoices": "الفواتير",
+            "invoicesDesc": "إنشاء وإدارة الفواتير"
+        }
+    },
+    "storages": {
+        "title": "المخازن",
+        "subtitle": "إدارة مواقع التخزين الخاصة بك.",
+        "main": "الرئيسي",
+        "reserve": "الاحتياط",
+        "addStorage": "مخزن جديد",
+        "editStorage": "تعديل المخزن",
+        "selectStorage": "المخزن الحالي",
+        "searchPlaceholder": "البحث في المخازن...",
+        "listTitle": "مواقع التخزين",
+        "system": "نظام",
+        "custom": "مخصص",
+        "label": "اختر المخزن",
+        "totalItems": "العناصر المطابقة",
+        "tryDifferentFilter": "حاول ضبط الفلاتر أو البحث",
+        "noReserve": "مخزن الاحتياط غير موجود",
+        "created": "تم إنشاء المخزن بنجاح",
+        "updated": "تم تحديث المخزن بنجاح",
+        "deleted": "تم حذف المخزن",
+        "productsMoved": "تم نقل {{count}} منتج إلى الاحتياط",
+        "confirmDelete": "حذف المخزن",
+        "tabs": {
+            "locations": "المواقع",
+            "inventory": "جرد المخزن"
+        },
+        "table": {
+            "name": "الاسم",
+            "type": "النوع",
+            "actions": "الإجراءات"
+        },
+        "form": {
+            "name": "اسم المخزن",
+            "namePlaceholder": "مثال: المستودع أ"
+        },
+        "messages": {
+            "deleteConfirm": "سيتم نقل المنتجات في هذا المخزن إلى الاحتياط. هل تريد الاستمرار؟"
+        }
+    },
+    "inventoryTransfer": {
+        "title": "تحويل المخزون",
+        "subtitle": "نقل المنتجات بين مواقع التخزين.",
+        "selectSource": "اختر المصدر",
+        "sourceDescription": "اختر المخزن للنقل منه",
+        "selectStorage": "اختر المخزن...",
+        "productsAvailable": "منتجات متاحة",
+        "selectProducts": "اختر المنتجات",
+        "productsDescription": "اختر المنتجات المراد نقلها",
+        "selectSourceFirst": "اختر مخزن المصدر أولاً",
+        "noProducts": "لا توجد منتجات في هذا المخزن",
+        "selectDestination": "اختر الوجهة",
+        "destinationDescription": "اختر المخزن المستهدف",
+        "productsSelected": "منتجات مختارة",
+        "transferring": "جاري التحويل...",
+        "confirmTransfer": "تأكيد التحويل",
+        "success": "اكتمل التحويل",
+        "successMessage": "تم نقل {{count}} منتج إلى {{storage}}",
+        "error": "فشل نقل المنتجات"
     },
     "updater": {
         "available": "تحديث متاح",

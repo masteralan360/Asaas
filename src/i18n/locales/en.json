@@ -96,6 +96,8 @@
         "invoices": "Invoices",
         "pos": "Point of Sale",
         "sales": "Sales History",
+        "storages": "Storages",
+        "inventoryTransfer": "Inventory Transfer",
         "suppliers": "Suppliers",
         "revenue": "Net Revenue",
         "performance": "Team Performance",
@@ -857,6 +859,64 @@
             "invoices": "Invoicing",
             "invoicesDesc": "Generate and manage invoices"
         }
+    },
+    "storages": {
+        "title": "Storages",
+        "subtitle": "Manage your storage locations.",
+        "main": "Main",
+        "reserve": "Reserve",
+        "addStorage": "New Storage",
+        "editStorage": "Edit Storage",
+        "selectStorage": "Active Storage",
+        "searchPlaceholder": "Search storages...",
+        "listTitle": "Storage Locations",
+        "system": "System",
+        "custom": "Custom",
+        "label": "Select Storage",
+        "totalItems": "Matched Items",
+        "tryDifferentFilter": "Try adjusting your filters or search",
+        "noReserve": "Reserve storage not found",
+        "created": "Storage created successfully",
+        "updated": "Storage updated successfully",
+        "deleted": "Storage deleted",
+        "productsMoved": "{{count}} products moved to Reserve",
+        "confirmDelete": "Delete Storage",
+        "tabs": {
+            "locations": "Locations",
+            "inventory": "Storage Inventory"
+        },
+        "table": {
+            "name": "Name",
+            "type": "Type",
+            "actions": "Actions"
+        },
+        "form": {
+            "name": "Storage Name",
+            "namePlaceholder": "e.g. Warehouse A"
+        },
+        "messages": {
+            "deleteConfirm": "Products in this storage will be moved to Reserve. Continue?"
+        }
+    },
+    "inventoryTransfer": {
+        "title": "Inventory Transfer",
+        "subtitle": "Move products between storage locations.",
+        "selectSource": "Select Source",
+        "sourceDescription": "Choose storage to transfer from",
+        "selectStorage": "Select storage...",
+        "productsAvailable": "products available",
+        "selectProducts": "Select Products",
+        "productsDescription": "Choose products to transfer",
+        "selectSourceFirst": "Select a source storage first",
+        "noProducts": "No products in this storage",
+        "selectDestination": "Select Destination",
+        "destinationDescription": "Choose target storage",
+        "productsSelected": "products selected",
+        "transferring": "Transferring...",
+        "confirmTransfer": "Confirm Transfer",
+        "success": "Transfer Complete",
+        "successMessage": "{{count}} products moved to {{storage}}",
+        "error": "Failed to transfer products"
     },
     "updater": {
         "available": "Update Available",

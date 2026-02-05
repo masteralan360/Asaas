@@ -190,7 +190,7 @@ export default function Storages() {
                                             <TableRow key={storage.id} className="group hover:bg-muted/30 transition-colors border-b last:border-0 text-foreground/80">
                                                 <TableCell className="font-bold pl-6 text-foreground flex items-center gap-2">
                                                     {storage.isSystem && <ShieldCheck className="w-4 h-4 text-amber-500" />}
-                                                    {storage.name}
+                                                    {storage.isSystem ? (t(`storages.${storage.name.toLowerCase()}`) || storage.name) : storage.name}
                                                 </TableCell>
                                                 <TableCell>
                                                     <span className={`px-2 py-0.5 rounded-lg text-[10px] font-bold uppercase tracking-widest ${storage.isSystem

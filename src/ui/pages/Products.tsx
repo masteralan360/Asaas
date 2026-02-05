@@ -786,7 +786,7 @@ export function Products() {
                                 <SelectContent>
                                     {storages.map((storage) => (
                                         <SelectItem key={storage.id} value={storage.id}>
-                                            {storage.name} {storage.isSystem ? `(${t('storages.system') || 'System'})` : ''}
+                                            {storage.isSystem ? (t(`storages.${storage.name.toLowerCase()}`) || storage.name) : storage.name} {storage.isSystem ? `(${t('storages.system') || 'System'})` : ''}
                                         </SelectItem>
                                     ))}
                                 </SelectContent>

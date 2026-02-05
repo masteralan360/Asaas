@@ -37,7 +37,7 @@ export function StorageSelector({ storages, selectedStorageId, onSelect, classNa
                     {storages.map((storage) => (
                         <SelectItem key={storage.id} value={storage.id}>
                             <span className="flex items-center gap-2">
-                                {storage.name}
+                                {storage.isSystem ? (t(`storages.${storage.name.toLowerCase()}`) || storage.name) : storage.name}
                                 {storage.isSystem && (
                                     <span className="text-[10px] text-muted-foreground ml-1">({t('storages.system') || 'System'})</span>
                                 )}

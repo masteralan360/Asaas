@@ -87,11 +87,15 @@ export default function InventoryTransfer() {
             }
 
             const targetStorage = storages.find(s => s.id === targetStorageId)
+            const storageDisplayName = targetStorage?.isSystem
+                ? (t(`storages.${targetStorage.name.toLowerCase()}`) || targetStorage.name)
+                : targetStorage?.name || '';
+
             toast({
                 title: t('inventoryTransfer.success', 'Transfer Complete'),
                 description: t('inventoryTransfer.successMessage', '{{count}} products moved to {{storage}}', {
                     count: successCount,
-                    storage: targetStorage?.name || ''
+                    storage: storageDisplayName
                 })
             })
 
@@ -111,6 +115,13 @@ export default function InventoryTransfer() {
 
     const sourceStorage = storages.find(s => s.id === sourceStorageId)
     const targetStorage = storages.find(s => s.id === targetStorageId)
+
+    const sourceDisplayName = sourceStorage?.isSystem
+        ? (t(`storages.${sourceStorage.name.toLowerCase()}`) || sourceStorage.name)
+        : sourceStorage?.name;
+    const targetDisplayName = targetStorage?.isSystem
+        ? (t(`storages.${targetStorage.name.toLowerCase()}`) || targetStorage.name)
+        : targetStorage?.name;
 
     return (
         <div className="space-y-6">
@@ -144,7 +155,7 @@ export default function InventoryTransfer() {
                                     <SelectItem key={s.id} value={s.id}>
                                         <div className="flex items-center gap-2">
                                             <Warehouse className="w-4 h-4" />
-                                            {s.name}
+                                            {s.isSystem ? (t(`storages.${s.name.toLowerCase()}`) || s.name) : s.name}
                                         </div>
                                     </SelectItem>
                                 ))}
@@ -233,7 +244,7 @@ export default function InventoryTransfer() {
                                     <SelectItem key={s.id} value={s.id}>
                                         <div className="flex items-center gap-2">
                                             <Warehouse className="w-4 h-4" />
-                                            {s.name}
+                                            {s.isSystem ? (t(`storages.${s.name.toLowerCase()}`) || s.name) : s.name}
                                         </div>
                                     </SelectItem>
                                 ))}
@@ -243,9 +254,9 @@ export default function InventoryTransfer() {
                         {selectedProductIds.size > 0 && targetStorageId && (
                             <div className="p-3 bg-primary/5 rounded-xl border border-primary/20">
                                 <div className="flex items-center gap-2 text-sm">
-                                    <span className="font-medium">{sourceStorage?.name}</span>
+                                    <span className="font-medium">{sourceDisplayName}</span>
                                     <ChevronRight className="w-4 h-4 text-muted-foreground" />
-                                    <span className="font-medium">{targetStorage?.name}</span>
+                                    <span className="font-medium">{targetDisplayName}</span>
                                 </div>
                                 <div className="text-xs text-muted-foreground mt-1">
                                     {selectedProductIds.size} {t('inventoryTransfer.productsSelected', 'products selected')}
