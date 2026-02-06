@@ -2,7 +2,7 @@ import { useEffect } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 
 import { db } from './database'
-import type { Product, Category, Customer, Supplier, PurchaseOrder, SalesOrder, Invoice, OfflineMutation, Sale, SaleItem } from './models'
+import type { Product, Category, Customer, Supplier, PurchaseOrder, SalesOrder, Invoice, OfflineMutation, Sale, SaleItem, Employee, Expense, BudgetAllocation } from './models'
 import { generateId, toSnakeCase, toCamelCase } from '@/lib/utils'
 import { supabase } from '@/auth/supabase'
 import { useNetworkStatus } from '@/hooks/useNetworkStatus'
@@ -1400,3 +1400,231 @@ export async function getReserveStorageId(workspaceId: string): Promise<string |
     return reserve?.id ?? null
 }
 
+// ===================
+// EMPLOYEES HOOKS
+// ===================
+
+export function useEmployees(workspaceId: string | undefined) {
+    const isOnline = useNetworkStatus()
+    const employees = useLiveQuery(
+        () => workspaceId ? db.employees.where('workspaceId').equals(workspaceId).and(e => !e.isDeleted).toArray() : [],
+        [workspaceId]
+    )
+
+    useEffect(() => {
+        if (isOnline && workspaceId) {
+            fetchTableFromSupabase('employees', db.employees, workspaceId)
+        }
+    }, [isOnline, workspaceId])
+
+    return employees ?? []
+}
+
+export async function createEmployee(workspaceId: string, data: Omit<Employee, 'id' | 'workspaceId' | 'createdAt' | 'updatedAt' | 'syncStatus' | 'lastSyncedAt' | 'version' | 'isDeleted'>): Promise<Employee> {
+    const now = new Date().toISOString()
+    const id = generateId()
+    const employee: Employee = {
+        ...data,
+        id,
+        workspaceId,
+        createdAt: now,
+        updatedAt: now,
+        syncStatus: (isOnline() ? 'synced' : 'pending') as any,
+        lastSyncedAt: isOnline() ? now : null,
+        version: 1,
+        isDeleted: false
+    }
+
+    await saveEntity('employees', db.employees, employee, workspaceId)
+    return employee
+}
+
+export async function updateEmployee(id: string, data: Partial<Employee>): Promise<void> {
+    await updateEntity('employees', db.employees, id, data)
+}
+
+export async function deleteEmployee(id: string): Promise<void> {
+    const now = new Date().toISOString()
+    const existing = await db.employees.get(id)
+    if (!existing) return
+
+    const updated = {
+        ...existing,
+        isDeleted: true,
+        updatedAt: now,
+        syncStatus: (isOnline() ? 'synced' : 'pending') as any,
+        version: existing.version + 1
+    } as Employee
+
+    if (isOnline()) {
+        const { error } = await supabase.from('employees').update({ is_deleted: true, updated_at: now }).eq('id', id)
+        if (error) throw error
+        await db.employees.put(updated)
+    } else {
+        await db.employees.put(updated)
+        await addToOfflineMutations('employees', id, 'delete', { id }, existing.workspaceId)
+    }
+}
+
+// ===================
+// EXPENSES HOOKS
+// ===================
+
+export function useExpenses(workspaceId: string | undefined) {
+    const isOnline = useNetworkStatus()
+    const expenses = useLiveQuery(
+        () => workspaceId ? db.expenses.where('workspaceId').equals(workspaceId).and(e => !e.isDeleted).toArray() : [],
+        [workspaceId]
+    )
+
+    useEffect(() => {
+        if (isOnline && workspaceId) {
+            fetchTableFromSupabase('expenses', db.expenses, workspaceId)
+        }
+    }, [isOnline, workspaceId])
+
+    return expenses ?? []
+}
+
+export async function createExpense(workspaceId: string, data: Omit<Expense, 'id' | 'workspaceId' | 'createdAt' | 'updatedAt' | 'syncStatus' | 'lastSyncedAt' | 'version' | 'isDeleted'>): Promise<Expense> {
+    const now = new Date().toISOString()
+    const id = generateId()
+    const expense: Expense = {
+        ...data,
+        id,
+        workspaceId,
+        createdAt: now,
+        updatedAt: now,
+        syncStatus: (isOnline() ? 'synced' : 'pending') as any,
+        lastSyncedAt: isOnline() ? now : null,
+        version: 1,
+        isDeleted: false
+    }
+
+    await saveEntity('expenses', db.expenses, expense, workspaceId)
+    return expense
+}
+
+export async function updateExpense(id: string, data: Partial<Expense>): Promise<void> {
+    await updateEntity('expenses', db.expenses, id, data)
+}
+
+export async function deleteExpense(id: string): Promise<void> {
+    const now = new Date().toISOString()
+    const existing = await db.expenses.get(id)
+    if (!existing) return
+
+    const updated = {
+        ...existing,
+        isDeleted: true,
+        updatedAt: now,
+        syncStatus: (isOnline() ? 'synced' : 'pending') as any,
+        version: existing.version + 1
+    } as Expense
+
+    if (isOnline()) {
+        const { error } = await supabase.from('expenses').update({ is_deleted: true, updated_at: now }).eq('id', id)
+        if (error) throw error
+        await db.expenses.put(updated)
+    } else {
+        await db.expenses.put(updated)
+        await addToOfflineMutations('expenses', id, 'delete', { id }, existing.workspaceId)
+    }
+}
+
+// ===================
+// BUDGET ALLOCATION HOOKS
+// ===================
+
+export function useBudgetAllocations(workspaceId: string | undefined) {
+    const isOnline = useNetworkStatus()
+    const allocations = useLiveQuery(
+        () => workspaceId ? db.budgetAllocations.where('workspaceId').equals(workspaceId).toArray() : [],
+        [workspaceId]
+    )
+
+    useEffect(() => {
+        if (isOnline && workspaceId) {
+            fetchTableFromSupabase('budget_allocations', db.budgetAllocations, workspaceId)
+        }
+    }, [isOnline, workspaceId])
+
+    return allocations ?? []
+}
+
+export function useBudgetAllocation(workspaceId: string | undefined, month: string | undefined) {
+    return useLiveQuery(
+        () => (workspaceId && month) ? db.budgetAllocations.where({ workspaceId, month }).first() : undefined,
+        [workspaceId, month]
+    )
+}
+
+export function useMonthlyRevenue(workspaceId: string | undefined, monthStr: string | undefined) {
+    const financials = useLiveQuery(async () => {
+        if (!workspaceId || !monthStr) return { revenue: {}, profit: {} }
+
+        const [year, month] = monthStr.split('-').map(Number)
+        const monthStart = new Date(year, month - 1, 1).toISOString()
+        const monthEnd = new Date(year, month, 0, 23, 59, 59).toISOString()
+
+        const sales = await db.sales
+            .where('workspaceId')
+            .equals(workspaceId)
+            .and(s => !s.isDeleted && !s.isReturned && s.createdAt >= monthStart && s.createdAt <= monthEnd)
+            .toArray()
+
+        const saleIds = sales.map(s => s.id)
+        const items = await db.sale_items.where('saleId').anyOf(saleIds).toArray()
+
+        const revByCurrency: Record<string, number> = {}
+        const profitByCurrency: Record<string, number> = {}
+
+        items.forEach(item => {
+            const sale = sales.find(s => s.id === item.saleId)
+            if (!sale) return
+            const curr = sale.settlementCurrency || 'usd'
+            const netQty = item.quantity - (item.returnedQuantity || 0)
+            if (netQty <= 0) return
+
+            if (!revByCurrency[curr]) revByCurrency[curr] = 0
+            if (!profitByCurrency[curr]) profitByCurrency[curr] = 0
+
+            const itemRev = (item.convertedUnitPrice || 0) * netQty
+            const itemCost = (item.convertedCostPrice || 0) * netQty
+
+            revByCurrency[curr] += itemRev
+            profitByCurrency[curr] += (itemRev - itemCost)
+        })
+
+        return { revenue: revByCurrency, profit: profitByCurrency }
+    }, [workspaceId, monthStr])
+
+    return financials ?? { revenue: {}, profit: {} }
+}
+
+export async function setBudgetAllocation(workspaceId: string, data: Omit<BudgetAllocation, 'id' | 'workspaceId' | 'createdAt' | 'updatedAt' | 'syncStatus' | 'lastSyncedAt' | 'version' | 'isDeleted'>): Promise<BudgetAllocation> {
+    const now = new Date().toISOString()
+
+    // Check if allocation for this month already exists
+    const existing = await db.budgetAllocations.where({ workspaceId, month: data.month }).first()
+
+    if (existing) {
+        await updateEntity('budget_allocations', db.budgetAllocations, existing.id, data as any)
+        return { ...existing, ...data } as BudgetAllocation
+    } else {
+        const id = generateId()
+        const allocation: BudgetAllocation = {
+            ...data,
+            id,
+            workspaceId,
+            createdAt: now,
+            updatedAt: now,
+            syncStatus: (isOnline() ? 'synced' : 'pending') as any,
+            lastSyncedAt: isOnline() ? now : null,
+            version: 1,
+            isDeleted: false
+        }
+        await saveEntity('budget_allocations', db.budgetAllocations, allocation, workspaceId)
+        return allocation
+    }
+}

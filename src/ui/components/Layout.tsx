@@ -39,7 +39,8 @@ import {
     Users,
     ShoppingBag,
     Warehouse,
-    ArrowRightLeft
+    ArrowRightLeft,
+    Wallet
 } from 'lucide-react'
 import { useState } from 'react'
 import { Button } from './button'
@@ -162,8 +163,9 @@ export function Layout({ children }: LayoutProps) {
         { name: t('nav.sales') || 'Sales', href: '/sales', icon: Receipt },
         // Revenue - admin only
         ...(user?.role === 'admin' ? [
-            { name: t('nav.revenue') || 'Net Revenue', href: '/revenue', icon: TrendingUp },
-            { name: t('nav.performance') || 'Team Performance', href: '/performance', icon: BarChart3 }
+            { name: t('nav.revenue') || 'Net Revenue', href: '/revenue', icon: BarChart3 },
+            { name: t('nav.budget') || 'Budget', href: '/budget', icon: Wallet },
+            { name: t('nav.performance') || 'Team Performance', href: '/performance', icon: TrendingUp }
         ] : []),
         // WhatsApp - requires feature flag AND role AND desktop platform
         ...((user?.role === 'admin' || user?.role === 'staff') && hasFeature('allow_whatsapp') && isDesktop() ? [
@@ -193,7 +195,8 @@ export function Layout({ children }: LayoutProps) {
         ] : []),
         // Admin/Staff routes
         ...((user?.role === 'admin' || user?.role === 'staff') ? [
-            { name: t('members.title'), href: '/members', icon: UsersRound },
+            { name: t('nav.hr') || 'HR', href: '/hr', icon: UsersRound },
+            { name: t('members.title'), href: '/members', icon: Users },
         ] : []),
         ...((user?.role === 'admin' || user?.role === 'staff') ? [
             { name: t('nav.settings'), href: '/settings', icon: Settings }

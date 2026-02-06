@@ -1,5 +1,5 @@
 import Dexie, { type EntityTable } from 'dexie'
-import type { Product, Category, Customer, Supplier, PurchaseOrder, SalesOrder, Invoice, User, SyncQueueItem, Sale, SaleItem, OfflineMutation, Workspace, AppSetting, Storage } from './models'
+import type { Product, Category, Customer, Supplier, PurchaseOrder, SalesOrder, Invoice, User, SyncQueueItem, Sale, SaleItem, OfflineMutation, Workspace, AppSetting, Storage, Employee, Expense, BudgetAllocation } from './models'
 
 // Asaas Database using Dexie.js for IndexedDB
 export class AsaasDatabase extends Dexie {
@@ -15,6 +15,9 @@ export class AsaasDatabase extends Dexie {
     sale_items!: EntityTable<SaleItem, 'id'>
     workspaces!: EntityTable<Workspace, 'id'>
     storages!: EntityTable<Storage, 'id'>
+    employees!: EntityTable<Employee, 'id'>
+    expenses!: EntityTable<Expense, 'id'>
+    budgetAllocations!: EntityTable<BudgetAllocation, 'id'>
     syncQueue!: EntityTable<SyncQueueItem, 'id'>
     offline_mutations!: EntityTable<OfflineMutation, 'id'>
     app_settings!: EntityTable<AppSetting, 'key'>
@@ -22,7 +25,7 @@ export class AsaasDatabase extends Dexie {
     constructor() {
         super('AsaasDatabase')
 
-        this.version(21).stores({
+        this.version(23).stores({
             products: 'id, sku, name, categoryId, storageId, workspaceId, currency, syncStatus, updatedAt, isDeleted, canBeReturned',
             categories: 'id, name, workspaceId, syncStatus, updatedAt, isDeleted',
             suppliers: 'id, name, workspaceId, syncStatus, updatedAt, isDeleted',
@@ -36,6 +39,9 @@ export class AsaasDatabase extends Dexie {
             sale_items: 'id, saleId, productId',
             workspaces: 'id, name, code, syncStatus, updatedAt, isDeleted',
             storages: 'id, name, workspaceId, isSystem, isProtected, syncStatus, updatedAt, isDeleted',
+            employees: 'id, name, workspaceId, syncStatus, updatedAt, isDeleted',
+            expenses: 'id, type, category, status, dueDate, snoozeUntil, workspaceId, syncStatus, updatedAt, isDeleted',
+            budgetAllocations: 'id, month, type, workspaceId, syncStatus, updatedAt, isDeleted',
             syncQueue: 'id, entityType, entityId, operation, timestamp',
             offline_mutations: 'id, workspaceId, entityType, entityId, status, createdAt, [entityType+entityId+status]',
             app_settings: 'key'

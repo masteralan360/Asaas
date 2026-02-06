@@ -1,52 +1,35 @@
 # i18n Synchronization Plan
 
-This plan outlines the strategy for synchronizing the Arabic (`ar.json`) and Kurdish (`ku.json`) localization files with the English (`en.json`) master file to ensure perfect structural parity, missing translation coverage, and removal of ghost keys.
+Goal: Ensure perfect structural parity, complete translations, and consistent key ordering across `en.json`, `ar.json`, and `ku.json`.
 
-## Goal Description
-Maintain 100% parity between `en.json`, `ar.json`, and `ku.json`. All files must share the exact same key structure and ordering, reflecting the master `en.json` file.
+---
 
-## Proposed Strategy
+## Technical Strategy
 
-### 1. Structural Audit & Alignment
-- Use `en.json` as the source of truth for all keys and their hierarchy.
-- Reorder keys in `ar.json` and `ku.json` to match `en.json` exactly.
-- Fix identified anomalies:
-    - **Offline Keys**: Move `"offlineTitle"` and `"offlineDesc"` from top-level to `pos` object in `ar.json`.
-    - **Return Object**: Consolidate top-level `"return"` keys in `ku.json` into the appropriate structure defined by `en.json` (moving them to `sales.return` or keeping the top-level one if it exists in `en.json`).
-    - **Receipt Object**: Ensure top-level `"receipt"` is consistent across all files.
+1.  **Master Source**: `en.json` is the source of truth for all keys and nesting structures.
+2.  **Key Migration**:
+    *   Move `"offlineTitle"` and `"offlineDesc"` into the `"pos"` object in all locale files.
+3.  **Structure Consolidation**:
+    *   `ku.json`: Flatten the large top-level `"return"` object to match the schema in `en.json`.
+4.  **Parity Audit**:
+    *   Ensure all files have identical top-level keys in the same order.
+    *   Sync nested keys within objects (e.g., `storages`, `inventoryTransfer`).
 
-### 2. Missing Key Detection & Translation
-- Identify all keys present in `en.json` but missing in `ar.json` or `ku.json`.
-- Perform research-based translations for:
-    - New storage features (`storages.*`).
-    - Inventory transfer terms (`inventoryTransfer.*`).
-    - Recently added POS and Sales history keys.
-- **Translation Quality**: Use formal Arabic (Modern Standard) and Central Kurdish (Sorani) for all localized strings.
+## Missing Translations Registry
 
-### 3. Ghost Key Removal
-- Identify keys in `ar.json` and `ku.json` that no longer exist in `en.json`.
-- Prune these "ghost keys" to prevent bloat and potential conflicts.
+| Key | Context | Arabic | Kurdish |
+| :--- | :--- | :--- | :--- |
+| `storages.main` | Storage Name | الرئيسي | سەرەکی |
+| `storages.reserve` | Storage Name | الاحتياط | یەدەگ |
+| `pos.offlineTitle` | POS Offline | تم الحفظ بدون اتصال | بە شێوەی ئۆفلاین پاشەکەوت کرا |
+| `pos.offlineDesc` | POS Offline | تم حفظ عملية البيع محلياً وستتم مزامنتها عند الاتصال بالإنترنت. | فرۆشتنەکە بە ناوخۆیی پاشەکەوت کرا و کاتێک پەیوەندی ئینتەرنێت هەبوو هاوکات دەکرێت. |
 
-### 4. Verification
-- Manual verification of the UI in all three languages.
-- JSON schema validation (ensuring valid JSON format).
-- Structural check to ensure all three files have the same line count (approximate) and identical key paths.
+## Pruning Plan
 
-## Implementation Phases
+*   **Ghost Keys**: Any keys present in `ar.json` or `ku.json` but absent in `en.json` will be deleted unless they are required for legacy compatibility (none identified yet).
 
-### Phase 1: Preparation (Done)
-- Initial audit of JSON files.
-- Identification of major structural differences.
+---
 
-### Phase 2: Structural Mirroring
-- Re-ordering and moving keys in `ar.json` and `ku.json` to match `en.json`.
-- Moving `offlineTitle` and `offlineDesc` into the `pos` object.
+## Verification
 
-### Phase 3: Content Sync
-- Adding missing keys from `en.json`.
-- Translating missing values.
-- Removing non-existent keys.
-
-### Phase 4: Final Verification
-- Checking for hardcoded strings in components.
-- Final UI walkthrough in Arabic and Kurdish.
+Files will be validated against the `en.json` keyset using a structural comparison script and manual UI smoke tests in Arabic and Kurdish.

@@ -65,6 +65,50 @@ export interface Storage extends BaseEntity {
 }
 
 
+export interface Employee extends BaseEntity {
+    name: string
+    email?: string
+    phone?: string
+    gender?: 'male' | 'female' | 'other'
+    role: string // Internal labeling role. Format: "Category:Role" (e.g. "Management:Manager", "Staff:Salesman")
+    location?: string
+    joiningDate: string
+    salary: number
+    salaryCurrency: CurrencyCode
+    hasDividends?: boolean
+    dividendType?: 'fixed' | 'percentage'
+    dividendAmount?: number
+    dividendCurrency?: CurrencyCode
+}
+
+export type ExpenseType = 'recurring' | 'one-time'
+export type ExpenseCategory = 'rent' | 'electricity' | 'payroll' | 'general'
+export type ExpenseStatus = 'pending' | 'paid' | 'snoozed'
+
+export interface Expense extends BaseEntity {
+    description?: string
+    type: ExpenseType
+    category: ExpenseCategory
+    amount: number
+    currency: CurrencyCode
+    status: ExpenseStatus
+    dueDate: string
+    paidAt: string | null
+    snoozeUntil: string | null
+    snoozeCount: number
+    employeeId?: string // Link to employee if category is 'payroll'
+}
+
+export type AllocationType = 'fixed' | 'percentage'
+
+export interface BudgetAllocation extends BaseEntity {
+    month: string // "YYYY-MM"
+    type: AllocationType
+    amount: number // Value or Percentage (0-100)
+    currency: CurrencyCode
+}
+
+
 export interface Supplier extends BaseEntity {
     name: string
     contactName?: string
@@ -261,7 +305,7 @@ export interface SaleItem {
 // Sync Queue Item for tracking pending changes
 export interface SyncQueueItem {
     id: string
-    entityType: 'products' | 'customers' | 'suppliers' | 'purchase_orders' | 'sales_orders' | 'invoices' | 'users' | 'sales' | 'categories' | 'storages'
+    entityType: 'products' | 'customers' | 'suppliers' | 'purchase_orders' | 'sales_orders' | 'invoices' | 'users' | 'sales' | 'categories' | 'storages' | 'employees' | 'expenses' | 'budget_allocations'
     entityId: string
     operation: 'create' | 'update' | 'delete'
     data: Record<string, unknown>
@@ -295,7 +339,7 @@ export interface Workspace extends BaseEntity {
 export interface OfflineMutation {
     id: string
     workspaceId: string
-    entityType: 'products' | 'customers' | 'suppliers' | 'purchase_orders' | 'sales_orders' | 'invoices' | 'users' | 'sales' | 'categories' | 'workspaces' | 'storages'
+    entityType: 'products' | 'customers' | 'suppliers' | 'purchase_orders' | 'sales_orders' | 'invoices' | 'users' | 'sales' | 'categories' | 'workspaces' | 'storages' | 'employees' | 'expenses' | 'budget_allocations'
     entityId: string
     operation: 'create' | 'update' | 'delete'
     payload: Record<string, unknown>

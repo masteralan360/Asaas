@@ -1,7 +1,7 @@
 {
   "name": "asaas",
   "private": true,
-  "version": "1.7.4",
+  "version": "1.7.5",
   "main": "electron/main.cjs",
   "type": "module",
   "repository": {

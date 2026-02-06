@@ -13,7 +13,10 @@ export function formatCurrency(
     const code = currency.toLowerCase()
 
     if (code === 'iqd') {
-        const formatted = new Intl.NumberFormat('en-US').format(amount)
+        const formatted = new Intl.NumberFormat('en-US', {
+            maximumFractionDigits: 0,
+            minimumFractionDigits: 0
+        }).format(amount)
         return iqdPreference === 'IQD' ? `${formatted} IQD` : `${formatted} د.ع`
     }
 

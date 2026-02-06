@@ -101,6 +101,8 @@
         "suppliers": "Suppliers",
         "revenue": "Net Revenue",
         "performance": "Team Performance",
+        "hr": "HR",
+        "budget": "Budget",
         "invoicesHistory": "Invoices History",
         "settings": "Settings",
         "whatsapp": "WhatsApp",
