@@ -1560,6 +1560,46 @@ export function useBudgetAllocation(workspaceId: string | undefined, month: stri
 }
 
 export function useMonthlyRevenue(workspaceId: string | undefined, monthStr: string | undefined) {
+    const isOnline = useNetworkStatus()
+
+    // Sync Effect: Ensure local Dexie has the sales for this month
+    useEffect(() => {
+        async function syncMonth() {
+            if (isOnline && workspaceId && monthStr) {
+                const [year, month] = monthStr.split('-').map(Number)
+                const monthStart = new Date(year, month - 1, 1).toISOString()
+                const monthEnd = new Date(year, month, 0, 23, 59, 59).toISOString()
+
+                const { data, error } = await supabase
+                    .from('sales')
+                    .select('*, sale_items(*)')
+                    .eq('workspace_id', workspaceId)
+                    .gte('created_at', monthStart)
+                    .lte('created_at', monthEnd)
+
+                if (data && !error) {
+                    await db.transaction('rw', [db.sales, db.sale_items], async () => {
+                        for (const remoteSale of data) {
+                            const { sale_items, ...saleData } = remoteSale as any
+                            const localSale = toCamelCase(saleData) as unknown as Sale
+                            localSale.syncStatus = 'synced'
+                            localSale.lastSyncedAt = new Date().toISOString()
+                            await db.sales.put(localSale)
+
+                            if (sale_items) {
+                                for (const item of sale_items) {
+                                    const localItem = toCamelCase(item) as unknown as SaleItem
+                                    await db.sale_items.put(localItem)
+                                }
+                            }
+                        }
+                    })
+                }
+            }
+        }
+        syncMonth()
+    }, [isOnline, workspaceId, monthStr])
+
     const financials = useLiveQuery(async () => {
         if (!workspaceId || !monthStr) return { revenue: {}, profit: {} }
 

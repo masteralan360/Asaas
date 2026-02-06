@@ -14,7 +14,9 @@ import {
     Switch,
     useToast
 } from '@/ui/components'
-import { formatDate, formatCurrency } from '@/lib/utils'
+import { formatDate, formatCurrency, cn, formatNumberWithCommas, parseFormattedNumber } from '@/lib/utils'
+import { DeleteConfirmationModal } from '@/ui/components/DeleteConfirmationModal'
+import { FireConfirmationModal } from '@/ui/components/FireConfirmationModal'
 
 const ROLE_HIERARCHY: Record<string, string[]> = {
     'Management': ['Manager', 'Assistant Manager', 'Supervisor'],
@@ -37,8 +39,16 @@ export default function HR() {
     const [selectedRole, setSelectedRole] = useState<string>('')
     const [hasDividends, setHasDividends] = useState(false)
     const [dividendType, setDividendType] = useState<'fixed' | 'percentage'>('fixed')
-    const [dividendAmount, setDividendAmount] = useState<number>(0)
     const [dividendCurrency, setDividendCurrency] = useState<string>(features.default_currency || 'usd')
+    const [salaryPayday, setSalaryPayday] = useState<number>(30)
+    const [dividendPayday, setDividendPayday] = useState<number>(30)
+    const [salaryDisplay, setSalaryDisplay] = useState<string>('')
+    const [dividendAmountDisplay, setDividendAmountDisplay] = useState<string>('')
+
+    // Confirmation Modals State
+    const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false)
+    const [isFireModalOpen, setIsFireModalOpen] = useState(false)
+    const [confirmTarget, setConfirmTarget] = useState<Employee | undefined>(undefined)
 
     useMemo(() => {
         if (editingEmployee) {
@@ -49,15 +59,21 @@ export default function HR() {
             setSelectedRole(role || editingEmployee.role || '')
             setHasDividends(editingEmployee.hasDividends || false)
             setDividendType(editingEmployee.dividendType || 'fixed')
-            setDividendAmount(editingEmployee.dividendAmount || 0)
             setDividendCurrency(editingEmployee.dividendCurrency || features.default_currency || 'usd')
+            setSalaryPayday(editingEmployee.salaryPayday || 30)
+            setDividendPayday(editingEmployee.dividendPayday || 30)
+            setSalaryDisplay(formatNumberWithCommas(editingEmployee.salary || 0))
+            setDividendAmountDisplay(formatNumberWithCommas(editingEmployee.dividendAmount || 0))
         } else if (isDialogOpen === false) {
             setSelectedCategory('')
             setSelectedRole('')
             setHasDividends(false)
             setDividendType('fixed')
-            setDividendAmount(0)
             setDividendCurrency(features.default_currency || 'usd')
+            setSalaryPayday(30)
+            setDividendPayday(30)
+            setSalaryDisplay('')
+            setDividendAmountDisplay('')
         }
     }, [editingEmployee, isDialogOpen, features.default_currency])
 
@@ -82,12 +98,15 @@ export default function HR() {
             gender: formData.get('gender') as 'male' | 'female' | 'other',
             location: formData.get('location') as string,
             joiningDate: formData.get('joiningDate') as string,
-            salary: Number(formData.get('salary')),
+            salary: parseFormattedNumber(salaryDisplay),
             salaryCurrency: (formData.get('salaryCurrency') as any) || baseCurrency || 'usd',
             hasDividends,
             dividendType: hasDividends ? dividendType : undefined,
-            dividendAmount: hasDividends ? dividendAmount : undefined,
+            dividendAmount: hasDividends ? parseFormattedNumber(dividendAmountDisplay) : undefined,
             dividendCurrency: hasDividends ? (dividendCurrency as any) : undefined,
+            salaryPayday,
+            dividendPayday: hasDividends ? dividendPayday : undefined,
+            isFired: editingEmployee?.isFired || false
         }
 
         try {
@@ -105,14 +124,37 @@ export default function HR() {
         }
     }
 
-    const handleDelete = async (id: string) => {
-        if (confirm(t('common.confirmDelete', 'Are you sure?'))) {
-            try {
-                await deleteEmployee(id)
-                toast({ description: t('hr.deleteSuccess', 'Employee removed successfully') })
-            } catch (error) {
-                toast({ variant: 'destructive', description: t('common.error', 'Something went wrong') })
-            }
+    const handleDeleteClick = (employee: Employee) => {
+        setConfirmTarget(employee)
+        setIsDeleteModalOpen(true)
+    }
+
+    const handleConfirmDelete = async () => {
+        if (!confirmTarget) return
+        try {
+            await deleteEmployee(confirmTarget.id)
+            toast({ description: t('hr.deleteSuccess', 'Employee removed successfully') })
+            setIsDeleteModalOpen(false)
+            setConfirmTarget(undefined)
+        } catch (error) {
+            toast({ variant: 'destructive', description: t('common.error', 'Something went wrong') })
+        }
+    }
+
+    const handleFireClick = (employee: Employee) => {
+        setConfirmTarget(employee)
+        setIsFireModalOpen(true)
+    }
+
+    const handleConfirmFire = async () => {
+        if (!confirmTarget) return
+        try {
+            await updateEmployee(confirmTarget.id, { isFired: !confirmTarget.isFired })
+            toast({ description: confirmTarget.isFired ? t('hr.rehireSuccess', 'Employee rehired') : t('hr.fireSuccess', 'Employee fired') })
+            setIsFireModalOpen(false)
+            setConfirmTarget(undefined)
+        } catch (error) {
+            toast({ variant: 'destructive', description: t('common.error', 'Something went wrong') })
         }
     }
 
@@ -141,7 +183,15 @@ export default function HR() {
 
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                 {filteredEmployees.map((employee) => (
-                    <Card key={employee.id} className="group hover:border-primary/50 transition-colors bg-secondary/20">
+                    <Card key={employee.id} className={cn(
+                        "group hover:border-primary/50 transition-all bg-secondary/20 overflow-hidden",
+                        employee.isFired && "opacity-60 grayscale-[0.8] brightness-90"
+                    )}>
+                        {employee.isFired && (
+                            <div className="absolute top-2 right-12 px-2 py-0.5 bg-destructive/10 text-destructive text-[10px] font-black uppercase rounded-full">
+                                {t('hr.firedLabel', 'Suspended / Fired')}
+                            </div>
+                        )}
                         <CardContent className="p-6">
                             <div className="flex items-start justify-between">
                                 <div className="flex items-center gap-4">
@@ -160,14 +210,22 @@ export default function HR() {
                                         )}
                                     </div>
                                 </div>
-                                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <div className="flex items-center gap-1 transition-opacity">
+                                    <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className={cn(employee.isFired ? "text-primary" : "text-destructive")}
+                                        onClick={() => handleFireClick(employee)}
+                                    >
+                                        <Plus className={cn("w-4 h-4", !employee.isFired && "rotate-45")} />
+                                    </Button>
                                     <Button variant="ghost" size="icon" onClick={() => {
                                         setEditingEmployee(employee)
                                         setIsDialogOpen(true)
                                     }}>
                                         <Edit className="w-4 h-4" />
                                     </Button>
-                                    <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" onClick={() => handleDelete(employee.id)}>
+                                    <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" onClick={() => handleDeleteClick(employee)}>
                                         <Trash2 className="w-4 h-4" />
                                     </Button>
                                 </div>
@@ -186,17 +244,32 @@ export default function HR() {
                                         <span>{employee.phone}</span>
                                     </div>
                                 )}
-                                <div className="flex justify-between items-center pt-4 border-t border-border/50">
-                                    <div className="text-sm font-medium">
-                                        <div className="text-muted-foreground text-xs">{t('hr.salary', 'Salary')}</div>
-                                        <div className="text-primary font-bold">
-                                            {formatCurrency(employee.salary, employee.salaryCurrency, features.iqd_display_preference)}
+                                <div className="space-y-2 pt-4 border-t border-border/50">
+                                    <div className="flex justify-between items-center">
+                                        <div className="text-sm font-medium">
+                                            <div className="text-muted-foreground text-xs">{t('hr.salary', 'Salary')}</div>
+                                            <div className="text-primary font-bold">
+                                                {formatCurrency(employee.salary, employee.salaryCurrency, features.iqd_display_preference)}
+                                            </div>
+                                        </div>
+                                        <div className="text-sm text-end">
+                                            <div className="text-muted-foreground text-xs">{t('hr.joined', 'Joined')}</div>
+                                            <div className="font-medium">{formatDate(employee.joiningDate)}</div>
                                         </div>
                                     </div>
-                                    <div className="text-sm text-end">
-                                        <div className="text-muted-foreground text-xs">{t('hr.joined', 'Joined')}</div>
-                                        <div className="font-medium">{formatDate(employee.joiningDate)}</div>
-                                    </div>
+
+                                    {employee.hasDividends && employee.dividendAmount && employee.dividendAmount > 0 && (
+                                        <div className="flex justify-between items-center pt-2 border-t border-dashed border-border/30">
+                                            <div className="text-[10px] font-black uppercase text-muted-foreground opacity-60">
+                                                {t('hr.dividends', 'Dividends / Equity')}
+                                            </div>
+                                            <div className="text-xs font-bold text-primary italic">
+                                                {employee.dividendType === 'percentage'
+                                                    ? `${employee.dividendAmount}%`
+                                                    : formatCurrency(employee.dividendAmount, employee.dividendCurrency, features.iqd_display_preference)}
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         </CardContent>
@@ -208,7 +281,7 @@ export default function HR() {
                 setIsDialogOpen(open)
                 if (!open) setEditingEmployee(undefined)
             }}>
-                <DialogContent>
+                <DialogContent className="max-w-2xl w-[95vw] sm:w-full max-h-[90vh] overflow-y-auto">
                     <DialogHeader>
                         <DialogTitle>{editingEmployee ? t('hr.editEmployee', 'Edit Employee') : t('hr.addEmployee', 'Add Employee')}</DialogTitle>
                     </DialogHeader>
@@ -278,7 +351,15 @@ export default function HR() {
                             <div className="space-y-2">
                                 <Label htmlFor="salary">{t('hr.form.salary', 'Salary')}</Label>
                                 <div className="flex gap-2">
-                                    <Input id="salary" name="salary" type="number" className="flex-1" defaultValue={editingEmployee?.salary} required={!hasDividends} />
+                                    <Input
+                                        id="salary"
+                                        name="salary"
+                                        className="flex-1"
+                                        value={salaryDisplay}
+                                        onChange={(e) => setSalaryDisplay(formatNumberWithCommas(e.target.value))}
+                                        placeholder="0"
+                                        required={!hasDividends}
+                                    />
                                     <Select name="salaryCurrency" defaultValue={editingEmployee?.salaryCurrency || baseCurrency || 'usd'}>
                                         <SelectTrigger className="w-[80px]">
                                             <SelectValue />
@@ -291,6 +372,18 @@ export default function HR() {
                                         </SelectContent>
                                     </Select>
                                 </div>
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="salaryPayday">{t('hr.form.salaryPayday', 'Salary Payday (1-31)')}</Label>
+                                <Input
+                                    id="salaryPayday"
+                                    type="number"
+                                    min="1"
+                                    max="31"
+                                    value={salaryPayday}
+                                    onChange={(e) => setSalaryPayday(Number(e.target.value))}
+                                    required
+                                />
                             </div>
                             <div className="space-y-2">
                                 <Label htmlFor="joiningDate">{t('hr.form.joiningDate', 'Joining Date')}</Label>
@@ -326,13 +419,24 @@ export default function HR() {
                                                 </Select>
                                             </div>
                                             <div className="space-y-2">
+                                                <Label className="text-xs uppercase">{t('hr.form.payday', 'Dividend Payday (1-31)')}</Label>
+                                                <Input
+                                                    type="number"
+                                                    min="1"
+                                                    max="31"
+                                                    value={dividendPayday}
+                                                    onChange={(e) => setDividendPayday(Number(e.target.value))}
+                                                    required
+                                                />
+                                            </div>
+                                            <div className="space-y-2 col-span-2">
                                                 <Label className="text-xs uppercase">{t('hr.form.amount', 'Amount')}</Label>
                                                 <div className="flex gap-1.5">
                                                     <Input
-                                                        type="number"
-                                                        value={dividendAmount}
-                                                        onChange={(e) => setDividendAmount(Number(e.target.value))}
+                                                        value={dividendAmountDisplay}
+                                                        onChange={(e) => setDividendAmountDisplay(formatNumberWithCommas(e.target.value))}
                                                         className="flex-1"
+                                                        placeholder="0"
                                                     />
                                                     {dividendType === 'percentage' ? (
                                                         <div className="w-10 h-10 flex items-center justify-center bg-muted rounded-md text-sm font-bold">%</div>
@@ -362,6 +466,29 @@ export default function HR() {
                     </form>
                 </DialogContent>
             </Dialog>
+
+            <DeleteConfirmationModal
+                isOpen={isDeleteModalOpen}
+                onClose={() => {
+                    setIsDeleteModalOpen(false)
+                    setConfirmTarget(undefined)
+                }}
+                onConfirm={handleConfirmDelete}
+                itemName={confirmTarget?.name}
+                title={t('hr.deleteTitle', 'Remove Employee')}
+                description={t('hr.deleteWarning', 'This will permanently remove this employee from the records. This action cannot be undone.')}
+            />
+
+            <FireConfirmationModal
+                isOpen={isFireModalOpen}
+                onClose={() => {
+                    setIsFireModalOpen(false)
+                    setConfirmTarget(undefined)
+                }}
+                onConfirm={handleConfirmFire}
+                employeeName={confirmTarget?.name || ''}
+                isFired={confirmTarget?.isFired || false}
+            />
         </div>
     )
 }

@@ -101,3 +101,13 @@ export function toCamelCase(obj: Record<string, unknown>): Record<string, unknow
     }
     return result
 }
+
+export function parseFormattedNumber(val: string): number {
+    return Number(val.replace(/,/g, ''))
+}
+
+export function formatNumberWithCommas(val: number | string): string {
+    const num = typeof val === 'string' ? val.replace(/,/g, '') : val.toString()
+    if (isNaN(Number(num))) return num
+    return new Intl.NumberFormat('en-US').format(Number(num))
+}

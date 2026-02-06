@@ -79,6 +79,9 @@ export interface Employee extends BaseEntity {
     dividendType?: 'fixed' | 'percentage'
     dividendAmount?: number
     dividendCurrency?: CurrencyCode
+    salaryPayday?: number
+    dividendPayday?: number
+    isFired?: boolean
 }
 
 export type ExpenseType = 'recurring' | 'one-time'
