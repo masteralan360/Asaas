@@ -93,7 +93,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             return
         }
 
-        // Get initial session with safety timeout
+        // Recovery bridge: try to restore from last known good state if session fails
+        const getRecoveredUser = (): AuthUser | null => {
+            try {
+                const recovered = localStorage.getItem('asaas_session_recovery')
+                return recovered ? JSON.parse(recovered) : null
+            } catch { return null }
+        }
+
         const fetchInitialSession = async () => {
             try {
                 // 10s timeout for initial session fetch
@@ -104,38 +111,54 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
                 const { data: { session } } = await Promise.race([sessionPromise, timeoutPromise]) as any;
 
-                setSession(session)
-                const parsedUser = session?.user ? parseUserFromSupabase(session.user) : null
+                if (session) {
+                    setSession(session)
+                    const parsedUser = session.user ? parseUserFromSupabase(session.user) : null
 
-                if (parsedUser && parsedUser.workspaceId) {
-                    // Fetch workspace and profile data in parallel for robustness
-                    const [wsResult, profileResult] = await Promise.all([
-                        supabase
-                            .from('workspaces')
-                            .select('code, name, is_configured')
-                            .eq('id', parsedUser.workspaceId)
-                            .single(),
-                        supabase
-                            .from('profiles')
-                            .select('profile_url')
-                            .eq('id', parsedUser.id)
-                            .single()
-                    ])
+                    if (parsedUser && parsedUser.workspaceId) {
+                        // Fetch workspace and profile data in parallel for robustness
+                        const [wsResult, profileResult] = await Promise.allSettled([
+                            supabase
+                                .from('workspaces')
+                                .select('code, name, is_configured')
+                                .eq('id', parsedUser.workspaceId)
+                                .single(),
+                            supabase
+                                .from('profiles')
+                                .select('profile_url')
+                                .eq('id', parsedUser.id)
+                                .single()
+                        ])
 
-                    if (wsResult.data) {
-                        parsedUser.workspaceCode = wsResult.data.code
-                        parsedUser.workspaceName = wsResult.data.name
-                        parsedUser.isConfigured = wsResult.data.is_configured
+                        if (wsResult.status === 'fulfilled' && wsResult.value.data) {
+                            parsedUser.workspaceCode = wsResult.value.data.code
+                            parsedUser.workspaceName = wsResult.value.data.name
+                            parsedUser.isConfigured = wsResult.value.data.is_configured
+                        }
+                        if (profileResult.status === 'fulfilled' && profileResult.value.data?.profile_url) {
+                            parsedUser.profileUrl = profileResult.value.data.profile_url
+                        }
                     }
-                    if (profileResult.data?.profile_url) {
-                        parsedUser.profileUrl = profileResult.data.profile_url
+
+                    setUser(parsedUser)
+                    if (parsedUser) localStorage.setItem('asaas_session_recovery', JSON.stringify(parsedUser))
+                } else {
+                    // NO SESSION: check recovery bridge
+                    const recovered = getRecoveredUser()
+                    if (recovered) {
+                        console.log('[Auth] Restoring session from recovery bridge...')
+                        setUser(recovered)
+                        // Don't set session yet, let onAuthStateChange handle it if/when it wakes up
                     }
                 }
-
-                setUser(parsedUser)
             } catch (e) {
                 console.error('[Auth] Initial session fetch failed:', e);
-                // On total failure, we at least stop loading so the user can see the SlowLoadingNotice
+                // Attempt recovery anyway on network failure
+                const recovered = getRecoveredUser()
+                if (recovered) {
+                    console.log('[Auth] Network failed, using recovery bridge.')
+                    setUser(recovered)
+                }
             } finally {
                 setIsLoading(false)
             }
@@ -182,9 +205,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 const { data: { session: currentSession } } = await supabase.auth.getSession()
                 if (currentSession?.user?.id === parsedUser.id) {
                     setUser({ ...parsedUser })
+                    localStorage.setItem('asaas_session_recovery', JSON.stringify(parsedUser))
                 }
             } else {
                 setUser(parsedUser)
+                localStorage.setItem('asaas_session_recovery', JSON.stringify(parsedUser))
             }
         })
 
@@ -312,8 +337,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setUser(null)
             setSession(null)
 
-            // 4. Clear workspace cache
+            // 4. Clear workspace cache and recovery bridge
             localStorage.removeItem('asaas_workspace_cache')
+            localStorage.removeItem('asaas_session_recovery')
 
             console.log('[Auth] Sign out complete')
         }

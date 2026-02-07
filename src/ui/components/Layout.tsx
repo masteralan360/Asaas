@@ -40,7 +40,8 @@ import {
     ShoppingBag,
     Warehouse,
     ArrowRightLeft,
-    Wallet
+    Wallet,
+    AlertCircle
 } from 'lucide-react'
 import { useState } from 'react'
 import { Button } from './button'
@@ -53,11 +54,27 @@ interface LayoutProps {
     children: ReactNode
 }
 
+import { useExchangeRate } from '@/context/ExchangeRateContext'
+import { useBudgetLimitReached as useBudgetLimitReachedHook } from '@/local-db'
+
 export function Layout({ children }: LayoutProps) {
     const [location] = useLocation()
     const { user, sessionId, signOut } = useAuth()
     const { hasFeature, workspaceName, isFullscreen, features } = useWorkspace()
     const { style } = useTheme()
+
+    // Budget Alert Monitoring
+    const { exchangeData, eurRates, tryRates } = useExchangeRate()
+    const budgetLimitReached = useBudgetLimitReachedHook(
+        user?.workspaceId,
+        features.default_currency || 'usd',
+        {
+            usd_iqd: exchangeData?.rate || 1450,
+            eur_iqd: eurRates.eur_iqd?.rate || 1600,
+            try_iqd: tryRates.try_iqd?.rate || 45
+        }
+    )
+
     const { t, i18n } = useTranslation()
     const logoPath = useLogo(i18n.language, style)
     const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
@@ -164,7 +181,7 @@ export function Layout({ children }: LayoutProps) {
         // Revenue - admin only
         ...(user?.role === 'admin' ? [
             { name: t('nav.revenue') || 'Net Revenue', href: '/revenue', icon: BarChart3 },
-            { name: t('nav.budget') || 'Budget', href: '/budget', icon: Wallet },
+            { name: t('nav.budget') || 'Budget', href: '/budget', icon: Wallet, alert: budgetLimitReached },
             { name: t('nav.performance') || 'Team Performance', href: '/performance', icon: TrendingUp }
         ] : []),
         // WhatsApp - requires feature flag AND role AND desktop platform
@@ -306,7 +323,19 @@ export function Layout({ children }: LayoutProps) {
                                     title={(isMini && !mobileSidebarOpen) ? item.name : undefined}
                                 >
                                     <item.icon className="w-5 h-5 flex-shrink-0" />
-                                    {!(isMini && !mobileSidebarOpen) && item.name}
+                                    {!(isMini && !mobileSidebarOpen) && (
+                                        <>
+                                            {item.name}
+                                            {item.alert && (
+                                                <div className="ms-auto flex items-center justify-center w-5 h-5 rounded-full bg-red-500 text-white">
+                                                    <AlertCircle className="w-3.5 h-3.5" />
+                                                </div>
+                                            )}
+                                        </>
+                                    )}
+                                    {(isMini && !mobileSidebarOpen) && item.alert && (
+                                        <div className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border border-background shadow-sm" />
+                                    )}
                                 </span>
                             </Link>
                         )

@@ -21,6 +21,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/ui/components/card'
 import { Input } from '@/ui/components/input'
 import { CurrencyCode } from '@/local-db'
 import { formatCurrency, formatDate, formatNumberWithCommas, parseFormattedNumber, cn } from '@/lib/utils'
+import { convertToStoreBase as convertToStoreBaseUtil } from '@/lib/currency'
 // sonner removed
 import {
     Dialog,
@@ -85,27 +86,11 @@ export default function Budget() {
     }, [isAllocationDialogOpen, isDialogOpen, currentAllocation, baseCurrency])
 
     const convertToStoreBase = useCallback((amount: number | undefined | null, from: string | undefined | null) => {
-        if (!amount || isNaN(Number(amount))) return 0
-        if (!from) return amount
-
-        const fromCode = from.toLowerCase() as any
-        const baseCode = baseCurrency.toLowerCase()
-        if (fromCode === baseCode) return amount
-
-        const usd_iqd = exchangeData?.rate || 1450
-        const eur_iqd = eurRates.eur_iqd?.rate || 1600
-        const try_iqd = tryRates.try_iqd?.rate || 45
-
-        let inIQD = 0
-        if (fromCode === 'usd') inIQD = amount * usd_iqd
-        else if (fromCode === 'eur') inIQD = amount * eur_iqd
-        else if (fromCode === 'try') inIQD = amount * try_iqd
-        else inIQD = amount
-
-        if (baseCode === 'usd') return inIQD / usd_iqd
-        if (baseCode === 'eur') return inIQD / eur_iqd
-        if (baseCode === 'try') return inIQD / try_iqd
-        return inIQD
+        return convertToStoreBaseUtil(amount, from, baseCurrency, {
+            usd_iqd: exchangeData?.rate || 1450,
+            eur_iqd: eurRates.eur_iqd?.rate || 1600,
+            try_iqd: tryRates.try_iqd?.rate || 45
+        })
     }, [baseCurrency, exchangeData, eurRates, tryRates])
 
     const handlePrevMonth = () => setSelectedMonth(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))

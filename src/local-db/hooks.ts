@@ -4,6 +4,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from './database'
 import type { Product, Category, Customer, Supplier, PurchaseOrder, SalesOrder, Invoice, OfflineMutation, Sale, SaleItem, Employee, Expense, BudgetAllocation, User } from './models'
 import { generateId, toSnakeCase, toCamelCase } from '@/lib/utils'
+import { convertToStoreBase } from '@/lib/currency'
 import { supabase } from '@/auth/supabase'
 import { useNetworkStatus } from '@/hooks/useNetworkStatus'
 import { isOnline } from '@/lib/network'
@@ -1719,3 +1720,75 @@ export async function setBudgetAllocation(workspaceId: string, data: Omit<Budget
         return allocation
     }
 }
+
+export function useBudgetLimitReached(
+    workspaceId: string | undefined,
+    baseCurrency: string,
+    rates: { usd_iqd: number; eur_iqd: number; try_iqd: number }
+) {
+    const now = new Date()
+    const monthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+    const financials = useMonthlyRevenue(workspaceId, monthStr)
+
+    return useLiveQuery(async () => {
+        if (!workspaceId) return false
+
+        const [year, month] = monthStr.split('-').map(Number)
+        const monthStart = new Date(year, month - 1, 1)
+        const monthEnd = new Date(year, month, 0, 23, 59, 59)
+
+        // 1. Get Allocation
+        const allocation = await db.budgetAllocations
+            .where('[workspaceId+month]')
+            .equals([workspaceId, monthStr])
+            .first()
+
+        if (!allocation || allocation.amount <= 0) return false
+
+        // 2. Get Expenses for the month
+        const allExpenses = await db.expenses
+            .where('workspaceId')
+            .equals(workspaceId)
+            .and(e => !e.isDeleted)
+            .toArray()
+
+        const monthExpenses = allExpenses.filter(e => {
+            const date = new Date(e.dueDate)
+            return date >= monthStart && date <= monthEnd
+        })
+
+        // 3. Get Employees for Salaries
+        const employees = await db.employees
+            .where('workspaceId')
+            .equals(workspaceId)
+            .toArray()
+
+        // 4. Calculate Operational Total (Expenses + Salaries)
+        let total = 0
+        monthExpenses.forEach(exp => {
+            total += convertToStoreBase(exp.amount, exp.currency, baseCurrency, rates)
+        })
+
+        employees.forEach(emp => {
+            if (emp.salary && emp.salary > 0 && !emp.isFired) {
+                total += convertToStoreBase(emp.salary, emp.salaryCurrency, baseCurrency, rates)
+            }
+        })
+
+        // 5. Calculate Limit
+        let limit = 0
+        if (allocation.type === 'fixed') {
+            limit = convertToStoreBase(allocation.amount, allocation.currency, baseCurrency, rates)
+        } else {
+            // Percentage of profit
+            const totalProfit = Object.entries(financials.profit || {}).reduce(
+                (sum, [curr, amt]) => sum + convertToStoreBase(amt, curr, baseCurrency, rates),
+                0
+            )
+            limit = totalProfit * (allocation.amount / 100)
+        }
+
+        return limit > 0 && total >= limit
+    }, [workspaceId, monthStr, financials, baseCurrency, rates]) ?? false
+}
+
