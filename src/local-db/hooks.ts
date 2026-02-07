@@ -2,7 +2,7 @@ import { useEffect } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 
 import { db } from './database'
-import type { Product, Category, Customer, Supplier, PurchaseOrder, SalesOrder, Invoice, OfflineMutation, Sale, SaleItem, Employee, Expense, BudgetAllocation } from './models'
+import type { Product, Category, Customer, Supplier, PurchaseOrder, SalesOrder, Invoice, OfflineMutation, Sale, SaleItem, Employee, Expense, BudgetAllocation, User } from './models'
 import { generateId, toSnakeCase, toCamelCase } from '@/lib/utils'
 import { supabase } from '@/auth/supabase'
 import { useNetworkStatus } from '@/hooks/useNetworkStatus'
@@ -1464,6 +1464,40 @@ export async function deleteEmployee(id: string): Promise<void> {
         await db.employees.put(updated)
         await addToOfflineMutations('employees', id, 'delete', { id }, existing.workspaceId)
     }
+}
+
+export function useWorkspaceUsers(workspaceId: string | undefined) {
+    const isOnline = useNetworkStatus()
+    const users = useLiveQuery(
+        () => workspaceId ? db.users.where('workspaceId').equals(workspaceId).and(u => !u.isDeleted).toArray() : [],
+        [workspaceId]
+    )
+
+    useEffect(() => {
+        async function fetchFromSupabase() {
+            if (isOnline && workspaceId) {
+                // Fetch profiles for the workspace
+                const { data, error } = await supabase
+                    .from('profiles')
+                    .select('*')
+                    .eq('workspace_id', workspaceId)
+
+                if (data && !error) {
+                    await db.transaction('rw', db.users, async () => {
+                        for (const remoteUser of data) {
+                            const localUser = toCamelCase(remoteUser as any) as unknown as User
+                            localUser.syncStatus = 'synced'
+                            localUser.lastSyncedAt = new Date().toISOString()
+                            await db.users.put(localUser)
+                        }
+                    })
+                }
+            }
+        }
+        fetchFromSupabase()
+    }, [isOnline, workspaceId])
+
+    return users ?? []
 }
 
 // ===================

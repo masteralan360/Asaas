@@ -1,9 +1,10 @@
 import { useState, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Plus, Search, User, Mail, Phone, Trash2, Edit } from 'lucide-react'
+import { Plus, Search, Mail, Phone, Trash2, Edit } from 'lucide-react'
 import { useWorkspace } from '@/workspace'
-import { useEmployees, createEmployee, updateEmployee, deleteEmployee } from '@/local-db'
+import { useEmployees, createEmployee, updateEmployee, deleteEmployee, useWorkspaceUsers } from '@/local-db'
 import type { Employee } from '@/local-db'
+import { platformService } from '@/services/platformService'
 import {
     Button,
     Input,
@@ -34,6 +35,7 @@ export default function HR() {
     const [search, setSearch] = useState('')
     const [isDialogOpen, setIsDialogOpen] = useState(false)
     const [editingEmployee, setEditingEmployee] = useState<Employee | undefined>(undefined)
+    const workspaceUsers = useWorkspaceUsers(workspaceId)
 
     const [selectedCategory, setSelectedCategory] = useState<string>('')
     const [selectedRole, setSelectedRole] = useState<string>('')
@@ -45,9 +47,13 @@ export default function HR() {
     const [salaryDisplay, setSalaryDisplay] = useState<string>('')
     const [dividendAmountDisplay, setDividendAmountDisplay] = useState<string>('')
 
+    const [showLinkAccount, setShowLinkAccount] = useState(false)
+    const [linkedUserId, setLinkedUserId] = useState<string | undefined>(undefined)
+
     // Confirmation Modals State
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false)
     const [isFireModalOpen, setIsFireModalOpen] = useState(false)
+    const [isSaving, setIsSaving] = useState(false)
     const [confirmTarget, setConfirmTarget] = useState<Employee | undefined>(undefined)
 
     useMemo(() => {
@@ -64,6 +70,8 @@ export default function HR() {
             setDividendPayday(editingEmployee.dividendPayday || 30)
             setSalaryDisplay(formatNumberWithCommas(editingEmployee.salary || 0))
             setDividendAmountDisplay(formatNumberWithCommas(editingEmployee.dividendAmount || 0))
+            setShowLinkAccount(!!editingEmployee.linkedUserId)
+            setLinkedUserId(editingEmployee.linkedUserId)
         } else if (isDialogOpen === false) {
             setSelectedCategory('')
             setSelectedRole('')
@@ -74,6 +82,8 @@ export default function HR() {
             setDividendPayday(30)
             setSalaryDisplay('')
             setDividendAmountDisplay('')
+            setShowLinkAccount(false)
+            setLinkedUserId(undefined)
         }
     }, [editingEmployee, isDialogOpen, features.default_currency])
 
@@ -87,7 +97,7 @@ export default function HR() {
 
     const handleSave = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault()
-        if (!workspaceId) return
+        if (!workspaceId || isSaving) return
 
         const formData = new FormData(e.currentTarget)
         const data = {
@@ -106,8 +116,13 @@ export default function HR() {
             dividendCurrency: hasDividends ? (dividendCurrency as any) : undefined,
             salaryPayday,
             dividendPayday: hasDividends ? dividendPayday : undefined,
-            isFired: editingEmployee?.isFired || false
+            isFired: editingEmployee?.isFired || false,
+            linkedUserId: showLinkAccount ? linkedUserId : undefined
         }
+
+        setIsSaving(true)
+        // Optimistically close for better UX
+        setIsDialogOpen(false)
 
         try {
             if (editingEmployee) {
@@ -117,10 +132,13 @@ export default function HR() {
                 await createEmployee(workspaceId, data)
                 toast({ description: t('hr.addSuccess', 'Employee added successfully') })
             }
-            setIsDialogOpen(false)
             setEditingEmployee(undefined)
         } catch (error) {
+            console.error('Save error:', error)
             toast({ variant: 'destructive', description: t('common.error', 'Something went wrong') })
+            setIsDialogOpen(true) // Re-open on error
+        } finally {
+            setIsSaving(false)
         }
     }
 
@@ -195,8 +213,27 @@ export default function HR() {
                         <CardContent className="p-6">
                             <div className="flex items-start justify-between">
                                 <div className="flex items-center gap-4">
-                                    <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center text-primary">
-                                        <User className="w-6 h-6" />
+                                    <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center text-primary overflow-hidden">
+                                        {(() => {
+                                            const linkedUser = workspaceUsers.find(u => u.id === employee.linkedUserId);
+                                            const profileUrl = linkedUser?.profileUrl;
+
+                                            if (employee.linkedUserId && profileUrl) {
+                                                return (
+                                                    <img
+                                                        src={platformService.convertFileSrc(profileUrl)}
+                                                        className="w-full h-full object-cover"
+                                                        alt={employee.name}
+                                                        onError={(e) => {
+                                                            (e.target as any).style.display = 'none';
+                                                            (e.target as any).parentElement.innerHTML = `<span class="font-bold text-lg">${employee.name[0]}</span>`;
+                                                        }}
+                                                    />
+                                                );
+                                            }
+
+                                            return <span className="font-bold text-lg">{employee.name[0]}</span>;
+                                        })()}
                                     </div>
                                     <div>
                                         <div className="font-bold text-lg">{employee.name}</div>
@@ -388,6 +425,37 @@ export default function HR() {
                             <div className="space-y-2">
                                 <Label htmlFor="joiningDate">{t('hr.form.joiningDate', 'Joining Date')}</Label>
                                 <Input id="joiningDate" name="joiningDate" type="date" defaultValue={editingEmployee?.joiningDate ? new Date(editingEmployee.joiningDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]} required />
+                            </div>
+
+                            {/* Link Workspace Account - Requirement: between salary payday/joining date and location */}
+                            <div className="col-span-2 p-4 bg-primary/5 rounded-lg space-y-4 border border-primary/20">
+                                <div className="flex items-center justify-between">
+                                    <div className="space-y-0.5">
+                                        <Label className="text-sm font-bold uppercase tracking-wider text-primary">{t('hr.form.linkAccount', 'Link Workspace Account')}</Label>
+                                        <div className="text-[10px] text-muted-foreground uppercase">{t('hr.form.linkAccountDesc', 'Connect this record to a workspace member account')}</div>
+                                    </div>
+                                    <Switch checked={showLinkAccount} onCheckedChange={(val) => {
+                                        setShowLinkAccount(val)
+                                        if (!val) setLinkedUserId(undefined)
+                                    }} />
+                                </div>
+
+                                {showLinkAccount && (
+                                    <div className="animate-in fade-in slide-in-from-top-1 duration-200">
+                                        <Select value={linkedUserId} onValueChange={setLinkedUserId}>
+                                            <SelectTrigger>
+                                                <SelectValue placeholder={t('hr.form.selectMember', 'Select Member')} />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {workspaceUsers.map(user => (
+                                                    <SelectItem key={user.id} value={user.id}>
+                                                        {user.name}{user.email ? ` (${user.email})` : ''}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                )}
                             </div>
                             <div className="space-y-2 col-span-2">
                                 <Label htmlFor="location">{t('hr.form.location', 'Location')}</Label>

@@ -82,6 +82,7 @@ export interface Employee extends BaseEntity {
     salaryPayday?: number
     dividendPayday?: number
     isFired?: boolean
+    linkedUserId?: string
 }
 
 export type ExpenseType = 'recurring' | 'one-time'

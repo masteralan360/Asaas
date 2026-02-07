@@ -14,7 +14,8 @@ import {
     User
 } from 'lucide-react'
 import { useWorkspace } from '@/workspace'
-import { useExpenses, createExpense, deleteExpense, useBudgetAllocation, useMonthlyRevenue, setBudgetAllocation, useEmployees } from '@/local-db'
+import { useExpenses, createExpense, deleteExpense, useBudgetAllocation, useMonthlyRevenue, setBudgetAllocation, useEmployees, useWorkspaceUsers } from '@/local-db'
+import { platformService } from '@/services/platformService'
 import { Button } from '@/ui/components/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/ui/components/card'
 import { Input } from '@/ui/components/input'
@@ -28,8 +29,10 @@ import {
     DialogTitle,
     DialogDescription,
     DialogFooter,
-    useToast
+    useToast,
+    DividendDistributionModal
 } from '@/ui/components'
+import type { DividendRecipient } from '@/ui/components/DividendModal'
 import { Label } from '@/ui/components/label'
 import {
     Select,
@@ -58,6 +61,8 @@ export default function Budget() {
     const [allocAmountDisplay, setAllocAmountDisplay] = useState<string>('')
     const [allocType, setAllocType] = useState<'fixed' | 'percentage'>('fixed')
     const [allocCurrency, setAllocCurrency] = useState<CurrencyCode>(baseCurrency as any || 'usd')
+    const [isDividendModalOpen, setIsDividendModalOpen] = useState(false)
+    const workspaceUsers = useWorkspaceUsers(workspaceId)
 
     const monthStr = useMemo(() => {
         const year = selectedMonth.getFullYear()
@@ -119,34 +124,32 @@ export default function Budget() {
             return date >= monthStart && date <= monthEnd && !e.isDeleted
         }).map(e => ({ ...e, isVirtual: false }))
 
-        const operationalTotal = monthExpenses.reduce((sum, e) => sum + convertToStoreBase(e.amount, e.currency), 0)
-        const operationalPaid = monthExpenses.filter(e => e.status === 'paid').reduce((sum, e) => sum + convertToStoreBase(e.amount, e.currency), 0)
-        const operationalPending = monthExpenses.filter(e => e.status === 'pending').reduce((sum, e) => sum + convertToStoreBase(e.amount, e.currency), 0)
+        let operationalTotal = 0
+        let operationalPaid = 0
+        let operationalPending = 0
+
+        monthExpenses.forEach(exp => {
+            const baseAmount = convertToStoreBase(exp.amount, exp.currency)
+            operationalTotal += baseAmount
+            if (exp.status === 'paid') operationalPaid += baseAmount
+            else operationalPending += baseAmount
+        })
 
         const totalProfitFromRevenue = Object.entries(monthlyFinancials.profit || {}).reduce((sum, [curr, amt]) => sum + convertToStoreBase(amt, curr), 0)
 
-        // The user wants Dividends and Budget % to calculate from the "Net Profit" of the Revenue page (Revenue - COGS)
-        // Note: Operational Expenses are handled separately in the budget metrics, so we stick to the Revenue Page's definition
-        const referenceProfit = totalProfitFromRevenue
-
-        // Add virtual personnel costs
         const virtualExpenses: any[] = []
         let personnelPaid = 0
         let personnelPending = 0
         const today = new Date()
 
+        // Pass 1: Personnel Salaries (Base ONLY)
         employees.forEach(emp => {
-            // Virtual Salary
-            if (emp.salary > 0) {
-                const amount = emp.isFired ? 0 : emp.salary
-                const originalAmount = emp.salary
-                const currency = emp.salaryCurrency
-
-                // Determine payday date
+            // Salary
+            if (emp.salary && emp.salary > 0) {
+                const amount = emp.salary
+                const currency = (emp.salaryCurrency as any) || 'usd'
                 const pDay = Number(emp.salaryPayday) || 30
                 let payDate = new Date(year, month, Math.min(pDay, new Date(year, month + 1, 0).getDate()))
-                if (isNaN(payDate.getTime())) payDate = monthEnd
-
                 const status = today >= payDate ? 'paid' : 'pending'
                 const baseAmount = convertToStoreBase(amount, currency)
 
@@ -157,62 +160,67 @@ export default function Budget() {
                     id: `v-salary-${emp.id}`,
                     description: `${emp.name} (${t('hr.salary', 'Salary')})`,
                     amount,
-                    originalAmount,
                     currency,
                     category: 'payroll',
                     status,
                     dueDate: payDate.toISOString(),
                     isVirtual: true,
-                    isFired: emp.isFired,
-                    type: 'recurring'
-                })
-            }
-
-            // Virtual Dividend
-            if (emp.hasDividends && emp.dividendAmount && emp.dividendAmount > 0) {
-                let amount = 0
-                let originalAmount = 0
-                let currency = (emp.dividendCurrency as any) || 'usd'
-
-                if (emp.dividendType === 'percentage') {
-                    originalAmount = Math.max(0, referenceProfit * (emp.dividendAmount / 100))
-                    amount = emp.isFired ? 0 : originalAmount
-                    currency = baseCurrency // Percentages are calculated in base
-                } else {
-                    originalAmount = emp.dividendAmount
-                    amount = emp.isFired ? 0 : originalAmount
-                }
-
-                // Determine payday date
-                const pDay = Number(emp.dividendPayday) || 30
-                let payDate = new Date(year, month, Math.min(pDay, new Date(year, month + 1, 0).getDate()))
-                if (isNaN(payDate.getTime())) payDate = monthEnd
-
-                const status = today >= payDate ? 'paid' : 'pending'
-                const baseAmount = convertToStoreBase(amount, currency)
-
-                if (status === 'paid') personnelPaid += baseAmount
-                else personnelPending += baseAmount
-
-                virtualExpenses.push({
-                    id: `v-div-${emp.id}`,
-                    description: `${emp.name} (${t('hr.form.dividends', 'Dividend')})`,
-                    amount,
-                    originalAmount,
-                    currency,
-                    category: 'payroll',
-                    status,
-                    dueDate: payDate.toISOString(),
-                    isVirtual: true,
-                    isFired: emp.isFired,
                     type: 'recurring'
                 })
             }
         })
 
-        const combinedTotal = operationalTotal + personnelPaid + personnelPending
-        const combinedPaid = operationalPaid + personnelPaid
-        const combinedPending = operationalPending + personnelPending
+        const totalOperational = operationalTotal + personnelPaid + personnelPending
+        const referenceProfit = totalProfitFromRevenue
+
+        // Pass 2: Profit Pool (Money after hard bills)
+        const profitPool = Math.max(0, referenceProfit - totalOperational)
+
+        // Pass 3: Dividends (Distribution from Profit Pool)
+        let dividendTotal = 0
+        let dividendPaid = 0
+        let dividendPending = 0
+
+        const dividendRecipients: DividendRecipient[] = []
+
+        employees.forEach(emp => {
+            if (emp.hasDividends && emp.dividendAmount && emp.dividendAmount > 0) {
+                let amount = 0
+                if (emp.dividendType === 'fixed') {
+                    amount = emp.dividendAmount
+                } else {
+                    amount = profitPool * (emp.dividendAmount / 100)
+                }
+
+                const finalAmount = emp.isFired ? 0 : amount
+                const currency = emp.dividendType === 'fixed' ? (emp.dividendCurrency as any || 'usd') : baseCurrency
+                const pDay = Number(emp.dividendPayday) || 30
+                let payDate = new Date(year, month, Math.min(pDay, new Date(year, month + 1, 0).getDate()))
+                const status = today >= payDate ? 'paid' : 'pending'
+                const baseAmount = convertToStoreBase(finalAmount, currency)
+
+                dividendTotal += baseAmount
+                if (status === 'paid') dividendPaid += baseAmount
+                else dividendPending += baseAmount
+
+                const linkedUser = emp.linkedUserId ? workspaceUsers.find(u => u.id === emp.linkedUserId) : null
+                const avatarUrl = linkedUser?.profileUrl ? platformService.convertFileSrc(linkedUser.profileUrl) : undefined
+
+                dividendRecipients.push({
+                    name: emp.name,
+                    amount: finalAmount,
+                    currency,
+                    formula: emp.dividendType === 'fixed' ? formatCurrency(emp.dividendAmount, currency as any, iqdPreference) : `${emp.dividendAmount}%`,
+                    isLinked: !!emp.linkedUserId,
+                    isFired: emp.isFired,
+                    avatarUrl
+                })
+
+                // Dividends are NOT pushed to virtualExpenses anymore to exclude them from the main list
+            }
+        })
+
+        const finalNetProfit = Math.max(0, profitPool - dividendTotal)
 
         const hasMixedCurrencies = new Set([...monthExpenses, ...virtualExpenses].map(e => e.currency?.toLowerCase())).size > 1
 
@@ -226,22 +234,35 @@ export default function Budget() {
         }
 
         return {
-            total: combinedTotal,
-            paid: combinedPaid,
-            pending: combinedPending,
+            operationalTotal: totalOperational,
+            total: totalOperational, // Keep 'total' for existing card references
+            paid: operationalPaid + personnelPaid,
+            pending: operationalPending + personnelPending,
+            dividendTotal,
+            dividendPaid,
+            dividendPending,
+            finalNetProfit,
+            profitPool,
             count: monthExpenses.length + virtualExpenses.length,
             isMixed: hasMixedCurrencies,
             budgetLimit,
             referenceProfit,
-            displayExpenses: [...monthExpenses, ...virtualExpenses]
+            displayExpenses: [...monthExpenses, ...virtualExpenses],
+            dividendRecipients
         }
-    }, [expenses, employees, selectedMonth, convertToStoreBase, currentAllocation, monthlyFinancials, t, baseCurrency])
+    }, [expenses, employees, workspaceUsers, selectedMonth, convertToStoreBase, currentAllocation, monthlyFinancials, t, baseCurrency, iqdPreference])
+
+    const [isSaving, setIsSaving] = useState(false)
 
     const handleAddExpense = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault()
-        if (!workspaceId) return
+        if (!workspaceId || isSaving) return
 
         const formData = new FormData(e.currentTarget)
+        setIsSaving(true)
+        // Optimistically close for better UX
+        setIsDialogOpen(false)
+
         try {
             await createExpense(workspaceId, {
                 description: formData.get('description') as string,
@@ -256,9 +277,11 @@ export default function Budget() {
                 snoozeCount: 0
             })
             toast({ description: t('budget.expenseAdded', 'Expense added to tracker') })
-            setIsDialogOpen(false)
         } catch (error) {
             toast({ variant: 'destructive', description: t('common.error', 'Failed to add expense') })
+            setIsDialogOpen(true) // Re-open on error
+        } finally {
+            setIsSaving(false)
         }
     }
 
@@ -290,8 +313,8 @@ export default function Budget() {
                 </div>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                {/* Total Allocated */}
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+                {/* Total Allocated (Operational) */}
                 <Card
                     className={cn(
                         "cursor-pointer hover:scale-[1.02] transition-all hover:bg-opacity-10 dark:hover:bg-opacity-20 active:scale-95 group relative overflow-hidden rounded-[2rem]",
@@ -338,7 +361,10 @@ export default function Budget() {
                         )}
                         <p className="text-[10px] font-bold uppercase tracking-wider mt-2 opacity-60">
                             {metrics.count} {t('budget.items', 'items')}
-                            {metrics.budgetLimit > 0 && ` • ${Math.round((metrics.total / metrics.budgetLimit) * 100)}% of budget`}
+                            {metrics.budgetLimit > 0 && ` • ${Math.round((metrics.total / metrics.budgetLimit) * 100)}% ${t('budget.limit', 'of budget')}`}
+                            {metrics.referenceProfit > 0 && (
+                                <> • {Math.round((metrics.dividendTotal / metrics.referenceProfit) * 100)}% {t('budget.dividends', 'Dividends')}</>
+                            )}
                         </p>
                     </CardContent>
                 </Card>
@@ -395,7 +421,31 @@ export default function Budget() {
                     </CardContent>
                 </Card>
 
-                {/* Alpha Preview */}
+                {/* Dividends Total */}
+                <Card
+                    className="bg-sky-500/5 dark:bg-sky-500/10 border-sky-500/20 cursor-pointer hover:scale-[1.02] transition-all hover:bg-sky-500/10 hover:shadow-[0_0_20px_-5px_rgba(14,165,233,0.3)] active:scale-95 group relative overflow-hidden rounded-[2rem]"
+                    onClick={() => setIsDividendModalOpen(true)}
+                >
+                    <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <User className="w-4 h-4 text-sky-500" />
+                    </div>
+                    <CardHeader className="pb-2">
+                        <CardTitle className="text-xs font-black text-sky-600 dark:text-sky-400 flex items-center gap-2 uppercase tracking-[0.2em]">
+                            <User className="w-4 h-4" />
+                            {t('budget.dividends', 'Dividends Total')}
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="text-2xl font-black tracking-tighter tabular-nums text-sky-700 dark:text-sky-300">
+                            {formatCurrency(metrics.dividendTotal, baseCurrency, iqdPreference)}
+                        </div>
+                        <p className="text-[10px] font-bold uppercase tracking-wider mt-2 opacity-60">
+                            {t('budget.profitDistribution', 'Profit share distribution')}
+                        </p>
+                    </CardContent>
+                </Card>
+
+                {/* Surplus Projection */}
                 <Card
                     className="bg-violet-500/5 dark:bg-violet-500/10 border-violet-500/20 cursor-pointer hover:scale-[1.02] transition-all hover:bg-violet-500/10 hover:shadow-[0_0_20px_-5px_rgba(139,92,246,0.3)] active:scale-95 group relative overflow-hidden rounded-[2rem]"
                 >
@@ -405,15 +455,15 @@ export default function Budget() {
                     <CardHeader className="pb-2">
                         <CardTitle className="text-xs font-black text-violet-600 dark:text-violet-400 flex items-center gap-2 uppercase tracking-[0.2em]">
                             <TrendingUp className="w-4 h-4" />
-                            Alpha Preview
+                            {t('budget.netProfit', 'Surplus')}
                         </CardTitle>
                     </CardHeader>
                     <CardContent>
-                        <p className="text-xs font-bold text-violet-600/60 dark:text-violet-400/60 leading-tight">
-                            V1: Sales auto-sync coming soon
-                        </p>
-                        <p className="text-[10px] text-muted-foreground mt-1 opacity-60">
-                            Track automated deductions
+                        <div className="text-2xl font-black tracking-tighter tabular-nums text-violet-700 dark:text-violet-300">
+                            {formatCurrency(metrics.finalNetProfit, baseCurrency, iqdPreference)}
+                        </div>
+                        <p className="text-[10px] font-bold uppercase tracking-wider mt-2 opacity-60">
+                            {t('budget.projectedSurplus', 'Projected Surplus')}
                         </p>
                     </CardContent>
                 </Card>
@@ -615,7 +665,12 @@ export default function Budget() {
                         <form
                             onSubmit={async (e) => {
                                 e.preventDefault()
-                                if (!workspaceId) return
+                                if (!workspaceId || isSaving) return
+
+                                setIsSaving(true)
+                                // Snap close for instant feeling
+                                setIsAllocationDialogOpen(false)
+
                                 try {
                                     await setBudgetAllocation(workspaceId, {
                                         month: monthStr,
@@ -624,9 +679,11 @@ export default function Budget() {
                                         currency: allocCurrency
                                     })
                                     toast({ description: t('budget.allocationSaved', 'Budget allocation updated') })
-                                    setIsAllocationDialogOpen(false)
                                 } catch (error) {
                                     toast({ variant: 'destructive', description: t('common.error', 'Failed to save budget') })
+                                    setIsAllocationDialogOpen(true) // Restore if failed
+                                } finally {
+                                    setIsSaving(false)
                                 }
                             }}
                             className="space-y-4 pt-4"
@@ -692,21 +749,47 @@ export default function Budget() {
                             </div>
 
                             <div className="p-4 bg-secondary/50 rounded-xl space-y-2">
-                                <h4 className="text-xs font-bold uppercase tracking-widest opacity-60">Estimated Limit</h4>
-                                <p className="text-lg font-bold">
-                                    {formatCurrency(
-                                        allocType === 'fixed'
-                                            ? convertToStoreBase(parseFormattedNumber(allocAmountDisplay), allocCurrency)
-                                            : metrics.referenceProfit * (parseFormattedNumber(allocAmountDisplay) / 100),
-                                        baseCurrency,
-                                        iqdPreference
-                                    )}
-                                </p>
-                                {allocType === 'percentage' && (
-                                    <p className="text-[10px] text-muted-foreground">
-                                        Based on {monthStr} revenue
+                                <div className="flex justify-between items-center">
+                                    <h4 className="text-xs font-bold uppercase tracking-widest opacity-60">
+                                        {t('budget.estimatedBudgetLimit', 'Proposed Budget Limit')}
+                                    </h4>
+                                    <p className="text-sm font-black">
+                                        {formatCurrency(
+                                            allocType === 'fixed'
+                                                ? convertToStoreBase(parseFormattedNumber(allocAmountDisplay), allocCurrency)
+                                                : metrics.referenceProfit * (parseFormattedNumber(allocAmountDisplay) / 100),
+                                            baseCurrency,
+                                            iqdPreference
+                                        )}
                                     </p>
-                                )}
+                                </div>
+
+                                <div className="flex justify-between items-center pt-2 border-t border-black/5 dark:border-white/5">
+                                    <h4 className="text-xs font-bold uppercase tracking-widest opacity-60">
+                                        {t('budget.actualSurplus', 'Projected Surplus')}
+                                    </h4>
+                                    <p className={cn(
+                                        "text-sm font-black",
+                                        (metrics.referenceProfit - (
+                                            allocType === 'fixed'
+                                                ? convertToStoreBase(parseFormattedNumber(allocAmountDisplay), allocCurrency)
+                                                : metrics.referenceProfit * (parseFormattedNumber(allocAmountDisplay) / 100)
+                                        )) >= 0 ? "text-emerald-600" : "text-red-600"
+                                    )}>
+                                        {formatCurrency(
+                                            metrics.referenceProfit - (
+                                                allocType === 'fixed'
+                                                    ? convertToStoreBase(parseFormattedNumber(allocAmountDisplay), allocCurrency)
+                                                    : metrics.referenceProfit * (parseFormattedNumber(allocAmountDisplay) / 100)
+                                            ),
+                                            baseCurrency,
+                                            iqdPreference
+                                        )}
+                                    </p>
+                                </div>
+                                <p className="text-[10px] text-muted-foreground pt-1 italic">
+                                    {t('budget.surplusNote', 'Remaining revenue after the proposed budget limit')}
+                                </p>
                             </div>
 
                             <DialogFooter className="pt-4">
@@ -716,7 +799,15 @@ export default function Budget() {
                     </div>
                 </DialogContent>
             </Dialog>
-        </div >
+
+            <DividendDistributionModal
+                isOpen={isDividendModalOpen}
+                onClose={() => setIsDividendModalOpen(false)}
+                recipients={metrics.dividendRecipients}
+                surplus={metrics.finalNetProfit}
+                baseCurrency={baseCurrency}
+                iqdPreference={iqdPreference}
+            />
+        </div>
     )
 }
-

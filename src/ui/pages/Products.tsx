@@ -511,7 +511,7 @@ export function Products() {
                                                             "text-[11px] font-black uppercase tracking-widest mt-0.5",
                                                             product.quantity <= product.minStockLevel ? "text-amber-500" : "text-muted-foreground/60"
                                                         )}>
-                                                            {product.quantity} {product.unit}
+                                                            {product.quantity} {t(`products.units.${product.unit}`, product.unit)}
                                                         </div>
                                                     </div>
                                                 </div>
@@ -597,7 +597,7 @@ export function Products() {
                                                                     {formatCurrency(product.price, product.currency, features.iqd_display_preference)}
                                                                 </div>
                                                                 <div className="text-[11px] text-muted-foreground font-medium">
-                                                                    {product.quantity} {product.unit}
+                                                                    {product.quantity} {t(`products.units.${product.unit}`, product.unit)}
                                                                 </div>
                                                             </div>
 
@@ -666,7 +666,7 @@ export function Products() {
                                                             </TableCell>
                                                             <TableCell className="text-right">
                                                                 <span className={product.quantity <= product.minStockLevel ? 'text-amber-500 font-medium' : ''}>
-                                                                    {product.quantity} {product.unit}
+                                                                    {product.quantity} {t(`products.units.${product.unit}`, product.unit)}
                                                                 </span>
                                                             </TableCell>
                                                             {(canEdit || canDelete) && (
@@ -766,7 +766,9 @@ export function Products() {
                                     </SelectTrigger>
                                     <SelectContent>
                                         {UNITS.map((unit) => (
-                                            <SelectItem key={unit} value={unit}>{unit}</SelectItem>
+                                            <SelectItem key={unit} value={unit}>
+                                                {t(`products.units.${unit}`, unit)}
+                                            </SelectItem>
                                         ))}
                                     </SelectContent>
                                 </Select>
