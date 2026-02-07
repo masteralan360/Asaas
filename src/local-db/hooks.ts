@@ -1588,7 +1588,7 @@ export function useBudgetAllocations(workspaceId: string | undefined) {
 
 export function useBudgetAllocation(workspaceId: string | undefined, month: string | undefined) {
     return useLiveQuery(
-        () => (workspaceId && month) ? db.budgetAllocations.where({ workspaceId, month }).first() : undefined,
+        () => (workspaceId && month) ? db.budgetAllocations.where('[workspaceId+month]').equals([workspaceId, month]).first() : undefined,
         [workspaceId, month]
     )
 }
@@ -1679,8 +1679,25 @@ export function useMonthlyRevenue(workspaceId: string | undefined, monthStr: str
 export async function setBudgetAllocation(workspaceId: string, data: Omit<BudgetAllocation, 'id' | 'workspaceId' | 'createdAt' | 'updatedAt' | 'syncStatus' | 'lastSyncedAt' | 'version' | 'isDeleted'>): Promise<BudgetAllocation> {
     const now = new Date().toISOString()
 
-    // Check if allocation for this month already exists
-    const existing = await db.budgetAllocations.where({ workspaceId, month: data.month }).first()
+    // 1. Check local DB first using the new compound index
+    let existing = await db.budgetAllocations.where('[workspaceId+month]').equals([workspaceId, data.month]).first()
+
+    // 2. If not found locally but online, check Supabase to avoid unique constraint violation
+    if (!existing && isOnline()) {
+        const { data: remoteData, error } = await supabase
+            .from('budget_allocations')
+            .select('*')
+            .eq('workspace_id', workspaceId)
+            .eq('month', data.month)
+            .eq('is_deleted', false)
+            .maybeSingle()
+
+        if (remoteData && !error) {
+            existing = toCamelCase(remoteData as any) as unknown as BudgetAllocation
+            // Sync it locally first so updateEntity can find it
+            await db.budgetAllocations.put(existing)
+        }
+    }
 
     if (existing) {
         await updateEntity('budget_allocations', db.budgetAllocations, existing.id, data as any)

@@ -25,7 +25,7 @@ export class AsaasDatabase extends Dexie {
     constructor() {
         super('AsaasDatabase')
 
-        this.version(24).stores({
+        this.version(25).stores({
             products: 'id, sku, name, categoryId, storageId, workspaceId, currency, syncStatus, updatedAt, isDeleted, canBeReturned',
             categories: 'id, name, workspaceId, syncStatus, updatedAt, isDeleted',
             suppliers: 'id, name, workspaceId, syncStatus, updatedAt, isDeleted',
@@ -41,7 +41,7 @@ export class AsaasDatabase extends Dexie {
             storages: 'id, name, workspaceId, isSystem, isProtected, syncStatus, updatedAt, isDeleted',
             employees: 'id, name, workspaceId, linkedUserId, syncStatus, updatedAt, isDeleted',
             expenses: 'id, type, category, status, dueDate, snoozeUntil, workspaceId, syncStatus, updatedAt, isDeleted',
-            budgetAllocations: 'id, month, type, workspaceId, syncStatus, updatedAt, isDeleted',
+            budgetAllocations: 'id, month, type, workspaceId, syncStatus, updatedAt, isDeleted, [workspaceId+month]',
             syncQueue: 'id, entityType, entityId, operation, timestamp',
             offline_mutations: 'id, workspaceId, entityType, entityId, status, createdAt, [entityType+entityId+status]',
             app_settings: 'key'
