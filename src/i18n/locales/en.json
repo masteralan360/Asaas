@@ -5,6 +5,13 @@
         "contactAdmin": "Contact an Admin",
         "additionalInfo": "If you believe this is an error, please reach out to your workspace administrator."
     },
+    "notifications": {
+        "tabs": {
+            "all": "All",
+            "workspace": "Workspace",
+            "user": "User"
+        }
+    },
     "common": {
         "loading": "Loading...",
         "save": "Save",

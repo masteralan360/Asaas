@@ -6,6 +6,7 @@ import { useTheme } from '@/ui/components/theme-provider'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 import { GlobalSearch } from './GlobalSearch'
+import { NotificationCenter } from './NotificationCenter'
 import { useLogo } from '@/hooks/useFavicon'
 
 
@@ -130,6 +131,7 @@ export function TitleBar() {
                         <Moon className="w-4 h-4" />
                     )}
                 </button>
+                <NotificationCenter />
                 <button
                     onClick={minimize}
                     className="p-2 hover:bg-secondary rounded-md transition-colors text-muted-foreground hover:text-foreground"

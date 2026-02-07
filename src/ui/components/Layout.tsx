@@ -12,6 +12,7 @@ import { platformService } from '@/services/platformService'
 import { whatsappManager } from '@/lib/whatsappWebviewManager'
 import { ResourceSyncOverlay } from './p2p/ResourceSyncOverlay'
 import { useTheme } from './theme-provider'
+import { NotificationCenter } from './NotificationCenter'
 import { useLogo } from '@/hooks/useFavicon'
 import { ManualRateModals } from './exchange/ManualRateModals'
 
@@ -552,6 +553,7 @@ export function Layout({ children }: LayoutProps) {
                         <P2PSyncIndicator />
                         <ExchangeRateIndicator />
                         <div className="w-px h-4 bg-border mx-1" />
+                        {(!isTauri || isFullscreen || isMobile()) && <NotificationCenter />}
                         <SyncStatusIndicator />
 
                         {/* Refresh Button - Only for non-Tauri or Mobile where TitleBar is absent */}

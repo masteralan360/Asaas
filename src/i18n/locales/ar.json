@@ -5,6 +5,13 @@
         "contactAdmin": "اتصل بمسؤول",
         "additionalInfo": "إذا كنت تعتقد أن هذا خطأ، يرجى التواصل مع مسؤول مساحة العمل."
     },
+    "notifications": {
+        "tabs": {
+            "all": "الكل",
+            "workspace": "مساحة العمل",
+            "user": "المستخدم"
+        }
+    },
     "common": {
         "loading": "جاري التحميل...",
         "save": "حفظ",

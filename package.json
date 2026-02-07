@@ -1,7 +1,7 @@
 {
   "name": "asaas",
   "private": true,
-  "version": "1.7.8",
+  "version": "1.7.9",
   "main": "electron/main.cjs",
   "type": "module",
   "repository": {
@@ -43,6 +43,8 @@
     "android:build:release": "tauri android build"
   },
   "dependencies": {
+    "@novu/node": "^2.6.6",
+    "@novu/react": "^3.13.0",
     "@radix-ui/react-alert-dialog": "^1.1.2",
     "@radix-ui/react-avatar": "^1.1.1",
     "@radix-ui/react-dialog": "^1.1.2",
