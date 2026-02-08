@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Asaas",
-  "version": "1.8.2",
+  "version": "1.8.3",
   "identifier": "com.asaas.app",
   "build": {
     "frontendDist": "../dist",
@@ -21,7 +21,8 @@
         "fullscreen": false,
         "visible": false,
         "decorations": false,
-        "transparent": false
+        "transparent": false,
+        "devtools": true
       }
     ],
     "security": {
