@@ -9,7 +9,9 @@ import {
     DialogFooter,
     Button,
     useToast,
-    PdfViewer
+    PdfViewer,
+    A4InvoiceTemplate,
+    SaleReceiptBase
 } from '@/ui/components'
 import { Printer, X, Maximize2, Minimize2, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -65,9 +67,15 @@ export function PrintPreviewModal({
     const [pdfBlobs, setPdfBlobs] = useState<PdfBlobs>({})
     const [pdfUrl, setPdfUrl] = useState<string | null>(null)
     const htmlPrintRef = useRef<HTMLDivElement>(null)
+    const templatePrintRef = useRef<HTMLDivElement>(null)
 
     const hasPdfData = !!(pdfData && features)
     const printFormat: PrintFormat = (invoiceData?.printFormat || 'a4') as PrintFormat
+    const isTauri = useMemo(() => {
+        if (typeof window === 'undefined') return false
+        const w = window as any
+        return !!(w.__TAURI_INTERNALS__ || w.__TAURI__)
+    }, [])
 
     const translations = useMemo(() => ({
         date: t('sales.print.date') || 'Date',
@@ -97,6 +105,14 @@ export function PrintPreviewModal({
 
     const handleHtmlPrint = useReactToPrint({
         contentRef: htmlPrintRef,
+        documentTitle: title || 'Print_Preview',
+        onAfterPrint: () => {
+            if (onConfirm) onConfirm()
+        }
+    })
+
+    const handleTemplatePrint = useReactToPrint({
+        contentRef: templatePrintRef,
         documentTitle: title || 'Print_Preview',
         onAfterPrint: () => {
             if (onConfirm) onConfirm()
@@ -293,6 +309,18 @@ export function PrintPreviewModal({
                 }
             }
 
+            if (savedInvoice) {
+                toast({
+                    title: t('print.saveSuccess') || 'Invoice Saved',
+                    description: t('print.saveSuccessDesc') || 'A record of this invoice has been added to history.'
+                })
+            }
+
+            if (isTauri) {
+                handleTemplatePrint()
+                return
+            }
+
             const previewUrl = pdfUrl
             if (previewUrl) {
                 await printPdfUrl(previewUrl)
@@ -303,13 +331,6 @@ export function PrintPreviewModal({
                 } finally {
                     URL.revokeObjectURL(tempUrl)
                 }
-            }
-
-            if (savedInvoice) {
-                toast({
-                    title: t('print.saveSuccess') || 'Invoice Saved',
-                    description: t('print.saveSuccessDesc') || 'A record of this invoice has been added to history.'
-                })
             }
 
             if (onConfirm) onConfirm()
@@ -423,6 +444,27 @@ export function PrintPreviewModal({
                         </Button>
                     )}
                 </DialogFooter>
+
+                {hasPdfData && (
+                    <div className="fixed left-[-10000px] top-0">
+                        <div ref={templatePrintRef} className="bg-white text-black">
+                            {printFormat === 'receipt' ? (
+                                <div className="w-[80mm]">
+                                    <SaleReceiptBase
+                                        data={pdfData}
+                                        features={features}
+                                        workspaceName={workspaceName || workspaceId || 'Asaas'}
+                                    />
+                                </div>
+                            ) : (
+                                <A4InvoiceTemplate
+                                    data={pdfData}
+                                    features={features}
+                                />
+                            )}
+                        </div>
+                    </div>
+                )}
             </DialogContent>
         </Dialog>
     )

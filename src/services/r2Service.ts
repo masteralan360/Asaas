@@ -3,8 +3,22 @@
  * This avoids exposing R2 keys in the client and handles CORS/Auth securely.
  */
 class R2Service {
-    private workerUrl = import.meta.env.VITE_R2_WORKER_URL;
-    private authToken = import.meta.env.VITE_R2_AUTH_TOKEN;
+    private readEnvValue(value?: string | null): string | undefined {
+        const trimmed = value?.trim();
+        return trimmed ? trimmed : undefined;
+    }
+
+    private get workerUrl(): string | undefined {
+        const fromVite = this.readEnvValue(import.meta.env.VITE_R2_WORKER_URL);
+        if (fromVite) return fromVite;
+        return this.readEnvValue(typeof __R2_WORKER_URL__ !== 'undefined' ? __R2_WORKER_URL__ : undefined);
+    }
+
+    private get authToken(): string | undefined {
+        const fromVite = this.readEnvValue(import.meta.env.VITE_R2_AUTH_TOKEN);
+        if (fromVite) return fromVite;
+        return this.readEnvValue(typeof __R2_AUTH_TOKEN__ !== 'undefined' ? __R2_AUTH_TOKEN__ : undefined);
+    }
 
     /**
      * Get the public URL for an object
