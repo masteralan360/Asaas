@@ -8,16 +8,48 @@ class R2Service {
         return trimmed ? trimmed : undefined;
     }
 
+    private canUseStorage(): boolean {
+        return typeof window !== 'undefined' && typeof window.localStorage !== 'undefined';
+    }
+
+    private readStorageValue(key: string): string | undefined {
+        if (!this.canUseStorage()) return undefined;
+        try {
+            return this.readEnvValue(window.localStorage.getItem(key));
+        } catch {
+            return undefined;
+        }
+    }
+
+    private writeStorageValue(key: string, value?: string): void {
+        if (!value || !this.canUseStorage()) return;
+        try {
+            window.localStorage.setItem(key, value);
+        } catch {
+            // Ignore storage failures (e.g., disabled storage)
+        }
+    }
+
     private get workerUrl(): string | undefined {
         const fromVite = this.readEnvValue(import.meta.env.VITE_R2_WORKER_URL);
-        if (fromVite) return fromVite;
-        return this.readEnvValue(typeof __R2_WORKER_URL__ !== 'undefined' ? __R2_WORKER_URL__ : undefined);
+        const fromDefine = this.readEnvValue(typeof __R2_WORKER_URL__ !== 'undefined' ? __R2_WORKER_URL__ : undefined);
+        const fromStorage = this.readStorageValue('r2_worker_url');
+        const resolved = fromVite || fromDefine || fromStorage;
+        if (resolved && resolved !== fromStorage) {
+            this.writeStorageValue('r2_worker_url', resolved);
+        }
+        return resolved;
     }
 
     private get authToken(): string | undefined {
         const fromVite = this.readEnvValue(import.meta.env.VITE_R2_AUTH_TOKEN);
-        if (fromVite) return fromVite;
-        return this.readEnvValue(typeof __R2_AUTH_TOKEN__ !== 'undefined' ? __R2_AUTH_TOKEN__ : undefined);
+        const fromDefine = this.readEnvValue(typeof __R2_AUTH_TOKEN__ !== 'undefined' ? __R2_AUTH_TOKEN__ : undefined);
+        const fromStorage = this.readStorageValue('r2_auth_token');
+        const resolved = fromVite || fromDefine || fromStorage;
+        if (resolved && resolved !== fromStorage) {
+            this.writeStorageValue('r2_auth_token', resolved);
+        }
+        return resolved;
     }
 
     /**
