@@ -4,12 +4,20 @@ import { useTranslation } from 'react-i18next'
 import {
     Dialog,
     DialogContent,
-    Button
+    DialogTitle,
+    Button,
+    useToast
 } from '@/ui/components'
-import { CheckCircle2, Printer, Plus, Coins } from 'lucide-react'
+import { CheckCircle2, Printer, Plus, Coins, Loader2 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 import { SaleReceipt } from '../SaleReceipt'
-import { type WorkspaceFeatures } from '@/workspace'
+import { generateInvoicePdf } from '@/services/pdfGenerator'
+import { assetManager } from '@/lib/assetManager'
+import { isOnline } from '@/lib/network'
+import { supabase } from '@/auth/supabase'
+import { db } from '@/local-db'
+import { useAuth } from '@/auth'
+import { useWorkspace, type WorkspaceFeatures } from '@/workspace'
 
 interface CheckoutSuccessModalProps {
     isOpen: boolean
@@ -25,9 +33,13 @@ export function CheckoutSuccessModal({
     features
 }: CheckoutSuccessModalProps) {
     const { t } = useTranslation()
+    const { toast } = useToast()
+    const { user } = useAuth()
+    const { workspaceName } = useWorkspace()
     const printRef = useRef<HTMLDivElement>(null)
 
     const [timeLeft, setTimeLeft] = useState(15)
+    const [isUploading, setIsUploading] = useState(false)
 
     useEffect(() => {
         if (!isOpen) {
@@ -58,9 +70,100 @@ export function CheckoutSuccessModal({
         }
     })
 
+    const handlePrintAndUpload = async () => {
+        if (isUploading || !saleData) {
+            handlePrint()
+            return
+        }
+
+        setIsUploading(true)
+        try {
+            const [pdfBlobA4, pdfBlobReceipt] = await Promise.all([
+                generateInvoicePdf({
+                    data: saleData,
+                    format: 'a4',
+                    features
+                }),
+                generateInvoicePdf({
+                    data: saleData,
+                    format: 'receipt',
+                    features,
+                    workspaceName: workspaceName || user?.workspaceId || 'Asaas'
+                })
+            ])
+
+            if (saleData.id) {
+                if (isOnline() && assetManager) {
+                    try {
+                        const [pathA4, pathReceipt] = await Promise.all([
+                            assetManager.uploadInvoicePdf(saleData.id, pdfBlobA4, 'a4'),
+                            assetManager.uploadInvoicePdf(saleData.id, pdfBlobReceipt, 'receipt')
+                        ])
+
+                        if (!pathA4 || !pathReceipt) {
+                            throw new Error('R2 upload failed')
+                        }
+
+                        const { error: updateError } = await supabase.from('invoices').update({
+                            r2_path_a4: pathA4,
+                            r2_path_receipt: pathReceipt,
+                            print_format: 'receipt'
+                        }).eq('id', saleData.id)
+
+                        if (updateError) {
+                            throw updateError
+                        }
+
+                        await db.invoices.update(saleData.id, {
+                            r2PathA4: pathA4,
+                            r2PathReceipt: pathReceipt,
+                            pdfBlobA4: undefined,
+                            pdfBlobReceipt: undefined,
+                            syncStatus: 'synced',
+                            lastSyncedAt: new Date().toISOString()
+                        })
+                    } catch (uploadError) {
+                        console.error('PDF upload failed, storing locally for sync:', uploadError)
+                        await db.invoices.update(saleData.id, {
+                            pdfBlobA4: pdfBlobA4,
+                            pdfBlobReceipt: pdfBlobReceipt,
+                            syncStatus: 'pending',
+                            lastSyncedAt: null
+                        })
+                        toast({
+                            title: t('print.saveError') || 'Save Failed',
+                            description: 'PDF upload failed. It will retry when online.',
+                            variant: 'destructive'
+                        })
+                    }
+                } else {
+                    await db.invoices.update(saleData.id, {
+                        pdfBlobA4: pdfBlobA4,
+                        pdfBlobReceipt: pdfBlobReceipt,
+                        syncStatus: 'pending',
+                        lastSyncedAt: null
+                    })
+                }
+            }
+        } catch (error) {
+            console.error('[CheckoutSuccessModal] Failed to generate/upload PDFs:', error)
+            toast({
+                title: t('print.saveError') || 'Save Failed',
+                description: t('print.saveErrorDesc') || 'Could not save invoice record.',
+                variant: 'destructive'
+            })
+        } finally {
+            setIsUploading(false)
+            handlePrint()
+        }
+    }
+
     return (
         <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
             <DialogContent className="max-w-sm rounded-[2.5rem] p-0 overflow-hidden border-none shadow-2xl animate-in fade-in zoom-in duration-300">
+                <DialogTitle className="sr-only">
+                    {t('pos.saleSuccessful') || 'Sale Successful'}
+                </DialogTitle>
                 <div className="bg-emerald-500 p-6 flex flex-col items-center justify-center text-white gap-3 relative overflow-hidden">
                     {/* Timer Corner */}
                     <div className="absolute top-4 left-4 flex items-center gap-1.5 bg-black/10 backdrop-blur-md px-2.5 py-1 rounded-full border border-white/10">
@@ -122,10 +225,15 @@ export function CheckoutSuccessModal({
                         </Button>
                         <Button
                             className="h-16 rounded-2xl font-black text-lg bg-emerald-500 hover:bg-emerald-600 shadow-xl shadow-emerald-500/20 transition-all active:scale-95 flex items-center gap-2 text-white"
-                            onClick={() => handlePrint()}
+                            onClick={handlePrintAndUpload}
+                            disabled={isUploading}
                         >
-                            <Printer className="w-5 h-5" />
-                            {t('common.print') || 'Print'}
+                            {isUploading ? (
+                                <Loader2 className="w-5 h-5 animate-spin" />
+                            ) : (
+                                <Printer className="w-5 h-5" />
+                            )}
+                            {isUploading ? (t('common.loading') || 'Loading...') : (t('common.print') || 'Print')}
                         </Button>
                     </div>
                 </div>

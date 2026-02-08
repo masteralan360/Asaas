@@ -131,7 +131,7 @@ export function TitleBar() {
                         <Moon className="w-4 h-4" />
                     )}
                 </button>
-                <NotificationCenter />
+                {!isFullscreen && <NotificationCenter />}
                 <button
                     onClick={minimize}
                     className="p-2 hover:bg-secondary rounded-md transition-colors text-muted-foreground hover:text-foreground"

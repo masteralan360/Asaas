@@ -1,4 +1,6 @@
 export const NOVU_APP_ID = import.meta.env.VITE_NOVU_APP_ID || '';
+export const NOVU_API_URL = import.meta.env.VITE_NOVU_API_URL || 'https://api.novu.co';
+export const NOVU_SOCKET_URL = import.meta.env.VITE_NOVU_SOCKET_URL || 'https://ws.novu.co';
 
 /**
  * Novu Subscriber Mapping
@@ -13,6 +15,8 @@ export function getNovuSubscriberId(supabaseUserId: string | undefined): string 
  */
 export const novuConfig = {
     applicationIdentifier: NOVU_APP_ID,
-    backendUrl: 'https://api.novu.co', // Default Cloud URL
-    socketUrl: 'https://ws.novu.co',   // Default Cloud URL
+    apiUrl: NOVU_API_URL,
+    // Keep backendUrl for backward compatibility (deprecated in Novu SDK).
+    backendUrl: NOVU_API_URL,
+    socketUrl: NOVU_SOCKET_URL,
 };

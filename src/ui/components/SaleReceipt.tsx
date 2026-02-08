@@ -5,16 +5,18 @@ import { UniversalInvoice } from '@/types'
 import { formatCurrency, formatDateTime, formatSnapshotTime } from '@/lib/utils'
 import { platformService } from '@/services/platformService'
 import { useWorkspace } from '@/workspace'
-
 interface SaleReceiptProps {
     data: UniversalInvoice
     features: any
 }
 
-export const SaleReceipt = forwardRef<HTMLDivElement, SaleReceiptProps>(
-    ({ data, features }, ref) => {
+interface SaleReceiptBaseProps extends SaleReceiptProps {
+    workspaceName?: string | null
+}
+
+export const SaleReceiptBase = forwardRef<HTMLDivElement, SaleReceiptBaseProps>(
+    ({ data, features, workspaceName }, ref) => {
         const { t } = useTranslation()
-        const { workspaceName } = useWorkspace()
 
         const formatReceiptPrice = (amount: number, currency: string) => {
             const code = currency.toLowerCase()
@@ -179,4 +181,21 @@ export const SaleReceipt = forwardRef<HTMLDivElement, SaleReceiptProps>(
         )
     }
 )
+SaleReceiptBase.displayName = 'SaleReceiptBase'
+
+export const SaleReceipt = forwardRef<HTMLDivElement, SaleReceiptProps>(
+    ({ data, features }, ref) => {
+        const { workspaceName } = useWorkspace()
+
+        return (
+            <SaleReceiptBase
+                ref={ref}
+                data={data}
+                features={features}
+                workspaceName={workspaceName}
+            />
+        )
+    }
+)
+
 SaleReceipt.displayName = 'SaleReceipt'

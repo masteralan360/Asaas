@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/auth'
 import { supabase } from '@/auth/supabase'
@@ -22,7 +22,6 @@ import {
     CardHeader,
     CardTitle,
     Button,
-    SaleReceipt,
     SaleDetailsModal,
     ReturnConfirmationModal,
     ReturnDeclineModal,
@@ -33,7 +32,6 @@ import {
     SelectTrigger,
     SelectValue,
     PrintSelectionModal,
-    A4InvoiceTemplate,
     DeleteConfirmationModal,
     PrintPreviewModal
 } from '@/ui/components'
@@ -51,7 +49,7 @@ import {
 export function Sales() {
     const { user } = useAuth()
     const { t } = useTranslation()
-    const { features } = useWorkspace()
+    const { features, workspaceName } = useWorkspace()
     const [sales, setSales] = useState<Sale[]>([])
     const [isLoading, setIsLoading] = useState(true)
     const [selectedSale, setSelectedSale] = useState<Sale | null>(null)
@@ -141,7 +139,6 @@ export function Sales() {
     const [showPrintModal, setShowPrintModal] = useState(false)
     const [saleToPrintSelection, setSaleToPrintSelection] = useState<Sale | null>(null)
     const [showPrintPreview, setShowPrintPreview] = useState(false)
-    const printRef = useRef<HTMLDivElement>(null)
 
 
 
@@ -160,8 +157,7 @@ export function Sales() {
     }
 
     const handleConfirmPrint = () => {
-        // PrintPreviewModal handles printing internally via react-to-print
-        // We just need to clean up state after print is confirmed
+        // PrintPreviewModal handles PDF rendering/printing internally
         setShowPrintPreview(false)
         setPrintingSale(null)
         setSaleToPrintSelection(null)
@@ -851,26 +847,6 @@ export function Sales() {
                 itemName={saleToReturn?.items?.[0]?.product_name || ''}
             />
 
-            {/* Hidden Print Component - using opacity/position instead of display:none to ensure it renders for print */}
-            {/* Hidden Print Component - using opacity/position instead of display:none to ensure it renders for print */}
-            <div style={{ position: 'absolute', top: '-9999px', left: '-9999px' }}>
-                <div ref={printRef}>
-                    {printingSale && (
-                        printFormat === 'a4' ? (
-                            <A4InvoiceTemplate
-                                data={mapSaleToUniversal(printingSale)}
-                                features={features}
-                            />
-                        ) : (
-                            <SaleReceipt
-                                data={mapSaleToUniversal(printingSale)}
-                                features={features}
-                            />
-                        )
-                    )}
-                </div>
-            </div>
-
             <PrintSelectionModal
                 isOpen={showPrintModal}
                 onClose={() => setShowPrintModal(false)}
@@ -901,43 +877,18 @@ export function Sales() {
                 onConfirm={handleConfirmPrint}
                 title={printFormat === 'a4' ? (t('sales.print.a4') || 'A4 Invoice') : (t('sales.print.receipt') || 'Receipt')}
                 features={features}
+                workspaceName={workspaceName}
                 pdfData={printingSale ? mapSaleToUniversal(printingSale) : undefined}
                 invoiceData={printingSale ? {
                     sequenceId: printingSale.sequence_id,
-                    subtotal: printingSale.total_amount,
-                    discount: 0,
-                    total: printingSale.total_amount,
-                    currency: (printingSale.settlement_currency || 'usd') as any,
-                    origin: 'pos',
+                    totalAmount: printingSale.total_amount,
+                    settlementCurrency: (printingSale.settlement_currency || 'usd') as any,
+                    origin: printingSale.origin || 'pos',
                     cashierName: printingSale.cashier_name,
                     createdByName: user?.name || 'Unknown',
-                    printMetadata: {
-                        exchange_rates: printingSale.exchange_rates,
-                        exchange_rate: printingSale.exchange_rate,
-                        exchange_source: printingSale.exchange_source,
-                        origin: printingSale.origin || 'pos',
-                        items: printingSale.items?.map(item => ({
-                            product_id: item.product_id,
-                            original_currency: item.original_currency
-                        }))
-                    },
                     printFormat: printFormat
                 } : undefined}
-            >
-                {printingSale && (
-                    printFormat === 'a4' ? (
-                        <A4InvoiceTemplate
-                            data={mapSaleToUniversal(printingSale)}
-                            features={features}
-                        />
-                    ) : (
-                        <SaleReceipt
-                            data={mapSaleToUniversal(printingSale)}
-                            features={features}
-                        />
-                    )
-                )}
-            </PrintPreviewModal>
+            />
         </div>
     )
 }

@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { Inbox, NovuProvider } from '@novu/react';
 import { useAuth } from '@/auth';
 import { novuConfig, getNovuSubscriberId } from '@/auth/novu';
@@ -8,12 +9,15 @@ import { useTranslation } from 'react-i18next';
 export function NotificationCenter() {
     const { user } = useAuth();
     const { theme, style } = useTheme();
-    const { t } = useTranslation();
+    const { t, i18n } = useTranslation();
     const subscriberId = getNovuSubscriberId(user?.id);
 
-    const isDark = theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    const isDark = useMemo(() => {
+        return theme === 'dark'
+            || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    }, [theme]);
 
-    const appearance = {
+    const appearance = useMemo(() => ({
         variables: {
             borderRadius: style === 'modern' ? '1rem' : '0.5rem',
             colorPrimary: '#3b82f6',
@@ -27,7 +31,13 @@ export function NotificationCenter() {
             root: 'bg-transparent',
             notificationList: 'bg-popover p-0',
         }
-    };
+    }), [isDark, style]);
+
+    const tabs = useMemo(() => ([
+        { label: t('notifications.tabs.all'), filter: {} },
+        { label: t('notifications.tabs.workspace'), filter: { tags: ['workspace'] } },
+        { label: t('notifications.tabs.user'), filter: { tags: ['user'] } }
+    ]), [t, i18n.language]);
 
     if (!novuConfig.applicationIdentifier || !subscriberId) {
         return null;
@@ -37,14 +47,13 @@ export function NotificationCenter() {
         <NovuProvider
             subscriberId={subscriberId}
             applicationIdentifier={novuConfig.applicationIdentifier}
+            apiUrl={novuConfig.apiUrl}
+            backendUrl={novuConfig.backendUrl}
+            socketUrl={novuConfig.socketUrl}
         >
             <Inbox
                 appearance={appearance}
-                tabs={[
-                    { label: t('notifications.tabs.all'), value: [] },
-                    { label: t('notifications.tabs.workspace'), value: ['workspace'] },
-                    { label: t('notifications.tabs.user'), value: ['user'] }
-                ]}
+                tabs={tabs}
                 renderBell={(unreadCount) => {
                     const count = typeof unreadCount === 'number' ? unreadCount : 0;
                     return (

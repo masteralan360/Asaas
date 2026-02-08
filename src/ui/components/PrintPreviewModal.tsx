@@ -1,4 +1,4 @@
-import { useState, useRef, ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useReactToPrint } from 'react-to-print'
 import { useTranslation } from 'react-i18next'
 import {
@@ -8,17 +8,18 @@ import {
     DialogTitle,
     DialogFooter,
     Button,
-    useToast
+    useToast,
+    PdfViewer
 } from '@/ui/components'
 import { Printer, X, Maximize2, Minimize2, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { saveInvoiceFromSnapshot } from '@/local-db/hooks'
 import { useAuth } from '@/auth'
-import { Invoice } from '@/local-db/models'
-
-import { generateInvoicePdf } from '@/services/pdfGenerator'
+import { db, type Invoice } from '@/local-db'
+import { generateInvoicePdf, type PrintFormat } from '@/services/pdfGenerator'
 import { assetManager } from '@/lib/assetManager'
-import { WorkspaceFeatures } from '@/workspace'
+import { isOnline } from '@/lib/network'
+import { type WorkspaceFeatures } from '@/workspace'
 import { supabase } from '@/auth/supabase'
 
 interface PrintPreviewModalProps {
@@ -26,12 +27,18 @@ interface PrintPreviewModalProps {
     onClose: () => void
     onConfirm?: () => void
     title?: string
-    children: ReactNode
+    children?: ReactNode
     showSaveButton?: boolean
     saveButtonText?: string
     invoiceData?: Omit<Invoice, 'id' | 'workspaceId' | 'createdAt' | 'updatedAt' | 'syncStatus' | 'lastSyncedAt' | 'version' | 'isDeleted' | 'invoiceid'>
     pdfData?: any // UniversalInvoice
     features?: WorkspaceFeatures
+    workspaceName?: string | null
+}
+
+type PdfBlobs = {
+    a4?: Blob
+    receipt?: Blob
 }
 
 export function PrintPreviewModal({
@@ -44,161 +51,282 @@ export function PrintPreviewModal({
     saveButtonText,
     invoiceData,
     pdfData,
-    features
+    features,
+    workspaceName
 }: PrintPreviewModalProps) {
-    const { t } = useTranslation()
+    const { t, i18n } = useTranslation()
     const { toast } = useToast()
     const { user } = useAuth()
     const workspaceId = user?.workspaceId
     const [isExpanded, setIsExpanded] = useState(false)
     const [isSaving, setIsSaving] = useState(false)
-    const printRef = useRef<HTMLDivElement>(null)
+    const [isGenerating, setIsGenerating] = useState(false)
+    const [pdfError, setPdfError] = useState<string | null>(null)
+    const [pdfBlobs, setPdfBlobs] = useState<PdfBlobs>({})
+    const [pdfUrl, setPdfUrl] = useState<string | null>(null)
+    const htmlPrintRef = useRef<HTMLDivElement>(null)
 
-    const handlePrint = useReactToPrint({
-        contentRef: printRef,
+    const hasPdfData = !!(pdfData && features)
+    const printFormat: PrintFormat = (invoiceData?.printFormat || 'a4') as PrintFormat
+
+    const translations = useMemo(() => ({
+        date: t('sales.print.date') || 'Date',
+        number: t('sales.print.number') || 'Invoice #',
+        soldTo: t('sales.print.soldTo') || 'Sold To',
+        soldBy: t('sales.print.soldBy') || 'Sold By',
+        qty: t('sales.print.qty') || 'Qty',
+        productName: t('sales.print.productName') || 'Product',
+        description: t('sales.print.description') || 'Description',
+        price: t('sales.print.price') || 'Price',
+        discount: t('sales.print.discount') || 'Discount',
+        total: t('sales.print.total') || 'Total',
+        subtotal: t('sales.print.subtotal') || 'Subtotal',
+        terms: t('sales.print.terms') || 'Terms & Conditions',
+        exchangeRates: t('sales.print.exchangeRates') || 'Exchange Rates',
+        posSystem: t('sales.print.posSystem') || 'POS System',
+        generated: t('sales.print.generated') || 'Generated',
+        id: t('sales.print.id') || 'ID',
+        cashier: t('sales.print.cashier') || 'Cashier',
+        paymentMethod: t('sales.print.paymentMethod') || 'Payment Method',
+        name: t('sales.print.name') || 'Name',
+        quantity: t('sales.print.quantity') || 'Qty',
+        thankYou: t('sales.print.thankYou') || 'Thank You',
+        keepRecord: t('sales.print.keepRecord') || 'Please keep this for your records',
+        snapshots: t('sales.print.snapshots') || 'Snapshots'
+    }), [t, i18n.language])
+
+    const handleHtmlPrint = useReactToPrint({
+        contentRef: htmlPrintRef,
         documentTitle: title || 'Print_Preview',
         onAfterPrint: () => {
             if (onConfirm) onConfirm()
         }
     })
 
-    const handlePrintAndSave = async () => {
-        // Trigger OS Print Dialog first (or concurrently)
-        handlePrint()
+    const buildPdfBlobs = useCallback(async (): Promise<{ a4: Blob; receipt: Blob }> => {
+        if (!pdfData || !features) {
+            throw new Error('Missing PDF data or features')
+        }
 
-        // If we have invoice data, save it as a snapshot
-        if (invoiceData && workspaceId) {
-            setIsSaving(true)
-            try {
-                // Generate PDFs if we have the data
-                let pdfBlobA4: Blob | undefined
-                let pdfBlobReceipt: Blob | undefined
+        const [blobA4, blobReceipt] = await Promise.all([
+            generateInvoicePdf({
+                data: pdfData,
+                format: 'a4',
+                features: {
+                    ...features,
+                    logo_url: features.logo_url || undefined
+                },
+                translations
+            }),
+            generateInvoicePdf({
+                data: pdfData,
+                format: 'receipt',
+                features: {
+                    ...features,
+                    logo_url: features.logo_url || undefined
+                },
+                workspaceName: workspaceName || workspaceId || '',
+                translations
+            })
+        ])
 
-                if (pdfData && features) {
-                    try {
-                        const translations = {
-                            date: t('sales.print.date') || 'Date',
-                            number: t('sales.print.number') || 'Invoice #',
-                            soldTo: t('sales.print.soldTo') || 'Sold To',
-                            soldBy: t('sales.print.soldBy') || 'Sold By',
-                            qty: t('sales.print.qty') || 'Qty',
-                            productName: t('sales.print.productName') || 'Product',
-                            description: t('sales.print.description') || 'Description',
-                            price: t('sales.print.price') || 'Price',
-                            discount: t('sales.print.discount') || 'Discount',
-                            total: t('sales.print.total') || 'Total',
-                            subtotal: t('sales.print.subtotal') || 'Subtotal',
-                            terms: t('sales.print.terms') || 'Terms & Conditions',
-                            exchangeRates: t('sales.print.exchangeRates') || 'Exchange Rates',
-                            posSystem: t('sales.print.posSystem') || 'POS System',
-                            generated: t('sales.print.generated') || 'Generated',
-                            id: t('sales.print.id') || 'ID',
-                            cashier: t('sales.print.cashier') || 'Cashier',
-                            paymentMethod: t('sales.print.paymentMethod') || 'Payment Method',
-                            name: t('sales.print.name') || 'Name',
-                            quantity: t('sales.print.quantity') || 'Qty',
-                            thankYou: t('sales.print.thankYou') || 'Thank You',
-                            keepRecord: t('sales.print.keepRecord') || 'Please keep this for your records',
-                            snapshots: t('sales.print.snapshots') || 'Snapshots'
-                        }
+        return { a4: blobA4, receipt: blobReceipt }
+    }, [features, pdfData, translations, workspaceId, workspaceName])
 
-                        // Generate blobs
-                        const [blobA4, blobReceipt] = await Promise.all([
-                            generateInvoicePdf({
-                                data: pdfData,
-                                format: 'a4',
-                                features: {
-                                    ...features,
-                                    logo_url: features.logo_url || undefined
-                                },
-                                translations
-                            }),
-                            generateInvoicePdf({
-                                data: pdfData,
-                                format: 'receipt',
-                                features: {
-                                    ...features,
-                                    logo_url: features.logo_url || undefined
-                                },
-                                workspaceName: workspaceId,
-                                translations
-                            })
-                        ])
+    const ensurePdfBlobs = useCallback(async (): Promise<{ a4: Blob; receipt: Blob }> => {
+        if (pdfBlobs.a4 && pdfBlobs.receipt) {
+            return { a4: pdfBlobs.a4, receipt: pdfBlobs.receipt }
+        }
+        const blobs = await buildPdfBlobs()
+        setPdfBlobs(blobs)
+        return blobs
+    }, [buildPdfBlobs, pdfBlobs.a4, pdfBlobs.receipt])
 
-                        pdfBlobA4 = blobA4
-                        pdfBlobReceipt = blobReceipt
+    const printPdfUrl = (url: string) => {
+        return new Promise<void>((resolve, reject) => {
+            const iframe = document.createElement('iframe')
+            iframe.style.position = 'fixed'
+            iframe.style.right = '0'
+            iframe.style.bottom = '0'
+            iframe.style.width = '0'
+            iframe.style.height = '0'
+            iframe.style.border = '0'
+            iframe.src = url
 
-                        // Upload if online
-                        if (navigator.onLine && assetManager && (features as any)?.enable_r2_storage) {
-                            // We need an ID for the path. invoiceData doesn't have ID yet (it's created in saveInvoiceFromSnapshot).
-                            // This is a problem. saveInvoiceFromSnapshot calls createInvoice which generates ID.
-                            // We can generate ID here? Or let createInvoice do it?
-                            // createInvoice receives `id` in data if provided?
-                            // hooks.ts createInvoice generates ID: `const id = generateId()`.
-                            // It overrides data.id? 
-                            // `const invoice: Invoice = { ...data, id, ... }`
-                            // So createInvoice enforces its own ID generation.
-
-                            // We CANNOT upload to the correct path without the ID.
-                            // So we must rely on `createInvoice` (which saves blobs) and then `AssetManager` background sync?
-                            // BUT user wants immediate upload.
-                            // This means `saveInvoiceFromSnapshot` must support returning the ID or we must Generate ID here.
-                        }
-                    } catch (genErr) {
-                        console.error('Failed to generate PDF for upload:', genErr)
-                    }
+            iframe.onload = () => {
+                try {
+                    iframe.contentWindow?.focus()
+                    iframe.contentWindow?.print()
+                    setTimeout(() => {
+                        iframe.remove()
+                        resolve()
+                    }, 500)
+                } catch (error) {
+                    iframe.remove()
+                    reject(error)
                 }
+            }
 
-                // WAIT. If I can't know the ID, I can't upload to the correct path.
-                // UNLESS I modify `saveInvoiceFromSnapshot` to accept a pre-generated ID?
-                // Or I replicate `createInvoice` logic here?
-                // `createInvoice` accepts `data` which excludes `id`.
-                // If I modify `createInvoice` to accept optional `id`.
+            iframe.onerror = () => {
+                iframe.remove()
+                reject(new Error('Failed to load PDF for printing'))
+            }
 
-                // Alternative: Save first (getting ID), then upload, then update?
-                // `saveInvoiceFromSnapshot` returns `Promise<Invoice>`.
+            document.body.appendChild(iframe)
+        })
+    }
 
-                const savedInvoice = await saveInvoiceFromSnapshot(workspaceId, {
+    useEffect(() => {
+        if (!isOpen) {
+            setPdfBlobs({})
+            setPdfError(null)
+            setPdfUrl(null)
+            setIsGenerating(false)
+            return
+        }
+
+        if (!hasPdfData) {
+            return
+        }
+
+        let cancelled = false
+        setIsGenerating(true)
+        setPdfError(null)
+
+        buildPdfBlobs()
+            .then((blobs) => {
+                if (cancelled) return
+                setPdfBlobs(blobs)
+            })
+            .catch((error) => {
+                if (cancelled) return
+                console.error('Failed to generate PDF preview:', error)
+                setPdfError('Failed to generate PDF preview')
+            })
+            .finally(() => {
+                if (cancelled) return
+                setIsGenerating(false)
+            })
+
+        return () => {
+            cancelled = true
+        }
+    }, [isOpen, hasPdfData, buildPdfBlobs, t])
+
+    useEffect(() => {
+        const activeBlob = printFormat === 'receipt' ? pdfBlobs.receipt : pdfBlobs.a4
+        if (!activeBlob) {
+            setPdfUrl(null)
+            return
+        }
+
+        const url = URL.createObjectURL(activeBlob)
+        setPdfUrl(url)
+
+        return () => {
+            URL.revokeObjectURL(url)
+        }
+    }, [printFormat, pdfBlobs.a4, pdfBlobs.receipt])
+
+    const handlePrintAndSave = async () => {
+        if (isSaving) return
+
+        if (!hasPdfData) {
+            handleHtmlPrint()
+            return
+        }
+
+        setIsSaving(true)
+        try {
+            const { a4, receipt } = await ensurePdfBlobs()
+            const activeBlob = printFormat === 'receipt' ? receipt : a4
+
+            let savedInvoice: Invoice | null = null
+            if (invoiceData && workspaceId) {
+                savedInvoice = await saveInvoiceFromSnapshot(workspaceId, {
                     ...invoiceData,
-                    pdfBlobA4,
-                    pdfBlobReceipt
+                    pdfBlobA4: a4,
+                    pdfBlobReceipt: receipt
                 })
+            }
 
-                // Now we have the ID and the blobs are saved in local DB.
-                // If online, we can upload NOW and update local/remote.
-                if (navigator.onLine && assetManager && (features as any)?.enable_r2_storage && pdfBlobA4 && pdfBlobReceipt) {
-                    // Upload
+            if (savedInvoice && isOnline() && assetManager) {
+                try {
                     const [pathA4, pathReceipt] = await Promise.all([
-                        assetManager.uploadInvoicePdf(savedInvoice.id, pdfBlobA4, 'a4'),
-                        assetManager.uploadInvoicePdf(savedInvoice.id, pdfBlobReceipt, 'receipt')
+                        assetManager.uploadInvoicePdf(savedInvoice.id, a4, 'a4'),
+                        assetManager.uploadInvoicePdf(savedInvoice.id, receipt, 'receipt')
                     ])
 
-                    if (pathA4 && pathReceipt) {
-                        // Update Supabase
-                        await supabase.from('invoices').update({
-                            r2_path_a4: pathA4,
-                            r2_path_receipt: pathReceipt,
-                            print_format: 'a4'
-                        }).eq('id', savedInvoice.id)
+                    if (!pathA4 || !pathReceipt) {
+                        throw new Error('R2 upload failed')
                     }
-                }
 
+                    const { error: updateError } = await supabase.from('invoices').update({
+                        r2_path_a4: pathA4,
+                        r2_path_receipt: pathReceipt,
+                        print_format: printFormat
+                    }).eq('id', savedInvoice.id)
+
+                    if (updateError) {
+                        throw updateError
+                    }
+
+                    await db.invoices.update(savedInvoice.id, {
+                        r2PathA4: pathA4,
+                        r2PathReceipt: pathReceipt,
+                        pdfBlobA4: undefined,
+                        pdfBlobReceipt: undefined,
+                        syncStatus: 'synced',
+                        lastSyncedAt: new Date().toISOString()
+                    })
+                } catch (uploadError) {
+                    console.error('PDF upload failed, marking invoice as pending:', uploadError)
+                    await db.invoices.update(savedInvoice.id, {
+                        syncStatus: 'pending',
+                        lastSyncedAt: null
+                    })
+                    toast({
+                        title: t('print.saveError') || 'Save Failed',
+                        description: 'PDF upload failed. It will retry when online.',
+                        variant: 'destructive'
+                    })
+                }
+            }
+
+            const previewUrl = pdfUrl
+            if (previewUrl) {
+                await printPdfUrl(previewUrl)
+            } else {
+                const tempUrl = URL.createObjectURL(activeBlob)
+                try {
+                    await printPdfUrl(tempUrl)
+                } finally {
+                    URL.revokeObjectURL(tempUrl)
+                }
+            }
+
+            if (savedInvoice) {
                 toast({
                     title: t('print.saveSuccess') || 'Invoice Saved',
-                    description: t('print.saveSuccessDesc') || 'A record of this invoice has been added to history.',
+                    description: t('print.saveSuccessDesc') || 'A record of this invoice has been added to history.'
                 })
-            } catch (error) {
-                console.error('Error saving invoice snapshot:', error)
-                toast({
-                    title: t('print.saveError') || 'Save Failed',
-                    description: t('print.saveErrorDesc') || 'Could not save invoice record.',
-                    variant: 'destructive'
-                })
-            } finally {
-                setIsSaving(false)
             }
+
+            if (onConfirm) onConfirm()
+        } catch (error) {
+            console.error('Error saving invoice snapshot:', error)
+            toast({
+                title: t('print.saveError') || 'Save Failed',
+                description: t('print.saveErrorDesc') || 'Could not save invoice record.',
+                variant: 'destructive'
+            })
+        } finally {
+            setIsSaving(false)
         }
     }
+
+    const actionLabel = saveButtonText
+        || (invoiceData ? (t('print.printAndSave') || 'Print & Save') : (t('common.print') || 'Print'))
 
     return (
         <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
@@ -229,27 +357,48 @@ export function PrintPreviewModal({
                     </Button>
                 </DialogHeader>
 
-                {/* Preview Container */}
                 <div
                     className={cn(
-                        "flex-1 overflow-auto border rounded-lg bg-white dark:bg-zinc-900 p-4 cursor-pointer transition-all",
+                        "flex-1 min-h-0 border rounded-lg bg-white dark:bg-zinc-900 transition-all",
+                        hasPdfData ? "overflow-hidden" : "overflow-auto",
                         !isExpanded && "hover:ring-2 hover:ring-primary/50"
                     )}
                     onClick={() => !isExpanded && setIsExpanded(true)}
                 >
-                    <div
-                        ref={printRef}
-                        className={cn(
-                            "print:p-0 [print-color-adjust:exact] -webkit-print-color-adjust:exact",
-                            !isExpanded && (
-                                document.dir === 'rtl'
-                                    ? "scale-[0.6] origin-top-right w-[166%]"
-                                    : "scale-[0.6] origin-top-left w-[166%]"
-                            )
-                        )}
-                    >
-                        {children}
-                    </div>
+                    {hasPdfData ? (
+                        <div className="w-full h-full">
+                            {isGenerating && (
+                                <div className="flex items-center justify-center h-full">
+                                    <div className="flex items-center gap-2 text-muted-foreground">
+                                        <Loader2 className="w-4 h-4 animate-spin" />
+                                    {'Generating PDF...'}
+                                    </div>
+                                </div>
+                            )}
+                            {!isGenerating && pdfError && (
+                                <div className="flex items-center justify-center h-full text-muted-foreground">
+                                    {pdfError}
+                                </div>
+                            )}
+                            {!isGenerating && !pdfError && pdfUrl && (
+                                <PdfViewer
+                                    file={pdfUrl}
+                                    className="h-full w-full overflow-auto"
+                                    onLoadError={(error) => {
+                                        console.error('Failed to load PDF preview:', error)
+                                        setPdfError('Failed to load PDF preview')
+                                    }}
+                                />
+                            )}
+                        </div>
+                    ) : (
+                        <div
+                            ref={htmlPrintRef}
+                            className="print:p-0 [print-color-adjust:exact] -webkit-print-color-adjust:exact p-4"
+                        >
+                            {children}
+                        </div>
+                    )}
                 </div>
 
                 {!isExpanded && (
@@ -264,13 +413,13 @@ export function PrintPreviewModal({
                         {t('common.cancel')}
                     </Button>
                     {showSaveButton && (
-                        <Button onClick={handlePrintAndSave} disabled={isSaving}>
-                            {isSaving ? (
+                        <Button onClick={handlePrintAndSave} disabled={isSaving || isGenerating}>
+                            {isSaving || isGenerating ? (
                                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                             ) : (
                                 <Printer className="w-4 h-4 mr-2" />
                             )}
-                            {saveButtonText || t('print.printAndSave') || 'Print & Save'}
+                            {actionLabel}
                         </Button>
                     )}
                 </DialogFooter>

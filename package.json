@@ -1,7 +1,7 @@
 {
   "name": "asaas",
   "private": true,
-  "version": "1.7.9",
+  "version": "1.8.1",
   "main": "electron/main.cjs",
   "type": "module",
   "repository": {
@@ -45,7 +45,6 @@
   "dependencies": {
     "@novu/node": "^2.6.6",
     "@novu/react": "^3.13.0",
-    "@pdf-viewer/react": "^1.17.0",
     "@radix-ui/react-alert-dialog": "^1.1.2",
     "@radix-ui/react-avatar": "^1.1.1",
     "@radix-ui/react-dialog": "^1.1.2",
@@ -74,13 +73,16 @@
     "crypto-js": "^4.2.0",
     "dexie": "^4.0.9",
     "dexie-react-hooks": "^1.1.7",
+    "html2canvas": "^1.4.1",
     "i18next": "^25.7.3",
+    "jspdf": "^4.1.0",
     "lucide-react": "^0.460.0",
     "react": "^18.3.1",
     "react-barcode-scanner": "^4.0.1",
     "react-dom": "^18.3.1",
     "react-i18next": "^16.5.1",
     "react-is": "^19.2.3",
+    "react-pdf": "^10.3.0",
     "react-to-print": "^3.2.0",
     "recharts": "^3.6.0",
     "tailwind-merge": "^3.4.0",

@@ -26,6 +26,7 @@ import { useWorkspace } from '@/workspace'
 import { useDateRange } from '@/context/DateRangeContext'
 import { DateRangeFilters } from '@/ui/components/DateRangeFilters'
 import { r2Service } from '@/services/r2Service'
+import { PdfViewer } from '@/ui/components'
 
 
 
@@ -293,10 +294,13 @@ export function InvoicesHistory() {
                             </div>
                         )}
                         {pdfUrl && !pdfError && !isLoadingPdf && (
-                            <iframe
-                                src={pdfUrl}
-                                className="w-full h-full border-0"
-                                title="Invoice PDF"
+                            <PdfViewer
+                                file={pdfUrl}
+                                className="h-full w-full overflow-auto"
+                                onLoadError={(error) => {
+                                    console.error('[InvoicesHistory] Failed to load PDF:', error)
+                                    setPdfError(t('invoices.pdfLoadError') || 'Failed to load PDF')
+                                }}
                             />
                         )}
                     </div>
