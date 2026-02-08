@@ -12,7 +12,7 @@ interface PDFGeneratorOptions {
     data: UniversalInvoice
     format: PrintFormat
     features: {
-        logo_url?: string
+        logo_url?: string | null
         iqd_display_preference?: string
     }
     workspaceName?: string
@@ -122,7 +122,7 @@ function canvasToReceiptPdf(canvas: HTMLCanvasElement) {
     return pdf.output('blob') as Blob
 }
 
-async function preprocessLogoUrl(logoUrl?: string) {
+async function preprocessLogoUrl(logoUrl?: string | null) {
     if (!logoUrl || !(logoUrl.startsWith('http') || logoUrl.startsWith('https'))) {
         return logoUrl
     }

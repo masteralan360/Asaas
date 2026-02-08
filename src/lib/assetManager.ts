@@ -2,6 +2,7 @@ import { isTauri } from './platform';
 import { platformService } from '@/services/platformService';
 import { r2Service } from '@/services/r2Service';
 import { db } from '@/local-db';
+import { supabase } from '@/auth/supabase';
 
 // Simple browser-compatible EventEmitter implementation
 type Listener = (...args: any[]) => void;
