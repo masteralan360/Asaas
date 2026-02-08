@@ -236,9 +236,11 @@ export function Dashboard() {
                                         </div>
 
                                         <div className="text-right">
-                                            <p className="font-black text-sm tabular-nums text-foreground/80">{formatCurrency(invoice.total)}</p>
+                                            <p className="font-black text-sm tabular-nums text-foreground/80">
+                                                {formatCurrency(invoice.totalAmount, invoice.settlementCurrency || 'usd')}
+                                            </p>
                                             <p className="text-[10px] font-bold text-muted-foreground/40 uppercase tracking-wider">
-                                                {invoice.items.length} Items
+                                                {invoice.origin || 'POS'}
                                             </p>
                                         </div>
                                     </div>

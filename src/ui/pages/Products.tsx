@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useProducts, createProduct, updateProduct, deleteProduct, useCategories, createCategory, updateCategory, deleteCategory, useStorages, type Product, type Category } from '@/local-db'
 import type { CurrencyCode } from '@/local-db/models'
 import { formatCurrency, cn } from '@/lib/utils'
-import { p2pSyncManager } from '@/lib/p2pSyncManager'
+import { assetManager } from '@/lib/assetManager'
 import {
     Table,
     TableBody,
@@ -215,12 +215,28 @@ export function Products() {
             setFormData(prev => ({ ...prev, imageUrl: targetPath }));
             setImageError(false);
 
-            // Trigger P2P sync for other workspace users
-            p2pSyncManager.uploadFromPath(targetPath).then(success => {
+            // Trigger asset sync for other workspace users
+            assetManager.uploadFromPath(targetPath).then(success => {
                 if (success) {
-                    console.log('[Products] Image synced to workspace users');
+                    console.log('[Products] Image synced via Cloudflare R2');
                 }
             }).catch(console.error);
+        }
+    }
+
+    const handleRemoveImage = async () => {
+        if (!formData.imageUrl) return;
+
+        try {
+            // Delete from R2 and Local
+            await assetManager.deleteAsset(formData.imageUrl);
+
+            // Update Form Data
+            setFormData(prev => ({ ...prev, imageUrl: '' }));
+            setImageError(false);
+            console.log('[Products] Image removed and cleaned up');
+        } catch (e) {
+            console.error('[Products] Error removing image:', e);
         }
     }
 
@@ -322,6 +338,13 @@ export function Products() {
             }
 
             if (editingProduct) {
+                // Asset Cleanup: Check if the image has been removed or replaced
+                if (editingProduct.imageUrl && editingProduct.imageUrl !== formData.imageUrl) {
+                    console.log('[Products] Image changed/removed, cleaning up old asset:', editingProduct.imageUrl);
+                    assetManager.deleteAsset(editingProduct.imageUrl).catch(e =>
+                        console.error('[Products] Failed to delete old asset:', e)
+                    );
+                }
                 await updateProduct(editingProduct.id, dataToSave)
             } else {
                 await createProduct(workspaceId, dataToSave)
@@ -935,15 +958,29 @@ export function Products() {
                                             placeholder={t('products.form.imageUrlPlaceholder') || "Image URL or local path"}
                                         />
                                         {isElectron && (
-                                            <Button
-                                                type="button"
-                                                variant="outline"
-                                                onClick={handleImageUpload}
-                                                className="shrink-0"
-                                            >
-                                                <ImagePlus className="w-4 h-4 mr-2" />
-                                                {t('products.form.upload') || 'Upload'}
-                                            </Button>
+                                            <div className="flex gap-2 shrink-0">
+                                                {formData.imageUrl && (
+                                                    <Button
+                                                        type="button"
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        onClick={handleRemoveImage}
+                                                        className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                                        title={t('common.delete') || 'Delete'}
+                                                    >
+                                                        <Trash2 className="w-4 h-4" />
+                                                    </Button>
+                                                )}
+                                                <Button
+                                                    type="button"
+                                                    variant="outline"
+                                                    onClick={handleImageUpload}
+                                                    className="w-full"
+                                                >
+                                                    <ImagePlus className="w-4 h-4 mr-2" />
+                                                    {t('products.form.upload') || 'Upload'}
+                                                </Button>
+                                            </div>
                                         )}
                                     </div>
                                     <p className="text-[11px] text-muted-foreground italic">

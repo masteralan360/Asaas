@@ -45,6 +45,7 @@
   "dependencies": {
     "@novu/node": "^2.6.6",
     "@novu/react": "^3.13.0",
+    "@pdf-viewer/react": "^1.17.0",
     "@radix-ui/react-alert-dialog": "^1.1.2",
     "@radix-ui/react-avatar": "^1.1.1",
     "@radix-ui/react-dialog": "^1.1.2",
@@ -58,6 +59,7 @@
     "@radix-ui/react-tabs": "^1.1.13",
     "@radix-ui/react-toast": "^1.2.2",
     "@radix-ui/react-tooltip": "^1.1.3",
+    "@react-pdf/renderer": "^4.3.2",
     "@supabase/supabase-js": "^2.46.1",
     "@tauri-apps/api": "^2.9.1",
     "@tauri-apps/plugin-dialog": "^2.6.0",

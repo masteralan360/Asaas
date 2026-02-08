@@ -47,9 +47,11 @@ import { BarcodeScanner } from 'react-barcode-scanner'
 import 'react-barcode-scanner/polyfill'
 import { isDesktop } from '@/lib/platform'
 import { platformService } from '@/services/platformService'
+import { assetManager } from '@/lib/assetManager'
 import { ExchangeRateList } from '@/ui/components' // Import ExchangeRateList
 import { CheckoutSuccessModal, HeldSalesModal, type HeldSale, StorageSelector, CrossStorageWarningModal } from '@/ui/components'
 import { mapSaleToUniversal } from '@/lib/mappings'
+import { generateInvoicePdf } from '@/services/pdfGenerator'
 
 
 export function POS() {
@@ -956,39 +958,138 @@ export function POS() {
                 }
             }))
 
-            // 2. Add to Local Invoice History (for Record Keeping)
+            // 2. Generate PDF Blobs (A4 & Receipt)
+            const saleData = mapSaleToUniversal({
+                ...checkoutPayload,
+                created_at: snapshotTimestamp,
+                workspace_id: user?.workspaceId || '',
+                cashier_id: user?.id || '',
+                cashier_name: user?.name || ''
+            } as any)
+
+            // Generate A4 PDF
+            const pdfBlobA4 = await generateInvoicePdf({
+                data: saleData,
+                format: 'a4',
+                features,
+                translations: {
+                    date: t('sales.print.date') || 'Date',
+                    number: t('sales.print.number') || 'Invoice #',
+                    soldTo: t('sales.print.soldTo') || 'Sold To',
+                    soldBy: t('sales.print.soldBy') || 'Sold By',
+                    qty: t('sales.print.qty') || 'Qty',
+                    productName: t('sales.print.productName') || 'Product',
+                    description: t('sales.print.description') || 'Description',
+                    price: t('sales.print.price') || 'Price',
+                    discount: t('sales.print.discount') || 'Discount',
+                    total: t('sales.print.total') || 'Total',
+                    subtotal: t('sales.print.subtotal') || 'Subtotal',
+                    terms: t('sales.print.terms') || 'Terms & Conditions',
+                    exchangeRates: t('sales.print.exchangeRates') || 'Exchange Rates',
+                    posSystem: t('sales.print.posSystem') || 'POS System',
+                    generated: t('sales.print.generated') || 'Generated',
+                    id: t('sales.print.id') || 'ID',
+                    cashier: t('sales.print.cashier') || 'Cashier',
+                    paymentMethod: t('sales.print.paymentMethod') || 'Payment Method',
+                    name: t('sales.print.name') || 'Name',
+                    quantity: t('sales.print.quantity') || 'Qty',
+                    thankYou: t('sales.print.thankYou') || 'Thank You',
+                    keepRecord: t('sales.print.keepRecord') || 'Please keep this for your records',
+                    snapshots: t('sales.print.snapshots') || 'Snapshots'
+                }
+            })
+
+            // Generate Receipt PDF
+            const pdfBlobReceipt = await generateInvoicePdf({
+                data: saleData,
+                format: 'receipt',
+                features,
+                workspaceName: user?.workspaceId || 'Asaas', // Ideally fetch workspace name
+                translations: {
+                    date: t('sales.print.date') || 'Date',
+                    number: t('sales.print.number') || 'Invoice #',
+                    soldTo: t('sales.print.soldTo') || 'Sold To',
+                    soldBy: t('sales.print.soldBy') || 'Sold By',
+                    qty: t('sales.print.qty') || 'Qty',
+                    productName: t('sales.print.productName') || 'Product',
+                    description: t('sales.print.description') || 'Description',
+                    price: t('sales.print.price') || 'Price',
+                    discount: t('sales.print.discount') || 'Discount',
+                    total: t('sales.print.total') || 'Total',
+                    subtotal: t('sales.print.subtotal') || 'Subtotal',
+                    terms: t('sales.print.terms') || 'Terms & Conditions',
+                    exchangeRates: t('sales.print.exchangeRates') || 'Exchange Rates',
+                    posSystem: t('sales.print.posSystem') || 'POS System',
+                    generated: t('sales.print.generated') || 'Generated',
+                    id: t('sales.print.id') || 'ID',
+                    cashier: t('sales.print.cashier') || 'Cashier',
+                    paymentMethod: t('sales.print.paymentMethod') || 'Payment Method',
+                    name: t('sales.print.name') || 'Name',
+                    quantity: t('sales.print.quantity') || 'Qty',
+                    thankYou: t('sales.print.thankYou') || 'Thank You',
+                    keepRecord: t('sales.print.keepRecord') || 'Please keep this for your records',
+                    snapshots: t('sales.print.snapshots') || 'Snapshots'
+                }
+            })
+
+            // 3. Add to Local Invoice History (with PDF Blobs)
+            // Attempt immediate upload if online
+            let r2PathA4: string | undefined
+            let r2PathReceipt: string | undefined
+            let syncStatus: 'synced' | 'pending' = 'pending'
+
+            if (navigator.onLine && assetManager && features.enable_r2_storage) {
+                try {
+                    // Parallel upload for speed
+                    const [pathA4, pathReceipt] = await Promise.all([
+                        assetManager.uploadInvoicePdf(saleId, pdfBlobA4, 'a4'),
+                        assetManager.uploadInvoicePdf(saleId, pdfBlobReceipt, 'receipt')
+                    ])
+
+                    if (pathA4 && pathReceipt) {
+                        r2PathA4 = pathA4
+                        r2PathReceipt = pathReceipt
+
+                        // Update Supabase immediately with the paths
+                        // This ensures the server record is complete right away
+                        const { error: updateError } = await supabase.from('invoices').update({
+                            r2_path_a4: pathA4,
+                            r2_path_receipt: pathReceipt,
+                            print_format: 'a4' // Default or derive from settings?
+                        }).eq('id', saleId)
+
+                        if (!updateError) {
+                            syncStatus = 'synced'
+                        } else {
+                            console.error('Failed to update Supabase with PDF paths:', updateError)
+                        }
+                    }
+                } catch (e) {
+                    console.error('Immediate upload failed, falling back to background sync', e)
+                }
+            }
+
             await db.invoices.add({
                 id: saleId,
                 invoiceid: `#${saleId.slice(0, 8)}`,
                 workspaceId: user?.workspaceId || '',
                 customerId: '', // POS sales are guest by default
                 status: 'paid',
-                currency: settlementCurrency,
-                subtotal: totalAmount,
-                discount: 0,
-                total: totalAmount,
+                totalAmount: totalAmount,
+                settlementCurrency: settlementCurrency,
                 origin: 'pos',
                 cashierName: user?.name || 'System',
                 createdByName: user?.name || 'System',
                 createdAt: snapshotTimestamp,
                 updatedAt: snapshotTimestamp,
-                items: cart.map(item => ({
-                    productId: item.product_id,
-                    productName: item.name,
-                    quantity: item.quantity,
-                    unitPrice: item.negotiated_price ?? item.price,
-                    total: (item.negotiated_price ?? item.price) * item.quantity,
-                    currency: settlementCurrency
-                })),
-                printMetadata: {
-                    exchange_rate: snapshotRate,
-                    exchange_source: snapshotSource,
-                    exchange_rates: exchangeRatesSnapshot
-                },
-                syncStatus: 'synced',
-                lastSyncedAt: snapshotTimestamp,
+                syncStatus: syncStatus,
+                lastSyncedAt: syncStatus === 'synced' ? new Date().toISOString() : null,
                 version: 1,
-                isDeleted: false
+                isDeleted: false,
+                r2PathA4: r2PathA4,
+                r2PathReceipt: r2PathReceipt,
+                pdfBlobA4: r2PathA4 ? undefined : pdfBlobA4, // Only save blob if upload failed
+                pdfBlobReceipt: r2PathReceipt ? undefined : pdfBlobReceipt
             })
 
             setCart([])
@@ -1075,39 +1176,98 @@ export function POS() {
                         }
                     }))
 
-                    // 4. Add to Local Invoice History (for Record Keeping)
+                    // 5. Generate PDF Blobs (A4 & Receipt)
+                    const saleDataOffline = mapSaleToUniversal({
+                        ...checkoutPayload,
+                        created_at: snapshotTimestamp,
+                        workspace_id: user?.workspaceId || '',
+                        cashier_id: user?.id || '',
+                        cashier_name: user?.name || ''
+                    } as any)
+
+                    const pdfBlobA4Offline = await generateInvoicePdf({
+                        data: saleDataOffline,
+                        format: 'a4',
+                        features,
+                        translations: {
+                            date: t('sales.print.date') || 'Date',
+                            number: t('sales.print.number') || 'Invoice #',
+                            soldTo: t('sales.print.soldTo') || 'Sold To',
+                            soldBy: t('sales.print.soldBy') || 'Sold By',
+                            qty: t('sales.print.qty') || 'Qty',
+                            productName: t('sales.print.productName') || 'Product',
+                            description: t('sales.print.description') || 'Description',
+                            price: t('sales.print.price') || 'Price',
+                            discount: t('sales.print.discount') || 'Discount',
+                            total: t('sales.print.total') || 'Total',
+                            subtotal: t('sales.print.subtotal') || 'Subtotal',
+                            terms: t('sales.print.terms') || 'Terms & Conditions',
+                            exchangeRates: t('sales.print.exchangeRates') || 'Exchange Rates',
+                            posSystem: t('sales.print.posSystem') || 'POS System',
+                            generated: t('sales.print.generated') || 'Generated',
+                            id: t('sales.print.id') || 'ID',
+                            cashier: t('sales.print.cashier') || 'Cashier',
+                            paymentMethod: t('sales.print.paymentMethod') || 'Payment Method',
+                            name: t('sales.print.name') || 'Name',
+                            quantity: t('sales.print.quantity') || 'Qty',
+                            thankYou: t('sales.print.thankYou') || 'Thank You',
+                            keepRecord: t('sales.print.keepRecord') || 'Please keep this for your records',
+                            snapshots: t('sales.print.snapshots') || 'Snapshots'
+                        }
+                    })
+
+                    const pdfBlobReceiptOffline = await generateInvoicePdf({
+                        data: saleDataOffline,
+                        format: 'receipt',
+                        features,
+                        workspaceName: user?.workspaceId || 'Asaas',
+                        translations: {
+                            date: t('sales.print.date') || 'Date',
+                            number: t('sales.print.number') || 'Invoice #',
+                            soldTo: t('sales.print.soldTo') || 'Sold To',
+                            soldBy: t('sales.print.soldBy') || 'Sold By',
+                            qty: t('sales.print.qty') || 'Qty',
+                            productName: t('sales.print.productName') || 'Product',
+                            description: t('sales.print.description') || 'Description',
+                            price: t('sales.print.price') || 'Price',
+                            discount: t('sales.print.discount') || 'Discount',
+                            total: t('sales.print.total') || 'Total',
+                            subtotal: t('sales.print.subtotal') || 'Subtotal',
+                            terms: t('sales.print.terms') || 'Terms & Conditions',
+                            exchangeRates: t('sales.print.exchangeRates') || 'Exchange Rates',
+                            posSystem: t('sales.print.posSystem') || 'POS System',
+                            generated: t('sales.print.generated') || 'Generated',
+                            id: t('sales.print.id') || 'ID',
+                            cashier: t('sales.print.cashier') || 'Cashier',
+                            paymentMethod: t('sales.print.paymentMethod') || 'Payment Method',
+                            name: t('sales.print.name') || 'Name',
+                            quantity: t('sales.print.quantity') || 'Qty',
+                            thankYou: t('sales.print.thankYou') || 'Thank You',
+                            keepRecord: t('sales.print.keepRecord') || 'Please keep this for your records',
+                            snapshots: t('sales.print.snapshots') || 'Snapshots'
+                        }
+                    })
+
+                    // 6. Add to Local Invoice History (with PDF Blobs)
                     await db.invoices.add({
                         id: saleId,
                         invoiceid: `#${saleId.slice(0, 8)}`,
                         workspaceId: user?.workspaceId || '',
                         customerId: '',
                         status: 'paid',
-                        currency: settlementCurrency,
-                        subtotal: totalAmount,
-                        discount: 0,
-                        total: totalAmount,
+                        totalAmount: totalAmount,
+                        settlementCurrency: settlementCurrency,
                         origin: 'pos',
                         cashierName: user?.name || 'System',
                         createdByName: user?.name || 'System',
                         createdAt: snapshotTimestamp,
                         updatedAt: snapshotTimestamp,
-                        items: cart.map(item => ({
-                            productId: item.product_id,
-                            productName: item.name,
-                            quantity: item.quantity,
-                            unitPrice: item.negotiated_price ?? item.price,
-                            total: (item.negotiated_price ?? item.price) * item.quantity,
-                            currency: settlementCurrency
-                        })),
-                        printMetadata: {
-                            exchange_rate: snapshotRate,
-                            exchange_source: snapshotSource,
-                            exchange_rates: exchangeRatesSnapshot
-                        },
-                        syncStatus: 'pending',
+                        syncStatus: 'pending', // Will be synced by AssetManager
                         lastSyncedAt: null,
                         version: 1,
-                        isDeleted: false
+                        isDeleted: false,
+                        pdfBlobA4: pdfBlobA4Offline,
+                        pdfBlobReceipt: pdfBlobReceiptOffline
                     })
 
                     // 5. Add to Sync Queue (include verification fields)

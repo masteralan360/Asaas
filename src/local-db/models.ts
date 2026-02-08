@@ -247,23 +247,24 @@ export interface Invoice extends BaseEntity {
     invoiceid: string;
     orderId?: string;
     customerId?: string;
-    items: OrderItem[];
-    subtotal: number;
-    discount: number;
-    total: number;
-    currency: CurrencyCode;
     status?: InvoiceStatus;
-    // Snapshot indicator
-    isSnapshot?: boolean;
+    // Total amount in settlement currency
+    totalAmount: number;
+    settlementCurrency: CurrencyCode;
     // Print-to-Invoice tracking
     origin?: 'pos' | 'revenue' | 'inventory' | 'manual';
     /** @deprecated Use cashierName for the name string. createdBy might map to system UUID. */
     createdBy?: string;
     cashierName?: string;
     createdByName?: string;
-    printMetadata?: Record<string, unknown>;
     sequenceId?: number;
     printFormat?: 'a4' | 'receipt';
+    // PDF Storage (R2)
+    r2PathA4?: string;
+    r2PathReceipt?: string;
+    // Local PDF Blob (pending upload)
+    pdfBlobA4?: Blob;
+    pdfBlobReceipt?: Blob;
 }
 
 

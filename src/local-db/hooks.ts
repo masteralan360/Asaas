@@ -820,6 +820,13 @@ export function useInvoices(workspaceId: string | undefined) {
                         }
 
                         for (const remoteItem of data) {
+                            const existing = await db.invoices.get(remoteItem.id)
+                            // If we have pending local changes (like PDF blobs waiting to upload), 
+                            // DO NOT overwrite with remote state yet.
+                            if (existing && existing.syncStatus === 'pending') {
+                                continue
+                            }
+
                             const localItem = toCamelCase(remoteItem as any) as unknown as Invoice
                             localItem.syncStatus = 'synced'
                             localItem.lastSyncedAt = new Date().toISOString()
@@ -869,9 +876,11 @@ export async function createInvoice(workspaceId: string, data: Omit<Invoice, 'id
     if (isOnline()) {
         // ONLINE
         // Omit createdBy to prevent mapping to system created_by UUID column
-        // We use cashierName instead for the Sold By string
-        const { createdBy, ...rest } = invoice
-        const payload = toSnakeCase({ ...rest, syncStatus: undefined, lastSyncedAt: undefined })
+        // Also omit legacy fields that were removed from Supabase schema
+        const { createdBy, items, currency, subtotal, discount, printMetadata, pdfBlobA4, pdfBlobReceipt, ...rest } = invoice as any
+        // @ts-ignore - isSnapshot might be passed but not in Invoice type
+        const { isSnapshot, ...finalRest } = rest
+        const payload = toSnakeCase({ ...finalRest, syncStatus: undefined, lastSyncedAt: undefined })
         const { error } = await supabase.from('invoices').insert(payload)
 
         if (error) {
@@ -896,6 +905,7 @@ export async function saveInvoiceFromSnapshot(workspaceId: string, data: Omit<In
 
     return createInvoice(workspaceId, {
         ...data,
+        // @ts-ignore - passing extra flag for logic if needed (though now unused in createInvoice payload)
         isSnapshot: true
     })
 }
@@ -916,7 +926,9 @@ export async function updateInvoice(id: string, data: Partial<Invoice>): Promise
 
     if (isOnline()) {
         // ONLINE
-        const payload = toSnakeCase({ ...data, updatedAt: now })
+        // Filter out legacy fields from update payload
+        const { items, currency, subtotal, discount, printMetadata, pdfBlobA4, pdfBlobReceipt, ...restData } = data as any
+        const payload = toSnakeCase({ ...restData, updatedAt: now })
         const { error } = await supabase.from('invoices').update(payload).eq('id', id)
 
         if (error) throw error

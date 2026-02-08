@@ -16,6 +16,11 @@ import { saveInvoiceFromSnapshot } from '@/local-db/hooks'
 import { useAuth } from '@/auth'
 import { Invoice } from '@/local-db/models'
 
+import { generateInvoicePdf } from '@/services/pdfGenerator'
+import { assetManager } from '@/lib/assetManager'
+import { WorkspaceFeatures } from '@/workspace'
+import { supabase } from '@/auth/supabase'
+
 interface PrintPreviewModalProps {
     isOpen: boolean
     onClose: () => void
@@ -25,7 +30,8 @@ interface PrintPreviewModalProps {
     showSaveButton?: boolean
     saveButtonText?: string
     invoiceData?: Omit<Invoice, 'id' | 'workspaceId' | 'createdAt' | 'updatedAt' | 'syncStatus' | 'lastSyncedAt' | 'version' | 'isDeleted' | 'invoiceid'>
-
+    pdfData?: any // UniversalInvoice
+    features?: WorkspaceFeatures
 }
 
 export function PrintPreviewModal({
@@ -36,7 +42,9 @@ export function PrintPreviewModal({
     children,
     showSaveButton = true,
     saveButtonText,
-    invoiceData
+    invoiceData,
+    pdfData,
+    features
 }: PrintPreviewModalProps) {
     const { t } = useTranslation()
     const { toast } = useToast()
@@ -62,7 +70,119 @@ export function PrintPreviewModal({
         if (invoiceData && workspaceId) {
             setIsSaving(true)
             try {
-                await saveInvoiceFromSnapshot(workspaceId, invoiceData)
+                // Generate PDFs if we have the data
+                let pdfBlobA4: Blob | undefined
+                let pdfBlobReceipt: Blob | undefined
+
+                if (pdfData && features) {
+                    try {
+                        const translations = {
+                            date: t('sales.print.date') || 'Date',
+                            number: t('sales.print.number') || 'Invoice #',
+                            soldTo: t('sales.print.soldTo') || 'Sold To',
+                            soldBy: t('sales.print.soldBy') || 'Sold By',
+                            qty: t('sales.print.qty') || 'Qty',
+                            productName: t('sales.print.productName') || 'Product',
+                            description: t('sales.print.description') || 'Description',
+                            price: t('sales.print.price') || 'Price',
+                            discount: t('sales.print.discount') || 'Discount',
+                            total: t('sales.print.total') || 'Total',
+                            subtotal: t('sales.print.subtotal') || 'Subtotal',
+                            terms: t('sales.print.terms') || 'Terms & Conditions',
+                            exchangeRates: t('sales.print.exchangeRates') || 'Exchange Rates',
+                            posSystem: t('sales.print.posSystem') || 'POS System',
+                            generated: t('sales.print.generated') || 'Generated',
+                            id: t('sales.print.id') || 'ID',
+                            cashier: t('sales.print.cashier') || 'Cashier',
+                            paymentMethod: t('sales.print.paymentMethod') || 'Payment Method',
+                            name: t('sales.print.name') || 'Name',
+                            quantity: t('sales.print.quantity') || 'Qty',
+                            thankYou: t('sales.print.thankYou') || 'Thank You',
+                            keepRecord: t('sales.print.keepRecord') || 'Please keep this for your records',
+                            snapshots: t('sales.print.snapshots') || 'Snapshots'
+                        }
+
+                        // Generate blobs
+                        const [blobA4, blobReceipt] = await Promise.all([
+                            generateInvoicePdf({
+                                data: pdfData,
+                                format: 'a4',
+                                features: {
+                                    ...features,
+                                    logo_url: features.logo_url || undefined
+                                },
+                                translations
+                            }),
+                            generateInvoicePdf({
+                                data: pdfData,
+                                format: 'receipt',
+                                features: {
+                                    ...features,
+                                    logo_url: features.logo_url || undefined
+                                },
+                                workspaceName: workspaceId,
+                                translations
+                            })
+                        ])
+
+                        pdfBlobA4 = blobA4
+                        pdfBlobReceipt = blobReceipt
+
+                        // Upload if online
+                        if (navigator.onLine && assetManager && (features as any)?.enable_r2_storage) {
+                            // We need an ID for the path. invoiceData doesn't have ID yet (it's created in saveInvoiceFromSnapshot).
+                            // This is a problem. saveInvoiceFromSnapshot calls createInvoice which generates ID.
+                            // We can generate ID here? Or let createInvoice do it?
+                            // createInvoice receives `id` in data if provided?
+                            // hooks.ts createInvoice generates ID: `const id = generateId()`.
+                            // It overrides data.id? 
+                            // `const invoice: Invoice = { ...data, id, ... }`
+                            // So createInvoice enforces its own ID generation.
+
+                            // We CANNOT upload to the correct path without the ID.
+                            // So we must rely on `createInvoice` (which saves blobs) and then `AssetManager` background sync?
+                            // BUT user wants immediate upload.
+                            // This means `saveInvoiceFromSnapshot` must support returning the ID or we must Generate ID here.
+                        }
+                    } catch (genErr) {
+                        console.error('Failed to generate PDF for upload:', genErr)
+                    }
+                }
+
+                // WAIT. If I can't know the ID, I can't upload to the correct path.
+                // UNLESS I modify `saveInvoiceFromSnapshot` to accept a pre-generated ID?
+                // Or I replicate `createInvoice` logic here?
+                // `createInvoice` accepts `data` which excludes `id`.
+                // If I modify `createInvoice` to accept optional `id`.
+
+                // Alternative: Save first (getting ID), then upload, then update?
+                // `saveInvoiceFromSnapshot` returns `Promise<Invoice>`.
+
+                const savedInvoice = await saveInvoiceFromSnapshot(workspaceId, {
+                    ...invoiceData,
+                    pdfBlobA4,
+                    pdfBlobReceipt
+                })
+
+                // Now we have the ID and the blobs are saved in local DB.
+                // If online, we can upload NOW and update local/remote.
+                if (navigator.onLine && assetManager && (features as any)?.enable_r2_storage && pdfBlobA4 && pdfBlobReceipt) {
+                    // Upload
+                    const [pathA4, pathReceipt] = await Promise.all([
+                        assetManager.uploadInvoicePdf(savedInvoice.id, pdfBlobA4, 'a4'),
+                        assetManager.uploadInvoicePdf(savedInvoice.id, pdfBlobReceipt, 'receipt')
+                    ])
+
+                    if (pathA4 && pathReceipt) {
+                        // Update Supabase
+                        await supabase.from('invoices').update({
+                            r2_path_a4: pathA4,
+                            r2_path_receipt: pathReceipt,
+                            print_format: 'a4'
+                        }).eq('id', savedInvoice.id)
+                    }
+                }
+
                 toast({
                     title: t('print.saveSuccess') || 'Invoice Saved',
                     description: t('print.saveSuccessDesc') || 'A record of this invoice has been added to history.',
@@ -122,8 +242,8 @@ export function PrintPreviewModal({
                         className={cn(
                             "print:p-0 [print-color-adjust:exact] -webkit-print-color-adjust:exact",
                             !isExpanded && (
-                                document.dir === 'rtl' 
-                                    ? "scale-[0.6] origin-top-right w-[166%]" 
+                                document.dir === 'rtl'
+                                    ? "scale-[0.6] origin-top-right w-[166%]"
                                     : "scale-[0.6] origin-top-left w-[166%]"
                             )
                         )}

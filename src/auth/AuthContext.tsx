@@ -19,7 +19,6 @@ interface AuthUser {
 interface AuthContextType {
     user: AuthUser | null
     session: Session | null
-    sessionId: string | null
     isLoading: boolean
     isAuthenticated: boolean
     isKicked: boolean
@@ -70,15 +69,7 @@ function parseUserFromSupabase(user: User): AuthUser {
     }
 }
 
-function decodeSessionId(token: string | undefined): string | null {
-    if (!token) return null
-    try {
-        const payload = JSON.parse(atob(token.split('.')[1]))
-        return payload.session_id || payload.sid || null
-    } catch {
-        return null
-    }
-}
+
 
 export function AuthProvider({ children }: { children: ReactNode }) {
     const [user, setUser] = useState<AuthUser | null>(null)
@@ -318,12 +309,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         try {
             console.log('[Auth] Signing out...')
 
-            // 1. Stop background sync processes
+            // 1. Stop background asset processing
             try {
-                const { p2pSyncManager } = await import('@/lib/p2pSyncManager')
-                await p2pSyncManager.destroy()
+                const { assetManager } = await import('@/lib/assetManager')
+                assetManager.stopWatcher()
             } catch (e) {
-                console.error('[Auth] Error destroying p2pSyncManager:', e)
+                console.error('[Auth] Error stopping assetManager:', e)
             }
 
             if (isSupabaseConfigured) {
@@ -409,7 +400,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             value={{
                 user,
                 session,
-                sessionId: decodeSessionId(session?.access_token),
                 isLoading,
                 isAuthenticated: !!user,
                 isKicked,

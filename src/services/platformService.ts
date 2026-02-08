@@ -5,6 +5,7 @@ import { isDesktop, isMobile, isTauri, PlatformAPI } from '../lib/platform';
  */
 class PlatformService implements PlatformAPI {
     private appDataPath: string = '';
+    private tauriConvert: ((path: string) => string) | null = null;
 
     async initialize() {
         if (isTauri()) {
@@ -19,12 +20,17 @@ class PlatformService implements PlatformAPI {
                 // Priority 2: Refetch and refresh cache with a timeout to prevent hanging
                 const initPromise = (async () => {
                     const { appDataDir } = await import('@tauri-apps/api/path');
-                    const freshPath = await appDataDir();
-                    this.appDataPath = freshPath;
-                    localStorage.setItem('asaas_app_data_path', freshPath);
+                    const { convertFileSrc } = await import('@tauri-apps/api/core');
+
+                    this.tauriConvert = convertFileSrc;
+                    this.appDataPath = await appDataDir();
+
+                    localStorage.setItem('asaas_app_data_path', this.appDataPath);
                     console.log('[PlatformService] Initialized AppData path:', this.appDataPath);
                 })();
 
+                //- [x] Phase 57: Implementation of Persistent Asset Migration (R2 CDN Model) [x]
+                //- [x] Phase 58: R2 Path Mismatch and Download Reliability Fix [x]
                 // 2s safety timeout - if it takes longer, we just keep using the cached path (or empty)
                 // and avoid blocking the entire app initialization
                 await Promise.race([
@@ -99,24 +105,26 @@ class PlatformService implements PlatformAPI {
                 }
 
                 // 2. Use Tauri v2 native converter if available
-                const tauri = (window as any).__TAURI__;
-                if (tauri?.core?.convertFileSrc) {
-                    return tauri.core.convertFileSrc(finalPath);
+                // 2. Use Tauri v2 native converter
+                if (this.tauriConvert) {
+                    return this.tauriConvert(finalPath);
                 }
 
                 // 3. Fallback for older patterns / direct construction
-                if ((window as any).__TAURI_INTERNALS__) {
-                    const normalizedPath = finalPath.replace(/\\/g, '/');
-                    const cleanPath = normalizedPath.startsWith('/') ? normalizedPath.substring(1) : normalizedPath;
+                const normalizedPath = finalPath.replace(/\\/g, '/');
+                const cleanPath = normalizedPath.startsWith('/') ? normalizedPath.substring(1) : normalizedPath;
 
-                    // On Mobile (Android), it usually expects asset://localhost/ or asset://
-                    if (isMobile()) {
-                        return `asset://localhost/${cleanPath}`;
-                    }
+                if (isMobile()) {
+                    return `asset://localhost/${cleanPath}`;
+                }
 
-                    // In v2 on Windows, the protocol is typically https://asset.localhost/
+                // On Windows/Desktop, we must ensure absolute paths are correctly prefixed
+                // for the Tauri asset protocol.
+                if (cleanPath.includes(':/') || cleanPath.startsWith('C:')) {
                     return `https://asset.localhost/${cleanPath}`;
                 }
+
+                return `https://asset.localhost/${cleanPath}`;
             } catch (error) {
                 console.error('Error converting file src:', error);
             }
@@ -262,6 +270,47 @@ class PlatformService implements PlatformAPI {
             }
         }
         return null;
+    }
+
+    async saveFile(path: string, content: ArrayBuffer): Promise<string | null> {
+        if (isTauri()) {
+            return this.saveDownloadedFile('', path, content);
+        }
+        return null;
+    }
+
+    async readFile(path: string): Promise<Uint8Array> {
+        if (isTauri()) {
+            const { readFile, BaseDirectory } = await import('@tauri-apps/plugin-fs');
+            return await readFile(path, { baseDir: BaseDirectory.AppData });
+        }
+        throw new Error('readFile only supported in Tauri');
+    }
+
+    async removeFile(path: string): Promise<boolean> {
+        if (isTauri()) {
+            try {
+                const { remove, BaseDirectory } = await import('@tauri-apps/plugin-fs');
+                // Normalize path
+                const cleanPath = path.replace(/\\/g, '/');
+                await remove(cleanPath, { baseDir: BaseDirectory.AppData });
+                return true;
+            } catch (e) {
+                console.error('[PlatformService] Error removing file:', path, e);
+                return false;
+            }
+        }
+        return false;
+    }
+
+    async exists(path: string): Promise<boolean> {
+        if (isTauri()) {
+            const { exists, BaseDirectory } = await import('@tauri-apps/plugin-fs');
+            // Normalize path for check
+            const cleanPath = path.replace(/\\/g, '/');
+            return await exists(cleanPath, { baseDir: BaseDirectory.AppData });
+        }
+        return false;
     }
 
     async resizeImage(filePath: string, maxWidth: number = 512): Promise<string> {

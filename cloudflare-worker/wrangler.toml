@@ -1,0 +1,7 @@
+name = "asaas-r2-proxy"
+main = "src/index.js"
+compatibility_date = "2024-04-01"
+
+[[r2_buckets]]
+binding = "MY_BUCKET"
+bucket_name = "asaas"

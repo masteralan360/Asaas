@@ -1,32 +1,32 @@
 import { useEffect, useState } from 'react';
-import { p2pSyncManager } from '@/lib/p2pSyncManager';
+import { assetManager, AssetProgress } from '@/lib/assetManager';
 import { isMobile } from '@/lib/platform';
 import { Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { ProgressWithLabel } from '../progress-with-label';
 
 export function ResourceSyncOverlay() {
     const [isVisible, setIsVisible] = useState(false);
-    const [stats, setStats] = useState({ total: 0, pending: 0, progress: 0 });
+    const [status, setStatus] = useState<AssetProgress['status']>('idle');
 
     useEffect(() => {
         // Subscribe to sync status
-        const unsub = p2pSyncManager.subscribe((status) => {
-            setIsVisible(!!status.isInitialSync);
-            setStats({
-                total: status.totalPending || 0,
-                pending: status.totalPending || 0,
-                progress: status.progress || 0
-            });
-        });
+        const handleProgress = (progress: AssetProgress) => {
+            const current = assetManager.getProgress();
+            setIsVisible(!!current.isInitialSync);
+            setStatus(progress.status);
+        };
+
+        assetManager.on('progress', handleProgress);
 
         // Check current status immediately
-        const current = p2pSyncManager.getProgress();
+        const current = assetManager.getProgress();
         if (current.isInitialSync) {
             setIsVisible(true);
         }
 
-        return unsub;
+        return () => {
+            assetManager.off('progress', handleProgress);
+        };
     }, []);
 
     if (!isVisible) return null;
@@ -47,16 +47,14 @@ export function ResourceSyncOverlay() {
                 </div>
 
                 <div className="text-center space-y-2 w-full max-w-sm">
-                    <h2 className="text-2xl font-bold tracking-tight">Downloading Resources</h2>
+                    <h2 className="text-2xl font-bold tracking-tight">Syncing Workspace</h2>
                     <p className="text-muted-foreground pb-4">
-                        Syncing workspace assets...
+                        {status === 'scanning' ? 'Scanning for assets...' : 'Downloading resources...'}
                     </p>
 
-                    <ProgressWithLabel
-                        value={stats.progress}
-                        label="Sync Progress"
-                        details={`${stats.total - stats.pending} of ${stats.total} files downloaded`}
-                    />
+                    <div className="text-xs text-muted-foreground animate-pulse">
+                        This may take a moment on first load
+                    </div>
                 </div>
             </div>
         </div>

@@ -60,6 +60,14 @@
       ]
     },
     {
+      "identifier": "fs:allow-remove",
+      "allow": [
+        {
+          "path": "$APPDATA/**/*"
+        }
+      ]
+    },
+    {
       "identifier": "http:default",
       "allow": [
         {

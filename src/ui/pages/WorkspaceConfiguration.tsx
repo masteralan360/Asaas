@@ -25,6 +25,7 @@ import {
 } from 'lucide-react'
 import { isTauri as isTauriCheck } from '@/lib/platform'
 import { platformService } from '@/services/platformService'
+import { assetManager } from '@/lib/assetManager'
 
 interface FeatureToggle {
     key: 'allow_pos' | 'allow_customers' | 'allow_orders' | 'allow_invoices'
@@ -90,9 +91,15 @@ export function WorkspaceConfiguration() {
 
     const handleImageUpload = async () => {
         if (!isTauri) return;
-        const targetPath = await platformService.pickAndSaveImage(workspaceId);
+        const targetPath = await platformService.pickAndSaveImage(workspaceId, 'workspace-logos');
         if (targetPath) {
             setLogoUrl(targetPath);
+            // Trigger asset sync via R2
+            assetManager.uploadFromPath(targetPath, 'branding').then(success => {
+                if (success) {
+                    console.log('[WorkspaceConfig] Logo synced via R2');
+                }
+            }).catch(console.error);
         }
     }
 

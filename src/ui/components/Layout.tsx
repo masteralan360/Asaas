@@ -7,7 +7,7 @@ import { SyncStatusIndicator } from './SyncStatusIndicator'
 import { ExchangeRateIndicator } from './ExchangeRateIndicator'
 import { GlobalSearch } from './GlobalSearch'
 import { P2PSyncIndicator } from './P2PSyncStatus'
-import { p2pSyncManager } from '@/lib/p2pSyncManager'
+import { assetManager } from '@/lib/assetManager'
 import { platformService } from '@/services/platformService'
 import { whatsappManager } from '@/lib/whatsappWebviewManager'
 import { ResourceSyncOverlay } from './p2p/ResourceSyncOverlay'
@@ -60,7 +60,7 @@ import { useBudgetLimitReached as useBudgetLimitReachedHook } from '@/local-db'
 
 export function Layout({ children }: LayoutProps) {
     const [location] = useLocation()
-    const { user, sessionId, signOut } = useAuth()
+    const { user, signOut } = useAuth()
     const { hasFeature, workspaceName, isFullscreen, features } = useWorkspace()
     const { style } = useTheme()
 
@@ -126,9 +126,9 @@ export function Layout({ children }: LayoutProps) {
 
         fetchMembers()
 
-        // Initialize P2P Sync Manager
+        // Initialize Asset Manager
         if (user?.id && user?.workspaceId) {
-            p2pSyncManager.initialize(user.id, user.workspaceId, sessionId).catch(console.error);
+            assetManager.initialize(user.workspaceId);
         }
 
         // Fetch App Version

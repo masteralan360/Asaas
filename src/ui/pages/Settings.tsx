@@ -18,7 +18,7 @@ import { decrypt } from '@/lib/encryption'
 import { check } from '@tauri-apps/plugin-updater';
 import { platformService } from '@/services/platformService'
 import { Image as ImageIcon } from 'lucide-react'
-import { p2pSyncManager } from '@/lib/p2pSyncManager'
+import { assetManager } from '@/lib/assetManager'
 
 export function Settings() {
     const { user, sessionId, signOut, isSupabaseConfigured, updateUser } = useAuth()
@@ -292,7 +292,7 @@ export function Settings() {
                 const item = itemsToSync[i]
                 setMediaSyncProgress(prev => prev ? { ...prev, current: i + 1, fileName: item.name } : null)
 
-                const success = await p2pSyncManager.uploadFromPath(item.path, expiryHours)
+                const success = await assetManager.uploadFromPath(item.path)
                 if (success) successCount++
             }
 
@@ -311,10 +311,10 @@ export function Settings() {
         if (targetPath) {
             await updateSettings({ logo_url: targetPath })
 
-            // Trigger P2P sync for other workspace users
-            p2pSyncManager.uploadFromPath(targetPath).then(success => {
+            // Trigger asset sync via R2
+            assetManager.uploadFromPath(targetPath, 'branding').then(success => {
                 if (success) {
-                    console.log('[Settings] Workspace logo synced to workspace users');
+                    console.log('[Settings] Logo synced via R2');
                 }
             }).catch(console.error);
         }
@@ -331,17 +331,13 @@ export function Settings() {
             // 2. Resize image for optimization (512px max width)
             const resizedPath = await platformService.resizeImage(targetPath, 512)
 
-            // 3. Trigger P2P sync for other workspace users IMMEDIATELY
-            // We do this before DB updates to ensure the file is available/queued
             try {
-                const syncSuccess = await p2pSyncManager.uploadFromPath(resizedPath)
+                const syncSuccess = await assetManager.uploadFromPath(resizedPath, 'profiles')
                 if (syncSuccess) {
-                    console.log('[Settings] Profile picture queued for P2P sync')
-                } else {
-                    console.warn('[Settings] Profile picture P2P sync failed or queued locally only')
+                    console.log('[Settings] Profile picture synced to R2')
                 }
             } catch (syncError) {
-                console.error('[Settings] P2P sync error (non-blocking):', syncError)
+                console.error('[Settings] R2 upload error (non-blocking):', syncError)
             }
 
             // 4. Update Supabase profile
@@ -377,6 +373,45 @@ export function Settings() {
         } catch (error) {
             console.error('[Settings] Profile picture upload failed:', error)
             alert('Upload failed: ' + error)
+        }
+    }
+
+    const handleRemoveProfilePicture = async () => {
+        if (!user || !user.profileUrl) return;
+
+        try {
+            // Delete from R2 and Local
+            await assetManager.deleteAsset(user.profileUrl);
+
+            // Update cloud profile (Supabase)
+            if (isSupabaseConfigured) {
+                await supabase.from('profiles').update({ profile_url: null }).eq('id', user.id);
+                await supabase.auth.updateUser({ data: { profile_url: null } });
+            }
+
+            // Update local state
+            updateUser({ profileUrl: '' });
+            window.dispatchEvent(new CustomEvent('profile-updated'));
+
+            console.log('[Settings] Profile picture removed and cleaned up');
+        } catch (error) {
+            console.error('[Settings] Profile picture removal failed:', error);
+        }
+    }
+
+    const handleRemoveLogo = async () => {
+        if (!user || !features.logo_url) return;
+
+        try {
+            // Delete from R2 and Local
+            await assetManager.deleteAsset(features.logo_url);
+
+            // Update workspace settings
+            await updateSettings({ logo_url: '' });
+
+            console.log('[Settings] Workspace logo removed and cleaned up');
+        } catch (error) {
+            console.error('[Settings] Workspace logo removal failed:', error);
         }
     }
 
@@ -849,7 +884,7 @@ export function Settings() {
 
                                             <Button
                                                 variant="secondary"
-                                                onClick={() => p2pSyncManager.triggerManualDownloadCheck()}
+                                                onClick={() => assetManager.triggerScan()}
                                                 disabled={!isOnline || !isSupabaseConfigured}
                                                 className="gap-2"
                                                 title="Check for new media from other devices"
@@ -985,10 +1020,23 @@ export function Settings() {
                                         )}
                                     </div>
                                     <div className="flex flex-col gap-2">
-                                        <Button variant="outline" size="sm" onClick={handleProfilePictureUpload} className="gap-2">
-                                            <ImageIcon className="w-4 h-4" />
-                                            {t('settings.profile.change_picture') || 'Change Picture'}
-                                        </Button>
+                                        <div className="flex gap-2">
+                                            <Button variant="outline" size="sm" onClick={handleProfilePictureUpload} className="gap-2">
+                                                <ImageIcon className="w-4 h-4" />
+                                                {t('settings.profile.change_picture') || 'Change Picture'}
+                                            </Button>
+                                            {user?.profileUrl && (
+                                                <Button
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    onClick={handleRemoveProfilePicture}
+                                                    className="h-9 w-9 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                                    title={t('common.delete') || 'Delete'}
+                                                >
+                                                    <Trash2 className="w-4 h-4" />
+                                                </Button>
+                                            )}
+                                        </div>
                                         <p className="text-[11px] text-muted-foreground max-w-[200px]">
                                             Optimized for all devices. Syncs automatically.
                                         </p>
@@ -1050,20 +1098,23 @@ export function Settings() {
                                         </div>
 
                                         <div className="flex flex-col gap-2">
-                                            <Button variant="outline" size="sm" onClick={handleLogoUpload} className="gap-2">
-                                                <ImageIcon className="w-4 h-4" />
-                                                {features.logo_url ? 'Change Logo' : 'Upload Logo'}
-                                            </Button>
-                                            {features.logo_url && (
-                                                <Button
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                                                    onClick={() => updateSettings({ logo_url: null })}
-                                                >
-                                                    Remove Logo
+                                            <div className="flex gap-2">
+                                                <Button variant="outline" size="sm" onClick={handleLogoUpload} className="gap-2">
+                                                    <ImageIcon className="w-4 h-4" />
+                                                    {features.logo_url ? 'Change Logo' : 'Upload Logo'}
                                                 </Button>
-                                            )}
+                                                {features.logo_url && (
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        onClick={handleRemoveLogo}
+                                                        className="h-9 w-9 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                                        title={t('common.delete') || 'Delete'}
+                                                    >
+                                                        <Trash2 className="w-4 h-4" />
+                                                    </Button>
+                                                )}
+                                            </div>
                                         </div>
                                     </div>
                                 </div>

@@ -105,6 +105,16 @@ export async function processMutationQueue(userId: string): Promise<{ success: n
                     const { error } = await supabase.from(tableName).update(dbPayload).eq('id', entityId)
                     if (error) throw error
                 } else {
+                    // Special handling for invoices to remove legacy fields
+                    if (tableName === 'invoices') {
+                        delete dbPayload.items
+                        delete dbPayload.currency
+                        delete dbPayload.subtotal
+                        delete dbPayload.discount
+                        delete dbPayload.print_metadata
+                        delete dbPayload.is_snapshot
+                    }
+
                     const { error } = await supabase.from(tableName).upsert(dbPayload)
                     if (error) throw error
                 }

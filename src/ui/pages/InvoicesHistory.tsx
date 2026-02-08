@@ -14,17 +14,18 @@ import {
     CardHeader,
     CardTitle,
     Button,
-    PrintPreviewModal,
-    A4InvoiceTemplate,
-    SaleReceipt
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle
 } from '@/ui/components'
-import { FileText, Search, Printer, Eye } from 'lucide-react'
+import { FileText, Search, Eye, Download, AlertCircle } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/auth'
 import { useWorkspace } from '@/workspace'
 import { useDateRange } from '@/context/DateRangeContext'
 import { DateRangeFilters } from '@/ui/components/DateRangeFilters'
-import { mapInvoiceToUniversal } from '@/lib/mappings'
+import { r2Service } from '@/services/r2Service'
 
 
 
@@ -36,8 +37,10 @@ export function InvoicesHistory() {
     const { dateRange, customDates } = useDateRange()
     const [search, setSearch] = useState('')
     const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null)
-    const [printFormat, setPrintFormat] = useState<'a4' | 'receipt'>('a4')
-    const [showPrintPreview, setShowPrintPreview] = useState(false)
+    const [showPdfViewer, setShowPdfViewer] = useState(false)
+    const [pdfUrl, setPdfUrl] = useState<string | null>(null)
+    const [pdfError, setPdfError] = useState<string | null>(null)
+    const [isLoadingPdf, setIsLoadingPdf] = useState(false)
 
     const getDateDisplay = () => {
         if (dateRange === 'today') {
@@ -64,10 +67,46 @@ export function InvoicesHistory() {
         return ''
     }
 
-    const handleView = (invoice: Invoice, format: 'a4' | 'receipt') => {
-        setPrintFormat(format)
+    const handleView = async (invoice: Invoice, format: 'a4' | 'receipt') => {
         setSelectedInvoice(invoice)
-        setShowPrintPreview(true)
+        setIsLoadingPdf(true)
+        setPdfError(null)
+        setShowPdfViewer(true)
+
+        try {
+            // Determine which R2 path to use
+            const r2Path = format === 'a4' ? invoice.r2PathA4 : invoice.r2PathReceipt
+
+            if (!r2Path) {
+                setPdfError(t('invoices.pdfNotAvailable') || 'PDF not available. This invoice was created before PDF storage was enabled.')
+                return
+            }
+
+            if (!navigator.onLine) {
+                setPdfError(t('invoices.offlineError') || 'You must be online to view invoice PDFs.')
+                return
+            }
+
+            // Get the PDF URL from R2
+            const url = r2Service.getUrl(r2Path)
+            setPdfUrl(url)
+        } catch (error) {
+            console.error('[InvoicesHistory] Failed to load PDF:', error)
+            setPdfError(t('invoices.pdfLoadError') || 'Failed to load PDF')
+        } finally {
+            setIsLoadingPdf(false)
+        }
+    }
+
+    const handleDownload = () => {
+        if (!pdfUrl || !selectedInvoice) return
+        const link = document.createElement('a')
+        link.href = pdfUrl
+        link.download = `invoice-${selectedInvoice.invoiceid.replace('#', '')}.pdf`
+        link.target = '_blank'
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
     }
 
     const filteredInvoices = invoices.filter(
@@ -179,7 +218,7 @@ export function InvoicesHistory() {
                                             </span>
                                         </TableCell>
                                         <TableCell className="text-right font-black tabular-nums">
-                                            {formatCurrency(invoice.total, invoice.currency || 'usd', features.iqd_display_preference)}
+                                            {formatCurrency(invoice.totalAmount, invoice.settlementCurrency || 'usd', features.iqd_display_preference)}
                                         </TableCell>
                                         <TableCell className="text-right pr-6">
                                             <div className="flex justify-end gap-2">
@@ -201,7 +240,7 @@ export function InvoicesHistory() {
                                                         className="rounded-xl hover:bg-primary/10 hover:text-primary transition-all flex items-center gap-2 px-3"
                                                         onClick={() => handleView(invoice, 'receipt')}
                                                     >
-                                                        <Printer className="w-4 h-4" />
+                                                        <FileText className="w-4 h-4" />
                                                         <span className="text-xs font-bold font-mono">Receipt</span>
                                                     </Button>
                                                 )}
@@ -215,30 +254,54 @@ export function InvoicesHistory() {
                 </CardContent>
             </Card>
 
-            {/* Print Preview Modal */}
-            <PrintPreviewModal
-                isOpen={showPrintPreview}
-                onClose={() => {
-                    setShowPrintPreview(false)
+            {/* PDF Viewer Modal */}
+            <Dialog open={showPdfViewer} onOpenChange={(open) => {
+                if (!open) {
+                    setShowPdfViewer(false)
                     setSelectedInvoice(null)
-                }}
-                showSaveButton={false} // Already saved in history
-                title={printFormat === 'a4' ? (t('sales.print.a4') || 'A4 Invoice') : (t('sales.print.receipt') || 'Receipt')}
-            >
-                {selectedInvoice && (
-                    printFormat === 'a4' ? (
-                        <A4InvoiceTemplate
-                            data={mapInvoiceToUniversal(selectedInvoice)}
-                            features={features}
-                        />
-                    ) : (
-                        <SaleReceipt
-                            data={mapInvoiceToUniversal(selectedInvoice)}
-                            features={features}
-                        />
-                    )
-                )}
-            </PrintPreviewModal>
+                    setPdfUrl(null)
+                    setPdfError(null)
+                }
+            }}>
+                <DialogContent className="max-w-4xl h-[90vh] flex flex-col">
+                    <DialogHeader className="flex-shrink-0">
+                        <DialogTitle className="flex items-center justify-between">
+                            <span>{t('invoices.viewInvoice') || 'View Invoice'} {selectedInvoice?.invoiceid}</span>
+                            {pdfUrl && !pdfError && (
+                                <Button size="sm" variant="outline" onClick={handleDownload} className="ml-4">
+                                    <Download className="w-4 h-4 mr-2" />
+                                    {t('common.download') || 'Download'}
+                                </Button>
+                            )}
+                        </DialogTitle>
+                    </DialogHeader>
+                    <div className="flex-1 overflow-hidden rounded-lg">
+                        {isLoadingPdf && (
+                            <div className="flex items-center justify-center h-full">
+                                <div className="text-center">
+                                    <div className="animate-spin w-8 h-8 border-2 border-primary border-t-transparent rounded-full mx-auto mb-2" />
+                                    <p className="text-muted-foreground">{t('common.loading') || 'Loading...'}</p>
+                                </div>
+                            </div>
+                        )}
+                        {pdfError && (
+                            <div className="flex items-center justify-center h-full">
+                                <div className="text-center p-8">
+                                    <AlertCircle className="w-12 h-12 mx-auto mb-4 text-yellow-500" />
+                                    <p className="text-muted-foreground">{pdfError}</p>
+                                </div>
+                            </div>
+                        )}
+                        {pdfUrl && !pdfError && !isLoadingPdf && (
+                            <iframe
+                                src={pdfUrl}
+                                className="w-full h-full border-0"
+                                title="Invoice PDF"
+                            />
+                        )}
+                    </div>
+                </DialogContent>
+            </Dialog>
         </div>
     )
 }

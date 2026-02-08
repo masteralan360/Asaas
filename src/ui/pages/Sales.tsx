@@ -900,16 +900,10 @@ export function Sales() {
                 }}
                 onConfirm={handleConfirmPrint}
                 title={printFormat === 'a4' ? (t('sales.print.a4') || 'A4 Invoice') : (t('sales.print.receipt') || 'Receipt')}
+                features={features}
+                pdfData={printingSale ? mapSaleToUniversal(printingSale) : undefined}
                 invoiceData={printingSale ? {
                     sequenceId: printingSale.sequence_id,
-                    items: printingSale.items?.map(item => ({
-                        productId: item.product_id,
-                        productName: item.product_name || 'Unknown Product',
-                        quantity: item.quantity,
-                        unitPrice: item.converted_unit_price || item.unit_price,
-                        total: item.converted_unit_price ? (item.converted_unit_price * item.quantity) : item.total_price,
-                        currency: (printingSale.settlement_currency || 'usd') as any
-                    })) || [],
                     subtotal: printingSale.total_amount,
                     discount: 0,
                     total: printingSale.total_amount,

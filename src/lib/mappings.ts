@@ -1,5 +1,4 @@
 import { Sale, UniversalInvoice } from '@/types'
-import { Invoice } from '@/local-db/models'
 
 export function mapSaleToUniversal(sale: Sale): UniversalInvoice {
     const sequenceId = sale.sequence_id ? String(sale.sequence_id).padStart(5, '0') : sale.id.slice(0, 8)
@@ -18,55 +17,30 @@ export function mapSaleToUniversal(sale: Sale): UniversalInvoice {
         exchange_source: sale.exchange_source,
         exchange_rate_timestamp: sale.exchange_rate_timestamp,
         origin: 'pos',
-        items: (sale.items || []).map(item => ({
-            product_id: item.product_id,
-            product_name: item.product_name || 'Unknown Product',
-            product_sku: item.product_sku,
-            quantity: item.quantity,
-            unit_price: item.converted_unit_price || item.unit_price,
-            total_price: item.total_price || ((item.converted_unit_price || item.unit_price) * item.quantity),
-            original_unit_price: item.original_unit_price,
-            original_currency: item.original_currency,
-            settlement_currency: item.settlement_currency,
-            discount_amount: (item.original_unit_price && item.negotiated_price) ?
-                (item.original_unit_price - item.negotiated_price) * item.quantity : 0
-        })),
+        items: (sale.items || []).map(item => {
+            const unitPrice = item.converted_unit_price || item.unit_price || 0
+            return {
+                product_id: item.product_id,
+                product_name: item.product_name || 'Unknown Product',
+                product_sku: item.product_sku,
+                quantity: item.quantity,
+                unit_price: unitPrice,
+                // Ensure total_price is in settlement currency
+                total_price: unitPrice * (item.quantity || 0),
+                original_unit_price: item.original_unit_price,
+                original_currency: item.original_currency,
+                settlement_currency: item.settlement_currency,
+                discount_amount: (item.original_unit_price && item.negotiated_price) ?
+                    (item.original_unit_price - item.negotiated_price) * item.quantity : 0
+            }
+        }),
         status: 'paid',
         customer_id: (sale as any).customerId || (sale as any).customer_id || '',
         order_id: (sale as any).orderId || (sale as any).order_id || ''
     }
 }
 
-export function mapInvoiceToUniversal(invoice: Invoice): UniversalInvoice {
-    const sequenceId = invoice.sequenceId ? String(invoice.sequenceId).padStart(5, '0') : invoice.id.slice(0, 8)
+// Note: mapInvoiceToUniversal has been removed.
+// Invoices are now stored as PDFs in R2. There is no need to map them to UniversalInvoice.
+// For viewing/printing, fetch the PDF directly from R2 using invoice.r2PathA4 or invoice.r2PathReceipt.
 
-    return {
-        id: invoice.id,
-        sequence_id: invoice.sequenceId,
-        invoiceid: `#${sequenceId}`,
-        created_at: invoice.createdAt,
-        items: invoice.items.map(i => ({
-            product_id: i.productId,
-            product_name: i.productName,
-            quantity: i.quantity,
-            unit_price: i.unitPrice,
-            total_price: i.total,
-            discount_amount: 0,
-            product_sku: '',
-            // If we have original currency info in metadata, we should map it here
-            original_currency: (invoice.printMetadata?.items as any[])?.find(mi => mi.product_id === i.productId)?.original_currency
-        })),
-        total_amount: invoice.total,
-        settlement_currency: invoice.currency,
-        cashier_name: invoice.cashierName || invoice.createdBy || 'System',
-        created_by_name: invoice.createdByName,
-        customer_name: undefined,
-        exchange_rates: invoice.printMetadata?.exchange_rates as any[],
-        exchange_rate: invoice.printMetadata?.exchange_rate as number,
-        exchange_source: invoice.printMetadata?.exchange_source as string,
-        origin: invoice.origin,
-        status: invoice.status,
-        customer_id: invoice.customerId,
-        order_id: invoice.orderId
-    }
-}
