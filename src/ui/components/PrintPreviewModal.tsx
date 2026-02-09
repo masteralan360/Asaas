@@ -392,7 +392,7 @@ export function PrintPreviewModal({
                                 <div className="flex items-center justify-center h-full">
                                     <div className="flex items-center gap-2 text-muted-foreground">
                                         <Loader2 className="w-4 h-4 animate-spin" />
-                                    {'Generating PDF...'}
+                                        {'Generating PDF...'}
                                     </div>
                                 </div>
                             )}

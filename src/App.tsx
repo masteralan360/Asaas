@@ -14,18 +14,30 @@ import { isMobile } from '@/lib/platform'
 import { useTheme } from '@/ui/components/theme-provider'
 import { useFavicon } from '@/hooks/useFavicon'
 
-// Lazy load pages
-const Dashboard = lazy(() => import('@/ui/pages/Dashboard').then(m => ({ default: m.Dashboard })))
+// @ts-ignore
+const isTauri = !!window.__TAURI_INTERNALS__
+
+// Critical pages - eager load for Tauri desktop, lazy for web/mobile
+import { Dashboard as DashboardEager } from '@/ui/pages/Dashboard'
+import { POS as POSEager } from '@/ui/pages/POS'
+import { Products as ProductsEager } from '@/ui/pages/Products'
+import { Sales as SalesEager } from '@/ui/pages/Sales'
+import { DashboardSkeleton } from '@/ui/components/skeletons/DashboardSkeleton'
+
+// For web/mobile, wrap eager components in a lazy-like wrapper for consistency
+const Dashboard = isTauri ? DashboardEager : lazy(() => import('@/ui/pages/Dashboard').then(m => ({ default: m.Dashboard })))
+const POS = isTauri ? POSEager : lazy(() => import('@/ui/pages/POS').then(m => ({ default: m.POS })))
+const Products = isTauri ? ProductsEager : lazy(() => import('@/ui/pages/Products').then(m => ({ default: m.Products })))
+const Sales = isTauri ? SalesEager : lazy(() => import('@/ui/pages/Sales').then(m => ({ default: m.Sales })))
+
+// Other pages - always lazy loaded
 const Login = lazy(() => import('@/ui/pages/Login').then(m => ({ default: m.Login })))
 const Register = lazy(() => import('@/ui/pages/Register').then(m => ({ default: m.Register })))
-const Products = lazy(() => import('@/ui/pages/Products').then(m => ({ default: m.Products })))
 const InvoicesHistory = lazy(() => import('@/ui/pages/InvoicesHistory').then(m => ({ default: m.InvoicesHistory })))
 const Members = lazy(() => import('@/ui/pages/Members').then(m => ({ default: m.Members })))
 const Settings = lazy(() => import('@/ui/pages/Settings').then(m => ({ default: m.Settings })))
 const Admin = lazy(() => import('@/ui/pages/Admin').then(m => ({ default: m.Admin })))
 const WorkspaceRegistration = lazy(() => import('@/ui/pages/WorkspaceRegistration').then(m => ({ default: m.WorkspaceRegistration })))
-const POS = lazy(() => import('@/ui/pages/POS').then(m => ({ default: m.POS })))
-const Sales = lazy(() => import('@/ui/pages/Sales').then(m => ({ default: m.Sales })))
 const Revenue = lazy(() => import('@/ui/pages/Revenue').then(m => ({ default: m.Revenue })))
 const TeamPerformance = lazy(() => import('@/ui/pages/TeamPerformance').then(m => ({ default: m.TeamPerformance })))
 const WorkspaceConfiguration = lazy(() => import('@/ui/pages/WorkspaceConfiguration').then(m => ({ default: m.WorkspaceConfiguration })))
@@ -41,9 +53,6 @@ const InventoryTransfer = lazy(() => import('@/ui/pages/InventoryTransfer').then
 const HR = lazy(() => import('@/ui/pages/HR').then(m => ({ default: m.default })))
 const Budget = lazy(() => import('@/ui/pages/Budget').then(m => ({ default: m.default })))
 
-
-// @ts-ignore
-const isTauri = !!window.__TAURI_INTERNALS__
 
 
 function LoadingState() {
@@ -234,34 +243,6 @@ function App() {
         } else {
             document.documentElement.removeAttribute('data-mobile')
         }
-
-        if (isTauri && !isMobile()) {
-            console.log('[Tauri] Initializing staggered page pre-loading...')
-
-            // Priority pages only to avoid WebView starvation
-            const priorityPages = [
-                () => import('@/ui/pages/POS'),
-                () => import('@/ui/pages/Dashboard'),
-                () => import('@/ui/pages/Products'),
-                () => import('@/ui/pages/Sales'),
-            ]
-
-            const loadNext = (index: number) => {
-                if (index >= priorityPages.length) {
-                    console.log('[Tauri] Priority pages pre-loaded.')
-                    return
-                }
-
-                // Load current priority page
-                priorityPages[index]()
-
-                // Schedule next load with larger stagger (500ms)
-                setTimeout(() => loadNext(index + 1), 500)
-            }
-
-            // Start loading much later (5s) after initial render has fully settled
-            setTimeout(() => loadNext(0), 5000)
-        }
     }, [])
 
     return (
@@ -302,11 +283,15 @@ function App() {
                                             <ConnectionConfiguration />
                                         </Route>
 
+
+
                                         {/* Protected Routes */}
                                         <Route path="/">
                                             <ProtectedRoute>
                                                 <Layout>
-                                                    <Dashboard />
+                                                    <Suspense fallback={<DashboardSkeleton />}>
+                                                        <Dashboard />
+                                                    </Suspense>
                                                 </Layout>
                                             </ProtectedRoute>
                                         </Route>

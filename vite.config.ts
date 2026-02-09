@@ -115,7 +115,9 @@ export default defineConfig(({ mode }) => {
                             '@radix-ui/react-tabs',
                             '@radix-ui/react-toast',
                             'lucide-react'
-                        ]
+                        ],
+                        'vendor-charts': ['recharts'],
+                        'vendor-pdf': ['@react-pdf/renderer', 'jspdf', 'html2canvas']
                     }
                 }
             },

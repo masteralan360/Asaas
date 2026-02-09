@@ -58,6 +58,38 @@ interface LayoutProps {
 import { useExchangeRate } from '@/context/ExchangeRateContext'
 import { useBudgetLimitReached as useBudgetLimitReachedHook } from '@/local-db'
 
+// Route prefetch map for on-hover preloading (desktop only)
+const routePrefetchMap: Record<string, () => Promise<unknown>> = {
+    '/': () => import('@/ui/pages/Dashboard'),
+    '/pos': () => import('@/ui/pages/POS'),
+    '/sales': () => import('@/ui/pages/Sales'),
+    '/revenue': () => import('@/ui/pages/Revenue'),
+    '/budget': () => import('@/ui/pages/Budget'),
+    '/performance': () => import('@/ui/pages/TeamPerformance'),
+    '/whatsapp': () => import('@/ui/pages/WhatsAppWeb'),
+    '/products': () => import('@/ui/pages/Products'),
+    '/storages': () => import('@/ui/pages/Storages'),
+    '/inventory-transfer': () => import('@/ui/pages/InventoryTransfer'),
+    '/suppliers': () => import('@/ui/pages/Suppliers'),
+    '/customers': () => import('@/ui/pages/Customers'),
+    '/orders': () => import('@/ui/pages/Orders'),
+    '/invoices-history': () => import('@/ui/pages/InvoicesHistory'),
+    '/hr': () => import('@/ui/pages/HR'),
+    '/members': () => import('@/ui/pages/Members'),
+    '/settings': () => import('@/ui/pages/Settings'),
+}
+
+// Prefetch a route's chunk on hover (only triggers once per route)
+const prefetchedRoutes = new Set<string>()
+function prefetchRoute(href: string) {
+    if (prefetchedRoutes.has(href)) return
+    const prefetcher = routePrefetchMap[href]
+    if (prefetcher) {
+        prefetchedRoutes.add(href)
+        prefetcher().catch(() => { /* ignore prefetch errors */ })
+    }
+}
+
 export function Layout({ children }: LayoutProps) {
     const [location] = useLocation()
     const { user, signOut } = useAuth()
@@ -312,6 +344,7 @@ export function Layout({ children }: LayoutProps) {
                                 key={item.href}
                                 href={item.href}
                                 onClick={() => setMobileSidebarOpen(false)}
+                                onMouseEnter={() => !isMobile() && prefetchRoute(item.href)}
                             >
                                 <span
                                     className={cn(

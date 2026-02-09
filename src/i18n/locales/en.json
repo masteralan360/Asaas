@@ -23,6 +23,7 @@
         "selected": "Selected",
         "search": "Search...",
         "searchBox": "Search",
+        "viewAll": "View All",
         "actions": "Actions",
         "confirm": "Confirm",
         "error": "Error",
@@ -350,6 +351,7 @@
         "historyTitle": "Invoices History",
         "historySubtitle": "invoices total",
         "searchPlaceholder": "Search invoices",
+        "viewInvoice": "View Invoice",
         "listTitle": "Invoice List",
         "table": {
             "created": "Creation date",
