@@ -8,6 +8,12 @@ export default defineConfig(({ mode }) => {
     const r2WorkerUrl = env.VITE_R2_WORKER_URL || ''
     const r2AuthToken = env.VITE_R2_AUTH_TOKEN || ''
 
+    // Debug: Log env loading during build
+    console.log('[Vite Config] Mode:', mode)
+    console.log('[Vite Config] __dirname:', __dirname)
+    console.log('[Vite Config] R2 Worker URL loaded:', r2WorkerUrl ? 'YES' : 'NO (empty)')
+    console.log('[Vite Config] R2 Auth Token loaded:', r2AuthToken ? 'YES' : 'NO (empty)')
+
     return {
         base: './',
         define: {

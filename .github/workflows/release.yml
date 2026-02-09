@@ -56,6 +56,11 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           VITE_SUPABASE_URL: ""
           VITE_SUPABASE_ANON_KEY: ""
+          VITE_R2_WORKER_URL: ${{ secrets.VITE_R2_WORKER_URL }}
+          VITE_R2_AUTH_TOKEN: ${{ secrets.VITE_R2_AUTH_TOKEN }}
+          VITE_NOVU_APP_ID: ${{ secrets.VITE_NOVU_APP_ID }}
+          VITE_NOVU_API_URL: ${{ secrets.VITE_NOVU_API_URL }}
+          VITE_NOVU_SOCKET_URL: ${{ secrets.VITE_NOVU_SOCKET_URL }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: "Asaas ${{ github.ref_name }}"
@@ -68,6 +73,11 @@ jobs:
         env:
           VITE_SUPABASE_URL: ""
           VITE_SUPABASE_ANON_KEY: ""
+          VITE_R2_WORKER_URL: ${{ secrets.VITE_R2_WORKER_URL }}
+          VITE_R2_AUTH_TOKEN: ${{ secrets.VITE_R2_AUTH_TOKEN }}
+          VITE_NOVU_APP_ID: ${{ secrets.VITE_NOVU_APP_ID }}
+          VITE_NOVU_API_URL: ${{ secrets.VITE_NOVU_API_URL }}
+          VITE_NOVU_SOCKET_URL: ${{ secrets.VITE_NOVU_SOCKET_URL }}
 
       - name: Sign Release APK
         if: matrix.settings.platform == 'ubuntu-latest'
