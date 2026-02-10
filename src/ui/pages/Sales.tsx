@@ -123,6 +123,15 @@ export function Sales() {
                 return `${t('performance.filters.from')} ${formatDate(customDates.start)} ${t('performance.filters.to')} ${formatDate(customDates.end)}`
             }
         }
+        if (dateRange === 'allTime') {
+            if (sales && sales.length > 0) {
+                const dates = sales.map(s => new Date(s.created_at).getTime())
+                const minDate = new Date(Math.min(...dates))
+                const maxDate = new Date(Math.max(...dates))
+                return `${t('performance.filters.allTime')}, ${t('performance.filters.from')} ${formatDate(minDate)} ${t('performance.filters.to')} ${formatDate(maxDate)}`
+            }
+            return t('performance.filters.allTime') || 'All Time'
+        }
         return ''
     }
 
@@ -548,7 +557,7 @@ export function Sales() {
             if (error) throw error
 
             // Fetch profiles for cashiers
-            const cashierIds = Array.from(new Set(data.map((s: any) => s.cashier_id).filter(Boolean)))
+            const cashierIds = Array.from(new Set((data || []).map((s: any) => s.cashier_id).filter(Boolean)))
             let profilesMap: Record<string, string> = {}
 
             if (cashierIds.length > 0) {
@@ -565,7 +574,7 @@ export function Sales() {
                 }
             }
 
-            const formattedSales = data.map((sale: any) => ({
+            const formattedSales = (data || []).map((sale: any) => ({
                 ...sale,
                 sequenceId: sale.sequence_id,
                 cashier_name: profilesMap[sale.cashier_id] || 'Staff',

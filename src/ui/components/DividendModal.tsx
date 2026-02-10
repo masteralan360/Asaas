@@ -27,7 +27,7 @@ import {
     Legend
 } from 'recharts'
 import { formatCurrency, cn } from '@/lib/utils'
-import { User, TrendingUp, PieChart as PieChartIcon, Printer, CheckCircle2, HelpCircle } from 'lucide-react'
+import { User, TrendingUp, PieChart as PieChartIcon, Printer, CheckCircle2, HelpCircle, AlertTriangle } from 'lucide-react'
 import { useReactToPrint } from 'react-to-print'
 
 export interface DividendRecipient {
@@ -174,10 +174,13 @@ export function DividendDistributionModal({
                             </ResponsiveContainer>
                             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-center pointer-events-none">
                                 <div className="text-[10px] font-black uppercase tracking-widest text-muted-foreground opacity-60">
-                                    {t('budget.netProfit', 'Surplus')}
+                                    {surplus < 0 ? t('budget.deficit', 'Deficit') : t('budget.netProfit', 'Surplus')}
                                 </div>
-                                <div className="text-xl font-black text-violet-600 dark:text-violet-400 leading-none mt-1">
-                                    {Math.round((surplus / (totalToDistribute || 1)) * 100)}%
+                                <div className={cn(
+                                    "text-xl font-black leading-none mt-1",
+                                    surplus < 0 ? 'text-red-600 dark:text-red-400' : 'text-violet-600 dark:text-violet-400'
+                                )}>
+                                    {surplus < 0 ? '-' : ''}{Math.round((Math.abs(surplus) / (totalToDistribute || 1)) * 100)}%
                                 </div>
                             </div>
                         </div>
@@ -195,14 +198,29 @@ export function DividendDistributionModal({
                                     </div>
                                 </CardContent>
                             </Card>
-                            <Card className="bg-violet-500/5 border-violet-500/10 rounded-3xl overflow-hidden">
+                            <Card className={cn(
+                                "rounded-3xl overflow-hidden",
+                                surplus < 0 ? 'bg-red-500/5 border-red-500/10' : 'bg-violet-500/5 border-violet-500/10'
+                            )}>
                                 <CardContent className="p-5 flex items-center gap-4">
-                                    <div className="p-3.5 rounded-2xl bg-violet-500/10 text-violet-600 dark:text-violet-400 border border-violet-500/20">
-                                        <TrendingUp className="w-5 h-5" />
+                                    <div className={cn(
+                                        "p-3.5 rounded-2xl border",
+                                        surplus < 0
+                                            ? 'bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20'
+                                            : 'bg-violet-500/10 text-violet-600 dark:text-violet-400 border-violet-500/20'
+                                    )}>
+                                        {surplus < 0 ? <AlertTriangle className="w-5 h-5" /> : <TrendingUp className="w-5 h-5" />}
                                     </div>
                                     <div>
-                                        <div className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">{t('budget.netProfit', 'Net Surplus')}</div>
-                                        <div className="text-2xl font-black tabular-nums tracking-tight">{formatCurrency(surplus, baseCurrency as any, iqdPreference)}</div>
+                                        <div className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">
+                                            {surplus < 0 ? t('budget.deficit', 'Deficit') : t('budget.netProfit', 'Net Surplus')}
+                                        </div>
+                                        <div className={cn(
+                                            "text-2xl font-black tabular-nums tracking-tight",
+                                            surplus < 0 ? 'text-red-700 dark:text-red-300' : ''
+                                        )}>
+                                            {surplus < 0 ? '-' : ''}{formatCurrency(Math.abs(surplus), baseCurrency as any, iqdPreference)}
+                                        </div>
                                     </div>
                                 </CardContent>
                             </Card>

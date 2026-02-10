@@ -65,6 +65,15 @@ export function InvoicesHistory() {
                 return `${t('performance.filters.from') || 'From'} ${formatDate(customDates.start)} ${t('performance.filters.to') || 'To'} ${formatDate(customDates.end)}`
             }
         }
+        if (dateRange === 'allTime') {
+            if (invoices && invoices.length > 0) {
+                const dates = invoices.map(i => new Date(i.createdAt).getTime())
+                const minDate = new Date(Math.min(...dates))
+                const maxDate = new Date(Math.max(...dates))
+                return `${t('performance.filters.allTime')}, ${t('performance.filters.from')} ${formatDate(minDate)} ${t('performance.filters.to')} ${formatDate(maxDate)}`
+            }
+            return t('performance.filters.allTime') || 'All Time'
+        }
         return ''
     }
 
@@ -131,6 +140,8 @@ export function InvoicesHistory() {
                 const end = new Date(customDates.end)
                 end.setHours(23, 59, 59, 999)
                 matchesDate = invoiceDate >= start && invoiceDate <= end
+            } else if (dateRange === 'allTime') {
+                matchesDate = true
             }
 
             return matchesSearch && matchesDate

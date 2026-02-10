@@ -34,6 +34,15 @@ export function DateRangeFilters({ className }: DateRangeFiltersProps) {
                     {t('performance.filters.thisMonth')}
                 </Button>
                 <Button
+                    variant={dateRange === 'allTime' ? 'default' : 'ghost'}
+                    size="sm"
+                    onClick={() => setDateRange('allTime')}
+                    className={cn("text-xs h-8 px-4 transition-all duration-200", dateRange === 'allTime' && "shadow-sm")}
+                    type="button"
+                >
+                    {t('performance.filters.allTime') || 'All Time'}
+                </Button>
+                <Button
                     variant={dateRange === 'custom' ? 'default' : 'ghost'}
                     size="sm"
                     onClick={() => setDateRange('custom')}

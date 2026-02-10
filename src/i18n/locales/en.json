@@ -633,6 +633,7 @@
         "negotiatedPrice": "Negotiated Price",
         "originalPriceLabel": "Original Price",
         "originalPriceDesc": " ",
+        "convertedValue": "Converted Value",
         "paymentMethod": "Payment Method",
         "digital": "Digital",
         "cash": "Cash",
@@ -838,6 +839,7 @@
         "filters": {
             "today": "Today",
             "thisMonth": "This Month",
+            "allTime": "All Time",
             "custom": "Custom Range",
             "start": "Start Date",
             "end": "End Date",

@@ -142,6 +142,8 @@ export function TeamPerformance() {
                 const end = new Date(customDates.end)
                 end.setHours(23, 59, 59, 999)
                 query = query.gte('created_at', start.toISOString()).lte('created_at', end.toISOString())
+            } else if (dateRange === 'allTime') {
+                // No date filtering needed
             }
 
             const { data: salesData, error: sError } = await query.order('created_at', { ascending: true })
@@ -275,6 +277,15 @@ export function TeamPerformance() {
     const getDateRangeDisplay = () => {
         if (dateRange === 'today') return t('performance.filters.today')
         if (dateRange === 'month') return t('performance.filters.thisMonth')
+        if (dateRange === 'allTime') {
+            if (sales && sales.length > 0) {
+                const dates = sales.map(s => new Date(s.created_at).getTime())
+                const minDate = new Date(Math.min(...dates))
+                const maxDate = new Date(Math.max(...dates))
+                return `${t('performance.filters.allTime')}, ${t('performance.filters.from')} ${formatDate(minDate)} ${t('performance.filters.to')} ${formatDate(maxDate)}`
+            }
+            return t('performance.filters.allTime') || 'All Time'
+        }
         if (dateRange === 'custom') {
             if (customDates.start && customDates.end) {
                 return `${customDates.start} ${t('common.to') || 'to'} ${customDates.end}`
@@ -294,6 +305,15 @@ export function TeamPerformance() {
                 month: 'short',
                 year: 'numeric'
             }).format(now)
+        }
+        if (dateRange === 'allTime') {
+            if (sales && sales.length > 0) {
+                const dates = sales.map(s => new Date(s.created_at).getTime())
+                const minDate = new Date(Math.min(...dates))
+                const maxDate = new Date(Math.max(...dates))
+                return `${t('performance.filters.allTime')}, ${t('performance.filters.from')} ${formatDate(minDate)} ${t('performance.filters.to')} ${formatDate(maxDate)}`
+            }
+            return t('performance.filters.allTime') || 'All Time'
         }
         if (dateRange === 'custom') {
             if (sales && sales.length > 0) {

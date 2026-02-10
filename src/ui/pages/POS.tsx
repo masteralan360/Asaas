@@ -1844,6 +1844,23 @@ export function POS() {
                                         className="text-lg py-5 font-mono mt-1"
                                         autoFocus
                                     />
+                                    {/* Live Conversion Display */}
+                                    {editingProduct && editingProduct.currency !== features.default_currency && negotiatedPriceInput && !isNaN(parseFloat(negotiatedPriceInput)) && (
+                                        <div className="mt-2 p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20 animate-in fade-in slide-in-from-top-1 duration-200">
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-xs font-medium text-emerald-600/80 uppercase tracking-wider">
+                                                    {t('pos.convertedValue') || 'Converted Value'}
+                                                </span>
+                                                <div className="flex items-center gap-1.5 text-xs text-emerald-600/70 font-mono">
+                                                    <TrendingUp className="w-3 h-3" />
+                                                    <span>1 {editingProduct.currency.toUpperCase()} = {formatCurrency(convertPrice(1, editingProduct.currency as any, features.default_currency as any), features.default_currency, features.iqd_display_preference)}</span>
+                                                </div>
+                                            </div>
+                                            <div className="text-xl font-mono font-black text-emerald-500 mt-0.5">
+                                                {formatCurrency(convertPrice(parseFloat(negotiatedPriceInput), editingProduct.currency as any, features.default_currency as any), features.default_currency, features.iqd_display_preference)}
+                                            </div>
+                                        </div>
+                                    )}
                                     <p className="text-xs text-muted-foreground mt-1">
                                         {t('pos.originalPriceDesc') || 'Original price will be preserved in records.'}
                                     </p>

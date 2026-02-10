@@ -632,6 +632,7 @@
         "negotiatedPrice": "نرخی ڕێککەوتن",
         "originalPriceLabel": "نرخی بنەڕەتی",
         "originalPriceDesc": " ",
+        "convertedValue": "نرخی گۆڕاو",
         "paymentMethod": "ڕێگای پارەدان",
         "digital": "دیجیتاڵ",
         "cash": "کاش",
@@ -842,6 +843,7 @@
         "filters": {
             "today": "ئەمڕۆ",
             "thisMonth": "ئەم مانگە",
+            "allTime": "هەموو کاتێک",
             "custom": "ماوەی دیاریکراو",
             "start": "ڕێککەوتی دەستپێک",
             "end": "ڕێککەوتی کۆتایی",

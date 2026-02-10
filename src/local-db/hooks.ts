@@ -1587,7 +1587,28 @@ export async function createExpense(workspaceId: string, data: Omit<Expense, 'id
 }
 
 export async function updateExpense(id: string, data: Partial<Expense>): Promise<void> {
-    await updateEntity('expenses', db.expenses, id, data)
+    const now = new Date().toISOString()
+    const existing = await db.expenses.get(id)
+    if (!existing) throw new Error('Expense not found')
+
+    const updated = {
+        ...existing,
+        ...data,
+        updatedAt: now,
+        syncStatus: (isOnline() ? 'synced' : 'pending') as any,
+        lastSyncedAt: isOnline() ? now : existing.lastSyncedAt,
+        version: existing.version + 1
+    }
+
+    if (isOnline()) {
+        const payload = toSnakeCase({ ...data, updatedAt: now })
+        const { error } = await supabase.from('expenses').update(payload).eq('id', id)
+        if (error) throw error
+        await db.expenses.put(updated)
+    } else {
+        await db.expenses.put(updated)
+        await addToOfflineMutations('expenses', id, 'update', updated as unknown as Record<string, unknown>, existing.workspaceId)
+    }
 }
 
 export async function deleteExpense(id: string): Promise<void> {

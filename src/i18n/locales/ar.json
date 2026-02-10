@@ -632,6 +632,7 @@
         "negotiatedPrice": "سعر التفاوض",
         "originalPriceLabel": "السعر الأصلي",
         "originalPriceDesc": " ",
+        "convertedValue": "القيمة المحولة",
         "paymentMethod": "طريقة الدفع",
         "digital": "رقمي",
         "cash": "نقد",
@@ -842,7 +843,8 @@
         "filters": {
             "today": "اليوم",
             "thisMonth": "هذا الشهر",
-            "custom": "نطاق مخصص",
+            "allTime": "كل الوقت",
+            "custom": "فترة مخصصة",
             "start": "تاريخ البدء",
             "end": "تاريخ الانتهاء",
             "from": "من",

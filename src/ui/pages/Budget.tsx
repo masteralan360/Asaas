@@ -11,10 +11,13 @@ import {
     TrendingUp,
     BarChart3,
     ArrowRight,
-    User
+    User,
+    AlertTriangle,
+    Repeat,
+    Circle
 } from 'lucide-react'
 import { useWorkspace } from '@/workspace'
-import { useExpenses, createExpense, deleteExpense, useBudgetAllocation, useMonthlyRevenue, setBudgetAllocation, useEmployees, useWorkspaceUsers } from '@/local-db'
+import { useExpenses, createExpense, deleteExpense, updateExpense, useBudgetAllocation, useMonthlyRevenue, setBudgetAllocation, useEmployees, useWorkspaceUsers } from '@/local-db'
 import { platformService } from '@/services/platformService'
 import { Button } from '@/ui/components/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/ui/components/card'
@@ -106,14 +109,49 @@ export default function Budget() {
 
         const monthExpenses = expenses.filter(e => {
             const date = new Date(e.dueDate)
-            return date >= monthStart && date <= monthEnd && !e.isDeleted
-        }).map(e => ({ ...e, isVirtual: false }))
+            // One-time expenses ONLY in their month
+            if (e.type === 'one-time') {
+                return date >= monthStart && date <= monthEnd && !e.isDeleted
+            }
+            return false
+        }).map(e => ({ ...e, isVirtual: false, isRecurringVirtual: false }))
+
+        // Process Recurring Templates
+        const recurringTemplates = expenses.filter(e => e.type === 'recurring' && !e.isDeleted)
+        const virtualRecurringExpenses: any[] = []
+
+        recurringTemplates.forEach(template => {
+            // Project to current month
+            const templateDate = new Date(template.dueDate)
+            const projectedDate = new Date(year, month, Math.min(templateDate.getDate(), new Date(year, month + 1, 0).getDate()))
+
+            // Check if already paid (exists as one-time in this month with same description)
+            // We match by Description + Amount to be safe, or just Description
+            const isPaid = monthExpenses.some(e =>
+                e.description?.trim().toLowerCase() === template.description?.trim().toLowerCase()
+            )
+
+            if (!isPaid) {
+                virtualRecurringExpenses.push({
+                    ...template,
+                    id: `v-recurring-${template.id}-${month}`, // Unique ID for key
+                    originalTemplateId: template.id,
+                    dueDate: projectedDate.toISOString(),
+                    status: 'pending',
+                    isVirtual: true,
+                    isRecurringVirtual: true
+                })
+            }
+        })
+
+        // Combine for totals
+        const operationalExpenses = [...monthExpenses, ...virtualRecurringExpenses]
 
         let operationalTotal = 0
         let operationalPaid = 0
         let operationalPending = 0
 
-        monthExpenses.forEach(exp => {
+        operationalExpenses.forEach(exp => {
             const baseAmount = convertToStoreBase(exp.amount, exp.currency)
             operationalTotal += baseAmount
             if (exp.status === 'paid') operationalPaid += baseAmount
@@ -205,7 +243,7 @@ export default function Budget() {
             }
         })
 
-        const finalNetProfit = Math.max(0, profitPool - dividendTotal)
+        const finalNetProfit = profitPool - dividendTotal
 
         const hasMixedCurrencies = new Set([...monthExpenses, ...virtualExpenses].map(e => e.currency?.toLowerCase())).size > 1
 
@@ -232,7 +270,7 @@ export default function Budget() {
             isMixed: hasMixedCurrencies,
             budgetLimit,
             referenceProfit,
-            displayExpenses: [...monthExpenses, ...virtualExpenses],
+            displayExpenses: [...monthExpenses, ...virtualRecurringExpenses, ...virtualExpenses],
             dividendRecipients
         }
     }, [expenses, employees, workspaceUsers, selectedMonth, convertToStoreBase, currentAllocation, monthlyFinancials, t, baseCurrency, iqdPreference])
@@ -267,6 +305,42 @@ export default function Budget() {
             setIsDialogOpen(true) // Re-open on error
         } finally {
             setIsSaving(false)
+        }
+    }
+
+    const handleToggleStatus = async (expense: any) => {
+        if (!workspaceId) return
+
+        try {
+            if (expense.isRecurringVirtual) {
+                // Determine due date from the virtual expense
+                // expense.dueDate is already projected to the correct month in metrics
+                await createExpense(workspaceId, {
+                    description: expense.description,
+                    type: 'one-time',
+                    category: expense.category,
+                    amount: expense.amount,
+                    currency: expense.currency,
+                    status: 'paid',
+                    dueDate: expense.dueDate,
+                    paidAt: new Date().toISOString(),
+                    snoozeUntil: null,
+                    snoozeCount: 0
+                })
+                toast({ description: t('budget.expensePaid', 'Expense marked as paid') })
+            } else if (!expense.isVirtual || (expense.isVirtual && !expense.isRecurringVirtual)) {
+                // Real expense (one-time)
+                // Toggle status
+                const newStatus = expense.status === 'paid' ? 'pending' : 'paid'
+                await updateExpense(expense.id, {
+                    status: newStatus,
+                    paidAt: newStatus === 'paid' ? new Date().toISOString() : null
+                })
+                toast({ description: t('budget.statusUpdated', 'Status updated') })
+            }
+        } catch (error) {
+            console.error(error)
+            toast({ variant: 'destructive', description: t('common.error', 'Failed to update status') })
         }
     }
 
@@ -408,47 +482,82 @@ export default function Budget() {
 
                 {/* Dividends Total */}
                 <Card
-                    className="bg-sky-500/5 dark:bg-sky-500/10 border-sky-500/20 cursor-pointer hover:scale-[1.02] transition-all hover:bg-sky-500/10 hover:shadow-[0_0_20px_-5px_rgba(14,165,233,0.3)] active:scale-95 group relative overflow-hidden rounded-[2rem]"
+                    className={cn(
+                        "cursor-pointer hover:scale-[1.02] transition-all active:scale-95 group relative overflow-hidden rounded-[2rem]",
+                        metrics.finalNetProfit < 0
+                            ? 'bg-red-500/5 dark:bg-red-500/10 border-red-500/20 hover:bg-red-500/10 hover:shadow-[0_0_20px_-5px_rgba(239,68,68,0.3)]'
+                            : 'bg-sky-500/5 dark:bg-sky-500/10 border-sky-500/20 hover:bg-sky-500/10 hover:shadow-[0_0_20px_-5px_rgba(14,165,233,0.3)]'
+                    )}
                     onClick={() => setIsDividendModalOpen(true)}
                 >
                     <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
                         <User className="w-4 h-4 text-sky-500" />
                     </div>
                     <CardHeader className="pb-2">
-                        <CardTitle className="text-xs font-black text-sky-600 dark:text-sky-400 flex items-center gap-2 uppercase tracking-[0.2em]">
+                        <CardTitle className={cn(
+                            "text-xs font-black flex items-center gap-2 uppercase tracking-[0.2em]",
+                            metrics.finalNetProfit < 0 ? 'text-red-600 dark:text-red-400' : 'text-sky-600 dark:text-sky-400'
+                        )}>
                             <User className="w-4 h-4" />
                             {t('budget.dividends', 'Dividends Total')}
                         </CardTitle>
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-black tracking-tighter tabular-nums text-sky-700 dark:text-sky-300">
+                        <div className={cn(
+                            "text-2xl font-black tracking-tighter tabular-nums",
+                            metrics.finalNetProfit < 0 ? 'text-red-700 dark:text-red-300' : 'text-sky-700 dark:text-sky-300'
+                        )}>
                             {formatCurrency(metrics.dividendTotal, baseCurrency, iqdPreference)}
                         </div>
-                        <p className="text-[10px] font-bold uppercase tracking-wider mt-2 opacity-60">
-                            {t('budget.profitDistribution', 'Profit share distribution')}
-                        </p>
+                        {metrics.finalNetProfit < 0 ? (
+                            <div className="flex items-center gap-1 mt-2 text-[10px] font-bold text-red-600 dark:text-red-400">
+                                <AlertTriangle className="w-3 h-3" />
+                                {t('budget.dividendsExceedPool', 'Exceeds profit pool by')} {formatCurrency(Math.abs(metrics.finalNetProfit), baseCurrency, iqdPreference)}
+                            </div>
+                        ) : (
+                            <p className="text-[10px] font-bold uppercase tracking-wider mt-2 opacity-60">
+                                {t('budget.profitDistribution', 'Profit share distribution')}
+                            </p>
+                        )}
                     </CardContent>
                 </Card>
 
                 {/* Surplus Projection */}
                 <Card
-                    className="bg-violet-500/5 dark:bg-violet-500/10 border-violet-500/20 cursor-pointer hover:scale-[1.02] transition-all hover:bg-violet-500/10 hover:shadow-[0_0_20px_-5px_rgba(139,92,246,0.3)] active:scale-95 group relative overflow-hidden rounded-[2rem]"
+                    className={cn(
+                        "cursor-pointer hover:scale-[1.02] transition-all active:scale-95 group relative overflow-hidden rounded-[2rem]",
+                        metrics.finalNetProfit < 0
+                            ? 'bg-red-500/5 dark:bg-red-500/10 border-red-500/20 hover:bg-red-500/10 hover:shadow-[0_0_20px_-5px_rgba(239,68,68,0.3)]'
+                            : 'bg-violet-500/5 dark:bg-violet-500/10 border-violet-500/20 hover:bg-violet-500/10 hover:shadow-[0_0_20px_-5px_rgba(139,92,246,0.3)]'
+                    )}
                 >
                     <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <TrendingUp className="w-4 h-4 text-violet-500" />
+                        {metrics.finalNetProfit < 0
+                            ? <AlertTriangle className="w-4 h-4 text-red-500" />
+                            : <TrendingUp className="w-4 h-4 text-violet-500" />
+                        }
                     </div>
                     <CardHeader className="pb-2">
-                        <CardTitle className="text-xs font-black text-violet-600 dark:text-violet-400 flex items-center gap-2 uppercase tracking-[0.2em]">
-                            <TrendingUp className="w-4 h-4" />
-                            {t('budget.netProfit', 'Surplus')}
+                        <CardTitle className={cn(
+                            "text-xs font-black flex items-center gap-2 uppercase tracking-[0.2em]",
+                            metrics.finalNetProfit < 0 ? 'text-red-600 dark:text-red-400' : 'text-violet-600 dark:text-violet-400'
+                        )}>
+                            {metrics.finalNetProfit < 0 ? <AlertTriangle className="w-4 h-4" /> : <TrendingUp className="w-4 h-4" />}
+                            {metrics.finalNetProfit < 0 ? t('budget.deficit', 'Deficit') : t('budget.netProfit', 'Surplus')}
                         </CardTitle>
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-black tracking-tighter tabular-nums text-violet-700 dark:text-violet-300">
-                            {formatCurrency(metrics.finalNetProfit, baseCurrency, iqdPreference)}
+                        <div className={cn(
+                            "text-2xl font-black tracking-tighter tabular-nums",
+                            metrics.finalNetProfit < 0 ? 'text-red-700 dark:text-red-300' : 'text-violet-700 dark:text-violet-300'
+                        )}>
+                            {metrics.finalNetProfit < 0 ? '-' : ''}{formatCurrency(Math.abs(metrics.finalNetProfit), baseCurrency, iqdPreference)}
                         </div>
                         <p className="text-[10px] font-bold uppercase tracking-wider mt-2 opacity-60">
-                            {t('budget.projectedSurplus', 'Projected Surplus')}
+                            {metrics.finalNetProfit < 0
+                                ? t('budget.projectedDeficit', 'Dividends exceed profit')
+                                : t('budget.projectedSurplus', 'Projected Surplus')
+                            }
                         </p>
                     </CardContent>
                 </Card>
@@ -488,7 +597,12 @@ export default function Budget() {
                                     expense.status === 'paid' ? <CheckCircle2 className="w-5 h-5" /> : <Clock className="w-5 h-5" />}
                             </div>
                             <div>
-                                <div className="font-semibold">{expense.description || t(`budget.cat.${expense.category}`)}</div>
+                                <div className="font-semibold flex items-center gap-2">
+                                    {expense.description || t(`budget.cat.${expense.category}`)}
+                                    {(expense as any).isRecurringVirtual && (
+                                        <Repeat className="w-3 h-3 text-muted-foreground" />
+                                    )}
+                                </div>
                                 <div className="text-xs text-muted-foreground flex items-center gap-2 mt-0.5">
                                     <span className="capitalize">{expense.category}</span>
                                     <span>•</span>
@@ -527,16 +641,33 @@ export default function Budget() {
                                     )}
                                 </div>
                             </div>
-                            {!expense.isVirtual && (
-                                <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="opacity-0 group-hover:opacity-100 transition-opacity text-destructive"
-                                    onClick={() => deleteExpense(expense.id)}
-                                >
-                                    <Trash2 className="w-4 h-4" />
-                                </Button>
-                            )}
+                            <div className="flex gap-2">
+                                {((expense.isVirtual && (expense as any).isRecurringVirtual) || (!expense.isVirtual)) && !(expense as any).isFired && (
+                                    <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className={cn(
+                                            "hover:bg-emerald-500/10 hover:text-emerald-600",
+                                            expense.status === 'paid' && "text-emerald-600"
+                                        )}
+                                        onClick={() => handleToggleStatus(expense)}
+                                        title={expense.status === 'paid' ? t('budget.markUnpaid', 'Mark as Unpaid') : t('budget.markPaid', 'Mark as Paid')}
+                                    >
+                                        {expense.status === 'paid' ? <CheckCircle2 className="w-5 h-5" /> : <Circle className="w-5 h-5" />}
+                                    </Button>
+                                )}
+                                {(!expense.isVirtual || (expense as any).isRecurringVirtual) && (
+                                    <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="opacity-0 group-hover:opacity-100 transition-opacity text-destructive"
+                                        onClick={() => deleteExpense((expense as any).isRecurringVirtual ? (expense as any).originalTemplateId : expense.id)}
+                                        title={(expense as any).isRecurringVirtual ? t('budget.deleteSeries', 'Delete Recurring Series') : t('common.delete', 'Delete')}
+                                    >
+                                        <Trash2 className="w-4 h-4" />
+                                    </Button>
+                                )}
+                            </div>
                         </div>
                     </div>
                 ))}
@@ -793,6 +924,6 @@ export default function Budget() {
                 baseCurrency={baseCurrency}
                 iqdPreference={iqdPreference}
             />
-        </div>
+        </div >
     )
 }

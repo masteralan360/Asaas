@@ -1,10 +1,12 @@
 import { useState, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Plus, Search, Mail, Phone, Trash2, Edit } from 'lucide-react'
+import { Plus, Search, Mail, Phone, Trash2, Edit, AlertTriangle, MessageCircle } from 'lucide-react'
+import { useLocation } from 'wouter'
 import { useWorkspace } from '@/workspace'
 import { useEmployees, createEmployee, updateEmployee, deleteEmployee, useWorkspaceUsers } from '@/local-db'
 import type { Employee } from '@/local-db'
 import { platformService } from '@/services/platformService'
+import { whatsappManager } from '@/lib/whatsappWebviewManager'
 import {
     Button,
     Input,
@@ -33,6 +35,7 @@ export default function HR() {
     const baseCurrency = features.default_currency
     const employees = useEmployees(workspaceId)
     const [search, setSearch] = useState('')
+    const [, setLocation] = useLocation()
     const [isDialogOpen, setIsDialogOpen] = useState(false)
     const [editingEmployee, setEditingEmployee] = useState<Employee | undefined>(undefined)
     const workspaceUsers = useWorkspaceUsers(workspaceId)
@@ -95,11 +98,30 @@ export default function HR() {
         )
     }, [employees, search])
 
+    const othersTotalPercentage = useMemo(() => {
+        return employees
+            .filter(emp => emp.id !== editingEmployee?.id && emp.hasDividends && emp.dividendType === 'percentage' && !emp.isFired)
+            .reduce((sum, emp) => sum + (emp.dividendAmount || 0), 0)
+    }, [employees, editingEmployee])
+
+    const availablePercentage = Math.max(0, 100 - othersTotalPercentage)
+
     const handleSave = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault()
         if (!workspaceId || isSaving) return
 
         const formData = new FormData(e.currentTarget)
+
+        if (hasDividends && dividendType === 'percentage') {
+            const newPercentage = parseFormattedNumber(dividendAmountDisplay)
+            if (othersTotalPercentage + newPercentage > 100) {
+                toast({
+                    variant: 'destructive',
+                    description: t('hr.dividendExceeds', `Total dividends cannot exceed 100%. Available: ${availablePercentage}%`)
+                })
+                return
+            }
+        }
         const data = {
             name: formData.get('name') as string,
             email: formData.get('email') as string,
@@ -276,9 +298,26 @@ export default function HR() {
                                     </div>
                                 )}
                                 {employee.phone && (
-                                    <div className="flex items-center gap-2 text-sm">
-                                        <Phone className="w-4 h-4 text-muted-foreground" />
-                                        <span>{employee.phone}</span>
+                                    <div className="flex items-center justify-between gap-2 text-sm w-full group/phone">
+                                        <div className="flex items-center gap-2">
+                                            <Phone className="w-4 h-4 text-muted-foreground" />
+                                            <span>{employee.phone}</span>
+                                        </div>
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className="h-6 w-6 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-500/10"
+                                            onClick={(e) => {
+                                                e.stopPropagation()
+                                                if (employee.phone) {
+                                                    whatsappManager.openChat(employee.phone)
+                                                    setLocation('/whatsapp')
+                                                }
+                                            }}
+                                            title="Open WhatsApp Chat"
+                                        >
+                                            <MessageCircle className="w-4 h-4" />
+                                        </Button>
                                     </div>
                                 )}
                                 <div className="space-y-2 pt-4 border-t border-border/50">
@@ -522,6 +561,18 @@ export default function HR() {
                                                         </Select>
                                                     )}
                                                 </div>
+                                                {dividendType === 'percentage' && (
+                                                    <div className={cn(
+                                                        "flex items-center gap-1.5 mt-1.5 text-[11px] font-bold",
+                                                        availablePercentage <= 0 ? 'text-destructive' : 'text-muted-foreground'
+                                                    )}>
+                                                        {availablePercentage <= 0 ? (
+                                                            <><AlertTriangle className="w-3 h-3" /> {t('hr.noPercentageLeft', 'No percentage available (100% allocated)')}</>
+                                                        ) : (
+                                                            <>{t('hr.availablePercentage', `Available: ${availablePercentage}%`)}</>
+                                                        )}
+                                                    </div>
+                                                )}
                                             </div>
                                         </div>
                                     )}

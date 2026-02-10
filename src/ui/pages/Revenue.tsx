@@ -101,6 +101,15 @@ export function Revenue() {
                 return `${t('performance.filters.from')} ${formatDate(customDates.start)} ${t('performance.filters.to')} ${formatDate(customDates.end)}`
             }
         }
+        if (dateRange === 'allTime') {
+            if (sales && sales.length > 0) {
+                const dates = sales.map(s => new Date(s.created_at).getTime())
+                const minDate = new Date(Math.min(...dates))
+                const maxDate = new Date(Math.max(...dates))
+                return `${t('performance.filters.allTime')}, ${t('performance.filters.from')} ${formatDate(minDate)} ${t('performance.filters.to')} ${formatDate(maxDate)}`
+            }
+            return t('performance.filters.allTime') || 'All Time'
+        }
         return ''
     }
 
@@ -140,6 +149,8 @@ export function Revenue() {
                 const end = new Date(customDates.end)
                 end.setHours(23, 59, 59, 999)
                 query = query.gte('created_at', start.toISOString()).lte('created_at', end.toISOString())
+            } else if (dateRange === 'allTime') {
+                // No date filtering needed for 'allTime'
             }
 
             const { data, error } = await query.order('created_at', { ascending: false })
