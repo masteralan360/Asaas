@@ -463,6 +463,7 @@ export function Sales() {
 
             const formattedSales = data.map((sale: any) => ({
                 ...sale,
+                sequenceId: sale.sequence_id,
                 cashier_name: profilesMap[sale.cashier_id] || 'Staff',
                 items: sale.items?.map((item: any) => ({
                     ...item,
@@ -581,9 +582,9 @@ export function Sales() {
                                                         <span className="text-[10px] font-mono font-bold text-muted-foreground uppercase tracking-wider">
                                                             {formatCompactDateTime(sale.created_at)}
                                                         </span>
-                                                        {sale.sequence_id ? (
+                                                        {sale.sequenceId ? (
                                                             <span className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-primary/10 text-primary rounded border border-primary/20">
-                                                                #{String(sale.sequence_id).padStart(5, '0')}
+                                                                #{String(sale.sequenceId).padStart(5, '0')}
                                                             </span>
                                                         ) : (
                                                             <span className="text-[10px] text-muted-foreground/50 font-mono">
@@ -705,8 +706,8 @@ export function Sales() {
                                             className={isFullyReturned ? 'bg-destructive/10 border-destructive/20' : hasAnyReturn ? 'bg-orange-500/10 border-orange-500/20 dark:bg-orange-500/5 dark:border-orange-500/10' : ''}
                                         >
                                             <TableCell className="font-mono text-sm font-bold text-primary">
-                                                {sale.sequence_id ? (
-                                                    <span>#{String(sale.sequence_id).padStart(5, '0')}</span>
+                                                {sale.sequenceId ? (
+                                                    <span>#{String(sale.sequenceId).padStart(5, '0')}</span>
                                                 ) : (
                                                     <span className="text-muted-foreground/40 text-xs">#{sale.id.slice(0, 4)}...</span>
                                                 )}
@@ -860,7 +861,7 @@ export function Sales() {
                     setSaleToDelete(null)
                 }}
                 onConfirm={confirmDeleteSale}
-                itemName={saleToDelete ? (saleToDelete.sequence_id ? `#${String(saleToDelete.sequence_id).padStart(5, '0')}` : `#${saleToDelete.id.slice(0, 8)}`) : ''}
+                itemName={saleToDelete ? (saleToDelete.sequenceId ? `#${String(saleToDelete.sequenceId).padStart(5, '0')}` : `#${saleToDelete.id.slice(0, 8)}`) : ''}
                 isLoading={isLoading}
                 title={t('sales.confirmDelete')}
                 description={t('sales.deleteWarning')}
@@ -880,7 +881,7 @@ export function Sales() {
                 workspaceName={workspaceName}
                 pdfData={printingSale ? mapSaleToUniversal(printingSale) : undefined}
                 invoiceData={printingSale ? {
-                    sequenceId: printingSale.sequence_id,
+                    sequenceId: printingSale.sequenceId,
                     totalAmount: printingSale.total_amount,
                     settlementCurrency: (printingSale.settlement_currency || 'usd') as any,
                     origin: printingSale.origin || 'pos',

@@ -935,7 +935,7 @@ export function POS() {
 
         try {
             // Attempt online checkout
-            const { error } = await supabase.rpc('complete_sale', {
+            const { data, error } = await supabase.rpc('complete_sale', {
                 payload: checkoutPayload
             })
 
@@ -945,6 +945,11 @@ export function POS() {
                 }
                 throw error
             }
+
+            // Capture sequence_id and result from server
+            const serverResult = data as any
+            const sequenceId = serverResult?.sequence_id
+            const formattedInvoiceId = sequenceId ? `#${String(sequenceId).padStart(5, '0')}` : `#${saleId.slice(0, 8)}`
 
             // 1. Update local inventory
             await Promise.all(cart.map(async (item) => {
@@ -958,6 +963,7 @@ export function POS() {
 
             const saleData = mapSaleToUniversal({
                 ...checkoutPayload,
+                sequenceId: sequenceId,
                 created_at: snapshotTimestamp,
                 workspace_id: user?.workspaceId || '',
                 cashier_id: user?.id || '',
@@ -966,7 +972,8 @@ export function POS() {
 
             await db.invoices.add({
                 id: saleId,
-                invoiceid: `#${saleId.slice(0, 8)}`,
+                invoiceid: formattedInvoiceId,
+                sequenceId: sequenceId,
                 workspaceId: user?.workspaceId || '',
                 customerId: '', // POS sales are guest by default
                 status: 'paid',

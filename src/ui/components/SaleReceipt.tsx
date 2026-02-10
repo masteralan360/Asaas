@@ -5,6 +5,9 @@ import { UniversalInvoice } from '@/types'
 import { formatCurrency, formatDateTime, formatSnapshotTime } from '@/lib/utils'
 import { platformService } from '@/services/platformService'
 import { useWorkspace } from '@/workspace'
+import { useAuth } from '@/auth'
+import { ReactQRCode } from '@lglab/react-qr-code'
+
 interface SaleReceiptProps {
     data: UniversalInvoice
     features: any
@@ -12,11 +15,13 @@ interface SaleReceiptProps {
 
 interface SaleReceiptBaseProps extends SaleReceiptProps {
     workspaceName?: string | null
+    workspaceId?: string
 }
 
 export const SaleReceiptBase = forwardRef<HTMLDivElement, SaleReceiptBaseProps>(
-    ({ data, features, workspaceName }, ref) => {
+    ({ data, features, workspaceName, workspaceId: propWorkspaceId }, ref) => {
         const { t } = useTranslation()
+        const effectiveWorkspaceId = propWorkspaceId || data.workspaceId
 
         const formatReceiptPrice = (amount: number, currency: string) => {
             const code = currency.toLowerCase()
@@ -44,16 +49,28 @@ export const SaleReceiptBase = forwardRef<HTMLDivElement, SaleReceiptBaseProps>(
         return (
             <div ref={ref} className="p-8 bg-white text-black print:p-0 print:w-[80mm] print:text-sm">
 
-                <div className="text-center mb-8">
-                    {features.logo_url && (
-                        <div className="flex justify-center mb-4">
+                <div className="text-center mb-8 relative">
+                    <div className="flex justify-between items-center mb-4">
+                        <div className="w-16"></div> {/* Spacer */}
+                        {features.logo_url && (
                             <img
                                 src={features.logo_url.startsWith('http') ? features.logo_url : platformService.convertFileSrc(features.logo_url)}
                                 alt="Workspace Logo"
                                 className="h-16 w-auto object-contain"
                             />
+                        )}
+                        <div className="flex justify-end w-20">
+                            {effectiveWorkspaceId && (
+                                <div className="p-1 bg-white border border-gray-100 rounded-sm" data-qr-sharp="true">
+                                    <ReactQRCode
+                                        value={`https://asaas-r2-proxy.alanepic360.workers.dev/${effectiveWorkspaceId}/printed-invoices/receipts/${data.id}.pdf`}
+                                        size={64}
+                                        level="M"
+                                    />
+                                </div>
+                            )}
                         </div>
-                    )}
+                    </div>
                     <h1 className="text-2xl font-bold uppercase tracking-widest mb-4">
                         {workspaceName || 'Asaas'}
                     </h1>
@@ -68,24 +85,26 @@ export const SaleReceiptBase = forwardRef<HTMLDivElement, SaleReceiptBaseProps>(
                                 <span className="font-mono">{data.invoiceid}</span>
                             </div>
                         </div>
-                        <div className="text-end space-y-2">
-                            <div>
-                                <span className="font-semibold uppercase text-[10px] text-gray-400 block tracking-wider">{t('sales.cashier')}</span>
-                                <span className="font-medium">{data.cashier_name}</span>
-                            </div>
-                            {data.payment_method && (
+                        <div className="flex flex-col items-end space-y-2">
+                            <div className="text-end space-y-2">
                                 <div>
-                                    <span className="font-semibold uppercase text-[10px] text-gray-400 block tracking-wider">{t('pos.paymentMethod') || 'Payment Method'}</span>
-                                    <span className="font-medium">
-                                        {data.payment_method === 'cash' ? (t('pos.cash') || 'Cash') :
-                                            data.payment_method === 'fib' ? 'FIB' :
-                                                data.payment_method === 'qicard' ? 'QiCard' :
-                                                    data.payment_method === 'zaincash' ? 'ZainCash' :
-                                                        data.payment_method === 'fastpay' ? 'FastPay' :
-                                                            t('pos.cash') || 'Cash'}
-                                    </span>
+                                    <span className="font-semibold uppercase text-[10px] text-gray-400 block tracking-wider">{t('sales.cashier')}</span>
+                                    <span className="font-medium">{data.cashier_name}</span>
                                 </div>
-                            )}
+                                {data.payment_method && (
+                                    <div>
+                                        <span className="font-semibold uppercase text-[10px] text-gray-400 block tracking-wider">{t('pos.paymentMethod') || 'Payment Method'}</span>
+                                        <span className="font-medium">
+                                            {data.payment_method === 'cash' ? (t('pos.cash') || 'Cash') :
+                                                data.payment_method === 'fib' ? 'FIB' :
+                                                    data.payment_method === 'qicard' ? 'QiCard' :
+                                                        data.payment_method === 'zaincash' ? 'ZainCash' :
+                                                            data.payment_method === 'fastpay' ? 'FastPay' :
+                                                                t('pos.cash') || 'Cash'}
+                                        </span>
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     </div>
 
@@ -186,6 +205,8 @@ SaleReceiptBase.displayName = 'SaleReceiptBase'
 export const SaleReceipt = forwardRef<HTMLDivElement, SaleReceiptProps>(
     ({ data, features }, ref) => {
         const { workspaceName } = useWorkspace()
+        const { user } = useAuth()
+        const workspaceId = user?.workspaceId
 
         return (
             <SaleReceiptBase
@@ -193,6 +214,7 @@ export const SaleReceipt = forwardRef<HTMLDivElement, SaleReceiptProps>(
                 data={data}
                 features={features}
                 workspaceName={workspaceName}
+                workspaceId={workspaceId}
             />
         )
     }

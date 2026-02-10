@@ -223,7 +223,7 @@ export function InvoicesHistory() {
                                         </TableCell>
                                         <TableCell className="text-right pr-6">
                                             <div className="flex justify-end gap-2">
-                                                {(!invoice.printFormat || invoice.printFormat === 'a4') && (
+                                                {invoice.r2PathA4 && (
                                                     <Button
                                                         variant="ghost"
                                                         size="sm"
@@ -234,7 +234,7 @@ export function InvoicesHistory() {
                                                         <span className="text-xs font-bold font-mono">A4</span>
                                                     </Button>
                                                 )}
-                                                {(!invoice.printFormat || invoice.printFormat === 'receipt') && (
+                                                {invoice.r2PathReceipt && (
                                                     <Button
                                                         variant="ghost"
                                                         size="sm"
@@ -271,7 +271,7 @@ export function InvoicesHistory() {
                             {pdfUrl && !pdfError && (
                                 <Button size="sm" variant="outline" onClick={handleDownload} className="ml-4">
                                     <Download className="w-4 h-4 mr-2" />
-                                    {t('common.download') || 'Download'}
+                                    {t('common.ViewAndDownload') || 'View and Download'}
                                 </Button>
                             )}
                         </DialogTitle>

@@ -96,8 +96,22 @@ export async function processMutationQueue(userId: string): Promise<{ success: n
 
             if (operation === 'create' || operation === 'update') {
                 if (entityType === 'sales') {
-                    const { error } = await supabase.rpc('complete_sale', { payload: dbPayload })
+                    const { data: serverResult, error } = await supabase.rpc('complete_sale', { payload: dbPayload })
                     if (error) throw error
+
+                    // Capture sequence_id and update local records
+                    const result = serverResult as any
+                    if (result?.sequence_id) {
+                        const sequenceId = result.sequence_id
+                        const formattedInvoiceId = `#${String(sequenceId).padStart(5, '0')}`
+
+                        // Update both sales and invoices tables locally
+                        await db.sales.update(entityId, { sequenceId })
+                        await db.invoices.update(entityId, {
+                            sequenceId,
+                            invoiceid: formattedInvoiceId
+                        })
+                    }
                 } else if (entityType === 'workspaces') {
                     // Remove workspace_id from payload for workspace table update itself
                     delete dbPayload.workspace_id

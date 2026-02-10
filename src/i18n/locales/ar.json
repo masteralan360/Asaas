@@ -21,6 +21,8 @@
         "edit": "تعديل",
         "create": "إنشاء",
         "viewAll": "عرض الكل",
+        "download": "تحميل",
+        "ViewAndDownload": "عرض وتحميل",
         "selected": "مختار",
         "search": "بحث...",
         "searchBox": "صندوق البحث",
@@ -642,6 +644,8 @@
         "from": "من",
         "to": "إلى",
         "result": "النتيجة",
+        "printReceipt": "طباعة الفاتورة",
+        "continueSale": "متابعة البيع",
         "backToPos": "العودة إلى نقطة البيع",
         "outOfStock": "نفذ المخزون"
     },

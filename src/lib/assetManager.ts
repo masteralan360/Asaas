@@ -105,13 +105,15 @@ class AssetManager extends SimpleEventEmitter {
     async uploadInvoicePdf(
         invoiceId: string,
         pdfBlob: Blob,
-        format: 'a4' | 'receipt'
+        format: 'a4' | 'receipt',
+        customPath?: string
     ): Promise<string | null> {
         if (!this.workspaceId) return null;
 
         try {
             const folder = format === 'a4' ? 'A4' : 'receipts';
-            const r2Path = `${this.workspaceId}/printed-invoices/${folder}/${invoiceId}.pdf`;
+            // Use custom path if provided, otherwise fallback to standard ID-based path
+            const r2Path = customPath || `${this.workspaceId}/printed-invoices/${folder}/${invoiceId}.pdf`;
 
             this.emitStatus({ status: 'uploading', currentFile: `${invoiceId}.pdf` });
 
@@ -319,15 +321,27 @@ class AssetManager extends SimpleEventEmitter {
                     // Update Dexie
                     await db.invoices.update(invoice.id, updates);
 
-                    // Update Supabase (minimal metadata + paths)
-                    // Note: We only update paths and total info, simpler validation
-                    const { error } = await supabase.from('invoices').update({
-                        r2_path_a4: updates.r2PathA4 || invoice.r2PathA4,
-                        r2_path_receipt: updates.r2PathReceipt || invoice.r2PathReceipt,
+                    // Update Supabase using upsert (more robust + RLS safety)
+                    const upsertData: any = {
+                        id: invoice.id,
+                        user_id: invoice.createdBy,
+                        workspace_id: this.workspaceId,
+                        invoiceid: invoice.invoiceid,
                         total_amount: invoice.totalAmount,
+                        total: invoice.totalAmount,
                         settlement_currency: invoice.settlementCurrency,
-                        print_format: invoice.printFormat
-                    }).eq('id', invoice.id);
+                        print_format: invoice.printFormat,
+                        updated_at: new Date().toISOString()
+                    };
+
+                    if (updates.r2PathA4 || invoice.r2PathA4) {
+                        upsertData.r2_path_a4 = updates.r2PathA4 || invoice.r2PathA4;
+                    }
+                    if (updates.r2PathReceipt || invoice.r2PathReceipt) {
+                        upsertData.r2_path_receipt = updates.r2PathReceipt || invoice.r2PathReceipt;
+                    }
+
+                    const { error } = await supabase.from('invoices').upsert(upsertData);
 
                     if (error) {
                         console.error('[AssetManager] Failed to update invoice in Supabase:', error);

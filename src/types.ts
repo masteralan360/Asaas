@@ -50,7 +50,7 @@ export interface Sale {
     returned_at?: string
     returned_by?: string
     // Sequential ID
-    sequence_id?: number
+    sequenceId?: number
     // System Verification (offline-first, immutable)
     system_verified?: boolean
     system_review_status?: 'approved' | 'flagged' | 'inconsistent'
@@ -84,7 +84,7 @@ export interface UniversalInvoiceItem {
 
 export interface UniversalInvoice {
     id: string
-    sequence_id?: number
+    sequenceId?: number
     invoiceid?: string
     created_at: string
 
@@ -106,5 +106,6 @@ export interface UniversalInvoice {
     status?: string
     customer_id?: string
     order_id?: string
+    workspaceId?: string
 }
 

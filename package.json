@@ -1,7 +1,7 @@
 {
   "name": "asaas",
   "private": true,
-  "version": "1.8.9",
+  "version": "1.9.1",
   "main": "electron/main.cjs",
   "type": "module",
   "repository": {
@@ -43,6 +43,7 @@
     "android:build:release": "tauri android build"
   },
   "dependencies": {
+    "@lglab/react-qr-code": "^1.4.9",
     "@novu/node": "^2.6.6",
     "@novu/react": "^3.13.0",
     "@radix-ui/react-alert-dialog": "^1.1.2",

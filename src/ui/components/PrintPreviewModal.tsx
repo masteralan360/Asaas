@@ -60,6 +60,20 @@ export function PrintPreviewModal({
     const { toast } = useToast()
     const { user } = useAuth()
     const workspaceId = user?.workspaceId
+
+    // Generate a stable ID for new invoices to ensure QR code consistency
+    // If pdfData.id exists (history), we use that. If not (new sale), we generate one.
+    const [tempId, setTempId] = useState<string>('')
+
+    // The actual ID to be used for generation and saving
+    const effectiveId = useMemo(() => pdfData?.id || tempId, [pdfData?.id, tempId])
+
+    useEffect(() => {
+        if (isOpen && !pdfData?.id) {
+            setTempId(crypto.randomUUID())
+        }
+    }, [isOpen, pdfData?.id])
+
     const [isExpanded, setIsExpanded] = useState(false)
     const [isSaving, setIsSaving] = useState(false)
     const [isGenerating, setIsGenerating] = useState(false)
@@ -119,44 +133,36 @@ export function PrintPreviewModal({
         }
     })
 
-    const buildPdfBlobs = useCallback(async (): Promise<{ a4: Blob; receipt: Blob }> => {
+    const buildPdfBlobs = useCallback(async (requestedFormat?: PrintFormat): Promise<{ a4?: Blob; receipt?: Blob }> => {
         if (!pdfData || !features) {
             throw new Error('Missing PDF data or features')
         }
 
-        const [blobA4, blobReceipt] = await Promise.all([
-            generateInvoicePdf({
-                data: pdfData,
-                format: 'a4',
-                features: {
-                    ...features,
-                    logo_url: features.logo_url || undefined
-                },
-                translations
-            }),
-            generateInvoicePdf({
-                data: pdfData,
-                format: 'receipt',
-                features: {
-                    ...features,
-                    logo_url: features.logo_url || undefined
-                },
-                workspaceName: workspaceName || workspaceId || '',
-                translations
-            })
-        ])
+        const format = requestedFormat || printFormat;
+        const blob = await generateInvoicePdf({
+            data: { ...pdfData, id: effectiveId },
+            format: format,
+            workspaceId: workspaceId || '',
+            features: {
+                ...features,
+                logo_url: features.logo_url || undefined
+            },
+            workspaceName: workspaceName || workspaceId || '',
+            translations
+        })
 
-        return { a4: blobA4, receipt: blobReceipt }
-    }, [features, pdfData, translations, workspaceId, workspaceName])
+        return { [format]: blob }
+    }, [features, pdfData, translations, workspaceId, workspaceName, effectiveId, printFormat])
 
-    const ensurePdfBlobs = useCallback(async (): Promise<{ a4: Blob; receipt: Blob }> => {
-        if (pdfBlobs.a4 && pdfBlobs.receipt) {
-            return { a4: pdfBlobs.a4, receipt: pdfBlobs.receipt }
+    const ensurePdfBlobs = useCallback(async (requestedFormat?: PrintFormat): Promise<{ a4?: Blob; receipt?: Blob }> => {
+        const format = requestedFormat || printFormat;
+        if (pdfBlobs[format]) {
+            return pdfBlobs
         }
-        const blobs = await buildPdfBlobs()
-        setPdfBlobs(blobs)
-        return blobs
-    }, [buildPdfBlobs, pdfBlobs.a4, pdfBlobs.receipt])
+        const blobs = await buildPdfBlobs(format)
+        setPdfBlobs(prev => ({ ...prev, ...blobs }))
+        return { ...pdfBlobs, ...blobs }
+    }, [buildPdfBlobs, pdfBlobs, printFormat])
 
     const printPdfUrl = (url: string) => {
         return new Promise<void>((resolve, reject) => {
@@ -209,10 +215,10 @@ export function PrintPreviewModal({
         setIsGenerating(true)
         setPdfError(null)
 
-        buildPdfBlobs()
+        buildPdfBlobs(printFormat)
             .then((blobs) => {
                 if (cancelled) return
-                setPdfBlobs(blobs)
+                setPdfBlobs(prev => ({ ...prev, ...blobs }))
             })
             .catch((error) => {
                 if (cancelled) return
@@ -254,47 +260,86 @@ export function PrintPreviewModal({
 
         setIsSaving(true)
         try {
-            const { a4, receipt } = await ensurePdfBlobs()
-            const activeBlob = printFormat === 'receipt' ? receipt : a4
+            const blobs = await ensurePdfBlobs(printFormat)
+            const activeBlob = printFormat === 'receipt' ? blobs.receipt : blobs.a4
+
+            if (!activeBlob) throw new Error('Failed to generate PDF')
 
             let savedInvoice: Invoice | null = null
             if (invoiceData && workspaceId) {
-                savedInvoice = await saveInvoiceFromSnapshot(workspaceId, {
+                const snapshotData: any = {
                     ...invoiceData,
-                    pdfBlobA4: a4,
-                    pdfBlobReceipt: receipt
-                })
+                    printFormat: printFormat
+                }
+
+                if (printFormat === 'a4') {
+                    snapshotData.pdfBlobA4 = activeBlob
+                } else {
+                    snapshotData.pdfBlobReceipt = activeBlob
+                }
+
+                savedInvoice = await saveInvoiceFromSnapshot(workspaceId, snapshotData, effectiveId)
+
+                const confirmedInvoice = await db.invoices.get(effectiveId)
+                if (confirmedInvoice) {
+                    savedInvoice = confirmedInvoice
+                }
             }
 
             if (savedInvoice && isOnline() && assetManager) {
                 try {
-                    const [pathA4, pathReceipt] = await Promise.all([
-                        assetManager.uploadInvoicePdf(savedInvoice.id, a4, 'a4'),
-                        assetManager.uploadInvoicePdf(savedInvoice.id, receipt, 'receipt')
-                    ])
+                    const finalBlob = await generateInvoicePdf({
+                        data: { ...pdfData, ...savedInvoice, id: savedInvoice.id, invoiceid: savedInvoice.invoiceid, sequenceId: savedInvoice.sequenceId },
+                        format: printFormat,
+                        workspaceId: workspaceId || '',
+                        features: {
+                            ...features,
+                            logo_url: features?.logo_url || undefined
+                        },
+                        workspaceName: workspaceName || workspaceId || '',
+                        translations
+                    })
 
-                    if (!pathA4 || !pathReceipt) {
-                        throw new Error('R2 upload failed')
+                    const path = `${workspaceId}/printed-invoices/${printFormat === 'a4' ? 'A4' : 'receipts'}/${savedInvoice.id}.pdf`
+
+                    await assetManager.uploadInvoicePdf(savedInvoice.id, finalBlob, printFormat, path)
+
+                    const upsertData: any = {
+                        id: savedInvoice.id,
+                        user_id: user?.id,
+                        workspace_id: workspaceId,
+                        invoiceid: savedInvoice.invoiceid,
+                        total_amount: savedInvoice.totalAmount,
+                        total: savedInvoice.totalAmount,
+                        settlement_currency: savedInvoice.settlementCurrency,
+                        print_format: printFormat,
+                        updated_at: new Date().toISOString()
                     }
 
-                    const { error: updateError } = await supabase.from('invoices').update({
-                        r2_path_a4: pathA4,
-                        r2_path_receipt: pathReceipt,
-                        print_format: printFormat
-                    }).eq('id', savedInvoice.id)
-
-                    if (updateError) {
-                        throw updateError
+                    if (printFormat === 'a4') {
+                        upsertData.r2_path_a4 = path
+                    } else {
+                        upsertData.r2_path_receipt = path
                     }
 
-                    await db.invoices.update(savedInvoice.id, {
-                        r2PathA4: pathA4,
-                        r2PathReceipt: pathReceipt,
-                        pdfBlobA4: undefined,
-                        pdfBlobReceipt: undefined,
+                    const { error: upsertError } = await supabase.from('invoices').upsert(upsertData)
+
+                    if (upsertError) throw upsertError
+
+                    const dbUpdate: any = {
                         syncStatus: 'synced',
                         lastSyncedAt: new Date().toISOString()
-                    })
+                    }
+
+                    if (printFormat === 'a4') {
+                        dbUpdate.r2PathA4 = path
+                        dbUpdate.pdfBlobA4 = undefined
+                    } else {
+                        dbUpdate.r2PathReceipt = path
+                        dbUpdate.pdfBlobReceipt = undefined
+                    }
+
+                    await db.invoices.update(savedInvoice.id, dbUpdate)
                 } catch (uploadError) {
                     console.error('PDF upload failed, marking invoice as pending:', uploadError)
                     await db.invoices.update(savedInvoice.id, {
@@ -454,12 +499,14 @@ export function PrintPreviewModal({
                                         data={pdfData}
                                         features={features}
                                         workspaceName={workspaceName || workspaceId || 'Asaas'}
+                                        workspaceId={workspaceId || undefined}
                                     />
                                 </div>
                             ) : (
                                 <A4InvoiceTemplate
                                     data={pdfData}
                                     features={features}
+                                    workspaceId={workspaceId || undefined}
                                 />
                             )}
                         </div>

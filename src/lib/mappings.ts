@@ -1,12 +1,13 @@
 import { Sale, UniversalInvoice } from '@/types'
 
 export function mapSaleToUniversal(sale: Sale): UniversalInvoice {
-    const sequenceId = sale.sequence_id ? String(sale.sequence_id).padStart(5, '0') : sale.id.slice(0, 8)
+    const sequenceId = sale.sequenceId ? String(sale.sequenceId).padStart(5, '0') : sale.id.slice(0, 8)
     return {
         id: sale.id,
-        sequence_id: sale.sequence_id,
+        sequenceId: sale.sequenceId,
         invoiceid: `#${sequenceId}`,
         created_at: sale.created_at,
+        workspaceId: sale.workspace_id,
 
         cashier_name: sale.cashier_name,
         total_amount: sale.total_amount,

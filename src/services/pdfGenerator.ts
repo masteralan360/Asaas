@@ -8,6 +8,22 @@ import { UniversalInvoice } from '@/types'
 
 export type PrintFormat = 'a4' | 'receipt'
 
+interface PDFLayer {
+    image: string | HTMLCanvasElement // dataUrl or Canvas
+    x: number    // mm
+    y: number    // mm
+    w: number    // mm
+    h: number    // mm
+    format: 'PNG' | 'JPEG'
+}
+
+interface RenderResult {
+    background: string // Low-res JPEG dataUrl
+    qrs: PDFLayer[]    // High-res PNG dataUrls
+    widthMm: number
+    heightMm: number
+}
+
 interface PDFGeneratorOptions {
     data: UniversalInvoice
     format: PrintFormat
@@ -16,6 +32,7 @@ interface PDFGeneratorOptions {
         iqd_display_preference?: string
     }
     workspaceName?: string
+    workspaceId?: string
     translations?: Record<string, string>
 }
 
@@ -40,8 +57,9 @@ async function waitForImages(container: HTMLElement) {
     })))
 }
 
-async function renderToCanvas(element: ReturnType<typeof createElement>, widthMm: number) {
+async function renderToCanvas(element: ReturnType<typeof createElement>, widthMm: number): Promise<RenderResult> {
     const container = document.createElement('div')
+    container.id = 'pdf-render-container'
     container.style.position = 'fixed'
     container.style.left = '-10000px'
     container.style.top = '0'
@@ -55,70 +73,116 @@ async function renderToCanvas(element: ReturnType<typeof createElement>, widthMm
     root.render(element)
 
     await new Promise(requestAnimationFrame)
-    await new Promise((resolve) => setTimeout(resolve, 0))
+    await new Promise((resolve) => setTimeout(resolve, 300))
     if (document.fonts?.ready) {
         await document.fonts.ready
     }
     await waitForImages(container)
 
-    const scale = Math.min(2, window.devicePixelRatio || 1)
-    const canvas = await html2canvas(container, {
-        scale,
+    const HIGH_SCALE = 6 // Higher scale for perfect QR pixel capture
+    const LOW_SCALE = 1.25
+
+    let sharpZones: { x: number, y: number, width: number, height: number }[] = []
+
+    // 1. Capture High-Res for QR Extraction
+    const highResCanvas = await html2canvas(container, {
+        scale: HIGH_SCALE,
+        useCORS: true,
+        backgroundColor: '#ffffff',
+        onclone: (clonedDoc) => {
+            const containerClone = clonedDoc.getElementById('pdf-render-container')
+            const containerRect = containerClone?.getBoundingClientRect() || { left: 0, top: 0 }
+
+            const qrElements = clonedDoc.querySelectorAll('[data-qr-sharp="true"]')
+            qrElements.forEach(el => {
+                const rect = (el as HTMLElement).getBoundingClientRect()
+                sharpZones.push({
+                    x: rect.left - containerRect.left,
+                    y: rect.top - containerRect.top,
+                    width: rect.width,
+                    height: rect.height
+                })
+            })
+        }
+    })
+
+    // 2. Capture Low-Res for Background
+    const lowResCanvas = await html2canvas(container, {
+        scale: LOW_SCALE,
         useCORS: true,
         backgroundColor: '#ffffff'
     })
 
+    const heightMm = (lowResCanvas.height * widthMm) / lowResCanvas.width
+
+    // 3. Extract QR Layers from high-res with safety checks
+    const qrs: PDFLayer[] = sharpZones
+        .filter(zone => zone.width > 0 && zone.height > 0)
+        .map(zone => {
+            const qrCanvas = document.createElement('canvas')
+            qrCanvas.width = Math.round(zone.width * HIGH_SCALE)
+            qrCanvas.height = Math.round(zone.height * HIGH_SCALE)
+            const qrCtx = qrCanvas.getContext('2d')
+
+            if (qrCtx) {
+                qrCtx.drawImage(
+                    highResCanvas,
+                    Math.round(zone.x * HIGH_SCALE), Math.round(zone.y * HIGH_SCALE),
+                    Math.round(zone.width * HIGH_SCALE), Math.round(zone.height * HIGH_SCALE),
+                    0, 0, qrCanvas.width, qrCanvas.height
+                )
+            }
+
+            return {
+                image: qrCanvas.toDataURL('image/png'), // Return to lossless PNG now that coordinates are fixed
+                x: zone.x,
+                y: zone.y,
+                w: zone.width,
+                h: zone.height,
+                format: 'PNG'
+            }
+        })
+
     root.unmount()
     container.remove()
 
-    return canvas
+    return {
+        background: lowResCanvas.toDataURL('image/jpeg', 0.6),
+        qrs,
+        widthMm,
+        heightMm
+    }
 }
 
-function canvasToA4Pdf(canvas: HTMLCanvasElement) {
+function canvasToA4Pdf(renderResult: RenderResult) {
     const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' })
-    const pageWidth = pdf.internal.pageSize.getWidth()
-    const pageHeight = pdf.internal.pageSize.getHeight()
 
-    const pageHeightPx = Math.floor(canvas.width * (pageHeight / pageWidth))
-    let offsetPx = 0
-    let pageIndex = 0
+    // Add background JPEG (Low Res)
+    pdf.addImage(renderResult.background, 'JPEG', 0, 0, renderResult.widthMm, renderResult.heightMm, undefined, 'FAST')
 
-    while (offsetPx < canvas.height) {
-        const sliceHeight = Math.min(pageHeightPx, canvas.height - offsetPx)
-        const sliceCanvas = document.createElement('canvas')
-        sliceCanvas.width = canvas.width
-        sliceCanvas.height = sliceHeight
-
-        const ctx = sliceCanvas.getContext('2d')
-        if (ctx) {
-            ctx.drawImage(canvas, 0, offsetPx, canvas.width, sliceHeight, 0, 0, canvas.width, sliceHeight)
-        }
-
-        const imgData = sliceCanvas.toDataURL('image/png')
-        const imgHeightMm = (sliceHeight * pageWidth) / canvas.width
-
-        if (pageIndex > 0) {
-            pdf.addPage()
-        }
-
-        pdf.addImage(imgData, 'PNG', 0, 0, pageWidth, imgHeightMm)
-        offsetPx += pageHeightPx
-        pageIndex += 1
-    }
+    // Overlay sharp QR codes (High Res) using lossless PNG for maximum clarity
+    renderResult.qrs.forEach(qr => {
+        pdf.addImage(qr.image as string, 'PNG', qr.x, qr.y, qr.w, qr.h, undefined, 'FAST')
+    })
 
     return pdf.output('blob') as Blob
 }
 
-function canvasToReceiptPdf(canvas: HTMLCanvasElement) {
-    const heightMm = (canvas.height * RECEIPT_WIDTH_MM) / canvas.width
+function canvasToReceiptPdf(renderResult: RenderResult) {
     const pdf = new jsPDF({
         orientation: 'p',
         unit: 'mm',
-        format: [RECEIPT_WIDTH_MM, heightMm]
+        format: [renderResult.widthMm, renderResult.heightMm]
     })
 
-    const imgData = canvas.toDataURL('image/png')
-    pdf.addImage(imgData, 'PNG', 0, 0, RECEIPT_WIDTH_MM, heightMm)
+    // Add background JPEG (Low Res)
+    pdf.addImage(renderResult.background, 'JPEG', 0, 0, renderResult.widthMm, renderResult.heightMm, undefined, 'FAST')
+
+    // Overlay sharp QR codes (High Res) using lossless PNG for maximum clarity
+    renderResult.qrs.forEach(qr => {
+        pdf.addImage(qr.image as string, 'PNG', qr.x, qr.y, qr.w, qr.h, undefined, 'FAST')
+    })
+
     return pdf.output('blob') as Blob
 }
 
@@ -146,8 +210,14 @@ async function preprocessLogoUrl(logoUrl?: string | null) {
  * Generates a PDF blob from invoice data using the HTML templates.
  */
 export async function generateInvoicePdf(options: PDFGeneratorOptions): Promise<Blob> {
-    const { data, format, features, workspaceName } = options
-    const processedLogoUrl = await preprocessLogoUrl(features.logo_url)
+    const { data, format, features = {} as any, workspaceName, workspaceId } = options
+
+    // Inject workspaceId into data for QR codes
+    if (workspaceId && !data.workspaceId) {
+        data.workspaceId = workspaceId
+    }
+
+    const processedLogoUrl = await preprocessLogoUrl(features?.logo_url)
     const processedFeatures = {
         ...features,
         logo_url: processedLogoUrl
@@ -160,19 +230,21 @@ export async function generateInvoicePdf(options: PDFGeneratorOptions): Promise<
             createElement(SaleReceiptBase, {
                 data,
                 features: processedFeatures,
-                workspaceName: workspaceName || 'Asaas'
+                workspaceName: workspaceName || workspaceId || 'Asaas',
+                workspaceId: workspaceId || ''
             })
         )
-        const canvas = await renderToCanvas(element, RECEIPT_WIDTH_MM)
-        return canvasToReceiptPdf(canvas)
+        const renderResult = await renderToCanvas(element, RECEIPT_WIDTH_MM)
+        return canvasToReceiptPdf(renderResult)
     }
 
     const element = createElement(A4InvoiceTemplate, {
         data,
-        features: processedFeatures
+        features: processedFeatures,
+        workspaceId: workspaceId || ''
     })
-    const canvas = await renderToCanvas(element, A4_WIDTH_MM)
-    return canvasToA4Pdf(canvas)
+    const renderResult = await renderToCanvas(element, A4_WIDTH_MM)
+    return canvasToA4Pdf(renderResult)
 }
 
 /**

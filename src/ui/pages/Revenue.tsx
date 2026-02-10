@@ -165,6 +165,7 @@ export function Revenue() {
 
             const formattedSales: Sale[] = (data || []).map((sale: any) => ({
                 ...sale,
+                sequenceId: sale.sequence_id,
                 cashier_name: profilesMap[sale.cashier_id || ''] || 'Staff',
                 items: sale.items?.map((item: any) => ({
                     ...item,
@@ -207,7 +208,7 @@ export function Revenue() {
             currency: string,
             origin: string,
             cashier: string,
-            sequence_id?: number,
+            sequenceId?: number,
             hasPartialReturn?: boolean
         }[] = []
 
@@ -280,7 +281,7 @@ export function Revenue() {
                 currency: currency,
                 origin: sale.origin,
                 cashier: sale.cashier_name || 'Staff',
-                sequence_id: sale.sequence_id,
+                sequenceId: sale.sequenceId,
                 hasPartialReturn: sale.has_partial_return
             })
         })
@@ -685,7 +686,7 @@ export function Revenue() {
                                                         </div>
                                                         <div className="flex items-center gap-2 flex-wrap">
                                                             <span className="text-xs font-mono font-black text-primary">
-                                                                #{sale.sequence_id ? sale.sequence_id.toString().padStart(5, '0') : sale.id.split('-')[0]}
+                                                                #{sale.sequenceId ? String(sale.sequenceId).padStart(5, '0') : sale.id.split('-')[0]}
                                                             </span>
                                                             <Tooltip>
                                                                 <TooltipTrigger asChild>
@@ -840,7 +841,7 @@ export function Revenue() {
                                                                 }}
                                                                 className="font-mono text-[10px] text-primary hover:underline"
                                                             >
-                                                                #{sale.sequence_id ? sale.sequence_id.toString().padStart(5, '0') : sale.id.split('-')[0]}
+                                                                #{sale.sequenceId ? String(sale.sequenceId).padStart(5, '0') : sale.id.split('-')[0]}
                                                             </button>
                                                             <Tooltip>
                                                                 <TooltipTrigger asChild>
@@ -978,7 +979,7 @@ export function Revenue() {
                                                 {formatDateTime(sale.date)}
                                             </TableCell>
                                             <TableCell className="font-mono text-xs">
-                                                #{sale.sequence_id ? sale.sequence_id.toString().padStart(5, '0') : sale.id.split('-')[0]}
+                                                #{sale.sequenceId ? sale.sequenceId.toString().padStart(5, '0') : sale.id.split('-')[0]}
                                             </TableCell>
                                             <TableCell className="text-end">
                                                 {formatCurrency(sale.revenue, sale.currency, features.iqd_display_preference)}

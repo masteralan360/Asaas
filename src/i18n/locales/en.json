@@ -28,6 +28,8 @@
         "confirm": "Confirm",
         "error": "Error",
         "success": "Success",
+        "download": "Download",
+        "ViewAndDownload": "View and Download",
         "noData": "No data available",
         "confirmDelete": "Confirm Deletion",
         "deleteWarning": "This action is irreversible. Are you sure you want to proceed?",
@@ -644,6 +646,8 @@
         "to": "To",
         "result": "Result",
         "backToPos": "Back to POS",
+        "printReceipt": "Print Receipt",
+        "continueSale": "Continue Sale",
         "outOfStock": "Out of Stock"
     },
     "print": {

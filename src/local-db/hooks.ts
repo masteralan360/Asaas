@@ -81,9 +81,17 @@ export async function createCategory(workspaceId: string, data: Omit<Category, '
     }
 
     if (isOnline()) {
+        const { data: { session } } = await supabase.auth.getSession()
+        const currentUserId = session?.user?.id
+
         // ONLINE: Write directly to Supabase
-        const payload = toSnakeCase({ ...category, syncStatus: undefined, lastSyncedAt: undefined })
-        const { error } = await supabase.from('categories').insert(payload)
+        const payload = toSnakeCase({
+            ...category,
+            userId: currentUserId,
+            syncStatus: undefined,
+            lastSyncedAt: undefined
+        })
+        const { error } = await supabase.from('categories').upsert(payload)
 
         if (error) {
             console.error('Supabase write failed:', error)
@@ -91,10 +99,10 @@ export async function createCategory(workspaceId: string, data: Omit<Category, '
         }
 
         // Update local cache as synced
-        await db.categories.add(category)
+        await db.categories.put(category)
     } else {
         // OFFLINE: Write to local mutation queue
-        await db.categories.add(category)
+        await db.categories.put(category)
         await addToOfflineMutations('categories', id, 'create', category as unknown as Record<string, unknown>, workspaceId)
     }
 
@@ -850,10 +858,10 @@ export function useInvoice(id: string | undefined) {
     return invoice
 }
 
-export async function createInvoice(workspaceId: string, data: Omit<Invoice, 'id' | 'workspaceId' | 'createdAt' | 'updatedAt' | 'syncStatus' | 'lastSyncedAt' | 'version' | 'isDeleted' | 'invoiceid'> & { sequenceId?: number }): Promise<Invoice> {
+export async function createInvoice(workspaceId: string, data: Omit<Invoice, 'id' | 'workspaceId' | 'createdAt' | 'updatedAt' | 'syncStatus' | 'lastSyncedAt' | 'version' | 'isDeleted' | 'invoiceid'> & { sequenceId?: number }, overrideId?: string): Promise<Invoice> {
     const now = new Date().toISOString()
     const invoiceid = `INV-${Date.now().toString(36).toUpperCase()}`
-    const id = generateId()
+    const id = overrideId || generateId()
 
     const invoice: Invoice = {
         ...data,
@@ -875,23 +883,37 @@ export async function createInvoice(workspaceId: string, data: Omit<Invoice, 'id
 
     if (isOnline()) {
         // ONLINE
-        // Omit createdBy to prevent mapping to system created_by UUID column
-        // Also omit legacy fields that were removed from Supabase schema
-        const { createdBy, items, currency, subtotal, discount, printMetadata, pdfBlobA4, pdfBlobReceipt, ...rest } = invoice as any
+        // Omit items/blobs and legacy fields that don't belong in the table schema
+        // We keep createdBy/created_by in local but map to user_id in remote for RLS
+        const { items, currency, subtotal, discount, printMetadata, pdfBlobA4, pdfBlobReceipt, ...rest } = invoice as any
+
         // @ts-ignore - isSnapshot might be passed but not in Invoice type
         const { isSnapshot, ...finalRest } = rest
-        const payload = toSnakeCase({ ...finalRest, syncStatus: undefined, lastSyncedAt: undefined })
-        const { error } = await supabase.from('invoices').insert(payload)
+
+        // Get current auth user to satisfy RLS 'user_id' check
+        const { data: { session } } = await supabase.auth.getSession()
+        const currentUserId = session?.user?.id
+
+        const payload = toSnakeCase({
+            ...finalRest,
+            userId: currentUserId, // Explicitly set user_id for RLS
+            syncStatus: undefined,
+            lastSyncedAt: undefined
+        })
+
+        // Use upsert instead of insert to handle network retries/collisions gracefully
+        const { error } = await supabase.from('invoices').upsert(payload)
 
         if (error) {
             console.error('Supabase write failed:', error)
             throw error
         }
 
-        await db.invoices.add(invoice)
+        // Use put instead of add for local idempotency
+        await db.invoices.put(invoice)
     } else {
         // OFFLINE
-        await db.invoices.add(invoice)
+        await db.invoices.put(invoice)
         await addToOfflineMutations('invoices', id, 'create', invoice as unknown as Record<string, unknown>, workspaceId)
     }
 
@@ -901,13 +923,25 @@ export async function createInvoice(workspaceId: string, data: Omit<Invoice, 'id
 /**
  * Specifically for automated Invoice snapshots from Print Preview
  */
-export async function saveInvoiceFromSnapshot(workspaceId: string, data: Omit<Invoice, 'id' | 'workspaceId' | 'createdAt' | 'updatedAt' | 'syncStatus' | 'lastSyncedAt' | 'version' | 'isDeleted' | 'invoiceid'>): Promise<Invoice> {
+export async function saveInvoiceFromSnapshot(workspaceId: string, data: Omit<Invoice, 'id' | 'workspaceId' | 'createdAt' | 'updatedAt' | 'syncStatus' | 'lastSyncedAt' | 'version' | 'isDeleted' | 'invoiceid'>, overrideId?: string): Promise<Invoice> {
+
+    // If an overrideId is provided, check if it already exists to avoid unique constraint errors
+    if (overrideId) {
+        const existing = await db.invoices.get(overrideId)
+        if (existing) {
+            await updateInvoice(overrideId, {
+                ...data,
+                updatedAt: new Date().toISOString()
+            })
+            return { ...existing, ...data } as Invoice
+        }
+    }
 
     return createInvoice(workspaceId, {
         ...data,
         // @ts-ignore - passing extra flag for logic if needed (though now unused in createInvoice payload)
         isSnapshot: true
-    })
+    }, overrideId)
 }
 
 export async function updateInvoice(id: string, data: Partial<Invoice>): Promise<void> {
@@ -1600,10 +1634,40 @@ export function useBudgetAllocations(workspaceId: string | undefined) {
 }
 
 export function useBudgetAllocation(workspaceId: string | undefined, month: string | undefined) {
-    return useLiveQuery(
+    const isOnline = useNetworkStatus()
+
+    const allocation = useLiveQuery(
         () => (workspaceId && month) ? db.budgetAllocations.where('[workspaceId+month]').equals([workspaceId, month]).first() : undefined,
         [workspaceId, month]
     )
+
+    useEffect(() => {
+        async function fetchFromSupabase() {
+            if (isOnline && workspaceId && month) {
+                // Check if we already have it locally to avoid redundant fetches
+                const localExists = await db.budgetAllocations.where('[workspaceId+month]').equals([workspaceId, month]).count()
+                if (localExists > 0) return
+
+                const { data, error } = await supabase
+                    .from('budget_allocations')
+                    .select('*')
+                    .eq('workspace_id', workspaceId)
+                    .eq('month', month)
+                    .eq('is_deleted', false)
+                    .maybeSingle()
+
+                if (data && !error) {
+                    const localItem = toCamelCase(data as any) as unknown as BudgetAllocation
+                    localItem.syncStatus = 'synced'
+                    localItem.lastSyncedAt = new Date().toISOString()
+                    await db.budgetAllocations.put(localItem)
+                }
+            }
+        }
+        fetchFromSupabase()
+    }, [isOnline, workspaceId, month])
+
+    return allocation
 }
 
 export function useMonthlyRevenue(workspaceId: string | undefined, monthStr: string | undefined) {

@@ -1,21 +1,17 @@
-import { useRef, useState, useEffect } from 'react'
-import { useReactToPrint } from 'react-to-print'
+import { useState, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useReactToPrint } from 'react-to-print'
 import {
     Dialog,
     DialogContent,
     DialogTitle,
     Button,
-    useToast
+    SaleReceiptBase
 } from '@/ui/components'
-import { CheckCircle2, Printer, Plus, Coins, Loader2 } from 'lucide-react'
+import { CheckCircle2, Printer, Coins } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
-import { SaleReceipt } from '../SaleReceipt'
-import { generateInvoicePdf } from '@/services/pdfGenerator'
-import { assetManager } from '@/lib/assetManager'
-import { isOnline } from '@/lib/network'
-import { supabase } from '@/auth/supabase'
-import { db } from '@/local-db'
+import { triggerInvoiceSync } from '@/services/invoiceSyncService'
+import { printService } from '@/services/printService'
 import { useAuth } from '@/auth'
 import { useWorkspace, type WorkspaceFeatures } from '@/workspace'
 
@@ -33,13 +29,20 @@ export function CheckoutSuccessModal({
     features
 }: CheckoutSuccessModalProps) {
     const { t } = useTranslation()
-    const { toast } = useToast()
     const { user } = useAuth()
-    const { workspaceName } = useWorkspace()
-    const printRef = useRef<HTMLDivElement>(null)
+    const { workspaceName, activeWorkspace } = useWorkspace()
 
     const [timeLeft, setTimeLeft] = useState(15)
-    const [isUploading, setIsUploading] = useState(false)
+    const [isProcessing, setIsProcessing] = useState(false)
+    const printRef = useRef<HTMLDivElement>(null)
+
+    const handlePrint = useReactToPrint({
+        contentRef: printRef,
+        documentTitle: `Receipt_${saleData?.invoiceid || saleData?.id || 'Sale'}`,
+        onAfterPrint: () => {
+            // Optional: Close modal after print? No, leave it for the timer or manual close
+        }
+    })
 
     useEffect(() => {
         if (!isOpen) {
@@ -61,100 +64,45 @@ export function CheckoutSuccessModal({
         return () => clearInterval(timer)
     }, [isOpen, onClose])
 
-    const handlePrint = useReactToPrint({
-        contentRef: printRef,
-        documentTitle: `Receipt_${saleData?.invoiceid || 'POS'}`,
-        onAfterPrint: () => {
-            // Requirement 1: Trigger automatically after print
-            onClose()
-        }
-    })
-
     const handlePrintAndUpload = async () => {
-        if (isUploading || !saleData) {
-            handlePrint()
+        if (isProcessing || !saleData || !user) {
+            // If already processing or missing data, just close or do nothing
+            onClose()
             return
         }
 
-        setIsUploading(true)
+        setIsProcessing(true)
         try {
-            const [pdfBlobA4, pdfBlobReceipt] = await Promise.all([
-                generateInvoicePdf({
-                    data: saleData,
-                    format: 'a4',
-                    features
-                }),
-                generateInvoicePdf({
-                    data: saleData,
-                    format: 'receipt',
-                    features,
-                    workspaceName: workspaceName || user?.workspaceId || 'Asaas'
-                })
-            ])
+            // 1. Trigger background sync (non-blocking for UI)
+            triggerInvoiceSync({
+                saleData,
+                features,
+                workspaceName: workspaceName || user?.workspaceId || 'Asaas',
+                workspaceId: activeWorkspace?.id || user.workspaceId,
+                user: {
+                    id: user.id,
+                    name: user.name || 'System'
+                },
+                format: 'receipt'
+            });
 
-            if (saleData.id) {
-                if (isOnline() && assetManager) {
-                    try {
-                        const [pathA4, pathReceipt] = await Promise.all([
-                            assetManager.uploadInvoicePdf(saleData.id, pdfBlobA4, 'a4'),
-                            assetManager.uploadInvoicePdf(saleData.id, pdfBlobReceipt, 'receipt')
-                        ])
+            // 2. Trigger print using react-to-print
+            handlePrint();
 
-                        if (!pathA4 || !pathReceipt) {
-                            throw new Error('R2 upload failed')
-                        }
+            // 3. Trigger silent print structure (placeholder for future native drivers)
+            printService.silentPrintReceipt(saleData);
 
-                        const { error: updateError } = await supabase.from('invoices').update({
-                            r2_path_a4: pathA4,
-                            r2_path_receipt: pathReceipt,
-                            print_format: 'receipt'
-                        }).eq('id', saleData.id)
-
-                        if (updateError) {
-                            throw updateError
-                        }
-
-                        await db.invoices.update(saleData.id, {
-                            r2PathA4: pathA4,
-                            r2PathReceipt: pathReceipt,
-                            pdfBlobA4: undefined,
-                            pdfBlobReceipt: undefined,
-                            syncStatus: 'synced',
-                            lastSyncedAt: new Date().toISOString()
-                        })
-                    } catch (uploadError) {
-                        console.error('PDF upload failed, storing locally for sync:', uploadError)
-                        await db.invoices.update(saleData.id, {
-                            pdfBlobA4: pdfBlobA4,
-                            pdfBlobReceipt: pdfBlobReceipt,
-                            syncStatus: 'pending',
-                            lastSyncedAt: null
-                        })
-                        toast({
-                            title: t('print.saveError') || 'Save Failed',
-                            description: 'PDF upload failed. It will retry when online.',
-                            variant: 'destructive'
-                        })
-                    }
-                } else {
-                    await db.invoices.update(saleData.id, {
-                        pdfBlobA4: pdfBlobA4,
-                        pdfBlobReceipt: pdfBlobReceipt,
-                        syncStatus: 'pending',
-                        lastSyncedAt: null
-                    })
-                }
-            }
+            // Note: We don't onClose() immediately here because handlePrint() 
+            // is async in nature (browser dialog), but we want to stay in 
+            // success modal until user is done. If we want to auto-close 
+            // after print, we'd use onAfterPrint in the hook.
+            // For now, let the timer handle auto-close or manual New Sale.
         } catch (error) {
-            console.error('[CheckoutSuccessModal] Failed to generate/upload PDFs:', error)
-            toast({
-                title: t('print.saveError') || 'Save Failed',
-                description: t('print.saveErrorDesc') || 'Could not save invoice record.',
-                variant: 'destructive'
-            })
+            console.error('[CheckoutSuccessModal] Failed to start background sync or print:', error)
+            // Even if there's an error, we want to close the modal to not block the user
+            onClose();
         } finally {
-            setIsUploading(false)
-            handlePrint()
+            setIsProcessing(false)
         }
     }
 
@@ -183,7 +131,7 @@ export function CheckoutSuccessModal({
                             {t('pos.saleSuccessful') || 'Sale Successful'}
                         </h2>
                         <p className="text-white/60 text-[10px] font-bold uppercase tracking-widest">
-                            {saleData?.sequence_id ? `#${String(saleData.sequence_id).padStart(5, '0')}` : saleData?.invoiceid}
+                            {saleData?.sequenceId ? `#${String(saleData.sequenceId).padStart(5, '0')}` : saleData?.invoiceid}
                         </p>
                     </div>
                 </div>
@@ -214,37 +162,39 @@ export function CheckoutSuccessModal({
                         </p>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-3 pt-2">
+                    {/* Action Buttons */}
+                    <div className="flex flex-col gap-3">
+                        <Button
+                            size="lg"
+                            className="w-full text-lg h-14 bg-[#23c55e] hover:bg-[#1ea34d] text-white rounded-xl shadow-lg shadow-green-500/20 transition-all active:scale-95 group"
+                            onClick={handlePrintAndUpload}
+                            disabled={isProcessing}
+                        >
+                            <Printer className="w-6 h-6 mr-3 group-hover:rotate-12 transition-transform" />
+                            {isProcessing ? t('common.loading') : t('pos.printReceipt')}
+                        </Button>
+
                         <Button
                             variant="outline"
-                            className="h-16 rounded-2xl border-2 font-bold text-lg hover:bg-muted/50 transition-all active:scale-95 flex items-center gap-2"
+                            size="lg"
+                            className="w-full text-lg h-14 border-2 rounded-xl hover:bg-gray-50 dark:hover:bg-slate-800 transition-all active:scale-95"
                             onClick={onClose}
+                            disabled={isProcessing}
                         >
-                            <Plus className="w-5 h-5 opacity-40" />
-                            {t('pos.newSale') || 'New Sale'}
-                        </Button>
-                        <Button
-                            className="h-16 rounded-2xl font-black text-lg bg-emerald-500 hover:bg-emerald-600 shadow-xl shadow-emerald-500/20 transition-all active:scale-95 flex items-center gap-2 text-white"
-                            onClick={handlePrintAndUpload}
-                            disabled={isUploading}
-                        >
-                            {isUploading ? (
-                                <Loader2 className="w-5 h-5 animate-spin" />
-                            ) : (
-                                <Printer className="w-5 h-5" />
-                            )}
-                            {isUploading ? (t('common.loading') || 'Loading...') : (t('common.print') || 'Print')}
+                            {t('pos.continueSale')}
                         </Button>
                     </div>
                 </div>
 
-                {/* Hidden Receipt for Printing */}
+                {/* Hidden SaleReceipt for printing */}
                 <div className="hidden">
-                    <div ref={printRef} className="p-4 w-[80mm] mx-auto bg-white text-black">
+                    <div ref={printRef} className="bg-white">
                         {saleData && (
-                            <SaleReceipt
+                            <SaleReceiptBase
                                 data={saleData}
                                 features={features}
+                                workspaceName={workspaceName || user?.workspaceId || 'Asaas'}
+                                workspaceId={activeWorkspace?.id || user?.workspaceId}
                             />
                         )}
                     </div>

@@ -3,17 +3,20 @@ import { UniversalInvoice } from '@/types'
 import { formatCurrency, formatDateTime, cn } from '@/lib/utils'
 import { platformService } from '@/services/platformService'
 import { useTranslation } from 'react-i18next'
+import { ReactQRCode } from '@lglab/react-qr-code'
 
 interface A4InvoiceTemplateProps {
     data: UniversalInvoice
     features: any
+    workspaceId?: string
 }
 
 export const A4InvoiceTemplate = forwardRef<HTMLDivElement, A4InvoiceTemplateProps>(
-    ({ data, features }, ref) => {
+    ({ data, features, workspaceId: propWorkspaceId }, ref) => {
         const { t, i18n } = useTranslation()
         const isRTL = i18n.dir() === 'rtl'
         const items = data.items || []
+        const effectiveWorkspaceId = propWorkspaceId || data.workspaceId
 
         // Extract Multi-Currency Data for Footer
         const settlementCurrency = data.settlement_currency || 'usd'
@@ -40,58 +43,64 @@ export const A4InvoiceTemplate = forwardRef<HTMLDivElement, A4InvoiceTemplatePro
                 {/* Internal Styles for Print Exactness */}
                 <style dangerouslySetInnerHTML={{
                     __html: `
-                    @media print {
-                        @page { margin: 0; size: A4; }
-                        body { -webkit-print-color-adjust: exact; margin: 0; padding: 0; }
-                    }
-                    .text-main { color: ${BRAND_COLOR}; }
-                    .bg-main { background-color: ${BRAND_COLOR}; }
-                    .border-main { border-color: ${BRAND_COLOR}; }
-                `}} />
+@media print {
+    @page { margin: 0; size: A4; }
+    body { -webkit-print-color-adjust: exact; margin: 0; padding: 0; }
+}
+.text-main { color: ${BRAND_COLOR}; }
+.bg-main { background-color: ${BRAND_COLOR}; }
+.border-main { border-color: ${BRAND_COLOR}; }
+`}} />
 
                 {/* TOP HEADER SECTION */}
                 <div className="px-14 py-6">
-                    <table className="w-full border-collapse">
-                        <tbody>
-                            <tr>
-                                <td className="w-1/2 align-top">
-                                    <div className={cn("h-16 flex items-center w-48", isRTL ? "justify-end" : "justify-start")}>
-                                        {features.logo_url ? (
-                                            <img
-                                                src={features.logo_url.startsWith('http') ? features.logo_url : platformService.convertFileSrc(features.logo_url)}
-                                                alt="Workspace Logo"
-                                                className="max-h-16 max-w-full object-contain"
-                                            />
-                                        ) : (
-                                            <div className="h-12 flex items-center bg-gray-100 border border-gray-200 justify-center w-48 text-gray-400 font-bold tracking-wider uppercase">
-                                                LOGO
-                                            </div>
-                                        )}
+                    <div className="flex justify-between items-start">
+                        {/* Logo / Left */}
+                        <div className="w-1/3 flex justify-start">
+                            <div className="h-16 flex items-center w-full max-w-[200px]">
+                                {features.logo_url ? (
+                                    <img
+                                        src={features.logo_url.startsWith('http') ? features.logo_url : platformService.convertFileSrc(features.logo_url)}
+                                        alt="Workspace Logo"
+                                        className="max-h-16 max-w-full object-contain"
+                                    />
+                                ) : (
+                                    <div className="h-12 flex items-center bg-gray-100 border border-gray-200 justify-center w-48 text-gray-400 font-bold tracking-wider uppercase">
+                                        LOGO
                                     </div>
-                                </td>
-                                <td className={cn("w-1/2 align-top", isRTL ? "text-left" : "text-right")}>
-                                    <div className="text-sm inline-block text-start">
-                                        <table className="border-collapse">
-                                            <tbody>
-                                                <tr>
-                                                    <td className={cn("text-start", isRTL ? "border-l pl-4" : "border-r pr-4")}>
-                                                        <p className="whitespace-nowrap text-slate-400 text-xs uppercase font-semibold">{t('invoice.date')}</p>
-                                                        <p className="whitespace-nowrap font-bold text-main">{formatDateTime(data.created_at)}</p>
-                                                    </td>
-                                                    <td className={cn("text-start", isRTL ? "pr-4" : "pl-4")}>
-                                                        <p className="whitespace-nowrap text-slate-400 text-xs uppercase font-semibold">{t('invoice.number')}</p>
-                                                        <p className="whitespace-nowrap font-bold text-main text-lg">
-                                                            {data.invoiceid}
-                                                        </p>
-                                                    </td>
-                                                </tr>
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                </td>
-                            </tr>
-                        </tbody>
-                    </table>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* QR Code / Center */}
+                        <div className="w-1/3 flex justify-center pt-2">
+                            {effectiveWorkspaceId && (data.sequenceId || data.invoiceid) && (
+                                <div className="p-1.5 bg-white border border-slate-100 rounded" data-qr-sharp="true">
+                                    <ReactQRCode
+                                        value={`https://asaas-r2-proxy.alanepic360.workers.dev/${effectiveWorkspaceId}/printed-invoices/A4/${data.id}.pdf`}
+                                        size={64}
+                                        level="M"
+                                    />
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Invoice Details / Right */}
+                        <div className={cn("w-1/3 flex flex-col items-end space-y-2", isRTL ? "text-left" : "text-right")}>
+                            <div className="flex flex-col gap-1 border-r-4 border-main pr-4">
+                                <div>
+                                    <p className="whitespace-nowrap text-slate-400 text-xs uppercase font-semibold leading-tight">{t('invoice.date')}</p>
+                                    <p className="whitespace-nowrap font-bold text-main text-sm leading-tight">{formatDateTime(data.created_at)}</p>
+                                </div>
+                                <div className="mt-1">
+                                    <p className="whitespace-nowrap text-slate-400 text-xs uppercase font-semibold leading-tight">{t('invoice.number')}</p>
+                                    <p className="whitespace-nowrap font-bold text-main text-lg leading-tight">
+                                        {data.invoiceid || `#${String(data.id).slice(0, 8)}`}
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 {/* ADDRESS / INFO SECTION */}
@@ -117,7 +126,7 @@ export const A4InvoiceTemplate = forwardRef<HTMLDivElement, A4InvoiceTemplatePro
                 </div>
 
                 {/* MAIN PRODUCTS TABLE - Grows dynamically */}
-                <div className="px-14 py-8 flex-grow">
+                <div className="px-14 py-8 flex-grow" >
                     <table className="w-full border-collapse">
                         <thead>
                             <tr>
@@ -155,10 +164,10 @@ export const A4InvoiceTemplate = forwardRef<HTMLDivElement, A4InvoiceTemplatePro
                             })}
                         </tbody>
                     </table>
-                </div>
+                </div >
 
                 {/* FOOTER - Pushed to bottom or flows after content */}
-                <div className="px-14 pb-12 mt-auto">
+                < div className="px-14 pb-12 mt-auto" >
                     <div className="flex gap-8 items-start page-break-inside-avoid">
                         {/* Left: Notes & Terms */}
                         <div className="flex-1 text-sm text-neutral-700 space-y-4 text-start">
@@ -233,8 +242,8 @@ export const A4InvoiceTemplate = forwardRef<HTMLDivElement, A4InvoiceTemplatePro
                         <span className="text-slate-300 px-2">|</span>
                         {t('invoice.generated')}
                     </div>
-                </div>
-            </div>
+                </div >
+            </div >
         )
     }
 )
