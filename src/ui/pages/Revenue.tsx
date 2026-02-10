@@ -47,9 +47,10 @@ import {
     Printer,
     Check,
     Square,
-    X
+    X,
+    FileSpreadsheet
 } from 'lucide-react'
-import { Button } from '@/ui/components'
+import { Button, ExportPreviewModal } from '@/ui/components'
 
 export function Revenue() {
     const { user } = useAuth()
@@ -68,6 +69,7 @@ export function Revenue() {
     const [showPrintPreview, setShowPrintPreview] = useState(false)
     const [selectedSaleIds, setSelectedSaleIds] = useState<Set<string>>(new Set())
 
+    const [isExportModalOpen, setIsExportModalOpen] = useState(false)
     const listRef = useRef<HTMLDivElement>(null)
 
     // Clear selection when date filters change
@@ -639,15 +641,34 @@ export function Revenue() {
                                 )}
                             </CardTitle>
                             {user?.role === 'admin' && (
-                                <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={handleOpenPrintPreview}
-                                    className="gap-2 h-8 text-xs bg-primary/5 hover:bg-primary/10 border-primary/20 text-primary transition-all duration-200"
-                                >
-                                    <Printer className="w-3.5 h-3.5" />
-                                    {t('revenue.printList') || 'Print Revenue List'}
-                                </Button>
+                                <div className="flex items-center gap-2">
+                                    <Button
+                                        onClick={() => setIsExportModalOpen(true)}
+                                        disabled={sales.length === 0}
+                                        className={cn(
+                                            "h-8 px-4 rounded-full font-black transition-all flex gap-3 items-center group relative overflow-hidden",
+                                            "bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-100 dark:border-emerald-500/20 text-emerald-700 dark:text-emerald-400",
+                                            "hover:bg-emerald-100 dark:hover:bg-emerald-500/20 hover:shadow-[0_0_20px_-5px_rgba(16,185,129,0.3)] hover:scale-[1.02] active:scale-95",
+                                            "uppercase tracking-widest text-[10px]"
+                                        )}
+                                    >
+                                        <FileSpreadsheet className="w-3.5 h-3.5 transition-transform group-hover:rotate-12" />
+                                        <span className="hidden sm:inline">
+                                            {t('sales.export.button')}
+                                        </span>
+                                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 dark:via-white/5 to-transparent -translate-x-full group-hover:animate-shimmer" />
+                                    </Button>
+
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={handleOpenPrintPreview}
+                                        className="gap-2 h-8 text-xs bg-primary/5 hover:bg-primary/10 border-primary/20 text-primary transition-all duration-200"
+                                    >
+                                        <Printer className="w-3.5 h-3.5" />
+                                        {t('revenue.printList') || 'Print Revenue List'}
+                                    </Button>
+                                </div>
                             )}
                         </CardHeader>
                         <CardContent ref={listRef} className="print:p-0 [print-color-adjust:exact] -webkit-print-color-adjust:exact">
@@ -1008,6 +1029,13 @@ export function Revenue() {
                     </PrintPreviewModal>
                 </div>
             </div>
+
+            <ExportPreviewModal
+                isOpen={isExportModalOpen}
+                onClose={() => setIsExportModalOpen(false)}
+                data={stats.saleStats}
+                type="revenue"
+            />
         </TooltipProvider>
     )
 }

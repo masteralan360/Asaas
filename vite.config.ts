@@ -53,6 +53,7 @@ export default defineConfig(({ mode }) => {
                     ]
                 },
                 workbox: {
+                    maximumFileSizeToCacheInBytes: 5 * 1024 * 1024, // 5MB limit
                     globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
                     runtimeCaching: [
                         {
@@ -117,6 +118,7 @@ export default defineConfig(({ mode }) => {
                             'lucide-react'
                         ],
                         'vendor-charts': ['recharts'],
+                        'vendor-spreadsheet': ['xlsx', 'react-spreadsheet', 'scheduler'],
                         'vendor-pdf': ['@react-pdf/renderer', 'jspdf', 'html2canvas']
                     }
                 }

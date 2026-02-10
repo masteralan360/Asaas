@@ -38,4 +38,5 @@ export interface PlatformAPI {
     // Media
     pickAndSaveImage: (workspaceId: string, subDir?: string) => Promise<string | null>;
     resizeImage: (filePath: string, maxWidth?: number) => Promise<string>;
+    saveAs: (content: Uint8Array, fileName: string, extensions: { name: string, extensions: string[] }[]) => Promise<string | null>;
 }

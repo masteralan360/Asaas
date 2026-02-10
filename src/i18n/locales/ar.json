@@ -26,6 +26,8 @@
         "selected": "مختار",
         "search": "بحث...",
         "searchBox": "صندوق البحث",
+        "currency": "العملة",
+        "date": "التاريخ",
         "actions": "إجراءات",
         "confirm": "تأكيد",
         "error": "خطأ",
@@ -692,6 +694,12 @@
         "filters": {
             "cashier": "الكاشير",
             "allCashiers": "جميع الكاشير"
+        },
+        "export": {
+            "button": "تصدير Excel",
+            "previewTitle": "معاينة التصدير",
+            "recordsCount": "سجلات جاهزة للتصدير",
+            "downloadBtn": "تحميل ملف Excel"
         },
         "notes": {
             "title": "ملاحظات",

@@ -380,6 +380,28 @@ class PlatformService implements PlatformAPI {
             return filePath; // Return original on error
         }
     }
+
+    async saveAs(content: Uint8Array, fileName: string, extensions: { name: string, extensions: string[] }[]): Promise<string | null> {
+        if (isTauri()) {
+            try {
+                const { save } = await import('@tauri-apps/plugin-dialog');
+                const { writeFile } = await import('@tauri-apps/plugin-fs');
+
+                const filePath = await save({
+                    defaultPath: fileName,
+                    filters: extensions
+                });
+
+                if (filePath) {
+                    await writeFile(filePath, content);
+                    return filePath;
+                }
+            } catch (error) {
+                console.error('[PlatformService] Error in saveAs:', error);
+            }
+        }
+        return null;
+    }
 }
 
 export const platformService = new PlatformService();

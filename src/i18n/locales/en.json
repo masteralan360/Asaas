@@ -28,6 +28,8 @@
         "confirm": "Confirm",
         "error": "Error",
         "success": "Success",
+        "currency": "Currency",
+        "date": "Date",
         "download": "Download",
         "ViewAndDownload": "View and Download",
         "noData": "No data available",
@@ -693,6 +695,12 @@
         "filters": {
             "cashier": "Cashier",
             "allCashiers": "All Cashiers"
+        },
+        "export": {
+            "button": "Excel Export",
+            "previewTitle": "Export Preview",
+            "recordsCount": "Records ready for export",
+            "downloadBtn": "Download Excel"
         },
         "notes": {
             "title": "Notes",

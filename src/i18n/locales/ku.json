@@ -24,6 +24,8 @@
         "viewAll": "بینینی هەموو",
         "search": "گەڕان...",
         "searchBox": "سندوقی گەڕان",
+        "currency": "دراو",
+        "date": "ڕێکەوت",
         "actions": "کردارەکان",
         "confirm": "دڵنیابوونەوە",
         "error": "هەڵە",
@@ -692,6 +694,12 @@
         "filters": {
             "cashier": "کاشێر",
             "allCashiers": "هەموو کاشێرەکان"
+        },
+        "export": {
+            "button": "ناردنی Excel",
+            "previewTitle": "پێشبینی ناردن",
+            "recordsCount": "تۆمار ئامادەیە بۆ ناردن",
+            "downloadBtn": "داگرتنی Excel"
         },
         "notes": {
             "title": "تێبینییەکان",

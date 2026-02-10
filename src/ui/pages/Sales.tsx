@@ -36,6 +36,7 @@ import {
     DeleteConfirmationModal,
     PrintPreviewModal,
     SalesNoteModal,
+    ExportPreviewModal,
     useToast
 } from '@/ui/components'
 import { SaleItem } from '@/types'
@@ -47,7 +48,8 @@ import {
     Printer,
     RotateCcw,
     Filter,
-    StickyNote
+    StickyNote,
+    FileSpreadsheet
 } from 'lucide-react'
 
 export function Sales() {
@@ -146,6 +148,7 @@ export function Sales() {
     const [showPrintPreview, setShowPrintPreview] = useState(false)
     const [isNoteModalOpen, setIsNoteModalOpen] = useState(false)
     const [selectedSaleForNote, setSelectedSaleForNote] = useState<Sale | null>(null)
+    const [isExportModalOpen, setIsExportModalOpen] = useState(false)
 
 
 
@@ -640,9 +643,25 @@ export function Sales() {
                 </div>
             </div>
 
-            <Card>
-                <CardHeader>
+            <Card className="overflow-hidden border-border/50 bg-card/50 backdrop-blur-sm">
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
                     <CardTitle>{t('sales.listTitle') || 'Recent Sales'}</CardTitle>
+                    <Button
+                        onClick={() => setIsExportModalOpen(true)}
+                        disabled={sales.length === 0}
+                        className={cn(
+                            "h-10 px-6 rounded-full font-black transition-all flex gap-3 items-center group relative overflow-hidden",
+                            "bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-100 dark:border-emerald-500/20 text-emerald-700 dark:text-emerald-400",
+                            "hover:bg-emerald-100 dark:hover:bg-emerald-500/20 hover:shadow-[0_0_20px_-5px_rgba(16,185,129,0.3)] hover:scale-[1.02] active:scale-95",
+                            "uppercase tracking-widest text-[10px]"
+                        )}
+                    >
+                        <FileSpreadsheet className="w-4 h-4 transition-transform group-hover:rotate-12" />
+                        <span className="hidden sm:inline">
+                            {t('sales.export.button')}
+                        </span>
+                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 dark:via-white/5 to-transparent -translate-x-full group-hover:animate-shimmer" />
+                    </Button>
                 </CardHeader>
                 <CardContent>
                     {isLoading ? (
@@ -978,6 +997,12 @@ export function Sales() {
                 }}
                 sale={selectedSaleForNote}
                 onSave={handleSaveNote}
+            />
+
+            <ExportPreviewModal
+                isOpen={isExportModalOpen}
+                onClose={() => setIsExportModalOpen(false)}
+                data={sales}
             />
 
             <PrintSelectionModal
