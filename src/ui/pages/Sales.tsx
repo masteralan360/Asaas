@@ -6,6 +6,7 @@ import { Sale } from '@/types'
 import { mapSaleToUniversal } from '@/lib/mappings'
 import { formatCurrency, formatDateTime, formatCompactDateTime, formatDate, cn } from '@/lib/utils'
 
+import { db } from '@/local-db'
 import { useWorkspace } from '@/workspace'
 import { isMobile } from '@/lib/platform'
 import { useDateRange } from '@/context/DateRangeContext'
@@ -33,7 +34,9 @@ import {
     SelectValue,
     PrintSelectionModal,
     DeleteConfirmationModal,
-    PrintPreviewModal
+    PrintPreviewModal,
+    SalesNoteModal,
+    useToast
 } from '@/ui/components'
 import { SaleItem } from '@/types'
 import {
@@ -43,13 +46,15 @@ import {
     Trash2,
     Printer,
     RotateCcw,
-    Filter
+    Filter,
+    StickyNote
 } from 'lucide-react'
 
 export function Sales() {
     const { user } = useAuth()
     const { t } = useTranslation()
-    const { features, workspaceName } = useWorkspace()
+    const { features, workspaceName, activeWorkspace } = useWorkspace()
+    const { toast } = useToast()
     const [sales, setSales] = useState<Sale[]>([])
     const [isLoading, setIsLoading] = useState(true)
     const [selectedSale, setSelectedSale] = useState<Sale | null>(null)
@@ -139,6 +144,8 @@ export function Sales() {
     const [showPrintModal, setShowPrintModal] = useState(false)
     const [saleToPrintSelection, setSaleToPrintSelection] = useState<Sale | null>(null)
     const [showPrintPreview, setShowPrintPreview] = useState(false)
+    const [isNoteModalOpen, setIsNoteModalOpen] = useState(false)
+    const [selectedSaleForNote, setSelectedSaleForNote] = useState<Sale | null>(null)
 
 
 
@@ -375,6 +382,100 @@ export function Sales() {
         } catch (err: any) {
             console.error('Error returning sale:', err)
             alert('Failed to return sale: ' + (err.message || 'Unknown error'))
+        }
+    }
+
+    const handleSaveNote = async (note: string) => {
+        if (!selectedSaleForNote) return
+
+        const now = new Date().toISOString()
+        const isCurrentlyOnline = navigator.onLine
+
+        try {
+            // 1. Update local state (Optimistic)
+            setSales(prev => prev.map(s =>
+                s.id === selectedSaleForNote.id ? { ...s, notes: note, updated_at: now } : s
+            ))
+
+            if (isCurrentlyOnline) {
+                // 2. ONLINE: Write to Supabase first
+                const { error } = await supabase
+                    .from('sales')
+                    .update({
+                        notes: note,
+                        updated_at: now
+                    })
+                    .eq('id', selectedSaleForNote.id)
+
+                if (error) {
+                    console.error('Supabase update failed, falling back to offline sync:', error)
+                    // Fallback to offline mutation if online request fails
+                    await db.offline_mutations.add({
+                        id: crypto.randomUUID(),
+                        workspaceId: activeWorkspace?.id || selectedSaleForNote.workspace_id,
+                        entityType: 'sales',
+                        entityId: selectedSaleForNote.id,
+                        operation: 'update',
+                        payload: { notes: note, updated_at: now },
+                        status: 'pending',
+                        createdAt: now
+                    })
+
+                    await db.sales.update(selectedSaleForNote.id, {
+                        notes: note,
+                        updatedAt: now,
+                        syncStatus: 'pending'
+                    })
+
+                    toast({
+                        title: t('sales.notes.saved') || 'Note Saved',
+                        description: t('sales.notes.savedOffline') || 'Note saved locally and will sync when online.',
+                    })
+                } else {
+                    // Success: Update Dexie as synced
+                    await db.sales.update(selectedSaleForNote.id, {
+                        notes: note,
+                        updatedAt: now,
+                        syncStatus: 'synced',
+                        lastSyncedAt: now
+                    })
+
+                    toast({
+                        title: t('sales.notes.saved') || 'Note Saved',
+                        description: t('sales.notes.savedOnline') || 'Note saved to cloud.',
+                    })
+                }
+            } else {
+                // 3. OFFLINE: Local mutation
+                await db.sales.update(selectedSaleForNote.id, {
+                    notes: note,
+                    updatedAt: now,
+                    syncStatus: 'pending'
+                })
+
+                await db.offline_mutations.add({
+                    id: crypto.randomUUID(),
+                    workspaceId: activeWorkspace?.id || selectedSaleForNote.workspace_id,
+                    entityType: 'sales',
+                    entityId: selectedSaleForNote.id,
+                    operation: 'update',
+                    payload: { notes: note, updated_at: now },
+                    status: 'pending',
+                    createdAt: now
+                })
+
+                toast({
+                    title: t('sales.notes.saved') || 'Note Saved',
+                    description: t('sales.notes.savedOffline') || 'Note saved locally and will sync when online.',
+                })
+            }
+        } catch (error) {
+            console.error('Error saving note:', error)
+            toast({
+                title: t('common.error') || 'Error',
+                description: t('sales.notes.error') || 'Failed to save note.',
+                variant: 'destructive',
+            })
         }
     }
 
@@ -682,6 +783,7 @@ export function Sales() {
                                     <TableHead className="text-start">{t('sales.date') || 'Date'}</TableHead>
                                     <TableHead className="text-start">{t('sales.cashier') || 'Cashier'}</TableHead>
                                     <TableHead className="text-start">{t('sales.origin') || 'Origin'}</TableHead>
+                                    <TableHead className="text-start">{t('sales.notes.title') || 'Notes'}</TableHead>
                                     <TableHead className="text-end">{t('sales.total') || 'Total'}</TableHead>
                                     <TableHead className="text-end">{t('common.actions')}</TableHead>
                                 </TableRow>
@@ -743,6 +845,25 @@ export function Sales() {
                                                 <span className="px-2 py-1 rounded-full text-xs font-medium bg-secondary text-secondary-foreground uppercase">
                                                     {sale.origin}
                                                 </span>
+                                            </TableCell>
+                                            <TableCell className="text-start">
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    onClick={() => {
+                                                        setSelectedSaleForNote(sale)
+                                                        setIsNoteModalOpen(true)
+                                                    }}
+                                                    className={cn(
+                                                        "text-xs font-medium h-8 px-3 rounded-lg flex items-center gap-2 transition-all",
+                                                        sale.notes
+                                                            ? "bg-primary/5 text-primary hover:bg-primary/10 border border-primary/20"
+                                                            : "text-muted-foreground hover:bg-muted"
+                                                    )}
+                                                >
+                                                    <StickyNote className={cn("w-3.5 h-3.5", sale.notes ? "fill-primary/20" : "")} />
+                                                    {sale.notes ? (t('sales.notes.viewNote') || 'View Notes..') : (t('sales.notes.addNote') || 'Add Note')}
+                                                </Button>
                                             </TableCell>
 
                                             <TableCell className="text-end font-bold">
@@ -846,6 +967,17 @@ export function Sales() {
                 isItemReturn={saleToReturn?.items?.length === 1 && saleToReturn?.items?.[0]?.quantity > 1 && selectedSale?.items?.filter(i => i.product_id === saleToReturn?.items?.[0]?.product_id).length === 1}
                 maxQuantity={saleToReturn?.items?.[0]?.quantity || 1}
                 itemName={saleToReturn?.items?.[0]?.product_name || ''}
+            />
+
+            {/* Sales Note Modal */}
+            <SalesNoteModal
+                isOpen={isNoteModalOpen}
+                onClose={() => {
+                    setIsNoteModalOpen(false)
+                    setSelectedSaleForNote(null)
+                }}
+                sale={selectedSaleForNote}
+                onSave={handleSaveNote}
             />
 
             <PrintSelectionModal

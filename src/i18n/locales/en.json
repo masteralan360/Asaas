@@ -694,6 +694,15 @@
             "cashier": "Cashier",
             "allCashiers": "All Cashiers"
         },
+        "notes": {
+            "title": "Notes",
+            "addTitle": "Add Note",
+            "addNote": "Add Note",
+            "viewNote": "View Note",
+            "editTitle": "Edit Note",
+            "placeholder": "Enter note...",
+            "limit": "There is a limit of 250 characters for notes."
+        },
         "print": {
             "receipt": "Print Receipt",
             "a4": "Print A4",

@@ -25,7 +25,7 @@ export class AsaasDatabase extends Dexie {
     constructor() {
         super('AsaasDatabase')
 
-        this.version(26).stores({
+        this.version(27).stores({
             products: 'id, sku, name, categoryId, storageId, workspaceId, currency, syncStatus, updatedAt, isDeleted, canBeReturned',
             categories: 'id, name, workspaceId, syncStatus, updatedAt, isDeleted',
             suppliers: 'id, name, workspaceId, syncStatus, updatedAt, isDeleted',
@@ -35,7 +35,7 @@ export class AsaasDatabase extends Dexie {
             invoices: 'id, invoiceid, orderId, customerId, status, workspaceId, syncStatus, updatedAt, isDeleted, origin, createdBy, cashierName, createdByName, sequenceId, printFormat, r2PathA4, r2PathReceipt',
 
             users: 'id, email, role, workspaceId, syncStatus, updatedAt, isDeleted, monthlyTarget',
-            sales: 'id, cashierId, workspaceId, settlementCurrency, syncStatus, createdAt',
+            sales: 'id, cashierId, workspaceId, settlementCurrency, syncStatus, createdAt, updatedAt, notes',
             sale_items: 'id, saleId, productId',
             workspaces: 'id, name, code, syncStatus, updatedAt, isDeleted',
             storages: 'id, name, workspaceId, isSystem, isProtected, syncStatus, updatedAt, isDeleted',

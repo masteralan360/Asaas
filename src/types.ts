@@ -56,6 +56,8 @@ export interface Sale {
     system_review_status?: 'approved' | 'flagged' | 'inconsistent'
     system_review_reason?: string | null
     has_partial_return?: boolean
+    notes?: string
+    updated_at?: string
 }
 
 export interface CartItem {

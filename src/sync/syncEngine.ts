@@ -179,7 +179,7 @@ export async function pullChanges(workspaceId: string, lastSyncTime: string | nu
 
     let totalPulled = 0
 
-    const tables = ['products', 'categories', 'customers', 'orders', 'invoices', 'workspaces']
+    const tables = ['products', 'categories', 'customers', 'orders', 'invoices', 'workspaces', 'sales']
 
     for (const table of tables) {
         try {

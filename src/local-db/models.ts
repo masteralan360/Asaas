@@ -285,6 +285,7 @@ export interface Sale extends BaseEntity {
     systemReviewStatus: 'approved' | 'flagged' | 'inconsistent'
     systemReviewReason: string | null
     isReturned?: boolean
+    notes?: string
 }
 
 export interface SaleItem {
