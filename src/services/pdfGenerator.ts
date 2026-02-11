@@ -1,5 +1,7 @@
 import { createElement } from 'react'
 import { createRoot } from 'react-dom/client'
+import i18n from '@/i18n/config'
+import { I18nextProvider } from 'react-i18next'
 import html2canvas from 'html2canvas'
 import { jsPDF } from 'jspdf'
 import { A4InvoiceTemplate } from '@/ui/components/A4InvoiceTemplate'
@@ -65,8 +67,10 @@ async function renderToCanvas(element: ReturnType<typeof createElement>, widthMm
     container.style.top = '0'
     container.style.width = `${widthMm}mm`
     container.style.background = '#ffffff'
-    container.style.zIndex = '-1'
+    container.style.zIndex = '-9999'
     container.style.pointerEvents = 'none'
+    // Rely on index.css @media print for hiding, as display:none breaks html2canvas
+    container.classList.add('no-print')
     document.body.appendChild(container)
 
     const root = createRoot(container)
@@ -84,38 +88,46 @@ async function renderToCanvas(element: ReturnType<typeof createElement>, widthMm
 
     let sharpZones: { x: number, y: number, width: number, height: number }[] = []
 
-    // 1. Capture High-Res for QR Extraction
-    const highResCanvas = await html2canvas(container, {
-        scale: HIGH_SCALE,
-        useCORS: true,
-        backgroundColor: '#ffffff',
-        onclone: (clonedDoc) => {
-            const containerClone = clonedDoc.getElementById('pdf-render-container')
-            const containerRect = containerClone?.getBoundingClientRect() || { left: 0, top: 0 }
-
-            const qrElements = clonedDoc.querySelectorAll('[data-qr-sharp="true"]')
-            qrElements.forEach(el => {
-                const rect = (el as HTMLElement).getBoundingClientRect()
-                sharpZones.push({
-                    x: rect.left - containerRect.left,
-                    y: rect.top - containerRect.top,
-                    width: rect.width,
-                    height: rect.height
-                })
-            })
-        }
+    // 1. Identify sharp zones (QRs) in the live DOM before capture
+    // This ensures we get real coordinates that aren't zeroed out
+    const containerRect = container.getBoundingClientRect()
+    const qrElements = container.querySelectorAll('[data-qr-sharp="true"]')
+    qrElements.forEach(el => {
+        const rect = (el as HTMLElement).getBoundingClientRect()
+        sharpZones.push({
+            x: rect.left - containerRect.left,
+            y: rect.top - containerRect.top,
+            width: rect.width,
+            height: rect.height
+        })
     })
 
-    // 2. Capture Low-Res for Background
-    const lowResCanvas = await html2canvas(container, {
-        scale: LOW_SCALE,
+    // 2. Capture High-Res for QR Extraction
+    const highResCanvas = await html2canvas(container, {
+        scale: HIGH_SCALE,
         useCORS: true,
         backgroundColor: '#ffffff'
     })
 
-    const heightMm = (lowResCanvas.height * widthMm) / lowResCanvas.width
+    // 2. Identify sharp zones and calculate unit conversion ratio
+    const containerPixelWidth = container.offsetWidth
+    const pxToMm = widthMm / containerPixelWidth
 
-    // 3. Extract QR Layers from high-res with safety checks
+    const lowResCanvas = await html2canvas(container, {
+        scale: LOW_SCALE,
+        useCORS: true,
+        backgroundColor: '#ffffff',
+        onclone: (clonedDoc) => {
+            const qrElements = clonedDoc.querySelectorAll('[data-qr-sharp="true"]')
+            qrElements.forEach(el => {
+                (el as HTMLElement).style.visibility = 'hidden'
+            })
+        }
+    })
+
+    const calculatedHeightMm = (lowResCanvas.height * pxToMm) / LOW_SCALE
+
+    // 3. Extract QR Layers and convert to MM units
     const qrs: PDFLayer[] = sharpZones
         .filter(zone => zone.width > 0 && zone.height > 0)
         .map(zone => {
@@ -134,11 +146,11 @@ async function renderToCanvas(element: ReturnType<typeof createElement>, widthMm
             }
 
             return {
-                image: qrCanvas.toDataURL('image/png'), // Return to lossless PNG now that coordinates are fixed
-                x: zone.x,
-                y: zone.y,
-                w: zone.width,
-                h: zone.height,
+                image: qrCanvas.toDataURL('image/png'),
+                x: zone.x * pxToMm,
+                y: zone.y * pxToMm,
+                w: zone.width * pxToMm,
+                h: zone.height * pxToMm,
                 format: 'PNG'
             }
         })
@@ -150,7 +162,7 @@ async function renderToCanvas(element: ReturnType<typeof createElement>, widthMm
         background: lowResCanvas.toDataURL('image/jpeg', 0.6),
         qrs,
         widthMm,
-        heightMm
+        heightMm: calculatedHeightMm
     }
 }
 
@@ -217,32 +229,57 @@ export async function generateInvoicePdf(options: PDFGeneratorOptions): Promise<
         data.workspaceId = workspaceId
     }
 
+    // Ensure i18n is initialized to prevent raw keys appearing in PDF
+    if (!i18n.isInitialized) {
+        await new Promise(resolve => i18n.on('initialized', resolve))
+    }
+
+    // Create a fixed instance for the specific print language
+    const targetLang = features?.print_lang || i18n.language
+    const pdfI18n = i18n.cloneInstance({ lng: targetLang })
+    await pdfI18n.loadResources(targetLang)
+
     const processedLogoUrl = await preprocessLogoUrl(features?.logo_url)
     const processedFeatures = {
         ...features,
         logo_url: processedLogoUrl
     }
 
+    // Set direction explicitly for the rendering process based on current print selection
+    // though templates handle it, this helps html2canvas detect context better
+    const isRTL = i18n.language === 'ar' || i18n.language === 'ku'
+
     if (format === 'receipt') {
         const element = createElement(
             'div',
-            { style: { width: `${RECEIPT_WIDTH_MM}mm`, background: '#ffffff' } },
-            createElement(SaleReceiptBase, {
-                data,
-                features: processedFeatures,
-                workspaceName: workspaceName || workspaceId || 'Asaas',
-                workspaceId: workspaceId || ''
-            })
+            {
+                style: { width: `${RECEIPT_WIDTH_MM}mm`, background: '#ffffff' },
+                dir: isRTL ? 'rtl' : 'ltr'
+            },
+            createElement(
+                I18nextProvider,
+                { i18n: pdfI18n },
+                createElement(SaleReceiptBase, {
+                    data,
+                    features: processedFeatures,
+                    workspaceName: workspaceName || workspaceId || 'Asaas',
+                    workspaceId: workspaceId || ''
+                })
+            )
         )
         const renderResult = await renderToCanvas(element, RECEIPT_WIDTH_MM)
         return canvasToReceiptPdf(renderResult)
     }
 
-    const element = createElement(A4InvoiceTemplate, {
-        data,
-        features: processedFeatures,
-        workspaceId: workspaceId || ''
-    })
+    const element = createElement(
+        I18nextProvider,
+        { i18n: pdfI18n },
+        createElement(A4InvoiceTemplate, {
+            data,
+            features: processedFeatures,
+            workspaceId: workspaceId || ''
+        })
+    )
     const renderResult = await renderToCanvas(element, A4_WIDTH_MM)
     return canvasToA4Pdf(renderResult)
 }

@@ -30,8 +30,8 @@ export class AsaasDatabase extends Dexie {
             categories: 'id, name, workspaceId, syncStatus, updatedAt, isDeleted',
             suppliers: 'id, name, workspaceId, syncStatus, updatedAt, isDeleted',
             customers: 'id, name, phone, workspaceId, syncStatus, updatedAt, isDeleted',
-            purchase_orders: 'id, orderNumber, supplierId, status, workspaceId, syncStatus, updatedAt, isDeleted',
-            sales_orders: 'id, orderNumber, customerId, status, workspaceId, syncStatus, updatedAt, isDeleted',
+            purchaseOrders: 'id, orderNumber, supplierId, status, workspaceId, syncStatus, updatedAt, isDeleted',
+            salesOrders: 'id, orderNumber, customerId, status, workspaceId, syncStatus, updatedAt, isDeleted',
             invoices: 'id, invoiceid, orderId, customerId, status, workspaceId, syncStatus, updatedAt, isDeleted, origin, createdBy, cashierName, createdByName, sequenceId, printFormat, r2PathA4, r2PathReceipt',
 
             users: 'id, email, role, workspaceId, syncStatus, updatedAt, isDeleted, monthlyTarget',

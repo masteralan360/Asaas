@@ -420,3 +420,21 @@
 ::view-transition-new(root) {
   animation: 800ms cubic-bezier(0.4, 0, 0.2, 1) both reveal-item;
 }
+
+/* =========================================
+   PRINTING FIXES
+   ========================================= */
+@media print {
+  #pdf-render-container {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+    position: absolute !important;
+    left: -9999px !important;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+}
