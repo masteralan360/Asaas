@@ -384,3 +384,39 @@
     }
   }
 }
+
+/* =========================================
+   VIEW TRANSITIONS (Circular Reveal)
+   ========================================= */
+
+::view-transition-group(root) {
+  animation-duration: 0.8s;
+}
+
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+::view-transition-old(root) {
+  z-index: 1;
+}
+
+::view-transition-new(root) {
+  z-index: 9999;
+}
+
+@keyframes reveal-item {
+  from {
+    clip-path: circle(0% at var(--x) var(--y));
+  }
+
+  to {
+    clip-path: circle(150% at var(--x) var(--y));
+  }
+}
+
+::view-transition-new(root) {
+  animation: 800ms cubic-bezier(0.4, 0, 0.2, 1) both reveal-item;
+}

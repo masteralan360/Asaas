@@ -77,6 +77,25 @@ export function TitleBar() {
         await getCurrentWindow().close()
     }
 
+    const toggleTheme = (event: React.MouseEvent) => {
+        const x = event.clientX;
+        const y = event.clientY;
+
+        // @ts-ignore
+        if (!document.startViewTransition) {
+            setTheme(theme === 'dark' ? 'light' : 'dark');
+            return;
+        }
+
+        document.documentElement.style.setProperty('--x', `${x}px`);
+        document.documentElement.style.setProperty('--y', `${y}px`);
+
+        // @ts-ignore
+        document.startViewTransition(() => {
+            setTheme(theme === 'dark' ? 'light' : 'dark');
+        });
+    };
+
     if (!isTauri) return null
 
     return (
@@ -121,7 +140,7 @@ export function TitleBar() {
                     <RotateCw className="w-4 h-4" />
                 </button>
                 <button
-                    onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+                    onClick={toggleTheme}
                     className="p-2 hover:bg-secondary rounded-md transition-colors text-muted-foreground hover:text-foreground mr-1"
                     title={theme === 'dark' ? "Switch to Light Mode" : "Switch to Dark Mode"}
                 >
