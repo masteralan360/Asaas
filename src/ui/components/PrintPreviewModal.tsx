@@ -91,31 +91,34 @@ export function PrintPreviewModal({
         return !!(w.__TAURI_INTERNALS__ || w.__TAURI__)
     }, [])
 
+    const printLang = features?.print_lang && features.print_lang !== 'auto' ? features.print_lang : i18n.language
+    const t_print = useMemo(() => i18n.getFixedT(printLang), [i18n, printLang])
+
     const translations = useMemo(() => ({
-        date: t('sales.print.date') || 'Date',
-        number: t('sales.print.number') || 'Invoice #',
-        soldTo: t('sales.print.soldTo') || 'Sold To',
-        soldBy: t('sales.print.soldBy') || 'Sold By',
-        qty: t('sales.print.qty') || 'Qty',
-        productName: t('sales.print.productName') || 'Product',
-        description: t('sales.print.description') || 'Description',
-        price: t('sales.print.price') || 'Price',
-        discount: t('sales.print.discount') || 'Discount',
-        total: t('sales.print.total') || 'Total',
-        subtotal: t('sales.print.subtotal') || 'Subtotal',
-        terms: t('sales.print.terms') || 'Terms & Conditions',
-        exchangeRates: t('sales.print.exchangeRates') || 'Exchange Rates',
-        posSystem: t('sales.print.posSystem') || 'POS System',
-        generated: t('sales.print.generated') || 'Generated',
-        id: t('sales.print.id') || 'ID',
-        cashier: t('sales.print.cashier') || 'Cashier',
-        paymentMethod: t('sales.print.paymentMethod') || 'Payment Method',
-        name: t('sales.print.name') || 'Name',
-        quantity: t('sales.print.quantity') || 'Qty',
-        thankYou: t('sales.print.thankYou') || 'Thank You',
-        keepRecord: t('sales.print.keepRecord') || 'Please keep this for your records',
-        snapshots: t('sales.print.snapshots') || 'Snapshots'
-    }), [t, i18n.language])
+        date: t_print('sales.print.date') || 'Date',
+        number: t_print('sales.print.number') || 'Invoice #',
+        soldTo: t_print('sales.print.soldTo') || 'Sold To',
+        soldBy: t_print('sales.print.soldBy') || 'Sold By',
+        qty: t_print('sales.print.qty') || 'Qty',
+        productName: t_print('sales.print.productName') || 'Product',
+        description: t_print('sales.print.description') || 'Description',
+        price: t_print('sales.print.price') || 'Price',
+        discount: t_print('sales.print.discount') || 'Discount',
+        total: t_print('sales.print.total') || 'Total',
+        subtotal: t_print('sales.print.subtotal') || 'Subtotal',
+        terms: t_print('sales.print.terms') || 'Terms & Conditions',
+        exchangeRates: t_print('sales.print.exchangeRates') || 'Exchange Rates',
+        posSystem: t_print('sales.print.posSystem') || 'POS System',
+        generated: t_print('sales.print.generated') || 'Generated',
+        id: t_print('sales.print.id') || 'ID',
+        cashier: t_print('sales.print.cashier') || 'Cashier',
+        paymentMethod: t_print('sales.print.paymentMethod') || 'Payment Method',
+        name: t_print('sales.print.name') || 'Name',
+        quantity: t_print('sales.print.quantity') || 'Qty',
+        thankYou: t_print('sales.print.thankYou') || 'Thank You',
+        keepRecord: t_print('sales.print.keepRecord') || 'Please keep this for your records',
+        snapshots: t_print('sales.print.snapshots') || 'Snapshots'
+    }), [t_print])
 
     const handleHtmlPrint = useReactToPrint({
         contentRef: htmlPrintRef,

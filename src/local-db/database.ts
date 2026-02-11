@@ -25,19 +25,19 @@ export class AsaasDatabase extends Dexie {
     constructor() {
         super('AsaasDatabase')
 
-        this.version(27).stores({
+        this.version(29).stores({
             products: 'id, sku, name, categoryId, storageId, workspaceId, currency, syncStatus, updatedAt, isDeleted, canBeReturned',
             categories: 'id, name, workspaceId, syncStatus, updatedAt, isDeleted',
             suppliers: 'id, name, workspaceId, syncStatus, updatedAt, isDeleted',
-            customers: 'id, name, phone, email, workspaceId, syncStatus, updatedAt, isDeleted',
-            purchaseOrders: 'id, orderNumber, supplierId, status, workspaceId, syncStatus, updatedAt, isDeleted',
-            salesOrders: 'id, orderNumber, customerId, status, workspaceId, syncStatus, updatedAt, isDeleted',
+            customers: 'id, name, phone, workspaceId, syncStatus, updatedAt, isDeleted',
+            purchase_orders: 'id, orderNumber, supplierId, status, workspaceId, syncStatus, updatedAt, isDeleted',
+            sales_orders: 'id, orderNumber, customerId, status, workspaceId, syncStatus, updatedAt, isDeleted',
             invoices: 'id, invoiceid, orderId, customerId, status, workspaceId, syncStatus, updatedAt, isDeleted, origin, createdBy, cashierName, createdByName, sequenceId, printFormat, r2PathA4, r2PathReceipt',
 
             users: 'id, email, role, workspaceId, syncStatus, updatedAt, isDeleted, monthlyTarget',
             sales: 'id, cashierId, workspaceId, settlementCurrency, syncStatus, createdAt, updatedAt, notes',
             sale_items: 'id, saleId, productId',
-            workspaces: 'id, name, code, syncStatus, updatedAt, isDeleted',
+            workspaces: 'id, name, code, syncStatus, updatedAt, isDeleted, print_lang, print_qr',
             storages: 'id, name, workspaceId, isSystem, isProtected, syncStatus, updatedAt, isDeleted',
             employees: 'id, name, workspaceId, linkedUserId, syncStatus, updatedAt, isDeleted',
             expenses: 'id, type, category, status, dueDate, snoozeUntil, workspaceId, syncStatus, updatedAt, isDeleted',

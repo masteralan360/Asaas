@@ -7,7 +7,7 @@ import { useTranslation } from 'react-i18next'
 import { useWorkspace } from '@/workspace'
 import { Coins } from 'lucide-react'
 import type { IQDDisplayPreference } from '@/local-db/models'
-import { Settings as SettingsIcon, Database, Cloud, Trash2, RefreshCw, User, Copy, Check, CreditCard, Globe, Download, AlertCircle } from 'lucide-react'
+import { Settings as SettingsIcon, Database, Cloud, Trash2, RefreshCw, User, Copy, Check, CreditCard, Globe, Download, AlertCircle, Printer } from 'lucide-react'
 import { formatDateTime, cn } from '@/lib/utils'
 import { useTheme } from '@/ui/components/theme-provider'
 import { Moon, Sun, Monitor, Unlock, Server, MessageSquare, Bell } from 'lucide-react'
@@ -583,6 +583,53 @@ export function Settings() {
                             </CardContent>
                         </Card>
                     )}
+
+                    {/* Printing Settings */}
+                    <Card>
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2">
+                                <Printer className="w-5 h-5" />
+                                {t('settings.printing.title') || 'Printing Settings'}
+                            </CardTitle>
+                            <CardDescription>
+                                {t('settings.printing.desc') || 'Define your preferred language for printed documents (Invoices & Receipts).'}
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="flex flex-col gap-6">
+                                <div className="flex flex-col gap-2 max-w-sm">
+                                    <Label className="text-xs text-slate-500 uppercase font-semibold">{t('settings.printing.language') || 'Print Language'}</Label>
+                                    <Select
+                                        value={features.print_lang || 'auto'}
+                                        onValueChange={(val: any) => updateSettings({ print_lang: val })}
+                                    >
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Select language" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="auto">{t('settings.printing.auto') || 'As of the selected language'}</SelectItem>
+                                            <SelectItem value="en">English</SelectItem>
+                                            <SelectItem value="ar">العربية</SelectItem>
+                                            <SelectItem value="ku">کوردی</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+
+                                <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg border border-border max-w-sm">
+                                    <div className="space-y-0.5">
+                                        <Label className="text-sm font-medium">{t('settings.printing.qrTitle') || 'Generate QR Code'}</Label>
+                                        <p className="text-xs text-muted-foreground">
+                                            {t('settings.printing.qrDesc') || 'Include a QR code on invoices for digital verification.'}
+                                        </p>
+                                    </div>
+                                    <Switch
+                                        checked={features.print_qr}
+                                        onCheckedChange={(val) => updateSettings({ print_qr: val })}
+                                    />
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
 
                     {/* Currency Settings (Admin Only) */}
                     {user?.role === 'admin' && (

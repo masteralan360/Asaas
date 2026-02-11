@@ -444,6 +444,14 @@
             "clickButton": "Check for Updates",
             "restart": "Restart to Apply"
         },
+        "printing": {
+            "title": "Printing Settings",
+            "desc": "Manage your printing settings",
+            "language": "Language",
+            "auto": "Auto",
+            "qrTitle": "QR Code",
+            "qrDesc": "Enable QR code on receipts"
+        },
         "tabs": {
             "general": "General Settings",
             "profile": "Profile Settings",

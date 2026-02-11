@@ -340,6 +340,8 @@ export interface Workspace extends BaseEntity {
     syncStatus: SyncStatus
     // Negotiated price limit (0-100 percentage)
     max_discount_percent?: number
+    print_lang?: 'auto' | 'en' | 'ar' | 'ku'
+    print_qr?: boolean
 }
 
 export interface OfflineMutation {

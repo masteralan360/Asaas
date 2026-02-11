@@ -23,6 +23,8 @@ export interface WorkspaceFeatures {
     // Negotiated price limit (0-100 percentage, default 100 = no limit)
     max_discount_percent: number
     allow_whatsapp: boolean
+    print_lang: 'auto' | 'en' | 'ar' | 'ku'
+    print_qr: boolean
 }
 
 export interface UpdateInfo {
@@ -40,7 +42,7 @@ interface WorkspaceContextType {
     isFullscreen: boolean
     hasFeature: (feature: 'allow_pos' | 'allow_customers' | 'allow_suppliers' | 'allow_orders' | 'allow_invoices' | 'allow_whatsapp') => boolean
     refreshFeatures: () => Promise<void>
-    updateSettings: (settings: Partial<Pick<WorkspaceFeatures, 'default_currency' | 'iqd_display_preference' | 'eur_conversion_enabled' | 'try_conversion_enabled' | 'allow_whatsapp' | 'logo_url'>>) => Promise<void>
+    updateSettings: (settings: Partial<Pick<WorkspaceFeatures, 'default_currency' | 'iqd_display_preference' | 'eur_conversion_enabled' | 'try_conversion_enabled' | 'allow_whatsapp' | 'logo_url' | 'print_lang' | 'print_qr'>>) => Promise<void>
     activeWorkspace: { id: string } | undefined
 }
 
@@ -58,7 +60,9 @@ const defaultFeatures: WorkspaceFeatures = {
     locked_workspace: false,
     logo_url: null,
     max_discount_percent: 100,
-    allow_whatsapp: false
+    allow_whatsapp: false,
+    print_lang: 'auto',
+    print_qr: false
 }
 
 const WORKSPACE_CACHE_KEY = 'asaas_workspace_cache'
@@ -178,7 +182,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                         locked_workspace: (localWorkspace as any).locked_workspace ?? false,
                         logo_url: (localWorkspace as any).logo_url ?? null,
                         max_discount_percent: (localWorkspace as any).max_discount_percent ?? 100,
-                        allow_whatsapp: (localWorkspace as any).allow_whatsapp ?? false
+                        allow_whatsapp: (localWorkspace as any).allow_whatsapp ?? false,
+                        print_lang: (localWorkspace as any).print_lang ?? 'auto',
+                        print_qr: (localWorkspace as any).print_qr ?? false
                     })
                 } else {
                     setFeatures(defaultFeatures)
@@ -199,7 +205,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                     locked_workspace: featureData.locked_workspace ?? false,
                     logo_url: featureData.logo_url ?? null,
                     max_discount_percent: featureData.max_discount_percent ?? 100,
-                    allow_whatsapp: featureData.allow_whatsapp ?? false
+                    allow_whatsapp: featureData.allow_whatsapp ?? false,
+                    print_lang: featureData.print_lang ?? 'auto',
+                    print_qr: featureData.print_qr ?? false
                 }
                 setFeatures(fetchedFeatures)
                 setWorkspaceName(featureData.workspace_name || 'My Workspace')
@@ -227,6 +235,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                     allow_orders: fetchedFeatures.allow_orders,
                     allow_invoices: fetchedFeatures.allow_invoices,
                     allow_whatsapp: fetchedFeatures.allow_whatsapp,
+                    print_lang: fetchedFeatures.print_lang,
+                    print_qr: fetchedFeatures.print_qr,
                     logo_url: fetchedFeatures.logo_url,
                     syncStatus: 'synced',
                     lastSyncedAt: new Date().toISOString(),
@@ -289,7 +299,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                         locked_workspace: data.locked_workspace ?? features.locked_workspace,
                         logo_url: data.logo_url ?? features.logo_url,
                         max_discount_percent: data.max_discount_percent ?? features.max_discount_percent,
-                        allow_whatsapp: data.allow_whatsapp ?? features.allow_whatsapp
+                        allow_whatsapp: data.allow_whatsapp ?? features.allow_whatsapp,
+                        print_lang: data.print_lang ?? features.print_lang,
+                        print_qr: data.print_qr ?? features.print_qr
                     }
 
                     setFeatures(updatedFeatures)
@@ -339,7 +351,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         await fetchFeatures()
     }
 
-    const updateSettings = async (settings: Partial<Pick<WorkspaceFeatures, 'default_currency' | 'iqd_display_preference' | 'eur_conversion_enabled' | 'try_conversion_enabled' | 'allow_whatsapp' | 'logo_url'>>) => {
+    const updateSettings = async (settings: Partial<Pick<WorkspaceFeatures, 'default_currency' | 'iqd_display_preference' | 'eur_conversion_enabled' | 'try_conversion_enabled' | 'allow_whatsapp' | 'logo_url' | 'print_lang' | 'print_qr'>>) => {
         const workspaceId = user?.workspaceId
         if (!workspaceId) return
 

@@ -20,7 +20,10 @@ interface SaleReceiptBaseProps extends SaleReceiptProps {
 
 export const SaleReceiptBase = forwardRef<HTMLDivElement, SaleReceiptBaseProps>(
     ({ data, features, workspaceName, workspaceId: propWorkspaceId }, ref) => {
-        const { t } = useTranslation()
+        const { i18n } = useTranslation()
+        const printLang = features?.print_lang && features.print_lang !== 'auto' ? features.print_lang : i18n.language
+        const t = i18n.getFixedT(printLang)
+        const isRTL = printLang === 'ar' || printLang === 'ku'
         const effectiveWorkspaceId = propWorkspaceId || data.workspaceId
 
         const formatReceiptPrice = (amount: number, currency: string) => {
@@ -47,7 +50,7 @@ export const SaleReceiptBase = forwardRef<HTMLDivElement, SaleReceiptBaseProps>(
 
 
         return (
-            <div ref={ref} className="p-8 bg-white text-black print:p-0 print:w-[80mm] print:text-sm">
+            <div ref={ref} dir={isRTL ? 'rtl' : 'ltr'} className="p-8 bg-white text-black print:p-0 print:w-[80mm] print:text-sm">
 
                 <div className="text-center mb-8 relative">
                     <div className="flex justify-between items-center mb-4">
@@ -60,7 +63,7 @@ export const SaleReceiptBase = forwardRef<HTMLDivElement, SaleReceiptBaseProps>(
                             />
                         )}
                         <div className="flex justify-end w-20">
-                            {effectiveWorkspaceId && (
+                            {features.print_qr && effectiveWorkspaceId && (
                                 <div className="p-1 bg-white border border-gray-100 rounded-sm" data-qr-sharp="true">
                                     <ReactQRCode
                                         value={`https://asaas-r2-proxy.alanepic360.workers.dev/${effectiveWorkspaceId}/printed-invoices/receipts/${data.id}.pdf`}

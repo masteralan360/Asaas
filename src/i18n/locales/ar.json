@@ -447,6 +447,14 @@
             "profile": "إعدادات الملف الشخصي",
             "advanced": "الإعدادات المتقدمة"
         },
+        "printing": {
+            "title": "إعدادات الطباعة",
+            "desc": "إدارة إعدادات الطباعة",
+            "language": "اللغة",
+            "auto": "تلقائي",
+            "qrTitle": "رمز QR",
+            "qrDesc": "تفعيل QR"
+        },
         "appearance": "المظهر",
         "appearanceDesc": "تخصيص شكل ومظهر التطبيق",
         "language": "اللغة",

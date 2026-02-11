@@ -13,8 +13,10 @@ interface A4InvoiceTemplateProps {
 
 export const A4InvoiceTemplate = forwardRef<HTMLDivElement, A4InvoiceTemplateProps>(
     ({ data, features, workspaceId: propWorkspaceId }, ref) => {
-        const { t, i18n } = useTranslation()
-        const isRTL = i18n.dir() === 'rtl'
+        const { i18n } = useTranslation()
+        const printLang = features?.print_lang && features.print_lang !== 'auto' ? features.print_lang : i18n.language
+        const t = i18n.getFixedT(printLang)
+        const isRTL = printLang === 'ar' || printLang === 'ku'
         const items = data.items || []
         const effectiveWorkspaceId = propWorkspaceId || data.workspaceId
 
@@ -36,7 +38,7 @@ export const A4InvoiceTemplate = forwardRef<HTMLDivElement, A4InvoiceTemplatePro
         return (
             <div
                 ref={ref}
-                dir={i18n.dir()}
+                dir={isRTL ? 'rtl' : 'ltr'}
                 className="bg-white text-black text-sm font-sans relative flex flex-col min-h-[297mm] text-start"
                 style={{ width: '210mm', padding: '0', margin: '0 auto' }}
             >
@@ -74,7 +76,7 @@ export const A4InvoiceTemplate = forwardRef<HTMLDivElement, A4InvoiceTemplatePro
 
                         {/* QR Code / Center */}
                         <div className="w-1/3 flex justify-center pt-2">
-                            {effectiveWorkspaceId && (data.sequenceId || data.invoiceid) && (
+                            {features.print_qr && effectiveWorkspaceId && (data.sequenceId || data.invoiceid) && (
                                 <div className="p-1.5 bg-white border border-slate-100 rounded" data-qr-sharp="true">
                                     <ReactQRCode
                                         value={`https://asaas-r2-proxy.alanepic360.workers.dev/${effectiveWorkspaceId}/printed-invoices/A4/${data.id}.pdf`}
