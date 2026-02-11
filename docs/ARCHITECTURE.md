@@ -18,6 +18,11 @@
 │  └──────────────────────────┬──────────────────────────────────┘ │
 │                             │                                    │
 │  ┌──────────────────────────▼──────────────────────────────────┐ │
+│  │                  Active Resilience Layer                    │ │
+│  │           ConnectionManager (Online / Wake / Heartbeat)     │ │
+│  └──────────────────────────┬──────────────────────────────────┘ │
+│                             │                                    │
+│  ┌──────────────────────────▼──────────────────────────────────┐ │
 │  │                    Local Database                            │ │
 │  │              Dexie.js (IndexedDB Wrapper)                   │ │
 │  │  ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐           │ │
@@ -122,10 +127,20 @@ React Component mounts
 | File | Purpose |
 |------|---------|
 | `supabase.ts` | Supabase client initialization, encryption setup |
-| `AuthContext.tsx` | Auth state management, sign in/up/out |
+| `AuthContext.tsx` | Auth state management, sign in/up/out, session watchdog |
 | `ProtectedRoute.tsx` | Route guards with role and feature checks |
 
-### 2. Local Database (`src/local-db/`)
+### 2. Resilience System (`src/lib/connectionManager.ts`)
+
+Centralized event bus for the "Active Resilience" system. See [docs/RESILIENCE.md](RESILIENCE.md) for details.
+
+| Feature | Description |
+|---------|-------------|
+| **Heartbeat** | 30s background ping to verify connectivity |
+| **Wake Detection** | Triggers recovery when tab/app returns from idle |
+| **Visibility Tracking** | Monitors `visibilitychange` and `focus` events |
+
+### 3. Local Database (`src/local-db/`)
 
 | File | Purpose |
 |------|---------|

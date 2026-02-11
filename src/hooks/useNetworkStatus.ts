@@ -1,78 +1,44 @@
 import { useState, useEffect } from 'react'
 import { toast } from '@/ui/components/use-toast'
 import { setNetworkStatus } from '@/lib/network'
+import { connectionManager } from '@/lib/connectionManager'
 
 export function useNetworkStatus() {
-    const [isOnline, setIsOnline] = useState(navigator.onLine)
+    const [isOnline, setIsOnline] = useState(() => connectionManager.getState().isOnline)
     const [wasOffline, setWasOffline] = useState(false)
 
     useEffect(() => {
-        let heartbeatInterval: any
+        const updateOnlineState = (online: boolean) => {
+            setIsOnline(prev => {
+                if (prev === online) return prev
+                setNetworkStatus(online)
+                return online
+            })
+        }
 
-        async function checkConnection() {
-            if (!navigator.onLine) {
-                if (isOnline) {
-                    setIsOnline(false)
-                    setNetworkStatus(false)
-                }
-                return
+        const unsubscribe = connectionManager.subscribe((event) => {
+            switch (event) {
+                case 'online':
+                    updateOnlineState(true)
+                    break
+                case 'offline':
+                    updateOnlineState(false)
+                    setWasOffline(true)
+                    break
+                case 'heartbeat':
+                    // heartbeat confirms we're still online
+                    updateOnlineState(true)
+                    break
+                case 'wake':
+                    // wake event triggers connectivity re-check via heartbeat
+                    break
             }
+        })
 
-            try {
-                // Try to fetch a tiny resource or check a known endpoint
-                // We use a cache-busting query parameter to ensure we're actually hitting the network
-                const controller = new AbortController()
-                const timeoutId = setTimeout(() => controller.abort(), 5000)
+        return unsubscribe
+    }, [])
 
-                await fetch('https://www.google.com/favicon.ico?v=' + Date.now(), {
-                    mode: 'no-cors',
-                    signal: controller.signal
-                })
-                clearTimeout(timeoutId)
-
-                if (!isOnline) {
-                    setIsOnline(true)
-                    setNetworkStatus(true)
-                }
-            } catch (err) {
-                // If fetch fails despite navigator.onLine being true, we are effectively offline
-                if (isOnline) {
-                    setIsOnline(false)
-                    setNetworkStatus(false)
-                }
-            }
-        }
-
-        function handleOnline() {
-            checkConnection()
-        }
-
-        function handleOffline() {
-            setIsOnline(false)
-            setNetworkStatus(false)
-            setWasOffline(true)
-        }
-
-        window.addEventListener('online', handleOnline)
-        window.addEventListener('offline', handleOffline)
-
-        // Immediate check when window regains focus (solves "offline after inactivity" issue)
-        window.addEventListener('focus', checkConnection)
-
-        // Periodic heartbeat - standard 30s
-        heartbeatInterval = setInterval(checkConnection, 30000)
-
-        // Initial check
-        checkConnection()
-
-        return () => {
-            window.removeEventListener('online', handleOnline)
-            window.removeEventListener('offline', handleOffline)
-            window.removeEventListener('focus', checkConnection)
-            clearInterval(heartbeatInterval)
-        }
-    }, [isOnline])
-
+    // "Back online" toast
     useEffect(() => {
         if (isOnline && wasOffline) {
             toast({
@@ -81,15 +47,13 @@ export function useNetworkStatus() {
                 variant: "default",
             })
             setWasOffline(false)
-        } else if (!isOnline && !wasOffline) {
-            // This handles the case where it starts offline
-            setWasOffline(true)
         }
     }, [isOnline, wasOffline])
 
-    // Specific effect for the "You are offline" toast to avoid duplicates
+    // "Offline" toast
     useEffect(() => {
         if (!isOnline) {
+            setWasOffline(true)
             toast({
                 title: "You are offline",
                 description: "Changes will be saved locally and can be synced when you're back online.",

@@ -1,6 +1,7 @@
 import CryptoJS from 'crypto-js';
 
-const KEY = 'iraqcore-supabase-key';
+// Key from env, with legacy fallback for backwards-compatible decryption
+const KEY = import.meta.env.VITE_ENCRYPTION_KEY || 'iraqcore-supabase-key';
 
 /**
  * Encrypts a string using AES

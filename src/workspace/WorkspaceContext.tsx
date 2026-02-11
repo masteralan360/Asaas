@@ -1,10 +1,11 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useState, useRef, type ReactNode } from 'react'
 import { supabase, isSupabaseConfigured } from '@/auth/supabase'
 import { useAuth } from '@/auth/AuthContext'
 import type { CurrencyCode, IQDDisplayPreference } from '@/local-db/models'
 import { db } from '@/local-db/database'
 import { addToOfflineMutations } from '@/local-db/hooks'
 import { isMobile } from '@/lib/platform'
+import { connectionManager } from '@/lib/connectionManager'
 
 export interface WorkspaceFeatures {
     allow_pos: boolean
@@ -106,6 +107,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     })
     const [pendingUpdate, setPendingUpdate] = useState<UpdateInfo | null>(null)
     const [isFullscreen, setIsFullscreen] = useState(false)
+    const realtimeChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null)
 
     // Tauri-only: Track Fullscreen State
     useEffect(() => {
@@ -142,16 +144,14 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         return () => unlisten?.()
     }, [])
 
-    const fetchFeatures = async () => {
+    const fetchFeatures = async (silent = false) => {
         if (!isSupabaseConfigured || !isAuthenticated || !user?.workspaceId) {
-            // Demo mode or not authenticated - enable all features
             setFeatures(defaultFeatures)
-            setIsLoading(false)
+            if (!silent) setIsLoading(false)
             return
         }
 
         try {
-            // Add timeout for robustness (5 seconds)
             const rpcPromise = supabase.rpc('get_workspace_features').single()
             const timeoutPromise = new Promise((_, reject) =>
                 setTimeout(() => reject(new Error('Workspace features fetch timed out')), 5000)
@@ -238,9 +238,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             }
         } catch (err) {
             console.error('Error fetching workspace features:', err)
-            setFeatures(defaultFeatures)
+            if (!silent) setFeatures(defaultFeatures)
         } finally {
-            setIsLoading(false)
+            if (!silent) setIsLoading(false)
         }
     }
 
@@ -254,6 +254,81 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             setIsLoading(false)
         }
     }, [isAuthenticated, user?.workspaceId, authLoading])
+
+    // ───────────────────────────────────────────────────────
+    // RESILIENCE: Supabase Realtime subscription for live workspace changes
+    // ───────────────────────────────────────────────────────
+    useEffect(() => {
+        if (!isSupabaseConfigured || !isAuthenticated || !user?.workspaceId) return
+
+        const channel = supabase
+            .channel(`workspace-live-${user.workspaceId}`)
+            .on(
+                'postgres_changes',
+                {
+                    event: 'UPDATE',
+                    schema: 'public',
+                    table: 'workspaces',
+                    filter: `id=eq.${user.workspaceId}`
+                },
+                (payload) => {
+                    console.log('[Workspace] Realtime update received:', payload.new)
+                    const data = payload.new as any
+
+                    const updatedFeatures: WorkspaceFeatures = {
+                        allow_pos: data.allow_pos ?? features.allow_pos,
+                        allow_customers: data.allow_customers ?? features.allow_customers,
+                        allow_suppliers: data.allow_suppliers ?? features.allow_suppliers,
+                        allow_orders: data.allow_orders ?? features.allow_orders,
+                        allow_invoices: data.allow_invoices ?? features.allow_invoices,
+                        is_configured: data.is_configured ?? features.is_configured,
+                        default_currency: data.default_currency || features.default_currency,
+                        iqd_display_preference: data.iqd_display_preference || features.iqd_display_preference,
+                        eur_conversion_enabled: data.eur_conversion_enabled ?? features.eur_conversion_enabled,
+                        try_conversion_enabled: data.try_conversion_enabled ?? features.try_conversion_enabled,
+                        locked_workspace: data.locked_workspace ?? features.locked_workspace,
+                        logo_url: data.logo_url ?? features.logo_url,
+                        max_discount_percent: data.max_discount_percent ?? features.max_discount_percent,
+                        allow_whatsapp: data.allow_whatsapp ?? features.allow_whatsapp
+                    }
+
+                    setFeatures(updatedFeatures)
+                    setWorkspaceName(data.name || workspaceName)
+
+                    // Update cache
+                    localStorage.setItem(WORKSPACE_CACHE_KEY, JSON.stringify({
+                        features: updatedFeatures,
+                        workspaceName: data.name || workspaceName
+                    }))
+                }
+            )
+            .subscribe((status) => {
+                console.log(`[Workspace] Realtime subscription: ${status}`)
+            })
+
+        realtimeChannelRef.current = channel
+
+        return () => {
+            supabase.removeChannel(channel)
+            realtimeChannelRef.current = null
+        }
+    }, [isAuthenticated, user?.workspaceId])
+
+    // ───────────────────────────────────────────────────────
+    // RESILIENCE: Re-fetch on wake (backup for Realtime failures)
+    // ───────────────────────────────────────────────────────
+    useEffect(() => {
+        if (!isSupabaseConfigured || !isAuthenticated || !user?.workspaceId) return
+
+        const unsubscribe = connectionManager.subscribe((event) => {
+            if (event === 'wake') {
+                console.log('[Workspace] Wake event — re-fetching features silently')
+                fetchFeatures(true) // silent = true, no loading state change
+            }
+        })
+
+        return unsubscribe
+    }, [isAuthenticated, user?.workspaceId])
 
     const hasFeature = (feature: 'allow_pos' | 'allow_customers' | 'allow_suppliers' | 'allow_orders' | 'allow_invoices' | 'allow_whatsapp'): boolean => {
         return features[feature] === true
@@ -286,7 +361,6 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                 updatedAt: new Date().toISOString()
             })
         } else {
-            // If doesn't exist locally, create it
             await db.workspaces.put({
                 id: workspaceId,
                 workspaceId,
@@ -320,7 +394,6 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                 await addToOfflineMutations('workspaces', workspaceId, 'update', settings as Record<string, unknown>, workspaceId)
             }
         } else {
-            // OFFLINE: Add to mutation queue
             await addToOfflineMutations('workspaces', workspaceId, 'update', settings as Record<string, unknown>, workspaceId)
         }
     }

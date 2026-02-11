@@ -1,4 +1,4 @@
-import { useMemo, useEffect, useRef, useCallback } from 'react';
+import { useMemo, useEffect, useRef, useCallback, useState } from 'react';
 import { Inbox, NovuProvider } from '@novu/react';
 import { useCounts, useNotifications } from '@novu/react/hooks';
 import { useAuth } from '@/auth';
@@ -7,6 +7,7 @@ import { Bell } from 'lucide-react';
 import { useTheme } from './theme-provider';
 import { useTranslation } from 'react-i18next';
 import { toast } from '@/ui/components/use-toast';
+import { connectionManager } from '@/lib/connectionManager';
 
 function playNotificationSound() {
     try {
@@ -111,6 +112,28 @@ export function NotificationCenter() {
     const { t, i18n } = useTranslation();
     const subscriberId = getNovuSubscriberId(user?.id);
 
+    // Reconnection key: forces NovuProvider to remount after idle/reconnect
+    const [reconnectKey, setReconnectKey] = useState(0);
+    const reconnectDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    useEffect(() => {
+        const unsubscribe = connectionManager.subscribe((event) => {
+            if (event === 'wake' || event === 'online') {
+                // Debounce to prevent rapid remounts
+                if (reconnectDebounceRef.current) clearTimeout(reconnectDebounceRef.current);
+                reconnectDebounceRef.current = setTimeout(() => {
+                    console.log('[NotificationCenter] Reconnecting NovuProvider due to:', event);
+                    setReconnectKey(k => k + 1);
+                }, 2000);
+            }
+        });
+
+        return () => {
+            unsubscribe();
+            if (reconnectDebounceRef.current) clearTimeout(reconnectDebounceRef.current);
+        };
+    }, []);
+
     const isDark = useMemo(() => {
         return theme === 'dark'
             || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
@@ -170,6 +193,7 @@ export function NotificationCenter() {
 
     return (
         <NovuProvider
+            key={reconnectKey}
             subscriberId={subscriberId}
             applicationIdentifier={novuConfig.applicationIdentifier}
             apiUrl={novuConfig.apiUrl}

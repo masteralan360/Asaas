@@ -2,31 +2,25 @@
 
 ## Overview
 
-Asaas uses **Supabase Auth** for authentication with a custom workspace-based authorization model.
+Asaas uses **Supabase Auth** for authentication with a custom workspace-based authorization model. The system is hardened with an **Active Resilience** layer to ensure session stability even during network drops or long idle periods.
 
 ---
 
 ## Authentication Flow
 
 ### Sign Up
-
-```
-1. User enters email, password, name, passkey
-2. Passkey validated against workspace admin/member key
-3. Supabase creates auth.users record
-4. Trigger creates profiles record with workspace_id
-5. User redirected to dashboard
-```
+1. User enters email, password, name, passkey.
+2. Passkey validated against workspace admin/member key.
+3. Supabase creates `auth.users` record.
+4. Database trigger creates `profiles` record with `workspace_id`.
+5. User redirected to dashboard.
 
 ### Sign In
-
-```
-1. User enters email, password
-2. Supabase validates credentials
-3. Session created with JWT
-4. AuthContext loads profile from Supabase
-5. User redirected to appropriate page
-```
+1. User enters email, password.
+2. Supabase validates credentials.
+3. Session created with JWT.
+4. `AuthContext` loads profile from Supabase and hydrates the "Recovery Bridge".
+5. User redirected to appropriate page.
 
 ---
 
@@ -35,62 +29,24 @@ Asaas uses **Supabase Auth** for authentication with a custom workspace-based au
 | File | Purpose |
 |------|---------|
 | `src/auth/supabase.ts` | Supabase client initialization |
-| `src/auth/AuthContext.tsx` | Auth state management |
-| `src/auth/ProtectedRoute.tsx` | Route guards |
+| `src/auth/AuthContext.tsx` | Auth state management & Resilience Watchdog |
+| `src/auth/ProtectedRoute.tsx` | Route guards & Role/Feature checks |
 | `src/auth/index.ts` | Public exports |
 
 ---
 
-## AuthContext
+## Active Resilience (Self-Healing)
 
-Location: `src/auth/AuthContext.tsx`
+The authentication layer is designed to proactively recover from session expiry or network interruptions. Detailed architecture can be found in [docs/RESILIENCE.md](RESILIENCE.md).
 
-### State
+### 1. Session Watchdog
+A background process in `AuthContext` checks the token expiry every 5 minutes. If the token is set to expire in less than 2 minutes, it proactively calls `refreshSession()` to prevent the user from being kicked out mid-operation.
 
-```typescript
-interface AuthUser {
-  id: string
-  email: string
-  name: string
-  role: 'admin' | 'staff' | 'viewer'
-  workspaceId: string
-  workspaceCode: string
-  workspaceName?: string
-  profileUrl?: string
-  phone?: string
-}
+### 2. Wake Handler
+Whenever the application returns from an idle state (e.g., computer wakes from sleep or tab returns to focus after 1+ minute), the `AuthContext` verifies the session validity. If the session has invalidated during sleep, it attempts a silent refresh.
 
-interface AuthContextType {
-  user: AuthUser | null
-  session: Session | null
-  sessionId: string | null
-  isLoading: boolean
-  isAuthenticated: boolean
-  isKicked: boolean
-  signOut: () => Promise<void>
-  hasRole: (roles: UserRole[]) => boolean
-  refreshUser: () => Promise<void>
-  updateUser: (updates: Partial<AuthUser>) => void
-}
-```
-
-### Key Functions
-
-#### signIn(email, password)
-Authenticates via Supabase, loads profile data.
-
-#### signUp({ email, password, name, role, passkey, ... })
-1. Validates passkey against workspace
-2. Creates Supabase auth user
-3. Database trigger creates profile
-
-#### signOut()
-1. Clears local session
-2. Clears IndexedDB (optional)
-3. Redirects to login
-
-#### hasRole(roles)
-Checks if current user has any of the specified roles.
+### 3. Recovery Bridge
+To prevent application crashes or blank screens during network failures, essential user metadata is persisted to encrypted LocalStorage with a **7-day expiration**. This allows the UI to hydrate immediately even if the initial Supabase handshake is delayed.
 
 ---
 
@@ -102,209 +58,11 @@ Checks if current user has any of the specified roles.
 | `staff` | POS, sales, products, limited settings |
 | `viewer` | Read-only access to dashboard and reports |
 
-### Role Checks in UI
-
-```typescript
-// In component
-const { user } = useAuth()
-
-if (user?.role === 'admin') {
-  // Show admin-only controls
-}
-```
-
-### Route Protection
-
-```tsx
-<Route path="/settings">
-  <ProtectedRoute allowedRoles={['admin', 'staff']}>
-    <Settings />
-  </ProtectedRoute>
-</Route>
-```
-
 ---
 
-## ProtectedRoute Component
+## Security Model
 
-Location: `src/auth/ProtectedRoute.tsx`
-
-### Props
-
-```typescript
-interface ProtectedRouteProps {
-  children: React.ReactNode
-  allowedRoles?: UserRole[]       // Optional role restriction
-  requiredFeature?: FeatureFlag   // Optional feature flag check
-  allowKicked?: boolean           // Allow kicked users (for workspace reg)
-}
-```
-
-### Feature Flags
-
-```typescript
-type FeatureFlag = 
-  | 'allow_pos'
-  | 'allow_customers'
-  | 'allow_orders'
-  | 'allow_invoices'
-  | 'allow_whatsapp'
-```
-
-### Behavior
-
-1. If not authenticated → redirect to `/login`
-2. If role not allowed → redirect to `/`
-3. If feature disabled → redirect to `/`
-4. If workspace locked → redirect to `/locked-workspace`
-5. If kicked from workspace → redirect to `/workspace-registration`
-
----
-
-## Workspace Passkeys
-
-### Purpose
-
-Passkeys control who can join a workspace:
-
-| Passkey Type | Purpose |
-|--------------|---------|
-| Admin Passkey | Creates user with `admin` role |
-| Member Passkey | Creates user with `staff` or `viewer` role |
-
-### Validation
-
-```typescript
-// During registration
-const { data } = await supabase
-  .from('workspaces')
-  .select('id, admin_passkey, member_passkey')
-  .eq('code', workspaceCode)
-  .single()
-
-if (passkey === data.admin_passkey) {
-  // Grant admin role
-} else if (passkey === data.member_passkey) {
-  // Grant staff role
-} else {
-  throw new Error('Invalid passkey')
-}
-```
-
----
-
-## Session Management
-
-### JWT Token
-
-- Supabase issues JWT on sign-in
-- Token contains user ID and metadata
-- Automatically refreshed before expiry
-
-### Session ID
-
-Extracted from JWT for:
-- P2P sync session tracking
-- Multi-device detection
-- Concurrency control
-
-```typescript
-function decodeSessionId(token: string): string | null {
-  const payload = JSON.parse(atob(token.split('.')[1]))
-  return payload.session_id || null
-}
-```
-
----
-
-## Demo Mode
-
-When Supabase is not configured (local development):
-
-```typescript
-const DEMO_USER: AuthUser = {
-  id: 'demo-user',
-  email: 'demo@asaas.local',
-  name: 'Demo User',
-  role: 'admin',
-  workspaceId: 'demo-workspace',
-  workspaceCode: 'DEMO-1234'
-}
-```
-
-App runs fully offline with demo user pre-authenticated.
-
----
-
-## Supabase Configuration
-
-### Environment Variables
-
-```env
-VITE_SUPABASE_URL=https://your-project.supabase.co
-VITE_SUPABASE_ANON_KEY=eyJ...your-anon-key
-```
-
-### Client Initialization
-
-Location: `src/auth/supabase.ts`
-
-```typescript
-import { createClient } from '@supabase/supabase-js'
-
-export const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL,
-  import.meta.env.VITE_SUPABASE_ANON_KEY,
-  {
-    auth: {
-      autoRefreshToken: true,
-      persistSession: true
-    }
-  }
-)
-
-export const isSupabaseConfigured = Boolean(
-  import.meta.env.VITE_SUPABASE_URL &&
-  import.meta.env.VITE_SUPABASE_ANON_KEY
-)
-```
-
----
-
-## Database Triggers
-
-### Auto-Create Profile
-
-When auth.users record is created, trigger inserts into profiles:
-
-```sql
-CREATE OR REPLACE FUNCTION handle_new_user()
-RETURNS TRIGGER AS $$
-BEGIN
-  INSERT INTO profiles (id, email, name, role, workspace_id)
-  VALUES (
-    NEW.id,
-    NEW.email,
-    NEW.raw_user_meta_data->>'name',
-    NEW.raw_user_meta_data->>'role',
-    NEW.raw_user_meta_data->>'workspace_id'
-  );
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE TRIGGER on_auth_user_created
-AFTER INSERT ON auth.users
-FOR EACH ROW
-EXECUTE FUNCTION handle_new_user();
-```
-
----
-
-## Security Best Practices
-
-1. **RLS on all tables** - Users only see their workspace data
-2. **Passkey validation** - Server-side check during registration
-3. **JWT verification** - All API calls include auth header
-4. **Session expiry** - Tokens expire after 1 hour, auto-refresh
-5. **Secure storage** - Passwords never stored locally
+1. **Row Level Security (RLS)**: Users only access data within their `workspace_id`.
+2. **Encrypted Persistence**: Local session metadata is encrypted using AES-256 via the `VITE_ENCRYPTION_KEY`.
+3. **Passkey System**: Registration is restricted by workspace-specific keys.
+4. **Graceful Degradation**: Token refresh failures trigger a toast notification and a clean sign-out rather than hard crashes.

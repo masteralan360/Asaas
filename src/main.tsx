@@ -6,8 +6,11 @@ import './index.css'
 import { ThemeProvider } from '@/ui/components/theme-provider'
 import './i18n/config'
 import { platformService } from '@/services/platformService'
+import { connectionManager } from '@/lib/connectionManager'
 
-// Initialize platform service (cache paths etc)
+// Initialize connection manager (visibility, online/offline, heartbeat)
+connectionManager.init()
+
 // Global error handler for lazy loading failures (chunks)
 window.addEventListener('unhandledrejection', (event) => {
     if (event.reason?.message?.includes('Failed to fetch dynamically imported module') ||

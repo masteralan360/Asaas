@@ -1,7 +1,8 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useState, useRef, type ReactNode } from 'react'
 import { supabase, isSupabaseConfigured } from './supabase'
 import type { User, Session } from '@supabase/supabase-js'
 import type { UserRole } from '@/local-db/models'
+import { connectionManager } from '@/lib/connectionManager'
 
 interface AuthUser {
     id: string
@@ -69,32 +70,75 @@ function parseUserFromSupabase(user: User): AuthUser {
     }
 }
 
+// Helper: fetch workspace + profile data for a parsed user
+async function enrichUser(parsedUser: AuthUser): Promise<AuthUser> {
+    if (!parsedUser.workspaceId) return parsedUser
+
+    const [wsResult, profileResult] = await Promise.allSettled([
+        supabase
+            .from('workspaces')
+            .select('code, name, is_configured')
+            .eq('id', parsedUser.workspaceId)
+            .single(),
+        supabase
+            .from('profiles')
+            .select('profile_url')
+            .eq('id', parsedUser.id)
+            .single()
+    ])
+
+    if (wsResult.status === 'fulfilled' && wsResult.value.data) {
+        parsedUser.workspaceCode = wsResult.value.data.code
+        parsedUser.workspaceName = wsResult.value.data.name
+        parsedUser.isConfigured = wsResult.value.data.is_configured
+    }
+    if (profileResult.status === 'fulfilled' && profileResult.value.data?.profile_url) {
+        parsedUser.profileUrl = profileResult.value.data.profile_url
+    }
+
+    return parsedUser
+}
+
+// Recovery bridge helpers
+function saveRecovery(user: AuthUser) {
+    localStorage.setItem('asaas_session_recovery', JSON.stringify({
+        ...user,
+        recoveredAt: Date.now()
+    }))
+}
+
+function getRecoveredUser(): (AuthUser & { recoveredAt?: number }) | null {
+    try {
+        const recovered = localStorage.getItem('asaas_session_recovery')
+        return recovered ? JSON.parse(recovered) : null
+    } catch { return null }
+}
+
+function clearRecovery() {
+    localStorage.removeItem('asaas_session_recovery')
+}
+
 
 
 export function AuthProvider({ children }: { children: ReactNode }) {
     const [user, setUser] = useState<AuthUser | null>(null)
     const [session, setSession] = useState<Session | null>(null)
     const [isLoading, setIsLoading] = useState(true)
+    const sessionRef = useRef<Session | null>(null)
+    const watchdogRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+    // Keep sessionRef in sync
+    useEffect(() => { sessionRef.current = session }, [session])
 
     useEffect(() => {
         if (!isSupabaseConfigured) {
-            // If Supabase is not configured, use demo user
             setUser(DEMO_USER)
             setIsLoading(false)
             return
         }
 
-        // Recovery bridge: try to restore from last known good state if session fails
-        const getRecoveredUser = (): AuthUser | null => {
-            try {
-                const recovered = localStorage.getItem('asaas_session_recovery')
-                return recovered ? JSON.parse(recovered) : null
-            } catch { return null }
-        }
-
         const fetchInitialSession = async () => {
             try {
-                // 10s timeout for initial session fetch
                 const sessionPromise = supabase.auth.getSession();
                 const timeoutPromise = new Promise((_, reject) =>
                     setTimeout(() => reject(new Error('Session fetch timed out')), 10000)
@@ -106,45 +150,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                     setSession(session)
                     const parsedUser = session.user ? parseUserFromSupabase(session.user) : null
 
-                    if (parsedUser && parsedUser.workspaceId) {
-                        // Fetch workspace and profile data in parallel for robustness
-                        const [wsResult, profileResult] = await Promise.allSettled([
-                            supabase
-                                .from('workspaces')
-                                .select('code, name, is_configured')
-                                .eq('id', parsedUser.workspaceId)
-                                .single(),
-                            supabase
-                                .from('profiles')
-                                .select('profile_url')
-                                .eq('id', parsedUser.id)
-                                .single()
-                        ])
-
-                        if (wsResult.status === 'fulfilled' && wsResult.value.data) {
-                            parsedUser.workspaceCode = wsResult.value.data.code
-                            parsedUser.workspaceName = wsResult.value.data.name
-                            parsedUser.isConfigured = wsResult.value.data.is_configured
-                        }
-                        if (profileResult.status === 'fulfilled' && profileResult.value.data?.profile_url) {
-                            parsedUser.profileUrl = profileResult.value.data.profile_url
-                        }
+                    if (parsedUser) {
+                        const enriched = await enrichUser(parsedUser)
+                        setUser(enriched)
+                        saveRecovery(enriched)
                     }
-
-                    setUser(parsedUser)
-                    if (parsedUser) localStorage.setItem('asaas_session_recovery', JSON.stringify(parsedUser))
                 } else {
                     // NO SESSION: check recovery bridge
                     const recovered = getRecoveredUser()
                     if (recovered) {
-                        console.log('[Auth] Restoring session from recovery bridge...')
-                        setUser(recovered)
-                        // Don't set session yet, let onAuthStateChange handle it if/when it wakes up
+                        // Only trust recovery if it's less than 7 days old
+                        const maxAge = 7 * 24 * 60 * 60 * 1000
+                        const isStale = recovered.recoveredAt && (Date.now() - recovered.recoveredAt > maxAge)
+
+                        if (!isStale) {
+                            console.log('[Auth] Restoring session from recovery bridge...')
+                            setUser(recovered)
+                        } else {
+                            console.log('[Auth] Recovery bridge is stale (>7 days), clearing.')
+                            clearRecovery()
+                        }
                     }
                 }
             } catch (e) {
                 console.error('[Auth] Initial session fetch failed:', e);
-                // Attempt recovery anyway on network failure
                 const recovered = getRecoveredUser()
                 if (recovered) {
                     console.log('[Auth] Network failed, using recovery bridge.')
@@ -169,43 +198,95 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             }
 
             if (parsedUser.workspaceId) {
-                // Fetch workspace and profile data
-                const [wsResult, profileResult] = await Promise.all([
-                    supabase
-                        .from('workspaces')
-                        .select('code, name, is_configured')
-                        .eq('id', parsedUser.workspaceId)
-                        .single(),
-                    supabase
-                        .from('profiles')
-                        .select('profile_url')
-                        .eq('id', parsedUser.id)
-                        .single()
-                ])
+                const enriched = await enrichUser(parsedUser)
 
-                if (wsResult.data) {
-                    parsedUser.workspaceCode = wsResult.data.code
-                    parsedUser.workspaceName = wsResult.data.name
-                    parsedUser.isConfigured = wsResult.data.is_configured
-                }
-                if (profileResult.data?.profile_url) {
-                    parsedUser.profileUrl = profileResult.data.profile_url
-                }
-
-                // Final verify of session to ensure we haven't logged out
+                // Final verify to ensure we haven't logged out during enrichment
                 const { data: { session: currentSession } } = await supabase.auth.getSession()
                 if (currentSession?.user?.id === parsedUser.id) {
-                    setUser({ ...parsedUser })
-                    localStorage.setItem('asaas_session_recovery', JSON.stringify(parsedUser))
+                    setUser({ ...enriched })
+                    saveRecovery(enriched)
                 }
             } else {
                 setUser(parsedUser)
-                localStorage.setItem('asaas_session_recovery', JSON.stringify(parsedUser))
+                saveRecovery(parsedUser)
             }
         })
 
         return () => {
             subscription.unsubscribe()
+        }
+    }, [])
+
+    // ───────────────────────────────────────────────────────
+    // RESILIENCE: Wake handler — verify session on tab return
+    // ───────────────────────────────────────────────────────
+    useEffect(() => {
+        if (!isSupabaseConfigured) return
+
+        const handleConnectionEvent = async (event: string) => {
+            if (event !== 'wake' && event !== 'online') return
+            if (!sessionRef.current) return
+
+            console.log(`[Auth] Connection event: ${event} — verifying session...`)
+
+            try {
+                const { data: { session }, error } = await supabase.auth.getSession()
+
+                if (error || !session) {
+                    console.log('[Auth] Session invalid after wake, attempting refresh...')
+                    const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession()
+
+                    if (refreshError || !refreshData.session) {
+                        console.error('[Auth] Session refresh failed — signing out gracefully.')
+                        // Import toast lazily to avoid circular deps
+                        const { toast } = await import('@/ui/components/use-toast')
+                        toast({
+                            title: "Session expired",
+                            description: "Your session has expired. Please sign in again.",
+                            variant: "destructive",
+                        })
+                        await signOut()
+                        return
+                    }
+                }
+
+                console.log('[Auth] Session verified after wake ✓')
+            } catch (e) {
+                console.error('[Auth] Wake session check failed (network?):', e)
+                // Don't sign out on network failure — recovery bridge keeps user in
+            }
+        }
+
+        const unsubscribe = connectionManager.subscribe(handleConnectionEvent)
+        return unsubscribe
+    }, [])
+
+    // ───────────────────────────────────────────────────────
+    // RESILIENCE: Session watchdog — proactive token refresh
+    // ───────────────────────────────────────────────────────
+    useEffect(() => {
+        if (!isSupabaseConfigured) return
+
+        // Check every 5 minutes if token is about to expire
+        watchdogRef.current = setInterval(async () => {
+            const currentSession = sessionRef.current
+            if (!currentSession?.expires_at) return
+
+            const expiresAt = currentSession.expires_at * 1000 // convert to ms
+            const timeUntilExpiry = expiresAt - Date.now()
+
+            // If token expires in less than 2 minutes, proactively refresh
+            if (timeUntilExpiry < 2 * 60 * 1000 && timeUntilExpiry > 0) {
+                console.log(`[Auth] Token expires in ${Math.round(timeUntilExpiry / 1000)}s — proactive refresh`)
+                const { error } = await supabase.auth.refreshSession()
+                if (error) {
+                    console.error('[Auth] Proactive refresh failed:', error)
+                }
+            }
+        }, 5 * 60 * 1000) // every 5 minutes
+
+        return () => {
+            if (watchdogRef.current) clearInterval(watchdogRef.current)
         }
     }, [])
 
@@ -220,7 +301,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 email,
                 password
             })
-            // 15s timeout for sign in (network can be slow)
             const timeoutPromise = new Promise((_, reject) =>
                 setTimeout(() => reject(new Error('Connection timed out. Please check your network.')), 15000)
             )
@@ -255,7 +335,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             if (role === 'admin') {
                 if (!workspaceName) throw new Error('Workspace name is required for Admins')
 
-                // Create workspace via RPC
                 const { data: wsData, error: wsError } = await supabase.rpc('create_workspace', { w_name: workspaceName })
                 if (wsError) throw wsError
 
@@ -264,7 +343,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             } else {
                 if (!workspaceCode) throw new Error('Workspace code is required to join')
 
-                // Find workspace by code
                 const { data: wsData, error: wsError } = await supabase
                     .from('workspaces')
                     .select('id, name')
@@ -277,7 +355,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 resolvedWorkspaceName = wsData.name
             }
 
-            // We need to get the workspaceCode if we don't have it (admin case who just created it)
             let resolvedWorkspaceCode = workspaceCode
             if (role === 'admin' && !resolvedWorkspaceCode) {
                 const { data: wsData } = await supabase.from('workspaces').select('code').eq('id', workspaceId).single()
@@ -309,7 +386,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         try {
             console.log('[Auth] Signing out...')
 
-            // 1. Stop background asset processing
             try {
                 const { assetManager } = await import('@/lib/assetManager')
                 assetManager.stopWatcher()
@@ -318,19 +394,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             }
 
             if (isSupabaseConfigured) {
-                // 2. Revoke session on server
                 await supabase.auth.signOut()
             }
         } catch (err) {
             console.error('[Auth] Error during signOut:', err)
         } finally {
-            // 3. Clear all local state regardless of error
             setUser(null)
             setSession(null)
 
-            // 4. Clear workspace cache and recovery bridge
             localStorage.removeItem('asaas_workspace_cache')
-            localStorage.removeItem('asaas_session_recovery')
+            clearRecovery()
 
             console.log('[Auth] Sign out complete')
         }
@@ -344,7 +417,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const refreshUser = async () => {
         if (!isSupabaseConfigured) return
 
-        // Force a session refresh to get the latest token with updated metadata
         const { data: { session }, error } = await supabase.auth.refreshSession()
 
         if (error) {
@@ -353,37 +425,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
 
         if (session?.user) {
-            // Update state with new session and user
             setSession(session)
-
             const parsedUser = parseUserFromSupabase(session.user)
-
-            // Fetch latest profile and workspace data from DB
-            if (parsedUser.workspaceId) {
-                const [wsResult, profileResult] = await Promise.all([
-                    supabase
-                        .from('workspaces')
-                        .select('code, name, is_configured')
-                        .eq('id', parsedUser.workspaceId)
-                        .single(),
-                    supabase
-                        .from('profiles')
-                        .select('profile_url')
-                        .eq('id', parsedUser.id)
-                        .single()
-                ])
-
-                if (wsResult.data) {
-                    parsedUser.workspaceCode = wsResult.data.code
-                    parsedUser.workspaceName = wsResult.data.name
-                    parsedUser.isConfigured = wsResult.data.is_configured
-                }
-                if (profileResult.data?.profile_url) {
-                    parsedUser.profileUrl = profileResult.data.profile_url
-                }
-            }
-
-            setUser(parsedUser)
+            const enriched = await enrichUser(parsedUser)
+            setUser(enriched)
         }
     }
 

@@ -1,10 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '@/local-db/database'
-import { useOnlineStatus } from './useOnlineStatus'
+import { useNetworkStatus } from '@/hooks/useNetworkStatus'
 import { useAuth } from '@/auth/AuthContext'
 import { fullSync, type SyncState } from './syncEngine'
 import { isSupabaseConfigured } from '@/auth/supabase'
+import { connectionManager } from '@/lib/connectionManager'
+import { toast } from '@/ui/components/use-toast'
 
 const LAST_SYNC_KEY = 'asaas_last_sync_time'
 
@@ -28,7 +30,7 @@ export function useSyncStatus(): UseSyncStatusResult {
         pulled: number
     } | null>(null)
 
-    const { isOnline } = useOnlineStatus()
+    const isOnline = useNetworkStatus()
     const { user, isAuthenticated } = useAuth()
     const syncInProgress = useRef(false)
     const lastSyncTimeRef = useRef(lastSyncTime)
@@ -41,7 +43,7 @@ export function useSyncStatus(): UseSyncStatusResult {
     // Get pending sync count from offline_mutations
     const pendingCount = useLiveQuery(() => db.offline_mutations.where('status').equals('pending').count(), []) ?? 0
 
-    // Perform sync (now manual mostly)
+    // Perform sync
     const sync = useCallback(async () => {
         if (!isSupabaseConfigured || !isAuthenticated || !user || syncInProgress.current) {
             return
@@ -69,9 +71,6 @@ export function useSyncStatus(): UseSyncStatusResult {
                 pulled: result.pulled
             })
 
-            // If we have failed items, we are effectively still in "error" state regarding those items,
-            // but the sync process itself finished. 
-            // We set 'idle' if successful, 'error' if any errors occurred.
             setSyncState(result.success ? 'idle' : 'error')
         } catch (error) {
             console.error('[SyncHook] UNEXPECTED SYNC ERROR:', error)
@@ -79,9 +78,69 @@ export function useSyncStatus(): UseSyncStatusResult {
         } finally {
             syncInProgress.current = false
         }
-    }, [isOnline, isAuthenticated, user]) // Removed lastSyncTime from deps
+    }, [isOnline, isAuthenticated, user])
 
-    // Manual Sync System: No auto-syncing on interval or pending count changes.
+    // ───────────────────────────────────────────────────────
+    // RESILIENCE: Auto-sync on reconnect and wake
+    // ───────────────────────────────────────────────────────
+    useEffect(() => {
+        if (!isSupabaseConfigured || !isAuthenticated || !user) return
+
+        let retryCount = 0
+        let retryTimer: ReturnType<typeof setTimeout> | null = null
+        const MAX_RETRIES = 3
+        const RETRY_DELAYS = [5000, 15000, 30000] // exponential-ish backoff
+
+        const attemptAutoSync = async (reason: string) => {
+            if (syncInProgress.current || !isOnline) return
+
+            // Check if there are pending mutations
+            const pending = await db.offline_mutations.where('status').equals('pending').count()
+
+            if (pending === 0) {
+                // Still do a pull-only sync if last sync was > 10 min ago
+                const lastSync = lastSyncTimeRef.current
+                if (lastSync) {
+                    const timeSinceSync = Date.now() - new Date(lastSync).getTime()
+                    if (timeSinceSync < 10 * 60 * 1000) return // <10 min, skip
+                }
+            }
+
+            console.log(`[SyncHook] Auto-sync triggered: ${reason} (pending: ${pending})`)
+
+            toast({
+                title: "Syncing your changes...",
+                description: pending > 0 ? `${pending} pending change(s) will be synced.` : "Checking for updates.",
+                variant: "default",
+            })
+
+            try {
+                await sync()
+                retryCount = 0 // reset on success
+            } catch {
+                retryCount++
+                if (retryCount <= MAX_RETRIES) {
+                    const delay = RETRY_DELAYS[retryCount - 1] || 30000
+                    console.log(`[SyncHook] Auto-sync retry ${retryCount}/${MAX_RETRIES} in ${delay / 1000}s`)
+                    retryTimer = setTimeout(() => attemptAutoSync('retry'), delay)
+                }
+            }
+        }
+
+        const unsubscribe = connectionManager.subscribe((event) => {
+            if (event === 'online') {
+                // Delay to let network stabilize
+                retryTimer = setTimeout(() => attemptAutoSync('reconnected'), 3000)
+            } else if (event === 'wake') {
+                attemptAutoSync('wake')
+            }
+        })
+
+        return () => {
+            unsubscribe()
+            if (retryTimer) clearTimeout(retryTimer)
+        }
+    }, [isAuthenticated, user, isOnline, sync])
 
     return {
         syncState,
