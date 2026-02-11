@@ -16,7 +16,5 @@ export function getNovuSubscriberId(supabaseUserId: string | undefined): string 
 export const novuConfig = {
     applicationIdentifier: NOVU_APP_ID,
     apiUrl: NOVU_API_URL,
-    // Keep backendUrl for backward compatibility (deprecated in Novu SDK).
-    backendUrl: NOVU_API_URL,
     socketUrl: NOVU_SOCKET_URL,
 };

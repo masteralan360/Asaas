@@ -1,13 +1,112 @@
-import { useMemo } from 'react';
+import { useMemo, useEffect, useRef, useCallback } from 'react';
 import { Inbox, NovuProvider } from '@novu/react';
+import { useCounts, useNotifications } from '@novu/react/hooks';
 import { useAuth } from '@/auth';
 import { novuConfig, getNovuSubscriberId } from '@/auth/novu';
 import { Bell } from 'lucide-react';
 import { useTheme } from './theme-provider';
 import { useTranslation } from 'react-i18next';
+import { toast } from '@/ui/components/use-toast';
+
+function playNotificationSound() {
+    try {
+        const ctx = new AudioContext();
+        const now = ctx.currentTime;
+
+        const osc1 = ctx.createOscillator();
+        const gain1 = ctx.createGain();
+        osc1.type = 'sine';
+        osc1.frequency.setValueAtTime(830, now);
+        gain1.gain.setValueAtTime(0.15, now);
+        gain1.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+        osc1.connect(gain1).connect(ctx.destination);
+        osc1.start(now);
+        osc1.stop(now + 0.15);
+
+        const osc2 = ctx.createOscillator();
+        const gain2 = ctx.createGain();
+        osc2.type = 'sine';
+        osc2.frequency.setValueAtTime(1050, now + 0.12);
+        gain2.gain.setValueAtTime(0.001, now);
+        gain2.gain.setValueAtTime(0.15, now + 0.12);
+        gain2.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+        osc2.connect(gain2).connect(ctx.destination);
+        osc2.start(now + 0.12);
+        osc2.stop(now + 0.3);
+
+        setTimeout(() => ctx.close(), 500);
+    } catch {
+        // Audio not available
+    }
+}
+
+function InboxWithBadge({ appearance, tabs }: {
+    appearance: Record<string, unknown>;
+    tabs: { label: string; filter: Record<string, unknown> }[];
+}) {
+    const { t } = useTranslation();
+    const { counts } = useCounts({ filters: [{ read: false }] });
+    const { notifications } = useNotifications({ read: false });
+
+    const unreadCount = counts?.[0]?.count ?? 0;
+    const alertedIdsRef = useRef<Set<string>>(new Set());
+    const initialLoadRef = useRef(true);
+
+    const showNotificationToast = useCallback(() => {
+        playNotificationSound();
+        toast({
+            title: t('notifications.newNotificationTitle'),
+            description: t('notifications.newNotification'),
+            duration: 4000,
+        });
+    }, [t]);
+
+    useEffect(() => {
+        if (!notifications?.length) return;
+
+        // On first load, record all existing IDs without alerting
+        if (initialLoadRef.current) {
+            for (const n of notifications) {
+                alertedIdsRef.current.add(n.id);
+            }
+            initialLoadRef.current = false;
+            return;
+        }
+
+        // Check for genuinely new notification IDs
+        let hasNew = false;
+        for (const n of notifications) {
+            if (!alertedIdsRef.current.has(n.id)) {
+                alertedIdsRef.current.add(n.id);
+                hasNew = true;
+            }
+        }
+
+        if (hasNew) {
+            showNotificationToast();
+        }
+    }, [notifications, showNotificationToast]);
+
+    return (
+        <Inbox
+            appearance={appearance}
+            tabs={tabs}
+            renderBell={() => (
+                <button className="relative hover:bg-secondary rounded-md transition-colors text-muted-foreground hover:text-foreground cursor-pointer mr-1 p-1.5">
+                    <Bell className="w-4 h-4 transition-transform active:scale-90" />
+                    {unreadCount > 0 && (
+                        <span className="absolute -top-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white border-2 border-background animate-pop-in shadow-lg">
+                            {unreadCount > 9 ? '9+' : unreadCount}
+                        </span>
+                    )}
+                </button>
+            )}
+        />
+    );
+}
 
 export function NotificationCenter() {
-    const { user } = useAuth();
+    const { user, isLoading } = useAuth();
     const { theme, style } = useTheme();
     const { t, i18n } = useTranslation();
     const subscriberId = getNovuSubscriberId(user?.id);
@@ -39,8 +138,34 @@ export function NotificationCenter() {
         { label: t('notifications.tabs.user'), filter: { tags: ['user'] } }
     ]), [t, i18n.language]);
 
-    if (!novuConfig.applicationIdentifier || !subscriberId) {
-        return null;
+    if (isLoading) {
+        return (
+            <button className="relative p-2 rounded-md text-muted-foreground animate-pulse">
+                <Bell className="w-4 h-4" />
+            </button>
+        );
+    }
+
+    if (!novuConfig.applicationIdentifier) {
+        return (
+            <button
+                className="relative hover:bg-secondary rounded-md transition-colors text-muted-foreground hover:text-foreground cursor-pointer mr-1 opacity-50"
+                title="Novu App ID not configured"
+            >
+                <Bell className="w-4 h-4" />
+            </button>
+        );
+    }
+
+    if (!subscriberId) {
+        return (
+            <button
+                className="relative hover:bg-secondary rounded-md transition-colors text-muted-foreground hover:text-foreground cursor-pointer mr-1 opacity-50"
+                title="Waiting for user session..."
+            >
+                <Bell className="w-4 h-4" />
+            </button>
+        );
     }
 
     return (
@@ -48,26 +173,9 @@ export function NotificationCenter() {
             subscriberId={subscriberId}
             applicationIdentifier={novuConfig.applicationIdentifier}
             apiUrl={novuConfig.apiUrl}
-            backendUrl={novuConfig.backendUrl}
             socketUrl={novuConfig.socketUrl}
         >
-            <Inbox
-                appearance={appearance}
-                tabs={tabs}
-                renderBell={(unreadCount) => {
-                    const count = typeof unreadCount === 'number' ? unreadCount : 0;
-                    return (
-                        <button className="relative hover:bg-secondary rounded-md transition-colors text-muted-foreground hover:text-foreground cursor-pointer mr-1">
-                            <Bell className="w-4 h-4 transition-transform active:scale-90" />
-                            {count > 0 && (
-                                <span className="absolute -top-0.5 -right-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white border-2 border-background animate-pop-in shadow-lg">
-                                    {count > 9 ? '9+' : count}
-                                </span>
-                            )}
-                        </button>
-                    );
-                }}
-            />
+            <InboxWithBadge appearance={appearance} tabs={tabs} />
         </NovuProvider>
     );
 }

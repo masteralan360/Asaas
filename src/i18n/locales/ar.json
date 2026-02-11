@@ -10,7 +10,9 @@
             "all": "الكل",
             "workspace": "مساحة العمل",
             "user": "المستخدم"
-        }
+        },
+        "newNotification": "لديك إشعار جديد",
+        "newNotificationTitle": "إشعار جديد"
     },
     "common": {
         "loading": "جاري التحميل...",

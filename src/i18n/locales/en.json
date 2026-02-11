@@ -10,7 +10,9 @@
             "all": "All",
             "workspace": "Workspace",
             "user": "User"
-        }
+        },
+        "newNotification": "You have a new notification",
+        "newNotificationTitle": "New Notification"
     },
     "common": {
         "loading": "Loading...",
@@ -424,7 +426,8 @@
         "totalOrders": "Total Orders",
         "allStocked": "All products are well stocked",
         "noPendingInvoices": "No pending invoices",
-        "dailyTrends": "Daily Trends"
+        "dailyTrends": "Daily Trends",
+        "noInvoices": "No Invoices"
     },
     "settings": {
         "title": "Settings",
