@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { FileSpreadsheet, Download, X, Loader2 } from 'lucide-react'
 import Spreadsheet from "react-spreadsheet"
 import { cn } from '@/lib/utils'
+import { useWorkspace } from '@/workspace'
 import {
     Dialog,
     DialogContent,
@@ -32,6 +33,7 @@ export function ExportPreviewModal({
     type = 'sales'
 }: ExportPreviewModalProps) {
     const { t } = useTranslation()
+    const { activeWorkspace } = useWorkspace()
     const [isExporting, setIsExporting] = useState(false)
     const [isLoading, setIsLoading] = useState(true)
     const [data, setData] = useState<any[]>([])
@@ -59,7 +61,15 @@ export function ExportPreviewModal({
 
             // Apply date range filters
             const now = new Date()
-            const { dateRange, customDates, selectedCashier } = filters!
+            const { dateRange, customDates, selectedCashier } = filters || {
+                dateRange: 'today',
+                customDates: { start: null, end: null },
+                selectedCashier: 'all'
+            }
+
+            if (activeWorkspace?.id) {
+                query = query.eq('workspace_id', activeWorkspace.id)
+            }
 
             if (dateRange === 'today') {
                 const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0).toISOString()
@@ -102,16 +112,33 @@ export function ExportPreviewModal({
                 }
             }
 
-            const formattedSales = (salesData || []).map((sale: any) => ({
-                ...sale,
-                sequenceId: sale.sequence_id,
-                cashier_name: profilesMap[sale.cashier_id] || 'Staff',
-                items: sale.items?.map((item: any) => ({
-                    ...item,
-                    product_name: item.product?.name || 'Unknown Product',
-                    product_sku: item.product?.sku || ''
-                }))
-            }))
+            const formattedSales = (salesData || []).map((sale: any) => {
+                const saleRevenue = sale.total_amount || 0
+                const saleCost = (sale.items || []).reduce((acc: number, item: any) => {
+                    const costPrice = item.cost_price || 0
+                    const quantity = item.quantity || 0
+                    const returnedQuantity = item.returned_quantity || 0
+                    const netQuantity = Math.max(0, quantity - (item.is_returned ? quantity : returnedQuantity))
+                    return acc + (costPrice * netQuantity)
+                }, 0)
+
+                return {
+                    ...sale,
+                    sequenceId: sale.sequence_id,
+                    cashier_name: profilesMap[sale.cashier_id] || 'Staff',
+                    revenue: saleRevenue,
+                    cost: saleCost,
+                    profit: saleRevenue - saleCost,
+                    margin: saleRevenue > 0 ? ((saleRevenue - saleCost) / saleRevenue) * 100 : 0,
+                    date: sale.created_at, // Map for mapRevenueForExport
+                    cashier: profilesMap[sale.cashier_id] || 'Staff', // Map for mapRevenueForExport
+                    items: sale.items?.map((item: any) => ({
+                        ...item,
+                        product_name: item.product?.name || 'Unknown Product',
+                        product_sku: item.product?.sku || ''
+                    }))
+                }
+            })
 
             setData(formattedSales)
 

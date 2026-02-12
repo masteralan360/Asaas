@@ -30,7 +30,8 @@ import {
     SalesOverviewModal,
     PeakTradingModal,
     ReturnsAnalysisModal,
-    PrintPreviewModal
+    PrintPreviewModal,
+    AppPagination
 } from '@/ui/components'
 import type { MetricType } from '@/ui/components/MetricDetailModal'
 import {
@@ -70,11 +71,14 @@ export function Revenue() {
     const [selectedSaleIds, setSelectedSaleIds] = useState<Set<string>>(new Set())
 
     const [isExportModalOpen, setIsExportModalOpen] = useState(false)
+    const [currentPage, setCurrentPage] = useState(1)
+    const itemsPerPage = 25
     const listRef = useRef<HTMLDivElement>(null)
 
     // Clear selection when date filters change
     useEffect(() => {
         setSelectedSaleIds(new Set())
+        setCurrentPage(1)
     }, [dateRange, customDates])
 
 
@@ -301,7 +305,7 @@ export function Revenue() {
 
         return {
             statsByCurrency,
-            saleStats: saleStats.slice(0, 50)
+            saleStats
         }
     }
 
@@ -373,6 +377,12 @@ export function Revenue() {
     const clearSelection = () => {
         setSelectedSaleIds(new Set())
     }
+
+    const paginatedSales = useMemo(() => {
+        const startIndex = (currentPage - 1) * itemsPerPage
+        return stats.saleStats.slice(startIndex, startIndex + itemsPerPage)
+    }, [stats.saleStats, currentPage])
+
 
     // Only show global loader on initial fetch
     if (isLoading && sales.length === 0) {
@@ -616,17 +626,23 @@ export function Revenue() {
                     {/* Sale Profitability Table */}
                     <Card>
                         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
-                            <CardTitle className="text-lg flex items-center gap-2 flex-wrap">
-                                <TrendingUp className="w-5 h-5 text-primary" />
-                                {t('revenue.listTitle') || 'Recent Sales Profit Analysis'}
-                                {getDateDisplay() && (
-                                    <span className="ml-2 px-2 py-0.5 text-xs font-semibold bg-primary/10 text-primary border border-primary/20 rounded-full">
-                                        {getDateDisplay()}
-                                    </span>
+                            <div className="flex flex-col gap-1">
+                                <CardTitle className="text-lg flex items-center gap-2 flex-wrap">
+                                    <TrendingUp className="w-5 h-5 text-primary" />
+                                    {t('revenue.listTitle') || 'Recent Sales Profit Analysis'}
+                                    {getDateDisplay() && (
+                                        <span className="ml-2 px-2 py-0.5 text-xs font-semibold bg-primary/10 text-primary border border-primary/20 rounded-full">
+                                            {getDateDisplay()}
+                                        </span>
+                                    )}
+                                </CardTitle>
+                                {stats.saleStats.length > 0 && (
+                                    <p className="text-[10px] text-muted-foreground font-black uppercase tracking-[0.2em] opacity-70">
+                                        {t('sales.pagination.total', { count: stats.saleStats.length }) || `${stats.saleStats.length} Sales Found`}
+                                    </p>
                                 )}
-                                {/* Selection Summary - styled like ExchangeRateIndicator */}
                                 {selectionSummary && (
-                                    <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 transition-all animate-in fade-in slide-in-from-left-2 duration-200">
+                                    <div className="flex items-center gap-2 mt-2 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 transition-all animate-in fade-in slide-in-from-left-2 duration-200 w-fit">
                                         <Check className="w-4 h-4" />
                                         <div className="text-xs font-bold font-mono flex items-center gap-3">
                                             <span>{selectionSummary.count} {t('common.selected') || 'selected'}</span>
@@ -634,36 +650,38 @@ export function Revenue() {
                                             {Object.entries(selectionSummary.byCurrency).map(([currency, data], idx) => (
                                                 <div key={currency} className="flex items-center gap-3">
                                                     {idx > 0 && <span className="w-px h-3 bg-emerald-500/20" />}
-                                                    <span>{t('revenue.table.revenue') || 'Revenue'}: {formatCurrency(data.revenue, currency, features.iqd_display_preference)}</span>
+                                                    <span>{t('revenue.table.revenue') || 'Rev'}: {formatCurrency(data.revenue, currency, features.iqd_display_preference)}</span>
                                                     <span className="w-px h-3 bg-emerald-500/20" />
-                                                    <span>{t('revenue.table.cost') || 'Cost'}: {formatCurrency(data.cost, currency, features.iqd_display_preference)}</span>
-                                                    <span className="w-px h-3 bg-emerald-500/20" />
-                                                    <span>{t('revenue.table.profit') || 'Profit'}: {formatCurrency(data.profit, currency, features.iqd_display_preference)}</span>
+                                                    <span>{t('revenue.table.profit') || 'Prof'}: {formatCurrency(data.profit, currency, features.iqd_display_preference)}</span>
                                                 </div>
                                             ))}
                                         </div>
-                                        <button
-                                            onClick={clearSelection}
-                                            className="p-0.5 rounded hover:bg-emerald-500/20 transition-colors"
-                                        >
+                                        <button onClick={clearSelection} className="p-0.5 rounded hover:bg-emerald-500/20 transition-colors">
                                             <X className="w-3.5 h-3.5" />
                                         </button>
                                     </div>
                                 )}
-                            </CardTitle>
-                            {user?.role === 'admin' && (
+                            </div>
+                            <div className="flex items-center gap-4">
+                                <AppPagination
+                                    currentPage={currentPage}
+                                    totalCount={stats.saleStats.length}
+                                    pageSize={itemsPerPage}
+                                    onPageChange={setCurrentPage}
+                                    className="w-auto"
+                                />
                                 <div className="flex items-center gap-2">
                                     <Button
                                         onClick={() => setIsExportModalOpen(true)}
                                         disabled={sales.length === 0}
                                         className={cn(
-                                            "h-8 px-4 rounded-full font-black transition-all flex gap-3 items-center group relative overflow-hidden",
+                                            "h-10 px-6 rounded-full font-black transition-all flex gap-3 items-center group relative overflow-hidden",
                                             "bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-100 dark:border-emerald-500/20 text-emerald-700 dark:text-emerald-400",
                                             "hover:bg-emerald-100 dark:hover:bg-emerald-500/20 hover:shadow-[0_0_20px_-5px_rgba(16,185,129,0.3)] hover:scale-[1.02] active:scale-95",
                                             "uppercase tracking-widest text-[10px]"
                                         )}
                                     >
-                                        <FileSpreadsheet className="w-3.5 h-3.5 transition-transform group-hover:rotate-12" />
+                                        <FileSpreadsheet className="w-4 h-4 transition-transform group-hover:rotate-12" />
                                         <span className="hidden sm:inline">
                                             {t('sales.export.button')}
                                         </span>
@@ -674,13 +692,13 @@ export function Revenue() {
                                         variant="outline"
                                         size="sm"
                                         onClick={handleOpenPrintPreview}
-                                        className="gap-2 h-8 text-xs bg-primary/5 hover:bg-primary/10 border-primary/20 text-primary transition-all duration-200"
+                                        className="gap-2 h-10 px-6 rounded-full font-black bg-primary/5 hover:bg-primary/10 border-primary/20 text-primary transition-all duration-200 uppercase tracking-widest text-[10px]"
                                     >
-                                        <Printer className="w-3.5 h-3.5" />
-                                        {t('revenue.printList') || 'Print Revenue List'}
+                                        <Printer className="w-4 h-4" />
+                                        <span className="hidden lg:inline">{t('revenue.printList') || 'Print List'}</span>
                                     </Button>
                                 </div>
-                            )}
+                            </div>
                         </CardHeader>
                         <CardContent ref={listRef} className="print:p-0 [print-color-adjust:exact] -webkit-print-color-adjust:exact">
                             {isMobile() ? (
@@ -814,7 +832,7 @@ export function Revenue() {
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
-                                        {stats.saleStats.map((sale, idx) => {
+                                        {paginatedSales.map((sale, idx) => {
                                             const originalSale = sales.find(s => s.id === sale.id)
                                             const isFullyReturned = originalSale ? (originalSale.is_returned || (originalSale.items && originalSale.items.length > 0 && originalSale.items.every((item: any) =>
                                                 item.is_returned || (item.returned_quantity || 0) >= item.quantity
@@ -1044,8 +1062,12 @@ export function Revenue() {
             <ExportPreviewModal
                 isOpen={isExportModalOpen}
                 onClose={() => setIsExportModalOpen(false)}
-                data={stats.saleStats}
                 type="revenue"
+                filters={{
+                    dateRange,
+                    customDates,
+                    selectedCashier: 'all'
+                }}
             />
         </TooltipProvider>
     )

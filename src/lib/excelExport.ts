@@ -66,6 +66,6 @@ export const mapRevenueForExport = (saleStats: any[], t: any) => {
         [t('revenue.table.revenue') || 'Revenue']: sale.revenue,
         [t('revenue.table.cost') || 'Cost']: sale.cost,
         [t('revenue.table.profit') || 'Profit']: sale.profit,
-        [t('revenue.table.margin') || 'Margin (%)']: `${sale.margin.toFixed(2)}%`
+        [t('revenue.table.margin') || 'Margin (%)']: `${(sale.margin ?? 0).toFixed(2)}%`
     }));
 };
