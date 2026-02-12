@@ -9,11 +9,15 @@ import {
     SaleReceiptBase
 } from '@/ui/components'
 import { CheckCircle2, Printer, Coins } from 'lucide-react'
-import { formatCurrency } from '@/lib/utils'
+import { formatCurrency, cn } from '@/lib/utils'
 import { triggerInvoiceSync } from '@/services/invoiceSyncService'
 import { printService } from '@/services/printService'
 import { useAuth } from '@/auth'
 import { useWorkspace, type WorkspaceFeatures } from '@/workspace'
+import { Textarea } from '@/ui/components/textarea'
+import { supabase } from '@/auth/supabase'
+import { db } from '@/local-db'
+import { useDebounce } from '@/lib/hooks'
 
 interface CheckoutSuccessModalProps {
     isOpen: boolean
@@ -33,7 +37,10 @@ export function CheckoutSuccessModal({
     const { workspaceName, activeWorkspace } = useWorkspace()
 
     const [timeLeft, setTimeLeft] = useState(15)
+    const [isPaused, setIsPaused] = useState(false)
     const [isProcessing, setIsProcessing] = useState(false)
+    const [note, setNote] = useState(saleData?.notes || '')
+    const debouncedNote = useDebounce(note, 1000)
     const printRef = useRef<HTMLDivElement>(null)
 
     const handlePrint = useReactToPrint({
@@ -47,11 +54,13 @@ export function CheckoutSuccessModal({
     useEffect(() => {
         if (!isOpen) {
             setTimeLeft(15)
+            setIsPaused(false)
             return
         }
 
         const timer = setInterval(() => {
             setTimeLeft((prev) => {
+                if (isPaused) return prev
                 if (prev <= 1) {
                     clearInterval(timer)
                     onClose()
@@ -62,7 +71,33 @@ export function CheckoutSuccessModal({
         }, 1000)
 
         return () => clearInterval(timer)
-    }, [isOpen, onClose])
+    }, [isOpen, onClose, isPaused])
+
+    // Auto-save note
+    useEffect(() => {
+        const saveNote = async () => {
+            if (!saleData?.id || debouncedNote === (saleData.notes || '')) return
+
+            try {
+                // Update Local DB
+                await db.sales.update(saleData.id, { notes: debouncedNote })
+
+                // Update Supabase
+                const { error } = await supabase
+                    .from('sales')
+                    .update({ notes: debouncedNote })
+                    .eq('id', saleData.id)
+
+                if (error) throw error
+
+                console.log('[CheckoutSuccessModal] Note auto-saved:', debouncedNote)
+            } catch (err) {
+                console.error('[CheckoutSuccessModal] Failed to auto-save note:', err)
+            }
+        }
+
+        saveNote()
+    }, [debouncedNote, saleData?.id])
 
     const handlePrintAndUpload = async () => {
         if (isProcessing || !saleData || !user) {
@@ -108,7 +143,10 @@ export function CheckoutSuccessModal({
 
     return (
         <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-            <DialogContent className="max-w-sm rounded-[2.5rem] p-0 overflow-hidden border-none shadow-2xl animate-in fade-in zoom-in duration-300">
+            <DialogContent
+                onOpenAutoFocus={(e) => e.preventDefault()}
+                className="max-w-sm rounded-[2.5rem] p-0 overflow-hidden border-none shadow-2xl animate-in fade-in zoom-in duration-300"
+            >
                 <DialogTitle className="sr-only">
                     {t('pos.saleSuccessful') || 'Sale Successful'}
                 </DialogTitle>
@@ -146,20 +184,36 @@ export function CheckoutSuccessModal({
                         </div>
                     </div>
 
-                    {/* Requirement 2: Space for Change Due logic */}
-                    <div className="bg-muted/30 rounded-3xl p-6 flex flex-col gap-4 border border-border/50">
-                        <div className="flex items-center justify-between group opacity-40">
-                            <div className="flex items-center gap-3">
-                                <div className="p-2 bg-background rounded-xl border border-border shadow-sm">
-                                    <Coins className="w-4 h-4 text-muted-foreground" />
+                    {/* Note Section (Replaces Change Due) */}
+                    <div className={cn(
+                        "bg-muted/30 rounded-3xl p-4 flex flex-col gap-2 border transition-all duration-300 group",
+                        isPaused ? "border-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.1)]" : "border-border/50"
+                    )}>
+                        <div className="flex items-center justify-between px-1">
+                            <div className="flex items-center gap-2">
+                                <div className="p-1.5 bg-background rounded-lg border border-border shadow-sm">
+                                    <Coins className="w-3.5 h-3.5 text-muted-foreground" />
                                 </div>
-                                <span className="font-bold text-sm text-muted-foreground">Change Due</span>
+                                <span className="font-bold text-xs text-muted-foreground uppercase tracking-tight">
+                                    {t('sales.notes.title') || 'Sale Note'}
+                                </span>
                             </div>
-                            <span className="font-black text-lg font-mono">--</span>
+
+                            {isPaused && (
+                                <div className="flex items-center gap-1.5 bg-emerald-500/10 text-emerald-600 px-2 py-0.5 rounded-full border border-emerald-500/20 animate-in fade-in slide-in-from-right-2">
+                                    <div className="w-1 h-1 bg-emerald-500 rounded-full animate-pulse" />
+                                    <span className="text-[9px] font-black uppercase tracking-widest leading-none">{t('sales.notes.paused')}</span>
+                                </div>
+                            )}
                         </div>
-                        <p className="text-[10px] text-center text-muted-foreground font-medium uppercase tracking-tighter opacity-30">
-                            Cash payment details will appear here
-                        </p>
+
+                        <Textarea
+                            placeholder={t('sales.notes.placeholder') || "Add a private note to this sale..."}
+                            value={note}
+                            onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setNote(e.target.value)}
+                            onFocus={() => setIsPaused(true)}
+                            className="bg-background/50 border-none shadow-none resize-none min-h-[80px] rounded-2xl text-sm focus-visible:ring-1 focus-visible:ring-emerald-500/20 placeholder:text-muted-foreground/30 font-medium"
+                        />
                     </div>
 
                     {/* Action Buttons */}

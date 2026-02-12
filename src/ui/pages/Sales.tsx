@@ -37,7 +37,8 @@ import {
     PrintPreviewModal,
     SalesNoteModal,
     ExportPreviewModal,
-    useToast
+    useToast,
+    AppPagination
 } from '@/ui/components'
 import { SaleItem } from '@/types'
 import {
@@ -70,6 +71,9 @@ export function Sales() {
     const [availableCashiers, setAvailableCashiers] = useState<Array<{ id: string; name: string }>>([])
     const [deleteModalOpen, setDeleteModalOpen] = useState(false)
     const [saleToDelete, setSaleToDelete] = useState<Sale | null>(null)
+    const [currentPage, setCurrentPage] = useState(1)
+    const [totalCount, setTotalCount] = useState(0)
+    const pageSize = 20
 
     const getEffectiveTotal = (sale: Sale) => {
         // If the sale itself is marked returned
@@ -529,7 +533,7 @@ export function Sales() {
                         *,
                         product:product_id(name, sku, can_be_returned, return_rules)
                     )
-                `)
+                `, { count: 'exact' })
 
             // Apply date range filters
             const now = new Date()
@@ -552,9 +556,15 @@ export function Sales() {
                 query = query.eq('cashier_id', selectedCashier)
             }
 
-            const { data, error } = await query.order('created_at', { ascending: false })
+            // Apply pagination
+            const from = (currentPage - 1) * pageSize
+            const to = from + pageSize - 1
+            query = query.range(from, to)
+
+            const { data, count, error } = await query.order('created_at', { ascending: false })
 
             if (error) throw error
+            if (count !== null) setTotalCount(count)
 
             // Fetch profiles for cashiers
             const cashierIds = Array.from(new Set((data || []).map((s: any) => s.cashier_id).filter(Boolean)))
@@ -598,7 +608,12 @@ export function Sales() {
             fetchSales()
             fetchCashiers()
         }
-    }, [user?.workspaceId, dateRange, customDates, selectedCashier])
+    }, [user?.workspaceId, dateRange, customDates, selectedCashier, currentPage])
+
+    // Reset to page 1 when filters change
+    useEffect(() => {
+        setCurrentPage(1)
+    }, [dateRange, customDates, selectedCashier])
 
     return (
         <div className="space-y-6">
@@ -654,23 +669,39 @@ export function Sales() {
 
             <Card className="overflow-hidden border-border/50 bg-card/50 backdrop-blur-sm">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
-                    <CardTitle>{t('sales.listTitle') || 'Recent Sales'}</CardTitle>
-                    <Button
-                        onClick={() => setIsExportModalOpen(true)}
-                        disabled={sales.length === 0}
-                        className={cn(
-                            "h-10 px-6 rounded-full font-black transition-all flex gap-3 items-center group relative overflow-hidden",
-                            "bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-100 dark:border-emerald-500/20 text-emerald-700 dark:text-emerald-400",
-                            "hover:bg-emerald-100 dark:hover:bg-emerald-500/20 hover:shadow-[0_0_20px_-5px_rgba(16,185,129,0.3)] hover:scale-[1.02] active:scale-95",
-                            "uppercase tracking-widest text-[10px]"
+                    <div className="flex flex-col gap-1">
+                        <CardTitle>{t('sales.listTitle') || 'Recent Sales'}</CardTitle>
+                        {totalCount > 0 && (
+                            <p className="text-[10px] text-muted-foreground font-black uppercase tracking-[0.2em] opacity-70">
+                                {t('sales.pagination.total', { count: totalCount }) || `${totalCount} Sales Found`}
+                            </p>
                         )}
-                    >
-                        <FileSpreadsheet className="w-4 h-4 transition-transform group-hover:rotate-12" />
-                        <span className="hidden sm:inline">
-                            {t('sales.export.button')}
-                        </span>
-                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 dark:via-white/5 to-transparent -translate-x-full group-hover:animate-shimmer" />
-                    </Button>
+                    </div>
+                    <div className="flex items-center gap-4">
+                        <AppPagination
+                            currentPage={currentPage}
+                            totalCount={totalCount}
+                            pageSize={pageSize}
+                            onPageChange={setCurrentPage}
+                            className="w-auto"
+                        />
+                        <Button
+                            onClick={() => setIsExportModalOpen(true)}
+                            disabled={sales.length === 0}
+                            className={cn(
+                                "h-10 px-6 rounded-full font-black transition-all flex gap-3 items-center group relative overflow-hidden",
+                                "bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-100 dark:border-emerald-500/20 text-emerald-700 dark:text-emerald-400",
+                                "hover:bg-emerald-100 dark:hover:bg-emerald-500/20 hover:shadow-[0_0_20px_-5px_rgba(16,185,129,0.3)] hover:scale-[1.02] active:scale-95",
+                                "uppercase tracking-widest text-[10px]"
+                            )}
+                        >
+                            <FileSpreadsheet className="w-4 h-4 transition-transform group-hover:rotate-12" />
+                            <span className="hidden sm:inline">
+                                {t('sales.export.button')}
+                            </span>
+                            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 dark:via-white/5 to-transparent -translate-x-full group-hover:animate-shimmer" />
+                        </Button>
+                    </div>
                 </CardHeader>
                 <CardContent>
                     {isLoading ? (
@@ -1011,7 +1042,11 @@ export function Sales() {
             <ExportPreviewModal
                 isOpen={isExportModalOpen}
                 onClose={() => setIsExportModalOpen(false)}
-                data={sales}
+                filters={{
+                    dateRange,
+                    customDates,
+                    selectedCashier
+                }}
             />
 
             <PrintSelectionModal

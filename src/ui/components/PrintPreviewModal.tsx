@@ -510,6 +510,7 @@ export function PrintPreviewModal({
                                     data={pdfData}
                                     features={features}
                                     workspaceId={workspaceId || undefined}
+                                    workspaceName={workspaceName || workspaceId || 'Asaas'}
                                 />
                             )}
                         </div>

@@ -72,4 +72,14 @@ export { HeldSalesModal } from './pos/HeldSalesModal'
 export type { HeldSale } from './pos/HeldSalesModal'
 export { StorageSelector } from './pos/StorageSelector'
 export { CrossStorageWarningModal } from './pos/CrossStorageWarningModal'
+export {
+    Pagination,
+    PaginationContent,
+    PaginationEllipsis,
+    PaginationItem,
+    PaginationLink,
+    PaginationNext,
+    PaginationPrevious
+} from './ui/pagination'
+export { AppPagination } from './AppPagination'
 

@@ -9,10 +9,11 @@ interface A4InvoiceTemplateProps {
     data: UniversalInvoice
     features: any
     workspaceId?: string
+    workspaceName?: string
 }
 
 export const A4InvoiceTemplate = forwardRef<HTMLDivElement, A4InvoiceTemplateProps>(
-    ({ data, features, workspaceId: propWorkspaceId }, ref) => {
+    ({ data, features, workspaceId: propWorkspaceId, workspaceName }, ref) => {
         const { i18n } = useTranslation()
         const printLang = features?.print_lang && features.print_lang !== 'auto' ? features.print_lang : i18n.language
         const t = i18n.getFixedT(printLang)
@@ -58,13 +59,14 @@ export const A4InvoiceTemplate = forwardRef<HTMLDivElement, A4InvoiceTemplatePro
                 <div className="px-14 py-6">
                     <div className="flex justify-between items-start">
                         {/* Logo / Left */}
-                        <div className="w-1/3 flex justify-start">
-                            <div className="h-16 flex items-center w-full max-w-[200px]">
+                        <div className="w-1/3 flex flex-col justify-start items-start gap-1">
+                            {/* Logo container - max width constraint but allow height to fit */}
+                            <div className="flex items-start w-full max-w-[200px] mb-1">
                                 {features.logo_url ? (
                                     <img
                                         src={features.logo_url.startsWith('http') ? features.logo_url : platformService.convertFileSrc(features.logo_url)}
                                         alt="Workspace Logo"
-                                        className="max-h-16 max-w-full object-contain"
+                                        className="max-h-16 max-w-full object-contain object-left"
                                     />
                                 ) : (
                                     <div className="h-12 flex items-center bg-gray-100 border border-gray-200 justify-center w-48 text-gray-400 font-bold tracking-wider uppercase">
@@ -72,6 +74,13 @@ export const A4InvoiceTemplate = forwardRef<HTMLDivElement, A4InvoiceTemplatePro
                                     </div>
                                 )}
                             </div>
+
+                            {/* Workspace Name in Purple */}
+                            {workspaceName && (
+                                <h1 className="text-main font-bold text-xl leading-tight">
+                                    {workspaceName}
+                                </h1>
+                            )}
                         </div>
 
                         {/* QR Code / Center */}
@@ -91,11 +100,11 @@ export const A4InvoiceTemplate = forwardRef<HTMLDivElement, A4InvoiceTemplatePro
                         <div className={cn("w-1/3 flex flex-col items-end space-y-2", isRTL ? "text-left" : "text-right")}>
                             <div className="flex flex-col gap-1 border-r-4 border-main pr-4">
                                 <div>
-                                    <p className="whitespace-nowrap text-slate-400 text-xs uppercase font-semibold leading-tight">{t('invoice.date')}</p>
+                                    <p className={cn("whitespace-nowrap text-slate-400 text-xs font-semibold leading-tight", !isRTL && "uppercase")}>{t('invoice.date')}</p>
                                     <p className="whitespace-nowrap font-bold text-main text-sm leading-tight">{formatDateTime(data.created_at)}</p>
                                 </div>
                                 <div className="mt-1">
-                                    <p className="whitespace-nowrap text-slate-400 text-xs uppercase font-semibold leading-tight">{t('invoice.number')}</p>
+                                    <p className={cn("whitespace-nowrap text-slate-400 text-xs font-semibold leading-tight", !isRTL && "uppercase")}>{t('invoice.number')}</p>
                                     <p className="whitespace-nowrap font-bold text-main text-lg leading-tight">
                                         {data.invoiceid || `#${String(data.id).slice(0, 8)}`}
                                     </p>
@@ -151,7 +160,7 @@ export const A4InvoiceTemplate = forwardRef<HTMLDivElement, A4InvoiceTemplatePro
                                     <tr key={idx} className="text-neutral-700">
                                         <td className="border-b py-2 px-2 text-center font-bold">{item.quantity}</td>
                                         <td className="border-b py-2 px-2 font-bold text-start">{item.product_name}</td>
-                                        <td className="border-b py-2 px-2 text-sm text-neutral-500 truncate max-w-[200px] text-start">{item.product_sku || '-'}</td>
+                                        <td className="border-b py-2 px-2 text-sm text-neutral-500 truncate max-w-[200px] text-start"></td>
                                         <td className="border-b py-2 px-2 text-end">
                                             {formatCurrency(priceToShow, settlementCurrency, features.iqd_display_preference)}
                                         </td>
@@ -172,17 +181,16 @@ export const A4InvoiceTemplate = forwardRef<HTMLDivElement, A4InvoiceTemplatePro
                 < div className="px-14 pb-12 mt-auto" >
                     <div className="flex gap-8 items-start page-break-inside-avoid">
                         {/* Left: Notes & Terms */}
-                        <div className="flex-1 text-sm text-neutral-700 space-y-4 text-start">
+                        <div className="flex-1 text-sm text-neutral-700 space-y-6 text-start">
                             <div>
-                                <p className="text-main font-bold uppercase text-xs mb-1">{t('invoice.terms')}</p>
-                                <div className="border border-dashed border-gray-300 h-20 rounded bg-gray-50 flex items-center justify-center text-gray-400 text-xs italic">
-                                    (Terms text area)
+                                <p className={cn("text-main font-bold text-xs mb-3", !isRTL && "uppercase")}>{t('invoice.terms')}</p>
+                                <div className="border border-dashed border-gray-300 h-20 rounded">
                                 </div>
                             </div>
 
                             {data.exchange_rates && data.exchange_rates.length > 0 && (
                                 <div>
-                                    <p className="text-main font-bold uppercase text-xs mb-1">{t('invoice.exchangeRates')}</p>
+                                    <p className={cn("text-main font-bold text-xs mb-3", !isRTL && "uppercase")}>{t('invoice.exchangeRates')}</p>
                                     <div className="grid grid-cols-2 gap-2 text-xs">
                                         {data.exchange_rates.slice(0, 4).map((rate: any, i: number) => (
                                             <div key={i} className="flex justify-between bg-white px-2 py-1 rounded-full border border-gray-100 shadow-sm">
@@ -225,7 +233,7 @@ export const A4InvoiceTemplate = forwardRef<HTMLDivElement, A4InvoiceTemplatePro
 
                                     <tr>
                                         <td className="bg-main p-3 text-start">
-                                            <div className="whitespace-nowrap font-black text-white text-lg tracking-tighter uppercase">{t('invoice.total')}:</div>
+                                            <div className={cn("whitespace-nowrap font-black text-white text-lg", !isRTL && "tracking-tighter uppercase")}>{t('invoice.total')}:</div>
                                         </td>
                                         <td className="bg-main p-3 text-end">
                                             <div className="whitespace-nowrap font-bold text-white text-xl">

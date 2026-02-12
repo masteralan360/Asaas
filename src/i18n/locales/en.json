@@ -56,6 +56,11 @@
         "view": "View",
         "all": "All",
         "print": "Print",
+        "pagination": {
+            "previous": "Previous",
+            "next": "Next",
+            "more": "More pages"
+        },
         "messages": {
             "deleteConfirm": "Are you sure you want to delete this item?",
             "deleteSuccess": "Item deleted successfully",
@@ -513,6 +518,14 @@
             "mediaSyncComplete": "Media sync complete! {{count}} files queued.",
             "onlineRequired": "Internet connection is required for media sync."
         },
+        "branding": {
+            "title": "Workspace Branding",
+            "subtitle": "This logo and name will be displayed on the dashboard and printed receipts.",
+            "name": "Workspace Name",
+            "namePlaceholder": "Enter workspace name",
+            "logoSuccess": "Logo updated successfully",
+            "nameSuccess": "Workspace name updated"
+        },
         "pos": {
             "title": "POS Configuration",
             "hotkey": "SKU Shortcut Key",
@@ -712,7 +725,11 @@
             "button": "Excel Export",
             "previewTitle": "Export Preview",
             "recordsCount": "Records ready for export",
-            "downloadBtn": "Download Excel"
+            "downloadBtn": "Download Excel",
+            "preparingData": "Preparing data..."
+        },
+        "pagination": {
+            "total": "{{count}} Sales Found"
         },
         "notes": {
             "title": "Notes",
@@ -721,6 +738,7 @@
             "viewNote": "View Note",
             "editTitle": "Edit Note",
             "placeholder": "Enter note...",
+            "paused": "Timer Paused",
             "limit": "There is a limit of 250 characters for notes."
         },
         "print": {
@@ -728,6 +746,10 @@
             "a4": "Print A4",
             "receiptdesc": "80mm Thermal Receipt",
             "a4desc": "Detailed full-page A4"
+        },
+        "receipt": {
+            "thankYou": "Thank you for shopping with us!",
+            "keepRecord": "Please keep this receipt for your records."
         },
         "return": {
             "returnedMessage": "This sale has been returned",
@@ -760,10 +782,6 @@
         },
         "confirmDelete": "Delete Sale",
         "deleteWarning": "Deleting this sale will permanently remove the record and restore the items to inventory. This cannot be undone."
-    },
-    "receipt": {
-        "thankYou": "Thank you for shopping with us!",
-        "keepRecord": "Please keep this receipt for your records."
     },
     "categories": {
         "title": "Categories",

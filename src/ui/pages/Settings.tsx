@@ -2,7 +2,7 @@ import { useAuth } from '@/auth'
 import { supabase } from '@/auth/supabase'
 import { useSyncStatus, clearQueue } from '@/sync'
 import { db, clearDatabase } from '@/local-db'
-import { Card, CardContent, CardHeader, CardTitle, CardDescription, Button, Label, LanguageSwitcher, Input, CurrencySelector, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Tabs, TabsList, TabsTrigger, TabsContent, Switch, Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/ui/components'
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, Button, Label, LanguageSwitcher, Input, CurrencySelector, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Tabs, TabsList, TabsTrigger, TabsContent, Switch, Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, useToast } from '@/ui/components'
 import { useTranslation } from 'react-i18next'
 import { useWorkspace } from '@/workspace'
 import { Coins } from 'lucide-react'
@@ -24,7 +24,8 @@ export function Settings() {
     const { user, session, signOut, isSupabaseConfigured, updateUser } = useAuth()
     const { syncState, pendingCount, lastSyncTime, sync, isSyncing, isOnline } = useSyncStatus()
     const { theme, setTheme, style, setStyle } = useTheme()
-    const { features, updateSettings } = useWorkspace()
+    const { features, updateSettings, workspaceName } = useWorkspace()
+    const { toast } = useToast()
     const { t } = useTranslation()
     const { alerts, forceAlert } = useExchangeRate()
     const [copied, setCopied] = useState(false)
@@ -71,6 +72,13 @@ export function Settings() {
     }, [])
 
     const [updateStatus, setUpdateStatus] = useState<any>(null)
+    const [localWorkspaceName, setLocalWorkspaceName] = useState(workspaceName || '')
+
+    useEffect(() => {
+        if (workspaceName !== null) {
+            setLocalWorkspaceName(workspaceName)
+        }
+    }, [workspaceName])
 
     // Tauri updater doesn't use event listeners for status in the same way, logic is inside handleCheckForUpdates
 
@@ -1121,11 +1129,38 @@ export function Settings() {
                             {user?.role === 'admin' && (
                                 <div className="pt-6 border-t border-border/50 space-y-4">
                                     <div className="flex flex-col gap-1">
-                                        <Label className="text-sm font-bold uppercase tracking-wider text-muted-foreground">Workspace Branding</Label>
-                                        <p className="text-sm text-muted-foreground">This logo will be displayed on the dashboard and printed receipts.</p>
+                                        <Label className="text-sm font-bold uppercase tracking-wider text-muted-foreground">{t('settings.branding.title')}</Label>
+                                        <p className="text-sm text-muted-foreground">{t('settings.branding.subtitle')}</p>
                                     </div>
 
-                                    <div className="flex items-center gap-6">
+                                    <div className="space-y-4 max-w-sm">
+                                        <div className="space-y-2">
+                                            <Label className="text-xs text-slate-500 uppercase font-semibold">{t('settings.branding.name')}</Label>
+                                            <div className="flex gap-2">
+                                                <Input
+                                                    value={localWorkspaceName}
+                                                    onChange={(e) => setLocalWorkspaceName(e.target.value)}
+                                                    placeholder={t('settings.branding.namePlaceholder') || "Enter workspace name"}
+                                                    className="flex-1"
+                                                />
+                                                <Button
+                                                    size="sm"
+                                                    onClick={async () => {
+                                                        await updateSettings({ name: localWorkspaceName });
+                                                        toast({
+                                                            title: t('settings.branding.nameSuccess') || "Workspace name updated",
+                                                            duration: 3000
+                                                        });
+                                                    }}
+                                                    disabled={localWorkspaceName === workspaceName}
+                                                >
+                                                    {t('common.save') || "Save"}
+                                                </Button>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex items-center gap-6 pt-4">
                                         <div className="w-24 h-24 rounded-2xl bg-muted/50 border-2 border-dashed border-border flex items-center justify-center overflow-hidden relative group">
                                             {features.logo_url ? (
                                                 <img

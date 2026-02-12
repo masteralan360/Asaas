@@ -2,7 +2,7 @@
 import { forwardRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { UniversalInvoice } from '@/types'
-import { formatCurrency, formatDateTime, formatSnapshotTime } from '@/lib/utils'
+import { formatCurrency, formatDateTime, formatSnapshotTime, cn } from '@/lib/utils'
 import { platformService } from '@/services/platformService'
 import { useWorkspace } from '@/workspace'
 import { useAuth } from '@/auth'
@@ -74,29 +74,29 @@ export const SaleReceiptBase = forwardRef<HTMLDivElement, SaleReceiptBaseProps>(
                             )}
                         </div>
                     </div>
-                    <h1 className="text-2xl font-bold uppercase tracking-widest mb-4">
+                    <h1 className="text-2xl font-bold mb-4">
                         {workspaceName || 'Asaas'}
                     </h1>
                     <div className="flex justify-between items-start text-xs text-gray-600 mb-4 border-b border-gray-200 pb-4">
                         <div className="text-start space-y-1">
                             <div>
-                                <span className="font-semibold uppercase text-[10px] text-gray-400 block tracking-wider">{t('sales.date')}: </span>
+                                <span className={cn("font-semibold text-[10px] text-gray-400 block", !isRTL && "uppercase tracking-wider")}>{t('sales.date')}: </span>
                                 <span className="font-mono">{formatDateTime(data.created_at)}</span>
                             </div>
                             <div className="mt-2">
-                                <span className="font-semibold uppercase text-[10px] text-gray-400 block tracking-wider">{t('sales.id')}: </span>
+                                <span className={cn("font-semibold text-[10px] text-gray-400 block", !isRTL && "uppercase tracking-wider")}>{t('sales.id')}: </span>
                                 <span className="font-mono">{data.invoiceid}</span>
                             </div>
                         </div>
                         <div className="flex flex-col items-end space-y-2">
                             <div className="text-end space-y-2">
                                 <div>
-                                    <span className="font-semibold uppercase text-[10px] text-gray-400 block tracking-wider">{t('sales.cashier')}</span>
+                                    <span className={cn("font-semibold text-[10px] text-gray-400 block", !isRTL && "uppercase tracking-wider")}>{t('sales.cashier')}</span>
                                     <span className="font-medium">{data.cashier_name}</span>
                                 </div>
                                 {data.payment_method && (
                                     <div>
-                                        <span className="font-semibold uppercase text-[10px] text-gray-400 block tracking-wider">{t('pos.paymentMethod') || 'Payment Method'}</span>
+                                        <span className={cn("font-semibold text-[10px] text-gray-400 block", !isRTL && "uppercase tracking-wider")}>{t('pos.paymentMethod') || 'Payment Method'}</span>
                                         <span className="font-medium">
                                             {data.payment_method === 'cash' ? (t('pos.cash') || 'Cash') :
                                                 data.payment_method === 'fib' ? 'FIB' :
@@ -114,7 +114,7 @@ export const SaleReceiptBase = forwardRef<HTMLDivElement, SaleReceiptBaseProps>(
                     {/* Exchange Rates Section */}
                     {data.exchange_rates && data.exchange_rates.length > 0 && (
                         <div className="mb-6 text-start">
-                            <div className="text-[10px] uppercase font-bold text-gray-400 tracking-wider mb-2">
+                            <div className={cn("text-[10px] font-bold text-gray-400 mb-2", !isRTL && "uppercase tracking-wider")}>
                                 {t('settings.exchangeRate.title')} {t('common.snapshots')}
                             </div>
                             <div className="grid grid-cols-2 gap-2">
@@ -140,11 +140,11 @@ export const SaleReceiptBase = forwardRef<HTMLDivElement, SaleReceiptBaseProps>(
                 <div className="mb-8">
                     <table className="w-full text-sm">
                         <thead>
-                            <tr className="text-[10px] uppercase text-gray-400 border-b border-gray-200">
-                                <th className="pb-2 text-start font-bold tracking-wider">{t('products.table.name')}</th>
-                                <th className="pb-2 text-center font-bold tracking-wider">{t('common.quantity')}</th>
-                                <th className="pb-2 text-end font-bold tracking-wider">{t('common.price')}</th>
-                                <th className="pb-2 text-end font-bold tracking-wider">{t('common.total')}</th>
+                            <tr className={cn("text-[10px] text-gray-400 border-b border-gray-200", !isRTL && "uppercase")}>
+                                <th className={cn("pb-2 text-start font-bold", !isRTL && "tracking-wider")}>{t('products.table.name')}</th>
+                                <th className={cn("pb-2 text-center font-bold", !isRTL && "tracking-wider")}>{t('common.quantity')}</th>
+                                <th className={cn("pb-2 text-end font-bold", !isRTL && "tracking-wider")}>{t('common.price')}</th>
+                                <th className={cn("pb-2 text-end font-bold", !isRTL && "tracking-wider")}>{t('common.total')}</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100">
@@ -188,8 +188,8 @@ export const SaleReceiptBase = forwardRef<HTMLDivElement, SaleReceiptBaseProps>(
 
                 <div className="border-t-2 border-black pt-4 mb-8">
                     <div className="flex justify-between items-end">
-                        <span className="text-sm font-bold uppercase tracking-wider text-gray-500">{t('common.total')}</span>
-                        <span className="text-3xl font-black tracking-tight">
+                        <span className={cn("text-sm font-bold text-gray-500", !isRTL && "uppercase tracking-wider")}>{t('common.total')}</span>
+                        <span className={cn("text-3xl font-black", !isRTL && "tracking-tight")}>
                             {formatCurrency(data.total_amount, data.settlement_currency || 'usd', features.iqd_display_preference)}
                         </span>
                     </div>

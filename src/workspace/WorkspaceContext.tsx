@@ -42,7 +42,7 @@ interface WorkspaceContextType {
     isFullscreen: boolean
     hasFeature: (feature: 'allow_pos' | 'allow_customers' | 'allow_suppliers' | 'allow_orders' | 'allow_invoices' | 'allow_whatsapp') => boolean
     refreshFeatures: () => Promise<void>
-    updateSettings: (settings: Partial<Pick<WorkspaceFeatures, 'default_currency' | 'iqd_display_preference' | 'eur_conversion_enabled' | 'try_conversion_enabled' | 'allow_whatsapp' | 'logo_url' | 'print_lang' | 'print_qr'>>) => Promise<void>
+    updateSettings: (settings: Partial<Pick<WorkspaceFeatures, 'default_currency' | 'iqd_display_preference' | 'eur_conversion_enabled' | 'try_conversion_enabled' | 'allow_whatsapp' | 'logo_url' | 'print_lang' | 'print_qr'>> & { name?: string }) => Promise<void>
     activeWorkspace: { id: string } | undefined
 }
 
@@ -70,7 +70,7 @@ const WORKSPACE_CACHE_KEY = 'asaas_workspace_cache'
 const WorkspaceContext = createContext<WorkspaceContextType | undefined>(undefined)
 
 export function WorkspaceProvider({ children }: { children: ReactNode }) {
-    const { user, isAuthenticated, isLoading: authLoading } = useAuth()
+    const { user, isAuthenticated, isLoading: authLoading, updateUser } = useAuth()
 
     // Initialize state from LocalStorage for instant hydration
     const [features, setFeatures] = useState<WorkspaceFeatures>(() => {
@@ -158,7 +158,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         try {
             const rpcPromise = supabase.rpc('get_workspace_features').single()
             const timeoutPromise = new Promise((_, reject) =>
-                setTimeout(() => reject(new Error('Workspace features fetch timed out')), 5000)
+                setTimeout(() => reject(new Error('Workspace features fetch timed out')), 12000)
             )
 
             const { data, error } = await Promise.race([rpcPromise, timeoutPromise]) as any
@@ -248,7 +248,34 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             }
         } catch (err) {
             console.error('Error fetching workspace features:', err)
-            if (!silent) setFeatures(defaultFeatures)
+
+            // Try fallback to local DB on any error (including timeout) if we don't already have valid features
+            if (user?.workspaceId) {
+                const localWorkspace = await db.workspaces.get(user.workspaceId)
+                if (localWorkspace) {
+                    setFeatures({
+                        allow_pos: localWorkspace.allow_pos ?? true,
+                        allow_customers: localWorkspace.allow_customers ?? true,
+                        allow_suppliers: localWorkspace.allow_suppliers ?? true,
+                        allow_orders: localWorkspace.allow_orders ?? true,
+                        allow_invoices: localWorkspace.allow_invoices ?? true,
+                        is_configured: true,
+                        default_currency: localWorkspace.default_currency,
+                        iqd_display_preference: localWorkspace.iqd_display_preference,
+                        eur_conversion_enabled: (localWorkspace as any).eur_conversion_enabled ?? false,
+                        try_conversion_enabled: (localWorkspace as any).try_conversion_enabled ?? false,
+                        locked_workspace: (localWorkspace as any).locked_workspace ?? false,
+                        logo_url: (localWorkspace as any).logo_url ?? null,
+                        max_discount_percent: (localWorkspace as any).max_discount_percent ?? 100,
+                        allow_whatsapp: (localWorkspace as any).allow_whatsapp ?? false,
+                        print_lang: (localWorkspace as any).print_lang ?? 'auto',
+                        print_qr: (localWorkspace as any).print_qr ?? false
+                    })
+                }
+            }
+
+            // Note: We avoid setFeatures(defaultFeatures) here to preserve 
+            // the state hydrated from LocalStorage during initialization.
         } finally {
             if (!silent) setIsLoading(false)
         }
@@ -351,35 +378,46 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         await fetchFeatures()
     }
 
-    const updateSettings = async (settings: Partial<Pick<WorkspaceFeatures, 'default_currency' | 'iqd_display_preference' | 'eur_conversion_enabled' | 'try_conversion_enabled' | 'allow_whatsapp' | 'logo_url' | 'print_lang' | 'print_qr'>>) => {
+    const updateSettings = async (settings: Partial<Pick<WorkspaceFeatures, 'default_currency' | 'iqd_display_preference' | 'eur_conversion_enabled' | 'try_conversion_enabled' | 'allow_whatsapp' | 'logo_url' | 'print_lang' | 'print_qr'>> & { name?: string }) => {
         const workspaceId = user?.workspaceId
         if (!workspaceId) return
 
+        const { name, ...featureSettings } = settings
+
         // Optimistically update local state
-        const newFeatures = { ...features, ...settings }
+        if (name) {
+            setWorkspaceName(name)
+            // Sync with AuthContext user metadata for consistency
+            updateUser({ workspaceName: name })
+        }
+
+        const newFeatures = { ...features, ...featureSettings }
         setFeatures(newFeatures)
 
         // Update Local Cache
         localStorage.setItem(WORKSPACE_CACHE_KEY, JSON.stringify({
             features: newFeatures,
-            workspaceName
+            workspaceName: name || workspaceName
         }))
 
         // Update local DB cache
         const existing = await db.workspaces.get(workspaceId)
+        const localUpdateData = {
+            ...featureSettings,
+            ...(name !== undefined && { name }),
+            updatedAt: new Date().toISOString()
+        }
+
         if (existing) {
-            await db.workspaces.update(workspaceId, {
-                ...settings,
-                updatedAt: new Date().toISOString()
-            })
+            await db.workspaces.update(workspaceId, localUpdateData)
         } else {
             await db.workspaces.put({
                 id: workspaceId,
                 workspaceId,
-                name: 'My Workspace',
+                name: name || 'My Workspace',
                 code: 'LOCAL',
-                default_currency: settings.default_currency || 'usd',
-                iqd_display_preference: settings.iqd_display_preference || 'IQD',
+                default_currency: featureSettings.default_currency || 'usd',
+                iqd_display_preference: featureSettings.iqd_display_preference || 'IQD',
                 locked_workspace: false,
                 allow_pos: true,
                 allow_customers: true,
@@ -396,17 +434,27 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         }
 
         if (navigator.onLine) {
+            // Map settings to Supabase column names
+            const supabaseUpdate: any = { ...featureSettings }
+            if (name !== undefined) {
+                supabaseUpdate.name = name
+            }
+
             const { error } = await supabase
                 .from('workspaces')
-                .update(settings)
+                .update(supabaseUpdate)
                 .eq('id', workspaceId)
 
             if (error) {
                 console.error('Error updating workspace settings on Supabase:', error)
-                await addToOfflineMutations('workspaces', workspaceId, 'update', settings as Record<string, unknown>, workspaceId)
+                await addToOfflineMutations('workspaces', workspaceId, 'update', supabaseUpdate, workspaceId)
             }
         } else {
-            await addToOfflineMutations('workspaces', workspaceId, 'update', settings as Record<string, unknown>, workspaceId)
+            const supabaseUpdate: any = { ...featureSettings }
+            if (name !== undefined) {
+                supabaseUpdate.name = name
+            }
+            await addToOfflineMutations('workspaces', workspaceId, 'update', supabaseUpdate, workspaceId)
         }
     }
 

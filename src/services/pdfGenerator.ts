@@ -277,11 +277,13 @@ export async function generateInvoicePdf(options: PDFGeneratorOptions): Promise<
         createElement(A4InvoiceTemplate, {
             data,
             features: processedFeatures,
-            workspaceId: workspaceId || ''
+            workspaceId,
+            workspaceName: workspaceName || workspaceId || 'Asaas'
         })
     )
     const renderResult = await renderToCanvas(element, A4_WIDTH_MM)
     return canvasToA4Pdf(renderResult)
+
 }
 
 /**
