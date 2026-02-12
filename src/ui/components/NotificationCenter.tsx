@@ -1,6 +1,6 @@
 import { useMemo, useEffect, useRef, useCallback, useState } from 'react';
 import { Inbox, NovuProvider } from '@novu/react';
-import { useCounts, useNotifications } from '@novu/react/hooks';
+import { useNotifications } from '@novu/react/hooks';
 import { useAuth } from '@/auth';
 import { novuConfig, getNovuSubscriberId } from '@/auth/novu';
 import { Bell } from 'lucide-react';
@@ -8,6 +8,7 @@ import { useTheme } from './theme-provider';
 import { useTranslation } from 'react-i18next';
 import { toast } from '@/ui/components/use-toast';
 import { connectionManager } from '@/lib/connectionManager';
+import { NotificationPopupController } from './popups/NotificationPopupController';
 
 function playNotificationSound() {
     try {
@@ -41,17 +42,24 @@ function playNotificationSound() {
     }
 }
 
-function InboxWithBadge({ appearance, tabs }: {
-    appearance: Record<string, unknown>;
-    tabs: { label: string; filter: Record<string, unknown> }[];
-}) {
-    const { t } = useTranslation();
-    const { counts } = useCounts({ filters: [{ read: false }] });
-    const { notifications } = useNotifications({ read: false });
+interface InboxWithBadgeProps {
+    appearance: any;
+    tabs: any[];
+    notifications: any[] | undefined;
+}
 
-    const unreadCount = counts?.[0]?.count ?? 0;
+function InboxWithBadge({ appearance, tabs, notifications }: InboxWithBadgeProps) {
+    const { t } = useTranslation();
+
+    const unreadCount = useMemo(() => {
+        return notifications?.filter(n => !n.read).length ?? 0;
+    }, [notifications]);
+
     const alertedIdsRef = useRef<Set<string>>(new Set());
     const initialLoadRef = useRef(true);
+
+    const [isPopupOpen, setIsPopupOpen] = useState(false);
+    const [lastNotification, setLastNotification] = useState<any>(null);
 
     const showNotificationToast = useCallback(() => {
         playNotificationSound();
@@ -65,7 +73,6 @@ function InboxWithBadge({ appearance, tabs }: {
     useEffect(() => {
         if (!notifications?.length) return;
 
-        // On first load, record all existing IDs without alerting
         if (initialLoadRef.current) {
             for (const n of notifications) {
                 alertedIdsRef.current.add(n.id);
@@ -74,7 +81,6 @@ function InboxWithBadge({ appearance, tabs }: {
             return;
         }
 
-        // Check for genuinely new notification IDs
         let hasNew = false;
         for (const n of notifications) {
             if (!alertedIdsRef.current.has(n.id)) {
@@ -85,23 +91,58 @@ function InboxWithBadge({ appearance, tabs }: {
 
         if (hasNew) {
             showNotificationToast();
+            setLastNotification(notifications[0]);
+            setIsPopupOpen(true);
         }
     }, [notifications, showNotificationToast]);
 
     return (
-        <Inbox
+        <>
+            <Inbox
+                appearance={appearance}
+                tabs={tabs}
+                renderBell={() => (
+                    <button className="relative hover:bg-secondary rounded-md transition-colors text-muted-foreground hover:text-foreground cursor-pointer mr-1 p-1.5">
+                        <Bell className="w-4 h-4 transition-transform active:scale-90" />
+                        {unreadCount > 0 && (
+                            <span className="absolute -top-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white border-2 border-background animate-pop-in shadow-lg">
+                                {unreadCount > 9 ? '9+' : unreadCount}
+                            </span>
+                        )}
+                    </button>
+                )}
+            />
+
+            <NotificationPopupController
+                isOpen={isPopupOpen}
+                onClose={() => setIsPopupOpen(false)}
+                notificationData={lastNotification}
+            />
+        </>
+    );
+}
+
+interface NotificationCenterContentProps {
+    appearance: any;
+    tabs: any[];
+}
+
+function NotificationCenterContent({ appearance, tabs }: NotificationCenterContentProps) {
+    const { notifications, isLoading: isNotificationsLoading } = useNotifications();
+
+    if (isNotificationsLoading) {
+        return (
+            <button className="relative p-2 rounded-md text-muted-foreground animate-pulse">
+                <Bell className="w-4 h-4" />
+            </button>
+        );
+    }
+
+    return (
+        <InboxWithBadge
             appearance={appearance}
             tabs={tabs}
-            renderBell={() => (
-                <button className="relative hover:bg-secondary rounded-md transition-colors text-muted-foreground hover:text-foreground cursor-pointer mr-1 p-1.5">
-                    <Bell className="w-4 h-4 transition-transform active:scale-90" />
-                    {unreadCount > 0 && (
-                        <span className="absolute -top-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white border-2 border-background animate-pop-in shadow-lg">
-                            {unreadCount > 9 ? '9+' : unreadCount}
-                        </span>
-                    )}
-                </button>
-            )}
+            notifications={notifications}
         />
     );
 }
@@ -112,14 +153,12 @@ export function NotificationCenter() {
     const { t, i18n } = useTranslation();
     const subscriberId = getNovuSubscriberId(user?.id);
 
-    // Reconnection key: forces NovuProvider to remount after idle/reconnect
     const [reconnectKey, setReconnectKey] = useState(0);
     const reconnectDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     useEffect(() => {
         const unsubscribe = connectionManager.subscribe((event) => {
             if (event === 'wake' || event === 'online') {
-                // Debounce to prevent rapid remounts
                 if (reconnectDebounceRef.current) clearTimeout(reconnectDebounceRef.current);
                 reconnectDebounceRef.current = setTimeout(() => {
                     console.log('[NotificationCenter] Reconnecting NovuProvider due to:', event);
@@ -135,8 +174,7 @@ export function NotificationCenter() {
     }, []);
 
     const isDark = useMemo(() => {
-        return theme === 'dark'
-            || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        return theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
     }, [theme]);
 
     const appearance = useMemo(() => ({
@@ -199,7 +237,7 @@ export function NotificationCenter() {
             apiUrl={novuConfig.apiUrl}
             socketUrl={novuConfig.socketUrl}
         >
-            <InboxWithBadge appearance={appearance} tabs={tabs} />
+            <NotificationCenterContent appearance={appearance} tabs={tabs} />
         </NovuProvider>
     );
 }
