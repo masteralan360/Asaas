@@ -1,7 +1,7 @@
 {
   "name": "asaas",
   "private": true,
-  "version": "1.9.9",
+  "version": "1.10.1",
   "main": "electron/main.cjs",
   "type": "module",
   "repository": {
@@ -82,12 +82,12 @@
     "react-barcode-scanner": "^4.0.1",
     "react-dom": "^18.3.1",
     "react-i18next": "^16.5.1",
-    "react-is": "^19.2.3",
+    "react-is": "^18.3.1",
     "react-pdf": "^10.3.0",
     "react-spreadsheet": "^0.10.1",
     "react-to-print": "^3.2.0",
     "recharts": "^3.6.0",
-    "scheduler": "^0.27.0",
+    "scheduler": "^0.23.2",
     "tailwind-merge": "^3.4.0",
     "tailwindcss-animate": "^1.0.7",
     "uuid": "^10.0.0",
