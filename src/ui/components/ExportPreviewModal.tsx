@@ -112,33 +112,36 @@ export function ExportPreviewModal({
                 }
             }
 
-            const formattedSales = (salesData || []).map((sale: any) => {
-                const saleRevenue = sale.total_amount || 0
-                const saleCost = (sale.items || []).reduce((acc: number, item: any) => {
-                    const costPrice = item.cost_price || 0
-                    const quantity = item.quantity || 0
-                    const returnedQuantity = item.returned_quantity || 0
-                    const netQuantity = Math.max(0, quantity - (item.is_returned ? quantity : returnedQuantity))
-                    return acc + (costPrice * netQuantity)
-                }, 0)
+            const formattedSales = (salesData || [])
+                .filter((sale: any) => !sale.is_returned)
+                .map((sale: any) => {
+                    const saleRevenue = sale.total_amount || 0
+                    const saleCost = (sale.items || []).reduce((acc: number, item: any) => {
+                        const costPrice = item.converted_cost_price || item.cost_price || 0
+                        const quantity = item.quantity || 0
+                        const returnedQuantity = item.returned_quantity || 0
+                        const netQuantity = Math.max(0, quantity - returnedQuantity)
+                        return acc + (costPrice * netQuantity)
+                    }, 0)
 
-                return {
-                    ...sale,
-                    sequenceId: sale.sequence_id,
-                    cashier_name: profilesMap[sale.cashier_id] || 'Staff',
-                    revenue: saleRevenue,
-                    cost: saleCost,
-                    profit: saleRevenue - saleCost,
-                    margin: saleRevenue > 0 ? ((saleRevenue - saleCost) / saleRevenue) * 100 : 0,
-                    date: sale.created_at, // Map for mapRevenueForExport
-                    cashier: profilesMap[sale.cashier_id] || 'Staff', // Map for mapRevenueForExport
-                    items: sale.items?.map((item: any) => ({
-                        ...item,
-                        product_name: item.product?.name || 'Unknown Product',
-                        product_sku: item.product?.sku || ''
-                    }))
-                }
-            })
+                    return {
+                        ...sale,
+                        sequenceId: sale.sequence_id,
+                        cashier_name: profilesMap[sale.cashier_id] || 'Staff',
+                        revenue: saleRevenue,
+                        cost: saleCost,
+                        profit: saleRevenue - saleCost,
+                        margin: saleRevenue > 0 ? ((saleRevenue - saleCost) / saleRevenue) * 100 : 0,
+                        date: sale.created_at,
+                        cashier: profilesMap[sale.cashier_id] || 'Staff',
+                        currency: sale.settlement_currency || 'usd',
+                        items: sale.items?.map((item: any) => ({
+                            ...item,
+                            product_name: item.product?.name || 'Unknown Product',
+                            product_sku: item.product?.sku || ''
+                        }))
+                    }
+                })
 
             setData(formattedSales)
 

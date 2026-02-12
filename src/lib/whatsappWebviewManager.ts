@@ -16,6 +16,7 @@ class WhatsAppWebviewManager {
     private pendingUrl: string | null = null;
 
     async getOrCreate(x: number, y: number, width: number, height: number): Promise<Webview | null> {
+        console.log(`[WhatsApp Manager] getOrCreate called with bounds: ${JSON.stringify({ x, y, width, height })}`);
         this.lastBounds = { x, y, width, height };
 
         // If disabled, don't create or return anything
@@ -26,6 +27,7 @@ class WhatsAppWebviewManager {
 
         // If already exists, just return it
         if (this.webview) {
+            console.log('[WhatsApp Manager] Returning existing webview instance');
             return this.webview;
         }
 
@@ -41,6 +43,10 @@ class WhatsAppWebviewManager {
         const result = await this.creationPromise;
         this.isCreating = false;
         this.creationPromise = null;
+
+        if (result) {
+            this.notifyStatusChange();
+        }
 
         return result;
     }
@@ -119,7 +125,7 @@ class WhatsAppWebviewManager {
                 return existing;
             }
 
-            console.log('[WhatsApp Manager] Creating persistent webview...');
+            console.log(`[WhatsApp Manager] No existing native webview found with label "${label}"`);
 
             const initialUrl = this.pendingUrl || 'https://web.whatsapp.com';
             this.pendingUrl = null;
@@ -146,6 +152,7 @@ class WhatsAppWebviewManager {
             });
 
             this.webview = webview;
+            this.notifyStatusChange();
             return webview;
 
         } catch (err) {
@@ -195,6 +202,18 @@ class WhatsAppWebviewManager {
         }
         // Broadcast change for UI components
         window.dispatchEvent(new CustomEvent('whatsapp-enabled-change', { detail: { enabled: val } }));
+        this.notifyStatusChange();
+    }
+
+    private notifyStatusChange() {
+        const isActive = this.isActive();
+        console.log(`[WhatsApp Manager Debug] Notifying status change. Active: ${isActive}, Enabled: ${this.enabled}`);
+        window.dispatchEvent(new CustomEvent('whatsapp-status-change', {
+            detail: {
+                active: isActive,
+                enabled: this.enabled
+            }
+        }));
     }
 
     isEnabled(): boolean {

@@ -128,7 +128,7 @@ export function Layout({ children }: LayoutProps) {
     const [logoError, setLogoError] = useState(false)
     const [copied, setCopied] = useState(false)
     const [version, setVersion] = useState('')
-    const [isWhatsAppEnabled, setIsWhatsAppEnabled] = useState(whatsappManager.isEnabled())
+    const [whatsappStatus, setWhatsappStatus] = useState<'live' | 'off'>(whatsappManager.isActive() ? 'live' : 'off')
 
     const copyToClipboard = (text: string) => {
         navigator.clipboard.writeText(text)
@@ -176,16 +176,18 @@ export function Layout({ children }: LayoutProps) {
         window.addEventListener('open-mobile-sidebar', handleOpen)
         window.addEventListener('profile-updated', fetchMembers)
 
-        // Handle WhatsApp enabled state changes from other components
-        const handleWhatsAppChange = (e: any) => {
-            setIsWhatsAppEnabled(e.detail.enabled);
+        // Handle WhatsApp status changes
+        const handleWhatsAppStatusChange = (e: any) => {
+            const newStatus = e.detail.active ? 'live' : 'off';
+            console.log(`[Layout Debug] WhatsApp status changed: ${newStatus}`, e.detail);
+            setWhatsappStatus(newStatus);
         }
-        window.addEventListener('whatsapp-enabled-change', handleWhatsAppChange);
+        window.addEventListener('whatsapp-status-change', handleWhatsAppStatusChange);
 
         return () => {
             window.removeEventListener('open-mobile-sidebar', handleOpen)
             window.removeEventListener('profile-updated', fetchMembers)
-            window.removeEventListener('whatsapp-enabled-change', handleWhatsAppChange)
+            window.removeEventListener('whatsapp-status-change', handleWhatsAppStatusChange)
         }
     }, [user?.workspaceId])
 
@@ -219,7 +221,7 @@ export function Layout({ children }: LayoutProps) {
         ] : []),
         // WhatsApp - requires feature flag AND role AND desktop platform
         ...((user?.role === 'admin' || user?.role === 'staff') && hasFeature('allow_whatsapp') && isDesktop() ? [
-            { name: t('nav.whatsapp'), href: '/whatsapp', icon: MessageSquare }
+            { name: t('nav.whatsapp'), href: '/whatsapp', icon: MessageSquare, status: whatsappStatus }
         ] : []),
         // Products - always visible
         { name: t('nav.products'), href: '/products', icon: Package },
@@ -365,10 +367,22 @@ export function Layout({ children }: LayoutProps) {
                                                     <AlertCircle className="w-3.5 h-3.5" />
                                                 </div>
                                             )}
+                                            {item.status && (
+                                                <div className={cn(
+                                                    "ms-auto w-2 h-2 rounded-full",
+                                                    item.status === 'live' ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" : "bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.5)]"
+                                                )} />
+                                            )}
                                         </>
                                     )}
                                     {(isMini && !mobileSidebarOpen) && item.alert && (
                                         <div className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border border-background shadow-sm" />
+                                    )}
+                                    {(isMini && !mobileSidebarOpen) && item.status && (
+                                        <div className={cn(
+                                            "absolute top-2 right-2 w-2 h-2 rounded-full border border-background shadow-sm",
+                                            item.status === 'live' ? "bg-emerald-500" : "bg-red-500"
+                                        )} />
                                     )}
                                 </span>
                             </Link>
@@ -569,17 +583,17 @@ export function Layout({ children }: LayoutProps) {
                                 onClick={() => whatsappManager.setEnabled(!whatsappManager.isEnabled())}
                                 className={cn(
                                     "h-8 px-2 gap-2 border-border/50 hover:bg-secondary/50 transition-all duration-300",
-                                    isWhatsAppEnabled ? "text-emerald-500" : "text-red-500"
+                                    whatsappStatus === 'live' ? "text-emerald-500" : "text-red-500"
                                 )}
-                                title={isWhatsAppEnabled ? "Turn Off WhatsApp Webview" : "Turn On WhatsApp Webview"}
+                                title={whatsappStatus === 'live' ? "Turn Off WhatsApp Webview" : "Turn On WhatsApp Webview"}
                             >
                                 <div className={cn(
                                     "w-2 h-2 rounded-full",
-                                    isWhatsAppEnabled ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" : "bg-red-500"
+                                    whatsappStatus === 'live' ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" : "bg-red-500"
                                 )} />
                                 <MessageSquare className="w-4 h-4" />
                                 <span className="text-[10px] font-bold uppercase tracking-wider hidden sm:inline">
-                                    {isWhatsAppEnabled ? "Live" : "Off"}
+                                    {whatsappStatus === 'live' ? "Live" : "Off"}
                                 </span>
                             </Button>
                         )}

@@ -13,6 +13,7 @@ import { isSupabaseConfigured } from '@/auth/supabase'
 import { isMobile } from '@/lib/platform'
 import { useTheme } from '@/ui/components/theme-provider'
 import { useFavicon } from '@/hooks/useFavicon'
+import { whatsappManager } from '@/lib/whatsappWebviewManager'
 
 // @ts-ignore
 const isTauri = !!window.__TAURI_INTERNALS__
@@ -242,6 +243,15 @@ function App() {
             document.documentElement.setAttribute('data-mobile', 'true')
         } else {
             document.documentElement.removeAttribute('data-mobile')
+        }
+
+        // WhatsApp Auto Launch Logic
+        const autoLaunch = localStorage.getItem('whatsapp_auto_launch') === 'true'
+        if (autoLaunch && isTauri && !isMobile()) {
+            console.log('[WhatsApp Startup] Auto-launching WhatsApp in background...')
+            whatsappManager.getOrCreate(0, 0, 0, 0).catch(err => {
+                console.error('[WhatsApp Startup] Failed to auto-launch:', err)
+            })
         }
     }, [])
 

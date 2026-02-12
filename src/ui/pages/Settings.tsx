@@ -35,6 +35,7 @@ export function Settings() {
     const [eurExchangeRateSource, setEurExchangeRateSource] = useState(localStorage.getItem('primary_eur_exchange_rate_source') || 'forexfy')
     const [tryExchangeRateSource, setTryExchangeRateSource] = useState(localStorage.getItem('primary_try_exchange_rate_source') || 'forexfy')
     const [exchangeRateThreshold, setExchangeRateThreshold] = useState(localStorage.getItem('exchange_rate_threshold') || '2500')
+    const [whatsappAutoLaunch, setWhatsappAutoLaunch] = useState(localStorage.getItem('whatsapp_auto_launch') === 'true')
 
     // Connection Settings State
     const [isElectron, setIsElectron] = useState(false)
@@ -186,6 +187,11 @@ export function Settings() {
     const handleThresholdChange = (val: string) => {
         setExchangeRateThreshold(val)
         localStorage.setItem('exchange_rate_threshold', val)
+    }
+
+    const handleWhatsappAutoLaunchChange = (val: boolean) => {
+        setWhatsappAutoLaunch(val)
+        localStorage.setItem('whatsapp_auto_launch', String(val))
     }
 
     const openManualEditor = (currency: 'USD' | 'EUR' | 'TRY' = 'USD') => {
@@ -1232,6 +1238,21 @@ export function Settings() {
                                             onCheckedChange={(val: boolean) => updateSettings({ allow_whatsapp: val })}
                                         />
                                     </div>
+
+                                    {features.allow_whatsapp && (
+                                        <div className="flex items-center justify-between pt-4 border-t border-primary/10 mt-4">
+                                            <div className="space-y-0.5">
+                                                <Label className="text-base text-primary">Auto Launch on Startup</Label>
+                                                <p className="text-sm text-muted-foreground max-w-md">
+                                                    Automatically initialize WhatsApp in the background when the application starts.
+                                                </p>
+                                            </div>
+                                            <Switch
+                                                checked={whatsappAutoLaunch}
+                                                onCheckedChange={handleWhatsappAutoLaunchChange}
+                                            />
+                                        </div>
+                                    )}
                                 </CardContent>
                             </Card>
 

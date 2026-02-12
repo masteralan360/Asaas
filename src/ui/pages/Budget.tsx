@@ -243,7 +243,12 @@ export default function Budget() {
             }
         })
 
-        const finalNetProfit = profitPool - dividendTotal
+        const EPSILON = 0.01 // Ignore tiny floating point differences
+        const roundedProfitPool = Math.round(profitPool * 100) / 100
+        const roundedDividendTotal = Math.round(dividendTotal * 100) / 100
+        const finalNetProfitValue = roundedProfitPool - roundedDividendTotal
+        const isDeficit = finalNetProfitValue < -EPSILON
+        const cleanNetProfit = Math.abs(finalNetProfitValue) < EPSILON ? 0 : finalNetProfitValue
 
         const hasMixedCurrencies = new Set([...monthExpenses, ...virtualExpenses].map(e => e.currency?.toLowerCase())).size > 1
 
@@ -258,14 +263,15 @@ export default function Budget() {
 
         return {
             operationalTotal: totalOperational,
-            total: totalOperational, // Keep 'total' for existing card references
+            total: totalOperational,
             paid: operationalPaid + personnelPaid,
             pending: operationalPending + personnelPending,
-            dividendTotal,
+            dividendTotal: roundedDividendTotal,
             dividendPaid,
             dividendPending,
-            finalNetProfit,
-            profitPool,
+            finalNetProfit: cleanNetProfit,
+            profitPool: roundedProfitPool,
+            isDeficit,
             count: monthExpenses.length + virtualExpenses.length,
             isMixed: hasMixedCurrencies,
             budgetLimit,
@@ -484,7 +490,7 @@ export default function Budget() {
                 <Card
                     className={cn(
                         "cursor-pointer hover:scale-[1.02] transition-all active:scale-95 group relative overflow-hidden rounded-[2rem]",
-                        metrics.finalNetProfit < 0
+                        metrics.isDeficit
                             ? 'bg-red-500/5 dark:bg-red-500/10 border-red-500/20 hover:bg-red-500/10 hover:shadow-[0_0_20px_-5px_rgba(239,68,68,0.3)]'
                             : 'bg-sky-500/5 dark:bg-sky-500/10 border-sky-500/20 hover:bg-sky-500/10 hover:shadow-[0_0_20px_-5px_rgba(14,165,233,0.3)]'
                     )}
@@ -496,7 +502,7 @@ export default function Budget() {
                     <CardHeader className="pb-2">
                         <CardTitle className={cn(
                             "text-xs font-black flex items-center gap-2 uppercase tracking-[0.2em]",
-                            metrics.finalNetProfit < 0 ? 'text-red-600 dark:text-red-400' : 'text-sky-600 dark:text-sky-400'
+                            metrics.isDeficit ? 'text-red-600 dark:text-red-400' : 'text-sky-600 dark:text-sky-400'
                         )}>
                             <User className="w-4 h-4" />
                             {t('budget.dividends', 'Dividends Total')}
@@ -505,11 +511,11 @@ export default function Budget() {
                     <CardContent>
                         <div className={cn(
                             "text-2xl font-black tracking-tighter tabular-nums",
-                            metrics.finalNetProfit < 0 ? 'text-red-700 dark:text-red-300' : 'text-sky-700 dark:text-sky-300'
+                            metrics.isDeficit ? 'text-red-700 dark:text-red-300' : 'text-sky-700 dark:text-sky-300'
                         )}>
                             {formatCurrency(metrics.dividendTotal, baseCurrency, iqdPreference)}
                         </div>
-                        {metrics.finalNetProfit < 0 ? (
+                        {metrics.isDeficit ? (
                             <div className="flex items-center gap-1 mt-2 text-[10px] font-bold text-red-600 dark:text-red-400">
                                 <AlertTriangle className="w-3 h-3" />
                                 {t('budget.dividendsExceedPool', 'Exceeds profit pool by')} {formatCurrency(Math.abs(metrics.finalNetProfit), baseCurrency, iqdPreference)}
@@ -526,7 +532,7 @@ export default function Budget() {
                 <Card
                     className={cn(
                         "cursor-pointer hover:scale-[1.02] transition-all active:scale-95 group relative overflow-hidden rounded-[2rem]",
-                        metrics.finalNetProfit < 0
+                        metrics.isDeficit
                             ? 'bg-red-500/5 dark:bg-red-500/10 border-red-500/20 hover:bg-red-500/10 hover:shadow-[0_0_20px_-5px_rgba(239,68,68,0.3)]'
                             : 'bg-violet-500/5 dark:bg-violet-500/10 border-violet-500/20 hover:bg-violet-500/10 hover:shadow-[0_0_20px_-5px_rgba(139,92,246,0.3)]'
                     )}
@@ -540,21 +546,21 @@ export default function Budget() {
                     <CardHeader className="pb-2">
                         <CardTitle className={cn(
                             "text-xs font-black flex items-center gap-2 uppercase tracking-[0.2em]",
-                            metrics.finalNetProfit < 0 ? 'text-red-600 dark:text-red-400' : 'text-violet-600 dark:text-violet-400'
+                            metrics.isDeficit ? 'text-red-600 dark:text-red-400' : 'text-violet-600 dark:text-violet-400'
                         )}>
-                            {metrics.finalNetProfit < 0 ? <AlertTriangle className="w-4 h-4" /> : <TrendingUp className="w-4 h-4" />}
-                            {metrics.finalNetProfit < 0 ? t('budget.deficit', 'Deficit') : t('budget.netProfit', 'Surplus')}
+                            {metrics.isDeficit ? <AlertTriangle className="w-4 h-4" /> : <TrendingUp className="w-4 h-4" />}
+                            {metrics.isDeficit ? t('budget.deficit', 'Deficit') : t('budget.netProfit', 'Surplus')}
                         </CardTitle>
                     </CardHeader>
                     <CardContent>
                         <div className={cn(
                             "text-2xl font-black tracking-tighter tabular-nums",
-                            metrics.finalNetProfit < 0 ? 'text-red-700 dark:text-red-300' : 'text-violet-700 dark:text-violet-300'
+                            metrics.isDeficit ? 'text-red-700 dark:text-red-300' : 'text-violet-700 dark:text-violet-300'
                         )}>
-                            {metrics.finalNetProfit < 0 ? '-' : ''}{formatCurrency(Math.abs(metrics.finalNetProfit), baseCurrency, iqdPreference)}
+                            {metrics.isDeficit ? '-' : ''}{formatCurrency(Math.abs(metrics.finalNetProfit), baseCurrency, iqdPreference)}
                         </div>
                         <p className="text-[10px] font-bold uppercase tracking-wider mt-2 opacity-60">
-                            {metrics.finalNetProfit < 0
+                            {metrics.isDeficit
                                 ? t('budget.projectedDeficit', 'Dividends exceed profit')
                                 : t('budget.projectedSurplus', 'Projected Surplus')
                             }
