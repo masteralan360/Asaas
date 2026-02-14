@@ -1,6 +1,10 @@
+import { useState } from 'react'
+import { useLocation } from 'wouter'
 import { useTranslation } from 'react-i18next'
 import { Sale, SaleItem } from '@/types'
-import { formatCurrency, formatDateTime, formatSnapshotTime, cn } from '@/lib/utils'
+import { formatCurrency, formatDateTime, formatSnapshotTime, cn, formatSaleDetailsForWhatsApp } from '@/lib/utils'
+import { whatsappManager } from '@/lib/whatsappWebviewManager'
+import { WhatsAppNumberInputModal } from '@/ui/components/modals/WhatsAppNumberInputModal'
 import {
     Table,
     TableBody,
@@ -14,7 +18,7 @@ import {
     DialogTitle,
     Button
 } from '@/ui/components'
-import { RotateCcw, ArrowRight, XCircle } from 'lucide-react'
+import { RotateCcw, ArrowRight, XCircle, MessageCircle } from 'lucide-react'
 import { isMobile } from '@/lib/platform'
 import { useAuth } from '@/auth'
 import { useWorkspace } from '@/workspace'
@@ -30,6 +34,15 @@ export function SaleDetailsModal({ sale, isOpen, onClose, onReturnItem }: SaleDe
     const { t } = useTranslation()
     const { user } = useAuth()
     const { features } = useWorkspace()
+    const [showWhatsAppModal, setShowWhatsAppModal] = useState(false)
+    const [, setLocation] = useLocation()
+
+    const handleWhatsAppConfirm = async (phone: string) => {
+        if (!sale) return
+        const text = formatSaleDetailsForWhatsApp(sale, t)
+        await whatsappManager.openChat(phone, text)
+        setLocation('/whatsapp')
+    }
 
     if (!sale) return null
 
@@ -70,7 +83,18 @@ export function SaleDetailsModal({ sale, isOpen, onClose, onReturnItem }: SaleDe
                 "rounded-[2.5rem] border-[3px] border-primary/50 shadow-2xl transition-all duration-500"
             )}>
                 <DialogHeader>
-                    <DialogTitle>{t('sales.details') || 'Sale Details'}</DialogTitle>
+                    <div className="flex items-center justify-between">
+                        <DialogTitle>{t('sales.details') || 'Sale Details'}</DialogTitle>
+                        <Button
+                            size="sm"
+                            variant="outline"
+                            className="gap-2 text-emerald-600 border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-300 mr-8"
+                            onClick={() => setShowWhatsAppModal(true)}
+                        >
+                            <MessageCircle className="w-4 h-4" />
+                            {t('common.share') || 'Share'}
+                        </Button>
+                    </div>
                 </DialogHeader>
                 <div className="space-y-4">
                     {sale.system_review_status === 'flagged' && (
@@ -548,6 +572,12 @@ export function SaleDetailsModal({ sale, isOpen, onClose, onReturnItem }: SaleDe
                     </div>
                 </div>
             </DialogContent>
+
+            <WhatsAppNumberInputModal
+                isOpen={showWhatsAppModal}
+                onClose={() => setShowWhatsAppModal(false)}
+                onConfirm={handleWhatsAppConfirm}
+            />
         </Dialog >
     )
 }

@@ -9,6 +9,7 @@ import { useTranslation } from 'react-i18next';
 import { toast } from '@/ui/components/use-toast';
 import { connectionManager } from '@/lib/connectionManager';
 import { NotificationPopupController } from './popups/NotificationPopupController';
+import { getPopupIdFromNotification } from '@/lib/notificationPopups';
 
 function playNotificationSound() {
     try {
@@ -58,8 +59,10 @@ function InboxWithBadge({ appearance, tabs, notifications }: InboxWithBadgeProps
     const alertedIdsRef = useRef<Set<string>>(new Set());
     const initialLoadRef = useRef(true);
 
+    // Sequential popup queue
+    const [popupQueue, setPopupQueue] = useState<any[]>([]);
     const [isPopupOpen, setIsPopupOpen] = useState(false);
-    const [lastNotification, setLastNotification] = useState<any>(null);
+    const [currentNotification, setCurrentNotification] = useState<any>(null);
 
     const showNotificationToast = useCallback(() => {
         playNotificationSound();
@@ -70,31 +73,81 @@ function InboxWithBadge({ appearance, tabs, notifications }: InboxWithBadgeProps
         });
     }, [t]);
 
+    // Process notifications: detect new ones AND catch up on unread ones with popup rules
     useEffect(() => {
         if (!notifications?.length) return;
 
+        const newPopups: any[] = [];
+
         if (initialLoadRef.current) {
+            // STARTUP CATCH-UP: Check for unread notifications that match popup rules
             for (const n of notifications) {
                 alertedIdsRef.current.add(n.id);
+
+                // If unread and matches a popup rule, queue it
+                if (!n.isRead && getPopupIdFromNotification(n)) {
+                    newPopups.push(n);
+                }
             }
             initialLoadRef.current = false;
+
+            if (newPopups.length > 0) {
+                console.log(`[NotificationCenter] Startup catch-up: ${newPopups.length} missed popup(s) found.`);
+                setPopupQueue(prev => [...prev, ...newPopups]);
+            }
             return;
         }
 
+        // REAL-TIME: Detect new notifications arriving while app is open
         let hasNew = false;
         for (const n of notifications) {
             if (!alertedIdsRef.current.has(n.id)) {
                 alertedIdsRef.current.add(n.id);
                 hasNew = true;
+
+                // If this new notification matches a popup rule, queue it
+                if (getPopupIdFromNotification(n)) {
+                    newPopups.push(n);
+                }
             }
         }
 
         if (hasNew) {
             showNotificationToast();
-            setLastNotification(notifications[0]);
-            setIsPopupOpen(true);
+        }
+
+        if (newPopups.length > 0) {
+            setPopupQueue(prev => [...prev, ...newPopups]);
         }
     }, [notifications, showNotificationToast]);
+
+    // Sequential display: when popup closes and queue has more items, show the next one
+    useEffect(() => {
+        if (isPopupOpen || popupQueue.length === 0) return;
+
+        // Shift the next notification from the queue
+        const [next, ...rest] = popupQueue;
+        setPopupQueue(rest);
+        setCurrentNotification(next);
+        setIsPopupOpen(true);
+        console.log(`[NotificationCenter] Showing queued popup. Remaining in queue: ${rest.length}`);
+    }, [isPopupOpen, popupQueue]);
+
+    // Handle popup close: mark as read in Novu and advance the queue
+    const handlePopupClose = useCallback(async () => {
+        if (currentNotification) {
+            try {
+                // Mark as read in Novu (cross-device sync)
+                await currentNotification.read();
+                console.log(`[NotificationCenter] Marked notification ${currentNotification.id} as read.`);
+            } catch (err) {
+                console.warn('[NotificationCenter] Failed to mark notification as read:', err);
+            }
+        }
+        setIsPopupOpen(false);
+        setCurrentNotification(null);
+        // The queue effect above will automatically show the next one
+    }, [currentNotification]);
 
     return (
         <>
@@ -115,8 +168,8 @@ function InboxWithBadge({ appearance, tabs, notifications }: InboxWithBadgeProps
 
             <NotificationPopupController
                 isOpen={isPopupOpen}
-                onClose={() => setIsPopupOpen(false)}
-                notificationData={lastNotification}
+                onClose={handlePopupClose}
+                notificationData={currentNotification}
             />
         </>
     );

@@ -32,6 +32,7 @@
         "success": "Success",
         "currency": "Currency",
         "date": "Date",
+        "items": "Items",
         "download": "Download",
         "ViewAndDownload": "View and Download",
         "noData": "No data available",
@@ -43,6 +44,7 @@
         "total": "Total",
         "signOut": "Sign out",
         "add": "Add",
+        "share": "Share",
         "each": "each",
         "snapshots": "Snapshots",
         "added": "Added",
@@ -727,6 +729,11 @@
             "recordsCount": "Records ready for export",
             "downloadBtn": "Download Excel",
             "preparingData": "Preparing data..."
+        },
+        "share": {
+            "whatsappTitle": "Share to Whatsapp",
+            "enterPhone": "Enter Phone Number",
+            "phoneHint": "Please enter the phone number in the format 0770*******"
         },
         "pagination": {
             "total": "{{count}} Sales Found"

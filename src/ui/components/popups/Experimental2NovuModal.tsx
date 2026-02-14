@@ -28,11 +28,13 @@ export function Experimental2NovuModal({
 }: Experimental2NovuModalProps) {
 
     // Fallback defaults if config isn't provided
-    const effectiveConfig = config || {
+    // Fallback defaults if config isn't provided
+    const effectiveConfig = {
         enabled: false,
         preventOutsideClose: true,
         showDebugInfo: true,
-        contentMatch: ""
+        contentMatch: "",
+        ...config
     };
 
     const handleOpenChange = (open: boolean) => {

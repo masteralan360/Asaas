@@ -22,6 +22,7 @@
         "delete": "حذف",
         "edit": "تعديل",
         "create": "إنشاء",
+        "items": "عناصر",
         "viewAll": "عرض الكل",
         "download": "تحميل",
         "ViewAndDownload": "عرض وتحميل",
@@ -38,6 +39,7 @@
         "confirmDelete": "تأكيد الحذف",
         "deleteWarning": "هذا الإجراء غير قابل للتراجع. هل أنت متأكد أنك تريد المتابعة؟",
         "targetItem": "العنصر المراد حذفه",
+        "share": "مشاركة",
         "quantity": "الكمية",
         "price": "السعر",
         "total": "الإجمالي",
@@ -725,6 +727,11 @@
             "recordsCount": "سجلات جاهزة للتصدير",
             "downloadBtn": "تحميل ملف Excel",
             "preparingData": "جاري التحضير..."
+        },
+        "share": {
+            "whatsappTitle": "مشاركة عبر واتساب",
+            "enterPhone": "أدخل رقم الهاتف",
+            "phoneHint": "يرجى إدخال رقم الهاتف بالصيغة *******0770"
         },
         "pagination": {
             "total": "تم العثور على {{count}} مبيعات"

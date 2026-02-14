@@ -51,7 +51,7 @@ class WhatsAppWebviewManager {
         return result;
     }
 
-    async openChat(phone: string) {
+    async openChat(phone: string, text?: string) {
         // Sanitize phone number (keep digits only)
         let sanitizedPhone = phone.replace(/\D/g, '');
 
@@ -66,9 +66,17 @@ class WhatsAppWebviewManager {
             sanitizedPhone = '964' + sanitizedPhone;
         }
 
-        const url = `https://web.whatsapp.com/send?phone=${sanitizedPhone}&text&type=phone_number&app_absent=0`;
+        let url = `https://web.whatsapp.com/send?phone=${sanitizedPhone}`;
 
-        console.log(`[WhatsApp Manager] Opening chat for ${sanitizedPhone} (Original: ${phone})`);
+        if (text) {
+            url += `&text=${encodeURIComponent(text)}`;
+        } else {
+            url += `&text`;
+        }
+
+        url += `&type=phone_number&app_absent=0`;
+
+        console.log(`[WhatsApp Manager] Opening chat for ${sanitizedPhone} (Original: ${phone}) with text length: ${text?.length || 0}`);
 
         // Store URL for next creation
         this.pendingUrl = url;
