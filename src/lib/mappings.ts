@@ -32,7 +32,7 @@ export function mapSaleToUniversal(sale: Sale): UniversalInvoice {
                 original_currency: item.original_currency,
                 settlement_currency: item.settlement_currency,
                 discount_amount: (item.original_unit_price && item.negotiated_price) ?
-                    (item.original_unit_price - item.negotiated_price) * item.quantity : 0
+                    (unitPrice / (item.negotiated_price / item.original_unit_price) - unitPrice) : 0
             }
         }),
         status: 'paid',

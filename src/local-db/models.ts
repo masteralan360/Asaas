@@ -342,6 +342,7 @@ export interface Workspace extends BaseEntity {
     max_discount_percent?: number
     print_lang?: 'auto' | 'en' | 'ar' | 'ku'
     print_qr?: boolean
+    subscription_expires_at?: string | null
 }
 
 export interface OfflineMutation {

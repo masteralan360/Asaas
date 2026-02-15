@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/auth'
 import { supabase } from '@/auth/supabase'
@@ -6,7 +6,7 @@ import { Sale } from '@/types'
 import { mapSaleToUniversal } from '@/lib/mappings'
 import { formatCurrency, formatDateTime, formatCompactDateTime, formatDate, cn } from '@/lib/utils'
 
-import { db } from '@/local-db'
+import { db, useSales, toUISale } from '@/local-db'
 import { useWorkspace } from '@/workspace'
 import { isMobile } from '@/lib/platform'
 import { useDateRange } from '@/context/DateRangeContext'
@@ -58,8 +58,9 @@ export function Sales() {
     const { t } = useTranslation()
     const { features, workspaceName, activeWorkspace } = useWorkspace()
     const { toast } = useToast()
-    const [sales, setSales] = useState<Sale[]>([])
-    const [isLoading, setIsLoading] = useState(true)
+    const rawSales = useSales(user?.workspaceId)
+    const allSales = useMemo(() => rawSales.map(toUISale), [rawSales])
+    const isLoading = rawSales === undefined
     const [selectedSale, setSelectedSale] = useState<Sale | null>(null)
     const [printingSale, setPrintingSale] = useState<Sale | null>(null)
     const [returnModalOpen, setReturnModalOpen] = useState(false)
@@ -68,12 +69,61 @@ export function Sales() {
     const [selectedCashier, setSelectedCashier] = useState<string>(() => {
         return localStorage.getItem('sales_selected_cashier') || 'all'
     })
-    const [availableCashiers, setAvailableCashiers] = useState<Array<{ id: string; name: string }>>([])
     const [deleteModalOpen, setDeleteModalOpen] = useState(false)
     const [saleToDelete, setSaleToDelete] = useState<Sale | null>(null)
     const [currentPage, setCurrentPage] = useState(1)
-    const [totalCount, setTotalCount] = useState(0)
     const pageSize = 20
+
+    // Client-side filtering: date range + cashier
+    const filteredSales = useMemo(() => {
+        let result = allSales
+        const now = new Date()
+
+        if (dateRange === 'today') {
+            const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0)
+            result = result.filter(s => new Date(s.created_at) >= startOfDay)
+        } else if (dateRange === 'month') {
+            const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+            result = result.filter(s => new Date(s.created_at) >= startOfMonth)
+        } else if (dateRange === 'custom' && customDates.start && customDates.end) {
+            const start = new Date(customDates.start)
+            start.setHours(0, 0, 0, 0)
+            const end = new Date(customDates.end)
+            end.setHours(23, 59, 59, 999)
+            result = result.filter(s => {
+                const d = new Date(s.created_at)
+                return d >= start && d <= end
+            })
+        }
+
+        if (selectedCashier !== 'all') {
+            result = result.filter(s => s.cashier_id === selectedCashier)
+        }
+
+        // Sort by created_at descending
+        result.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+
+        return result
+    }, [allSales, dateRange, customDates, selectedCashier])
+
+    const totalCount = filteredSales.length
+
+    // Client-side pagination
+    const sales = useMemo(() => {
+        const from = (currentPage - 1) * pageSize
+        return filteredSales.slice(from, from + pageSize)
+    }, [filteredSales, currentPage, pageSize])
+
+    // Derive available cashiers from local data
+    const availableCashiers = useMemo(() => {
+        const map = new Map<string, string>()
+        allSales.forEach(s => {
+            if (s.cashier_id && s.cashier_name && s.cashier_name !== 'Staff') {
+                map.set(s.cashier_id, s.cashier_name)
+            }
+        })
+        return Array.from(map.entries()).map(([id, name]) => ({ id, name }))
+    }, [allSales])
 
     const getEffectiveTotal = (sale: Sale) => {
         // If the sale itself is marked returned
@@ -193,20 +243,20 @@ export function Sales() {
 
     const confirmDeleteSale = async () => {
         if (!saleToDelete) return
-        setIsLoading(true)
         try {
             const { error } = await supabase.rpc('delete_sale', { p_sale_id: saleToDelete.id })
             if (error) throw error
 
-            setSales(sales.filter(s => s.id !== saleToDelete.id))
+            // Update local-db immediately for instant UI feedback
+            await db.sales.delete(saleToDelete.id)
+            await db.sale_items.where('saleId').equals(saleToDelete.id).delete()
+
             if (selectedSale?.id === saleToDelete.id) setSelectedSale(null)
             setDeleteModalOpen(false)
             setSaleToDelete(null)
         } catch (err: any) {
             console.error('Error deleting sale:', err)
             alert('Failed to delete sale: ' + (err.message || 'Unknown error'))
-        } finally {
-            setIsLoading(false)
         }
     }
 
@@ -350,7 +400,15 @@ export function Sales() {
                         }
                     }
 
-                    setSales(prev => prev.map(updateSale))
+                    // Update local-db for instant UI reactivity
+                    const existingLocal = await db.sales.get(saleToReturn.id)
+                    if (existingLocal) {
+                        const updatedSale = updateSale({ ...existingLocal, items: (existingLocal as any)._enrichedItems } as any)
+                            ; (existingLocal as any)._enrichedItems = updatedSale.items
+                            ; (existingLocal as any).totalAmount = updatedSale.total_amount
+                            ; (existingLocal as any).isReturned = updatedSale.is_returned
+                        await db.sales.put(existingLocal)
+                    }
                     if (selectedSale?.id === saleToReturn.id) {
                         setSelectedSale(updateSale(selectedSale))
                     }
@@ -382,7 +440,23 @@ export function Sales() {
                         }
                     }
 
-                    setSales(prev => prev.map(updateSale))
+                    // Update local-db for instant UI reactivity
+                    const existingLocal = await db.sales.get(saleToReturn.id)
+                    if (existingLocal) {
+                        ; (existingLocal as any).isReturned = true
+                            ; (existingLocal as any).totalAmount = 0
+                            ; (existingLocal as any).returnReason = reason
+                            ; (existingLocal as any).returnedAt = new Date().toISOString()
+                        const updatedItems = ((existingLocal as any)._enrichedItems || []).map((i: any) => ({
+                            ...i,
+                            is_returned: true,
+                            returned_quantity: i.quantity,
+                            return_reason: reason,
+                            returned_at: new Date().toISOString()
+                        }))
+                            ; (existingLocal as any)._enrichedItems = updatedItems
+                        await db.sales.put(existingLocal)
+                    }
                     if (selectedSale?.id === saleToReturn.id) {
                         setSelectedSale(updateSale(selectedSale))
                     }
@@ -391,10 +465,9 @@ export function Sales() {
 
             if (error) throw error
 
-            // Close modal and refresh
+            // Close modal and refresh — local-db handles reactivity via useLiveQuery
             setReturnModalOpen(false)
             setSaleToReturn(null)
-            await fetchSales()
         } catch (err: any) {
             console.error('Error returning sale:', err)
             alert('Failed to return sale: ' + (err.message || 'Unknown error'))
@@ -408,10 +481,12 @@ export function Sales() {
         const isCurrentlyOnline = navigator.onLine
 
         try {
-            // 1. Update local state (Optimistic)
-            setSales(prev => prev.map(s =>
-                s.id === selectedSaleForNote.id ? { ...s, notes: note, updated_at: now } : s
-            ))
+            // Update local-db for instant UI reactivity (useLiveQuery will pick it up)
+            await db.sales.update(selectedSaleForNote.id, {
+                notes: note,
+                updatedAt: now,
+                syncStatus: 'pending'
+            })
 
             if (isCurrentlyOnline) {
                 // 2. ONLINE: Write to Supabase first
@@ -494,121 +569,6 @@ export function Sales() {
             })
         }
     }
-
-    const fetchCashiers = async () => {
-        try {
-            const { data, error } = await supabase
-                .from('sales')
-                .select('cashier_id')
-                .not('cashier_id', 'is', null)
-
-            if (error) throw error
-
-            const uniqueCashierIds = [...new Set(data?.map(s => s.cashier_id))]
-
-            if (uniqueCashierIds.length > 0) {
-                const { data: profiles } = await supabase
-                    .from('profiles')
-                    .select('id, name')
-                    .in('id', uniqueCashierIds)
-
-                if (profiles) {
-                    setAvailableCashiers(profiles)
-                }
-            }
-        } catch (err) {
-            console.error('Error fetching cashiers:', err)
-        }
-    }
-
-    const fetchSales = async () => {
-        setIsLoading(true)
-        try {
-            // Build query with date range filtering
-            let query = supabase
-                .from('sales')
-                .select(`
-                    *,
-                    items:sale_items(
-                        *,
-                        product:product_id(name, sku, can_be_returned, return_rules)
-                    )
-                `, { count: 'exact' })
-
-            // Apply date range filters
-            const now = new Date()
-            if (dateRange === 'today') {
-                const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0).toISOString()
-                query = query.gte('created_at', startOfDay)
-            } else if (dateRange === 'month') {
-                const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
-                query = query.gte('created_at', startOfMonth)
-            } else if (dateRange === 'custom' && customDates.start && customDates.end) {
-                const start = new Date(customDates.start)
-                start.setHours(0, 0, 0, 0)
-                const end = new Date(customDates.end)
-                end.setHours(23, 59, 59, 999)
-                query = query.gte('created_at', start.toISOString()).lte('created_at', end.toISOString())
-            }
-
-            // Apply cashier filter
-            if (selectedCashier !== 'all') {
-                query = query.eq('cashier_id', selectedCashier)
-            }
-
-            // Apply pagination
-            const from = (currentPage - 1) * pageSize
-            const to = from + pageSize - 1
-            query = query.range(from, to)
-
-            const { data, count, error } = await query.order('created_at', { ascending: false })
-
-            if (error) throw error
-            if (count !== null) setTotalCount(count)
-
-            // Fetch profiles for cashiers
-            const cashierIds = Array.from(new Set((data || []).map((s: any) => s.cashier_id).filter(Boolean)))
-            let profilesMap: Record<string, string> = {}
-
-            if (cashierIds.length > 0) {
-                const { data: profiles } = await supabase
-                    .from('profiles')
-                    .select('id, name')
-                    .in('id', cashierIds)
-
-                if (profiles) {
-                    profilesMap = profiles.reduce((acc: any, curr: any) => ({
-                        ...acc,
-                        [curr.id]: curr.name
-                    }), {})
-                }
-            }
-
-            const formattedSales = (data || []).map((sale: any) => ({
-                ...sale,
-                sequenceId: sale.sequence_id,
-                cashier_name: profilesMap[sale.cashier_id] || 'Staff',
-                items: sale.items?.map((item: any) => ({
-                    ...item,
-                    product_name: item.product?.name || 'Unknown Product',
-                    product_sku: item.product?.sku || ''
-                }))
-            }))
-
-            setSales(formattedSales)
-        } catch (err) {
-            console.error('Error fetching sales:', err)
-        } finally {
-            setIsLoading(false)
-        }
-    }
-
-    useEffect(() => {
-        if (user?.workspaceId) {
-            fetchSales()
-            fetchCashiers()
-        }
-    }, [user?.workspaceId, dateRange, customDates, selectedCashier, currentPage])
 
     // Reset to page 1 when filters change
     useEffect(() => {
@@ -715,12 +675,12 @@ export function Sales() {
                     ) : isMobile() ? (
                         <div className="grid grid-cols-1 gap-4">
                             {sales.map((sale) => {
-                                const isFullyReturned = sale.is_returned || (sale.items && sale.items.length > 0 && sale.items.every(item =>
+                                const isFullyReturned = sale.is_returned || (sale.items && sale.items.length > 0 && sale.items.every((item: SaleItem) =>
                                     item.is_returned || (item.returned_quantity || 0) >= item.quantity
                                 ))
-                                const returnedItemsCount = sale.items?.filter(item => item.is_returned).length || 0
-                                const partialReturnedItemsCount = sale.items?.filter(item => (item.returned_quantity || 0) > 0 && !item.is_returned).length || 0
-                                const totalReturnedQuantity = sale.items?.reduce((sum, item) => {
+                                const returnedItemsCount = sale.items?.filter((item: SaleItem) => item.is_returned).length || 0
+                                const partialReturnedItemsCount = sale.items?.filter((item: SaleItem) => (item.returned_quantity || 0) > 0 && !item.is_returned).length || 0
+                                const totalReturnedQuantity = sale.items?.reduce((sum: number, item: SaleItem) => {
                                     if (item.is_returned) return sum + (item.quantity || 0)
                                     if ((item.returned_quantity || 0) > 0) return sum + (item.returned_quantity || 0)
                                     return sum
@@ -849,12 +809,12 @@ export function Sales() {
                             </TableHeader>
                             <TableBody>
                                 {sales.map((sale) => {
-                                    const isFullyReturned = sale.is_returned || (sale.items && sale.items.length > 0 && sale.items.every(item =>
+                                    const isFullyReturned = sale.is_returned || (sale.items && sale.items.length > 0 && sale.items.every((item: SaleItem) =>
                                         item.is_returned || (item.returned_quantity || 0) >= item.quantity
                                     ))
-                                    const returnedItemsCount = sale.items?.filter(item => item.is_returned).length || 0
-                                    const partialReturnedItemsCount = sale.items?.filter(item => (item.returned_quantity || 0) > 0 && !item.is_returned).length || 0
-                                    const totalReturnedQuantity = sale.items?.reduce((sum, item) => {
+                                    const returnedItemsCount = sale.items?.filter((item: SaleItem) => item.is_returned).length || 0
+                                    const partialReturnedItemsCount = sale.items?.filter((item: SaleItem) => (item.returned_quantity || 0) > 0 && !item.is_returned).length || 0
+                                    const totalReturnedQuantity = sale.items?.reduce((sum: number, item: SaleItem) => {
                                         if (item.is_returned) return sum + (item.quantity || 0)
                                         if ((item.returned_quantity || 0) > 0) return sum + (item.returned_quantity || 0)
                                         return sum

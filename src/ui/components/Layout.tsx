@@ -91,7 +91,7 @@ function prefetchRoute(href: string) {
 }
 
 export function Layout({ children }: LayoutProps) {
-    const [location] = useLocation()
+    const [location, setLocation] = useLocation()
     const { user, signOut } = useAuth()
     const { hasFeature, workspaceName, isFullscreen, features } = useWorkspace()
     const { style } = useTheme()
@@ -200,10 +200,16 @@ export function Layout({ children }: LayoutProps) {
 
         // If user is NOT on the whatsapp page, ensure the webview is hidden
         // This acts as a global fail-safe during navigation or refreshes
-        if (location !== '/whatsapp') {
-            whatsappManager.hide().catch(() => { });
-        }
     }, [location, isTauri]);
+
+    // Locking Enforcement
+    const { isLocked } = useWorkspace()
+    useEffect(() => {
+        if (isLocked && location !== '/locked-workspace') {
+            console.log('[Layout] Workspace is LOCKED. Redirecting to /locked-workspace')
+            setLocation('/locked-workspace')
+        }
+    }, [isLocked, location])
 
     const navigation = [
         { name: t('nav.dashboard'), href: '/', icon: LayoutDashboard },

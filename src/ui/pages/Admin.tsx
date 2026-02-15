@@ -12,7 +12,9 @@ import {
     CheckCircle2,
     XCircle,
     Lock,
-    Phone
+    Phone,
+    Search,
+    AlertCircle
 } from 'lucide-react'
 import {
     Button,
@@ -55,6 +57,7 @@ interface AdminWorkspace {
     allow_invoices: boolean
     is_configured: boolean
     locked_workspace: boolean
+    subscription_expires_at: string | null
     deleted_at?: string | null
 }
 
@@ -77,6 +80,8 @@ export function Admin() {
     const [showDeleted, setShowDeleted] = useState(false)
     const [deleteModalOpen, setDeleteModalOpen] = useState(false)
     const [userToDelete, setUserToDelete] = useState<AdminUser | null>(null)
+    const [searchTerm, setSearchTerm] = useState('')
+    const [customExpiries, setCustomExpiries] = useState<Record<string, string>>({})
 
     // Handle session timeout
     useEffect(() => {
@@ -230,6 +235,64 @@ export function Admin() {
         }
     }
 
+    const handleExtendSubscription = async (workspaceId: string, customDate?: string) => {
+        setIsLoading(true)
+        try {
+            let newExpiry: Date
+            if (customDate) {
+                newExpiry = new Date(customDate)
+            } else {
+                // Find current expiry
+                const ws = workspaces.find(w => w.id === workspaceId)
+                let baseDate = ws?.subscription_expires_at ? new Date(ws.subscription_expires_at) : new Date()
+
+                // If already expired, start from now
+                if (baseDate < new Date()) {
+                    baseDate = new Date()
+                }
+
+                newExpiry = new Date(baseDate)
+                newExpiry.setMonth(newExpiry.getMonth() + 1)
+            }
+
+            const { error } = await supabase.rpc('admin_update_workspace_subscription', {
+                provided_key: passkey,
+                target_workspace_id: workspaceId,
+                new_expiry: newExpiry.toISOString()
+            })
+
+            if (error) throw error
+
+            toast({
+                title: t('common.success') || "Subscription Updated",
+                description: customDate ? t('admin.expiryUpdated') || "New expiry date set." : t('admin.subscriptionExtended') || "Workspace extended by 1 month."
+            })
+            fetchData()
+        } catch (err: any) {
+            toast({
+                variant: "destructive",
+                title: t('common.error') || "Update Failed",
+                description: err.message
+            })
+        } finally {
+            setIsLoading(false)
+        }
+    }
+
+    const getSubscriptionStatus = (ws: AdminWorkspace) => {
+        if (ws.locked_workspace) return { label: t('admin.locked') || 'Locked', color: 'text-destructive bg-destructive/10', icon: XCircle }
+        if (!ws.subscription_expires_at) return { label: t('admin.noLimit') || 'No Limit', color: 'text-neutral-500 bg-neutral-100', icon: CheckCircle2 }
+
+        const expiry = new Date(ws.subscription_expires_at)
+        const now = new Date()
+        const diffDays = Math.ceil((expiry.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+
+        if (diffDays < 0) return { label: t('admin.expired') || 'Expired', color: 'text-destructive bg-destructive/10', icon: AlertCircle }
+        if (diffDays < 7) return { label: `${diffDays} ${t('admin.daysLeft') || 'days left'}`, color: 'text-amber-600 bg-amber-50', icon: Clock }
+
+        return { label: t('admin.active') || 'Active', color: 'text-green-600 bg-green-50', icon: CheckCircle2 }
+    }
+
     // Filter workspaces based on showDeleted toggle
     const filteredWorkspaces = workspaces.filter(ws => showDeleted ? true : !ws.deleted_at)
 
@@ -311,15 +374,16 @@ export function Admin() {
                         </Button>
                         <Button variant="outline" onClick={handleLogout} className="rounded-xl border-destructive/20 text-destructive hover:bg-destructive/5">
                             <LogOut className="w-4 h-4 mr-2" />
-                            Logout
+                            {t('admin.logout')}
                         </Button>
                     </div>
                 </div>
 
                 <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-                    <TabsList className="grid w-full grid-cols-2 max-w-[400px]">
-                        <TabsTrigger value="users">Registered Users</TabsTrigger>
-                        <TabsTrigger value="workspaces">Workspace Configuration</TabsTrigger>
+                    <TabsList className="grid w-full grid-cols-3 max-w-[600px]">
+                        <TabsTrigger value="users">{t('admin.users') || 'Registered Users'}</TabsTrigger>
+                        <TabsTrigger value="workspaces">{t('admin.workspaces') || 'Workspace Configuration'}</TabsTrigger>
+                        <TabsTrigger value="subscriptions">{t('admin.subscriptions') || 'Subscriptions'}</TabsTrigger>
                     </TabsList>
 
                     {/* USERS TAB */}
@@ -328,10 +392,10 @@ export function Admin() {
                             <div className="p-6 border-b border-border bg-muted/5">
                                 <h2 className="text-lg font-semibold flex items-center gap-2">
                                     <UserIcon className="w-5 h-5" />
-                                    Registered Users
+                                    {t('admin.registeredUsers')}
                                 </h2>
                                 <p className="text-sm text-muted-foreground mt-1">
-                                    A total of {users.length} users are currently registered.
+                                    {t('admin.totalUsers', { count: users.length })}
                                 </p>
                             </div>
 
@@ -339,12 +403,12 @@ export function Admin() {
                                 <table className="w-full border-collapse">
                                     <thead>
                                         <tr className="bg-muted/30">
-                                            <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">User</th>
-                                            <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">Contact</th>
-                                            <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">Role</th>
-                                            <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">Workspace</th>
-                                            <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">Joined</th>
-                                            <th className="px-6 py-4 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wider">Actions</th>
+                                            <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">{t('admin.user')}</th>
+                                            <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">{t('admin.contact')}</th>
+                                            <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">{t('admin.role')}</th>
+                                            <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">{t('admin.workspace')}</th>
+                                            <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">{t('admin.joined')}</th>
+                                            <th className="px-6 py-4 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wider">{t('admin.actions')}</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-border">
@@ -428,14 +492,14 @@ export function Admin() {
                                 <div>
                                     <h2 className="text-lg font-semibold flex items-center gap-2">
                                         <Building2 className="w-5 h-5" />
-                                        Workspace Configuration
+                                        {t('admin.workspaces')}
                                     </h2>
                                     <p className="text-sm text-muted-foreground mt-1">
-                                        Manage feature access for each workspace.
+                                        {t('admin.manageFeatures')}
                                     </p>
                                 </div>
                                 <div className="flex items-center gap-2">
-                                    <span className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Show Deleted</span>
+                                    <span className="text-xs text-muted-foreground font-medium uppercase tracking-wider">{t('admin.showDeleted')}</span>
                                     <Switch
                                         checked={showDeleted}
                                         onCheckedChange={setShowDeleted}
@@ -447,13 +511,13 @@ export function Admin() {
                                 <table className="w-full border-collapse">
                                     <thead>
                                         <tr className="bg-muted/30">
-                                            <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider w-[30%]">Workspace</th>
-                                            <th className="px-6 py-4 text-center text-xs font-semibold text-muted-foreground uppercase tracking-wider">POS</th>
-                                            <th className="px-6 py-4 text-center text-xs font-semibold text-muted-foreground uppercase tracking-wider">Customers</th>
-                                            <th className="px-6 py-4 text-center text-xs font-semibold text-muted-foreground uppercase tracking-wider">Orders</th>
-                                            <th className="px-6 py-4 text-center text-xs font-semibold text-muted-foreground uppercase tracking-wider">Invoices</th>
+                                            <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider w-[30%]">{t('admin.workspace')}</th>
+                                            <th className="px-6 py-4 text-center text-xs font-semibold text-muted-foreground uppercase tracking-wider">{t('admin.pos')}</th>
+                                            <th className="px-6 py-4 text-center text-xs font-semibold text-muted-foreground uppercase tracking-wider">{t('admin.customers')}</th>
+                                            <th className="px-6 py-4 text-center text-xs font-semibold text-muted-foreground uppercase tracking-wider">{t('admin.orders')}</th>
+                                            <th className="px-6 py-4 text-center text-xs font-semibold text-muted-foreground uppercase tracking-wider">{t('admin.invoices')}</th>
                                             <th className="px-6 py-4 text-center text-xs font-semibold text-amber-500 uppercase tracking-wider"><Lock className="w-4 h-4 inline" /></th>
-                                            <th className="px-6 py-4 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wider">Configured</th>
+                                            <th className="px-6 py-4 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wider">{t('admin.configured')}</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-border">
@@ -536,13 +600,122 @@ export function Admin() {
                                         ))}
                                         {filteredWorkspaces.length === 0 && !isLoading && (
                                             <tr>
-                                                <td colSpan={6} className="px-6 py-12 text-center text-muted-foreground">
-                                                    {showDeleted ? 'No workspaces found.' : 'No active workspaces found.'}
+                                                <td colSpan={7} className="px-6 py-12 text-center text-muted-foreground">
+                                                    {showDeleted ? t('admin.noWorkspaces') : t('admin.noActiveWorkspaces')}
                                                 </td>
                                             </tr>
                                         )}
                                     </tbody>
                                 </table>
+                            </div>
+                        </div>
+                    </TabsContent>
+
+                    {/* SUBSCRIPTIONS TAB */}
+                    <TabsContent value="subscriptions" className="space-y-4">
+                        <div className="space-y-4">
+                            <div className="flex items-center gap-4 bg-muted/20 p-4 rounded-xl border border-border">
+                                <div className="relative flex-1">
+                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                                    <input
+                                        type="text"
+                                        placeholder={t('admin.searchPlaceholder') || "Search workspace by name or code..."}
+                                        value={searchTerm}
+                                        onChange={(e) => setSearchTerm(e.target.value)}
+                                        className="w-full pl-9 pr-4 py-2 bg-background border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="bg-card rounded-2xl border border-border shadow-sm overflow-hidden">
+                                <div className="p-6 border-b border-border bg-muted/5">
+                                    <h2 className="text-lg font-semibold flex items-center gap-2">
+                                        <Clock className="w-5 h-5" />
+                                        {t('admin.workspaceSubscriptions') || "Workspace Subscriptions"}
+                                    </h2>
+                                    <p className="text-sm text-muted-foreground mt-1">
+                                        {t('admin.manageSubscriptions') || "Manage subscription periods and access for all workspaces."}
+                                    </p>
+                                </div>
+                                <div className="overflow-x-auto">
+                                    <table className="w-full border-collapse">
+                                        <thead>
+                                            <tr className="bg-muted/30">
+                                                <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">{t('admin.workspace')}</th>
+                                                <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">{t('admin.status')}</th>
+                                                <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">{t('admin.expiresAt')}</th>
+                                                <th className="px-6 py-4 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wider">{t('admin.actions')}</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-border">
+                                            {workspaces
+                                                .filter(ws =>
+                                                    ws.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                                                    ws.code.toLowerCase().includes(searchTerm.toLowerCase())
+                                                )
+                                                .map((ws) => {
+                                                    const status = getSubscriptionStatus(ws)
+                                                    const StatusIcon = status.icon
+
+                                                    return (
+                                                        <tr key={ws.id} className="hover:bg-muted/10 transition-colors group">
+                                                            <td className="px-6 py-4">
+                                                                <div className="font-medium">{ws.name}</div>
+                                                                <div className="text-xs text-muted-foreground font-mono">{ws.code}</div>
+                                                            </td>
+                                                            <td className="px-6 py-4">
+                                                                <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${status.color}`}>
+                                                                    <StatusIcon className="w-3.5 h-3.5" />
+                                                                    {status.label}
+                                                                </span>
+                                                            </td>
+                                                            <td className="px-6 py-4">
+                                                                {ws.subscription_expires_at ? (
+                                                                    <div className="text-sm flex items-center gap-1.5 text-muted-foreground">
+                                                                        <Calendar className="w-3.5 h-3.5" />
+                                                                        {formatDate(ws.subscription_expires_at)}
+                                                                    </div>
+                                                                ) : (
+                                                                    <span className="text-xs text-muted-foreground italic">Lifetime</span>
+                                                                )}
+                                                            </td>
+                                                            <td className="px-6 py-4 text-right">
+                                                                <div className="flex justify-end items-center gap-2">
+                                                                    <div className="flex items-center gap-1 bg-background border border-border rounded-lg p-1">
+                                                                        <input
+                                                                            type="date"
+                                                                            className="bg-transparent border-none text-[11px] focus:outline-none px-1"
+                                                                            value={customExpiries[ws.id] || ''}
+                                                                            onChange={(e) => setCustomExpiries(prev => ({ ...prev, [ws.id]: e.target.value }))}
+                                                                        />
+                                                                        <Button
+                                                                            size="sm"
+                                                                            variant="ghost"
+                                                                            className="h-6 px-2 text-[10px] hover:bg-primary/10 hover:text-primary"
+                                                                            onClick={() => handleExtendSubscription(ws.id, customExpiries[ws.id])}
+                                                                            disabled={isLoading || !customExpiries[ws.id]}
+                                                                        >
+                                                                            {t('admin.setExpiry')}
+                                                                        </Button>
+                                                                    </div>
+                                                                    <div className="h-4 w-[1px] bg-border mx-1" />
+                                                                    <Button
+                                                                        size="sm"
+                                                                        variant="outline"
+                                                                        className="h-8 rounded-lg text-[11px]"
+                                                                        onClick={() => handleExtendSubscription(ws.id)}
+                                                                        disabled={isLoading}
+                                                                    >
+                                                                        {t('admin.extend')}
+                                                                    </Button>
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+                                                    )
+                                                })}
+                                        </tbody>
+                                    </table>
+                                </div>
                             </div>
                         </div>
                     </TabsContent>

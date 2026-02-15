@@ -1,0 +1,156 @@
+# Local-First Migration Guide
+
+## Overview
+
+This guide documents the **Local-First Data Pattern** used in the Sales History page (`useSalesHistory` hook). This pattern enables instant page loads, offline support, and eliminates loading spinners by prioritizing local data (Dexie) over remote data (Supabase), with background synchronization.
+
+**Can this be done for other pages?**
+**Yes.** Any list view or data-heavy page (e.g., Inventory, Customers, Reports) can adopt this pattern. The main trade-off is moving pagination/filtering to the client-side, which increases memory usage but dramatically improving user experience.
+
+---
+
+## The Core Mechanism
+
+The pattern consists of three main parts:
+
+1.  **The Hook ([hooks.ts](file:///e:/ERP%20System/Asaas/src/lib/hooks.ts))**: Manages data synchronization.
+2.  **The Local DB (`Dexie`)**: Acts as the single source of truth for the UI.
+3.  **The UI Component**: Reads from the hook and handles display logic.
+
+### 1. The Hook Structure
+
+Instead of `useEffect` fetching directly from Supabase, the hook does two things:
+
+1.  **Reads Local Data (Sync)**: Uses `useLiveQuery` to subscribe to Dexie. This returns data *instantly*.
+2.  **Syncs Remote Data (Async)**: Uses `useEffect` to fetch fresh data from Supabase in the background and update Dexie.
+
+```typescript
+// Example: hooks.ts
+
+export function useMyData(workspaceId: string) {
+    const isOnline = useNetworkStatus()
+
+    // 1. READ: Instant local data
+    const data = useLiveQuery(
+        () => workspaceId ? db.myTable.where('workspaceId').equals(workspaceId).toArray() : [],
+        [workspaceId]
+    )
+
+    // 2. SYNC: Background fetch & update
+    useEffect(() => {
+        async function sync() {
+            if (!isOnline || !workspaceId) return
+
+            // Fetch complex data (joins, etc.)
+            const { data: remoteData } = await supabase
+                .from('my_table')
+                .select('*, related_table(*)')
+                .eq('workspace_id', workspaceId)
+            
+            if (remoteData) {
+                await db.transaction('rw', db.myTable, async () => {
+                    // Reconciliation logic (update local to match remote)
+                    // ... (delete removed items, update changed items)
+                    
+                    for (const item of remoteData) {
+                        // Transform snake_case -> camelCase for storage
+                        const localItem = toCamelCase(item)
+                        
+                        // Store enriched/joined data directly on the record
+                        // (Denormalization for easier local reads)
+                        localItem._relatedData = item.related_table
+                        
+                        await db.myTable.put(localItem)
+                    }
+                })
+            }
+        }
+        sync()
+    }, [isOnline, workspaceId])
+
+    return data ?? []
+}
+```
+
+### 2. UI Component Refactoring
+
+The UI stops managing loading states and data fetching. It becomes a **reactive view** of the local database.
+
+**Before (Online-First):**
+```tsx
+const [data, setData] = useState([])
+const [loading, setLoading] = useState(true)
+
+useEffect(() => {
+   fetchData().then(d => {
+       setData(d)
+       setLoading(false)
+   })
+}, [])
+
+if (loading) return <Spinner />
+```
+
+**After (Local-First):**
+```tsx
+// Hook handles everything. Returns [] initially, then cached data instantly.
+const rawData = useMyData(workspaceId) 
+const data = useMemo(() => rawData.map(toCreateModel), [rawData]) // Optional mapper
+
+// No loading state needed for the main list (maybe a small indicator for "Syncing...")
+```
+
+### 3. Client-Side Filtering & Pagination
+
+Since we load *all* relevant data into Dexie (per workspace), we move filtering and pagination to the client.
+
+```tsx
+// Inside Component
+const filteredData = useMemo(() => {
+    return data.filter(item => {
+       // Apply date range, search text, etc.
+       return true
+    })
+}, [data, filters])
+
+const paginatedData = useMemo(() => {
+    const start = (page - 1) * pageSize
+    return filteredData.slice(start, start + pageSize)
+}, [filteredData, page])
+```
+
+### 4. Handling Mutations (Create/Update/Delete)
+
+When the user changes data, we must update **both** Supabase (Remote) and Dexie (Local) to avoid "flicker" (waiting for the background sync to retrieve the change).
+
+```tsx
+const handleDelete = async (id) => {
+    // 1. Call Supabase API/RPC
+    await supabase.from('my_table').delete().eq('id', id)
+    
+    // 2. CRITICAL: Immediately update local DB
+    // This triggers useLiveQuery -> UI updates instantly
+    await db.myTable.delete(id) 
+}
+```
+
+---
+
+## Key Benefits & Trade-offs
+
+| Feature | Local-First (New) | Online-First (Old) |
+| :--- | :--- | :--- |
+| **Initial Load** | **Instant (0ms)** | Slow (Network RTT) |
+| **Offline** | **Full Read/Write** | Broken / Limited |
+| **Pagination** | Client-side (Fast, but uses RAM) | Server-side (Slow, scalable) |
+| **Complexity** | Higher (Sync logic) | Lower (Simple Fetch) |
+
+## Implementation Checklist for Future Pages
+
+1.  **Check Local DB**: Ensure a Dexie table exists for the resource (e.g., `db.products`).
+2.  **Create Hook**: Implement `useLiveQuery` + `useEffect` sync pattern in [hooks.ts](file:///e:/ERP%20System/Asaas/src/lib/hooks.ts).
+3.  **Enrich Data**: If the UI needs joined data (e.g., "Category Name" on a Product), fetch it in the sync effect and store it on the object (e.g., `_categoryName`).
+4.  **Refactor Page**:
+    *   Replace `useState` with the hook.
+    *   Implement `useMemo` for filtering/sorting.
+    *   Update Create/Delete functions to write to `db.*` immediately after API calls.

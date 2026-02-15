@@ -21,10 +21,10 @@ import { Image as ImageIcon } from 'lucide-react'
 import { assetManager } from '@/lib/assetManager'
 
 export function Settings() {
-    const { user, session, signOut, isSupabaseConfigured, updateUser } = useAuth()
+    const { user, signOut, isSupabaseConfigured, updateUser } = useAuth()
     const { syncState, pendingCount, lastSyncTime, sync, isSyncing, isOnline } = useSyncStatus()
     const { theme, setTheme, style, setStyle } = useTheme()
-    const { features, updateSettings, workspaceName } = useWorkspace()
+    const { features, updateSettings, workspaceName, isLocked } = useWorkspace()
     const { toast } = useToast()
     const { t } = useTranslation()
     const { alerts, forceAlert } = useExchangeRate()
@@ -1283,20 +1283,24 @@ export function Settings() {
                                             <Label className="text-muted-foreground">{t('settings.authMode')}</Label>
                                             <p className="font-medium">{isSupabaseConfigured ? 'Supabase' : t('settings.demo')}</p>
                                         </div>
-                                        {isSupabaseConfigured && session?.access_token && (
-                                            <div className="md:col-span-2">
-                                                <Label className="text-muted-foreground">Session ID</Label>
-                                                <div
-                                                    className="flex items-center gap-2 mt-1 px-3 py-2 bg-secondary/20 rounded-lg border border-border group cursor-pointer hover:border-primary/50 transition-colors w-full max-w-sm"
-                                                    onClick={() => copyToClipboard(session.access_token)}
-                                                >
-                                                    <p className="font-mono text-xs truncate flex-1">{session.access_token}</p>
-                                                    <Button variant="ghost" size="icon" className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                        <Copy className="h-3.5 w-3.5" />
-                                                    </Button>
+                                        <div className="md:col-span-2">
+                                            <Label className="text-muted-foreground">Workspace Subscription</Label>
+                                            <div className="flex items-center gap-3 mt-1.5 p-3 bg-secondary/20 rounded-lg border border-border w-full max-w-sm">
+                                                <div className={cn(
+                                                    "px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider",
+                                                    isLocked
+                                                        ? "bg-destructive/20 text-destructive border border-destructive/30"
+                                                        : "bg-emerald-500/20 text-emerald-500 border border-emerald-500/30"
+                                                )}>
+                                                    {isLocked ? 'Expired' : 'Active'}
                                                 </div>
+                                                <p className="text-sm font-medium">
+                                                    {features.subscription_expires_at
+                                                        ? formatDateTime(features.subscription_expires_at)
+                                                        : 'Lifetime'}
+                                                </p>
                                             </div>
-                                        )}
+                                        </div>
                                         <div className="md:col-span-2">
                                             <Label className="text-muted-foreground">{t('auth.workspaceCode')}</Label>
                                             <div

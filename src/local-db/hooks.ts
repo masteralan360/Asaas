@@ -1018,10 +1018,29 @@ export function useSales(workspaceId: string | undefined) {
             if (isOnline && workspaceId) {
                 const { data, error } = await supabase
                     .from('sales')
-                    .select('*, sale_items(*)')
+                    .select(`
+                        *,
+                        sale_items(
+                            *,
+                            product:product_id(name, sku, can_be_returned, return_rules)
+                        )
+                    `)
                     .eq('workspace_id', workspaceId)
 
                 if (data && !error) {
+                    // Fetch cashier profiles
+                    const cashierIds = Array.from(new Set(data.map((s: any) => s.cashier_id).filter(Boolean)))
+                    let profilesMap: Record<string, string> = {}
+                    if (cashierIds.length > 0) {
+                        const { data: profiles } = await supabase
+                            .from('profiles')
+                            .select('id, name')
+                            .in('id', cashierIds)
+                        if (profiles) {
+                            profilesMap = profiles.reduce((acc: any, p: any) => ({ ...acc, [p.id]: p.name }), {})
+                        }
+                    }
+
                     await db.transaction('rw', [db.sales, db.sale_items], async () => {
                         const remoteIds = new Set(data.map(d => d.id))
                         const localItems = await db.sales.where('workspaceId').equals(workspaceId).toArray()
@@ -1029,22 +1048,32 @@ export function useSales(workspaceId: string | undefined) {
                         for (const local of localItems) {
                             if (!remoteIds.has(local.id) && local.syncStatus === 'synced') {
                                 await db.sales.delete(local.id)
-                                // Also delete associated items
                                 await db.sale_items.where('saleId').equals(local.id).delete()
                             }
                         }
 
                         for (const remoteSale of data) {
-                            const { sale_items, ...saleData } = remoteSale as any
+                            const { sale_items: remoteItems, ...saleData } = remoteSale as any
                             const localSale = toCamelCase(saleData) as unknown as Sale
                             localSale.syncStatus = 'synced'
                             localSale.lastSyncedAt = new Date().toISOString()
+
+                            // Enrich with cashier name and items for local-first reads
+                            const enrichedItems = (remoteItems || []).map((item: any) => ({
+                                ...item,
+                                product_name: item.product?.name || 'Unknown Product',
+                                product_sku: item.product?.sku || '',
+                                product_category: item.product?.category || ''
+                            }))
+                                ; (localSale as any)._enrichedItems = enrichedItems
+                                ; (localSale as any)._cashierName = profilesMap[saleData.cashier_id] || 'Staff'
+
                             await db.sales.put(localSale)
 
-                            // Force sync sale items
-                            if (sale_items) {
-                                for (const item of sale_items) {
-                                    const localItem = toCamelCase(item) as unknown as SaleItem
+                            if (remoteItems) {
+                                for (const item of remoteItems) {
+                                    const { product, ...itemData } = item
+                                    const localItem = toCamelCase(itemData) as unknown as SaleItem
                                     await db.sale_items.put(localItem)
                                 }
                             }
@@ -1057,6 +1086,50 @@ export function useSales(workspaceId: string | undefined) {
     }, [isOnline, workspaceId])
 
     return sales ?? []
+}
+
+/**
+ * Maps a local-db Sale (camelCase) to the UI Sale type (snake_case) from @/types.
+ * Includes enriched items and cashier name from background sync.
+ */
+export function toUISale(localSale: any): any {
+    const enrichedItems = (localSale._enrichedItems || []).map((item: any) => ({
+        ...item,
+        // Ensure product object is available for return checks
+        product: item.product || {
+            name: item.product_name || 'Unknown Product',
+            sku: item.product_sku || '',
+            can_be_returned: item.can_be_returned ?? true,
+            return_rules: item.return_rules
+        }
+    }))
+
+    return {
+        id: localSale.id,
+        workspace_id: localSale.workspaceId,
+        cashier_id: localSale.cashierId,
+        total_amount: localSale.totalAmount,
+        settlement_currency: localSale.settlementCurrency,
+        exchange_source: localSale.exchangeSource,
+        exchange_rate: localSale.exchangeRate,
+        exchange_rate_timestamp: localSale.exchangeRateTimestamp,
+        exchange_rates: localSale.exchangeRates,
+        created_at: localSale.createdAt,
+        updated_at: localSale.updatedAt,
+        origin: localSale.origin,
+        payment_method: localSale.payment_method ?? localSale.paymentMethod,
+        cashier_name: localSale._cashierName || 'Staff',
+        items: enrichedItems,
+        is_returned: localSale.isReturned,
+        return_reason: localSale.returnReason,
+        returned_at: localSale.returnedAt,
+        returned_by: localSale.returnedBy,
+        sequenceId: localSale.sequenceId,
+        system_verified: localSale.systemVerified,
+        system_review_status: localSale.systemReviewStatus,
+        system_review_reason: localSale.systemReviewReason,
+        notes: localSale.notes
+    }
 }
 
 // ===================

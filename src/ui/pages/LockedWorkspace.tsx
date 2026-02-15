@@ -1,13 +1,18 @@
 import { useTranslation } from 'react-i18next'
-import { Lock, Mail, LogOut } from 'lucide-react'
+import { Lock, Mail, LogOut, Clock, AlertCircle } from 'lucide-react'
 import { Button } from '@/ui/components/button'
 import { useAuth } from '@/auth'
 import { useLocation } from 'wouter'
+import { useWorkspace } from '@/workspace'
+import { formatDate } from '@/lib/utils'
 
 export function LockedWorkspace() {
     const { t } = useTranslation()
     const { signOut } = useAuth()
+    const { features } = useWorkspace()
     const [, setLocation] = useLocation()
+
+    const isExpired = features.subscription_expires_at && new Date(features.subscription_expires_at) < new Date()
 
     const handleContactAdmin = () => {
         // Open email client with admin contact
@@ -23,17 +28,32 @@ export function LockedWorkspace() {
         <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background to-muted/30 p-4">
             <div className="max-w-md w-full text-center space-y-8">
                 {/* Lock Icon */}
-                <div className="mx-auto w-24 h-24 rounded-full bg-destructive/10 flex items-center justify-center">
-                    <Lock className="w-12 h-12 text-destructive" />
+                <div className="mx-auto w-24 h-24 rounded-full bg-destructive/10 flex items-center justify-center relative">
+                    {isExpired ? (
+                        <Clock className="w-12 h-12 text-destructive animate-pulse" />
+                    ) : (
+                        <Lock className="w-12 h-12 text-destructive" />
+                    )}
+                    {isExpired && (
+                        <div className="absolute -top-1 -right-1">
+                            <AlertCircle className="w-6 h-6 text-destructive fill-background" />
+                        </div>
+                    )}
                 </div>
 
                 {/* Title */}
                 <div className="space-y-2">
                     <h1 className="text-3xl font-bold text-foreground">
-                        {t('lockedWorkspace.title') || 'Workspace Locked'}
+                        {isExpired
+                            ? (t('lockedWorkspace.subscriptionExpired') || 'Subscription Expired')
+                            : (t('lockedWorkspace.title') || 'Workspace Locked')
+                        }
                     </h1>
                     <p className="text-muted-foreground text-lg">
-                        {t('lockedWorkspace.message') || 'Your workspace has been temporarily locked. Please contact an administrator to regain access.'}
+                        {isExpired
+                            ? (t('lockedWorkspace.expiryMessage') || `Your subscription expired on ${formatDate(features.subscription_expires_at!)}. Please contact an administrator to extend it.`)
+                            : (t('lockedWorkspace.message') || 'Your workspace has been temporarily locked. Please contact an administrator to regain access.')
+                        }
                     </p>
                 </div>
 
