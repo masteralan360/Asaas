@@ -90,9 +90,9 @@ export default function Budget() {
 
     const convertToStoreBase = useCallback((amount: number | undefined | null, from: string | undefined | null) => {
         return convertToStoreBaseUtil(amount, from, baseCurrency, {
-            usd_iqd: exchangeData?.rate || 1450,
-            eur_iqd: eurRates.eur_iqd?.rate || 1600,
-            try_iqd: tryRates.try_iqd?.rate || 45
+            usd_iqd: (exchangeData?.rate || 145000) / 100,
+            eur_iqd: (eurRates.eur_iqd?.rate || 160000) / 100,
+            try_iqd: (tryRates.try_iqd?.rate || 4500) / 100
         })
     }, [baseCurrency, exchangeData, eurRates, tryRates])
 
