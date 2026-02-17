@@ -76,7 +76,8 @@
             "continue": "Continue Editing"
         },
         "exchangeRates": "Live Exchange Rates",
-        "sales": "Sales"
+        "sales": "Sales",
+        "revenue": "Revenue"
     },
     "messages": {
         "saleCompleted": "Sale completed successfully",
@@ -674,6 +675,7 @@
         "from": "From",
         "to": "To",
         "result": "Result",
+        "totalDiscount": "Total Discount",
         "backToPos": "Back to POS",
         "printReceipt": "Print Receipt",
         "continueSale": "Continue Sale",
@@ -851,6 +853,10 @@
         "more": "More",
         "salesCount": "Sales",
         "hourlyDistribution": "Hourly Distribution",
+        "peakTradingTimes": "Peak Trading Times",
+        "showHourlyBars": "Show Hourly Bars",
+        "showWeeklyHeatmap": "Show Weekly Heatmap",
+        "busiestHour": "Busiest Hour",
         "returns": "Returns Analysis",
         "returnsDesc": "Track refunds and product returns",
         "totalReturns": "Total Returns",

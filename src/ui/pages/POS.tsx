@@ -161,6 +161,8 @@ export function POS() {
     const [restoredSale, setRestoredSale] = useState<HeldSale | null>(null)
     const [isSuccessModalOpen, setIsSuccessModalOpen] = useState(false)
     const [completedSaleData, setCompletedSaleData] = useState<any>(null)
+    const [discountValue, setDiscountValue] = useState<string>('')
+    const [discountType, setDiscountType] = useState<'percent' | 'amount'>('percent')
 
     useEffect(() => {
         localStorage.setItem('pos_held_sales', JSON.stringify(heldSales))
@@ -289,7 +291,44 @@ export function POS() {
         const converted = convertPrice(basePrice, itemCurrency, settlementCurrency)
         return sum + (converted * item.quantity)
     }, 0)
+    const originalSubtotal = cart.reduce((sum, item) => {
+        const itemCurrency = products.find(p => p.id === item.product_id)?.currency || 'usd'
+        const converted = convertPrice(item.price, itemCurrency, settlementCurrency)
+        return sum + (converted * item.quantity)
+    }, 0)
     const totalItems = cart.reduce((sum, item) => sum + item.quantity, 0)
+
+    // Bulk Discount Effect
+    useEffect(() => {
+        const numValue = parseFloat(discountValue)
+
+        // If empty or 0, clear all negotiated prices (reset to original)
+        if (isNaN(numValue) || numValue <= 0) {
+            setCart(prev => prev.map(item => {
+                if (item.negotiated_price === undefined) return item
+                const { negotiated_price, ...rest } = item
+                return rest as CartItem
+            }))
+            return
+        }
+
+        let percentToApply = 0
+        if (discountType === 'percent') {
+            percentToApply = numValue
+        } else {
+            if (originalSubtotal > 0) {
+                percentToApply = (numValue / originalSubtotal) * 100
+            }
+        }
+
+        // Apply to all items by updating negotiated_price
+        setCart(prev => prev.map(item => {
+            const newPrice = item.price * (1 - Math.min(percentToApply, 100) / 100)
+            // Only update if significantly different to avoid state churn
+            if (item.negotiated_price !== undefined && Math.abs(item.negotiated_price - newPrice) < 0.001) return item
+            return { ...item, negotiated_price: newPrice }
+        }))
+    }, [discountValue, discountType, originalSubtotal])
 
     // Keyboard Navigation Effect
     useEffect(() => {
@@ -315,12 +354,6 @@ export function POS() {
                 return
             }
 
-            // Handle letter/number keys to auto-focus search
-            if (e.key.length === 1 && /^[a-zA-Z0-9]$/.test(e.key) && !e.ctrlKey && !e.altKey && !e.metaKey) {
-                searchInputRef.current?.focus()
-                // The key will be typed automatically since we're focusing
-                return
-            }
 
             const cols = getGridColumns()
 
@@ -991,6 +1024,7 @@ export function POS() {
             })
 
             setCart([])
+            setDiscountValue('')
             setCompletedSaleData(saleData)
             setIsSuccessModalOpen(true)
 
@@ -1105,6 +1139,7 @@ export function POS() {
                     }, user.workspaceId)
 
                     setCart([])
+                    setDiscountValue('')
                     setCompletedSaleData(saleDataOffline)
                     setIsSuccessModalOpen(true)
                     return
@@ -1503,6 +1538,44 @@ export function POS() {
                                 </div>
                             )}
 
+                            {/* Total Discount Input 1:1 Design */}
+                            <div className="flex items-center gap-2 bg-white dark:bg-black/20 p-1 rounded-xl border border-border/80 shadow-sm transition-all hover:border-primary/30">
+                                <div className="flex-1 relative">
+                                    <Input
+                                        type="number"
+                                        value={discountValue}
+                                        onChange={(e) => setDiscountValue(e.target.value)}
+                                        onFocus={(e) => e.target.select()}
+                                        className="h-8 bg-transparent border-none shadow-none focus-visible:ring-0 text-xs font-medium placeholder:text-muted-foreground/60 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                        placeholder={t('pos.totalDiscount') || 'Total Discount'}
+                                    />
+                                </div>
+                                <div className="flex bg-muted/40 dark:bg-white/5 p-1 rounded-lg gap-1 border border-border/10">
+                                    <button
+                                        onClick={() => setDiscountType('percent')}
+                                        className={cn(
+                                            "w-9 h-7 rounded-md flex items-center justify-center text-xs font-bold transition-all duration-200",
+                                            discountType === 'percent'
+                                                ? "bg-white text-slate-900 shadow-sm ring-1 ring-black/5"
+                                                : "text-muted-foreground/50 hover:text-muted-foreground"
+                                        )}
+                                    >
+                                        %
+                                    </button>
+                                    <button
+                                        onClick={() => setDiscountType('amount')}
+                                        className={cn(
+                                            "w-9 h-7 rounded-md flex items-center justify-center text-xs font-bold transition-all duration-200",
+                                            discountType === 'amount'
+                                                ? "bg-white text-slate-900 shadow-sm ring-1 ring-black/5"
+                                                : "text-muted-foreground/50 hover:text-muted-foreground"
+                                        )}
+                                    >
+                                        $
+                                    </button>
+                                </div>
+                            </div>
+
                             <div className="space-y-2">
                                 <div className="flex items-center justify-between">
                                     <span className="text-muted-foreground text-sm">Subtotal</span>
@@ -1513,7 +1586,14 @@ export function POS() {
                                 <div className="flex items-center justify-between text-xl font-bold text-primary pt-1 border-t border-border/50">
                                     <span>Total</span>
                                     <div className="flex flex-col items-end leading-tight">
-                                        <span>{formatCurrency(totalAmount, settlementCurrency, features.iqd_display_preference)}</span>
+                                        <div className="flex items-center gap-2">
+                                            {originalSubtotal > totalAmount && (
+                                                <span className="text-sm font-normal text-muted-foreground line-through opacity-50">
+                                                    {formatCurrency(originalSubtotal, settlementCurrency, features.iqd_display_preference)}
+                                                </span>
+                                            )}
+                                            <span>{formatCurrency(totalAmount, settlementCurrency, features.iqd_display_preference)}</span>
+                                        </div>
                                         <span className="text-[10px] uppercase opacity-50 tracking-tighter">{settlementCurrency}</span>
                                     </div>
                                 </div>

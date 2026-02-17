@@ -33,31 +33,41 @@ import {
     PrintPreviewModal,
     AppPagination
 } from '@/ui/components'
+import { MiniHeatmap } from '@/ui/components/revenue/MiniHeatmap'
 import type { MetricType } from '@/ui/components/MetricDetailModal'
 import {
-    TrendingUp,
-    BarChart3,
-    DollarSign,
-    Loader2,
-    Info,
-    ArrowRight,
-    Package,
-    Percent,
-    Clock,
-    RotateCcw,
-    Printer,
     Check,
     Square,
     X,
-    FileSpreadsheet
+    FileSpreadsheet,
+    TrendingDown,
+    Loader2,
+    DollarSign,
+    TrendingUp,
+    Package,
+    Percent,
+    BarChart3,
+    Clock,
+    ArrowRight,
+    RotateCcw,
+    Printer,
+    Info,
+    Grid3X3
 } from 'lucide-react'
-import { Button, ExportPreviewModal } from '@/ui/components'
+import { Button, ExportPreviewModal, Progress } from '@/ui/components'
+import { Area, AreaChart, Bar, BarChart, ResponsiveContainer, Tooltip as RechartsTooltip, XAxis } from 'recharts'
 
 export function Revenue() {
     const { user } = useAuth()
-    const { t } = useTranslation()
+    const { t, i18n } = useTranslation()
     const { features } = useWorkspace()
     const [sales, setSales] = useState<Sale[]>([])
+    const [trendStats, setTrendStats] = useState<{
+        revenue: number,
+        cost: number,
+        profit: number,
+        margin: number
+    }>({ revenue: 0, cost: 0, profit: 0, margin: 0 })
     const [isLoading, setIsLoading] = useState(true)
     const [selectedSale, setSelectedSale] = useState<Sale | null>(null)
     const [selectedMetric, setSelectedMetric] = useState<MetricType | null>(null)
@@ -69,6 +79,7 @@ export function Revenue() {
     const { dateRange, customDates } = useDateRange()
     const [showPrintPreview, setShowPrintPreview] = useState(false)
     const [selectedSaleIds, setSelectedSaleIds] = useState<Set<string>>(new Set())
+    const [showPeakHeatmap, setShowPeakHeatmap] = useState(false)
 
     const [isExportModalOpen, setIsExportModalOpen] = useState(false)
     const [currentPage, setCurrentPage] = useState(1)
@@ -200,9 +211,83 @@ export function Revenue() {
         }
     }
 
+    const fetchTrendStats = async () => {
+        try {
+            const endDate = new Date()
+            const startDate = new Date()
+            startDate.setDate(endDate.getDate() - 14) // Last 14 days
+
+            const { data, error } = await supabase
+                .from('sales')
+                .select(`
+                    created_at,
+                    settlement_currency,
+                    is_returned,
+                    items:sale_items(
+                        quantity,
+                        returned_quantity,
+                        converted_unit_price,
+                        converted_cost_price
+                    )
+                `)
+                .eq('workspace_id', user?.workspaceId)
+                .gte('created_at', startDate.toISOString())
+                .lte('created_at', endDate.toISOString())
+
+            if (error) throw error
+
+            const currentStart = new Date()
+            currentStart.setDate(currentStart.getDate() - 7)
+
+            let currentRevenue = 0
+            let currentCost = 0
+            let previousRevenue = 0
+            let previousCost = 0
+
+            data?.forEach((sale: any) => {
+                if (sale.is_returned) return
+
+                const saleDate = new Date(sale.created_at)
+                let saleRevenue = 0
+                let saleCost = 0
+
+                sale.items?.forEach((item: any) => {
+                    const netQty = item.quantity - (item.returned_quantity || 0)
+                    if (netQty <= 0) return
+                    saleRevenue += item.converted_unit_price * netQty
+                    saleCost += (item.converted_cost_price || 0) * netQty
+                })
+
+                if (saleDate >= currentStart) {
+                    currentRevenue += saleRevenue
+                    currentCost += saleCost
+                } else {
+                    previousRevenue += saleRevenue
+                    previousCost += saleCost
+                }
+            })
+
+            const calcTrend = (current: number, previous: number) => {
+                if (previous === 0) return current > 0 ? 100 : 0
+                return ((current - previous) / previous) * 100
+            }
+
+            setTrendStats({
+                revenue: calcTrend(currentRevenue, previousRevenue),
+                cost: calcTrend(currentCost, previousCost),
+                profit: calcTrend(currentRevenue - currentCost, previousRevenue - previousCost),
+                margin: 0
+            })
+
+        } catch (err) {
+            console.error('Error fetching trend stats:', err)
+        }
+    }
+
     useEffect(() => {
         if (user?.workspaceId) {
             fetchSales()
+            fetchTrendStats()
         }
     }, [user?.workspaceId, dateRange, customDates])
 
@@ -213,7 +298,8 @@ export function Revenue() {
             salesCount: number,
             dailyTrend: Record<string, { revenue: number, cost: number, profit: number }>,
             categoryRevenue: Record<string, number>,
-            productPerformance: Record<string, { name: string, revenue: number, cost: number, quantity: number }>
+            productPerformance: Record<string, { name: string, revenue: number, cost: number, quantity: number }>,
+            hourlySales: Record<number, number>
         }> = {}
         const saleStats: {
             id: string,
@@ -240,7 +326,8 @@ export function Revenue() {
                     salesCount: 0,
                     dailyTrend: {},
                     categoryRevenue: {},
-                    productPerformance: {}
+                    productPerformance: {},
+                    hourlySales: {}
                 }
             }
             statsByCurrency[currency].salesCount++
@@ -281,6 +368,10 @@ export function Revenue() {
                 statsByCurrency[currency].productPerformance[prodId].cost += itemCost
                 statsByCurrency[currency].productPerformance[prodId].quantity += netQuantity
             })
+
+            // Hourly tracking
+            const hour = new Date(sale.created_at).getHours()
+            statsByCurrency[currency].hourlySales[hour] = (statsByCurrency[currency].hourlySales[hour] || 0) + saleRevenue
 
             statsByCurrency[currency].revenue += saleRevenue
             statsByCurrency[currency].cost += saleCost
@@ -328,6 +419,75 @@ export function Revenue() {
         categoryRevenue: {},
         productPerformance: {}
     }, [stats.statsByCurrency, currencySettings.currency])
+
+    const trendData = useMemo(() => {
+        const dailyTrend = primaryStats.dailyTrend || {}
+        return Object.entries(dailyTrend)
+            .sort(([a], [b]) => a.localeCompare(b))
+            .map(([date, values]) => ({
+                date,
+                revenue: values.revenue,
+                cost: values.cost,
+                profit: values.profit
+            }))
+    }, [primaryStats.dailyTrend])
+
+    const topProductsData = useMemo(() => {
+        const perf = primaryStats.productPerformance || {}
+        const totalRevenue = primaryStats.revenue || 1
+        return Object.values(perf)
+            .sort((a, b) => b.revenue - a.revenue)
+            .slice(0, 3)
+            .map(p => ({
+                name: p.name,
+                revenue: p.revenue,
+                percentage: Math.min((p.revenue / totalRevenue) * 100, 100)
+            }))
+    }, [primaryStats.productPerformance, primaryStats.revenue])
+
+    const peakTradingData = useMemo(() => {
+        const hourly = primaryStats.hourlySales || {}
+        const hours = [12, 17, 20, 22] // Example hours mapping to 12 PM, 05 PM, 08 PM, 10 PM
+        const maxSales = Math.max(...Object.values(hourly), 1)
+
+        const hourFormatter = new Intl.DateTimeFormat(i18n.language, {
+            hour: 'numeric',
+            hour12: true
+        })
+
+        return hours.map(h => {
+            const date = new Date()
+            date.setHours(h, 0, 0, 0)
+            return {
+                hour: hourFormatter.format(date),
+                value: ((hourly[h] || 0) / maxSales) * 100
+            }
+        })
+    }, [primaryStats.hourlySales, i18n.language])
+
+    const SparklineArea = ({ data, dataKey, color }: { data: any[], dataKey: string, color: string }) => (
+        <div className="h-12 w-full mt-4 -mx-2">
+            <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={data}>
+                    <defs>
+                        <linearGradient id={`gradient-${dataKey}`} x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor={color} stopOpacity={0.3} />
+                            <stop offset="95%" stopColor={color} stopOpacity={0} />
+                        </linearGradient>
+                    </defs>
+                    <Area
+                        type="monotone"
+                        dataKey={dataKey}
+                        stroke={color}
+                        strokeWidth={2}
+                        fillOpacity={1}
+                        fill={`url(#gradient-${dataKey})`}
+                        isAnimationActive={true}
+                    />
+                </AreaChart>
+            </ResponsiveContainer>
+        </div>
+    )
 
     // Calculate aggregated stats for selected sales (grouped by currency)
     const selectionSummary = useMemo(() => {
@@ -422,116 +582,335 @@ export function Revenue() {
 
                 <div className="space-y-6">
 
-                    {/* KPI Cards Section */}
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                         {/* Gross Revenue */}
                         <Card
-                            className="bg-blue-500/5 dark:bg-blue-500/10 border-blue-500/20 cursor-pointer hover:scale-[1.02] transition-all hover:bg-blue-500/10 hover:shadow-[0_0_20px_-5px_rgba(59,130,246,0.3)] active:scale-95 group relative overflow-hidden rounded-3xl"
+                            className="bg-card dark:bg-card border-border/50 shadow-sm cursor-pointer hover:shadow-md transition-all group relative overflow-hidden rounded-3xl"
                             onClick={() => openMetricModal('grossRevenue')}
                         >
-                            <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <ArrowRight className="w-4 h-4 text-blue-500" />
-                            </div>
                             <CardHeader className="pb-2">
-                                <CardTitle className="text-sm font-black text-blue-600 dark:text-blue-400 flex items-center gap-2 uppercase tracking-widest">
-                                    <DollarSign className="w-4 h-4" />
-                                    {t('revenue.grossRevenue')}
-                                </CardTitle>
+                                <div className="flex justify-between items-start">
+                                    <CardTitle className="text-[10px] font-black text-blue-500 flex items-center gap-2 uppercase tracking-[0.2em]">
+                                        <div className="p-1.5 bg-blue-500/10 rounded-lg">
+                                            <DollarSign className="w-3.5 h-3.5" />
+                                        </div>
+                                        {t('revenue.grossRevenue')}
+                                    </CardTitle>
+                                    <div className="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-500 text-[10px] font-bold flex items-center gap-1">
+                                        {trendStats.revenue > 0 ? '+' : ''}{trendStats.revenue.toFixed(1)}%
+                                        {trendStats.revenue >= 0 ? <TrendingUp className="w-2.5 h-2.5" /> : <TrendingDown className="w-2.5 h-2.5" />}
+                                    </div>
+                                </div>
                             </CardHeader>
-                            <CardContent>
+                            <CardContent className="pb-0">
                                 <div className="space-y-1">
                                     {Object.entries(stats.statsByCurrency).map(([curr, s]) => (
-                                        <div key={curr} className="text-2xl font-black tracking-tighter tabular-nums text-blue-700 dark:text-blue-300 leading-none">
+                                        <div key={curr} className="text-2xl font-black tracking-tight tabular-nums text-foreground leading-none">
                                             {formatCurrency(s.revenue, curr as any, currencySettings.iqdPreference)}
                                         </div>
                                     ))}
                                 </div>
-                                <p className="text-[10px] font-bold text-blue-600/60 dark:text-blue-400/60 uppercase tracking-wider mt-1">
+                                <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mt-1">
                                     {Object.values(stats.statsByCurrency).reduce((acc, s) => acc + s.salesCount, 0)} {t('pos.totalItems')}
                                 </p>
+                                <SparklineArea data={trendData} dataKey="revenue" color="#3b82f6" />
                             </CardContent>
                         </Card>
 
                         {/* Total Cost */}
                         <Card
-                            className="bg-orange-500/5 dark:bg-orange-500/10 border-orange-500/20 cursor-pointer hover:scale-[1.02] transition-all hover:bg-orange-500/10 hover:shadow-[0_0_20px_-5px_rgba(249,115,22,0.3)] active:scale-95 group relative overflow-hidden rounded-3xl"
+                            className="bg-card dark:bg-card border-border/50 shadow-sm cursor-pointer hover:shadow-md transition-all group relative overflow-hidden rounded-3xl"
                             onClick={() => openMetricModal('totalCost')}
                         >
-                            <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <ArrowRight className="w-4 h-4 text-orange-500" />
-                            </div>
                             <CardHeader className="pb-2">
-                                <CardTitle className="text-sm font-black text-orange-600 dark:text-orange-400 flex items-center gap-2 uppercase tracking-widest">
-                                    <Package className="w-4 h-4" />
-                                    {t('revenue.totalCost')}
-                                </CardTitle>
+                                <div className="flex justify-between items-start">
+                                    <CardTitle className="text-[10px] font-black text-orange-500 flex items-center gap-2 uppercase tracking-[0.2em]">
+                                        <div className="p-1.5 bg-orange-500/10 rounded-lg">
+                                            <Package className="w-3.5 h-3.5" />
+                                        </div>
+                                        {t('revenue.totalCost')} (COGS)
+                                    </CardTitle>
+                                    <div className={cn(
+                                        "px-2 py-0.5 rounded-full text-[10px] font-bold flex items-center gap-1",
+                                        trendStats.cost <= 0 ? "bg-emerald-500/10 text-emerald-500" : "bg-orange-500/10 text-orange-500"
+                                    )}>
+                                        {trendStats.cost > 0 ? '+' : ''}{trendStats.cost.toFixed(1)}%
+                                        {trendStats.cost <= 0 ? <TrendingDown className="w-2.5 h-2.5" /> : <TrendingUp className="w-2.5 h-2.5" />}
+                                    </div>
+                                </div>
                             </CardHeader>
-                            <CardContent>
+                            <CardContent className="pb-0">
                                 <div className="space-y-1">
                                     {Object.entries(stats.statsByCurrency).map(([curr, s]) => (
-                                        <div key={curr} className="text-2xl font-black tracking-tighter tabular-nums text-orange-700 dark:text-orange-300 leading-none">
+                                        <div key={curr} className="text-2xl font-black tracking-tight tabular-nums text-foreground leading-none">
                                             {formatCurrency(s.cost, curr as any, currencySettings.iqdPreference)}
                                         </div>
                                     ))}
                                 </div>
-                                <p className="text-[10px] font-bold text-orange-600/60 dark:text-orange-400/60 uppercase tracking-wider mt-1">
-                                    {((Object.values(stats.statsByCurrency).reduce((acc, s) => acc + s.cost, 0) / (Object.values(stats.statsByCurrency).reduce((acc, s) => acc + s.revenue, 0) || 1)) * 100).toFixed(1)}% {t('revenue.table.cost')}
+                                <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mt-1">
+                                    {((Object.values(stats.statsByCurrency).reduce((acc, s) => acc + s.cost, 0) / (Object.values(stats.statsByCurrency).reduce((acc, s) => acc + s.revenue, 0) || 1)) * 100).toFixed(1)}% {t('revenue.table.cost')} Ratio
                                 </p>
+                                <SparklineArea data={trendData} dataKey="cost" color="#f97316" />
                             </CardContent>
                         </Card>
 
                         {/* Net Profit */}
                         <Card
-                            className="bg-emerald-500/5 dark:bg-emerald-500/10 border-emerald-500/20 cursor-pointer hover:scale-[1.02] transition-all hover:bg-emerald-500/10 hover:shadow-[0_0_20px_-5px_rgba(16,185,129,0.3)] active:scale-95 group relative overflow-hidden rounded-3xl"
+                            className="bg-card dark:bg-card border-border/50 shadow-sm cursor-pointer hover:shadow-md transition-all group relative overflow-hidden rounded-3xl"
                             onClick={() => openMetricModal('netProfit')}
                         >
-                            <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <ArrowRight className="w-4 h-4 text-emerald-500" />
-                            </div>
                             <CardHeader className="pb-2">
-                                <CardTitle className="text-sm font-black text-emerald-600 dark:text-emerald-400 flex items-center gap-2 uppercase tracking-widest">
-                                    <TrendingUp className="w-4 h-4" />
-                                    {t('revenue.netProfit')}
-                                </CardTitle>
+                                <div className="flex justify-between items-start">
+                                    <CardTitle className="text-[10px] font-black text-emerald-500 flex items-center gap-2 uppercase tracking-[0.2em]">
+                                        <div className="p-1.5 bg-emerald-500/10 rounded-lg">
+                                            <TrendingUp className="w-3.5 h-3.5" />
+                                        </div>
+                                        {t('revenue.netProfit')}
+                                    </CardTitle>
+                                    <div className={cn(
+                                        "px-2 py-0.5 rounded-full text-[10px] font-bold flex items-center gap-1",
+                                        trendStats.profit >= 0 ? "bg-emerald-500/10 text-emerald-500" : "bg-red-500/10 text-red-500"
+                                    )}>
+                                        {trendStats.profit > 0 ? '+' : ''}{trendStats.profit.toFixed(1)}%
+                                        {trendStats.profit >= 0 ? <TrendingUp className="w-2.5 h-2.5" /> : <TrendingDown className="w-2.5 h-2.5" />}
+                                    </div>
+                                </div>
                             </CardHeader>
-                            <CardContent>
+                            <CardContent className="pb-0">
                                 <div className="space-y-1">
                                     {Object.entries(stats.statsByCurrency).map(([curr, s]) => (
-                                        <div key={curr} className="text-2xl font-black tracking-tighter tabular-nums text-emerald-700 dark:text-emerald-300 leading-none">
+                                        <div key={curr} className="text-2xl font-black tracking-tight tabular-nums text-foreground leading-none">
                                             {formatCurrency(s.revenue - s.cost, curr as any, currencySettings.iqdPreference)}
                                         </div>
                                     ))}
                                 </div>
-                                <p className="text-[10px] font-bold text-emerald-600/60 dark:text-emerald-400/60 uppercase tracking-wider mt-1">
+                                <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mt-1">
                                     {t('revenue.detailedAnalysis')}
                                 </p>
+                                <SparklineArea data={trendData} dataKey="profit" color="#10b981" />
                             </CardContent>
                         </Card>
 
                         {/* Profit Margin */}
                         <Card
-                            className="bg-purple-500/5 dark:bg-purple-500/10 border-purple-500/20 cursor-pointer hover:scale-[1.02] transition-all hover:bg-purple-500/10 hover:shadow-[0_0_20px_-5px_rgba(139,92,246,0.3)] active:scale-95 group relative overflow-hidden rounded-3xl"
+                            className="bg-card dark:bg-card border-border/50 shadow-sm cursor-pointer hover:shadow-md transition-all group relative overflow-hidden rounded-3xl"
                             onClick={() => openMetricModal('profitMargin')}
                         >
-                            <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <ArrowRight className="w-4 h-4 text-purple-500" />
-                            </div>
                             <CardHeader className="pb-2">
-                                <CardTitle className="text-sm font-black text-purple-600 dark:text-purple-400 flex items-center gap-2 uppercase tracking-widest">
-                                    <Percent className="w-4 h-4" />
+                                <CardTitle className="text-[10px] font-black text-purple-600 flex items-center gap-2 uppercase tracking-[0.2em]">
+                                    <div className="p-1.5 bg-purple-500/10 rounded-lg text-purple-500">
+                                        <Percent className="w-3.5 h-3.5" />
+                                    </div>
                                     {t('revenue.profitMargin')}
                                 </CardTitle>
                             </CardHeader>
                             <CardContent>
-                                <div className="text-2xl font-black tracking-tighter tabular-nums text-purple-700 dark:text-purple-300">
+                                <div className="text-3xl font-black tracking-tighter tabular-nums text-foreground">
                                     {((primaryStats.revenue - primaryStats.cost) / (primaryStats.revenue || 1) * 100).toFixed(1)}%
                                 </div>
-                                <div className="w-full bg-purple-500/10 rounded-full h-1.5 mt-2">
-                                    <div
-                                        className="bg-purple-500 h-1.5 rounded-full transition-all duration-1000"
-                                        style={{ width: `${Math.min(((primaryStats.revenue - primaryStats.cost) / (primaryStats.revenue || 1)) * 100, 100)}% ` }}
+                                <div className="space-y-2 mt-4">
+                                    <Progress
+                                        value={Math.min(((primaryStats.revenue - primaryStats.cost) / (primaryStats.revenue || 1)) * 100, 100)}
+                                        className="h-2 bg-purple-500/10"
+                                        indicatorClassName="bg-gradient-to-r from-purple-500 to-pink-500"
                                     />
                                 </div>
+                            </CardContent>
+                        </Card>
+                    </div>
+
+                    {/* Preview Section - Charts & Highlights */}
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        {/* Top Products */}
+                        <Card className="rounded-[2.5rem] border-border/40 shadow-sm bg-card overflow-hidden">
+                            <CardHeader className="pb-4">
+                                <div className="flex justify-between items-center">
+                                    <div className="flex items-center gap-3">
+                                        <div className="p-2 bg-emerald-500/10 rounded-xl text-emerald-500">
+                                            <Package className="w-5 h-5" />
+                                        </div>
+                                        <CardTitle className="text-sm font-black uppercase tracking-widest text-foreground">
+                                            Top Products
+                                        </CardTitle>
+                                    </div>
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="text-primary font-bold text-xs hover:bg-primary/5 rounded-full"
+                                        onClick={() => setIsTopProductsOpen(true)}
+                                    >
+                                        View All
+                                    </Button>
+                                </div>
+                            </CardHeader>
+                            <CardContent className="space-y-6 pt-2">
+                                {topProductsData.length > 0 ? topProductsData.map((prod, i) => (
+                                    <div key={i} className="space-y-2 group">
+                                        <div className="flex justify-between items-end">
+                                            <div className="flex items-center justify-between w-full">
+                                                <div className="text-[11px] font-black text-foreground uppercase tracking-wider">
+                                                    {prod.name}
+                                                </div>
+                                                <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
+                                                    {t('common.revenue') || 'REVENUE'} {formatCurrency(prod.revenue, currencySettings.currency as any, currencySettings.iqdPreference)}
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center justify-between">
+                                            <div className="text-xs font-black text-foreground">
+                                                {prod.percentage.toFixed(0)}%
+                                            </div>
+                                            <Button
+                                                variant="link"
+                                                className="h-auto p-0 text-[10px] font-black uppercase tracking-widest text-muted-foreground hover:text-primary transition-colors"
+                                                onClick={() => setIsTopProductsOpen(true)}
+                                            >
+                                                {t('common.viewAll') || 'View All'}
+                                            </Button>
+                                        </div>
+                                        <Progress
+                                            value={prod.percentage}
+                                            className="h-1.5 bg-muted/50"
+                                            indicatorClassName={cn(
+                                                "rounded-full transition-all duration-1000",
+                                                i === 0 ? "bg-blue-500" : i === 1 ? "bg-emerald-500" : "bg-orange-500"
+                                            )}
+                                        />
+                                    </div>
+                                )) : (
+                                    <div className="h-40 flex flex-col items-center justify-center text-muted-foreground/50 border-2 border-dashed border-border/50 rounded-3xl">
+                                        <Package className="w-8 h-8 mb-2 opacity-20" />
+                                        <p className="text-xs font-bold uppercase tracking-widest">No Data Available</p>
+                                    </div>
+                                )}
+                            </CardContent>
+                        </Card>
+
+                        {/* Sales Overview */}
+                        <Card className="rounded-[2.5rem] border-border/40 shadow-sm bg-card overflow-hidden">
+                            <CardHeader className="pb-2">
+                                <div className="flex items-center gap-3">
+                                    <div className="p-2 bg-blue-500/10 rounded-xl text-blue-500">
+                                        <BarChart3 className="w-5 h-5" />
+                                    </div>
+                                    <CardTitle className="text-sm font-black uppercase tracking-widest text-foreground">
+                                        {t('revenue.salesOverview') || 'Sales Overview'}
+                                    </CardTitle>
+                                </div>
+                            </CardHeader>
+                            <CardContent>
+                                <div className="h-56 w-full -ml-4">
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <BarChart data={trendData.slice(-7)}>
+                                            <XAxis
+                                                dataKey="date"
+                                                axisLine={false}
+                                                tickLine={false}
+                                                tick={{ fill: '#888888', fontSize: 10, fontWeight: 700 }}
+                                                tickFormatter={(str) => {
+                                                    const date = new Date(str)
+                                                    return date.toLocaleDateString(i18n.language, { weekday: 'short' }).toUpperCase()
+                                                }}
+                                            />
+                                            <RechartsTooltip
+                                                cursor={{ fill: 'rgba(59, 130, 246, 0.05)', radius: 8 }}
+                                                content={({ active, payload }) => {
+                                                    if (active && payload && payload.length) {
+                                                        return (
+                                                            <div className="bg-background/95 backdrop-blur-sm border border-border shadow-xl p-3 rounded-2xl">
+                                                                <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-1">
+                                                                    {payload[0].payload.date}
+                                                                </p>
+                                                                <p className="text-sm font-black text-blue-500">
+                                                                    {formatCurrency(payload[0].value as number, currencySettings.currency as any, currencySettings.iqdPreference)}
+                                                                </p>
+                                                            </div>
+                                                        )
+                                                    }
+                                                    return null
+                                                }}
+                                            />
+                                            <Bar dataKey="revenue" stackId="stack" fill="#3b82f6" radius={[4, 4, 4, 4]} stroke="hsl(var(--card))" strokeWidth={2} maxBarSize={24} />
+                                            <Bar dataKey="cost" stackId="stack" fill="#f97316" radius={[4, 4, 4, 4]} stroke="hsl(var(--card))" strokeWidth={2} maxBarSize={24} />
+                                            <Bar dataKey="profit" stackId="stack" fill="#10b981" radius={[4, 4, 4, 4]} stroke="hsl(var(--card))" strokeWidth={2} maxBarSize={24} />
+                                        </BarChart>
+                                    </ResponsiveContainer>
+                                </div>
+                            </CardContent>
+                        </Card>
+
+                        {/* Peak Times */}
+                        <Card className="rounded-[2.5rem] border-border/40 shadow-sm bg-card overflow-hidden">
+                            <CardHeader className="pb-4">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-3">
+                                        <div className="p-2 bg-purple-500/10 rounded-xl text-purple-500">
+                                            {showPeakHeatmap ? <Grid3X3 className="w-5 h-5" /> : <Clock className="w-5 h-5" />}
+                                        </div>
+                                        <CardTitle className="text-sm font-black uppercase tracking-widest text-foreground">
+                                            {t('revenue.peakTradingTimes') || 'Peak Times'}
+                                        </CardTitle>
+                                    </div>
+                                    <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-8 w-8 rounded-full hover:bg-purple-500/10 text-muted-foreground hover:text-purple-500 transition-colors"
+                                        onClick={() => setShowPeakHeatmap(!showPeakHeatmap)}
+                                        title={showPeakHeatmap ? t('revenue.showHourlyBars') || "Show Hourly Bars" : t('revenue.showWeeklyHeatmap') || "Show Weekly Heatmap"}
+                                    >
+                                        {showPeakHeatmap ? <BarChart3 className="w-4 h-4" /> : <Grid3X3 className="w-4 h-4" />}
+                                    </Button>
+                                </div>
+                            </CardHeader>
+                            <CardContent className="space-y-6 pt-2">
+                                {showPeakHeatmap ? (
+                                    <MiniHeatmap sales={sales} />
+                                ) : (
+                                    <>
+                                        {peakTradingData.map((peak, i) => (
+                                            <div key={i} className="space-y-2">
+                                                <div className="flex items-center gap-4">
+                                                    <div className="text-[11px] font-black text-muted-foreground w-12 tabular-nums">
+                                                        {peak.hour}
+                                                    </div>
+                                                    <div className="flex-1">
+                                                        <Progress
+                                                            value={peak.value}
+                                                            className="h-2.5 bg-muted/50"
+                                                            indicatorClassName="bg-purple-500 rounded-full"
+                                                        />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                        <div className="pt-4 border-t border-border/50">
+                                            <div className="text-center text-xs font-bold text-muted-foreground">
+                                                {t('revenue.busiestHour') || 'Busiest hour'}: <span className="text-purple-500 font-black">
+                                                    {peakTradingData.length > 0 ? (
+                                                        (() => {
+                                                            const hour = parseInt(peakTradingData[0].hour.match(/\d+/)![0])
+                                                            const isPM = peakTradingData[0].hour.toLowerCase().includes('pm')
+                                                            const startH = isPM && hour !== 12 ? hour + 12 : (!isPM && hour === 12 ? 0 : hour)
+
+                                                            const formatter = new Intl.DateTimeFormat(i18n.language, {
+                                                                hour: 'numeric',
+                                                                minute: 'numeric',
+                                                                hour12: true
+                                                            })
+
+                                                            const startDate = new Date()
+                                                            startDate.setHours(startH, 0, 0, 0)
+                                                            const endDate = new Date()
+                                                            endDate.setHours(startH + 1, 0, 0, 0)
+
+                                                            return `${formatter.format(startDate)} - ${formatter.format(endDate)}`
+                                                        })()
+                                                    ) : '--:--'}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </>
+                                )}
                             </CardContent>
                         </Card>
                     </div>
@@ -1069,6 +1448,6 @@ export function Revenue() {
                     selectedCashier: 'all'
                 }}
             />
-        </TooltipProvider>
+        </TooltipProvider >
     )
 }

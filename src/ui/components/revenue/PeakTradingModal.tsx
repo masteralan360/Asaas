@@ -125,10 +125,10 @@ export function PeakTradingModal({ isOpen, onClose, sales }: PeakTradingModalPro
                             </div>
                             <div>
                                 <DialogTitle className="text-2xl font-black tracking-tight">
-                                    {t('revenue.peakTimes') || 'Peak Trading Times'}
+                                    {t('revenue.peakTimes')}
                                 </DialogTitle>
                                 <DialogDescription className="text-sm font-semibold text-muted-foreground/80">
-                                    {t('revenue.peakTimesDesc') || 'Sales distribution by hour and day'}
+                                    {t('revenue.peakTimesDesc')}
                                 </DialogDescription>
                             </div>
                         </div>
@@ -165,11 +165,11 @@ export function PeakTradingModal({ isOpen, onClose, sales }: PeakTradingModalPro
                             <TabsList className="grid w-full max-w-[400px] grid-cols-2 h-10 rounded-xl bg-secondary/50 p-1">
                                 <TabsTrigger value="hourly" className="rounded-lg text-xs font-bold uppercase tracking-wide data-[state=active]:bg-background data-[state=active]:shadow-sm transition-all duration-300">
                                     <Activity className="w-3.5 h-3.5 mr-2" />
-                                    {t('revenue.hourly') || 'Hourly'}
+                                    {t('revenue.hourly')}
                                 </TabsTrigger>
                                 <TabsTrigger value="heatmap" className="rounded-lg text-xs font-bold uppercase tracking-wide data-[state=active]:bg-background data-[state=active]:shadow-sm transition-all duration-300">
                                     <Grid3X3 className="w-3.5 h-3.5 mr-2" />
-                                    {t('revenue.heatmap') || 'Heatmap'}
+                                    {t('revenue.heatmap')}
                                 </TabsTrigger>
                             </TabsList>
                         </div>

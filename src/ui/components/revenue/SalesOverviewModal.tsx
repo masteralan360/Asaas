@@ -36,9 +36,9 @@ interface SalesOverviewModalProps {
 }
 
 const METRIC_COLORS = {
-    revenue: { stroke: '#10b981', fill: '#10b981' }, // Emerald
+    revenue: { stroke: '#3b82f6', fill: '#3b82f6' }, // Blue
     cost: { stroke: '#f97316', fill: '#f97316' },     // Orange
-    profit: { stroke: '#3b82f6', fill: '#3b82f6' },    // Blue
+    profit: { stroke: '#10b981', fill: '#10b981' },    // Emerald
 }
 
 export function SalesOverviewModal({ isOpen, onClose, data, iqdPreference }: SalesOverviewModalProps) {
@@ -117,12 +117,12 @@ export function SalesOverviewModal({ isOpen, onClose, data, iqdPreference }: Sal
 
                     {/* Summary Cards */}
                     <div className="grid grid-cols-3 gap-4">
-                        <Card className="bg-emerald-500/10 border-emerald-500/20 rounded-2xl">
+                        <Card className="bg-blue-500/10 border-blue-500/20 rounded-2xl">
                             <CardContent className="p-4 flex items-center gap-3">
-                                <DollarSign className="w-6 h-6 text-emerald-500" />
+                                <DollarSign className="w-6 h-6 text-blue-500" />
                                 <div>
                                     <p className="text-xs font-bold uppercase text-muted-foreground">{t('revenue.grossRevenue')}</p>
-                                    <p className="text-lg font-black text-emerald-600 dark:text-emerald-400 tabular-nums">
+                                    <p className="text-lg font-black text-blue-600 dark:text-blue-400 tabular-nums">
                                         {formatCurrency(totals.revenue, activeCurrencies[0] as any, iqdPreference)}
                                     </p>
                                 </div>
@@ -139,12 +139,12 @@ export function SalesOverviewModal({ isOpen, onClose, data, iqdPreference }: Sal
                                 </div>
                             </CardContent>
                         </Card>
-                        <Card className="bg-blue-500/10 border-blue-500/20 rounded-2xl">
+                        <Card className="bg-emerald-500/10 border-emerald-500/20 rounded-2xl">
                             <CardContent className="p-4 flex items-center gap-3">
-                                <TrendingUp className="w-6 h-6 text-blue-500" />
+                                <TrendingUp className="w-6 h-6 text-emerald-500" />
                                 <div>
                                     <p className="text-xs font-bold uppercase text-muted-foreground">{t('revenue.netProfit')}</p>
-                                    <p className="text-lg font-black text-blue-600 dark:text-blue-400 tabular-nums">
+                                    <p className="text-lg font-black text-emerald-600 dark:text-emerald-400 tabular-nums">
                                         {formatCurrency(totals.profit, activeCurrencies[0] as any, iqdPreference)} ({margin}%)
                                     </p>
                                 </div>
@@ -165,16 +165,16 @@ export function SalesOverviewModal({ isOpen, onClose, data, iqdPreference }: Sal
                                 <AreaChart data={chartData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
                                     <defs>
                                         <linearGradient id="colorRevenueOverview" x1="0" y1="0" x2="0" y2="1">
-                                            <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
-                                            <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                                            <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
+                                            <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
                                         </linearGradient>
                                         <linearGradient id="colorCostOverview" x1="0" y1="0" x2="0" y2="1">
                                             <stop offset="5%" stopColor="#f97316" stopOpacity={0.3} />
                                             <stop offset="95%" stopColor="#f97316" stopOpacity={0} />
                                         </linearGradient>
                                         <linearGradient id="colorProfitOverview" x1="0" y1="0" x2="0" y2="1">
-                                            <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
-                                            <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                                            <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
+                                            <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
                                         </linearGradient>
                                     </defs>
                                     <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.3} />
