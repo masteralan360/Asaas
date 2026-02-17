@@ -252,8 +252,15 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                     updatedAt: new Date().toISOString()
                 })
             }
-        } catch (err) {
+        } catch (err: any) {
             console.error('Error fetching workspace features:', err)
+
+            // Auto-refresh on timeout as requested by user
+            if (err?.message === 'Workspace features fetch timed out') {
+                console.log('[Workspace] Timeout detected — auto-refreshing app...')
+                window.location.reload()
+                return
+            }
 
             // Try fallback to local DB on any error (including timeout) if we don't already have valid features
             if (user?.workspaceId) {

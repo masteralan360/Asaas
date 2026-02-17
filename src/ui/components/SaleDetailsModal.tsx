@@ -18,7 +18,7 @@ import {
     DialogTitle,
     Button
 } from '@/ui/components'
-import { RotateCcw, ArrowRight, XCircle, MessageCircle } from 'lucide-react'
+import { RotateCcw, ArrowRight, XCircle, MessageCircle, CircleDollarSign, TrendingUp, Download } from 'lucide-react'
 import { isMobile } from '@/lib/platform'
 import { useAuth } from '@/auth'
 import { useWorkspace } from '@/workspace'
@@ -28,9 +28,11 @@ interface SaleDetailsModalProps {
     isOpen: boolean
     onClose: () => void
     onReturnItem?: (item: SaleItem) => void
+    onReturnSale?: (sale: Sale) => void
+    onDownloadInvoice?: (sale: Sale) => void
 }
 
-export function SaleDetailsModal({ sale, isOpen, onClose, onReturnItem }: SaleDetailsModalProps) {
+export function SaleDetailsModal({ sale, isOpen, onClose, onReturnItem, onReturnSale, onDownloadInvoice }: SaleDetailsModalProps) {
     const { t } = useTranslation()
     const { user } = useAuth()
     const { features } = useWorkspace()
@@ -76,211 +78,252 @@ export function SaleDetailsModal({ sale, isOpen, onClose, onReturnItem }: SaleDe
         return sale.total_amount
     })()
 
+    const displayCurrency = (sale.settlement_currency || 'usd') as any
+
+    const hasExchange = sale.items?.some(item =>
+        item.original_currency &&
+        item.settlement_currency &&
+        item.original_currency !== item.settlement_currency
+    ) ?? false
+
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
             <DialogContent className={cn(
                 "max-w-2xl w-[95vw] sm:w-full max-h-[90vh] overflow-y-auto",
-                "rounded-[2.5rem] border-[3px] border-primary/50 shadow-2xl transition-all duration-500"
+                "p-0 gap-0 rounded-lg border border-border shadow-xl bg-card"
             )}>
-                <DialogHeader>
-                    <div className="flex items-center justify-between">
-                        <DialogTitle>{t('sales.details') || 'Sale Details'}</DialogTitle>
-                        <Button
-                            size="sm"
-                            variant="outline"
-                            className="gap-2 text-emerald-600 border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-300 mr-8"
-                            onClick={() => setShowWhatsAppModal(true)}
-                        >
-                            <MessageCircle className="w-4 h-4" />
-                            {t('common.share') || 'Share'}
-                        </Button>
+                {/* ═══════════════ HEADER ═══════════════ */}
+                <DialogHeader className="p-6 pb-4 bg-card rounded-t-lg">
+                    <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-md bg-primary/10 flex items-center justify-center shrink-0">
+                            <CircleDollarSign className="w-5 h-5 text-primary" />
+                        </div>
+                        <div>
+                            <DialogTitle className="text-lg font-bold leading-tight text-primary">
+                                {t('sales.details') || 'Sale Details'}
+                            </DialogTitle>
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                                {t('sales.multiCurrencyTransaction') || 'Multi-Currency Transaction'}
+                            </p>
+                        </div>
                     </div>
                 </DialogHeader>
-                <div className="space-y-4">
-                    {sale.system_review_status === 'flagged' && (
-                        <div className="relative p-4 overflow-hidden bg-orange-500/10 border border-orange-500/20 rounded-2xl group transition-all duration-300 hover:bg-orange-500/15">
-                            <div className="absolute top-0 right-0 p-2 opacity-10 flex items-center justify-center pointer-events-none">
-                                <span className="text-4xl">⚠️</span>
-                            </div>
-                            <div className="flex items-start gap-4 relative z-10">
-                                <div className="p-2.5 rounded-xl bg-orange-500/20 text-orange-600 dark:text-orange-400">
-                                    <span className="text-xl">⚠️</span>
-                                </div>
-                                <div className="space-y-1">
-                                    <span className="font-black text-xs block uppercase tracking-[0.1em] text-orange-600 dark:text-orange-400">
-                                        {t('sales.flagged') || 'System Review Flagged'}
-                                    </span>
-                                    <p className="text-sm font-medium text-orange-950/80 dark:text-orange-200/80 leading-relaxed">
-                                        {sale.system_review_reason || 'Inconsistent checkout data detected.'}
-                                    </p>
-                                </div>
-                            </div>
-                        </div>
-                    )}
 
-                    {isFullyReturned && (
-                        <div className="relative p-4 overflow-hidden bg-destructive/10 border border-destructive/20 rounded-2xl group transition-all duration-300 hover:bg-destructive/15">
-                            <div className="flex items-center gap-4 relative z-10 text-destructive dark:text-destructive-foreground">
-                                <div className="p-3 rounded-xl bg-destructive/20 flex items-center justify-center">
-                                    <XCircle className="w-6 h-6" />
-                                </div>
-                                <div className="space-y-1">
-                                    <span className="font-black text-xs block uppercase tracking-[0.1em]">
-                                        {t('sales.return.returnedStatus') || 'Fully Returned'}
-                                    </span>
-                                    <p className="text-base font-bold">
-                                        {t('sales.return.returnedMessage') || 'This sale has been returned'}
-                                    </p>
-                                    <div className="flex flex-col gap-0.5 opacity-80">
-                                        {sale.return_reason && (
-                                            <p className="text-xs font-semibold">
-                                                {t('sales.return.reason') || 'Reason'}: {sale.return_reason}
-                                            </p>
-                                        )}
-                                        {sale.returned_at && (
-                                            <p className="text-[10px] font-medium opacity-60">
-                                                {t('sales.return.returnedAt') || 'Returned at'}: {formatDateTime(sale.returned_at)}
-                                            </p>
-                                        )}
+                {/* ═══════════════ STATUS BANNERS ═══════════════ */}
+                {/* ═══════════════ INFO BAR (Merged with Header) ═══════════════ */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-3 px-6 pb-6 pt-2 bg-card border-b border-border">
+                    <div>
+                        <div className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">
+                            {t('sales.id') || 'Sale ID'}
+                        </div>
+                        <div className="font-bold text-sm mt-0.5 font-mono">
+                            {sale.sequenceId
+                                ? `#SALE-${sale.sequenceId}`
+                                : `#${sale.id.slice(0, 8)}`}
+                        </div>
+                    </div>
+                    <div>
+                        <div className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">
+                            {t('sales.date') || 'Date'}
+                        </div>
+                        <div className="font-medium text-sm mt-0.5">
+                            {formatDateTime(sale.created_at)}
+                        </div>
+                    </div>
+                    <div>
+                        <div className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">
+                            {t('sales.cashier') || 'Cashier'}
+                        </div>
+                        <div className="font-medium text-sm mt-0.5">
+                            {sale.cashier_name || 'Staff'}
+                        </div>
+                    </div>
+                    <div>
+                        <div className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">
+                            {t('pos.paymentMethod') || 'Payment Method'}
+                        </div>
+                        <div className="font-medium text-sm mt-0.5 flex items-center gap-1.5">
+                            {sale.payment_method === 'fib' && (
+                                <>
+                                    <img src="./icons/fib.svg" alt="FIB" className="w-4 h-4 rounded" />
+                                    <span>FIB</span>
+                                </>
+                            )}
+                            {sale.payment_method === 'qicard' && (
+                                <>
+                                    <img src="./icons/qi.svg" alt="QiCard" className="w-4 h-4 rounded" />
+                                    <span>QiCard</span>
+                                </>
+                            )}
+                            {sale.payment_method === 'zaincash' && (
+                                <>
+                                    <img src="./icons/zain.svg" alt="ZainCash" className="w-4 h-4 rounded" />
+                                    <span>ZainCash</span>
+                                </>
+                            )}
+                            {sale.payment_method === 'fastpay' && (
+                                <>
+                                    <img src="./icons/fastpay.svg" alt="FastPay" className="w-4 h-4 rounded" />
+                                    <span>FastPay</span>
+                                </>
+                            )}
+                            {(!sale.payment_method || sale.payment_method === 'cash') && (
+                                <span>{t('pos.cash') || 'Cash'} ({(sale.settlement_currency || 'USD').toUpperCase()})</span>
+                            )}
+                        </div>
+                    </div>
+                </div>
+
+                {/* ═══════════════ CONTENT ═══════════════ */}
+                <div className="px-6 py-4 space-y-4">
+
+                    {/* ─── Status Banners ─── */}
+                    <div className="space-y-2">
+                        {sale.system_review_status === 'flagged' && (
+                            <div className="relative p-3 overflow-hidden bg-orange-500/10 border border-orange-500/20 rounded-xl">
+                                <div className="flex items-start gap-3 relative z-10">
+                                    <div className="p-2 rounded-lg bg-orange-500/20 text-orange-600 dark:text-orange-400">
+                                        <span className="text-base">⚠️</span>
+                                    </div>
+                                    <div className="space-y-0.5">
+                                        <span className="font-black text-[10px] block uppercase tracking-[0.1em] text-orange-600 dark:text-orange-400">
+                                            {t('sales.flagged') || 'System Review Flagged'}
+                                        </span>
+                                        <p className="text-xs font-medium text-orange-950/80 dark:text-orange-200/80">
+                                            {sale.system_review_reason || 'Inconsistent checkout data detected.'}
+                                        </p>
                                     </div>
                                 </div>
                             </div>
-                        </div>
-                    )}
+                        )}
 
-                    {!isFullyReturned && hasAnyReturn && (
-                        <div className="p-3 bg-orange-500/10 border border-orange-500/20 rounded-xl flex items-center gap-3 animate-in fade-in slide-in-from-top-2 duration-500">
-                            <div className="p-2 rounded-lg bg-orange-500/20 text-orange-600 dark:text-orange-400">
-                                <RotateCcw className="w-4 h-4" />
-                            </div>
-                            <span className="font-bold text-xs uppercase tracking-wide text-orange-600 dark:text-orange-400">
-                                {t('sales.return.partialReturnDetected') || 'This sale has partial returns.'}
-                            </span>
-                        </div>
-                    )}
-
-                    <div className="grid grid-cols-2 gap-4 text-sm">
-                        {/* ... Info content stays same ... */}
-                        <div>
-                            <span className="text-muted-foreground">{t('sales.date')}:</span>
-                            <div className="font-medium">{formatDateTime(sale.created_at)}</div>
-                        </div>
-                        <div>
-                            <span className="text-muted-foreground">{t('sales.cashier')}:</span>
-                            <div className="font-medium">{sale.cashier_name || 'Staff'}</div>
-                        </div>
-                        <div>
-                            <span className="text-muted-foreground">{t('sales.id')}:</span>
-                            <div className="flex items-center gap-2">
-                                {sale.sequenceId ? (
-                                    <>
-                                        <span className="font-mono text-xs font-bold bg-primary/10 text-primary px-1.5 py-0.5 rounded border border-primary/20">
-                                            #{String(sale.sequenceId).padStart(5, '0')}
+                        {isFullyReturned && (
+                            <div className="relative p-3 overflow-hidden bg-destructive/10 border border-destructive/20 rounded-xl">
+                                <div className="flex items-center gap-3 relative z-10 text-destructive dark:text-destructive-foreground">
+                                    <div className="p-2 rounded-lg bg-destructive/20 flex items-center justify-center">
+                                        <XCircle className="w-5 h-5" />
+                                    </div>
+                                    <div className="space-y-0.5">
+                                        <span className="font-black text-[10px] block uppercase tracking-[0.1em]">
+                                            {t('sales.return.returnedStatus') || 'Fully Returned'}
                                         </span>
-                                        <span className="font-mono text-[10px] text-muted-foreground/50">
-                                            ({sale.id.slice(0, 8)})
-                                        </span>
-                                    </>
-                                ) : (
-                                    <div className="font-mono text-xs text-muted-foreground">{sale.id}</div>
-                                )}
-                            </div>
-                        </div>
-                        <div>
-                            <span className="text-muted-foreground">{t('pos.paymentMethod') || 'Payment Method'}:</span>
-                            <div className="font-medium flex items-center gap-2">
-                                {sale.payment_method === 'fib' && (
-                                    <>
-                                        <img src="./icons/fib.svg" alt="FIB" className="w-5 h-5 rounded" />
-                                        FIB
-                                    </>
-                                )}
-                                {sale.payment_method === 'qicard' && (
-                                    <>
-                                        <img src="./icons/qi.svg" alt="QiCard" className="w-5 h-5 rounded" />
-                                        QiCard
-                                    </>
-                                )}
-                                {sale.payment_method === 'zaincash' && (
-                                    <>
-                                        <img src="./icons/zain.svg" alt="ZainCash" className="w-5 h-5 rounded" />
-                                        ZainCash
-                                    </>
-                                )}
-                                {sale.payment_method === 'fastpay' && (
-                                    <>
-                                        <img src="./icons/fastpay.svg" alt="FastPay" className="w-5 h-5 rounded" />
-                                        FastPay
-                                    </>
-                                )}
-                                {(!sale.payment_method || sale.payment_method === 'cash') && (
-                                    <span>{t('pos.cash') || 'Cash'}</span>
-                                )}
-                            </div>
-                        </div>
-                        {sale.exchange_rates && sale.exchange_rates.length > 0 ? (
-                            <div className="col-span-2 space-y-2">
-                                <div className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider mb-1">
-                                    {t('settings.exchangeRate.title')} {t('common.snapshots')}
-                                </div>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                                    {sale.exchange_rates.map((rate: any, idx: number) => (
-                                        <div key={idx} className="p-2 bg-muted/30 rounded border border-border/50 flex flex-col gap-0.5">
-                                            <div className="flex justify-between items-center">
-                                                <span className="text-[10px] font-bold text-primary/70">{rate.pair}</span>
-                                                <span className="text-[9px] text-muted-foreground italic uppercase">{rate.source}</span>
-                                            </div>
-                                            <div className="text-sm font-bold">
-                                                100 {rate.pair.split('/')[0]} = {formatCurrency(rate.rate, rate.pair.split('/')[1].toLowerCase() as any, features.iqd_display_preference)}
-                                            </div>
-                                            <div className="text-[9px] text-muted-foreground opacity-70">
-                                                {formatSnapshotTime(rate.timestamp)}
-                                            </div>
+                                        <p className="text-xs font-bold">
+                                            {t('sales.return.returnedMessage') || 'This sale has been returned'}
+                                        </p>
+                                        <div className="flex flex-col gap-0.5 opacity-80">
+                                            {sale.return_reason && (
+                                                <p className="text-[10px] font-semibold">
+                                                    {t('sales.return.reason') || 'Reason'}: {sale.return_reason}
+                                                </p>
+                                            )}
+                                            {sale.returned_at && (
+                                                <p className="text-[9px] font-medium opacity-60">
+                                                    {t('sales.return.returnedAt') || 'Returned at'}: {formatDateTime(sale.returned_at)}
+                                                </p>
+                                            )}
                                         </div>
-                                    ))}
+                                    </div>
                                 </div>
                             </div>
-                        ) : (sale.exchange_rate ?? 0) > 0 && (
-                            <div className="p-3 bg-muted/30 rounded-lg col-span-2 flex items-center justify-between border border-border/50">
-                                <div className="space-y-0.5">
-                                    <div className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">
-                                        {t('settings.exchangeRate.title')} ({sale.exchange_source})
-                                    </div>
-                                    <div className="text-sm font-black">
-                                        100 USD = {formatCurrency(sale.exchange_rate, 'iqd', features.iqd_display_preference)}
-                                    </div>
+                        )}
+
+                        {!isFullyReturned && hasAnyReturn && (
+                            <div className="p-2.5 bg-orange-500/10 border border-orange-500/20 rounded-xl flex items-center gap-3">
+                                <div className="p-1.5 rounded-lg bg-orange-500/20 text-orange-600 dark:text-orange-400">
+                                    <RotateCcw className="w-3.5 h-3.5" />
                                 </div>
-                                <div className="text-[10px] text-muted-foreground text-right">
-                                    {formatSnapshotTime(sale.exchange_rate_timestamp)}
-                                </div>
+                                <span className="font-bold text-[10px] uppercase tracking-wide text-orange-600 dark:text-orange-400">
+                                    {t('sales.return.partialReturnDetected') || 'This sale has partial returns.'}
+                                </span>
                             </div>
                         )}
                     </div>
 
-                    <div className="border rounded-xl font-medium overflow-hidden">
+                    {/* ─── Market Rates Snapshot ─── */}
+                    {hasExchange && (sale.exchange_rates && sale.exchange_rates.length > 0 ? (
+                        <div className="border border-primary/10 rounded-md p-4 space-y-3 bg-primary/5">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                    <TrendingUp className="w-4 h-4 text-primary" />
+                                    <span className="text-[10px] uppercase font-black tracking-[0.15em] text-primary">
+                                        {t('sales.marketRatesSnapshot') || 'Market Rates Snapshot'}
+                                    </span>
+                                </div>
+                                <span className="text-[10px] text-muted-foreground italic">
+                                    {t('sales.ratesLockedAt') || 'Rates locked at'}: {formatSnapshotTime(sale.exchange_rates[0]?.timestamp)}
+                                </span>
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                {sale.exchange_rates.map((rate: any, idx: number) => (
+                                    <div key={idx} className="bg-card border border-primary/10 shadow-sm rounded-sm p-3 space-y-1">
+                                        <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+                                            {rate.pair}
+                                        </div>
+                                        <div className="flex items-baseline gap-2">
+                                            <span className="text-base font-black">
+                                                100 {rate.pair.split('/')[0]}
+                                            </span>
+                                            <span className="text-sm text-muted-foreground font-medium">
+                                                {formatCurrency(rate.rate, rate.pair.split('/')[1].toLowerCase() as any, features.iqd_display_preference)}
+                                            </span>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    ) : (sale.exchange_rate ?? 0) > 0 && (
+                        <div className="border border-primary/10 rounded-md p-4 bg-primary/5">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                    <TrendingUp className="w-4 h-4 text-primary" />
+                                    <span className="text-[10px] uppercase font-black tracking-[0.15em] text-primary">
+                                        {t('sales.marketRatesSnapshot') || 'Market Rates Snapshot'}
+                                    </span>
+                                </div>
+                                <span className="text-[10px] text-muted-foreground italic">
+                                    {formatSnapshotTime(sale.exchange_rate_timestamp)}
+                                </span>
+                            </div>
+                            <div className="mt-3 bg-card border border-primary/10 shadow-sm rounded-sm p-3 inline-flex flex-col gap-1">
+                                <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+                                    USD/IQD ({sale.exchange_source})
+                                </div>
+                                <div className="flex items-baseline gap-2">
+                                    <span className="text-base font-black">100 USD</span>
+                                    <span className="text-sm text-muted-foreground font-medium">
+                                        {formatCurrency(sale.exchange_rate, 'iqd', features.iqd_display_preference)}
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    ))}
+
+                    {/* ─── Items Table ─── */}
+                    <div className="border border-primary/10 rounded-md overflow-hidden bg-card">
                         {isMobile() ? (
+                            /* ═══ MOBILE CARD LAYOUT ═══ */
                             <div className="divide-y divide-border">
                                 {sale.items?.map((item) => {
                                     const isItemReturned = item.is_returned || sale.is_returned
                                     const hasItemPartialReturn = (item.returned_quantity || 0) > 0 && !item.is_returned
                                     const displayUnitPrice = item.converted_unit_price || item.unit_price || 0
-                                    const displayCurrency = (sale.settlement_currency || 'usd') as any
+                                    const itemDisplayCurrency = (sale.settlement_currency || 'usd') as any
                                     const netQuantity = item.quantity - (item.returned_quantity || 0)
 
-                                    const isConverted = item.original_currency && item.settlement_currency && item.original_currency !== item.settlement_currency
                                     const hasNegotiated = item.negotiated_price !== undefined && item.negotiated_price !== null && item.negotiated_price > 0
                                     const originalUnitPrice = item.original_unit_price || item.unit_price || 0
                                     const originalCurrency = (item.original_currency || 'usd') as any
                                     const negotiatedPrice = item.negotiated_price || 0
+                                    const isConverted = item.original_currency && item.settlement_currency && item.original_currency !== item.settlement_currency
 
                                     return (
                                         <div
                                             key={item.id}
                                             className={cn(
-                                                "p-4 space-y-3 transition-colors duration-300",
+                                                "p-4 space-y-3 transition-colors duration-200",
                                                 isItemReturned ? 'bg-destructive/5 border-l-4 border-destructive' :
                                                     hasItemPartialReturn ? 'bg-orange-500/5 border-l-4 border-orange-500' :
-                                                        'hover:bg-muted/30 border-l-4 border-transparent'
+                                                        'border-l-4 border-transparent'
                                             )}
                                         >
                                             <div className="flex justify-between items-start gap-2">
@@ -289,9 +332,19 @@ export function SaleDetailsModal({ sale, isOpen, onClose, onReturnItem }: SaleDe
                                                         <div className={cn("font-bold text-sm", isItemReturned && "line-through opacity-50")}>
                                                             {item.product_name}
                                                         </div>
+                                                        {!isItemReturned && !item.is_returned && onReturnItem && (user?.role === 'admin' || user?.role === 'staff') && (
+                                                            <Button
+                                                                size="sm"
+                                                                variant="ghost"
+                                                                onClick={(e) => { e.stopPropagation(); onReturnItem(item) }}
+                                                                className="h-6 w-6 p-0 text-muted-foreground hover:text-orange-600 hover:bg-orange-50 rounded-lg"
+                                                            >
+                                                                <RotateCcw className="h-3 w-3" />
+                                                            </Button>
+                                                        )}
                                                         {hasNegotiated && (
-                                                            <span className="px-1.5 py-0.5 text-[8px] font-black bg-emerald-500/10 text-emerald-600 rounded-full uppercase">
-                                                                {t('pos.negotiatedPrice') || 'Negotiated'}
+                                                            <span className="inline-flex items-center px-1.5 py-0.5 text-[8px] font-bold bg-emerald-500/15 text-emerald-600 rounded whitespace-nowrap leading-none">
+                                                                {t('pos.negotiatedPrice') || 'Negotiated Price'}
                                                             </span>
                                                         )}
                                                     </div>
@@ -307,19 +360,6 @@ export function SaleDetailsModal({ sale, isOpen, onClose, onReturnItem }: SaleDe
                                                         <span className="px-1.5 py-0.5 text-[8px] font-black bg-orange-500/10 text-orange-600 rounded-full uppercase">
                                                             {t('sales.return.partialReturn')}
                                                         </span>
-                                                    )}
-                                                    {!isItemReturned && !item.is_returned && onReturnItem && (user?.role === 'admin' || user?.role === 'staff') && (
-                                                        <Button
-                                                            size="sm"
-                                                            variant="ghost"
-                                                            onClick={(e) => {
-                                                                e.stopPropagation()
-                                                                onReturnItem(item)
-                                                            }}
-                                                            className="h-7 w-7 p-0 text-orange-600 hover:bg-orange-50 rounded-lg"
-                                                        >
-                                                            <RotateCcw className="h-3.5 w-3.5" />
-                                                        </Button>
                                                     )}
                                                 </div>
                                             </div>
@@ -357,7 +397,7 @@ export function SaleDetailsModal({ sale, isOpen, onClose, onReturnItem }: SaleDe
                                                             hasNegotiated ? "text-emerald-600" : "text-foreground",
                                                             isItemReturned && "opacity-50"
                                                         )}>
-                                                            {formatCurrency(displayUnitPrice, displayCurrency, features.iqd_display_preference)}
+                                                            {formatCurrency(displayUnitPrice, itemDisplayCurrency, features.iqd_display_preference)}
                                                         </span>
                                                         {hasNegotiated && (
                                                             <div className="flex items-center justify-end gap-1 text-[9px] text-muted-foreground opacity-60 mt-0.5">
@@ -381,7 +421,7 @@ export function SaleDetailsModal({ sale, isOpen, onClose, onReturnItem }: SaleDe
                                                         {t('common.total')}
                                                     </div>
                                                     <div className={cn("text-base font-black text-primary", isItemReturned && "line-through opacity-50")}>
-                                                        {formatCurrency(displayUnitPrice * netQuantity, displayCurrency, features.iqd_display_preference)}
+                                                        {formatCurrency(displayUnitPrice * netQuantity, itemDisplayCurrency, features.iqd_display_preference)}
                                                     </div>
                                                 </div>
                                                 {(hasNegotiated || isConverted) && (
@@ -405,13 +445,15 @@ export function SaleDetailsModal({ sale, isOpen, onClose, onReturnItem }: SaleDe
                                 })}
                             </div>
                         ) : (
+                            /* ═══ DESKTOP TABLE ═══ */
                             <Table>
                                 <TableHeader>
-                                    <TableRow>
-                                        <TableHead className="text-start">{t('products.table.name')}</TableHead>
-                                        <TableHead className="text-end">{t('common.quantity')}</TableHead>
-                                        <TableHead className="text-end">{t('common.price')}</TableHead>
-                                        <TableHead className="text-end">{t('common.total')}</TableHead>
+                                    <TableRow className="border-b border-primary/10 bg-primary/5">
+                                        <TableHead className="text-start text-[10px] uppercase font-bold tracking-wider text-muted-foreground">{t('products.table.name') || 'Product'}</TableHead>
+                                        <TableHead className="text-start text-[10px] uppercase font-bold tracking-wider text-muted-foreground">{t('products.table.sku') || 'SKU'}</TableHead>
+                                        <TableHead className="text-center text-[10px] uppercase font-bold tracking-wider text-muted-foreground">{t('common.quantity') || 'QTY'}</TableHead>
+                                        <TableHead className="text-end text-[10px] uppercase font-bold tracking-wider text-muted-foreground">{t('common.price') || 'Unit Price'}</TableHead>
+                                        <TableHead className="text-end text-[10px] uppercase font-bold tracking-wider text-muted-foreground">{t('common.total') || 'Total'}</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
@@ -421,8 +463,8 @@ export function SaleDetailsModal({ sale, isOpen, onClose, onReturnItem }: SaleDe
                                         const isItemReturned = item.is_returned || sale.is_returned
                                         const hasItemPartialReturn = (item.returned_quantity || 0) > 0 && !item.is_returned
 
-                                        let displayUnitPrice: number = item.converted_unit_price || item.unit_price || 0
-                                        let displayCurrency: string = sale.settlement_currency || 'usd'
+                                        const displayUnitPrice: number = item.converted_unit_price || item.unit_price || 0
+                                        const itemDisplayCurrency: string = sale.settlement_currency || 'usd'
 
                                         const originalUnitPrice = item.original_unit_price || item.unit_price || 0
                                         const originalCurrency = item.original_currency || 'usd'
@@ -434,25 +476,29 @@ export function SaleDetailsModal({ sale, isOpen, onClose, onReturnItem }: SaleDe
                                             <TableRow
                                                 key={item.id}
                                                 className={cn(
-                                                    "transition-colors duration-300",
+                                                    "transition-colors duration-200 border-b border-border/30",
                                                     isItemReturned ? 'bg-destructive/5 opacity-80' :
                                                         hasItemPartialReturn ? 'bg-orange-500/5' :
                                                             'hover:bg-muted/30'
                                                 )}
                                             >
+                                                {/* Product Name */}
                                                 <TableCell className="text-start">
                                                     <div className="flex items-center gap-2">
-                                                        <div>
-                                                            <div className={cn("font-medium", isItemReturned && "line-through opacity-50")}>
-                                                                {item.product_name}
-                                                            </div>
-                                                            <div className="text-xs text-muted-foreground">{item.product_sku}</div>
-                                                            {hasNegotiated && (
-                                                                <div className="text-[10px] text-emerald-600 font-medium">
-                                                                    {t('pos.negotiatedPrice') || 'Negotiated'}
-                                                                </div>
-                                                            )}
+                                                        <div className={cn("font-medium text-sm", isItemReturned && "line-through opacity-50")}>
+                                                            {item.product_name}
                                                         </div>
+                                                        {!isItemReturned && !item.is_returned && onReturnItem && (user?.role === 'admin' || user?.role === 'staff') && (
+                                                            <Button
+                                                                size="sm"
+                                                                variant="ghost"
+                                                                onClick={(e) => { e.stopPropagation(); onReturnItem(item) }}
+                                                                className="h-6 w-6 p-0 text-muted-foreground hover:text-orange-600 hover:bg-orange-50"
+                                                                title={t('sales.return.returnItem') || 'Return Item'}
+                                                            >
+                                                                <RotateCcw className="h-3 w-3" />
+                                                            </Button>
+                                                        )}
                                                         {isItemReturned && (
                                                             <span className="px-1.5 py-0.5 text-[9px] font-bold bg-destructive/10 text-destructive rounded-full uppercase">
                                                                 {t('sales.return.returnedStatus')}
@@ -463,32 +509,25 @@ export function SaleDetailsModal({ sale, isOpen, onClose, onReturnItem }: SaleDe
                                                                 {t('sales.return.partialReturn')}
                                                             </span>
                                                         )}
-                                                        {!isItemReturned && !item.is_returned && onReturnItem && (user?.role === 'admin' || user?.role === 'staff') && (
-                                                            <Button
-                                                                size="sm"
-                                                                variant="ghost"
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation()
-                                                                    onReturnItem(item)
-                                                                }}
-                                                                className="h-6 w-6 p-0 text-orange-600 hover:text-orange-700 hover:bg-orange-50"
-                                                                title={t('sales.return.returnItem') || 'Return Item'}
-                                                            >
-                                                                <RotateCcw className="h-3 w-3" />
-                                                            </Button>
+                                                        {hasNegotiated && (
+                                                            <span className="inline-flex items-center px-1.5 py-0.5 text-[9px] font-bold bg-emerald-500/15 text-emerald-600 rounded whitespace-nowrap leading-none">
+                                                                {t('pos.negotiatedPrice') || 'Negotiated Price'}
+                                                            </span>
                                                         )}
                                                     </div>
                                                 </TableCell>
-                                                <TableCell className="text-end font-mono">
-                                                    <div className="flex flex-col items-end">
+
+                                                {/* SKU */}
+                                                <TableCell className="text-start">
+                                                    <span className="text-xs text-muted-foreground font-mono">{item.product_sku}</span>
+                                                </TableCell>
+
+                                                {/* Quantity */}
+                                                <TableCell className="text-center font-mono">
+                                                    <div className="flex flex-col items-center">
                                                         <span className={cn("text-sm font-semibold", isItemReturned && "line-through opacity-50")}>
                                                             {netQuantity}
                                                         </span>
-                                                        {(hasItemPartialReturn || isItemReturned) && (
-                                                            <div className="text-[10px] text-muted-foreground opacity-60 line-through whitespace-nowrap">
-                                                                {item.quantity} {t('common.total') || 'Total'}
-                                                            </div>
-                                                        )}
                                                         {hasItemPartialReturn && !isItemReturned && (
                                                             <div className="text-[10px] text-orange-600 font-medium whitespace-nowrap">
                                                                 -{item.returned_quantity} {t('sales.return.returnedLabel') || 'returned'}
@@ -496,13 +535,15 @@ export function SaleDetailsModal({ sale, isOpen, onClose, onReturnItem }: SaleDe
                                                         )}
                                                     </div>
                                                 </TableCell>
+
+                                                {/* Unit Price */}
                                                 <TableCell className="text-end">
                                                     <div className="flex flex-col items-end">
                                                         <span className={cn(
                                                             hasNegotiated ? "font-medium text-emerald-600" : "font-medium",
                                                             isItemReturned && "opacity-50"
                                                         )}>
-                                                            {formatCurrency(displayUnitPrice, displayCurrency, features.iqd_display_preference)}
+                                                            {formatCurrency(displayUnitPrice, itemDisplayCurrency, features.iqd_display_preference)}
                                                         </span>
                                                         {hasNegotiated && (
                                                             <div className="flex items-center justify-end gap-1 text-[10px] text-muted-foreground opacity-60">
@@ -518,18 +559,20 @@ export function SaleDetailsModal({ sale, isOpen, onClose, onReturnItem }: SaleDe
                                                         )}
                                                     </div>
                                                 </TableCell>
+
+                                                {/* Total */}
                                                 <TableCell className="text-end font-bold">
                                                     <div className="flex flex-col items-end">
                                                         <span className={cn(
                                                             hasNegotiated ? "text-emerald-600" : "",
                                                             isItemReturned && "line-through opacity-50"
                                                         )}>
-                                                            {formatCurrency(displayUnitPrice * netQuantity, displayCurrency, features.iqd_display_preference)}
+                                                            {formatCurrency(displayUnitPrice * netQuantity, itemDisplayCurrency, features.iqd_display_preference)}
                                                         </span>
 
                                                         {(hasItemPartialReturn || isItemReturned) && (
                                                             <span className="text-[10px] text-muted-foreground opacity-40 line-through">
-                                                                {formatCurrency(displayUnitPrice * item.quantity, displayCurrency, features.iqd_display_preference)}
+                                                                {formatCurrency(displayUnitPrice * item.quantity, itemDisplayCurrency, features.iqd_display_preference)}
                                                             </span>
                                                         )}
 
@@ -555,20 +598,59 @@ export function SaleDetailsModal({ sale, isOpen, onClose, onReturnItem }: SaleDe
                         )}
                     </div>
 
-                    <div className="flex justify-between items-center pt-4 border-t">
-                        <div className="text-lg font-bold uppercase tracking-tight opacity-70">
-                            {t('sales.total')} ({sale.settlement_currency || 'usd'})
-                        </div>
-                        <div className="flex items-center gap-3">
-                            {hasAnyReturn && (
-                                <span className="text-xl font-bold text-muted-foreground line-through opacity-40 tabular-nums">
-                                    {formatCurrency(sale.total_amount, sale.settlement_currency || 'usd', features.iqd_display_preference)}
+                    {/* ─── Totals Section ─── */}
+                    <div className="flex justify-end">
+                        <div className="border border-primary/10 rounded-md p-4 min-w-[240px] space-y-2 bg-primary/5">
+                            <div className="flex justify-between items-center text-sm">
+                                <span className="text-muted-foreground font-medium">{t('sales.subtotal') || 'Subtotal'}</span>
+                                <span className="font-semibold tabular-nums">
+                                    {formatCurrency(sale.total_amount, displayCurrency, features.iqd_display_preference)}
                                 </span>
-                            )}
-                            <div className="text-3xl font-black text-primary tabular-nums drop-shadow-sm">
-                                {formatCurrency(netTotal, sale.settlement_currency || 'usd', features.iqd_display_preference)}
+                            </div>
+                            <div className="border-t border-border/50 pt-2 mt-2">
+                                <div className="flex justify-between items-center">
+                                    <span className="text-sm font-black uppercase tracking-wider">
+                                        {t('sales.grandTotal') || 'Grand Total'}
+                                    </span>
+                                    <span className="text-xl font-black tabular-nums text-primary">
+                                        {formatCurrency(netTotal, displayCurrency, features.iqd_display_preference)}
+                                    </span>
+                                </div>
                             </div>
                         </div>
+                    </div>
+                </div>
+
+                {/* ═══════════════ FOOTER ═══════════════ */}
+                <div className="flex items-center justify-between px-6 py-4 border-t border-border bg-card rounded-b-lg">
+                    <div>
+                        {!isFullyReturned && onReturnSale && (user?.role === 'admin' || user?.role === 'staff') && (
+                            <button
+                                onClick={() => onReturnSale(sale)}
+                                className="text-sm font-medium text-muted-foreground hover:text-destructive transition-colors"
+                            >
+                                {t('sales.returnSale') || 'Return Sale'}
+                            </button>
+                        )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            className="gap-2 text-emerald-600 border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-300 dark:border-emerald-800 dark:hover:bg-emerald-500/10"
+                            onClick={() => setShowWhatsAppModal(true)}
+                        >
+                            <MessageCircle className="w-4 h-4" />
+                        </Button>
+                        <Button
+                            size="sm"
+                            className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm"
+                            onClick={() => onDownloadInvoice?.(sale)}
+                            disabled={!onDownloadInvoice}
+                        >
+                            <Download className="w-4 h-4" />
+                            {t('sales.downloadInvoice') || 'Download Invoice'}
+                        </Button>
                     </div>
                 </div>
             </DialogContent>
@@ -578,6 +660,6 @@ export function SaleDetailsModal({ sale, isOpen, onClose, onReturnItem }: SaleDe
                 onClose={() => setShowWhatsAppModal(false)}
                 onConfirm={handleWhatsAppConfirm}
             />
-        </Dialog >
+        </Dialog>
     )
 }

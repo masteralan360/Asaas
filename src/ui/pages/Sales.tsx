@@ -943,6 +943,8 @@ export function Sales() {
                 onClose={() => setSelectedSale(null)}
                 sale={selectedSale}
                 onReturnItem={handleReturnItem}
+                onReturnSale={handleReturnSale}
+                onDownloadInvoice={onPrintClick}
             />
 
             {/* Return Decline Modal */}

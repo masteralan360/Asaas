@@ -790,7 +790,15 @@
             }
         },
         "confirmDelete": "Delete Sale",
-        "deleteWarning": "Deleting this sale will permanently remove the record and restore the items to inventory. This cannot be undone."
+        "deleteWarning": "Deleting this sale will permanently remove the record and restore the items to inventory. This cannot be undone.",
+        "multiCurrencyTransaction": "Multi-Currency Transaction",
+        "marketRatesSnapshot": "Market Rates Snapshot",
+        "ratesLockedAt": "Rates locked at",
+        "subtotal": "Subtotal",
+        "discount": "Discount",
+        "grandTotal": "Total",
+        "downloadInvoice": "Download Invoice",
+        "returnSale": "Return Sale"
     },
     "categories": {
         "title": "Categories",
