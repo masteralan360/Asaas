@@ -752,7 +752,7 @@ export function Revenue() {
                                                     {prod.name}
                                                 </div>
                                                 <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
-                                                    {t('common.revenue') || 'REVENUE'} {formatCurrency(prod.revenue, currencySettings.currency as any, currencySettings.iqdPreference)}
+                                                    {formatCurrency(prod.revenue, currencySettings.currency as any, currencySettings.iqdPreference)}
                                                 </div>
                                             </div>
                                         </div>
