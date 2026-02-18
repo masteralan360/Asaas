@@ -26,7 +26,7 @@ export function GlobalSearch({ className, placeholder }: GlobalSearchProps) {
     const [activeIndex, setActiveIndex] = useState(0)
     const [, setLocation] = useHashLocation()
     const { t } = useTranslation()
-    const { theme, setTheme } = useTheme()
+    const { theme, setTheme, style } = useTheme()
     const { signOut } = useAuth()
     const inputRef = useRef<HTMLInputElement>(null)
     const containerRef = useRef<HTMLDivElement>(null)
@@ -132,7 +132,8 @@ export function GlobalSearch({ className, placeholder }: GlobalSearchProps) {
                     onFocus={() => setIsOpen(true)}
                     onKeyDown={handleKeyDown}
                     className={cn(
-                        "flex h-9 w-full rounded-md border border-input bg-secondary/30 px-3 py-1 text-sm shadow-sm transition-all duration-300",
+                        "flex h-9 w-full bg-secondary/30 px-3 py-1 text-sm transition-all duration-300",
+                        style === 'neo-orange' ? "rounded-[var(--radius)] border-2 border-black dark:border-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]" : "rounded-md border border-input shadow-sm",
                         "placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
                         "pl-9 pr-12 text-center focus:text-left focus:bg-background/80 focus:shadow-lg"
                     )}
@@ -148,7 +149,10 @@ export function GlobalSearch({ className, placeholder }: GlobalSearchProps) {
 
             {/* Dropdown Results */}
             {isOpen && (filteredCommands.length > 0 || query.trim() !== '') && (
-                <div className="absolute top-full left-0 right-0 mt-2 py-2 bg-background/95 backdrop-blur-md border border-white/10 rounded-xl shadow-2xl z-[200] overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+                <div className={cn(
+                    "absolute top-full left-0 right-0 mt-2 py-2 bg-background/95 backdrop-blur-md z-[200] overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200",
+                    style === 'neo-orange' ? "rounded-[var(--radius)] border-2 border-black dark:border-white shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]" : "rounded-xl border border-white/10 shadow-2xl"
+                )}>
                     <div className="max-h-[min(400px,70vh)] overflow-y-auto custom-scrollbar">
                         {filteredCommands.length === 0 ? (
                             <div className="px-4 py-8 text-center text-muted-foreground">
@@ -184,10 +188,6 @@ export function GlobalSearch({ className, placeholder }: GlobalSearchProps) {
                                                             setQuery('')
                                                         }}
                                                         onMouseEnter={() => setActiveIndex(globalIndex)}
-                                                        className={cn(
-                                                            "w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-all text-sm group/item text-left",
-                                                            isActive ? "bg-primary text-primary-foreground shadow-lg scale-[1.02]" : "hover:bg-secondary/80 text-foreground/70"
-                                                        )}
                                                     >
                                                         <cmd.icon className={cn("w-4 h-4", isActive ? "text-primary-foreground" : "text-muted-foreground group-hover/item:text-primary")} />
                                                         <span className="flex-1 font-medium">{cmd.title}</span>

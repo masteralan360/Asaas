@@ -504,7 +504,7 @@ export function Settings() {
 
                                 <div className="flex flex-col gap-2 mt-4 pt-4 border-t border-border/50">
                                     <Label>{t('settings.theme.style')}</Label>
-                                    <div className="grid grid-cols-3 gap-2 max-w-md">
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 max-w-2xl">
                                         <Button
                                             variant={style === 'primary' ? 'default' : 'outline'}
                                             className="flex items-center gap-2 justify-center"
@@ -525,6 +525,20 @@ export function Settings() {
                                             onClick={() => setStyle('legacy')}
                                         >
                                             {t('settings.theme.legacy')}
+                                        </Button>
+                                        <Button
+                                            variant={style === 'emerald' ? 'default' : 'outline'}
+                                            className="flex items-center gap-2 justify-center"
+                                            onClick={() => setStyle('emerald')}
+                                        >
+                                            {t('settings.theme.emerald', 'Emerald')}
+                                        </Button>
+                                        <Button
+                                            variant={style === 'neo-orange' ? 'default' : 'outline'}
+                                            className="flex items-center gap-2 justify-center"
+                                            onClick={() => setStyle('neo-orange')}
+                                        >
+                                            {t('settings.theme.neo-orange', 'Neo-Orange')}
                                         </Button>
                                     </div>
                                 </div>

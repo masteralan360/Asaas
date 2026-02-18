@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from 'react'
 
-type ThemeStyle = 'modern' | 'legacy' | 'primary'
+type ThemeStyle = 'modern' | 'legacy' | 'primary' | 'emerald' | 'neo-orange'
 
 /**
  * Returns the appropriate favicon path based on language and theme style.

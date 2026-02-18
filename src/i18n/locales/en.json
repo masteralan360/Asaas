@@ -139,6 +139,7 @@
     },
     "products": {
         "title": "Products",
+        "addCategory": "Add Category",
         "subtitle": "Manage your inventory",
         "addProduct": "Add Product",
         "lowStock": "Low Stock",
@@ -475,6 +476,8 @@
             "primary": "Primary",
             "modern": "Modern (Premium)",
             "legacy": "Legacy (Classic)",
+            "emerald": "Emerald (Teal & Charcoal)",
+            "neo-orange": "Neo-Orange (Brutalist)",
             "light": "Light",
             "dark": "Dark",
             "system": "System"

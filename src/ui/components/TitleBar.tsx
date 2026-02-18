@@ -134,14 +134,20 @@ export function TitleBar() {
                 )}
                 <button
                     onClick={() => window.location.reload()}
-                    className="p-2 hover:bg-secondary rounded-md transition-colors text-muted-foreground hover:text-foreground mr-1"
+                    className={cn(
+                        "p-2 transition-colors mr-1",
+                        style === 'neo-orange' ? "neo-indicator" : "hover:bg-secondary rounded-md text-muted-foreground hover:text-foreground"
+                    )}
                     title={t('common.refresh') || "Refresh"}
                 >
                     <RotateCw className="w-4 h-4" />
                 </button>
                 <button
                     onClick={toggleTheme}
-                    className="p-2 hover:bg-secondary rounded-md transition-colors text-muted-foreground hover:text-foreground mr-1"
+                    className={cn(
+                        "p-2 transition-colors mr-1",
+                        style === 'neo-orange' ? "neo-indicator" : "hover:bg-secondary rounded-md text-muted-foreground hover:text-foreground"
+                    )}
                     title={theme === 'dark' ? "Switch to Light Mode" : "Switch to Dark Mode"}
                 >
                     {theme === 'dark' ? (
@@ -153,21 +159,30 @@ export function TitleBar() {
                 {!isFullscreen && <NotificationCenter />}
                 <button
                     onClick={minimize}
-                    className="p-2 hover:bg-secondary rounded-md transition-colors text-muted-foreground hover:text-foreground"
+                    className={cn(
+                        "p-2 transition-colors",
+                        style === 'neo-orange' ? "neo-indicator" : "hover:bg-secondary rounded-md text-muted-foreground hover:text-foreground"
+                    )}
                     title="Minimize"
                 >
                     <Minus className="w-4 h-4" />
                 </button>
                 <button
                     onClick={toggleMaximize}
-                    className="p-2 hover:bg-secondary rounded-md transition-colors text-muted-foreground hover:text-foreground"
+                    className={cn(
+                        "p-2 transition-colors",
+                        style === 'neo-orange' ? "neo-indicator" : "hover:bg-secondary rounded-md text-muted-foreground hover:text-foreground"
+                    )}
                     title={isMaximized ? "Restore" : "Maximize"}
                 >
                     <Square className="w-3.5 h-3.5" />
                 </button>
                 <button
                     onClick={close}
-                    className="p-2 hover:bg-red-500/10 hover:text-red-500 rounded-md transition-colors text-muted-foreground"
+                    className={cn(
+                        "p-2 transition-colors",
+                        style === 'neo-orange' ? "neo-indicator bg-red-500/10 border-red-500/50 hover:bg-red-500 hover:text-white" : "hover:bg-red-500/10 hover:text-red-500 rounded-md text-muted-foreground"
+                    )}
                     title="Close"
                 >
                     <X className="w-4 h-4" />

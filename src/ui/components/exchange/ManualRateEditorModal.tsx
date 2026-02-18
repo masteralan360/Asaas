@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import { useTranslation } from 'react-i18next';
 import { Coins, Save, X, Info } from 'lucide-react';
 import { useExchangeRate } from '@/context/ExchangeRateContext';
+import { useTheme } from '../theme-provider';
 
 interface ManualRateEditorModalProps {
     open: boolean;
@@ -16,6 +17,7 @@ interface ManualRateEditorModalProps {
 
 export function ManualRateEditorModal({ open, onOpenChange, initialCurrency = 'USD' }: ManualRateEditorModalProps) {
     const { t } = useTranslation();
+    const { style } = useTheme();
     const { allRates, refresh: refreshRates } = useExchangeRate();
     const [currency, setCurrency] = useState<'USD' | 'EUR' | 'TRY'>(initialCurrency);
     const [rate, setRate] = useState<string>('');
@@ -138,8 +140,9 @@ export function ManualRateEditorModal({ open, onOpenChange, initialCurrency = 'U
             <DialogPrimitive.Portal>
                 <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/80 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
                 <DialogPrimitive.Content className={cn(
-                    "fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border bg-background shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] sm:rounded-lg",
-                    "max-w-md rounded-2xl p-0 overflow-hidden border-emerald-500/20"
+                    "fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border bg-background shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%]",
+                    "max-w-md p-0 overflow-hidden",
+                    style === 'neo-orange' ? "rounded-[var(--radius)] border-2 border-black dark:border-white shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]" : "rounded-2xl border-emerald-500/20"
                 )}>
                     <DialogPrimitive.Description className="sr-only">Manual Exchange Rate Editor</DialogPrimitive.Description>
 
@@ -189,11 +192,24 @@ export function ManualRateEditorModal({ open, onOpenChange, initialCurrency = 'U
                     </div>
 
                     <div className="flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2 p-4 bg-secondary/30 flex gap-2">
-                        <Button variant="ghost" className="flex-1 rounded-xl h-12" onClick={() => onOpenChange(false)}>
+                        <Button
+                            variant="ghost"
+                            className={cn(
+                                "flex-1 h-12 font-bold",
+                                style === 'neo-orange' ? "rounded-[var(--radius)] border-2 border-black dark:border-white" : "rounded-xl"
+                            )}
+                            onClick={() => onOpenChange(false)}
+                        >
                             <X className="w-4 h-4 mr-2" />
                             {t('common.cancel')}
                         </Button>
-                        <Button className="flex-1 rounded-xl h-12 bg-emerald-500 hover:bg-emerald-600" onClick={handleSave}>
+                        <Button
+                            className={cn(
+                                "flex-1 h-12 font-black",
+                                style === 'neo-orange' ? "rounded-[var(--radius)] bg-emerald-500 text-black border-2 border-black dark:border-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]" : "rounded-xl bg-emerald-500 hover:bg-emerald-600"
+                            )}
+                            onClick={handleSave}
+                        >
                             <Save className="w-4 h-4 mr-2" />
                             {t('common.save')}
                         </Button>

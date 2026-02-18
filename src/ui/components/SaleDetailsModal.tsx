@@ -5,6 +5,7 @@ import { Sale, SaleItem } from '@/types'
 import { formatCurrency, formatDateTime, formatSnapshotTime, cn, formatSaleDetailsForWhatsApp } from '@/lib/utils'
 import { whatsappManager } from '@/lib/whatsappWebviewManager'
 import { WhatsAppNumberInputModal } from '@/ui/components/modals/WhatsAppNumberInputModal'
+import { useTheme } from '@/ui/components/theme-provider'
 import {
     Table,
     TableBody,
@@ -38,6 +39,7 @@ export function SaleDetailsModal({ sale, isOpen, onClose, onReturnItem, onReturn
     const { features } = useWorkspace()
     const [showWhatsAppModal, setShowWhatsAppModal] = useState(false)
     const [, setLocation] = useLocation()
+    const { style } = useTheme()
 
     const handleWhatsAppConfirm = async (phone: string) => {
         if (!sale) return
@@ -90,7 +92,8 @@ export function SaleDetailsModal({ sale, isOpen, onClose, onReturnItem, onReturn
         <Dialog open={isOpen} onOpenChange={onClose}>
             <DialogContent className={cn(
                 "max-w-2xl w-[95vw] sm:w-full max-h-[90vh] overflow-y-auto",
-                "p-0 gap-0 rounded-lg border border-border shadow-xl bg-card"
+                "p-0 gap-0 rounded-lg border border-border shadow-xl bg-card",
+                style === 'neo-orange' && "neo-border rounded-none"
             )}>
                 {/* ═══════════════ HEADER ═══════════════ */}
                 <DialogHeader className="p-6 pb-4 bg-card rounded-t-lg">
@@ -99,7 +102,10 @@ export function SaleDetailsModal({ sale, isOpen, onClose, onReturnItem, onReturn
                             <CircleDollarSign className="w-5 h-5 text-primary" />
                         </div>
                         <div>
-                            <DialogTitle className="text-lg font-bold leading-tight text-primary">
+                            <DialogTitle className={cn(
+                                "text-lg font-bold leading-tight text-primary",
+                                style === 'neo-orange' && "neo-title"
+                            )}>
                                 {t('sales.details') || 'Sale Details'}
                             </DialogTitle>
                             <p className="text-xs text-muted-foreground mt-0.5">
@@ -241,7 +247,10 @@ export function SaleDetailsModal({ sale, isOpen, onClose, onReturnItem, onReturn
 
                     {/* ─── Market Rates Snapshot ─── */}
                     {hasExchange && (sale.exchange_rates && sale.exchange_rates.length > 0 ? (
-                        <div className="border border-primary/10 rounded-md p-4 space-y-3 bg-primary/5">
+                        <div className={cn(
+                            "border border-primary/10 rounded-md p-4 space-y-3 bg-primary/5",
+                            style === 'neo-orange' && "snapshot-neo"
+                        )}>
                             <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-2">
                                     <TrendingUp className="w-4 h-4 text-primary" />
@@ -272,7 +281,10 @@ export function SaleDetailsModal({ sale, isOpen, onClose, onReturnItem, onReturn
                             </div>
                         </div>
                     ) : (sale.exchange_rate ?? 0) > 0 && (
-                        <div className="border border-primary/10 rounded-md p-4 bg-primary/5">
+                        <div className={cn(
+                            "border border-primary/10 rounded-md p-4 bg-primary/5",
+                            style === 'neo-orange' && "snapshot-neo"
+                        )}>
                             <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-2">
                                     <TrendingUp className="w-4 h-4 text-primary" />
@@ -448,7 +460,10 @@ export function SaleDetailsModal({ sale, isOpen, onClose, onReturnItem, onReturn
                             /* ═══ DESKTOP TABLE ═══ */
                             <Table>
                                 <TableHeader>
-                                    <TableRow className="border-b border-primary/10 bg-primary/5">
+                                    <TableRow className={cn(
+                                        "border-b border-primary/10 bg-primary/5",
+                                        style === 'neo-orange' && "table-header-neo"
+                                    )}>
                                         <TableHead className="text-start text-[10px] uppercase font-bold tracking-wider text-muted-foreground">{t('products.table.name') || 'Product'}</TableHead>
                                         <TableHead className="text-start text-[10px] uppercase font-bold tracking-wider text-muted-foreground">{t('products.table.sku') || 'SKU'}</TableHead>
                                         <TableHead className="text-center text-[10px] uppercase font-bold tracking-wider text-muted-foreground">{t('common.quantity') || 'QTY'}</TableHead>
@@ -600,7 +615,10 @@ export function SaleDetailsModal({ sale, isOpen, onClose, onReturnItem, onReturn
 
                     {/* ─── Totals Section ─── */}
                     <div className="flex justify-end">
-                        <div className="border border-primary/10 rounded-md p-4 min-w-[240px] space-y-2 bg-primary/5">
+                        <div className={cn(
+                            "border border-primary/10 rounded-md p-4 min-w-[240px] space-y-2 bg-primary/5",
+                            style === 'neo-orange' && "neo-border rounded-none"
+                        )}>
                             <div className="flex justify-between items-center text-sm">
                                 <span className="text-muted-foreground font-medium">{t('sales.subtotal') || 'Subtotal'}</span>
                                 <span className="font-semibold tabular-nums">

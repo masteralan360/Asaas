@@ -4,11 +4,13 @@ import { useNetworkStatus } from '@/hooks/useNetworkStatus'
 import { ManualSyncModal } from './ManualSyncModal'
 import { cn } from '@/lib/utils'
 import { CloudOff, Check, AlertCircle } from 'lucide-react'
+import { useTheme } from './theme-provider'
 
 export function SyncStatusIndicator() {
     const pendingCount = usePendingSyncCount()
     const isOnline = useNetworkStatus()
     const [isModalOpen, setIsModalOpen] = useState(false)
+    const { style } = useTheme()
 
     let status = {
         icon: Check,
@@ -47,15 +49,19 @@ export function SyncStatusIndicator() {
                 onClick={() => isOnline && pendingCount > 0 && setIsModalOpen(true)}
                 disabled={!isOnline || pendingCount === 0}
                 className={cn(
-                    'flex items-center gap-2 px-3 py-1.5 rounded-full transition-all',
-                    bgColor,
+                    'flex items-center gap-2 px-3 py-1.5 transition-all text-xs font-bold',
+                    style === 'neo-orange' ? 'neo-indicator' : cn(bgColor, 'rounded-full'),
                     clickable ? 'hover:opacity-80 cursor-pointer' : 'cursor-default opacity-80'
                 )}
                 title={clickable ? "Click to sync changes" : undefined}
             >
-                <div className={cn('w-2 h-2 rounded-full', dotColor)} />
-                <Icon className={cn('w-4 h-4', color)} />
-                <span className={cn('text-xs font-medium', color)}>{label}</span>
+                <div className={cn(
+                    'w-2 h-2',
+                    style === 'neo-orange' ? "rounded-none" : "rounded-full",
+                    dotColor
+                )} />
+                <Icon className={cn('w-4 h-4', style === 'neo-orange' ? 'text-current' : color)} />
+                <span className={cn(style === 'neo-orange' ? 'text-current' : color)}>{label}</span>
             </button>
 
             <ManualSyncModal

@@ -440,3 +440,153 @@
     display: none !important;
   }
 }
+
+/* =========================================
+     EMERALD THEME (Teal & Charcoal)
+     ========================================= */
+.theme-emerald {
+  --radius: 0.75rem;
+}
+
+.theme-emerald.light {
+  --background: 0 0% 100%;
+  --foreground: 222.2 84% 4.9%;
+  --card: 0 0% 100%;
+  --card-foreground: 222.2 84% 4.9%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 222.2 84% 4.9%;
+  --primary: 171 77% 34%;
+  /* The Teal Accent */
+  --primary-foreground: 0 0% 100%;
+  --secondary: 171 20% 96%;
+  --secondary-foreground: 171 77% 25%;
+  --muted: 210 40% 96.1%;
+  --muted-foreground: 215.4 16.3% 46.9%;
+  --accent: 171 77% 96%;
+  --accent-foreground: 171 77% 34%;
+  --destructive: 354 70% 54%;
+  /* The "Return Sale" Red */
+  --destructive-foreground: 210 40% 98%;
+  --border: 214.3 31.8% 91.4%;
+  --input: 214.3 31.8% 91.4%;
+  --ring: 171 77% 34%;
+}
+
+.theme-emerald.dark {
+  --background: 222 47% 4%;
+  --foreground: 210 40% 98%;
+  --card: 222 47% 7%;
+  --card-foreground: 210 40% 98%;
+  --popover: 222 47% 7%;
+  --popover-foreground: 210 40% 98%;
+  --primary: 171 77% 45%;
+  /* Slightly brighter teal for dark mode */
+  --primary-foreground: 220 60% 1%;
+  --secondary: 171 30% 12%;
+  --secondary-foreground: 171 77% 80%;
+  --muted: 222 47% 12%;
+  --muted-foreground: 215 20.2% 65.1%;
+  --accent: 171 77% 15%;
+  --accent-foreground: 171 77% 80%;
+  --destructive: 0 62.8% 30.6%;
+  --destructive-foreground: 210 40% 98%;
+  --border: 222 47% 15%;
+  --input: 222 47% 15%;
+  --ring: 171 77% 45%;
+}
+
+/* Specific styling for the Snapshot container */
+.snapshot-box {
+  @apply rounded-xl border border-primary/20 bg-primary/5 p-4;
+}
+
+.dark .snapshot-box {
+  @apply border-primary/30 bg-primary/10;
+}
+
+/* =========================================
+     NEO-ORANGE THEME (Brutalist / Cyberpunk)
+     ========================================= */
+.theme-neo-orange {
+  --radius: 0px;
+  /* Sharp corners are key to this look */
+}
+
+.theme-neo-orange.light {
+  --background: 0 0% 100%;
+  --foreground: 0 0% 0%;
+  --card: 0 0% 100%;
+  --card-foreground: 0 0% 0%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 0 0% 0%;
+  --primary: 24 100% 50%;
+  /* Vibrant Orange */
+  --primary-foreground: 0 0% 100%;
+  --secondary: 0 0% 0%;
+  /* Black accents */
+  --secondary-foreground: 0 0% 100%;
+  --muted: 0 0% 96%;
+  --muted-foreground: 0 0% 40%;
+  --accent: 24 100% 95%;
+  --accent-foreground: 24 100% 50%;
+  --destructive: 0 0% 0%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 0 0% 0%;
+  /* Solid black borders */
+  --input: 0 0% 0%;
+  --ring: 24 100% 50%;
+}
+
+.theme-neo-orange.dark {
+  --background: 0 0% 0%;
+  --foreground: 0 0% 100%;
+  --card: 0 0% 8%;
+  --card-foreground: 0 0% 100%;
+  --popover: 0 0% 8%;
+  --popover-foreground: 0 0% 100%;
+  --primary: 24 100% 50%;
+  --primary-foreground: 0 0% 0%;
+  --secondary: 0 0% 100%;
+  --secondary-foreground: 0 0% 0%;
+  --muted: 0 0% 15%;
+  --muted-foreground: 0 0% 65%;
+  --accent: 24 100% 15%;
+  --accent-foreground: 24 100% 50%;
+  --border: 0 0% 25%;
+  --input: 0 0% 25%;
+  --ring: 24 100% 50%;
+}
+
+/* Neo-Brutalist Border Style */
+.neo-border {
+  border: 2px solid hsl(var(--border));
+}
+
+/* The Orange-Bar Snapshot Box */
+.snapshot-neo {
+  @apply bg-black text-white p-4 relative overflow-hidden;
+  border-left: 6px solid hsl(var(--primary));
+}
+
+.theme-neo-orange.light .snapshot-neo {
+  @apply bg-black;
+}
+
+/* Table Header Inversion */
+.theme-neo-orange .table-header-neo {
+  @apply bg-black text-white uppercase italic font-black;
+}
+
+/* Typography Tweaks */
+.neo-title {
+  @apply uppercase italic font-black tracking-tighter;
+  text-shadow: 2px 2px 0px rgba(0, 0, 0, 0.2);
+}
+
+.neo-indicator {
+  @apply border-2 border-black bg-white text-black font-bold px-3 py-1.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)];
+}
+
+.theme-neo-orange.dark .neo-indicator {
+  @apply border-white bg-black text-white shadow-[2px_2px_0px_0px_rgba(255,255,255,1)];
+}

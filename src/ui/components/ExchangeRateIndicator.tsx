@@ -5,6 +5,7 @@ import { useExchangeRate } from '@/context/ExchangeRateContext'
 import { useWorkspace } from '@/workspace'
 import { cn } from '@/lib/utils'
 import { useTranslation } from 'react-i18next'
+import { useTheme } from './theme-provider'
 import {
     Dialog,
     DialogContent,
@@ -67,6 +68,7 @@ export function ExchangeRateList({ isMobile = false }: { isMobile?: boolean }) {
     const { exchangeData, eurRates, tryRates, status, currencyStatus, lastUpdated, allRates } = useExchangeRate()
     const { features } = useWorkspace()
     const { t } = useTranslation()
+    const { style } = useTheme()
 
     // Primary currency status determines overall indicator color
     // Desktop: Always green if USD works (even if secondary currencies are offline)
@@ -79,11 +81,14 @@ export function ExchangeRateList({ isMobile = false }: { isMobile?: boolean }) {
 
     return (
         <div className={cn(
-            "flex items-center gap-2 px-3 py-1.5 rounded-full transition-all border w-fit",
-            !isLoading && usdWorks && 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500',
-            !isLoading && !usdWorks && !allFailed && 'bg-amber-500/10 border-amber-500/20 text-amber-600',
-            !isLoading && allFailed && 'bg-red-500/10 border-red-500/20 text-red-500',
-            isLoading && 'bg-secondary border-border text-muted-foreground',
+            "flex items-center gap-2 px-3 py-1.5 transition-all border w-fit",
+            style === 'neo-orange' ? "neo-indicator" : cn(
+                "rounded-full",
+                !isLoading && usdWorks && 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500',
+                !isLoading && !usdWorks && !allFailed && 'bg-amber-500/10 border-amber-500/20 text-amber-600',
+                !isLoading && allFailed && 'bg-red-500/10 border-red-500/20 text-red-500',
+                isLoading && 'bg-secondary border-border text-muted-foreground'
+            ),
             isMobile && "flex-col items-start rtl:items-start rounded-xl p-2 w-full gap-2 border-none bg-transparent"
         )}>
             <div className="flex items-center gap-2">
@@ -236,6 +241,7 @@ export function ExchangeRateIndicator() {
     const [, setLocation] = useLocation()
     const { status, refresh } = useExchangeRate()
     const { t, i18n } = useTranslation()
+    const { style } = useTheme()
     const [isOpen, setIsOpen] = useState(false)
     const direction = i18n.dir()
 
@@ -246,7 +252,10 @@ export function ExchangeRateIndicator() {
                 <div className="hidden md:flex items-center gap-2">
                     <button
                         onClick={() => setLocation('/currency-converter')}
-                        className="p-1.5 rounded-lg hover:bg-secondary border border-transparent hover:border-border transition-all group"
+                        className={cn(
+                            "p-1.5 hover:bg-secondary border transition-all group",
+                            style === 'neo-orange' ? "rounded-[var(--radius)] border-black dark:border-white bg-white dark:bg-black" : "rounded-lg border-transparent hover:border-border"
+                        )}
                         title="Currency Converter"
                     >
                         <Calculator className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors" />
@@ -262,13 +271,15 @@ export function ExchangeRateIndicator() {
                         onClick={refresh}
                         disabled={status === 'loading'}
                         className={cn(
-                            "p-1.5 rounded-lg hover:bg-secondary border border-transparent hover:border-border transition-all group",
+                            "p-1.5 border transition-all group",
+                            style === 'neo-orange' ? "rounded-[var(--radius)] border-black dark:border-white bg-white dark:bg-black" : "rounded-lg hover:bg-secondary border-transparent hover:border-border",
                             status === 'loading' && "opacity-50 cursor-not-allowed"
                         )}
                         title="Refresh Exchange Rate"
                     >
                         <RefreshCw className={cn(
-                            "w-4 h-4 text-muted-foreground group-hover:text-foreground transition-transform",
+                            "w-4 h-4 transition-transform",
+                            style === 'neo-orange' ? "text-black dark:text-white" : "text-muted-foreground group-hover:text-foreground",
                             status === 'loading' && "animate-spin"
                         )} />
                     </button>
@@ -281,9 +292,12 @@ export function ExchangeRateIndicator() {
                             variant="outline"
                             size="sm"
                             className={cn(
-                                "flex items-center gap-2 h-9 px-3 rounded-full border-emerald-500/20 bg-emerald-500/5 text-emerald-500 hover:bg-emerald-500/10 hover:text-emerald-600 transition-all",
-                                status === 'loading' && "opacity-70 animate-pulse",
-                                status === 'error' && "border-red-500/20 bg-red-500/5 text-red-500 hover:text-red-600"
+                                "flex items-center gap-2 h-9 px-3 transition-all",
+                                style === 'neo-orange' ? "neo-indicator" : cn(
+                                    "rounded-full border-emerald-500/20 bg-emerald-500/5 text-emerald-500 hover:bg-emerald-500/10 hover:text-emerald-600",
+                                    status === 'loading' && "opacity-70 animate-pulse",
+                                    status === 'error' && "border-red-500/20 bg-red-500/5 text-red-500 hover:text-red-600"
+                                )
                             )}
                         >
                             <Globe className={cn("w-4 h-4", status === 'loading' && "animate-spin")} />
@@ -293,7 +307,10 @@ export function ExchangeRateIndicator() {
                 </div>
             </div>
 
-            <DialogContent dir={direction} className="max-w-[calc(100vw-2rem)] sm:max-w-md rounded-2xl p-0 overflow-hidden border-emerald-500/20 shadow-2xl animate-in zoom-in duration-300">
+            <DialogContent dir={direction} className={cn(
+                "max-w-[calc(100vw-2rem)] sm:max-w-md p-0 overflow-hidden shadow-2xl animate-in zoom-in duration-300",
+                style === 'neo-orange' ? "rounded-[var(--radius)] border-2 border-black dark:border-white shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]" : "rounded-2xl border-emerald-500/20"
+            )}>
                 <DialogHeader className="p-6 border-b bg-emerald-500/5 items-start rtl:items-start text-start rtl:text-start relative overflow-hidden">
                     {/* Decorative background for modal header */}
                     <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/10 rounded-full -mr-12 -mt-12 blur-2xl" />

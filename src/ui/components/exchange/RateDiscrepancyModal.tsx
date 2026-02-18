@@ -4,7 +4,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Bu
 import { useTranslation } from 'react-i18next';
 import { AlertTriangle, TrendingUp, ArrowRightLeft, BellOff } from 'lucide-react';
 import { useExchangeRate } from '@/context/ExchangeRateContext';
-import { formatCurrency } from '@/lib/utils';
+import { useTheme } from '../theme-provider';
+import { formatCurrency, cn } from '@/lib/utils';
 
 interface RateDiscrepancyModalProps {
     open: boolean;
@@ -15,6 +16,7 @@ interface RateDiscrepancyModalProps {
 
 export function RateDiscrepancyModal({ open, onOpenChange, onOpenEditor, onOpenSnooze }: RateDiscrepancyModalProps) {
     const { t } = useTranslation();
+    const { style } = useTheme();
     const { alerts, refresh } = useExchangeRate();
 
     if (!alerts.discrepancyData) return null;
@@ -41,10 +43,16 @@ export function RateDiscrepancyModal({ open, onOpenChange, onOpenEditor, onOpenS
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="max-w-md rounded-2xl p-0 overflow-hidden border-amber-500/20">
+            <DialogContent className={cn(
+                "max-w-md p-0 overflow-hidden shadow-2xl animate-in zoom-in duration-300",
+                style === 'neo-orange' ? "rounded-[var(--radius)] border-2 border-black dark:border-white shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]" : "rounded-2xl border-amber-500/20"
+            )}>
                 <DialogHeader className="p-6 border-b bg-amber-500/5 items-center text-center">
-                    <div className="w-12 h-12 rounded-full bg-amber-500/10 flex items-center justify-center mb-2">
-                        <AlertTriangle className="w-6 h-6 text-amber-600" />
+                    <div className={cn(
+                        "w-12 h-12 flex items-center justify-center mb-2",
+                        style === 'neo-orange' ? "rounded-none bg-black text-amber-500 border-2 border-amber-500" : "rounded-full bg-amber-500/10"
+                    )}>
+                        <AlertTriangle className="w-6 h-6" />
                     </div>
                     <DialogTitle className="text-xl text-amber-700">
                         {t('exchange.discrepancyTitle')}
@@ -56,13 +64,19 @@ export function RateDiscrepancyModal({ open, onOpenChange, onOpenEditor, onOpenS
 
                 <div className="p-6 space-y-4">
                     <div className="grid grid-cols-2 gap-4">
-                        <div className="p-4 rounded-xl bg-secondary/50 border border-border/50 text-center">
+                        <div className={cn(
+                            "p-4 text-center border",
+                            style === 'neo-orange' ? "rounded-[var(--radius)] border-black dark:border-white bg-white dark:bg-black" : "rounded-xl bg-secondary/50 border-border/50"
+                        )}>
                             <span className="text-xs text-muted-foreground uppercase">{t('exchange.manualEntry')}</span>
                             <div className="text-xl font-bold mt-1">{formatCurrency(manual, 'IQD')}</div>
                         </div>
-                        <div className="p-4 rounded-xl bg-emerald-500/5 border border-emerald-500/10 text-center">
-                            <span className="text-xs text-emerald-600 uppercase">{t('exchange.marketAvg')}</span>
-                            <div className="text-xl font-bold text-emerald-600 mt-1">{formatCurrency(average, 'IQD')}</div>
+                        <div className={cn(
+                            "p-4 text-center border",
+                            style === 'neo-orange' ? "rounded-[var(--radius)] border-black dark:border-white bg-emerald-500 text-black" : "rounded-xl bg-emerald-500/5 border-emerald-500/10"
+                        )}>
+                            <span className={cn("text-xs uppercase", style === 'neo-orange' ? "text-black/70" : "text-emerald-600")}>{t('exchange.marketAvg')}</span>
+                            <div className={cn("text-xl font-bold mt-1", style === 'neo-orange' ? "text-black" : "text-emerald-600")}>{formatCurrency(average, 'IQD')}</div>
                         </div>
                     </div>
 
@@ -77,7 +91,10 @@ export function RateDiscrepancyModal({ open, onOpenChange, onOpenEditor, onOpenS
 
                 <div className="p-4 bg-secondary/30 grid grid-cols-1 gap-2">
                     <Button
-                        className="w-full rounded-xl h-12 bg-amber-500 hover:bg-amber-600"
+                        className={cn(
+                            "w-full h-12 font-bold",
+                            style === 'neo-orange' ? "rounded-[var(--radius)] bg-amber-500 text-black border-2 border-black dark:border-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]" : "rounded-xl bg-amber-500 hover:bg-amber-600"
+                        )}
                         onClick={() => { onOpenChange(false); onOpenEditor(); }}
                     >
                         <TrendingUp className="w-4 h-4 mr-2" />
@@ -85,7 +102,10 @@ export function RateDiscrepancyModal({ open, onOpenChange, onOpenEditor, onOpenS
                     </Button>
                     <Button
                         variant="outline"
-                        className="w-full rounded-xl h-12"
+                        className={cn(
+                            "w-full h-12 font-bold",
+                            style === 'neo-orange' ? "rounded-[var(--radius)] border-2 border-black dark:border-white" : "rounded-xl"
+                        )}
                         onClick={handleSwitchToLive}
                     >
                         <ArrowRightLeft className="w-4 h-4 mr-2" />
@@ -93,7 +113,10 @@ export function RateDiscrepancyModal({ open, onOpenChange, onOpenEditor, onOpenS
                     </Button>
                     <Button
                         variant="ghost"
-                        className="w-full rounded-xl h-11 text-muted-foreground"
+                        className={cn(
+                            "w-full h-11 text-muted-foreground",
+                            style === 'neo-orange' ? "rounded-[var(--radius)]" : "rounded-xl"
+                        )}
                         onClick={() => { onOpenChange(false); onOpenSnooze(); }}
                     >
                         <BellOff className="w-4 h-4 mr-2" />

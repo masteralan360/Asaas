@@ -11,6 +11,7 @@ import { useWorkspace } from '@/workspace'
 import { isMobile } from '@/lib/platform'
 import { useDateRange } from '@/context/DateRangeContext'
 import { DateRangeFilters } from '@/ui/components/DateRangeFilters'
+import { useTheme } from '@/ui/components/theme-provider'
 import {
     Table,
     TableBody,
@@ -57,6 +58,7 @@ export function Sales() {
     const { user } = useAuth()
     const { t } = useTranslation()
     const { features, workspaceName, activeWorkspace } = useWorkspace()
+    const { style } = useTheme()
     const { toast } = useToast()
     const rawSales = useSales(user?.workspaceId)
     const allSales = useMemo(() => rawSales.map(toUISale), [rawSales])
@@ -588,7 +590,10 @@ export function Sales() {
                             )}
                         </h1>
                         {getDateDisplay() && (
-                            <div className="px-3 py-1 text-sm font-bold bg-primary text-primary-foreground rounded-lg shadow-sm animate-pop-in">
+                            <div className={cn(
+                                "px-3 py-1 text-sm font-bold bg-primary text-primary-foreground shadow-sm animate-pop-in",
+                                style === 'neo-orange' ? "rounded-[var(--radius)] neo-border" : "rounded-lg"
+                            )}>
                                 {getDateDisplay()}
                             </div>
                         )}
@@ -602,7 +607,10 @@ export function Sales() {
                     <DateRangeFilters />
 
                     {availableCashiers.length > 0 && (
-                        <div className="flex items-center gap-2 bg-secondary/30 p-1 px-3 rounded-lg border border-border/50">
+                        <div className={cn(
+                            "flex items-center gap-2 bg-secondary/30 p-1 px-3 border",
+                            style === 'neo-orange' ? "rounded-[var(--radius)] border-black dark:border-white" : "rounded-lg border-border/50"
+                        )}>
                             <Filter className="w-3.5 h-3.5 text-muted-foreground" />
                             <span className="text-[10px] uppercase font-bold text-muted-foreground whitespace-nowrap">
                                 {t('sales.filters.cashier') || 'Cashier'}:
@@ -627,7 +635,10 @@ export function Sales() {
                 </div>
             </div>
 
-            <Card className="overflow-hidden border-border/50 bg-card/50 backdrop-blur-sm">
+            <Card className={cn(
+                "overflow-hidden backdrop-blur-sm",
+                style === 'neo-orange' ? "border-2 border-black dark:border-white bg-card" : "border-border/50 bg-card/50"
+            )}>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
                     <div className="flex flex-col gap-1">
                         <CardTitle>{t('sales.listTitle') || 'Recent Sales'}</CardTitle>
@@ -649,9 +660,10 @@ export function Sales() {
                             onClick={() => setIsExportModalOpen(true)}
                             disabled={sales.length === 0}
                             className={cn(
-                                "h-10 px-6 rounded-full font-black transition-all flex gap-3 items-center group relative overflow-hidden",
-                                "bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-100 dark:border-emerald-500/20 text-emerald-700 dark:text-emerald-400",
-                                "hover:bg-emerald-100 dark:hover:bg-emerald-500/20 hover:shadow-[0_0_20px_-5px_rgba(16,185,129,0.3)] hover:scale-[1.02] active:scale-95",
+                                "h-10 px-6 font-black transition-all flex gap-3 items-center group relative overflow-hidden",
+                                style === 'neo-orange'
+                                    ? "rounded-[var(--radius)] bg-emerald-500 text-black border-2 border-black dark:border-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-none translate-y-[-2px] active:translate-y-0"
+                                    : "rounded-full bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-100 dark:border-emerald-500/20 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-500/20 hover:shadow-[0_0_20px_-5px_rgba(16,185,129,0.3)] hover:scale-[1.02] active:scale-95",
                                 "uppercase tracking-widest text-[10px]"
                             )}
                         >
@@ -691,7 +703,8 @@ export function Sales() {
                                     <div
                                         key={sale.id}
                                         className={cn(
-                                            "p-4 rounded-[2rem] border border-border shadow-sm space-y-4 transition-all active:scale-[0.98]",
+                                            "p-4 border shadow-sm space-y-4 transition-all active:scale-[0.98]",
+                                            style === 'neo-orange' ? "rounded-[var(--radius)] border-2 border-black dark:border-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]" : "rounded-[2rem] border-border",
                                             isFullyReturned ? 'bg-destructive/5 border-destructive/20' : hasAnyReturn ? 'bg-orange-500/5' : 'bg-card'
                                         )}
                                     >
@@ -714,21 +727,33 @@ export function Sales() {
                                                     </div>
                                                     <div className="flex flex-wrap gap-1.5">
                                                         {isFullyReturned && (
-                                                            <span className="px-2 py-0.5 text-[9px] font-bold bg-destructive/10 text-destructive rounded-full border border-destructive/20 uppercase">
+                                                            <span className={cn(
+                                                                "px-2 py-0.5 text-[9px] font-bold bg-destructive/10 text-destructive border border-destructive/20 uppercase",
+                                                                style === 'neo-orange' ? "rounded-[var(--radius)]" : "rounded-full"
+                                                            )}>
                                                                 {t('sales.return.returnedStatus') || 'RETURNED'}
                                                             </span>
                                                         )}
                                                         {sale.system_review_status === 'flagged' && (
-                                                            <span className="px-2 py-0.5 text-[9px] font-bold bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-400 rounded-full border border-orange-200 dark:border-orange-500/30 uppercase flex items-center gap-1">
+                                                            <span className={cn(
+                                                                "px-2 py-0.5 text-[9px] font-bold bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-400 border border-orange-200 dark:border-orange-500/30 uppercase flex items-center gap-1",
+                                                                style === 'neo-orange' ? "rounded-[var(--radius)]" : "rounded-full"
+                                                            )}>
                                                                 ⚠️ {t('sales.flagged') || 'FLAGGED'}
                                                             </span>
                                                         )}
                                                         {hasAnyReturn && !isFullyReturned && (
-                                                            <span className="px-2 py-0.5 text-[9px] font-bold bg-orange-500/10 text-orange-600 rounded-full border border-orange-500/20 uppercase">
+                                                            <span className={cn(
+                                                                "px-2 py-0.5 text-[9px] font-bold bg-orange-500/10 text-orange-600 border border-orange-500/20 uppercase",
+                                                                style === 'neo-orange' ? "rounded-[var(--radius)]" : "rounded-full"
+                                                            )}>
                                                                 -{totalReturnedQuantity} {t('sales.return.returnedLabel') || 'returned'}
                                                             </span>
                                                         )}
-                                                        <span className="px-2 py-0.5 text-[9px] font-bold bg-secondary text-secondary-foreground rounded-full uppercase">
+                                                        <span className={cn(
+                                                            "px-2 py-0.5 text-[9px] font-bold bg-secondary text-secondary-foreground uppercase",
+                                                            style === 'neo-orange' ? "rounded-[var(--radius)] border border-black dark:border-white" : "rounded-full"
+                                                        )}>
                                                             {sale.origin}
                                                         </span>
                                                     </div>
@@ -752,7 +777,10 @@ export function Sales() {
                                                 <Button
                                                     variant="secondary"
                                                     size="sm"
-                                                    className="h-10 px-4 rounded-xl font-bold flex gap-2"
+                                                    className={cn(
+                                                        "h-10 px-4 font-bold flex gap-2",
+                                                        style === 'neo-orange' ? "rounded-[var(--radius)] neo-border shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]" : "rounded-xl"
+                                                    )}
                                                     onClick={() => setSelectedSale(sale)}
                                                 >
                                                     <Eye className="w-4 h-4" />
@@ -761,7 +789,10 @@ export function Sales() {
                                                 <Button
                                                     variant="outline"
                                                     size="icon"
-                                                    className="h-10 w-10 rounded-xl"
+                                                    className={cn(
+                                                        "h-10 w-10",
+                                                        style === 'neo-orange' ? "rounded-[var(--radius)] neo-border shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]" : "rounded-xl"
+                                                    )}
                                                     onClick={() => onPrintClick(sale)}
                                                 >
                                                     <Printer className="w-4 h-4" />
@@ -772,7 +803,10 @@ export function Sales() {
                                                     <Button
                                                         variant="ghost"
                                                         size="icon"
-                                                        className="h-10 w-10 rounded-xl text-orange-600 hover:bg-orange-50"
+                                                        className={cn(
+                                                            "h-10 w-10 text-orange-600 hover:bg-orange-50",
+                                                            style === 'neo-orange' ? "rounded-[var(--radius)] border-2 border-orange-600 shadow-[2px_2px_0px_0px_rgba(234,88,12,0.5)]" : "rounded-xl"
+                                                        )}
                                                         onClick={() => handleReturnSale(sale)}
                                                     >
                                                         <RotateCcw className="w-4 h-4" />
@@ -782,7 +816,10 @@ export function Sales() {
                                                     <Button
                                                         variant="ghost"
                                                         size="icon"
-                                                        className="h-10 w-10 rounded-xl text-destructive hover:bg-destructive/5"
+                                                        className={cn(
+                                                            "h-10 w-10 text-destructive hover:bg-destructive/5",
+                                                            style === 'neo-orange' ? "rounded-[var(--radius)] border-2 border-destructive shadow-[2px_2px_0px_0px_rgba(0,0,0,0.2)]" : "rounded-xl"
+                                                        )}
                                                         onClick={() => handleDeleteSale(sale)}
                                                     >
                                                         <Trash2 className="w-4 h-4" />
@@ -840,17 +877,26 @@ export function Sales() {
                                                     </span>
                                                     <div className="flex items-center gap-2">
                                                         {isFullyReturned && (
-                                                            <span className="px-2 py-0.5 text-[10px] font-bold bg-destructive/20 text-destructive dark:bg-destructive/30 dark:text-destructive-foreground rounded-full border border-destructive/30">
+                                                            <span className={cn(
+                                                                "px-2 py-0.5 text-[10px] font-bold bg-destructive/20 text-destructive dark:bg-destructive/30 dark:text-destructive-foreground border border-destructive/30",
+                                                                style === 'neo-orange' ? "rounded-[var(--radius)]" : "rounded-full"
+                                                            )}>
                                                                 {(t('sales.return.returnedStatus') || 'RETURNED').toUpperCase()}
                                                             </span>
                                                         )}
                                                         {sale.system_review_status === 'flagged' && (
-                                                            <span className="px-2 py-0.5 text-[10px] font-bold bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-400 rounded-full border border-orange-200 dark:border-orange-500/30 flex items-center gap-1" title={sale.system_review_reason || ''}>
+                                                            <span className={cn(
+                                                                "px-2 py-0.5 text-[10px] font-bold bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-400 border border-orange-200 dark:border-orange-500/30 flex items-center gap-1",
+                                                                style === 'neo-orange' ? "rounded-[var(--radius)]" : "rounded-full"
+                                                            )} title={sale.system_review_reason || ''}>
                                                                 ⚠️ {(t('sales.flagged') || 'FLAGGED').toUpperCase()}
                                                             </span>
                                                         )}
                                                         {hasAnyReturn && !isFullyReturned && (
-                                                            <div className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800 dark:bg-orange-500/20 dark:text-orange-400 border border-orange-200 dark:border-orange-500/30">
+                                                            <div className={cn(
+                                                                "inline-flex items-center px-2.5 py-0.5 text-xs font-medium bg-orange-100 text-orange-800 dark:bg-orange-500/20 dark:text-orange-400 border border-orange-200 dark:border-orange-500/30",
+                                                                style === 'neo-orange' ? "rounded-[var(--radius)]" : "rounded-full"
+                                                            )}>
                                                                 -{totalReturnedQuantity} {t('sales.return.returnedLabel') || 'returned'}
                                                             </div>
                                                         )}
@@ -861,7 +907,10 @@ export function Sales() {
                                                 {sale.cashier_name}
                                             </TableCell>
                                             <TableCell className="text-start">
-                                                <span className="px-2 py-1 rounded-full text-xs font-medium bg-secondary text-secondary-foreground uppercase">
+                                                <span className={cn(
+                                                    "px-2 py-1 text-xs font-medium bg-secondary text-secondary-foreground uppercase",
+                                                    style === 'neo-orange' ? "rounded-[var(--radius)] border border-black dark:border-white" : "rounded-full"
+                                                )}>
                                                     {sale.origin}
                                                 </span>
                                             </TableCell>

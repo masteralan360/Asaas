@@ -10,6 +10,7 @@ import { toast } from '@/ui/components/use-toast';
 import { connectionManager } from '@/lib/connectionManager';
 import { NotificationPopupController } from './popups/NotificationPopupController';
 import { getPopupIdFromNotification } from '@/lib/notificationPopups';
+import { cn } from '@/lib/utils';
 
 function playNotificationSound() {
     try {
@@ -51,6 +52,7 @@ interface InboxWithBadgeProps {
 
 function InboxWithBadge({ appearance, tabs, notifications }: InboxWithBadgeProps) {
     const { t } = useTranslation();
+    const { style } = useTheme();
 
     const unreadCount = useMemo(() => {
         return notifications?.filter(n => !n.read).length ?? 0;
@@ -155,10 +157,16 @@ function InboxWithBadge({ appearance, tabs, notifications }: InboxWithBadgeProps
                 appearance={appearance}
                 tabs={tabs}
                 renderBell={() => (
-                    <button className="relative hover:bg-secondary rounded-md transition-colors text-muted-foreground hover:text-foreground cursor-pointer mr-1 p-1.5">
+                    <button className={cn(
+                        "relative transition-colors cursor-pointer mr-1 p-1.5",
+                        style === 'neo-orange' ? "neo-indicator" : "hover:bg-secondary rounded-md text-muted-foreground hover:text-foreground"
+                    )}>
                         <Bell className="w-4 h-4 transition-transform active:scale-90" />
                         {unreadCount > 0 && (
-                            <span className="absolute -top-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white border-2 border-background animate-pop-in shadow-lg">
+                            <span className={cn(
+                                "absolute -top-0.5 -right-0.5 flex h-4 w-4 items-center justify-center text-[9px] font-bold text-white border-2 border-background animate-pop-in shadow-lg",
+                                style === 'neo-orange' ? "rounded-none bg-black border-white" : "rounded-full bg-red-500"
+                            )}>
                                 {unreadCount > 9 ? '9+' : unreadCount}
                             </span>
                         )}
