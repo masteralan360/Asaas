@@ -1,4 +1,5 @@
 import { isDesktop, isMobile, isTauri, PlatformAPI } from '../lib/platform';
+import { r2Service } from './r2Service';
 
 /**
  * Service to handle platform-specific operations
@@ -129,6 +130,25 @@ class PlatformService implements PlatformAPI {
                 console.error('Error converting file src:', error);
             }
         }
+
+        // PWA/Web: resolve relative asset paths to live R2 URLs
+        if (path && !path.startsWith('http') && !path.startsWith('data:') && !path.startsWith('blob:') && path.includes('/')) {
+            if (r2Service.isConfigured()) {
+                // DB paths are like: product-images/workspaceId/file.png
+                // R2 keys are: workspaceId/product-images/file.png
+                const parts = path.split('/');
+                let r2Key = path;
+                if (parts.length >= 3) {
+                    const folderPart = parts[0];
+                    const wsIdPart = parts[1];
+                    const filePart = parts[parts.length - 1];
+                    r2Key = `${wsIdPart}/${folderPart}/${filePart}`;
+                }
+                const url = r2Service.getUrl(r2Key);
+                if (url) return url;
+            }
+        }
+
         return path;
     }
 

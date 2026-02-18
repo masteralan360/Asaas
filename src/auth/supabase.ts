@@ -36,7 +36,12 @@ export const supabase = createClient(clientUrl, clientKey, {
         persistSession: true,
         autoRefreshToken: true,
         detectSessionInUrl: true,
-        storage: EncryptedStorage
+        storage: EncryptedStorage,
+        // Custom lock to avoid navigator.locks deadlock with React Strict Mode
+        // navigator.locks can deadlock when effects are double-invoked
+        lock: async (_name: string, _acquireTimeout: number, fn: () => Promise<any>) => {
+            return await fn()
+        }
     }
 })
 // Database table types for Supabase

@@ -1,10 +1,13 @@
 import { useEffect, useState } from 'react';
 import { assetManager, AssetProgress } from '@/lib/assetManager';
-import { isMobile } from '@/lib/platform';
+import { isMobile, isTauri } from '@/lib/platform';
 import { Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export function ResourceSyncOverlay() {
+    // PWA/Web: never show sync overlay, assets load live from R2
+    if (!isTauri()) return null;
+
     const [isVisible, setIsVisible] = useState(false);
     const [status, setStatus] = useState<AssetProgress['status']>('idle');
 

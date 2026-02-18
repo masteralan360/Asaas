@@ -137,56 +137,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             return
         }
 
-        const fetchInitialSession = async () => {
-            try {
-                const sessionPromise = supabase.auth.getSession();
-                const timeoutPromise = new Promise((_, reject) =>
-                    setTimeout(() => reject(new Error('Session fetch timed out')), 10000)
-                );
-
-                const { data: { session } } = await Promise.race([sessionPromise, timeoutPromise]) as any;
-
-                if (session) {
-                    setSession(session)
-                    const parsedUser = session.user ? parseUserFromSupabase(session.user) : null
-
-                    if (parsedUser) {
-                        const enriched = await enrichUser(parsedUser)
-                        setUser(enriched)
-                        saveRecovery(enriched)
-                    }
-                } else {
-                    // NO SESSION: check recovery bridge
-                    const recovered = getRecoveredUser()
-                    if (recovered) {
-                        // Only trust recovery if it's less than 7 days old
-                        const maxAge = 7 * 24 * 60 * 60 * 1000
-                        const isStale = recovered.recoveredAt && (Date.now() - recovered.recoveredAt > maxAge)
-
-                        if (!isStale) {
-                            console.log('[Auth] Restoring session from recovery bridge...')
-                            setUser(recovered)
-                        } else {
-                            console.log('[Auth] Recovery bridge is stale (>7 days), clearing.')
-                            clearRecovery()
-                        }
-                    }
-                }
-            } catch (e) {
-                console.error('[Auth] Initial session fetch failed:', e);
-                const recovered = getRecoveredUser()
-                if (recovered) {
-                    console.log('[Auth] Network failed, using recovery bridge.')
-                    setUser(recovered)
-                }
-            } finally {
-                setIsLoading(false)
-            }
-        }
-
-        fetchInitialSession();
-
-        // Listen for auth changes
+        // Register auth state listener FIRST so it catches deferred events
         const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
             console.log(`[Auth] State change: ${_event}`, session?.user?.id)
             setSession(session)
@@ -210,7 +161,80 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 setUser(parsedUser)
                 saveRecovery(parsedUser)
             }
+            setIsLoading(false)
         })
+
+        const fetchInitialSession = async () => {
+            try {
+                const sessionPromise = supabase.auth.getSession();
+                const timeoutPromise = new Promise((_, reject) =>
+                    setTimeout(() => reject(new Error('Session fetch timed out')), 8000)
+                );
+
+                const { data: { session } } = await Promise.race([sessionPromise, timeoutPromise]) as any;
+
+                if (session) {
+                    setSession(session)
+                    const parsedUser = session.user ? parseUserFromSupabase(session.user) : null
+
+                    if (parsedUser) {
+                        const enriched = await enrichUser(parsedUser)
+                        setUser(enriched)
+                        saveRecovery(enriched)
+                    }
+                } else {
+                    // NO SESSION: check recovery bridge
+                    const recovered = getRecoveredUser()
+                    if (recovered) {
+                        const maxAge = 7 * 24 * 60 * 60 * 1000
+                        const isStale = recovered.recoveredAt && (Date.now() - recovered.recoveredAt > maxAge)
+
+                        if (!isStale) {
+                            console.log('[Auth] Restoring session from recovery bridge...')
+                            setUser(recovered)
+                        } else {
+                            console.log('[Auth] Recovery bridge is stale (>7 days), clearing.')
+                            clearRecovery()
+                        }
+                    }
+                }
+            } catch (e) {
+                console.error('[Auth] Initial session fetch failed:', e);
+
+                // Second chance: try refreshSession directly (different code path)
+                try {
+                    console.log('[Auth] Attempting refreshSession as fallback...')
+                    const refreshPromise = supabase.auth.refreshSession();
+                    const refreshTimeout = new Promise((_, reject) =>
+                        setTimeout(() => reject(new Error('Refresh timed out')), 5000)
+                    );
+                    const { data, error } = await Promise.race([refreshPromise, refreshTimeout]) as any;
+
+                    if (!error && data?.session) {
+                        console.log('[Auth] refreshSession succeeded ✓')
+                        setSession(data.session)
+                        const parsedUser = parseUserFromSupabase(data.session.user)
+                        const enriched = await enrichUser(parsedUser)
+                        setUser(enriched)
+                        saveRecovery(enriched)
+                        return // Success — skip recovery bridge
+                    }
+                } catch (refreshErr) {
+                    console.warn('[Auth] refreshSession also failed:', refreshErr)
+                }
+
+                // Final fallback: recovery bridge (user-only, no session)
+                const recovered = getRecoveredUser()
+                if (recovered) {
+                    console.log('[Auth] Using recovery bridge (limited mode).')
+                    setUser(recovered)
+                }
+            } finally {
+                setIsLoading(false)
+            }
+        }
+
+        fetchInitialSession();
 
         return () => {
             subscription.unsubscribe()
