@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useProducts, createProduct, updateProduct, deleteProduct, useCategories, createCategory, updateCategory, deleteCategory, useStorages, type Product, type Category } from '@/local-db'
 import type { CurrencyCode } from '@/local-db/models'
 import { formatCurrency, cn } from '@/lib/utils'
@@ -32,11 +32,10 @@ import {
     Switch,
     DeleteConfirmationModal
 } from '@/ui/components'
-import { Plus, Pencil, Trash2, Package, Search, ImagePlus, Info, Settings, LayoutGrid, List as ListIcon } from 'lucide-react'
+import { Plus, Pencil, Trash2, Package, Search, ImagePlus, Info, Settings, LayoutGrid, List as ListIcon, Camera } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/auth'
 import { useWorkspace } from '@/workspace'
-import { useEffect } from 'react'
 import { isTauri, isMobile } from '@/lib/platform'
 import { platformService } from '@/services/platformService'
 
@@ -98,6 +97,7 @@ export function Products() {
     const [pulseCategorySubmit, setPulseCategorySubmit] = useState(false)
     const [isElectron, setIsElectron] = useState(false)
     const [returnRulesModalOpen, setReturnRulesModalOpen] = useState(false)
+    const cameraInputRef = useRef<HTMLInputElement>(null)
     const [outsideClickCount, setOutsideClickCount] = useState(0)
     const [showUnsavedChangesModal, setShowUnsavedChangesModal] = useState(false)
     const [unsavedChangesType, setUnsavedChangesType] = useState<'product' | 'category' | null>(null)
@@ -223,6 +223,33 @@ export function Products() {
             }).catch(console.error);
         }
     }
+
+    const handleCameraClick = () => {
+        cameraInputRef.current?.click();
+    };
+
+    const handleCameraCapture = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        if (isElectron) {
+            const targetPath = await platformService.saveImageFile(file, workspaceId);
+            if (targetPath) {
+                setFormData(prev => ({ ...prev, imageUrl: targetPath }));
+                setImageError(false);
+
+                // Trigger asset sync
+                assetManager.uploadFromPath(targetPath).then(success => {
+                    if (success) {
+                        console.log('[Products] Camera image synced via Cloudflare R2');
+                    }
+                }).catch(console.error);
+            }
+        }
+
+        // Reset input value
+        if (cameraInputRef.current) cameraInputRef.current.value = '';
+    };
 
     const handleRemoveImage = async () => {
         if (!formData.imageUrl) return;
@@ -958,7 +985,7 @@ export function Products() {
                                             placeholder={t('products.form.imageUrlPlaceholder') || "Image URL or local path"}
                                         />
                                         {isElectron && (
-                                            <div className="flex gap-2 shrink-0">
+                                            <div className="flex flex-wrap gap-2 shrink-0">
                                                 {formData.imageUrl && (
                                                     <Button
                                                         type="button"
@@ -975,11 +1002,29 @@ export function Products() {
                                                     type="button"
                                                     variant="outline"
                                                     onClick={handleImageUpload}
-                                                    className="w-full"
+                                                    className="flex-1 min-w-[80px]"
                                                 >
-                                                    <ImagePlus className="w-4 h-4 mr-2" />
-                                                    {t('products.form.upload') || 'Upload'}
+                                                    <ImagePlus className="w-4 h-4 sm:mr-2" />
+                                                    <span className="hidden sm:inline">{t('products.form.upload') || 'Upload'}</span>
                                                 </Button>
+                                                <Button
+                                                    type="button"
+                                                    variant="outline"
+                                                    onClick={handleCameraClick}
+                                                    className="flex-1 min-w-[80px] border-primary/20 hover:border-primary/40 hover:bg-primary/5"
+                                                >
+                                                    <Camera className="w-4 h-4 sm:mr-2" />
+                                                    <span className="hidden sm:inline">{t('products.form.camera') || 'Camera'}</span>
+                                                </Button>
+
+                                                <input
+                                                    type="file"
+                                                    ref={cameraInputRef}
+                                                    className="hidden"
+                                                    accept="image/*"
+                                                    capture="environment"
+                                                    onChange={handleCameraCapture}
+                                                />
                                             </div>
                                         )}
                                     </div>

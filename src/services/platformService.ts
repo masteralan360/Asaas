@@ -231,6 +231,42 @@ class PlatformService implements PlatformAPI {
     }
 
     /**
+     * Save an image from a File or Blob directly to AppData
+     */
+    async saveImageFile(file: File | Blob, workspaceId: string, subDir: string = 'product-images'): Promise<string | null> {
+        if (isTauri()) {
+            try {
+                const { mkdir, writeFile, BaseDirectory } = await import('@tauri-apps/plugin-fs');
+
+                const arrayBuffer = await file.arrayBuffer();
+                const uint8Array = new Uint8Array(arrayBuffer);
+
+                // Determine extension
+                let ext = 'jpg';
+                if (file instanceof File) {
+                    ext = file.name.split('.').pop() || 'jpg';
+                } else if (file.type) {
+                    ext = file.type.split('/').pop() || 'jpg';
+                }
+                if (ext === 'jpeg') ext = 'jpg';
+
+                const fileName = `${Date.now()}.${ext}`;
+                const relativeDir = `${subDir}/${workspaceId}`;
+
+                await mkdir(relativeDir.replace(/\\/g, '/'), { baseDir: BaseDirectory.AppData, recursive: true });
+
+                const relativeDest = `${relativeDir}/${fileName}`.replace(/\\/g, '/');
+                await writeFile(relativeDest, uint8Array, { baseDir: BaseDirectory.AppData });
+
+                return relativeDest;
+            } catch (error) {
+                console.error('[PlatformService] Error saving image file:', error);
+            }
+        }
+        return null;
+    }
+
+    /**
      * Save a downloaded file to AppData using BaseDirectory for mobile compatibility
      */
     async saveDownloadedFile(workspaceId: string, filePath: string, content: ArrayBuffer, defaultSubDir: string = 'product-images'): Promise<string | null> {

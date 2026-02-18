@@ -201,6 +201,7 @@
             "imageUrl": "Image URL",
             "imageUrlPlaceholder": "Enter image URL or local path...",
             "upload": "Upload",
+            "camera": "Camera",
             "tauriOnly": "Local upload is only available in the app",
             "electronOnly": "Local upload is only available in the app",
             "localPathDesc": "Image will be stored locally on this device.",
