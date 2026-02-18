@@ -81,7 +81,7 @@ export function Dashboard() {
                                     {stat.isRevenue ? (
                                         <div className="flex flex-col gap-0.5">
                                             {Object.entries(stat.value || {}).map(([curr, val]) => (
-                                                <div key={curr} className="text-lg md:text-xl line-clamp-1 tabular-nums">
+                                                <div key={curr} className="text-lg md:text-xl text-primary line-clamp-1 tabular-nums">
                                                     {formatCurrency(val as number, curr as any, features.iqd_display_preference)}
                                                 </div>
                                             ))}
@@ -210,10 +210,10 @@ export function Dashboard() {
                 <Card className="lg:col-span-2 bg-card/40 border-border/30 backdrop-blur-md rounded-[2.5rem] overflow-hidden">
                     <CardHeader className="pb-3 px-8 pt-8">
                         <CardTitle className="flex items-center gap-3 text-lg font-black">
-                            <div className="p-2 rounded-xl bg-blue-500/10">
-                                <FileText className="w-5 h-5 text-blue-500" />
+                            <div className="p-2 rounded-xl bg-primary/10">
+                                <FileText className="w-5 h-5 text-primary" />
                             </div>
-                            {t('dashboard.pendingInvoices') || 'Pending Invoices'}
+                            {t('dashboard.recentInvoices') || 'Recent Invoices'}
                         </CardTitle>
                     </CardHeader>
                     <CardContent className="px-8 pb-8">

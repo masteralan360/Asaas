@@ -428,11 +428,11 @@
         "recentActivity": "النشاط الحديث",
         "recentOrders": "الطلبات الحديثة",
         "recentSales": "المبيعات الأخيرة",
-        "pendingInvoices": "الفواتير المعلقة",
+        "recentInvoices": "الفواتير الأخيرة",
         "totalProducts": "إجمالي المنتجات",
         "totalOrders": "إجمالي الطلبات",
         "allStocked": "جميع المنتجات متوفرة بشكل جيد",
-        "noPendingInvoices": "لا توجد فواتير معلقة",
+        "noInvoices": "لا توجد فواتير بعد",
         "dailyTrends": "الاتجاهات اليومية"
     },
     "settings": {

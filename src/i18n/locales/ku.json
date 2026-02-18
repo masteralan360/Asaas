@@ -427,12 +427,12 @@
         "lowStock": "بەرهەمە کەمبووەکان",
         "recentActivity": "چالاکییەکانی دوایی",
         "recentOrders": "داواکارییە نوێیەکان",
-        "recentSales": "فرۆشتنەکانی دوایی",
-        "pendingInvoices": "پسوڵە هەڵپەسێردراوەکان",
+        "recentSales": "فرۆشتنە نوێیەکان",
+        "recentInvoices": "پسوڵە نوێیەکان",
         "totalProducts": "کۆی بەرهەمەکان",
         "totalOrders": "کۆی داواکارییەکان",
         "allStocked": "هەموو بەرهەمەکان بە باشی بەردەستن",
-        "noPendingInvoices": "هیچ پسوڵەیەکی هەڵپەسێردراو نییە",
+        "noInvoices": "تا ئێستا پسوڵە نییە",
         "dailyTrends": "ئاراستە ڕۆژانەییەکان"
     },
     "settings": {

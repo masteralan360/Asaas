@@ -30,9 +30,9 @@ interface DashboardSalesOverviewProps {
 }
 
 const METRIC_COLORS = {
-    revenue: { stroke: '#10b981', fill: '#10b981' }, // Emerald
+    revenue: { stroke: '#3b82f6', fill: '#3b82f6' }, // Blue
     cost: { stroke: '#f97316', fill: '#f97316' },     // Orange
-    profit: { stroke: '#3b82f6', fill: '#3b82f6' },    // Blue
+    profit: { stroke: '#10b981', fill: '#10b981' },    // Emerald
 }
 
 export function DashboardSalesOverview({ data, iqdPreference }: DashboardSalesOverviewProps) {
@@ -102,16 +102,16 @@ export function DashboardSalesOverview({ data, iqdPreference }: DashboardSalesOv
 
                 {/* Summary Cards */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <Card className="bg-emerald-500/5 dark:bg-emerald-500/10 border-emerald-500/10 dark:border-emerald-500/20 rounded-2xl shadow-none">
+                    <Card className="bg-blue-500/5 dark:bg-blue-500/10 border-blue-500/10 dark:border-blue-500/20 rounded-2xl shadow-none">
                         <CardContent className="p-4 flex items-center gap-3">
-                            <div className="p-2 rounded-xl bg-emerald-500/10">
-                                <DollarSign className="w-5 h-5 text-emerald-500" />
+                            <div className="p-2 rounded-xl bg-blue-500/10">
+                                <DollarSign className="w-5 h-5 text-blue-500" />
                             </div>
                             <div>
-                                <p className="text-[10px] font-black uppercase text-emerald-600/70 dark:text-emerald-400/70 tracking-wider font-mono">{t('revenue.grossRevenue')}</p>
+                                <p className="text-[10px] font-black uppercase text-blue-600/70 dark:text-blue-400/70 tracking-wider font-mono">{t('revenue.grossRevenue')}</p>
                                 <div className="space-y-0.5">
                                     {Object.entries(data).map(([curr, d]) => (
-                                        <p key={curr} className="text-lg font-black text-emerald-700 dark:text-emerald-300 tabular-nums leading-tight">
+                                        <p key={curr} className="text-lg font-black text-blue-700 dark:text-blue-300 tabular-nums leading-tight">
                                             {formatCurrency(d.revenue, curr as any, iqdPreference)}
                                         </p>
                                     ))}
@@ -136,18 +136,18 @@ export function DashboardSalesOverview({ data, iqdPreference }: DashboardSalesOv
                             </div>
                         </CardContent>
                     </Card>
-                    <Card className="bg-blue-500/5 dark:bg-blue-500/10 border-blue-500/10 dark:border-blue-500/20 rounded-2xl shadow-none">
+                    <Card className="bg-emerald-500/5 dark:bg-emerald-500/10 border-emerald-500/10 dark:border-emerald-500/20 rounded-2xl shadow-none">
                         <CardContent className="p-4 flex items-center gap-3">
-                            <div className="p-2 rounded-xl bg-blue-500/10">
-                                <TrendingUp className="w-5 h-5 text-blue-500" />
+                            <div className="p-2 rounded-xl bg-emerald-500/10">
+                                <TrendingUp className="w-5 h-5 text-emerald-500" />
                             </div>
                             <div>
-                                <p className="text-[10px] font-black uppercase text-blue-600/70 dark:text-blue-400/70 tracking-wider font-mono">{t('revenue.netProfit')}</p>
+                                <p className="text-[10px] font-black uppercase text-emerald-600/70 dark:text-emerald-400/70 tracking-wider font-mono">{t('revenue.netProfit')}</p>
                                 <div className="space-y-0.5">
                                     {Object.entries(data).map(([curr, d]) => {
                                         const margin = d.revenue > 0 ? ((d.profit / d.revenue) * 100).toFixed(1) : '0.0'
                                         return (
-                                            <p key={curr} className="text-lg font-black text-blue-700 dark:text-blue-300 tabular-nums leading-tight">
+                                            <p key={curr} className="text-lg font-black text-emerald-700 dark:text-emerald-300 tabular-nums leading-tight">
                                                 {formatCurrency(d.profit, curr as any, iqdPreference)} ({margin}%)
                                             </p>
                                         )
@@ -170,16 +170,16 @@ export function DashboardSalesOverview({ data, iqdPreference }: DashboardSalesOv
                     <AreaChart data={chartData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
                         <defs>
                             <linearGradient id="dashboardColorRevenue" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
-                                <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                                <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
+                                <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
                             </linearGradient>
                             <linearGradient id="dashboardColorCost" x1="0" y1="0" x2="0" y2="1">
                                 <stop offset="5%" stopColor="#f97316" stopOpacity={0.3} />
                                 <stop offset="95%" stopColor="#f97316" stopOpacity={0} />
                             </linearGradient>
                             <linearGradient id="dashboardColorProfit" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
-                                <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                                <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
+                                <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
                             </linearGradient>
                         </defs>
                         <CartesianGrid strokeDasharray="3 3" stroke="currentColor" opacity={0.05} />

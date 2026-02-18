@@ -431,13 +431,13 @@
         "recentActivity": "Recent Activity",
         "recentOrders": "Recent Orders",
         "recentSales": "Recent Sales",
-        "pendingInvoices": "Pending Invoices",
+        "recentInvoices": "Recent Invoices",
         "totalProducts": "Total Products",
         "totalOrders": "Total Orders",
         "allStocked": "All products are well stocked",
-        "noPendingInvoices": "No pending invoices",
+        "noInvoices": "No invoices yet",
         "dailyTrends": "Daily Trends",
-        "noInvoices": "No Invoices"
+        "noInvoicesAlt": "No Invoices"
     },
     "settings": {
         "title": "Settings",
