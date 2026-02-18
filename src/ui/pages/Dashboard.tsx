@@ -207,8 +207,8 @@ export function Dashboard() {
                 </Card>
 
                 {/* Recent Invoices */}
-                <Card className="bg-card/40 border-border/30 backdrop-blur-md rounded-[2.5rem] overflow-hidden">
-                    <CardHeader className="pb-3 px-8 pt-8">
+                <Card className="bg-card/40 border-border/30 backdrop-blur-md rounded-[2rem] overflow-hidden">
+                    <CardHeader className="pb-3">
                         <CardTitle className="flex items-center gap-3 text-lg font-black">
                             <div className="p-2 rounded-xl bg-primary/10">
                                 <FileText className="w-5 h-5 text-primary" />
@@ -216,30 +216,38 @@ export function Dashboard() {
                             {t('dashboard.recentInvoices') || 'Recent Invoices'}
                         </CardTitle>
                     </CardHeader>
-                    <CardContent className="px-8 pb-8">
+                    <CardContent>
                         {stats.recentInvoices.length === 0 ? (
-                            <div className="flex flex-col items-center justify-center py-8 opacity-40">
-                                <p className="text-sm font-bold uppercase tracking-widest">
-                                    {t('dashboard.noInvoices') || 'No invoices'}
+                            <div className="flex flex-col items-center justify-center py-12 opacity-40">
+                                <FileText className="w-12 h-12 mb-2" />
+                                <p className="text-sm font-bold uppercase tracking-widest text-center">
+                                    {t('dashboard.noInvoices') || 'No invoices yet'}
                                 </p>
                             </div>
                         ) : (
-                            <div className="grid gap-4 md:grid-cols-2">
+                            <div className="space-y-4">
                                 {stats.recentInvoices.slice(0, 4).map((invoice) => (
                                     <div
                                         key={invoice.id}
-                                        className="flex items-center justify-between p-4 rounded-[1.5rem] bg-secondary/30 hover:bg-secondary/50 transition-all border border-transparent hover:border-border/30"
+                                        className="flex items-center justify-between p-4 rounded-3xl bg-secondary/30 hover:bg-secondary/50 transition-colors border border-transparent hover:border-border/50"
                                     >
-                                        <div>
-                                            <p className="font-black text-sm">{invoice.invoiceid}</p>
-                                            <p className="text-[10px] font-bold text-muted-foreground/60 uppercase tracking-widest">{formatDate(invoice.createdAt)}</p>
+                                        <div className="flex items-center gap-4">
+                                            <div className="w-10 h-10 rounded-full bg-background flex items-center justify-center font-black text-xs shadow-sm border border-border/20">
+                                                #{invoice.invoiceid.slice(-4)}
+                                            </div>
+                                            <div>
+                                                <p className="font-black text-sm uppercase tracking-tight">{t('common.invoice') || 'Invoice'}</p>
+                                                <p className="text-xs font-bold text-muted-foreground/60">
+                                                    {formatDate(invoice.createdAt)}
+                                                </p>
+                                            </div>
                                         </div>
 
                                         <div className="text-right">
-                                            <p className="font-black text-sm tabular-nums text-foreground/80">
+                                            <p className="font-black text-primary tabular-nums">
                                                 {formatCurrency(invoice.totalAmount, invoice.settlementCurrency || 'usd')}
                                             </p>
-                                            <p className="text-[10px] font-bold text-muted-foreground/40 uppercase tracking-wider">
+                                            <p className="text-[10px] font-bold uppercase text-muted-foreground/60 tracking-wider">
                                                 {invoice.origin || 'POS'}
                                             </p>
                                         </div>
@@ -247,6 +255,9 @@ export function Dashboard() {
                                 ))}
                             </div>
                         )}
+                        <Link href="/invoice" className="block mt-6 text-center text-xs font-black uppercase tracking-[0.2em] text-primary hover:text-primary/70 transition-colors">
+                            {t('common.viewAll') || 'View All Invoices'}
+                        </Link>
                     </CardContent>
                 </Card>
             </div>

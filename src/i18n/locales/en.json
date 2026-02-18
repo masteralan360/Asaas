@@ -30,6 +30,7 @@
         "confirm": "Confirm",
         "error": "Error",
         "success": "Success",
+        "invoice": "Invoice",
         "currency": "Currency",
         "date": "Date",
         "items": "Items",
