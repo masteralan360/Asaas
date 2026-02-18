@@ -47,29 +47,48 @@ def update_version(new_version):
         json.dump(pkg_data, f, indent=2)
 
 
+def is_git_clean():
+    """Check if there are any uncommitted changes"""
+    try:
+        result = subprocess.run(['git', 'status', '--porcelain'], cwd=SCRIPT_DIR, capture_output=True, text=True, check=True)
+        return len(result.stdout.strip()) == 0
+    except subprocess.CalledProcessError:
+        return False
+
+
 def run_git_commands(version, commit_msg):
     """Run git commands to commit and push tag"""
     tag = f"v{version}"
     
     try:
+        print(f"--- Starting Release {tag} ---")
+        
         # Stage all changes
+        print("Staging changes...")
         subprocess.run(['git', 'add', '.'], cwd=SCRIPT_DIR, check=True)
         
         # Commit
+        print(f"Committing with message: {commit_msg}")
         subprocess.run(['git', 'commit', '-m', commit_msg], cwd=SCRIPT_DIR, check=True)
         
         # Push to main
+        print("Pushing to origin main...")
         subprocess.run(['git', 'push', 'origin', 'main'], cwd=SCRIPT_DIR, check=True)
         
         # Create tag
+        print(f"Creating tag {tag}...")
         subprocess.run(['git', 'tag', tag], cwd=SCRIPT_DIR, check=True)
         
         # Push tag
+        print(f"Pushing tag {tag} to origin...")
         subprocess.run(['git', 'push', 'origin', tag], cwd=SCRIPT_DIR, check=True)
         
+        print(f"--- Successfully released {tag} ---")
         return True, f"Successfully released {tag}!"
     except subprocess.CalledProcessError as e:
-        return False, f"Git error: {e}"
+        error_msg = f"Git error: {e}"
+        print(f"❌ {error_msg}")
+        return False, error_msg
 
 
 class ReleaseApp:
@@ -193,13 +212,25 @@ class ReleaseApp:
             return False, f"Unexpected error: {e}"
 
     def release(self):
-        version = self.version_var.get()
+        # Sanitize version (remove leading 'v')
+        version = self.version_var.get().strip()
+        if version.lower().startswith('v'):
+            version = version[1:]
+            
         msg = self.msg_var.get()
         
         if not version or not msg:
             messagebox.showerror("Error", "Version and message are required!")
             return
         
+        # Pre-flight check
+        if not is_git_clean():
+            if not messagebox.askyesno("Uncommitted Changes", 
+                "You have uncommitted changes in your repository.\n\n" +
+                "These will be included in the release commit automatically.\n" +
+                "Continue?"):
+                return
+
         steps = [
             f"1. Update version to {version}",
             f"2. Commit: {msg}",
