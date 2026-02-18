@@ -99,7 +99,7 @@ export function Dashboard() {
                 ))}
             </div>
 
-            <div className="grid gap-6 lg:grid-cols-2">
+            <div className="grid gap-6 lg:grid-cols-3">
                 {/* Recent Sales (Replaces Recent Orders) */}
                 <Card className="bg-card/40 border-border/30 backdrop-blur-md rounded-[2rem] overflow-hidden">
                     <CardHeader className="pb-3">
@@ -126,7 +126,7 @@ export function Dashboard() {
                                         className="flex items-center justify-between p-4 rounded-3xl bg-secondary/30 hover:bg-secondary/50 transition-colors border border-transparent hover:border-border/50"
                                     >
                                         <div className="flex items-center gap-4">
-                                            <div className="w-10 h-10 rounded-2xl bg-background flex items-center justify-center font-black text-xs shadow-sm border border-border/20">
+                                            <div className="w-10 h-10 rounded-full bg-background flex items-center justify-center font-black text-xs shadow-sm border border-border/20">
                                                 #{sale.sequenceId || sale.id.slice(0, 4)}
                                             </div>
                                             <div>
@@ -180,7 +180,7 @@ export function Dashboard() {
                                         className="flex items-center justify-between p-4 rounded-3xl bg-amber-500/5 border border-amber-500/10"
                                     >
                                         <div className="flex items-center gap-4">
-                                            <div className="w-10 h-10 rounded-2xl bg-background flex items-center justify-center font-black text-xs shadow-sm border border-amber-500/20 text-amber-600">
+                                            <div className="w-10 h-10 rounded-full bg-background flex items-center justify-center font-black text-xs shadow-sm border border-amber-500/20 text-amber-600">
                                                 {product.quantity}
                                             </div>
                                             <div>
@@ -206,8 +206,8 @@ export function Dashboard() {
                     </CardContent>
                 </Card>
 
-                {/* Pending Invoices */}
-                <Card className="lg:col-span-2 bg-card/40 border-border/30 backdrop-blur-md rounded-[2.5rem] overflow-hidden">
+                {/* Recent Invoices */}
+                <Card className="bg-card/40 border-border/30 backdrop-blur-md rounded-[2.5rem] overflow-hidden">
                     <CardHeader className="pb-3 px-8 pt-8">
                         <CardTitle className="flex items-center gap-3 text-lg font-black">
                             <div className="p-2 rounded-xl bg-primary/10">
@@ -249,13 +249,13 @@ export function Dashboard() {
                         )}
                     </CardContent>
                 </Card>
-
-                {/* Dashboard Sales Overview (Full width below Pending Invoices) */}
-                <DashboardSalesOverview
-                    data={stats.statsByCurrency}
-                    iqdPreference={features.iqd_display_preference}
-                />
             </div>
+
+            {/* Dashboard Sales Overview (Full width below the widgets) */}
+            <DashboardSalesOverview
+                data={stats.statsByCurrency}
+                iqdPreference={features.iqd_display_preference}
+            />
         </div>
     )
 }
