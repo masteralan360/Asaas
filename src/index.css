@@ -67,7 +67,7 @@
     --card-foreground: 222.2 84% 4.9%;
     --popover: 0 0% 100%;
     --popover-foreground: 222.2 84% 4.9%;
-    --primary: 243 75% 59%;
+    --primary: 243 75% 45%;
     --primary-foreground: 210 40% 98%;
     --secondary: 210 40% 96.1%;
     --secondary-foreground: 222.2 47.4% 11.2%;
@@ -289,7 +289,7 @@
 }
 
 .sidebar-gradient {
-  background: linear-gradient(to bottom, transparent, hsl(var(--primary)/0.05));
+  background-image: linear-gradient(to bottom, transparent, hsl(var(--primary)/0.05));
 }
 
 /* Interactive Elements */
@@ -584,9 +584,11 @@
 }
 
 .neo-indicator {
-  @apply border-2 border-black bg-white text-black font-bold px-3 py-1.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)];
+  @apply border-2 border-black bg-white text-black font-bold px-3 py-1.5;
+  box-shadow: 2px 2px 0px 0px rgba(0, 0, 0, 1);
 }
 
 .theme-neo-orange.dark .neo-indicator {
-  @apply border-white bg-black text-white shadow-[2px_2px_0px_0px_rgba(255,255,255,1)];
+  @apply border-white bg-black text-white;
+  box-shadow: 2px 2px 0px 0px rgba(255, 255, 255, 1);
 }

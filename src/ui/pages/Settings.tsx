@@ -29,8 +29,8 @@ export function Settings() {
     const { t } = useTranslation()
     const { alerts, forceAlert } = useExchangeRate()
     const [copied, setCopied] = useState(false)
-    const [posHotkey, setPosHotkey] = useState(localStorage.getItem('pos_hotkey') || 'p')
-    const [barcodeHotkey, setBarcodeHotkey] = useState(localStorage.getItem('barcode_hotkey') || 'k')
+    const [posHotkey, setPosHotkey] = useState(localStorage.getItem('pos_hotkey') || '')
+    const [barcodeHotkey, setBarcodeHotkey] = useState(localStorage.getItem('barcode_hotkey') || '')
     const [exchangeRateSource, setExchangeRateSource] = useState(localStorage.getItem('primary_exchange_rate_source') || 'xeiqd')
     const [eurExchangeRateSource, setEurExchangeRateSource] = useState(localStorage.getItem('primary_eur_exchange_rate_source') || 'forexfy')
     const [tryExchangeRateSource, setTryExchangeRateSource] = useState(localStorage.getItem('primary_try_exchange_rate_source') || 'forexfy')
@@ -448,8 +448,8 @@ export function Settings() {
 
             <Tabs defaultValue="general" className="w-full space-y-6">
                 <TabsList className={cn(
-                    "grid w-full max-w-[500px]",
-                    user?.role === 'admin' ? "grid-cols-3" : "grid-cols-2"
+                    "flex md:grid w-full max-w-full md:max-w-[500px] overflow-x-auto overflow-y-hidden no-scrollbar justify-start md:justify-center h-auto p-1",
+                    user?.role === 'admin' ? "md:grid-cols-3" : "md:grid-cols-2"
                 )}>
                     <TabsTrigger value="general">{t('settings.tabs.general') || 'General'}</TabsTrigger>
                     {(user?.role === 'admin' || user?.role === 'staff') && (

@@ -46,11 +46,11 @@ export function DateRangeFilters({ className }: DateRangeFiltersProps) {
                     variant={dateRange === 'custom' ? 'default' : 'ghost'}
                     size="sm"
                     onClick={() => setDateRange('custom')}
-                    className={cn("text-xs h-8 px-4 gap-1.5 transition-all duration-200", dateRange === 'custom' && "shadow-sm")}
+                    className={cn("text-xs h-8 px-2.5 transition-all duration-200", dateRange === 'custom' && "shadow-sm")}
                     type="button"
+                    title={t('performance.filters.custom')}
                 >
                     <Calendar className="w-3.5 h-3.5" />
-                    {t('performance.filters.custom')}
                 </Button>
             </div>
 

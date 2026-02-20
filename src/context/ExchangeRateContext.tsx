@@ -83,6 +83,24 @@ export function ExchangeRateProvider({ children }: { children: React.ReactNode }
         setStatus('loading')
         setCurrencyStatus({ usd: 'loading', eur: 'loading', try: 'loading' })
 
+        // Only clear rates whose manual source was removed — preserve cached live rates
+        const usdSource = localStorage.getItem('primary_exchange_rate_source')
+        const eurSource = localStorage.getItem('primary_eur_exchange_rate_source')
+        const trySource = localStorage.getItem('primary_try_exchange_rate_source')
+
+        setExchangeData(prev => {
+            if (prev && prev.source === 'manual' && usdSource !== 'manual') return null
+            return prev
+        })
+        setEurRates(prev => {
+            if (prev.eur_iqd && prev.eur_iqd.source === 'manual' && eurSource !== 'manual') return { usd_eur: null, eur_iqd: null }
+            return prev
+        })
+        setTryRates(prev => {
+            if (prev.try_iqd && prev.try_iqd.source === 'manual' && trySource !== 'manual') return { usd_try: null, try_iqd: null }
+            return prev
+        })
+
         let usdSuccess = false
         let eurSuccess = false
         let trySuccess = false

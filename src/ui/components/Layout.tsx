@@ -279,7 +279,8 @@ export function Layout({ children }: LayoutProps) {
             <aside
                 className={cn(
                     'fixed z-50 transition-all duration-300 ease-in-out flex flex-col',
-                    'glass sidebar-gradient shadow-2xl',
+                    mobileSidebarOpen ? 'bg-card border-r border-border/50' : 'glass',
+                    'sidebar-gradient shadow-2xl',
                     isTauri ? 'top-[var(--titlebar-height)] h-[calc(100vh-var(--titlebar-height))]' : 'inset-y-0 h-full',
                     'pt-[var(--safe-area-top)] pb-[var(--safe-area-bottom)]',
                     // Desktop state - Width changes based on isMini
@@ -489,7 +490,8 @@ export function Layout({ children }: LayoutProps) {
                 </nav>
 
                 <div className={cn(
-                    "p-4 border-t border-border bg-background/50 backdrop-blur-md shrink-0 transition-all duration-300",
+                    "p-4 border-t border-border shrink-0 transition-all duration-300",
+                    mobileSidebarOpen ? "bg-card" : "bg-background/50 backdrop-blur-md",
                     (isMini && !mobileSidebarOpen) && "flex flex-col items-center gap-4 py-6"
                 )}>
                     <div className={cn("flex items-center gap-3 px-3 py-2", (isMini && !mobileSidebarOpen) && "flex-col p-0 gap-2")}>
@@ -606,11 +608,11 @@ export function Layout({ children }: LayoutProps) {
                                 </span>
                             </Button>
                         )}
-                        <P2PSyncIndicator />
-                        <ExchangeRateIndicator />
+                        {!isMobile() && <P2PSyncIndicator />}
+                        {!isMobile() && <ExchangeRateIndicator />}
                         <div className="w-px h-4 bg-border mx-1" />
                         {(!isTauri || isFullscreen || isMobile()) && <NotificationCenter />}
-                        <SyncStatusIndicator />
+                        {!isMobile() && <SyncStatusIndicator />}
 
                         {/* Refresh Button - Only for non-Tauri or Mobile where TitleBar is absent */}
                         {(!isTauri || isMobile()) && (

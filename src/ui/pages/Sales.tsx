@@ -51,7 +51,9 @@ import {
     RotateCcw,
     Filter,
     StickyNote,
-    FileSpreadsheet
+    FileSpreadsheet,
+    LayoutGrid,
+    List
 } from 'lucide-react'
 
 export function Sales() {
@@ -75,6 +77,14 @@ export function Sales() {
     const [saleToDelete, setSaleToDelete] = useState<Sale | null>(null)
     const [currentPage, setCurrentPage] = useState(1)
     const pageSize = 20
+
+    const [viewMode, setViewMode] = useState<'table' | 'grid'>(() => {
+        return (localStorage.getItem('sales_view_mode') as 'table' | 'grid') || 'table'
+    })
+
+    useEffect(() => {
+        localStorage.setItem('sales_view_mode', viewMode)
+    }, [viewMode])
 
     // Client-side filtering: date range + cashier
     const filteredSales = useMemo(() => {
@@ -603,20 +613,53 @@ export function Sales() {
                     </p>
                 </div>
 
+                <div className="hidden md:flex items-center bg-background/30 p-1 rounded-xl border border-border/50 backdrop-blur-md">
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setViewMode('table')}
+                        className={cn(
+                            "h-8 px-4 font-black uppercase tracking-widest text-[10px] flex items-center gap-2 transition-all",
+                            viewMode === 'table'
+                                ? "bg-primary text-primary-foreground shadow-lg"
+                                : "text-muted-foreground hover:bg-background/50"
+                        )}
+                    >
+                        <List className="w-3.5 h-3.5" />
+                        {t('sales.view.table')}
+                    </Button>
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setViewMode('grid')}
+                        className={cn(
+                            "h-8 px-4 font-black uppercase tracking-widest text-[10px] flex items-center gap-2 transition-all",
+                            viewMode === 'grid'
+                                ? "bg-primary text-primary-foreground shadow-lg"
+                                : "text-muted-foreground hover:bg-background/50"
+                        )}
+                    >
+                        <LayoutGrid className="w-3.5 h-3.5" />
+                        {t('sales.view.grid')}
+                    </Button>
+                </div>
+
                 <div className="flex flex-wrap items-center gap-3">
                     <DateRangeFilters />
 
                     {availableCashiers.length > 0 && (
                         <div className={cn(
-                            "flex items-center gap-2 bg-secondary/30 p-1 px-3 border",
-                            style === 'neo-orange' ? "rounded-[var(--radius)] border-black dark:border-white" : "rounded-lg border-border/50"
+                            "flex flex-col gap-1 bg-secondary/30 p-2 px-3 border min-w-[140px]",
+                            style === 'neo-orange' ? "rounded-[var(--radius)] border-black dark:border-white" : "rounded-xl border-border/40 backdrop-blur-md shadow-sm"
                         )}>
-                            <Filter className="w-3.5 h-3.5 text-muted-foreground" />
-                            <span className="text-[10px] uppercase font-bold text-muted-foreground whitespace-nowrap">
-                                {t('sales.filters.cashier') || 'Cashier'}:
-                            </span>
+                            <div className="flex items-center gap-2">
+                                <Filter className="w-3 h-3 text-muted-foreground/70" />
+                                <span className="text-[9px] uppercase font-black tracking-tighter text-muted-foreground/60 whitespace-nowrap">
+                                    {t('sales.filters.cashier') || 'Filter By Cashier'}
+                                </span>
+                            </div>
                             <Select value={selectedCashier} onValueChange={setSelectedCashier}>
-                                <SelectTrigger className="h-8 text-xs w-40 bg-background/50 border-none focus-visible:ring-1 focus-visible:ring-primary/50 transition-all">
+                                <SelectTrigger className="h-7 text-[11px] w-full bg-background/40 border-none focus-visible:ring-1 focus-visible:ring-primary/30 transition-all font-medium">
                                     <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -639,7 +682,7 @@ export function Sales() {
                 "overflow-hidden backdrop-blur-sm",
                 style === 'neo-orange' ? "border-2 border-black dark:border-white bg-card" : "border-border/50 bg-card/50"
             )}>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
+                <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between space-y-0 gap-4 pb-4">
                     <div className="flex flex-col gap-1">
                         <CardTitle>{t('sales.listTitle') || 'Recent Sales'}</CardTitle>
                         {totalCount > 0 && (
@@ -648,7 +691,7 @@ export function Sales() {
                             </p>
                         )}
                     </div>
-                    <div className="flex items-center gap-4">
+                    <div className="flex flex-col sm:flex-row items-center gap-4">
                         <AppPagination
                             currentPage={currentPage}
                             totalCount={totalCount}
@@ -684,8 +727,11 @@ export function Sales() {
                         <div className="text-center py-8 text-muted-foreground">
                             {t('common.noData')}
                         </div>
-                    ) : isMobile() ? (
-                        <div className="grid grid-cols-1 gap-4">
+                    ) : (isMobile() || viewMode === 'grid') ? (
+                        <div className={cn(
+                            "grid gap-4",
+                            viewMode === 'grid' && !isMobile() ? "grid-cols-1 lg:grid-cols-2 xl:grid-cols-3" : "grid-cols-1"
+                        )}>
                             {sales.map((sale) => {
                                 const isFullyReturned = sale.is_returned || (sale.items && sale.items.length > 0 && sale.items.every((item: SaleItem) =>
                                     item.is_returned || (item.returned_quantity || 0) >= item.quantity
@@ -704,7 +750,7 @@ export function Sales() {
                                         key={sale.id}
                                         className={cn(
                                             "p-4 border shadow-sm space-y-4 transition-all active:scale-[0.98]",
-                                            style === 'neo-orange' ? "rounded-[var(--radius)] border-2 border-black dark:border-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]" : "rounded-[2rem] border-border",
+                                            style === 'neo-orange' ? "rounded-[var(--radius)] border-2 border-black dark:border-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]" : "rounded-[2rem] md:rounded-2xl border-border",
                                             isFullyReturned ? 'bg-destructive/5 border-destructive/20' : hasAnyReturn ? 'bg-orange-500/5' : 'bg-card'
                                         )}
                                     >
@@ -796,6 +842,21 @@ export function Sales() {
                                                     onClick={() => onPrintClick(sale)}
                                                 >
                                                     <Printer className="w-4 h-4" />
+                                                </Button>
+                                                <Button
+                                                    variant="outline"
+                                                    size="icon"
+                                                    className={cn(
+                                                        "h-10 w-10",
+                                                        style === 'neo-orange' ? "rounded-[var(--radius)] neo-border shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]" : "rounded-xl",
+                                                        sale.notes && "text-primary bg-primary/5 border-primary/20"
+                                                    )}
+                                                    onClick={() => {
+                                                        setSelectedSaleForNote(sale)
+                                                        setIsNoteModalOpen(true)
+                                                    }}
+                                                >
+                                                    <StickyNote className={cn("w-4 h-4", sale.notes && "fill-primary/20")} />
                                                 </Button>
                                             </div>
                                             <div className="flex gap-1">

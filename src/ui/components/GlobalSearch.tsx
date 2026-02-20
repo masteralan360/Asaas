@@ -182,6 +182,10 @@ export function GlobalSearch({ className, placeholder }: GlobalSearchProps) {
                                                 return (
                                                     <button
                                                         key={cmd.id}
+                                                        className={cn(
+                                                            "w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all duration-200 group/item",
+                                                            isActive ? "bg-primary text-primary-foreground shadow-lg" : "hover:bg-primary/10 text-muted-foreground hover:text-primary"
+                                                        )}
                                                         onClick={() => {
                                                             cmd.action()
                                                             setIsOpen(false)
@@ -189,9 +193,17 @@ export function GlobalSearch({ className, placeholder }: GlobalSearchProps) {
                                                         }}
                                                         onMouseEnter={() => setActiveIndex(globalIndex)}
                                                     >
-                                                        <cmd.icon className={cn("w-4 h-4", isActive ? "text-primary-foreground" : "text-muted-foreground group-hover/item:text-primary")} />
-                                                        <span className="flex-1 font-medium">{cmd.title}</span>
-                                                        {isActive && <ChevronRight className="w-3 h-3 opacity-50" />}
+                                                        <div className={cn(
+                                                            "w-8 h-8 rounded-lg flex items-center justify-center transition-colors",
+                                                            isActive ? "bg-white/20" : "bg-muted group-hover/item:bg-primary/20"
+                                                        )}>
+                                                            <cmd.icon className={cn("w-4 h-4", isActive ? "text-primary-foreground" : "text-muted-foreground group-hover/item:text-primary")} />
+                                                        </div>
+                                                        <span className="flex-1 font-medium text-left">{cmd.title}</span>
+                                                        <ChevronRight className={cn(
+                                                            "w-4 h-4 transition-all duration-300",
+                                                            isActive ? "opacity-100 translate-x-0" : "opacity-0 -translate-x-2"
+                                                        )} />
                                                     </button>
                                                 )
                                             })}

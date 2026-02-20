@@ -52,8 +52,11 @@ import {
     RotateCcw,
     Printer,
     Info,
-    Grid3X3
+    Grid3X3,
+    LayoutGrid,
+    List
 } from 'lucide-react'
+import { useTheme } from '@/ui/components/theme-provider'
 import { Button, ExportPreviewModal, Progress } from '@/ui/components'
 import { Area, AreaChart, Bar, BarChart, ResponsiveContainer, Tooltip as RechartsTooltip, XAxis } from 'recharts'
 
@@ -77,9 +80,18 @@ export function Revenue() {
     const [isPeakTradingOpen, setIsPeakTradingOpen] = useState(false)
     const [isReturnsOpen, setIsReturnsOpen] = useState(false)
     const { dateRange, customDates } = useDateRange()
+    const { style } = useTheme()
     const [showPrintPreview, setShowPrintPreview] = useState(false)
     const [selectedSaleIds, setSelectedSaleIds] = useState<Set<string>>(new Set())
     const [showPeakHeatmap, setShowPeakHeatmap] = useState(false)
+
+    const [viewMode, setViewMode] = useState<'table' | 'grid'>(() => {
+        return (localStorage.getItem('revenue_view_mode') as 'table' | 'grid') || 'table'
+    })
+
+    useEffect(() => {
+        localStorage.setItem('revenue_view_mode', viewMode)
+    }, [viewMode])
 
     const [isExportModalOpen, setIsExportModalOpen] = useState(false)
     const [currentPage, setCurrentPage] = useState(1)
@@ -566,7 +578,10 @@ export function Revenue() {
                         <div className="flex items-center gap-3">
                             <h1 className="text-3xl font-bold tracking-tight">{t('revenue.title')}</h1>
                             {getDateDisplay() && (
-                                <div className="px-3 py-1 text-sm font-bold bg-primary text-primary-foreground rounded-lg shadow-sm animate-pop-in">
+                                <div className={cn(
+                                    "px-3 py-1 text-sm font-bold bg-primary text-primary-foreground shadow-sm animate-pop-in",
+                                    style === 'neo-orange' ? "rounded-[var(--radius)] neo-border" : "rounded-lg"
+                                )}>
                                     {getDateDisplay()}
                                 </div>
                             )}
@@ -575,8 +590,37 @@ export function Revenue() {
                     </div>
 
                     <div className="flex flex-wrap items-center gap-3">
+                        <div className="hidden md:flex items-center bg-background/30 p-1 rounded-xl border border-border/50 backdrop-blur-md">
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setViewMode('table')}
+                                className={cn(
+                                    "h-8 px-4 font-black uppercase tracking-widest text-[10px] flex items-center gap-2 transition-all",
+                                    viewMode === 'table'
+                                        ? "bg-primary text-primary-foreground shadow-lg"
+                                        : "text-muted-foreground hover:bg-background/50"
+                                )}
+                            >
+                                <List className="w-3.5 h-3.5" />
+                                {t('sales.view.table')}
+                            </Button>
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setViewMode('grid')}
+                                className={cn(
+                                    "h-8 px-4 font-black uppercase tracking-widest text-[10px] flex items-center gap-2 transition-all",
+                                    viewMode === 'grid'
+                                        ? "bg-primary text-primary-foreground shadow-lg"
+                                        : "text-muted-foreground hover:bg-background/50"
+                                )}
+                            >
+                                <LayoutGrid className="w-3.5 h-3.5" />
+                                {t('sales.view.grid')}
+                            </Button>
+                        </div>
                         <DateRangeFilters />
-
                     </div>
                 </div>
 
@@ -1095,9 +1139,12 @@ export function Revenue() {
                             </div>
                         </CardHeader>
                         <CardContent ref={listRef} className="print:p-0 [print-color-adjust:exact] -webkit-print-color-adjust:exact">
-                            {isMobile() ? (
-                                <div className="grid grid-cols-1 gap-4">
-                                    {stats.saleStats.map((sale, idx) => {
+                            {(isMobile() || viewMode === 'grid') ? (
+                                <div className={cn(
+                                    "grid gap-4",
+                                    viewMode === 'grid' && !isMobile() ? "grid-cols-1 lg:grid-cols-2 xl:grid-cols-3" : "grid-cols-1"
+                                )}>
+                                    {paginatedSales.map((sale, idx) => {
                                         const originalSale = sales.find(s => s.id === sale.id)
                                         const isFullyReturned = originalSale ? (originalSale.is_returned || (originalSale.items && originalSale.items.length > 0 && originalSale.items.every((item: any) =>
                                             item.is_returned || (item.returned_quantity || 0) >= item.quantity
@@ -1116,7 +1163,8 @@ export function Revenue() {
                                             <div
                                                 key={sale.id || idx}
                                                 className={cn(
-                                                    "p-4 rounded-[2rem] border border-border shadow-sm space-y-4",
+                                                    "p-4 border shadow-sm space-y-4 transition-all active:scale-[0.98]",
+                                                    style === 'neo-orange' ? "rounded-[var(--radius)] border-2 border-black dark:border-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]" : "rounded-[2rem] md:rounded-2xl border-border",
                                                     isFullyReturned ? 'bg-destructive/5 border-destructive/20' : hasAnyReturn ? 'bg-orange-500/5 border-orange-500/20 dark:bg-orange-500/5 dark:border-orange-500/10' : 'bg-card'
                                                 )}
                                                 onClick={() => {

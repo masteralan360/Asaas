@@ -41,7 +41,10 @@ import {
     Coins,
     RefreshCw,
     X,
-    Archive
+    Archive,
+    ChevronRight,
+    ChevronUp,
+    ChevronDown
 } from 'lucide-react'
 import { BarcodeScanner } from 'react-barcode-scanner'
 import 'react-barcode-scanner/polyfill'
@@ -157,10 +160,51 @@ export function POS() {
         const saved = localStorage.getItem('pos_held_sales')
         return saved ? JSON.parse(saved) : []
     })
+
+    const [canScrollUp, setCanScrollUp] = useState(false)
+    const [canScrollDown, setCanScrollDown] = useState(false)
+
+    // Scroll Indicator Logic (Desktop)
+    const checkScroll = useCallback(() => {
+        if (!cartContainerRef.current) return
+        const { scrollTop, scrollHeight, clientHeight } = cartContainerRef.current
+        setCanScrollUp(scrollTop > 10)
+        setCanScrollDown(scrollTop + clientHeight < scrollHeight - 10)
+    }, [])
+
+    useEffect(() => {
+        const container = cartContainerRef.current
+        if (!container) return
+
+        const handleScroll = () => checkScroll()
+        container.addEventListener('scroll', handleScroll)
+
+        // Watch for content changes (adding/removing items)
+        const observer = new ResizeObserver(() => checkScroll())
+        observer.observe(container)
+
+        // Also observe the inner items container if possible
+        const innerItems = container.querySelector('.space-y-3')
+        if (innerItems) observer.observe(innerItems)
+
+        checkScroll() // Initial check
+
+        return () => {
+            container.removeEventListener('scroll', handleScroll)
+            observer.disconnect()
+        }
+    }, [cart.length, checkScroll])
     const [isHeldSalesModalOpen, setIsHeldSalesModalOpen] = useState(false)
     const [restoredSale, setRestoredSale] = useState<HeldSale | null>(null)
     const [isSuccessModalOpen, setIsSuccessModalOpen] = useState(false)
     const [completedSaleData, setCompletedSaleData] = useState<any>(null)
+    const [showExchangeTicker, setShowExchangeTicker] = useState(() => {
+        return localStorage.getItem('pos_show_exchange_ticker') === 'true'
+    })
+
+    useEffect(() => {
+        localStorage.setItem('pos_show_exchange_ticker', String(showExchangeTicker))
+    }, [showExchangeTicker])
     const [discountValue, setDiscountValue] = useState<string>('')
     const [discountType, setDiscountType] = useState<'percent' | 'amount'>('percent')
 
@@ -197,7 +241,7 @@ export function POS() {
 
 
     // Exchange Rate for advisory display and calculations
-    const { exchangeData: globalExchangeData, eurRates: globalEurRates, tryRates: globalTryRates, status, refresh: refreshExchangeRate } = useExchangeRate()
+    const { exchangeData: globalExchangeData, eurRates: globalEurRates, tryRates: globalTryRates, status, currencyStatus, refresh: refreshExchangeRate } = useExchangeRate()
 
     // Use restored rates if available (historical persistence), otherwise use global live rates
     const exchangeData = restoredSale ? {
@@ -297,6 +341,48 @@ export function POS() {
         return sum + (converted * item.quantity)
     }, 0)
     const totalItems = cart.reduce((sum, item) => sum + item.quantity, 0)
+
+    // Check if any cart item requires a missing exchange rate
+    // hasTrulyMissingRates: no rate at all (red alert, blocks checkout)
+    // hasLoadingRates: rate cached but context is refreshing (yellow alert, allows checkout)
+    const rateCheck = (() => {
+        if (cart.length === 0) return { hasTrulyMissingRates: false, hasLoadingRates: false }
+
+        let trulyMissing = false
+        let loading = false
+
+        for (const item of cart) {
+            const itemCurrency = (products.find(p => p.id === item.product_id)?.currency || 'usd') as CurrencyCode
+            if (itemCurrency === settlementCurrency) continue
+
+            const checkPair = (rateExists: boolean) => {
+                if (!rateExists) {
+                    if (status === 'loading') loading = true
+                    else trulyMissing = true
+                } else if (status === 'loading') {
+                    loading = true
+                }
+            }
+
+            if ((itemCurrency === 'usd' && settlementCurrency === 'iqd') || (itemCurrency === 'iqd' && settlementCurrency === 'usd')) {
+                checkPair(!!exchangeData)
+            } else if ((itemCurrency === 'eur' && settlementCurrency === 'iqd') || (itemCurrency === 'iqd' && settlementCurrency === 'eur')) {
+                checkPair(!!eurRates.eur_iqd)
+            } else if ((itemCurrency === 'usd' && settlementCurrency === 'eur') || (itemCurrency === 'eur' && settlementCurrency === 'usd')) {
+                checkPair(!!eurRates.usd_eur)
+            } else if ((itemCurrency === 'try' && settlementCurrency === 'iqd') || (itemCurrency === 'iqd' && settlementCurrency === 'try')) {
+                checkPair(!!tryRates.try_iqd)
+            } else if ((itemCurrency === 'usd' && settlementCurrency === 'try') || (itemCurrency === 'try' && settlementCurrency === 'usd')) {
+                checkPair(!!tryRates.usd_try)
+            } else if ((itemCurrency === 'try' && settlementCurrency === 'eur') || (itemCurrency === 'eur' && settlementCurrency === 'try')) {
+                checkPair(!!tryRates.try_iqd && !!eurRates.eur_iqd)
+            }
+        }
+
+        return { hasTrulyMissingRates: trulyMissing, hasLoadingRates: loading }
+    })()
+
+    const { hasTrulyMissingRates, hasLoadingRates } = rateCheck
 
     // Bulk Discount Effect
     useEffect(() => {
@@ -484,8 +570,8 @@ export function POS() {
     // Hotkey listener
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
-            const skuHotkey = localStorage.getItem('pos_hotkey') || 'p'
-            const barcodeHotkey = localStorage.getItem('barcode_hotkey') || 'k'
+            const skuHotkey = localStorage.getItem('pos_hotkey') || ''
+            const barcodeHotkey = localStorage.getItem('barcode_hotkey') || ''
 
             if (e.key.toLowerCase() === skuHotkey.toLowerCase() && !isSkuModalOpen && !isBarcodeModalOpen) {
                 e.preventDefault()
@@ -1176,6 +1262,13 @@ export function POS() {
                         onOpenHeldSales={() => setIsHeldSalesModalOpen(true)}
                         t={t}
                         toast={toast}
+                        showExchangeTicker={showExchangeTicker}
+                        setShowExchangeTicker={setShowExchangeTicker}
+                        eurRates={eurRates}
+                        tryRates={tryRates}
+                        status={status}
+                        currencyStatus={currencyStatus}
+                        features={features}
                     />
                     <div className="flex-1 overflow-hidden relative">
                         {mobileView === 'grid' ? (
@@ -1216,6 +1309,12 @@ export function POS() {
                                 openPriceEdit={openPriceEdit}
                                 isAdmin={isAdmin}
                                 clearNegotiatedPrice={clearNegotiatedPrice}
+                                discountValue={discountValue}
+                                setDiscountValue={setDiscountValue}
+                                discountType={discountType}
+                                setDiscountType={setDiscountType}
+                                hasTrulyMissingRates={hasTrulyMissingRates}
+                                hasLoadingRates={hasLoadingRates}
                             />
                         )}
                     </div>
@@ -1363,176 +1462,217 @@ export function POS() {
                                 )}
                             </div>
                             <div className="text-xs text-muted-foreground mt-1">
-                                {totalItems} items
+                                {totalItems} {totalItems === 1 ? t('common.item') : t('common.items')}
                             </div>
                         </div>
 
-                        <div className="flex-1 p-4 overflow-y-auto" ref={cartContainerRef}>
-                            <div className="space-y-3">
-                                {cart.length === 0 ? (
-                                    <div className="h-full flex flex-col items-center justify-center text-muted-foreground opacity-50 space-y-2 py-12">
-                                        <ShoppingCart className="w-12 h-12" />
-                                        <p>Cart is empty</p>
-                                    </div>
-                                ) : (
-                                    cart.map((item, index) => {
-                                        const productCurrency = products.find(p => p.id === item.product_id)?.currency || 'usd'
-                                        const effectivePrice = item.negotiated_price ?? item.price
-                                        const convertedPrice = convertPrice(effectivePrice, productCurrency, settlementCurrency)
-                                        const isConverted = productCurrency !== settlementCurrency
-                                        const hasNegotiated = item.negotiated_price !== undefined
+                        <div className="flex-1 min-h-0 relative flex flex-col">
+                            {/* Scroll Indicators */}
+                            {canScrollUp && (
+                                <div className="absolute top-2 left-1/2 -translate-x-1/2 z-10 bg-background/80 backdrop-blur-sm p-1.5 rounded-full border border-border shadow-sm animate-bounce pointer-events-none">
+                                    <ChevronUp className="w-4 h-4 text-primary" />
+                                </div>
+                            )}
+                            {canScrollDown && (
+                                <div className="absolute bottom-2 left-1/2 -translate-x-1/2 z-10 bg-background/80 backdrop-blur-sm p-1.5 rounded-full border border-border shadow-sm animate-bounce pointer-events-none">
+                                    <ChevronDown className="w-4 h-4 text-primary" />
+                                </div>
+                            )}
 
-                                        return (
-                                            <div
-                                                key={item.product_id}
-                                                ref={el => cartItemRefs.current[index] = el}
-                                                className={cn(
-                                                    "bg-background border border-border p-3 rounded-lg flex gap-3 group transition-all duration-200 scroll-m-2",
-                                                    (isElectron && focusedSection === 'cart' && focusedCartIndex === index) ? "ring-2 ring-primary ring-offset-2 ring-offset-background border-primary/50 shadow-md transform scale-[1.01]" : ""
-                                                )}
-                                            >
-                                                <div className="flex-1 min-w-0">
-                                                    <div className="font-medium truncate">{item.name}</div>
-                                                    <div className="flex flex-col gap-0.5">
-                                                        {/* Show original price (grayed out if negotiated) */}
-                                                        <div className={cn(
-                                                            "text-xs",
-                                                            hasNegotiated ? "text-muted-foreground/50 line-through" : "text-muted-foreground"
-                                                        )}>
-                                                            {formatCurrency(item.price, productCurrency, features.iqd_display_preference)} x {item.quantity}
-                                                        </div>
-                                                        {/* Show negotiated price if set */}
-                                                        {hasNegotiated && (
-                                                            <div className="text-xs text-emerald-600 font-medium flex items-center gap-1">
-                                                                <span>{formatCurrency(item.negotiated_price!, productCurrency, features.iqd_display_preference)} x {item.quantity}</span>
-                                                                {isAdmin && (
-                                                                    <button
-                                                                        onClick={() => clearNegotiatedPrice(item.product_id)}
-                                                                        className="text-[10px] text-destructive hover:underline"
-                                                                        title={t('pos.clearNegotiatedPrice') || 'Clear'}
-                                                                    >
-                                                                        ✕
-                                                                    </button>
-                                                                )}
-                                                            </div>
-                                                        )}
-                                                        {isConverted && (
-                                                            <div className="text-[10px] text-primary/60 font-medium">
-                                                                ≈ {formatCurrency(convertedPrice, settlementCurrency, features.iqd_display_preference)} {t('common.each')}
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                                <div className="flex flex-col items-end gap-1">
-                                                    <div className="font-bold flex items-center gap-1">
-                                                        <span>{formatCurrency(convertedPrice * item.quantity, settlementCurrency, features.iqd_display_preference)}</span>
-                                                        {/* Admin-only Pencil icon */}
-                                                        {isAdmin && (
-                                                            <button
-                                                                onClick={() => openPriceEdit(item.product_id, item.negotiated_price ?? item.price)}
-                                                                className="transition-opacity p-1 hover:bg-muted rounded bg-muted/30 border border-border/50"
-                                                                title={t('pos.modifyPrice') || 'Modify Price'}
-                                                            >
-                                                                <Pencil className="w-3.5 h-3.5 text-primary" />
-                                                            </button>
-                                                        )}
-                                                    </div>
-                                                    {isConverted && !hasNegotiated && (
-                                                        <span className="text-[10px] text-muted-foreground line-through opacity-50">
-                                                            {formatCurrency(item.price * item.quantity, productCurrency, features.iqd_display_preference)}
-                                                        </span>
+                            <div className="flex-1 p-4 overflow-y-auto relative contents-container" ref={cartContainerRef}>
+                                <div className="space-y-3">
+                                    {cart.length === 0 ? (
+                                        <div className="h-full flex flex-col items-center justify-center text-muted-foreground opacity-50 space-y-2 py-12">
+                                            <ShoppingCart className="w-12 h-12" />
+                                            <p>Cart is empty</p>
+                                        </div>
+                                    ) : (
+                                        cart.map((item, index) => {
+                                            const productCurrency = products.find(p => p.id === item.product_id)?.currency || 'usd'
+                                            const effectivePrice = item.negotiated_price ?? item.price
+                                            const convertedPrice = convertPrice(effectivePrice, productCurrency, settlementCurrency)
+                                            const isConverted = productCurrency !== settlementCurrency
+                                            const hasNegotiated = item.negotiated_price !== undefined
+
+                                            return (
+                                                <div
+                                                    key={item.product_id}
+                                                    ref={el => cartItemRefs.current[index] = el}
+                                                    className={cn(
+                                                        "bg-background border border-border p-3 rounded-lg flex gap-3 group transition-all duration-200 scroll-m-2",
+                                                        (isElectron && focusedSection === 'cart' && focusedCartIndex === index) ? "ring-2 ring-primary ring-offset-2 ring-offset-background border-primary/50 shadow-md transform scale-[1.01]" : ""
                                                     )}
+                                                >
+                                                    <div className="flex-1 min-w-0">
+                                                        <div className="font-medium truncate">{item.name}</div>
+                                                        <div className="flex flex-col gap-0.5">
+                                                            {/* Show original price (grayed out if negotiated) */}
+                                                            <div className={cn(
+                                                                "text-xs",
+                                                                hasNegotiated ? "text-muted-foreground/50 line-through" : "text-muted-foreground"
+                                                            )}>
+                                                                {formatCurrency(item.price, productCurrency, features.iqd_display_preference)} x {item.quantity}
+                                                            </div>
+                                                            {/* Show negotiated price if set */}
+                                                            {hasNegotiated && (
+                                                                <div className="text-xs text-emerald-600 font-medium flex items-center gap-1">
+                                                                    <span>{formatCurrency(item.negotiated_price!, productCurrency, features.iqd_display_preference)} x {item.quantity}</span>
+                                                                    {isAdmin && (
+                                                                        <button
+                                                                            onClick={() => clearNegotiatedPrice(item.product_id)}
+                                                                            className="text-[10px] text-destructive hover:underline"
+                                                                            title={t('pos.clearNegotiatedPrice') || 'Clear'}
+                                                                        >
+                                                                            ✕
+                                                                        </button>
+                                                                    )}
+                                                                </div>
+                                                            )}
+                                                            {isConverted && (
+                                                                <div className="text-[10px] text-primary/60 font-medium">
+                                                                    ≈ {formatCurrency(convertedPrice, settlementCurrency, features.iqd_display_preference)} {t('common.each')}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex flex-col items-end gap-1">
+                                                        <div className="font-bold flex items-center gap-1">
+                                                            <span>{formatCurrency(convertedPrice * item.quantity, settlementCurrency, features.iqd_display_preference)}</span>
+                                                            {/* Admin-only Pencil icon */}
+                                                            {isAdmin && (
+                                                                <button
+                                                                    onClick={() => openPriceEdit(item.product_id, item.negotiated_price ?? item.price)}
+                                                                    className="transition-opacity p-1 hover:bg-muted rounded bg-muted/30 border border-border/50"
+                                                                    title={t('pos.modifyPrice') || 'Modify Price'}
+                                                                >
+                                                                    <Pencil className="w-3.5 h-3.5 text-primary" />
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                        {isConverted && !hasNegotiated && (
+                                                            <span className="text-[10px] text-muted-foreground line-through opacity-50">
+                                                                {formatCurrency(item.price * item.quantity, productCurrency, features.iqd_display_preference)}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <div className="flex items-center gap-1">
+                                                        <Button
+                                                            variant="outline"
+                                                            size="icon"
+                                                            className="h-6 w-6 rounded-md"
+                                                            onClick={() => updateQuantity(item.product_id, -1)}
+                                                        >
+                                                            <Minus className="w-3 h-3" />
+                                                        </Button>
+                                                        <span className="w-4 text-center text-sm font-medium">{item.quantity}</span>
+                                                        <Button
+                                                            variant="outline"
+                                                            size="icon"
+                                                            className="h-6 w-6 rounded-md"
+                                                            onClick={() => updateQuantity(item.product_id, 1)}
+                                                            disabled={item.quantity >= item.max_stock}
+                                                        >
+                                                            <Plus className="w-3 h-3" />
+                                                        </Button>
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            className="h-7 w-7 rounded-md text-destructive transition-opacity ml-1 bg-destructive/10 border border-destructive/20"
+                                                            onClick={() => removeFromCart(item.product_id)}
+                                                        >
+                                                            <Trash2 className="w-3.5 h-3.5" />
+                                                        </Button>
+                                                    </div>
                                                 </div>
-                                                <div className="flex items-center gap-1">
-                                                    <Button
-                                                        variant="outline"
-                                                        size="icon"
-                                                        className="h-6 w-6 rounded-md"
-                                                        onClick={() => updateQuantity(item.product_id, -1)}
-                                                    >
-                                                        <Minus className="w-3 h-3" />
-                                                    </Button>
-                                                    <span className="w-4 text-center text-sm font-medium">{item.quantity}</span>
-                                                    <Button
-                                                        variant="outline"
-                                                        size="icon"
-                                                        className="h-6 w-6 rounded-md"
-                                                        onClick={() => updateQuantity(item.product_id, 1)}
-                                                        disabled={item.quantity >= item.max_stock}
-                                                    >
-                                                        <Plus className="w-3 h-3" />
-                                                    </Button>
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="icon"
-                                                        className="h-7 w-7 rounded-md text-destructive transition-opacity ml-1 bg-destructive/10 border border-destructive/20"
-                                                        onClick={() => removeFromCart(item.product_id)}
-                                                    >
-                                                        <Trash2 className="w-3.5 h-3.5" />
-                                                    </Button>
-                                                </div>
-                                            </div>
-                                        )
-                                    })
-                                )}
+                                            )
+                                        })
+                                    )}
+                                </div>
                             </div>
                         </div>
 
                         <div className="p-4 border-t border-border bg-muted/10 space-y-3">
                             {/* Exchange Rate Info */}
+                            {/* Exchange Rate Info */}
                             {(exchangeData || (features.eur_conversion_enabled && eurRates.eur_iqd)) && (
-                                <div className="bg-primary/5 rounded-lg p-2.5 border border-primary/10 space-y-2">
-                                    {/* USD Rate */}
-                                    {exchangeData && (
-                                        <div className="flex justify-between items-center text-[11px]">
-                                            <div className="flex items-center gap-2">
-                                                <span className="font-bold text-primary/80 uppercase">USD/IQD</span>
-                                                <span className="opacity-50 text-[10px] uppercase">{exchangeData.source}</span>
-                                            </div>
-                                            <div className="flex items-center gap-2">
-                                                <span className="opacity-60">100 USD =</span>
-                                                <span className={cn("font-bold", status === 'error' ? "text-destructive" : "text-primary")}>
-                                                    {status === 'error' ? t('common.offline') || 'Offline' : formatCurrency(exchangeData.rate, 'iqd', features.iqd_display_preference)}
-                                                </span>
-                                            </div>
-                                        </div>
-                                    )}
+                                <div
+                                    className="bg-primary/5 rounded-lg border border-primary/10 overflow-hidden cursor-pointer transition-all hover:bg-primary/[0.07] active:scale-[0.98]"
+                                    onClick={() => setShowExchangeTicker(!showExchangeTicker)}
+                                >
+                                    {showExchangeTicker ? (
+                                        <ExchangeTicker
+                                            exchangeData={exchangeData}
+                                            eurRates={eurRates}
+                                            tryRates={tryRates}
+                                            status={status}
+                                            currencyStatus={currencyStatus}
+                                            features={features}
+                                            t={t}
+                                        />
+                                    ) : (
+                                        <div className="p-2.5 space-y-2">
+                                            {/* USD Rate */}
+                                            {exchangeData && (
+                                                <div className="flex justify-between items-center text-[11px]">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="font-bold text-primary/80 uppercase">USD/IQD</span>
+                                                        <span className="opacity-50 text-[10px] uppercase">{exchangeData.source}</span>
+                                                        {currencyStatus.usd === 'loading' && (
+                                                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" title="Refreshing..." />
+                                                        )}
+                                                    </div>
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="opacity-60">100 USD =</span>
+                                                        <span className={cn("font-bold", status === 'error' && !exchangeData ? "text-destructive" : "text-primary")}>
+                                                            {status === 'error' && !exchangeData ? t('common.offline') || 'Offline' : formatCurrency(exchangeData.rate, 'iqd', features.iqd_display_preference)}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            )}
 
-                                    {/* EUR Rate (Conditional) */}
-                                    {features.eur_conversion_enabled && eurRates.eur_iqd && (
-                                        <div className={cn(
-                                            "flex justify-between items-center text-[11px]",
-                                            exchangeData && "pt-1.5 border-t border-primary/5"
-                                        )}>
-                                            <div className="flex items-center gap-2">
-                                                <span className="font-bold text-primary/80 uppercase">EUR/IQD</span>
-                                                <span className="opacity-50 text-[10px] uppercase leading-none">{eurRates.eur_iqd.source}</span>
-                                            </div>
-                                            <div className="flex items-center gap-2">
-                                                <span className="opacity-60">100 EUR =</span>
-                                                <span className={cn("font-bold", status === 'error' ? "text-destructive" : "text-primary")}>
-                                                    {status === 'error' ? t('common.offline') || 'Offline' : formatCurrency(eurRates.eur_iqd.rate, 'iqd', features.iqd_display_preference)}
-                                                </span>
-                                            </div>
-                                        </div>
-                                    )}
+                                            {/* EUR Rate (Conditional) */}
+                                            {features.eur_conversion_enabled && eurRates.eur_iqd && (
+                                                <div className={cn(
+                                                    "flex justify-between items-center text-[11px]",
+                                                    exchangeData && "pt-1.5 border-t border-primary/5"
+                                                )}>
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="font-bold text-primary/80 uppercase">EUR/IQD</span>
+                                                        <span className="opacity-50 text-[10px] uppercase leading-none">{eurRates.eur_iqd.source}</span>
+                                                        {currencyStatus.eur === 'loading' && (
+                                                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" title="Refreshing..." />
+                                                        )}
+                                                    </div>
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="opacity-60">100 EUR =</span>
+                                                        <span className={cn("font-bold", status === 'error' && !eurRates.eur_iqd ? "text-destructive" : "text-primary")}>
+                                                            {status === 'error' && !eurRates.eur_iqd ? t('common.offline') || 'Offline' : formatCurrency(eurRates.eur_iqd.rate, 'iqd', features.iqd_display_preference)}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            )}
 
-                                    {/* TRY Rate (Conditional) */}
-                                    {features.try_conversion_enabled && tryRates.try_iqd && (
-                                        <div className={cn(
-                                            "flex justify-between items-center text-[11px]",
-                                            (exchangeData || (features.eur_conversion_enabled && eurRates.eur_iqd)) && "pt-1.5 border-t border-primary/5"
-                                        )}>
-                                            <div className="flex items-center gap-2">
-                                                <span className="font-bold text-primary/80 uppercase">TRY/IQD</span>
-                                                <span className="opacity-50 text-[10px] uppercase leading-none">{tryRates.try_iqd.source}</span>
-                                            </div>
-                                            <div className="flex items-center gap-2">
-                                                <span className="opacity-60">100 TRY =</span>
-                                                <span className={cn("font-bold", status === 'error' ? "text-destructive" : "text-primary")}>
-                                                    {status === 'error' ? t('common.offline') || 'Offline' : formatCurrency(tryRates.try_iqd.rate, 'iqd', features.iqd_display_preference)}
-                                                </span>
-                                            </div>
+                                            {/* TRY Rate (Conditional) */}
+                                            {features.try_conversion_enabled && tryRates.try_iqd && (
+                                                <div className={cn(
+                                                    "flex justify-between items-center text-[11px]",
+                                                    (exchangeData || (features.eur_conversion_enabled && eurRates.eur_iqd)) && "pt-1.5 border-t border-primary/5"
+                                                )}>
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="font-bold text-primary/80 uppercase">TRY/IQD</span>
+                                                        <span className="opacity-50 text-[10px] uppercase leading-none">{tryRates.try_iqd.source}</span>
+                                                        {currencyStatus.try === 'loading' && (
+                                                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" title="Refreshing..." />
+                                                        )}
+                                                    </div>
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="opacity-60">1000 TRY =</span>
+                                                        <span className={cn("font-bold", status === 'error' && !tryRates.try_iqd ? "text-destructive" : "text-primary")}>
+                                                            {status === 'error' && !tryRates.try_iqd ? t('common.offline') || 'Offline' : formatCurrency(tryRates.try_iqd.rate, 'iqd', features.iqd_display_preference)}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            )}
                                         </div>
                                     )}
                                 </div>
@@ -1706,12 +1846,24 @@ export function POS() {
                                 )}
                             </div>
 
+                            {hasTrulyMissingRates ? (
+                                <div className="text-xs text-destructive bg-destructive/10 border border-destructive/20 rounded-xl px-3 py-2 flex items-center gap-2 animate-in fade-in duration-300">
+                                    <RefreshCw className="w-3.5 h-3.5 flex-shrink-0" />
+                                    <span>Exchange rate unavailable for some currencies in cart. Set a manual rate or wait for live rates.</span>
+                                </div>
+                            ) : hasLoadingRates && (
+                                <div className="text-xs text-amber-500 bg-amber-500/10 border border-amber-500/20 rounded-xl px-3 py-2 flex items-center gap-2 animate-in fade-in duration-300">
+                                    <RefreshCw className="w-3.5 h-3.5 flex-shrink-0 animate-spin" />
+                                    <span>Refreshing exchange rates... You can still checkout.</span>
+                                </div>
+                            )}
+
                             <div className="flex gap-2">
                                 <Button
                                     size="lg"
                                     className="flex-[3] h-14 text-xl shadow-lg shadow-primary/20 rounded-2xl"
                                     onClick={handleCheckout}
-                                    disabled={cart.length === 0 || isLoading || (cart.some(item => products.find(p => p.id === item.product_id)?.currency !== settlementCurrency) && (status === 'error' || !exchangeData))}
+                                    disabled={cart.length === 0 || isLoading || hasTrulyMissingRates}
                                 >
                                     {isLoading ? (
                                         <Loader2 className="w-6 h-6 animate-spin mr-2" />
@@ -1994,11 +2146,74 @@ export function POS() {
                     }
                 }}
             />
-        </div >
+        </div>
     )
 }
 
 // --- Shared Components ---
+
+const ExchangeTicker = ({
+    exchangeData,
+    eurRates,
+    tryRates,
+    status,
+    currencyStatus,
+    features,
+    t
+}: any) => {
+    return (
+        <div
+            className="h-9 flex items-center bg-background/50 backdrop-blur-sm border-y border-primary/5 overflow-hidden"
+            style={{ '--duration': '7s' } as React.CSSProperties}
+        >
+            <div className="flex animate-marquee whitespace-nowrap min-w-full items-center py-1">
+                {[...Array(4)].map((_, groupIdx) => (
+                    <div key={groupIdx} className="flex items-center">
+                        {/* USD */}
+                        {exchangeData && (
+                            <div className="flex items-center gap-2 px-6">
+                                <div className={cn(
+                                    "w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]",
+                                    currencyStatus?.usd === 'loading' && "animate-pulse"
+                                )} />
+                                <span className="text-[11px] font-bold text-primary/80 uppercase tracking-tight">USD/IQD:</span>
+                                <span className="text-[11px] font-black text-primary">
+                                    {status === 'error' && !exchangeData ? t('common.offline') || 'Offline' : formatCurrency(exchangeData.rate, 'iqd', features.iqd_display_preference)}
+                                </span>
+                            </div>
+                        )}
+                        {/* EUR */}
+                        {features.eur_conversion_enabled && eurRates.eur_iqd && (
+                            <div className="flex items-center gap-2 px-6 border-l border-primary/10">
+                                <div className={cn(
+                                    "w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]",
+                                    currencyStatus?.eur === 'loading' && "animate-pulse"
+                                )} />
+                                <span className="text-[11px] font-bold text-primary/80 uppercase tracking-tight">EUR/IQD:</span>
+                                <span className="text-[11px] font-black text-primary">
+                                    {status === 'error' && !eurRates.eur_iqd ? t('common.offline') || 'Offline' : formatCurrency(eurRates.eur_iqd.rate, 'iqd', features.iqd_display_preference)}
+                                </span>
+                            </div>
+                        )}
+                        {/* TRY */}
+                        {features.try_conversion_enabled && tryRates.try_iqd && (
+                            <div className="flex items-center gap-2 px-6 border-l border-primary/10">
+                                <div className={cn(
+                                    "w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]",
+                                    currencyStatus?.try === 'loading' && "animate-pulse"
+                                )} />
+                                <span className="text-[11px] font-bold text-primary/80 uppercase tracking-tight">TRY/IQD:</span>
+                                <span className="text-[11px] font-black text-primary">
+                                    {status === 'error' && !tryRates.try_iqd ? t('common.offline') || 'Offline' : formatCurrency(tryRates.try_iqd.rate, 'iqd', features.iqd_display_preference)}
+                                </span>
+                            </div>
+                        )}
+                    </div>
+                ))}
+            </div>
+        </div>
+    )
+}
 
 interface ProductImageProps {
     url?: string
@@ -2051,88 +2266,140 @@ interface MobileHeaderProps {
     onOpenHeldSales: () => void
     t: any
     toast: any
+    showExchangeTicker: boolean
+    setShowExchangeTicker: (s: boolean) => void
+    eurRates: any
+    tryRates: any
+    status: any
+    currencyStatus: any
+    features: any
 }
 
-const MobileHeader = ({ mobileView, setMobileView, totalItems, refreshExchangeRate, exchangeData, heldSalesCount, onOpenHeldSales, t, toast }: MobileHeaderProps) => {
+function MobileHeader({
+    mobileView,
+    setMobileView,
+    totalItems,
+    refreshExchangeRate,
+    exchangeData,
+    heldSalesCount,
+    onOpenHeldSales,
+    t,
+    toast,
+    showExchangeTicker,
+    setShowExchangeTicker,
+    eurRates,
+    tryRates,
+    status,
+    currencyStatus,
+    features
+}: MobileHeaderProps) {
     return (
-        <div className={cn(
-            "flex items-center justify-between px-4 py-3 bg-card border-b border-border sticky top-0 z-50 lg:hidden",
-            "pt-[calc(0.75rem+var(--safe-area-top))]"
-        )}>
-            <button
-                className="p-2 -ms-2 rounded-xl hover:bg-secondary transition-colors"
-                onClick={() => window.dispatchEvent(new CustomEvent('open-mobile-sidebar'))}
-            >
-                <Menu className="w-6 h-6 text-muted-foreground" />
-            </button>
-            <button
-                className="bg-secondary/80 backdrop-blur-md px-6 py-2.5 rounded-full flex items-center gap-2 shadow-sm border border-border/50 relative active:scale-95 transition-all"
-                onClick={() => setMobileView(mobileView === 'grid' ? 'cart' : 'grid')}
-            >
-                <ShoppingCart className="w-5 h-5" />
-                <span className="font-bold text-sm tracking-tight">{mobileView === 'grid' ? 'Cart' : 'Catalog'}</span>
-                {totalItems > 0 && (
-                    <span className="absolute -top-1.5 -right-1.5 bg-emerald-500 text-white text-[10px] w-5 h-5 flex items-center justify-center rounded-full border-2 border-background font-bold shadow-lg animate-in zoom-in">
-                        {totalItems}
-                    </span>
-                )}
-            </button>
+        <div className="lg:hidden sticky top-0 z-50">
+            <div className={cn(
+                "flex items-center justify-between px-4 py-3 bg-card border-b border-border",
+                "pt-[calc(0.75rem+var(--safe-area-top))]"
+            )}>
+                <button
+                    className="p-2 -ms-2 rounded-xl hover:bg-secondary transition-colors"
+                    onClick={() => window.dispatchEvent(new CustomEvent('open-mobile-sidebar'))}
+                >
+                    <Menu className="w-6 h-6 text-muted-foreground" />
+                </button>
+                <button
+                    className="bg-secondary/80 backdrop-blur-md px-6 py-2.5 rounded-full flex items-center gap-2 shadow-sm border border-border/50 relative active:scale-95 transition-all"
+                    onClick={() => setMobileView(mobileView === 'grid' ? 'cart' : 'grid')}
+                >
+                    <ShoppingCart className="w-5 h-5" />
+                    <span className="font-bold text-sm tracking-tight">{mobileView === 'grid' ? 'Cart' : 'Catalog'}</span>
+                    {totalItems > 0 && (
+                        <span className="absolute -top-1.5 -right-1.5 bg-emerald-500 text-white text-[10px] w-5 h-5 flex items-center justify-center rounded-full border-2 border-background font-bold shadow-lg animate-in zoom-in">
+                            {totalItems}
+                        </span>
+                    )}
+                </button>
 
-            {/* Actions Area */}
-            <div className="flex items-center gap-1 -me-2">
-                {/* Held Sales Button (Mobile) */}
-                {heldSalesCount > 0 && (
-                    <button
-                        className="p-2 rounded-xl hover:bg-secondary transition-colors relative"
-                        onClick={onOpenHeldSales}
-                    >
-                        <Archive className="w-5 h-5 text-primary" />
-                        <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-primary rounded-full border border-background shadow-sm" />
-                    </button>
-                )}
-
-                {/* Live Rate Modal (Mobile) */}
-                <Dialog>
-                    <DialogTrigger asChild>
-                        <button className="p-2 rounded-xl hover:bg-secondary transition-colors cursor-pointer text-muted-foreground">
-                            <TrendingUp className="w-6 h-6" />
+                {/* Actions Area */}
+                <div className="flex items-center gap-1 -me-2">
+                    {/* Held Sales Button (Mobile) */}
+                    {heldSalesCount > 0 && (
+                        <button
+                            className="p-2 rounded-xl hover:bg-secondary transition-colors relative"
+                            onClick={onOpenHeldSales}
+                        >
+                            <Archive className="w-5 h-5 text-primary" />
+                            <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-primary rounded-full border border-background shadow-sm" />
                         </button>
-                    </DialogTrigger>
-                    <DialogContent className="max-w-[calc(100vw-2rem)] rounded-2xl p-0 overflow-hidden border-emerald-500/20">
+                    )}
 
-                        <DialogHeader className="p-6 border-b bg-emerald-500/5 items-start rtl:items-start text-start rtl:text-start">
-                            <DialogTitle className="flex items-center gap-2 text-emerald-600">
-                                <Coins className="w-5 h-5" />
-                                {t('common.exchangeRates')}
-                            </DialogTitle>
-                        </DialogHeader>
+                    {/* Live Rate Modal (Mobile) */}
+                    <Dialog>
+                        <DialogTrigger asChild>
+                            <button className="p-2 rounded-xl hover:bg-secondary transition-colors cursor-pointer text-muted-foreground">
+                                <TrendingUp className="w-6 h-6" />
+                            </button>
+                        </DialogTrigger>
+                        <DialogContent className="max-w-[calc(100vw-2rem)] rounded-2xl p-0 overflow-hidden border-emerald-500/20">
 
-                        <div className="p-2">
-                            <ExchangeRateList isMobile={true} />
-                        </div>
+                            <DialogHeader className="p-6 border-b bg-emerald-500/5 items-start rtl:items-start text-start rtl:text-start">
+                                <DialogTitle className="flex items-center gap-2 text-emerald-600">
+                                    <Coins className="w-5 h-5" />
+                                    {t('common.exchangeRates')}
+                                </DialogTitle>
+                            </DialogHeader>
 
-                        <div className="p-4 bg-secondary/30 flex flex-col gap-2">
-                            <div className="flex gap-2 w-full">
-                                <div className="flex-1" /> {/* Spacer since converter needs location hook not available here easily unless simplified */}
-                                <Button
-                                    className="flex-1"
-                                    onClick={() => {
-                                        refreshExchangeRate();
-                                        toast({
-                                            title: t('pos.ratesUpdated') || 'Rates Updated',
-                                            description: `USD/IQD: ${exchangeData?.rate || '...'}`,
-                                            duration: 2000
-                                        });
-                                    }}
-                                >
-                                    <RefreshCw className="w-4 h-4 mr-2" />
-                                    {t('common.refresh')}
-                                </Button>
+                            <div className="p-2">
+                                <ExchangeRateList isMobile={true} />
                             </div>
-                        </div>
-                    </DialogContent>
-                </Dialog>
+
+                            <div className="p-4 bg-secondary/30 flex flex-col gap-2">
+                                <div className="flex gap-2 w-full">
+                                    {!showExchangeTicker && (
+                                        <Button
+                                            variant="outline"
+                                            className="flex-1 border-primary/20 text-primary hover:bg-primary/5 h-11 rounded-xl font-bold"
+                                            onClick={() => setShowExchangeTicker(true)}
+                                        >
+                                            <TrendingUp className="w-4 h-4 mr-2" />
+                                            {t('pos.showTicker') || 'Show Ticker'}
+                                        </Button>
+                                    )}
+                                    {showExchangeTicker && <div className="flex-1" />}
+                                    <Button
+                                        className="flex-1 h-11 rounded-xl font-bold"
+                                        onClick={() => {
+                                            refreshExchangeRate();
+                                            toast({
+                                                title: t('pos.ratesUpdated') || 'Rates Updated',
+                                                description: `USD/IQD: ${exchangeData?.rate || '...'}`,
+                                                duration: 2000
+                                            });
+                                        }}
+                                    >
+                                        <RefreshCw className="w-4 h-4 mr-2" />
+                                        {t('common.refresh')}
+                                    </Button>
+                                </div>
+                            </div>
+                        </DialogContent>
+                    </Dialog>
+                </div>
             </div>
+            {showExchangeTicker && (
+                <div
+                    className="cursor-pointer active:bg-primary/5 transition-colors border-t border-border/50"
+                    onClick={() => setShowExchangeTicker(false)}
+                >
+                    <ExchangeTicker
+                        exchangeData={exchangeData}
+                        eurRates={eurRates}
+                        tryRates={tryRates}
+                        status={status}
+                        currencyStatus={currencyStatus}
+                        features={features}
+                        t={t}
+                    />
+                </div>
+            )}
         </div>
     )
 }
@@ -2154,170 +2421,172 @@ interface MobileGridProps {
     setSelectedCategory: (id: string) => void
 }
 
-const MobileGrid = ({ t, search, setSearch, setIsSkuModalOpen, setIsBarcodeModalOpen, filteredProducts, cart, addToCart, updateQuantity, features, getDisplayImageUrl, categories, selectedCategory, setSelectedCategory }: MobileGridProps) => (
-    <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-right-4 duration-300">
-        {/* Search & Tool Bar */}
-        <div className="flex items-center gap-2 p-4 pb-0">
-            <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input
-                    placeholder={t('pos.searchPlaceholder') || "Search products..."}
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    className="pl-10 h-12 rounded-2xl bg-muted/30 border-none shadow-inner text-base"
-                />
+function MobileGrid({ t, search, setSearch, setIsSkuModalOpen, setIsBarcodeModalOpen, filteredProducts, cart, addToCart, updateQuantity, features, getDisplayImageUrl, categories, selectedCategory, setSelectedCategory }: MobileGridProps) {
+    return (
+        <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-right-4 duration-300">
+            {/* Search & Tool Bar */}
+            <div className="flex items-center gap-2 p-4 pb-0">
+                <div className="relative flex-1">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Input
+                        placeholder={t('pos.searchPlaceholder') || "Search products..."}
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
+                        className="pl-10 h-12 rounded-2xl bg-muted/30 border-none shadow-inner text-base"
+                    />
+                </div>
+                <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-12 w-12 rounded-2xl border-none bg-muted/30"
+                    onClick={() => setIsSkuModalOpen(true)}
+                    title="Enter SKU"
+                >
+                    <Barcode className="w-5 h-5 text-muted-foreground" />
+                </Button>
+                <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-12 w-12 rounded-2xl border-none bg-muted/30"
+                    onClick={() => setIsBarcodeModalOpen(true)}
+                >
+                    <Camera className="w-5 h-5 text-muted-foreground" />
+                </Button>
             </div>
-            <Button
-                variant="outline"
-                size="icon"
-                className="h-12 w-12 rounded-2xl border-none bg-muted/30"
-                onClick={() => setIsSkuModalOpen(true)}
-                title="Enter SKU"
-            >
-                <Barcode className="w-5 h-5 text-muted-foreground" />
-            </Button>
-            <Button
-                variant="outline"
-                size="icon"
-                className="h-12 w-12 rounded-2xl border-none bg-muted/30"
-                onClick={() => setIsBarcodeModalOpen(true)}
-            >
-                <Camera className="w-5 h-5 text-muted-foreground" />
-            </Button>
-        </div>
 
-        {/* Categories */}
-        <div className="flex gap-2 overflow-x-auto px-4 py-2 scrollbar-none no-scrollbar">
-            <button
-                key="all"
-                onClick={() => setSelectedCategory('all')}
-                className={cn(
-                    "whitespace-nowrap px-6 py-2.5 rounded-full text-sm font-bold transition-all",
-                    selectedCategory === 'all' ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20" : "bg-card border border-border text-muted-foreground"
-                )}
-            >
-                {t('common.all') || 'All Items'}
-            </button>
-            <button
-                key="none"
-                onClick={() => setSelectedCategory('none')}
-                className={cn(
-                    "whitespace-nowrap px-6 py-2.5 rounded-full text-sm font-bold transition-all",
-                    selectedCategory === 'none' ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20" : "bg-card border border-border text-muted-foreground"
-                )}
-            >
-                {t('categories.noCategory') || 'No Category'}
-            </button>
-            {categories.map((cat) => (
+            {/* Categories */}
+            <div className="flex gap-2 overflow-x-auto px-4 py-2 scrollbar-none no-scrollbar">
                 <button
-                    key={cat.id}
-                    onClick={() => setSelectedCategory(cat.id)}
+                    key="all"
+                    onClick={() => setSelectedCategory('all')}
                     className={cn(
                         "whitespace-nowrap px-6 py-2.5 rounded-full text-sm font-bold transition-all",
-                        selectedCategory === cat.id ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20" : "bg-card border border-border text-muted-foreground"
+                        selectedCategory === 'all' ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20" : "bg-card border border-border text-muted-foreground"
                     )}
                 >
-                    {cat.name}
+                    {t('common.all') || 'All Items'}
                 </button>
-            ))}
-        </div>
-
-        {/* Products Grid */}
-        <div className="grid grid-cols-2 gap-4 p-4 pt-0 pb-32">
-            {filteredProducts.map((product) => {
-                const cartItem = cart.find(i => i.product_id === product.id)
-                const inCartQuantity = cartItem?.quantity || 0
-                const remainingQuantity = product.quantity - inCartQuantity
-                const minStock = product.minStockLevel || 5
-                const isLowStock = remainingQuantity <= minStock
-                const isCriticalStock = remainingQuantity <= (minStock / 2)
-
-                return (
-                    <div
-                        key={product.id}
-                        className="bg-card rounded-[2rem] border border-border p-3 shadow-sm flex flex-col gap-3 group active:scale-[0.98] transition-all"
-                        onClick={(e) => {
-                            if ((e.target as HTMLElement).closest('button')) return;
-                            if (remainingQuantity > 0) addToCart(product);
-                        }}
+                <button
+                    key="none"
+                    onClick={() => setSelectedCategory('none')}
+                    className={cn(
+                        "whitespace-nowrap px-6 py-2.5 rounded-full text-sm font-bold transition-all",
+                        selectedCategory === 'none' ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20" : "bg-card border border-border text-muted-foreground"
+                    )}
+                >
+                    {t('categories.noCategory') || 'No Category'}
+                </button>
+                {categories.map((cat) => (
+                    <button
+                        key={cat.id}
+                        onClick={() => setSelectedCategory(cat.id)}
+                        className={cn(
+                            "whitespace-nowrap px-6 py-2.5 rounded-full text-sm font-bold transition-all",
+                            selectedCategory === cat.id ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20" : "bg-card border border-border text-muted-foreground"
+                        )}
                     >
-                        <div className="aspect-square bg-muted/30 rounded-[1.5rem] overflow-hidden relative">
-                            <ProductImage
-                                url={product.imageUrl}
-                                name={product.name}
-                                getDisplayImageUrl={getDisplayImageUrl}
-                                className="w-full h-full"
-                                fallbackIcon={<Zap className="w-10 h-10 absolute inset-0 m-auto opacity-10" />}
-                            />
+                        {cat.name}
+                    </button>
+                ))}
+            </div>
 
-                            {inCartQuantity > 0 && (
-                                <div className="absolute top-2 left-2 bg-emerald-500 text-white px-2 py-1 rounded-xl text-[10px] font-black animate-pop-in border border-emerald-400 shadow-sm z-10">
-                                    +{inCartQuantity}
-                                </div>
-                            )}
+            {/* Products Grid */}
+            <div className="grid grid-cols-2 gap-4 p-4 pt-0 pb-32">
+                {filteredProducts.map((product) => {
+                    const cartItem = cart.find(i => i.product_id === product.id)
+                    const inCartQuantity = cartItem?.quantity || 0
+                    const remainingQuantity = product.quantity - inCartQuantity
+                    const minStock = product.minStockLevel || 5
+                    const isLowStock = remainingQuantity <= minStock
+                    const isCriticalStock = remainingQuantity <= (minStock / 2)
 
-                            {/* Stock Badge */}
-                            <div className={cn(
-                                "absolute top-2 right-2 backdrop-blur-md px-2.5 py-1 rounded-xl text-[10px] font-black border transition-colors duration-300",
-                                remainingQuantity <= 0
-                                    ? "bg-destructive text-destructive-foreground border-destructive/20"
-                                    : isLowStock
-                                        ? isCriticalStock
-                                            ? "bg-red-500 text-white border-red-400 shadow-[0_0_8px_rgba(239,68,68,0.4)]"
-                                            : "bg-amber-400 text-amber-950 border-amber-300/50"
-                                        : "bg-primary/20 text-primary border-primary/20"
-                            )}>
-                                {remainingQuantity}
-                            </div>
-
-                            {remainingQuantity <= 0 && (
-                                <div className="absolute inset-0 bg-background/60 backdrop-blur-[2px] flex items-center justify-center text-xs font-bold text-destructive">
-                                    {t('pos.outOfStock') || 'Out of stock'}
-                                </div>
-                            )}
-                        </div>
-                        <div className="flex flex-col gap-1 px-1">
-                            <h3 className="font-bold text-sm line-clamp-1">{product.name}</h3>
-                            <div className="text-primary font-black text-sm">
-                                {formatCurrency(product.price, product.currency, features.iqd_display_preference)}
-                            </div>
-                        </div>
+                    return (
                         <div
-                            className="flex items-center justify-between bg-muted/30 rounded-2xl p-1 mt-auto"
-                            onClick={(e) => e.stopPropagation()}
+                            key={product.id}
+                            className="bg-card rounded-[2rem] border border-border p-3 shadow-sm flex flex-col gap-3 group active:scale-[0.98] transition-all"
+                            onClick={(e) => {
+                                if ((e.target as HTMLElement).closest('button')) return;
+                                if (remainingQuantity > 0) addToCart(product);
+                            }}
                         >
-                            <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8 rounded-xl hover:bg-background"
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    updateQuantity(product.id, -1);
-                                }}
-                                disabled={!cartItem}
+                            <div className="aspect-square bg-muted/30 rounded-[1.5rem] overflow-hidden relative">
+                                <ProductImage
+                                    url={product.imageUrl}
+                                    name={product.name}
+                                    getDisplayImageUrl={getDisplayImageUrl}
+                                    className="w-full h-full"
+                                    fallbackIcon={<Zap className="w-10 h-10 absolute inset-0 m-auto opacity-10" />}
+                                />
+
+                                {inCartQuantity > 0 && (
+                                    <div className="absolute top-2 left-2 bg-emerald-500 text-white px-2 py-1 rounded-xl text-[10px] font-black animate-pop-in border border-emerald-400 shadow-sm z-10">
+                                        +{inCartQuantity}
+                                    </div>
+                                )}
+
+                                {/* Stock Badge */}
+                                <div className={cn(
+                                    "absolute top-2 right-2 backdrop-blur-md px-2.5 py-1 rounded-xl text-[10px] font-black border transition-colors duration-300",
+                                    remainingQuantity <= 0
+                                        ? "bg-destructive text-destructive-foreground border-destructive/20"
+                                        : isLowStock
+                                            ? isCriticalStock
+                                                ? "bg-red-500 text-white border-red-400 shadow-[0_0_8px_rgba(239,68,68,0.4)]"
+                                                : "bg-amber-400 text-amber-950 border-amber-300/50"
+                                            : "bg-primary/20 text-primary border-primary/20"
+                                )}>
+                                    {remainingQuantity}
+                                </div>
+
+                                {remainingQuantity <= 0 && (
+                                    <div className="absolute inset-0 bg-background/60 backdrop-blur-[2px] flex items-center justify-center text-xs font-bold text-destructive">
+                                        {t('pos.outOfStock') || 'Out of stock'}
+                                    </div>
+                                )}
+                            </div>
+                            <div className="flex flex-col gap-1 px-1">
+                                <h3 className="font-bold text-sm line-clamp-1">{product.name}</h3>
+                                <div className="text-primary font-black text-sm">
+                                    {formatCurrency(product.price, product.currency, features.iqd_display_preference)}
+                                </div>
+                            </div>
+                            <div
+                                className="flex items-center justify-between bg-muted/30 rounded-2xl p-1 mt-auto"
+                                onClick={(e) => e.stopPropagation()}
                             >
-                                <Minus className="w-3 h-3" />
-                            </Button>
-                            <span className="font-bold text-sm min-w-4 text-center">{cartItem?.quantity || 0}</span>
-                            <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8 rounded-xl hover:bg-background text-primary"
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    addToCart(product);
-                                }}
-                                disabled={remainingQuantity <= 0}
-                            >
-                                <Plus className="w-3 h-3" />
-                            </Button>
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 rounded-xl hover:bg-background"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        updateQuantity(product.id, -1);
+                                    }}
+                                    disabled={!cartItem}
+                                >
+                                    <Minus className="w-3 h-3" />
+                                </Button>
+                                <span className="font-bold text-sm min-w-4 text-center">{cartItem?.quantity || 0}</span>
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 rounded-xl hover:bg-background text-primary"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        addToCart(product);
+                                    }}
+                                    disabled={remainingQuantity <= 0}
+                                >
+                                    <Plus className="w-3 h-3" />
+                                </Button>
+                            </div>
                         </div>
-                    </div>
-                )
-            })}
+                    )
+                })}
+            </div>
         </div>
-    </div>
-)
+    )
+}
 
 interface MobileCartProps {
     cart: CartItem[]
@@ -2339,193 +2608,438 @@ interface MobileCartProps {
     openPriceEdit: (productId: string, currentPrice: number) => void
     clearNegotiatedPrice: (productId: string) => void
     isAdmin: boolean
+    discountValue: string
+    setDiscountValue: (val: string) => void
+    discountType: 'percent' | 'amount'
+    setDiscountType: (type: 'percent' | 'amount') => void
+    hasTrulyMissingRates: boolean
+    hasLoadingRates: boolean
 }
 
-const MobileCart = ({ cart, removeFromCart, updateQuantity, features, totalAmount, settlementCurrency, paymentType, setPaymentType, digitalProvider, setDigitalProvider, handleCheckout, handleHoldSale, isLoading, getDisplayImageUrl, products, convertPrice, openPriceEdit, clearNegotiatedPrice, isAdmin }: MobileCartProps) => (
-    <div className="flex flex-col h-full animate-in fade-in slide-in-from-left-4 duration-300">
-        <div className="flex-1 overflow-y-auto p-4 space-y-4 pb-40">
-            {cart.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-20 opacity-30 gap-4">
-                    <ShoppingCart className="w-20 h-20" />
-                    <p className="font-bold text-lg">Your cart is empty</p>
-                </div>
-            ) : (
-                cart.map((item) => {
-                    const product = products.find(p => p.id === item.product_id)
-                    const originalCurrency = (product?.currency || 'usd') as CurrencyCode
-                    const settlementCurr = settlementCurrency as CurrencyCode
-                    const unitPrice = item.negotiated_price ?? item.price
-                    const convertedUnitPrice = convertPrice(unitPrice, originalCurrency, settlementCurr)
-                    const isExchanged = originalCurrency !== settlementCurr
+function MobileCart({
+    cart, removeFromCart, updateQuantity, features, totalAmount,
+    settlementCurrency, paymentType, setPaymentType, digitalProvider,
+    setDigitalProvider, handleCheckout, handleHoldSale, isLoading,
+    getDisplayImageUrl, products, convertPrice, openPriceEdit,
+    clearNegotiatedPrice, isAdmin,
+    discountValue, setDiscountValue, discountType, setDiscountType,
+    hasTrulyMissingRates, hasLoadingRates
+}: MobileCartProps) {
+    const [isExpanded, setIsExpanded] = useState(false)
+    const [isDragging, setIsDragging] = useState(false)
+    const [startY, setStartY] = useState<number | null>(null)
+    const [currentY, setCurrentY] = useState(0)
+    const panelRef = useRef<HTMLDivElement>(null)
+    const scrollContainerRef = useRef<HTMLDivElement>(null)
+    const [canScrollUp, setCanScrollUp] = useState(false)
+    const [canScrollDown, setCanScrollDown] = useState(false)
 
-                    return (
-                        <div key={item.product_id} className="flex gap-4 bg-card p-4 rounded-[2rem] border border-border shadow-sm group">
-                            <div className="w-20 h-20 bg-muted/30 rounded-2xl overflow-hidden shrink-0">
-                                <ProductImage
-                                    url={item.imageUrl}
-                                    name={item.name}
-                                    getDisplayImageUrl={getDisplayImageUrl}
-                                    className="w-full h-full"
-                                    fallbackIcon={<Zap className="w-8 h-8 opacity-10" />}
-                                />
-                            </div>
-                            <div className="flex-1 min-w-0 flex flex-col justify-between py-0.5">
-                                <div className="flex justify-between items-start gap-2">
-                                    <div className="flex flex-col min-w-0 flex-1">
-                                        <div className="flex items-center justify-between gap-2">
-                                            <h3 className="font-bold text-sm truncate flex-1">{item.name}</h3>
-                                            <div className="text-primary font-black text-sm whitespace-nowrap flex items-center gap-1">
-                                                {formatCurrency(convertedUnitPrice * item.quantity, settlementCurr, features.iqd_display_preference)}
-                                                {isAdmin && (
-                                                    <button
-                                                        onClick={() => openPriceEdit(item.product_id, item.negotiated_price ?? item.price)}
-                                                        className="p-1.5 rounded-lg bg-primary/10 text-primary border border-primary/20 transition-colors"
-                                                    >
-                                                        <Pencil className="w-3.5 h-3.5" />
-                                                    </button>
+    const checkScroll = useCallback(() => {
+        if (!scrollContainerRef.current) return
+        const { scrollTop, scrollHeight, clientHeight } = scrollContainerRef.current
+        setCanScrollUp(scrollTop > 10)
+        setCanScrollDown(scrollTop + clientHeight < scrollHeight - 10)
+    }, [])
+
+    useEffect(() => {
+        const container = scrollContainerRef.current
+        if (!container) return
+
+        const handleScroll = () => checkScroll()
+        container.addEventListener('scroll', handleScroll)
+
+        const observer = new ResizeObserver(() => checkScroll())
+        observer.observe(container)
+
+        // Initial and on cart change
+        checkScroll()
+
+        return () => {
+            container.removeEventListener('scroll', handleScroll)
+            observer.disconnect()
+        }
+    }, [cart.length, checkScroll])
+
+    const handleTouchStart = (e: React.TouchEvent) => {
+        setStartY(e.touches[0].clientY)
+        setIsDragging(true)
+    }
+
+    const handleTouchMove = (e: React.TouchEvent) => {
+        if (startY === null) return
+        const touchY = e.touches[0].clientY
+        let deltaY = touchY - startY
+
+        // Rubber-banding logic
+        if (isExpanded) {
+            // Dragging down is normal, dragging up rubber-bands
+            if (deltaY < 0) deltaY = deltaY * 0.2
+            setCurrentY(deltaY)
+        } else {
+            // Dragging up is normal, dragging down rubber-bands
+            if (deltaY > 0) deltaY = deltaY * 0.2
+            setCurrentY(deltaY)
+        }
+    }
+
+    const handleTouchEnd = () => {
+        // Snap threshold: 60px
+        if (Math.abs(currentY) > 60) {
+            if (isExpanded && currentY > 0) setIsExpanded(false)
+            else if (!isExpanded && currentY < 0) setIsExpanded(true)
+        }
+        setIsDragging(false)
+        setStartY(null)
+        setCurrentY(0)
+    }
+
+    const collapsedHeight = 120
+    // Derive progress (0 = collapsed, 1 = expanded)
+    // We use a 100px "active zone" for the cross-fade
+    const progress = isDragging
+        ? Math.min(1, Math.max(0, isExpanded ? 1 - (currentY / 100) : (-currentY / 100)))
+        : isExpanded ? 1 : 0
+
+    return (
+        <div className="flex flex-col h-full animate-in fade-in slide-in-from-left-4 duration-300 relative overflow-hidden overscroll-none">
+            {/* Scroll Indicators (Mobile) */}
+            {isExpanded && canScrollUp && (
+                <div className="absolute top-2 left-1/2 -translate-x-1/2 z-10 bg-background/80 backdrop-blur-sm p-1.5 rounded-full border border-border shadow-sm animate-bounce pointer-events-none">
+                    <ChevronUp className="w-4 h-4 text-primary" />
+                </div>
+            )}
+            {isExpanded && canScrollDown && (
+                <div className="absolute bottom-40 left-1/2 -translate-x-1/2 z-10 bg-background/80 backdrop-blur-sm p-1.5 rounded-full border border-border shadow-sm animate-bounce pointer-events-none">
+                    <ChevronDown className="w-4 h-4 text-primary" />
+                </div>
+            )}
+
+            <div
+                ref={scrollContainerRef}
+                className={cn(
+                    "flex-1 overflow-y-auto p-4 space-y-4 transition-all duration-300 overscroll-contain relative",
+                    "pb-32" // Perfectly matches the collapsedHeight (120px) to prevent overscroll
+                )}
+            >
+
+                {cart.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-20 opacity-30 gap-4">
+                        <ShoppingCart className="w-20 h-20" />
+                        <p className="font-bold text-lg">Your cart is empty</p>
+                    </div>
+                ) : (
+                    cart.map((item) => {
+                        const product = products.find(p => p.id === item.product_id)
+                        const originalCurrency = (product?.currency || 'usd') as CurrencyCode
+                        const settlementCurr = settlementCurrency as CurrencyCode
+                        const unitPrice = item.negotiated_price ?? item.price
+                        const convertedUnitPrice = convertPrice(unitPrice, originalCurrency, settlementCurr)
+                        const isExchanged = originalCurrency !== settlementCurr
+
+                        return (
+                            <div key={item.product_id} className="flex gap-4 bg-card p-4 rounded-[2rem] border border-border shadow-sm group">
+                                <div className="w-20 h-20 bg-muted/30 rounded-2xl overflow-hidden shrink-0">
+                                    <ProductImage
+                                        url={item.imageUrl}
+                                        name={item.name}
+                                        getDisplayImageUrl={getDisplayImageUrl}
+                                        className="w-full h-full"
+                                        fallbackIcon={<Zap className="w-8 h-8 opacity-10" />}
+                                    />
+                                </div>
+                                <div className="flex-1 min-w-0 flex flex-col justify-between py-0.5">
+                                    <div className="flex justify-between items-start gap-2">
+                                        <div className="flex flex-col min-w-0 flex-1">
+                                            <div className="flex items-center justify-between gap-2">
+                                                <h3 className="font-bold text-sm truncate flex-1">{item.name}</h3>
+                                                <div className="text-primary font-black text-sm whitespace-nowrap flex items-center gap-1">
+                                                    {formatCurrency(convertedUnitPrice * item.quantity, settlementCurr, features.iqd_display_preference)}
+                                                    {isAdmin && (
+                                                        <button
+                                                            onClick={() => openPriceEdit(item.product_id, item.negotiated_price ?? item.price)}
+                                                            className="p-1.5 rounded-lg bg-primary/10 text-primary border border-primary/20 transition-colors"
+                                                        >
+                                                            <Pencil className="w-3.5 h-3.5" />
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </div>
+
+                                            <div className="text-[10px] space-y-0.5 mt-1">
+                                                <div className={cn(
+                                                    "text-muted-foreground transition-all duration-300",
+                                                    item.negotiated_price !== undefined ? "line-through opacity-50" : ""
+                                                )}>
+                                                    {formatCurrency(item.price, originalCurrency, features.iqd_display_preference)} x {item.quantity}
+                                                </div>
+
+                                                {item.negotiated_price !== undefined && (
+                                                    <div className="text-emerald-500 font-bold flex items-center gap-1 animate-in slide-in-from-left-2 duration-300">
+                                                        {formatCurrency(item.negotiated_price, originalCurrency, features.iqd_display_preference)} x {item.quantity}
+                                                        <button
+                                                            onClick={() => clearNegotiatedPrice(item.product_id)}
+                                                            className="p-0.5 rounded-full hover:bg-destructive/10 text-destructive transition-colors"
+                                                        >
+                                                            <X className="w-2.5 h-2.5" />
+                                                        </button>
+                                                    </div>
+                                                )}
+
+                                                {isExchanged && (
+                                                    <div className="text-primary/40 font-medium">
+                                                        ≈ {formatCurrency(convertedUnitPrice, settlementCurr, features.iqd_display_preference)} each
+                                                    </div>
                                                 )}
                                             </div>
                                         </div>
-
-                                        <div className="text-[10px] space-y-0.5 mt-1">
-                                            <div className={cn(
-                                                "text-muted-foreground transition-all duration-300",
-                                                item.negotiated_price !== undefined ? "line-through opacity-50" : ""
-                                            )}>
-                                                {formatCurrency(item.price, originalCurrency, features.iqd_display_preference)} x {item.quantity}
-                                            </div>
-
-                                            {item.negotiated_price !== undefined && (
-                                                <div className="text-emerald-500 font-bold flex items-center gap-1 animate-in slide-in-from-left-2 duration-300">
-                                                    {formatCurrency(item.negotiated_price, originalCurrency, features.iqd_display_preference)} x {item.quantity}
-                                                    <button
-                                                        onClick={() => clearNegotiatedPrice(item.product_id)}
-                                                        className="p-0.5 rounded-full hover:bg-destructive/10 text-destructive transition-colors"
-                                                    >
-                                                        <X className="w-2.5 h-2.5" />
-                                                    </button>
-                                                </div>
-                                            )}
-
-                                            {isExchanged && (
-                                                <div className="text-primary/40 font-medium">
-                                                    ≈ {formatCurrency(convertedUnitPrice, settlementCurr, features.iqd_display_preference)} each
-                                                </div>
-                                            )}
-                                        </div>
+                                        <button
+                                            onClick={() => removeFromCart(item.product_id)}
+                                            className="p-2 -me-1 bg-destructive/10 text-destructive border border-destructive/20 rounded-xl transition-colors shrink-0"
+                                        >
+                                            <Trash2 className="w-4 h-4" />
+                                        </button>
                                     </div>
-                                    <button
-                                        onClick={() => removeFromCart(item.product_id)}
-                                        className="p-2 -me-1 bg-destructive/10 text-destructive border border-destructive/20 rounded-xl transition-colors shrink-0"
-                                    >
-                                        <Trash2 className="w-4 h-4" />
-                                    </button>
-                                </div>
 
-                                <div className="flex justify-end mt-2">
-                                    <div className="flex items-center gap-3 bg-muted/50 rounded-xl p-0.5 border border-border/50 h-fit">
-                                        <button onClick={() => updateQuantity(item.product_id, -1)} className="p-1.5 hover:bg-background rounded-lg transition-colors">
-                                            <Minus className="w-3 h-3" />
-                                        </button>
-                                        <span className="font-bold text-sm min-w-[0.5rem] text-center">{item.quantity}</span>
-                                        <button onClick={() => updateQuantity(item.product_id, 1)} className="p-1.5 hover:bg-background rounded-lg transition-colors text-primary">
-                                            <Plus className="w-3 h-3" />
-                                        </button>
+                                    <div className="flex justify-end mt-2">
+                                        <div className="flex items-center gap-3 bg-muted/50 rounded-xl p-0.5 border border-border/50 h-fit">
+                                            <button onClick={() => updateQuantity(item.product_id, -1)} className="p-1.5 hover:bg-background rounded-lg transition-colors">
+                                                <Minus className="w-3 h-3" />
+                                            </button>
+                                            <span className="font-bold text-sm min-w-[0.5rem] text-center">{item.quantity}</span>
+                                            <button onClick={() => updateQuantity(item.product_id, 1)} className="p-1.5 hover:bg-background rounded-lg transition-colors text-primary">
+                                                <Plus className="w-3 h-3" />
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
-                        </div>
-                    )
-                })
-            )}
-        </div>
-
-        {/* Bottom Panel */}
-        <div className={cn(
-            "bg-card border-t border-border rounded-t-[2.5rem] shadow-[0_-10px_40px_rgba(0,0,0,0.1)] p-6 space-y-6 sticky bottom-0 z-40",
-            "pb-[calc(1.5rem+var(--safe-area-bottom))]"
-        )}>
-            {/* Payment Method Toggle */}
-            <div className="flex bg-muted p-1 rounded-2xl gap-1">
-                <button
-                    onClick={() => setPaymentType('cash')}
-                    className={cn(
-                        "flex-1 py-3.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all",
-                        paymentType === 'cash' ? "bg-background shadow-md text-foreground" : "text-muted-foreground opacity-60"
-                    )}
-                >
-                    <CreditCard className="w-4 h-4" /> Cash
-                </button>
-                <button
-                    onClick={() => setPaymentType('digital')}
-                    className={cn(
-                        "flex-1 py-3.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all",
-                        paymentType === 'digital' ? "bg-background shadow-md text-foreground" : "text-muted-foreground opacity-60"
-                    )}
-                >
-                    <Zap className="w-4 h-4" /> Digital
-                </button>
+                        )
+                    })
+                )}
             </div>
 
-            {/* Digital Provider Sub-toggle */}
-            {paymentType === 'digital' && (
-                <div className="flex justify-center gap-3 animate-in zoom-in duration-200">
-                    {['fib', 'qicard', 'zaincash', 'fastpay'].map((provider) => (
-                        <button
-                            key={provider}
-                            onClick={() => setDigitalProvider(provider as any)}
-                            className={cn(
-                                "p-1 rounded-xl transition-all border-2",
-                                digitalProvider === provider ? "border-primary scale-110 shadow-lg" : "border-transparent opacity-40 grayscale"
-                            )}
-                        >
-                            <img
-                                src={`./icons/${provider === 'fib' ? 'fib.svg' : provider === 'qicard' ? 'qi.svg' : provider === 'zaincash' ? 'zain.svg' : 'fastpay.svg'}`}
-                                className="w-10 h-10 rounded-lg object-contain"
-                            />
-                        </button>
-                    ))}
-                </div>
-            )}
+            {/* Collapsible Bottom Panel */}
+            <div
+                ref={panelRef}
+                className={cn(
+                    "fixed bottom-0 left-0 right-0 bg-card border-t border-border shadow-[0_-10px_40px_rgba(0,0,0,0.1)] z-40 transition-all duration-500 ease-in-out px-6 pt-2 overscroll-none touch-none flex flex-col",
+                    "h-[75vh]", // Constant height
+                    isExpanded ? "rounded-t-[2.5rem]" : "rounded-t-[2rem]",
+                    isDragging && "duration-0 transition-none will-change-transform"
+                )}
+                style={{
+                    transform: isDragging
+                        ? `translateY(calc(${isExpanded ? '0px' : `75vh - ${collapsedHeight}px`} + ${currentY}px))`
+                        : isExpanded ? 'none' : `translateY(calc(75vh - ${collapsedHeight}px))`
+                }}
+            >
 
-            <div className="space-y-3">
-                <div className="flex justify-between items-center text-muted-foreground text-sm font-medium">
-                    <span>Subtotal</span>
-                    <span>{formatCurrency(totalAmount, settlementCurrency, features.iqd_display_preference)}</span>
+                {/* Drag Handle - Larger touch area */}
+                <div
+                    className="flex flex-col items-center gap-1.5 cursor-grab active:cursor-grabbing py-4 -mt-3 group touch-none"
+                    onTouchStart={handleTouchStart}
+                    onTouchMove={handleTouchMove}
+                    onTouchEnd={handleTouchEnd}
+                    onClick={() => setIsExpanded(!isExpanded)}
+                >
+                    <div className="w-12 h-1.5 bg-muted-foreground/20 rounded-full group-hover:bg-primary/30 transition-colors" />
                 </div>
-                <div className="flex justify-between items-center pt-2 border-t border-border/50">
-                    <span className="font-bold text-lg text-foreground">Total Amount</span>
-                    <div className="flex flex-col items-end">
-                        <span className="font-black text-2xl text-primary leading-none">
-                            {formatCurrency(totalAmount, settlementCurrency, features.iqd_display_preference)}
+
+                {/* Collapsed/Header View - touch-none to prevent background scroll */}
+                <div className="flex items-center justify-between py-2 touch-none">
+                    <div className="flex flex-col cursor-pointer" onClick={() => setIsExpanded(true)}>
+                        <div className="flex items-baseline gap-1.5">
+                            <span className="text-2xl font-black text-primary">
+                                {formatCurrency(totalAmount, settlementCurrency, features.iqd_display_preference)}
+                            </span>
+                            <span className="text-[10px] font-bold text-muted-foreground uppercase">{settlementCurrency}</span>
+                        </div>
+                        <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider -mt-1">
+                            {cart.length} {cart.length === 1 ? 'item' : 'items'} • {paymentType}
                         </span>
-                        <span className="text-[10px] uppercase font-bold text-primary/40 tracking-widest mt-1">{settlementCurrency}</span>
+                    </div>
+
+                    <div
+                        className="transition-opacity duration-300"
+                        style={{
+                            opacity: Math.max(0, 1 - progress * 2), // Fade out faster
+                            pointerEvents: progress > 0.3 ? 'none' : 'auto'
+                        }}
+                    >
+                        <Button
+                            className="h-12 px-6 rounded-2xl font-black shadow-lg shadow-primary/20 active:scale-95 transition-all text-primary-foreground"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                handleCheckout();
+                            }}
+                            disabled={cart.length === 0 || isLoading || hasTrulyMissingRates}
+                        >
+                            {isLoading ? <Loader2 className="animate-spin w-5 h-5" /> : (
+                                <div className="flex items-center gap-2">
+                                    <span>Checkout</span>
+                                    <ChevronRight className="w-4 h-4" />
+                                </div>
+                            )}
+                        </Button>
+                    </div>
+                </div>
+
+                {/* Expanded Content View - Scrollable area */}
+                <div
+                    className={cn(
+                        "flex-1 overflow-y-auto overscroll-contain touch-auto mt-4 transition-all duration-300",
+                        !isDragging && !isExpanded && "pointer-events-none"
+                    )}
+                    style={{
+                        opacity: progress,
+                        transform: `translateY(${(1 - progress) * 20}px)` // Subtle slide up
+                    }}
+                >
+                    <div className="space-y-6 pb-8">
+                        {/* Payment Method Toggle */}
+                        <div className="flex bg-muted p-1 rounded-2xl gap-1">
+                            <button
+                                onClick={() => setPaymentType('cash')}
+                                className={cn(
+                                    "flex-1 py-3.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all",
+                                    paymentType === 'cash' ? "bg-background shadow-md text-foreground" : "text-muted-foreground opacity-60"
+                                )}
+                            >
+                                <CreditCard className="w-4 h-4" /> Cash
+                            </button>
+                            <button
+                                onClick={() => setPaymentType('digital')}
+                                className={cn(
+                                    "flex-1 py-3.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all",
+                                    paymentType === 'digital' ? "bg-background shadow-md text-foreground" : "text-muted-foreground opacity-60"
+                                )}
+                            >
+                                <Zap className="w-4 h-4" /> Digital
+                            </button>
+                        </div>
+
+                        {/* Digital Provider Sub-toggle */}
+                        {paymentType === 'digital' && (
+                            <div className="flex justify-center gap-3 animate-in zoom-in duration-200">
+                                {['fib', 'qicard', 'zaincash', 'fastpay'].map((provider) => (
+                                    <button
+                                        key={provider}
+                                        onClick={() => setDigitalProvider(provider as any)}
+                                        className={cn(
+                                            "p-1 rounded-xl transition-all border-2",
+                                            digitalProvider === provider ? "border-primary scale-110 shadow-lg" : "border-transparent opacity-40 grayscale"
+                                        )}
+                                    >
+                                        <img
+                                            src={`./icons/${provider === 'fib' ? 'fib.svg' : provider === 'qicard' ? 'qi.svg' : provider === 'zaincash' ? 'zain.svg' : 'fastpay.svg'}`}
+                                            className="w-10 h-10 rounded-lg object-contain"
+                                        />
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+
+                        {/* Total Discount Input - Mobile Optimized */}
+                        <div className="flex flex-col gap-3">
+                            <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider ml-1">Discount</label>
+                            <div className="flex items-center gap-3 bg-muted/30 p-2 rounded-2xl border border-border/50 transition-all focus-within:border-primary/50 focus-within:bg-background">
+                                <div className="flex-1 relative">
+                                    <Input
+                                        type="number"
+                                        value={discountValue}
+                                        onChange={(e) => setDiscountValue(e.target.value)}
+                                        onFocus={(e) => e.target.select()}
+                                        className="h-12 bg-transparent border-none shadow-none focus-visible:ring-0 text-lg font-black placeholder:text-muted-foreground/40 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                        placeholder="0.00"
+                                    />
+                                </div>
+                                <div className="flex bg-muted p-1 rounded-xl gap-1 border border-border/10">
+                                    <button
+                                        onClick={() => setDiscountType('percent')}
+                                        className={cn(
+                                            "w-12 h-10 rounded-lg flex items-center justify-center text-sm font-black transition-all duration-200",
+                                            discountType === 'percent'
+                                                ? "bg-background text-foreground shadow-sm ring-1 ring-black/5"
+                                                : "text-muted-foreground/40 hover:text-muted-foreground"
+                                        )}
+                                    >
+                                        %
+                                    </button>
+                                    <button
+                                        onClick={() => setDiscountType('amount')}
+                                        className={cn(
+                                            "w-12 h-10 rounded-lg flex items-center justify-center text-sm font-black transition-all duration-200",
+                                            discountType === 'amount'
+                                                ? "bg-background text-foreground shadow-sm ring-1 ring-black/5"
+                                                : "text-muted-foreground/40 hover:text-muted-foreground"
+                                        )}
+                                    >
+                                        $
+                                    </button>
+                                </div>
+                            </div>
+                            {hasTrulyMissingRates ? (
+                                <div className="mx-1 text-xs text-destructive bg-destructive/10 border border-destructive/20 rounded-xl px-3 py-2.5 flex items-center gap-2 animate-in fade-in duration-300">
+                                    <RefreshCw className="w-3.5 h-3.5 flex-shrink-0" />
+                                    <span>Exchange rates unavailable. Check your connection or set manual rates.</span>
+                                </div>
+                            ) : hasLoadingRates && (
+                                <div className="mx-1 text-xs text-amber-500 bg-amber-500/10 border border-amber-500/20 rounded-xl px-3 py-2.5 flex items-center gap-2 animate-in fade-in duration-300">
+                                    <RefreshCw className="w-3.5 h-3.5 flex-shrink-0 animate-spin" />
+                                    <span>Refreshing rates... You can still checkout.</span>
+                                </div>
+                            )}
+
+                            <div className="space-y-3">
+                                <div className="flex justify-between items-center text-muted-foreground text-sm font-medium">
+                                    <span>Subtotal</span>
+                                    <span>{formatCurrency(totalAmount, settlementCurrency, features.iqd_display_preference)}</span>
+                                </div>
+                                <div className="flex justify-between items-center pt-2 border-t border-border/50">
+                                    <span className="font-bold text-lg text-foreground">Total Amount</span>
+                                    <div className="flex flex-col items-end">
+                                        <span className="font-black text-2xl text-primary leading-none">
+                                            {formatCurrency(totalAmount, settlementCurrency, features.iqd_display_preference)}
+                                        </span>
+                                        <span className="text-[10px] uppercase font-bold text-primary/40 tracking-widest mt-1">{settlementCurrency}</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="flex gap-2 pt-2">
+                                <Button
+                                    className="flex-[4] h-14 rounded-2xl text-lg font-black shadow-xl shadow-primary/20 active:scale-95 transition-all text-primary-foreground"
+                                    onClick={handleCheckout}
+                                    disabled={cart.length === 0 || isLoading || hasTrulyMissingRates}
+                                >
+                                    {isLoading ? <Loader2 className="animate-spin w-6 h-6" /> : (
+                                        <div className="flex items-center gap-2">
+                                            <span>Checkout</span>
+                                            <Plus className="w-5 h-5" />
+                                        </div>
+                                    )}
+                                </Button>
+                                <Button
+                                    variant="outline"
+                                    className="flex-1 h-14 rounded-2xl border-2 hover:bg-primary/5 hover:text-primary transition-all group px-0"
+                                    onClick={handleHoldSale}
+                                    disabled={cart.length === 0 || isLoading}
+                                >
+                                    <Archive className="w-6 h-6 group-hover:scale-110 transition-transform" />
+                                </Button>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
 
-            <div className="flex gap-2 pt-2">
-                <Button
-                    className="flex-[4] h-14 rounded-2xl text-lg font-black shadow-xl shadow-primary/20 active:scale-95 transition-all text-white"
-                    onClick={handleCheckout}
-                    disabled={cart.length === 0 || isLoading}
-                >
-                    {isLoading ? <Loader2 className="animate-spin w-6 h-6" /> : (
-                        <div className="flex items-center gap-2">
-                            <span>Checkout</span>
-                            <Plus className="w-5 h-5" />
-                        </div>
-                    )}
-                </Button>
-                <Button
-                    variant="outline"
-                    className="flex-1 h-14 rounded-2xl border-2 hover:bg-primary/5 hover:text-primary transition-all group px-0"
-                    onClick={handleHoldSale}
-                    disabled={cart.length === 0 || isLoading}
-                >
-                    <Archive className="w-6 h-6 group-hover:scale-110 transition-transform" />
-                </Button>
-            </div>
+            {/* Backdrop for expanded state */}
+            {isExpanded && (
+                <div
+                    className="fixed inset-0 bg-black/20 backdrop-blur-[2px] z-30 animate-in fade-in duration-300"
+                    onClick={() => setIsExpanded(false)}
+                />
+            )}
         </div>
-    </div>
-)
+    )
+}

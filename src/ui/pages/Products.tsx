@@ -608,6 +608,9 @@ export function Products() {
                                                         <div className="text-[11px] text-primary font-bold mt-0.5 opacity-80 uppercase tracking-wide">
                                                             {getCategoryName(product.categoryId)}
                                                         </div>
+                                                        <div className="text-[10px] font-medium text-muted-foreground/60 flex items-center gap-1 mt-0.5 uppercase tracking-wider">
+                                                            {getStorageName(product.storageId)}
+                                                        </div>
                                                     </div>
                                                     <div className="text-right flex flex-col justify-center">
                                                         <div className="text-lg font-black text-primary leading-tight">

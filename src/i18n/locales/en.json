@@ -33,6 +33,7 @@
         "invoice": "Invoice",
         "currency": "Currency",
         "date": "Date",
+        "item": "Item",
         "items": "Items",
         "download": "Download",
         "ViewAndDownload": "View and Download",
@@ -676,6 +677,7 @@
         "basedOnRevenue": "Based on {{month}} revenue",
         "convert": "Convert",
         "swap": "Swap",
+        "showTicker": "Show Ticker",
         "amount": "Amount",
         "from": "From",
         "to": "To",
@@ -729,6 +731,10 @@
         "filters": {
             "cashier": "Cashier",
             "allCashiers": "All Cashiers"
+        },
+        "view": {
+            "table": "Sales Details",
+            "grid": "Sales Grid"
         },
         "export": {
             "button": "Excel Export",
