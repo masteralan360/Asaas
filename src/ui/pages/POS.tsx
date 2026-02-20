@@ -1264,11 +1264,6 @@ export function POS() {
                         toast={toast}
                         showExchangeTicker={showExchangeTicker}
                         setShowExchangeTicker={setShowExchangeTicker}
-                        eurRates={eurRates}
-                        tryRates={tryRates}
-                        status={status}
-                        currencyStatus={currencyStatus}
-                        features={features}
                     />
                     <div className={cn(
                         "flex-1 relative no-scrollbar",
@@ -2287,11 +2282,6 @@ interface MobileHeaderProps {
     toast: any
     showExchangeTicker: boolean
     setShowExchangeTicker: (s: boolean) => void
-    eurRates: any
-    tryRates: any
-    status: any
-    currencyStatus: any
-    features: any
 }
 
 function MobileHeader({
@@ -2305,12 +2295,7 @@ function MobileHeader({
     t,
     toast,
     showExchangeTicker,
-    setShowExchangeTicker,
-    eurRates,
-    tryRates,
-    status,
-    currencyStatus,
-    features
+    setShowExchangeTicker
 }: MobileHeaderProps) {
     return (
         <div className="lg:hidden sticky top-0 z-50">
