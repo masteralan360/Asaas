@@ -1270,7 +1270,26 @@ export function POS() {
                         currencyStatus={currencyStatus}
                         features={features}
                     />
-                    <div className="flex-1 overflow-hidden relative">
+                    <div className={cn(
+                        "flex-1 relative no-scrollbar",
+                        mobileView === 'grid' ? "overflow-y-auto" : "overflow-hidden"
+                    )}>
+                        {showExchangeTicker && (
+                            <div
+                                className="cursor-pointer active:bg-primary/5 transition-colors border-b border-border/50 bg-background"
+                                onClick={() => setShowExchangeTicker(false)}
+                            >
+                                <ExchangeTicker
+                                    exchangeData={exchangeData}
+                                    eurRates={eurRates}
+                                    tryRates={tryRates}
+                                    status={status}
+                                    currencyStatus={currencyStatus}
+                                    features={features}
+                                    t={t}
+                                />
+                            </div>
+                        )}
                         {mobileView === 'grid' ? (
                             <MobileGrid
                                 t={t}
@@ -2384,22 +2403,6 @@ function MobileHeader({
                     </Dialog>
                 </div>
             </div>
-            {showExchangeTicker && (
-                <div
-                    className="cursor-pointer active:bg-primary/5 transition-colors border-t border-border/50"
-                    onClick={() => setShowExchangeTicker(false)}
-                >
-                    <ExchangeTicker
-                        exchangeData={exchangeData}
-                        eurRates={eurRates}
-                        tryRates={tryRates}
-                        status={status}
-                        currencyStatus={currencyStatus}
-                        features={features}
-                        t={t}
-                    />
-                </div>
-            )}
         </div>
     )
 }
