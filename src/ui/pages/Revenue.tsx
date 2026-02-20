@@ -789,13 +789,20 @@ export function Revenue() {
                         {/* Sales Overview */}
                         <Card className="rounded-[2.5rem] border-border/40 shadow-sm bg-card overflow-hidden">
                             <CardHeader className="pb-2">
-                                <div className="flex items-center gap-3">
-                                    <div className="p-2 bg-blue-500/10 rounded-xl text-blue-500">
-                                        <BarChart3 className="w-5 h-5" />
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-3">
+                                        <div className="p-2 bg-blue-500/10 rounded-xl text-blue-500">
+                                            <BarChart3 className="w-5 h-5" />
+                                        </div>
+                                        <CardTitle className="text-sm font-black uppercase tracking-widest text-foreground">
+                                            {t('revenue.salesOverview') || 'Sales Overview'}
+                                        </CardTitle>
                                     </div>
-                                    <CardTitle className="text-sm font-black uppercase tracking-widest text-foreground">
-                                        {t('revenue.salesOverview') || 'Sales Overview'}
-                                    </CardTitle>
+                                    <div className="flex items-center gap-3 text-[9px] sm:text-[10px] font-bold uppercase tracking-widest text-muted-foreground mr-2">
+                                        <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-emerald-500" />{t('revenue.table.profit') || 'Profit'}</div>
+                                        <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-orange-500" />{t('revenue.table.cost') || 'Cost'}</div>
+                                        <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-blue-500" />{t('revenue.table.revenue') || 'Revenue'}</div>
+                                    </div>
                                 </div>
                             </CardHeader>
                             <CardContent>
@@ -818,12 +825,20 @@ export function Revenue() {
                                                     if (active && payload && payload.length) {
                                                         return (
                                                             <div className="bg-background/95 backdrop-blur-sm border border-border shadow-xl p-3 rounded-2xl">
-                                                                <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-1">
+                                                                <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-1.5 flex justify-center">
                                                                     {payload[0].payload.date}
                                                                 </p>
-                                                                <p className="text-sm font-black text-blue-500">
-                                                                    {formatCurrency(payload[0].value as number, currencySettings.currency as any, currencySettings.iqdPreference)}
-                                                                </p>
+                                                                <div className="space-y-0.5 flex flex-col items-center">
+                                                                    <p className="text-sm font-black text-blue-500">
+                                                                        {formatCurrency(payload[0].payload.revenue as number, currencySettings.currency as any, currencySettings.iqdPreference)}
+                                                                    </p>
+                                                                    <p className="text-sm font-black text-orange-500">
+                                                                        {formatCurrency(payload[0].payload.cost as number, currencySettings.currency as any, currencySettings.iqdPreference)}
+                                                                    </p>
+                                                                    <p className="text-sm font-black text-emerald-500">
+                                                                        {formatCurrency(payload[0].payload.profit as number, currencySettings.currency as any, currencySettings.iqdPreference)}
+                                                                    </p>
+                                                                </div>
                                                             </div>
                                                         )
                                                     }

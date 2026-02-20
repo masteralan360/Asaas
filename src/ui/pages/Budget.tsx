@@ -14,7 +14,8 @@ import {
     User,
     AlertTriangle,
     Repeat,
-    Circle
+    Circle,
+    Lock
 } from 'lucide-react'
 import { useWorkspace } from '@/workspace'
 import { useExpenses, createExpense, deleteExpense, updateExpense, useBudgetAllocation, useMonthlyRevenue, setBudgetAllocation, useEmployees, useWorkspaceUsers } from '@/local-db'
@@ -100,6 +101,18 @@ export default function Budget() {
     const handleNextMonth = () => setSelectedMonth(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))
 
     const [expenseAmountDisplay, setExpenseAmountDisplay] = useState<string>('')
+    const [lockConfirmExpense, setLockConfirmExpense] = useState<any>(null)
+
+    const handleConfirmLock = async () => {
+        if (!lockConfirmExpense?.expenseRecordId) return
+        try {
+            await updateExpense(lockConfirmExpense.expenseRecordId, { isLocked: true })
+            toast({ description: t('budget.expenseLocked', 'Salary locked for this month') })
+            setLockConfirmExpense(null)
+        } catch (e) {
+            toast({ description: t('budget.errorLocking', 'Error locking salary'), variant: 'destructive' })
+        }
+    }
 
     const metrics = useMemo(() => {
         const year = selectedMonth.getFullYear()
@@ -111,6 +124,7 @@ export default function Budget() {
             const date = new Date(e.dueDate)
             // One-time expenses ONLY in their month
             if (e.type === 'one-time') {
+                if (e.category === 'payroll' && e.employeeId) return false
                 return date >= monthStart && date <= monthEnd && !e.isDeleted
             }
             return false
@@ -173,22 +187,38 @@ export default function Budget() {
                 const currency = (emp.salaryCurrency as any) || 'usd'
                 const pDay = Number(emp.salaryPayday) || 30
                 let payDate = new Date(year, month, Math.min(pDay, new Date(year, month + 1, 0).getDate()))
-                const status = today >= payDate ? 'paid' : 'pending'
+                const existingPayrollExpense = expenses.find(e =>
+                    e.type === 'one-time' &&
+                    e.category === 'payroll' &&
+                    e.employeeId === emp.id &&
+                    new Date(e.dueDate) >= monthStart &&
+                    new Date(e.dueDate) <= monthEnd &&
+                    !e.isDeleted
+                )
+
+                const status = existingPayrollExpense ? 'paid' : 'pending'
                 const baseAmount = convertToStoreBase(amount, currency)
 
                 if (status === 'paid') personnelPaid += baseAmount
                 else personnelPending += baseAmount
 
+                // Determine effective currency and amount from existing record if paid
+                const finalAmount = existingPayrollExpense ? existingPayrollExpense.amount : amount
+                const finalCurrency = existingPayrollExpense ? existingPayrollExpense.currency : currency
+
                 virtualExpenses.push({
-                    id: `v-salary-${emp.id}`,
+                    id: existingPayrollExpense ? existingPayrollExpense.id : `v-salary-${emp.id}`,
                     description: `${emp.name} (${t('hr.salary', 'Salary')})`,
-                    amount,
-                    currency,
+                    amount: finalAmount,
+                    currency: finalCurrency,
                     category: 'payroll',
                     status,
-                    dueDate: payDate.toISOString(),
+                    dueDate: existingPayrollExpense ? existingPayrollExpense.dueDate : payDate.toISOString(),
                     isVirtual: true,
-                    type: 'recurring'
+                    type: 'recurring',
+                    employeeId: emp.id,
+                    expenseRecordId: existingPayrollExpense?.id,
+                    isLocked: existingPayrollExpense?.isLocked || false
                 })
             }
         })
@@ -315,10 +345,29 @@ export default function Budget() {
     }
 
     const handleToggleStatus = async (expense: any) => {
-        if (!workspaceId) return
-
+        if (!workspaceId || expense.isLocked) return
         try {
-            if (expense.isRecurringVirtual) {
+            if (expense.isVirtual && expense.category === 'payroll' && expense.employeeId) {
+                if (expense.status === 'pending') {
+                    await createExpense(workspaceId, {
+                        description: expense.description,
+                        type: 'one-time',
+                        category: 'payroll',
+                        amount: expense.amount,
+                        currency: expense.currency,
+                        status: 'paid',
+                        dueDate: expense.dueDate,
+                        paidAt: new Date().toISOString(),
+                        snoozeUntil: null,
+                        snoozeCount: 0,
+                        employeeId: expense.employeeId
+                    })
+                    toast({ description: t('budget.expensePaid', 'Salary marked as paid') })
+                } else if (expense.expenseRecordId) {
+                    await deleteExpense(expense.expenseRecordId)
+                    toast({ description: t('budget.expenseUnpaid', 'Salary marked as unpaid') })
+                }
+            } else if (expense.isRecurringVirtual) {
                 // Determine due date from the virtual expense
                 // expense.dueDate is already projected to the correct month in metrics
                 await createExpense(workspaceId, {
@@ -589,17 +638,20 @@ export default function Budget() {
                         key={expense.id}
                         className={cn(
                             "flex items-center justify-between p-4 rounded-xl border transition-shadow group",
-                            expense.isVirtual
-                                ? 'bg-blue-500/5 border-blue-500/20 hover:shadow-blue-500/10'
-                                : 'bg-card border-border hover:shadow-md',
+                            expense.isVirtual && !(expense as any).isRecurringVirtual && expense.status === 'paid'
+                                ? 'bg-emerald-500/5 border-emerald-500/20 hover:shadow-emerald-500/10'
+                                : expense.isVirtual && !(expense as any).isRecurringVirtual && expense.status === 'pending'
+                                    ? 'bg-blue-500/5 border-blue-500/20 hover:shadow-blue-500/10'
+                                    : 'bg-card border-border hover:shadow-md',
                             (expense as any).isFired && "opacity-40 grayscale brightness-75 bg-muted/20"
                         )}
                     >
                         <div className="flex items-center gap-4">
-                            <div className={`p-2.5 rounded-lg ${expense.isVirtual ? 'bg-blue-500/10 text-blue-500' :
-                                expense.status === 'paid' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-amber-500/10 text-amber-500'
+                            <div className={`p-2.5 rounded-lg ${expense.isVirtual && !(expense as any).isRecurringVirtual
+                                ? (expense.status === 'paid' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-blue-500/10 text-blue-500')
+                                : expense.status === 'paid' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-amber-500/10 text-amber-500'
                                 }`}>
-                                {expense.isVirtual ? <User className="w-5 h-5" /> :
+                                {expense.isVirtual && !(expense as any).isRecurringVirtual ? <User className="w-5 h-5" /> :
                                     expense.status === 'paid' ? <CheckCircle2 className="w-5 h-5" /> : <Clock className="w-5 h-5" />}
                             </div>
                             <div>
@@ -621,8 +673,10 @@ export default function Budget() {
                             <div className="text-end">
                                 <div className={cn(
                                     "font-bold",
-                                    expense.isVirtual && !(expense as any).isFired && 'text-blue-600',
-                                    (expense as any).isFired && 'text-muted-foreground'
+                                    (expense as any).isFired ? 'text-muted-foreground' : (
+                                        expense.isVirtual && !(expense as any).isRecurringVirtual && expense.status === 'pending' ? 'text-blue-600' :
+                                            expense.status === 'paid' ? 'text-emerald-600' : 'text-amber-600'
+                                    )
                                 )}>
                                     {(expense as any).isFired ? (
                                         <div className="flex flex-col items-end">
@@ -636,33 +690,54 @@ export default function Budget() {
                                     )}
                                 </div>
                                 <div className={cn(
-                                    "text-[10px] font-bold uppercase tracking-wider",
+                                    "text-[10px] font-bold uppercase tracking-wider flex items-center justify-end gap-1",
                                     (expense as any).isFired ? 'text-muted-foreground' : (
-                                        expense.isVirtual ? 'text-blue-500' :
+                                        expense.isVirtual && !(expense as any).isRecurringVirtual && expense.status === 'pending' ? 'text-blue-500' :
                                             expense.status === 'paid' ? 'text-emerald-500' : 'text-amber-500'
                                     )
                                 )}>
                                     {(expense as any).isFired ? t('hr.personnel_fired', 'Staff (Fired/Suspended)') : (
-                                        expense.isVirtual ? t('hr.personnel', 'Personnel') : t(`budget.status.${expense.status}`)
+                                        expense.isVirtual && !(expense as any).isRecurringVirtual ? (
+                                            <>
+                                                <span className="text-blue-500">{t('hr.personnel', 'Personnel')}</span> • {expense.status === 'paid' ? t('budget.status.paid', 'Paid') : t('budget.status.pending', 'Pending')}
+                                            </>
+                                        ) : t(`budget.status.${expense.status}`)
                                     )}
                                 </div>
                             </div>
-                            <div className="flex gap-2">
-                                {((expense.isVirtual && (expense as any).isRecurringVirtual) || (!expense.isVirtual)) && !(expense as any).isFired && (
-                                    <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        className={cn(
-                                            "hover:bg-emerald-500/10 hover:text-emerald-600",
-                                            expense.status === 'paid' && "text-emerald-600"
+                            <div className="flex gap-2 items-center">
+                                {expense.isLocked ? (
+                                    <Lock className="w-5 h-5 text-emerald-600 opacity-50 ml-2" />
+                                ) : (
+                                    <>
+                                        {expense.status === 'paid' && expense.category === 'payroll' && expense.expenseRecordId && (
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                title={t('budget.lockSalary', 'Lock Salary')}
+                                                onClick={() => setLockConfirmExpense(expense)}
+                                                className="hover:bg-amber-500/10 hover:text-amber-600 text-muted-foreground mr-1 h-8 w-8"
+                                            >
+                                                <Lock className="w-4 h-4" />
+                                            </Button>
                                         )}
-                                        onClick={() => handleToggleStatus(expense)}
-                                        title={expense.status === 'paid' ? t('budget.markUnpaid', 'Mark as Unpaid') : t('budget.markPaid', 'Mark as Paid')}
-                                    >
-                                        {expense.status === 'paid' ? <CheckCircle2 className="w-5 h-5" /> : <Circle className="w-5 h-5" />}
-                                    </Button>
+                                        {(!expense.isVirtual || (expense.isVirtual && ((expense as any).isRecurringVirtual || expense.category === 'payroll'))) && !(expense as any).isFired && (
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                className={cn(
+                                                    "hover:bg-emerald-500/10 hover:text-emerald-600",
+                                                    expense.status === 'paid' && "text-emerald-600"
+                                                )}
+                                                onClick={() => handleToggleStatus(expense)}
+                                                title={expense.status === 'paid' ? t('budget.markUnpaid', 'Mark as Unpaid') : t('budget.markPaid', 'Mark as Paid')}
+                                            >
+                                                {expense.status === 'paid' ? <CheckCircle2 className="w-5 h-5" /> : <Circle className="w-5 h-5" />}
+                                            </Button>
+                                        )}
+                                    </>
                                 )}
-                                {(!expense.isVirtual || (expense as any).isRecurringVirtual) && (
+                                {(!expense.isVirtual || (expense as any).isRecurringVirtual) && !expense.isLocked && (
                                     <Button
                                         variant="ghost"
                                         size="icon"
@@ -919,6 +994,28 @@ export default function Budget() {
                             </DialogFooter>
                         </form>
                     </div>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={!!lockConfirmExpense} onOpenChange={(open) => !open && setLockConfirmExpense(null)}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>{t('budget.confirmLockSalary', 'Confirm Lock Salary')}</DialogTitle>
+                        <DialogDescription>
+                            {t('budget.confirmLockSalaryDesc', 'Are you sure you want to lock this salary? Once locked, it cannot be undone or marked as pending again for this month.')}
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setLockConfirmExpense(null)}>
+                            {t('common.cancel', 'Cancel')}
+                        </Button>
+                        <Button
+                            className="bg-amber-600 hover:bg-amber-700 text-white"
+                            onClick={handleConfirmLock}
+                        >
+                            {t('common.confirm', 'Confirm')}
+                        </Button>
+                    </DialogFooter>
                 </DialogContent>
             </Dialog>
 

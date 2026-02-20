@@ -101,6 +101,7 @@ export interface Expense extends BaseEntity {
     snoozeUntil: string | null
     snoozeCount: number
     employeeId?: string // Link to employee if category is 'payroll'
+    isLocked?: boolean
 }
 
 export type AllocationType = 'fixed' | 'percentage'

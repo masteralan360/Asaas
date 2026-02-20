@@ -98,6 +98,7 @@ export function Products() {
     const [isElectron, setIsElectron] = useState(false)
     const [returnRulesModalOpen, setReturnRulesModalOpen] = useState(false)
     const cameraInputRef = useRef<HTMLInputElement>(null)
+    const imageUploadInputRef = useRef<HTMLInputElement>(null)
     const [outsideClickCount, setOutsideClickCount] = useState(0)
     const [showUnsavedChangesModal, setShowUnsavedChangesModal] = useState(false)
     const [unsavedChangesType, setUnsavedChangesType] = useState<'product' | 'category' | null>(null)
@@ -119,22 +120,33 @@ export function Products() {
     const isProductDirty = () => {
         if (!isDialogOpen) return false
 
-        const sourceData = editingProduct ? {
-            sku: editingProduct.sku,
-            name: editingProduct.name,
-            description: editingProduct.description,
-            categoryId: editingProduct.categoryId,
-            price: editingProduct.price,
-            costPrice: editingProduct.costPrice,
-            quantity: editingProduct.quantity,
-            minStockLevel: editingProduct.minStockLevel,
-            unit: editingProduct.unit,
-            currency: editingProduct.currency,
-            imageUrl: editingProduct.imageUrl || '',
-            canBeReturned: editingProduct.canBeReturned ?? true,
-            returnRules: editingProduct.returnRules || '',
-            storageId: editingProduct.storageId || ''
-        } : initialFormData
+        let sourceData: ProductFormData;
+
+        if (editingProduct) {
+            sourceData = {
+                sku: editingProduct.sku,
+                name: editingProduct.name,
+                description: editingProduct.description,
+                categoryId: editingProduct.categoryId || undefined,
+                price: editingProduct.price,
+                costPrice: editingProduct.costPrice,
+                quantity: editingProduct.quantity,
+                minStockLevel: editingProduct.minStockLevel,
+                unit: editingProduct.unit,
+                currency: editingProduct.currency,
+                imageUrl: editingProduct.imageUrl || '',
+                canBeReturned: editingProduct.canBeReturned ?? true,
+                returnRules: editingProduct.returnRules || '',
+                storageId: editingProduct.storageId || ''
+            };
+        } else {
+            const mainStorage = storages.find(s => s.name === 'Main' && s.isSystem) || storages[0];
+            sourceData = {
+                ...initialFormData,
+                storageId: mainStorage?.id || '',
+                currency: features.default_currency
+            };
+        }
 
         return JSON.stringify(formData) !== JSON.stringify(sourceData)
     }
@@ -144,7 +156,7 @@ export function Products() {
 
         const sourceData = editingCategory ? {
             name: editingCategory.name,
-            description: editingCategory.description
+            description: editingCategory.description || ''
         } : { name: '', description: '' }
 
         return JSON.stringify(categoryFormData) !== JSON.stringify(sourceData)
@@ -209,29 +221,26 @@ export function Products() {
     }
 
     const handleImageUpload = async () => {
-        if (!isElectron) return;
-        const targetPath = await platformService.pickAndSaveImage(workspaceId);
-        if (targetPath) {
-            setFormData(prev => ({ ...prev, imageUrl: targetPath }));
-            setImageError(false);
+        if (isElectron) {
+            const targetPath = await platformService.pickAndSaveImage(workspaceId);
+            if (targetPath) {
+                setFormData(prev => ({ ...prev, imageUrl: targetPath }));
+                setImageError(false);
 
-            // Trigger asset sync for other workspace users
-            assetManager.uploadFromPath(targetPath).then(success => {
-                if (success) {
-                    console.log('[Products] Image synced via Cloudflare R2');
-                }
-            }).catch(console.error);
+                // Trigger asset sync for other workspace users
+                assetManager.uploadFromPath(targetPath).then(success => {
+                    if (success) {
+                        console.log('[Products] Image synced via Cloudflare R2');
+                    }
+                }).catch(console.error);
+            }
+        } else {
+            // On web, trigger the hidden file input
+            imageUploadInputRef.current?.click();
         }
     }
 
-    const handleCameraClick = () => {
-        cameraInputRef.current?.click();
-    };
-
-    const handleCameraCapture = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
-
+    const handleFileSelected = async (file: File) => {
         if (isElectron) {
             const targetPath = await platformService.saveImageFile(file, workspaceId);
             if (targetPath) {
@@ -245,10 +254,57 @@ export function Products() {
                     }
                 }).catch(console.error);
             }
+        } else {
+            // Web/Mobile fallback
+            const ext = file.name.split('.').pop() || 'jpg';
+            const fileName = `${Date.now()}.${ext}`;
+            const targetPath = `product-images/${workspaceId}/${fileName}`;
+            const r2Path = `${workspaceId}/product-images/${fileName}`;
+
+            import('@/services/r2Service').then(async ({ r2Service }) => {
+                if (r2Service.isConfigured()) {
+                    const success = await r2Service.upload(r2Path, file);
+                    if (success) {
+                        setFormData(prev => ({ ...prev, imageUrl: targetPath }));
+                        setImageError(false);
+                        console.log('[Products] Web image synced via Cloudflare R2');
+                        return;
+                    }
+                }
+
+                // Fallback to Base64 if R2 is not configured or upload fails
+                const reader = new FileReader();
+                reader.onloadend = () => {
+                    setFormData(prev => ({ ...prev, imageUrl: reader.result as string }));
+                    setImageError(false);
+                };
+                reader.readAsDataURL(file);
+            });
         }
+    }
+
+    const handleCameraClick = () => {
+        cameraInputRef.current?.click();
+    };
+
+    const handleCameraCapture = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        await handleFileSelected(file);
 
         // Reset input value
         if (cameraInputRef.current) cameraInputRef.current.value = '';
+    };
+
+    const handleImageFileInputChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        await handleFileSelected(file);
+
+        // Reset input value
+        if (imageUploadInputRef.current) imageUploadInputRef.current.value = '';
     };
 
     const handleRemoveImage = async () => {
@@ -945,12 +1001,6 @@ export function Products() {
                         <div className="space-y-4 pt-4 border-t">
                             <Label className="flex items-center gap-2">
                                 {t('products.form.image') || 'Product Image'}
-                                {!isElectron && (
-                                    <div className="flex items-center gap-1 text-[10px] text-muted-foreground font-normal">
-                                        <Info className="w-3 h-3" />
-                                        {t('products.form.tauriOnly') || 'Upload only available in Local App'}
-                                    </div>
-                                )}
                             </Label>
 
                             <div className="flex flex-col sm:flex-row gap-4 items-start">
@@ -984,54 +1034,59 @@ export function Products() {
                                             }}
                                             placeholder={t('products.form.imageUrlPlaceholder') || "Image URL or local path"}
                                         />
-                                        {isElectron && (
-                                            <div className="flex flex-wrap gap-2 shrink-0">
-                                                {formData.imageUrl && (
-                                                    <Button
-                                                        type="button"
-                                                        variant="ghost"
-                                                        size="icon"
-                                                        onClick={handleRemoveImage}
-                                                        className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-                                                        title={t('common.delete') || 'Delete'}
-                                                    >
-                                                        <Trash2 className="w-4 h-4" />
-                                                    </Button>
-                                                )}
+                                        <div className="flex flex-wrap gap-2 shrink-0">
+                                            {formData.imageUrl && (
                                                 <Button
                                                     type="button"
-                                                    variant="outline"
-                                                    onClick={handleImageUpload}
-                                                    className="flex-1 min-w-[80px]"
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    onClick={handleRemoveImage}
+                                                    className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                                    title={t('common.delete') || 'Delete'}
                                                 >
-                                                    <ImagePlus className="w-4 h-4 sm:mr-2" />
-                                                    <span className="hidden sm:inline">{t('products.form.upload') || 'Upload'}</span>
+                                                    <Trash2 className="w-4 h-4" />
                                                 </Button>
-                                                <Button
-                                                    type="button"
-                                                    variant="outline"
-                                                    onClick={handleCameraClick}
-                                                    className="flex-1 min-w-[80px] border-primary/20 hover:border-primary/40 hover:bg-primary/5"
-                                                >
-                                                    <Camera className="w-4 h-4 sm:mr-2" />
-                                                    <span className="hidden sm:inline">{t('products.form.camera') || 'Camera'}</span>
-                                                </Button>
+                                            )}
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                onClick={handleImageUpload}
+                                                className="flex-1 min-w-[80px]"
+                                            >
+                                                <ImagePlus className="w-4 h-4 sm:mr-2" />
+                                                <span className="hidden sm:inline">{t('products.form.upload') || 'Upload'}</span>
+                                            </Button>
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                onClick={handleCameraClick}
+                                                className="flex-1 min-w-[80px] border-primary/20 hover:border-primary/40 hover:bg-primary/5"
+                                            >
+                                                <Camera className="w-4 h-4 sm:mr-2" />
+                                                <span className="hidden sm:inline">{t('products.form.camera') || 'Camera'}</span>
+                                            </Button>
 
-                                                <input
-                                                    type="file"
-                                                    ref={cameraInputRef}
-                                                    className="hidden"
-                                                    accept="image/*"
-                                                    capture="environment"
-                                                    onChange={handleCameraCapture}
-                                                />
-                                            </div>
-                                        )}
+                                            <input
+                                                type="file"
+                                                ref={cameraInputRef}
+                                                className="hidden"
+                                                accept="image/*"
+                                                capture="environment"
+                                                onChange={handleCameraCapture}
+                                            />
+                                            <input
+                                                type="file"
+                                                ref={imageUploadInputRef}
+                                                className="hidden"
+                                                accept="image/*"
+                                                onChange={handleImageFileInputChange}
+                                            />
+                                        </div>
                                     </div>
                                     <p className="text-[11px] text-muted-foreground italic">
                                         {isElectron
                                             ? (t('products.form.localPathDesc') || 'Image will be stored locally in your device.')
-                                            : (t('products.form.webUrlDesc') || 'Enter a public image URL or switch to the local app for uploading.')}
+                                            : (t('products.form.webUploadDesc') || 'Image will be synced via secure cloud storage.')}
                                     </p>
                                 </div>
                             </div>

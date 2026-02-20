@@ -42,7 +42,9 @@ import {
     Warehouse,
     ArrowRightLeft,
     Wallet,
-    AlertCircle
+    AlertCircle,
+    PanelRightOpen,
+    PanelRightClose
 } from 'lucide-react'
 import { useState } from 'react'
 import { Button } from './button'
@@ -338,7 +340,8 @@ export function Layout({ children }: LayoutProps) {
                         )}
                         title={isMini ? "Expand Sidebar" : "Collapse Sidebar"}
                     >
-                        <ChevronLeft className="w-4 h-4" />
+                        <PanelRightOpen className="w-4 h-4 rtl:hidden" />
+                        <PanelRightClose className="w-4 h-4 hidden rtl:block" />
                     </button>
                 </div>
 
