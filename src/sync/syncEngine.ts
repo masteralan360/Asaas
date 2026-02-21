@@ -133,8 +133,13 @@ export async function processMutationQueue(userId: string): Promise<{ success: n
                     if (error) throw error
                 }
             } else if (operation === 'delete') {
-                const { error } = await supabase.from(tableName).update({ is_deleted: true, updated_at: new Date().toISOString() }).eq('id', entityId)
-                if (error) throw error
+                if (tableName === 'expenses' || tableName === 'budget_allocations') {
+                    const { error } = await supabase.from(tableName).delete().eq('id', entityId)
+                    if (error) throw error
+                } else {
+                    const { error } = await supabase.from(tableName).update({ is_deleted: true, updated_at: new Date().toISOString() }).eq('id', entityId)
+                    if (error) throw error
+                }
             }
 
             // Success: Mark as synced

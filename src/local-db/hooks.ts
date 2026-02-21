@@ -726,12 +726,18 @@ export async function updateSalesOrder(id: string, data: Partial<SalesOrder>): P
 }
 
 // Helpers for repetitive logic
-async function fetchTableFromSupabase<T extends { id: string, syncStatus: any, lastSyncedAt: any }>(tableName: string, table: any, workspaceId: string) {
-    const { data, error } = await supabase
+export async function fetchTableFromSupabase<T extends { id: string, syncStatus: any, lastSyncedAt: any }>(tableName: string, table: any, workspaceId: string) {
+    let query = supabase
         .from(tableName)
         .select('*')
         .eq('workspace_id', workspaceId)
-        .eq('is_deleted', false)
+
+    // Only filter by is_deleted for tables that still have that column
+    if (tableName !== 'expenses' && tableName !== 'budget_allocations') {
+        query = query.eq('is_deleted', false)
+    }
+
+    const { data, error } = await query
 
     if (data && !error) {
         await db.transaction('rw', table, async () => {
@@ -1627,7 +1633,7 @@ export function useWorkspaceUsers(workspaceId: string | undefined) {
 export function useExpenses(workspaceId: string | undefined) {
     const isOnline = useNetworkStatus()
     const expenses = useLiveQuery(
-        () => workspaceId ? db.expenses.where('workspaceId').equals(workspaceId).and(e => !e.isDeleted).toArray() : [],
+        () => workspaceId ? db.expenses.where('workspaceId').equals(workspaceId).toArray() : [],
         [workspaceId]
     )
 
@@ -1640,7 +1646,7 @@ export function useExpenses(workspaceId: string | undefined) {
     return expenses ?? []
 }
 
-export async function createExpense(workspaceId: string, data: Omit<Expense, 'id' | 'workspaceId' | 'createdAt' | 'updatedAt' | 'syncStatus' | 'lastSyncedAt' | 'version' | 'isDeleted'>): Promise<Expense> {
+export async function createExpense(workspaceId: string, data: Omit<Expense, 'id' | 'workspaceId' | 'createdAt' | 'updatedAt' | 'syncStatus' | 'lastSyncedAt' | 'version'>): Promise<Expense> {
     const now = new Date().toISOString()
     const id = generateId()
     const expense: Expense = {
@@ -1651,8 +1657,7 @@ export async function createExpense(workspaceId: string, data: Omit<Expense, 'id
         updatedAt: now,
         syncStatus: (isOnline() ? 'synced' : 'pending') as any,
         lastSyncedAt: isOnline() ? now : null,
-        version: 1,
-        isDeleted: false
+        version: 1
     }
 
     await saveEntity('expenses', db.expenses, expense, workspaceId)
@@ -1685,24 +1690,15 @@ export async function updateExpense(id: string, data: Partial<Expense>): Promise
 }
 
 export async function deleteExpense(id: string): Promise<void> {
-    const now = new Date().toISOString()
     const existing = await db.expenses.get(id)
     if (!existing) return
 
-    const updated = {
-        ...existing,
-        isDeleted: true,
-        updatedAt: now,
-        syncStatus: (isOnline() ? 'synced' : 'pending') as any,
-        version: existing.version + 1
-    } as Expense
-
     if (isOnline()) {
-        const { error } = await supabase.from('expenses').update({ is_deleted: true, updated_at: now }).eq('id', id)
+        const { error } = await supabase.from('expenses').delete().eq('id', id)
         if (error) throw error
-        await db.expenses.put(updated)
+        await db.expenses.delete(id)
     } else {
-        await db.expenses.put(updated)
+        await db.expenses.delete(id)
         await addToOfflineMutations('expenses', id, 'delete', { id }, existing.workspaceId)
     }
 }
@@ -1747,7 +1743,6 @@ export function useBudgetAllocation(workspaceId: string | undefined, month: stri
                     .select('*')
                     .eq('workspace_id', workspaceId)
                     .eq('month', month)
-                    .eq('is_deleted', false)
                     .maybeSingle()
 
                 if (data && !error) {
@@ -1847,7 +1842,7 @@ export function useMonthlyRevenue(workspaceId: string | undefined, monthStr: str
     return financials ?? { revenue: {}, profit: {} }
 }
 
-export async function setBudgetAllocation(workspaceId: string, data: Omit<BudgetAllocation, 'id' | 'workspaceId' | 'createdAt' | 'updatedAt' | 'syncStatus' | 'lastSyncedAt' | 'version' | 'isDeleted'>): Promise<BudgetAllocation> {
+export async function setBudgetAllocation(workspaceId: string, data: Omit<BudgetAllocation, 'id' | 'workspaceId' | 'createdAt' | 'updatedAt' | 'syncStatus' | 'lastSyncedAt' | 'version'>): Promise<BudgetAllocation> {
     const now = new Date().toISOString()
 
     // 1. Check local DB first using the new compound index
@@ -1860,7 +1855,6 @@ export async function setBudgetAllocation(workspaceId: string, data: Omit<Budget
             .select('*')
             .eq('workspace_id', workspaceId)
             .eq('month', data.month)
-            .eq('is_deleted', false)
             .maybeSingle()
 
         if (remoteData && !error) {
@@ -1871,20 +1865,25 @@ export async function setBudgetAllocation(workspaceId: string, data: Omit<Budget
     }
 
     if (existing) {
+        // We do not override 'startPoint' on updates
         await updateEntity('budget_allocations', db.budgetAllocations, existing.id, data as any)
         return { ...existing, ...data } as BudgetAllocation
     } else {
+        // Count existing allocations for this workspace to determine start_point
+        const existingCount = await db.budgetAllocations.where('workspaceId').equals(workspaceId).count()
+        const isStartPoint = existingCount === 0
+
         const id = generateId()
         const allocation: BudgetAllocation = {
             ...data,
             id,
             workspaceId,
+            startPoint: isStartPoint,
             createdAt: now,
             updatedAt: now,
             syncStatus: (isOnline() ? 'synced' : 'pending') as any,
             lastSyncedAt: isOnline() ? now : null,
             version: 1,
-            isDeleted: false
         }
         await saveEntity('budget_allocations', db.budgetAllocations, allocation, workspaceId)
         return allocation
@@ -1919,7 +1918,6 @@ export function useBudgetLimitReached(
         const allExpenses = await db.expenses
             .where('workspaceId')
             .equals(workspaceId)
-            .and(e => !e.isDeleted)
             .toArray()
 
         const monthExpenses = allExpenses.filter(e => {

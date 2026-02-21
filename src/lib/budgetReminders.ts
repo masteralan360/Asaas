@@ -25,6 +25,7 @@ export interface BudgetReminderItem {
     isLocked: boolean
     // Expense category for sub-styling
     expenseCategory?: string
+    isRecurringTemplate?: boolean
 }
 
 export interface ReminderConfig {
@@ -99,14 +100,16 @@ export function scanDueItems(
 
     // ─── 1. Real Expenses (one-time + recurring virtual projections) ────────
     const applicableExpenses = expenses.filter(e => {
-        if (e.isDeleted) return false
         if (e.status === 'paid') return false
         if (e.isLocked) return false
 
         const due = new Date(e.dueDate)
 
         if (e.type === 'one-time') {
-            if (e.category === 'payroll' && e.employeeId) return false
+            // Skip paid payroll expenses (handled in salary pass).
+            // But allow snoozed payroll expenses through so the snooze check
+            // can populate virtualSnoozeMap for the salary pass.
+            if (e.category === 'payroll' && e.employeeId && e.status !== 'snoozed') return false
             return due >= monthStart && due <= monthEnd
         }
 
@@ -126,7 +129,6 @@ export function scanDueItems(
         if (exp.type === 'recurring') {
             const isPaid = expenses.some(e =>
                 e.type === 'one-time' &&
-                !e.isDeleted &&
                 e.description?.trim().toLowerCase() === exp.description?.trim().toLowerCase() &&
                 new Date(e.dueDate) >= monthStart &&
                 new Date(e.dueDate) <= monthEnd
@@ -138,7 +140,17 @@ export function scanDueItems(
         if (dueDate > reminderHorizon) continue
 
         // Check snooze
-        if (isSnoozeActive(exp.snoozeUntil)) continue
+        if (isSnoozeActive(exp.snoozeUntil)) {
+            // If it's a snoozed payroll expense, it counts as treating the salary as snoozed
+            // We don't want to show it due, but we'll track it in the virtual map so the Virtual Salary pass knows it's snoozed
+            if (exp.category === 'payroll' && exp.employeeId) {
+                virtualSnoozeMap.set(`salary_${exp.employeeId}`, {
+                    until: exp.snoozeUntil,
+                    count: exp.snoozeCount || 0
+                })
+            }
+            continue
+        }
 
         items.push({
             id: exp.id,
@@ -158,49 +170,60 @@ export function scanDueItems(
 
     // ─── 2. Salaries ────────────────────────────────────────────────────────
     for (const emp of employees) {
-        if (!emp.salary || emp.salary <= 0 || emp.isFired || emp.isDeleted) continue
+        if (!emp.salary || emp.salary <= 0 || emp.isFired) continue
 
+        // NOTE: We now populate `virtualSnoozeMap` for salaries during the Real Expenses pass 
+        // if we encounter an active `snoozed` payroll expense.
+        const snoozeStatus = virtualSnoozeMap.get(`salary_${emp.id}`)
+        if (snoozeStatus && isSnoozeActive(snoozeStatus.until)) continue
+
+        // The virtual item due date
         const pDay = Number(emp.salaryPayday) || 30
-        const payDate = new Date(year, mon, Math.min(pDay, new Date(year, mon + 1, 0).getDate()))
+        let payDate = new Date(year, mon, Math.min(pDay, new Date(year, mon + 1, 0).getDate()))
 
-        // Already paid?
-        const existingPayroll = expenses.find(e =>
+        // Check for an existing payroll expense for this employee in the current month
+        const existingPayrollExp = expenses.find(e =>
             e.type === 'one-time' &&
             e.category === 'payroll' &&
             e.employeeId === emp.id &&
             new Date(e.dueDate) >= monthStart &&
-            new Date(e.dueDate) <= monthEnd &&
-            !e.isDeleted
+            new Date(e.dueDate) <= monthEnd
         )
-        if (existingPayroll) continue
 
-        // Only remind if within horizon
-        if (payDate > reminderHorizon) continue
+        // If paid, skip entirely — salary is done for this month
+        if (existingPayrollExp && existingPayrollExp.status === 'paid') continue
 
-        // Check virtual snooze
-        const vKey = `salary_${emp.id}`
-        const vSnooze = virtualSnoozeMap.get(vKey)
-        if (vSnooze && isSnoozeActive(vSnooze.until)) continue
+        // If snoozed (but snooze expired — otherwise virtualSnoozeMap check above would have caught it),
+        // link to the existing expense so future actions update it
+        let finalDueDate = payDate.toISOString()
+        let expenseIdForSalary: string | undefined = undefined
+        if (existingPayrollExp && existingPayrollExp.status === 'snoozed') {
+            finalDueDate = existingPayrollExp.dueDate
+            expenseIdForSalary = existingPayrollExp.id
+        }
 
-        items.push({
-            id: `salary-${emp.id}`,
-            category: 'salary',
-            title: `${emp.name}`,
-            amount: emp.salary,
-            currency: emp.salaryCurrency || 'usd',
-            dueDate: payDate.toISOString(),
-            status: 'pending',
-            employeeId: emp.id,
-            employeeName: emp.name,
-            snoozeUntil: vSnooze?.until || null,
-            snoozeCount: vSnooze?.count || 0,
-            isLocked: false,
-        })
+        if (new Date(finalDueDate) <= reminderHorizon) {
+            items.push({
+                id: existingPayrollExp?.id || `virtual_salary_${emp.id}_${monthStr}`,
+                category: 'salary',
+                title: `${emp.name} (Salary)`,
+                amount: emp.salary,
+                currency: (emp.salaryCurrency as any) || 'usd',
+                dueDate: finalDueDate,
+                status: 'pending',
+                employeeId: emp.id,
+                employeeName: emp.name,
+                expenseId: expenseIdForSalary,
+                snoozeUntil: snoozeStatus?.until || null,
+                snoozeCount: snoozeStatus?.count || 0,
+                isLocked: false
+            })
+        }
     }
 
     // ─── 3. Dividends ───────────────────────────────────────────────────────
     for (const emp of employees) {
-        if (!emp.hasDividends || !emp.dividendAmount || emp.dividendAmount <= 0 || emp.isFired || emp.isDeleted) continue
+        if (!emp.hasDividends || !emp.dividendAmount || emp.dividendAmount <= 0 || emp.isFired) continue
 
         const pDay = Number(emp.dividendPayday) || 30
         const payDate = new Date(year, mon, Math.min(pDay, new Date(year, mon + 1, 0).getDate()))
@@ -237,3 +260,103 @@ export function scanDueItems(
 
     return items
 }
+
+// ─── Snoozed Items Retrieval ───────────────────────────────────────────────
+
+export function getSnoozedItems(
+    expenses: Expense[],
+    employees: Employee[],
+    month: string, // "YYYY-MM"
+    virtualSnoozeMap: Map<string, { until: string | null; count: number }>
+): BudgetReminderItem[] {
+    // const t = i18next.t.bind(i18next) // Assuming i18next is imported and available
+    const [yearStr, monthStr_] = month.split('-')
+    const year = parseInt(yearStr, 10)
+    const mon = parseInt(monthStr_, 10) - 1 // 0-indexed
+    const monthStart = new Date(year, mon, 1)
+    const monthEnd = new Date(year, mon + 1, 0, 23, 59, 59)
+
+    const snoozed: BudgetReminderItem[] = []
+
+    // ─── 1. Real Expenses (including snoozed Salary records) ────────
+    const applicableExpenses = expenses.filter(e => {
+        if (e.status !== 'snoozed') return false
+        if (!isSnoozeActive(e.snoozeUntil)) return false
+
+        const due = new Date(e.dueDate)
+
+        if (e.type === 'one-time') {
+            return due >= monthStart && due <= monthEnd
+        }
+
+        if (e.type === 'recurring') {
+            return true
+        }
+
+        return false
+    })
+
+    for (const exp of applicableExpenses) {
+        const dueDate = exp.type === 'recurring'
+            ? new Date(year, mon, Math.min(new Date(exp.dueDate).getDate(), new Date(year, mon + 1, 0).getDate()))
+            : new Date(exp.dueDate)
+
+        snoozed.push({
+            id: exp.id,
+            category: exp.category === 'payroll' && exp.employeeId ? 'salary' : 'expense',
+            title: exp.description || exp.category,
+            amount: exp.amount,
+            currency: exp.currency,
+            dueDate: dueDate.toISOString(),
+            status: 'snoozed' as any,
+            expenseId: exp.id,
+            employeeId: exp.employeeId,
+            snoozeUntil: exp.snoozeUntil,
+            snoozeCount: exp.snoozeCount || 0,
+            isLocked: exp.isLocked || false,
+            expenseCategory: exp.category,
+            isRecurringTemplate: exp.type === 'recurring'
+        })
+
+        // Populate virtualSnoozeMap so the salary loop below skips rendering a duplicate
+        if (exp.category === 'payroll' && exp.employeeId) {
+            virtualSnoozeMap.set(`salary_${exp.employeeId}`, {
+                until: exp.snoozeUntil,
+                count: exp.snoozeCount || 0
+            })
+        }
+    }
+
+    // ─── 2. Virtual Dividends ────────
+    // (Virtual Salaries are handled via Expense records now)
+    for (const emp of employees) {
+        if (!emp.hasDividends || !emp.dividendAmount || emp.dividendAmount <= 0 || emp.isFired) continue
+
+        const vKey = `dividend_${emp.id}`
+        const vSnooze = virtualSnoozeMap.get(vKey)
+
+        if (vSnooze && isSnoozeActive(vSnooze.until)) {
+            const pDay = Number(emp.dividendPayday) || 30
+            const payDate = new Date(year, mon, Math.min(pDay, new Date(year, mon + 1, 0).getDate()))
+
+            snoozed.push({
+                id: `dividend-${emp.id}`,
+                category: 'dividend',
+                title: `${emp.name}`,
+                amount: emp.dividendAmount,
+                currency: (emp.dividendType === 'fixed' ? (emp.dividendCurrency || 'usd') : 'usd'),
+                dueDate: payDate.toISOString(),
+                status: 'pending',
+                employeeId: emp.id,
+                employeeName: emp.name,
+                snoozeUntil: vSnooze.until,
+                snoozeCount: vSnooze.count,
+                isLocked: false,
+            })
+        }
+    }
+
+    snoozed.sort((a: BudgetReminderItem, b: BudgetReminderItem) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime())
+    return snoozed
+}
+

@@ -89,7 +89,7 @@ export type ExpenseType = 'recurring' | 'one-time'
 export type ExpenseCategory = 'rent' | 'electricity' | 'payroll' | 'general'
 export type ExpenseStatus = 'pending' | 'paid' | 'snoozed'
 
-export interface Expense extends BaseEntity {
+export interface Expense extends Omit<BaseEntity, 'isDeleted'> {
     description?: string
     type: ExpenseType
     category: ExpenseCategory
@@ -106,11 +106,12 @@ export interface Expense extends BaseEntity {
 
 export type AllocationType = 'fixed' | 'percentage'
 
-export interface BudgetAllocation extends BaseEntity {
+export interface BudgetAllocation extends Omit<BaseEntity, 'isDeleted'> {
     month: string // "YYYY-MM"
     type: AllocationType
     amount: number // Value or Percentage (0-100)
     currency: CurrencyCode
+    startPoint?: boolean
 }
 
 

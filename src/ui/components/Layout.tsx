@@ -15,6 +15,7 @@ import { useTheme } from './theme-provider'
 import { NotificationCenter } from './NotificationCenter'
 import { useLogo } from '@/hooks/useFavicon'
 import { ManualRateModals } from './exchange/ManualRateModals'
+import { GlobalExpenseReminders } from './budget/GlobalExpenseReminders'
 
 import {
     LayoutDashboard,
@@ -267,6 +268,7 @@ export function Layout({ children }: LayoutProps) {
         <div className="h-screen overflow-hidden bg-transparent">
             <ResourceSyncOverlay />
             <ManualRateModals />
+            <GlobalExpenseReminders />
             {/* Mobile sidebar backdrop */}
             {mobileSidebarOpen && (
                 <div
