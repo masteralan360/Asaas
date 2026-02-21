@@ -5,6 +5,31 @@ import { getAppSetting, setAppSetting } from '@/local-db/settings'
 
 export type ReminderCategory = 'expense' | 'salary' | 'dividend'
 
+/**
+ * Special date string representing an indefinite/perpetual snooze.
+ * Items with this date will stay snoozed until manually un-snoozed.
+ */
+export const INDEFINITE_SNOOZE_DATE = '9999-12-31T23:59:59.999Z'
+
+/**
+ * Robust check if a snooze date string represents an indefinite snooze.
+ */
+export function isIndefiniteSnooze(dateStr: any): boolean {
+    if (!dateStr) return false
+    try {
+        const d = new Date(dateStr)
+        if (!isNaN(d.getTime())) {
+            return d.getFullYear() >= 9999
+        }
+        // Fallback for non-standard strings
+        const s = String(dateStr)
+        return s.startsWith('9999') || s.includes('10000') || s.includes('9999-12-31')
+    } catch {
+        const s = String(dateStr)
+        return s.startsWith('9999') || s.includes('10000') || s.includes('9999-12-31')
+    }
+}
+
 export interface BudgetReminderItem {
     id: string
     category: ReminderCategory
@@ -26,6 +51,7 @@ export interface BudgetReminderItem {
     // Expense category for sub-styling
     expenseCategory?: string
     isRecurringTemplate?: boolean
+    originalTemplateId?: string
 }
 
 export interface ReminderConfig {
@@ -125,15 +151,15 @@ export function scanDueItems(
             ? new Date(year, mon, Math.min(new Date(exp.dueDate).getDate(), new Date(year, mon + 1, 0).getDate()))
             : new Date(exp.dueDate)
 
-        // Check if already paid (recurring: match by description in one-time expenses)
+        // Check if already handled (recurring: match by description in one-time expenses)
         if (exp.type === 'recurring') {
-            const isPaid = expenses.some(e =>
+            const hasInstance = expenses.some(e =>
                 e.type === 'one-time' &&
                 e.description?.trim().toLowerCase() === exp.description?.trim().toLowerCase() &&
                 new Date(e.dueDate) >= monthStart &&
                 new Date(e.dueDate) <= monthEnd
             )
-            if (isPaid) continue
+            if (hasInstance) continue
         }
 
         // Only remind if due date is within reminder horizon
@@ -165,6 +191,8 @@ export function scanDueItems(
             snoozeCount: exp.snoozeCount,
             isLocked: exp.isLocked || false,
             expenseCategory: exp.category,
+            isRecurringTemplate: exp.type === 'recurring',
+            originalTemplateId: exp.type === 'recurring' ? exp.id : undefined
         })
     }
 
@@ -193,11 +221,10 @@ export function scanDueItems(
         // If paid, skip entirely — salary is done for this month
         if (existingPayrollExp && existingPayrollExp.status === 'paid') continue
 
-        // If snoozed (but snooze expired — otherwise virtualSnoozeMap check above would have caught it),
-        // link to the existing expense so future actions update it
+        // If snoozed or pending, link to the existing expense so future actions update it
         let finalDueDate = payDate.toISOString()
         let expenseIdForSalary: string | undefined = undefined
-        if (existingPayrollExp && existingPayrollExp.status === 'snoozed') {
+        if (existingPayrollExp && (existingPayrollExp.status === 'snoozed' || existingPayrollExp.status === 'pending')) {
             finalDueDate = existingPayrollExp.dueDate
             expenseIdForSalary = existingPayrollExp.id
         }
@@ -206,7 +233,7 @@ export function scanDueItems(
             items.push({
                 id: existingPayrollExp?.id || `virtual_salary_${emp.id}_${monthStr}`,
                 category: 'salary',
-                title: `${emp.name} (Salary)`,
+                title: `${emp.name}`,
                 amount: emp.salary,
                 currency: (emp.salaryCurrency as any) || 'usd',
                 dueDate: finalDueDate,

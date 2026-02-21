@@ -5,16 +5,17 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 
 import { formatCurrency, formatDate, cn } from '@/lib/utils'
 import { useTranslation } from 'react-i18next'
-import type { BudgetReminderItem } from '@/lib/budgetReminders'
+import { type BudgetReminderItem, isIndefiniteSnooze } from '@/lib/budgetReminders'
 
 interface SnoozedBudgetItemsBellProps {
     items: BudgetReminderItem[]
     onUnsnooze: (item: BudgetReminderItem) => void
     iqdPreference: any
+    isLoading?: boolean
 }
 
 
-export function SnoozedBudgetItemsBell({ items, onUnsnooze, iqdPreference }: SnoozedBudgetItemsBellProps) {
+export function SnoozedBudgetItemsBell({ items, onUnsnooze, iqdPreference, isLoading }: SnoozedBudgetItemsBellProps) {
 
     const { t } = useTranslation()
 
@@ -63,7 +64,9 @@ export function SnoozedBudgetItemsBell({ items, onUnsnooze, iqdPreference }: Sno
                                     <div className="flex gap-3">
                                         <div className="mt-1"><Icon className="w-5 h-5" /></div>
                                         <div>
-                                            <div className="font-bold text-base leading-tight">{item.title}</div>
+                                            <div className="font-bold text-base leading-tight">
+                                                {item.title?.replace(/\s*\(Salary\)$/, '')}
+                                            </div>
                                             <div className="text-sm opacity-80 mt-0.5">{categoryLabel}</div>
                                         </div>
                                     </div>
@@ -79,7 +82,9 @@ export function SnoozedBudgetItemsBell({ items, onUnsnooze, iqdPreference }: Sno
                                 {item.snoozeUntil && (
                                     <div className="text-sm flex items-center gap-1.5 opacity-70">
                                         <Clock className="w-4 h-4" />
-                                        {t('budget.snoozedUntil', 'Snoozed until')} {formatDate(item.snoozeUntil)}
+                                        {isIndefiniteSnooze(item.snoozeUntil)
+                                            ? t('budget.snoozedIndefinitely', 'Snoozed Until Un-snoozed')
+                                            : `${t('budget.snoozedUntil', 'Snoozed until')} ${formatDate(item.snoozeUntil)}`}
                                     </div>
                                 )}
 
@@ -88,9 +93,10 @@ export function SnoozedBudgetItemsBell({ items, onUnsnooze, iqdPreference }: Sno
                                     variant="secondary"
                                     className="w-full mt-2 bg-background/50 hover:bg-background/80"
                                     onClick={() => onUnsnooze(item)}
+                                    disabled={isLoading}
                                 >
-                                    <RotateCcw className="w-4 h-4 mr-2" />
-                                    {t('budget.unsnooze', 'Un-snooze')}
+                                    <RotateCcw className={cn("w-4 h-4 mr-2", isLoading && "animate-spin")} />
+                                    {isLoading ? t('common.processing', 'Processing...') : t('budget.unsnooze', 'Un-snooze')}
                                 </Button>
                             </div>
                         )

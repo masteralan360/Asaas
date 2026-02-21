@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from 'react'
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 
 import { useTranslation } from 'react-i18next'
 import {
@@ -16,7 +16,9 @@ import {
     AlertTriangle,
     Repeat,
     Circle,
-    Lock
+    Lock,
+    BellOff,
+    RotateCcw
 } from 'lucide-react'
 import { useWorkspace } from '@/workspace'
 import { useExpenses, createExpense, deleteExpense, updateExpense, useBudgetAllocation, useBudgetAllocations, useMonthlyRevenue, setBudgetAllocation, useEmployees, useWorkspaceUsers, fetchTableFromSupabase } from '@/local-db'
@@ -51,7 +53,7 @@ import {
 } from '@/ui/components/select'
 
 import { useExchangeRate } from '@/context/ExchangeRateContext'
-import { scanDueItems, getSnoozedItems, getReminderConfig, getVirtualSnooze, setVirtualSnooze, type BudgetReminderItem } from '@/lib/budgetReminders'
+import { scanDueItems, getSnoozedItems, getReminderConfig, getVirtualSnooze, setVirtualSnooze, type BudgetReminderItem, INDEFINITE_SNOOZE_DATE, isIndefiniteSnooze } from '@/lib/budgetReminders'
 import { BudgetReminderModal } from '@/ui/components/budget/BudgetReminderModal'
 import { BudgetLockModal } from '@/ui/components/budget/BudgetLockModal'
 import { BudgetSnoozeModal } from '@/ui/components/budget/BudgetSnoozeModal'
@@ -83,6 +85,13 @@ export default function Budget() {
     const [reminderIndex, setReminderIndex] = useState(0)
     const [reminderStep, setReminderStep] = useState<'idle' | 'reminder' | 'lock' | 'snooze'>('idle')
     const [reminderScanned, setReminderScanned] = useState(false)
+    const [isProcessing, setIsProcessing] = useState(false)
+    const isCheckingReminders = useRef(false)
+    const reminderStepRef = useRef(reminderStep)
+
+    useEffect(() => {
+        reminderStepRef.current = reminderStep
+    }, [reminderStep])
 
     const monthStr = useMemo(() => {
         const year = selectedMonth.getFullYear()
@@ -153,49 +162,57 @@ export default function Budget() {
 
     const [expenseAmountDisplay, setExpenseAmountDisplay] = useState<string>('')
     const [lockConfirmExpense, setLockConfirmExpense] = useState<any>(null)
+    const [unsnoozeItem, setUnsnoozeItem] = useState<BudgetReminderItem | null>(null)
 
     // ─── Budget Reminder Scanner Effect ──────────────────────────
     const runScan = useCallback(async () => {
-        if (!workspaceId || (expenses.length === 0 && employees.length === 0)) return
+        if (!workspaceId || isCheckingReminders.current || reminderStepRef.current !== 'idle' || (expenses.length === 0 && employees.length === 0)) return
+        isCheckingReminders.current = true
+        try {
 
-        const config = await getReminderConfig()
+            const config = await getReminderConfig()
 
-        // Build virtual snooze map for employees (salaries/dividends)
-        const virtualSnoozeMap = new Map<string, { until: string | null; count: number }>()
-        for (const emp of employees) {
-            if (emp.salary && emp.salary > 0) {
-                const vs = await getVirtualSnooze('salary', emp.id, monthStr)
-                if (vs.until || vs.count > 0) virtualSnoozeMap.set(`salary_${emp.id}`, vs)
+            // Build virtual snooze map for employees (salaries/dividends)
+            const virtualSnoozeMap = new Map<string, { until: string | null; count: number }>()
+            for (const emp of employees) {
+                if (emp.salary && emp.salary > 0) {
+                    const vs = await getVirtualSnooze('salary', emp.id, monthStr)
+                    if (vs.until || vs.count > 0) virtualSnoozeMap.set(`salary_${emp.id}`, vs)
+                }
+                if (emp.hasDividends && emp.dividendAmount && emp.dividendAmount > 0) {
+                    const vd = await getVirtualSnooze('dividend', emp.id, monthStr)
+                    if (vd.until || vd.count > 0) virtualSnoozeMap.set(`dividend_${emp.id}`, vd)
+                }
             }
-            if (emp.hasDividends && emp.dividendAmount && emp.dividendAmount > 0) {
-                const vd = await getVirtualSnooze('dividend', emp.id, monthStr)
-                if (vd.until || vd.count > 0) virtualSnoozeMap.set(`dividend_${emp.id}`, vd)
+
+            // Scan for due items
+            const dueItems = scanDueItems(expenses, employees, monthStr, config, virtualSnoozeMap)
+
+            // Scan for snoozed items
+            const snoozed = getSnoozedItems(expenses, employees, monthStr, virtualSnoozeMap)
+
+            // Using a ref or state to check if component is mounted to prevent state updates on unmounted component
+            // For simplicity, assuming `isMounted` is handled elsewhere or not strictly needed for this snippet.
+            // If `isMounted` is truly needed, it should be defined using useRef and useEffect cleanup.
+            // For now, I'll apply the `if (isMounted)` as provided in the instruction, assuming it's a placeholder.
+            const isMounted = true; // Placeholder, replace with actual mount check if necessary
+            if (isMounted) {
+                setReminderQueue(dueItems)
+                setSnoozedItems(snoozed)
+                setReminderIndex(0)
+                if (dueItems.length > 0) {
+                    setReminderStep('reminder')
+                } else {
+                    setReminderStep('idle'); // If no due items, ensure step is idle
+                }
             }
+            setReminderScanned(true)
+        } catch (err) {
+            console.error('[Budget] Reminder scan failed:', err)
+        } finally {
+            isCheckingReminders.current = false
         }
-
-        // Scan for due items
-        const dueItems = scanDueItems(expenses, employees, monthStr, config, virtualSnoozeMap)
-
-        // Scan for snoozed items
-        const snoozed = getSnoozedItems(expenses, employees, monthStr, virtualSnoozeMap)
-
-        // Using a ref or state to check if component is mounted to prevent state updates on unmounted component
-        // For simplicity, assuming `isMounted` is handled elsewhere or not strictly needed for this snippet.
-        // If `isMounted` is truly needed, it should be defined using useRef and useEffect cleanup.
-        // For now, I'll apply the `if (isMounted)` as provided in the instruction, assuming it's a placeholder.
-        const isMounted = true; // Placeholder, replace with actual mount check if necessary
-        if (isMounted) {
-            setReminderQueue(dueItems)
-            setSnoozedItems(snoozed)
-            setReminderIndex(0)
-            if (dueItems.length > 0) {
-                setReminderStep('reminder')
-            } else {
-                setReminderStep('idle'); // If no due items, ensure step is idle
-            }
-        }
-        setReminderScanned(true)
-    }, [expenses, employees, workspaceId, monthStr]); // Add all dependencies for useCallback
+    }, [expenses, employees, workspaceId, monthStr])
 
     useEffect(() => {
         if (reminderScanned || !workspaceId) return
@@ -214,9 +231,15 @@ export default function Budget() {
         setReminderStep('idle')
     }, [monthStr])
 
-    // Keep snoozed items in sync with expense changes (reactive)
+    // Keep snoozed items in sync with data changes (reactive)
     useEffect(() => {
-        if (!workspaceId || expenses.length === 0) return
+        if (!workspaceId) return
+        // Allow refresh if we have either expenses OR employees (for virtual reminders)
+        if (expenses.length === 0 && employees.length === 0) {
+            setSnoozedItems([]) // Clear if no data
+            return
+        }
+
         async function refreshSnoozed() {
             const virtualSnoozeMap = new Map<string, { until: string | null; count: number }>()
             for (const emp of employees) {
@@ -248,10 +271,19 @@ export default function Budget() {
     }
 
     const handleReminderPaid = async () => {
-        if (!currentReminder || !workspaceId) return
+        if (!currentReminder || !workspaceId || isProcessing) return
+        setIsProcessing(true)
 
         try {
-            if (currentReminder.category === 'expense' && currentReminder.expenseId) {
+            if (currentReminder.expenseId && !currentReminder.isRecurringTemplate) {
+                // Update existing record (real expense or snoozed salary/dividend marker)
+                await updateExpense(currentReminder.expenseId, {
+                    status: 'paid',
+                    paidAt: new Date().toISOString(),
+                    snoozeUntil: null,
+                    snoozeCount: 0
+                })
+            } else if (currentReminder.category === 'expense') {
                 if (currentReminder.isRecurringTemplate) {
                     const newExp = await createExpense(workspaceId, {
                         description: currentReminder.title,
@@ -266,15 +298,9 @@ export default function Budget() {
                         snoozeCount: 0
                     })
                     if (newExp) currentReminder.expenseId = newExp.id
-                } else {
-                    // Real expense — toggle status to paid
-                    await updateExpense(currentReminder.expenseId, {
-                        status: 'paid',
-                        paidAt: new Date().toISOString()
-                    })
                 }
             } else if (currentReminder.category === 'salary' && currentReminder.employeeId) {
-                // Virtual salary — create a payroll expense record
+                // Virtual salary (no existing record) — create a payroll expense record
                 await createExpense(workspaceId, {
                     description: `${currentReminder.employeeName} (${t('hr.salary', 'Salary')})`,
                     type: 'one-time',
@@ -295,11 +321,14 @@ export default function Budget() {
         } catch {
             toast({ variant: 'destructive', description: t('common.error', 'Failed to update') })
             advanceReminder()
+        } finally {
+            setIsProcessing(false)
         }
     }
 
     const handleReminderLock = async () => {
-        if (!currentReminder) return
+        if (!currentReminder || isProcessing) return
+        setIsProcessing(true)
 
         try {
             if (currentReminder.expenseId) {
@@ -320,8 +349,10 @@ export default function Budget() {
             toast({ description: t('budget.expenseLocked', 'Payment locked') })
         } catch {
             toast({ variant: 'destructive', description: t('budget.errorLocking', 'Error locking') })
+        } finally {
+            advanceReminder()
+            setIsProcessing(false)
         }
-        advanceReminder()
     }
 
     const handleReminderLockSkip = () => advanceReminder()
@@ -329,18 +360,37 @@ export default function Budget() {
     const handleReminderSnoozeOpen = () => setReminderStep('snooze')
 
     const handleReminderSnooze = async (minutes: number) => {
-        if (!currentReminder) return
+        if (!currentReminder || isProcessing) return
+        setIsProcessing(true)
 
-        const snoozeUntil = new Date(Date.now() + minutes * 60000).toISOString()
+        const snoozeUntil = minutes === -1
+            ? INDEFINITE_SNOOZE_DATE
+            : new Date(Date.now() + minutes * 60000).toISOString()
         const newCount = (currentReminder.snoozeCount || 0) + 1
 
         try {
-            if (currentReminder.category === 'expense' && currentReminder.expenseId) {
-                await updateExpense(currentReminder.expenseId, {
-                    snoozeUntil,
-                    snoozeCount: newCount,
-                    status: 'snoozed'
-                })
+            if (currentReminder.category === 'expense') {
+                if (currentReminder.isRecurringTemplate && workspaceId) {
+                    // Create materialized snooze record instead of updating template
+                    await createExpense(workspaceId, {
+                        description: currentReminder.title,
+                        type: 'one-time',
+                        category: currentReminder.expenseCategory as any || 'other',
+                        amount: currentReminder.amount,
+                        currency: currentReminder.currency as any,
+                        status: 'snoozed',
+                        dueDate: currentReminder.dueDate,
+                        paidAt: null,
+                        snoozeUntil,
+                        snoozeCount: newCount
+                    })
+                } else if (currentReminder.expenseId) {
+                    await updateExpense(currentReminder.expenseId, {
+                        snoozeUntil,
+                        snoozeCount: newCount,
+                        status: 'snoozed'
+                    })
+                }
             } else if (currentReminder.category === 'salary' && currentReminder.employeeId) {
                 if (currentReminder.expenseId) {
                     await updateExpense(currentReminder.expenseId, {
@@ -363,8 +413,6 @@ export default function Budget() {
                         employeeId: currentReminder.employeeId
                     })
                 }
-            } else {
-                // Virtual items (Dividends) — store in app_settings
                 await setVirtualSnooze(
                     currentReminder.category,
                     currentReminder.employeeId || currentReminder.id,
@@ -373,13 +421,14 @@ export default function Budget() {
                     newCount
                 )
             }
-        } catch (err) {
-            console.warn('[BudgetReminder] Failed to save snooze:', err)
+        } catch {
+            toast({ variant: 'destructive', description: t('common.error', 'Failed to update') })
+        } finally {
+            advanceReminder()
+            setIsProcessing(false)
         }
-        advanceReminder()
     }
 
-    const handleReminderSnoozeDismiss = () => advanceReminder()
 
     const handleConfirmLock = async () => {
         if (!lockConfirmExpense) return
@@ -395,19 +444,29 @@ export default function Budget() {
     }
 
     const handleUnsnooze = async (item: BudgetReminderItem) => {
+        if (isProcessing) return
+        setIsProcessing(true)
         try {
-            if ((item.category === 'expense' || item.category === 'salary') && item.expenseId) {
-                await updateExpense(item.expenseId, { snoozeUntil: null, status: 'pending' }) // Reset status to pending
-            } else if (item.category === 'dividend' && item.employeeId) {
-                // For virtual items (dividends), clear the virtual snooze record
+            if (item.expenseId) {
+                // For real expense records (expenses or snoozed salary/dividend markers)
+                await updateExpense(item.expenseId, { snoozeUntil: null, status: 'pending' })
+            }
+
+            if (item.employeeId) {
+                // Clear any virtual snooze record as well (covers dividends and virtual salaries)
                 await setVirtualSnooze(item.category, item.employeeId, monthStr, '', 0)
             }
 
             toast({ description: t('budget.unsnoozed', 'Reminder un-snoozed') })
-            // Re-run scan to update UI and optionally trigger modals immediately
-            await runScan()
+
+            // Reactive Refresh: Reset scanned state to trigger the main useEffect.
+            setReminderScanned(false)
         } catch (error) {
+            console.error('[Budget] Failed to un-snooze:', error)
             toast({ variant: 'destructive', description: t('common.error', 'Failed to un-snooze reminder') })
+        } finally {
+            setIsProcessing(false)
+            setUnsnoozeItem(null)
         }
     }
 
@@ -641,10 +700,23 @@ export default function Budget() {
     }
 
     const handleToggleStatus = async (expense: any) => {
-        if (!workspaceId || expense.isLocked) return
+        if (!workspaceId || expense.isLocked || isProcessing) return
+        setIsProcessing(true)
         try {
             if (expense.isVirtual && expense.category === 'payroll' && expense.employeeId) {
-                if (expense.status === 'pending') {
+                if (expense.status === 'paid' && expense.expenseRecordId) {
+                    await deleteExpense(expense.expenseRecordId)
+                    toast({ description: t('budget.expenseUnpaid', 'Salary marked as unpaid') })
+                } else if (expense.expenseRecordId) {
+                    // Update existing (e.g. was snoozed)
+                    await updateExpense(expense.expenseRecordId, {
+                        status: 'paid',
+                        paidAt: new Date().toISOString(),
+                        snoozeUntil: null,
+                        snoozeCount: 0
+                    })
+                    toast({ description: t('budget.expensePaid', 'Salary marked as paid') })
+                } else {
                     await createExpense(workspaceId, {
                         description: expense.description,
                         type: 'one-time',
@@ -659,25 +731,42 @@ export default function Budget() {
                         employeeId: expense.employeeId
                     })
                     toast({ description: t('budget.expensePaid', 'Salary marked as paid') })
-                } else if (expense.expenseRecordId) {
-                    await deleteExpense(expense.expenseRecordId)
-                    toast({ description: t('budget.expenseUnpaid', 'Salary marked as unpaid') })
                 }
             } else if (expense.isRecurringVirtual) {
                 // Determine due date from the virtual expense
-                // expense.dueDate is already projected to the correct month in metrics
-                await createExpense(workspaceId, {
-                    description: expense.description,
-                    type: 'one-time',
-                    category: expense.category,
-                    amount: expense.amount,
-                    currency: expense.currency,
-                    status: 'paid',
-                    dueDate: expense.dueDate,
-                    paidAt: new Date().toISOString(),
-                    snoozeUntil: null,
-                    snoozeCount: 0
-                })
+                const dueDateObj = new Date(expense.dueDate)
+                const monthStart = new Date(dueDateObj.getFullYear(), dueDateObj.getMonth(), 1)
+                const monthEnd = new Date(dueDateObj.getFullYear(), dueDateObj.getMonth() + 1, 0, 23, 59, 59)
+
+                // Check if a record (like a snooze) already exists for this template in this month
+                const existingRecord = expenses.find(e =>
+                    e.type === 'one-time' &&
+                    e.description?.trim().toLowerCase() === expense.description?.trim().toLowerCase() &&
+                    new Date(e.dueDate) >= monthStart &&
+                    new Date(e.dueDate) <= monthEnd
+                )
+
+                if (existingRecord) {
+                    await updateExpense(existingRecord.id, {
+                        status: 'paid',
+                        paidAt: new Date().toISOString(),
+                        snoozeUntil: null,
+                        snoozeCount: 0
+                    })
+                } else {
+                    await createExpense(workspaceId, {
+                        description: expense.description,
+                        type: 'one-time',
+                        category: expense.category,
+                        amount: expense.amount,
+                        currency: expense.currency,
+                        status: 'paid',
+                        dueDate: expense.dueDate,
+                        paidAt: new Date().toISOString(),
+                        snoozeUntil: null,
+                        snoozeCount: 0
+                    })
+                }
                 toast({ description: t('budget.expensePaid', 'Expense marked as paid') })
             } else if (!expense.isVirtual || (expense.isVirtual && !expense.isRecurringVirtual)) {
                 // Real expense (one-time)
@@ -685,7 +774,9 @@ export default function Budget() {
                 const newStatus = expense.status === 'paid' ? 'pending' : 'paid'
                 await updateExpense(expense.id, {
                     status: newStatus,
-                    paidAt: newStatus === 'paid' ? new Date().toISOString() : null
+                    paidAt: newStatus === 'paid' ? new Date().toISOString() : null,
+                    snoozeUntil: null,
+                    snoozeCount: 0
                 })
                 toast({ description: t('budget.statusUpdated', 'Status updated') })
             }
@@ -711,8 +802,14 @@ export default function Budget() {
                     <Button variant="outline" onClick={handlePrevMonth} disabled={isAtStartPoint}>
                         <ChevronLeft className="w-4 h-4" />
                     </Button>
-                    <div className="px-4 py-2 bg-secondary rounded-md font-bold text-sm">
+                    <div className="px-4 py-2 bg-secondary rounded-md font-bold text-sm flex items-center gap-2">
                         {selectedMonth.toLocaleString('default', { month: 'long', year: 'numeric' })}
+                        {isAtStartPoint && (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-widest text-fuchsia-600 dark:text-fuchsia-400">
+                                <span className="w-1.5 h-1.5 rounded-full bg-fuchsia-500 animate-pulse" />
+                                {t('budget.startPoint', 'Start')}
+                            </span>
+                        )}
                     </div>
                     <Button variant="outline" onClick={handleNextMonth}>
                         <ChevronRight className="w-4 h-4" />
@@ -725,6 +822,7 @@ export default function Budget() {
                             items={snoozedItems}
                             onUnsnooze={handleUnsnooze}
                             iqdPreference={iqdPreference}
+                            isLoading={isProcessing}
                         />
                     )}
                 </div>
@@ -1009,6 +1107,27 @@ export default function Budget() {
                                 </div>
                             </div>
                             <div className="flex gap-2 items-center">
+                                {/* Snooze Indicator */}
+                                {(() => {
+                                    const snoozed = snoozedItems.find(s =>
+                                        (s.category === 'expense' && s.expenseId === expense.id) ||
+                                        (s.category === 'salary' && s.employeeId === expense.employeeId && expense.category === 'payroll') ||
+                                        (s.category === 'dividend' && s.employeeId === expense.employeeId && expense.category === 'dividend')
+                                    )
+                                    if (!snoozed) return null
+                                    return (
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className="text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-600 h-8 w-8"
+                                            onClick={() => setUnsnoozeItem(snoozed)}
+                                            title={t('budget.manageSnooze', 'Manage Snooze')}
+                                        >
+                                            <BellOff className="w-4 h-4 fill-current animate-pulse" />
+                                        </Button>
+                                    )
+                                })()}
+
                                 {expense.isLocked ? (
                                     <Lock className="w-5 h-5 text-emerald-600 opacity-50 ml-2" />
                                 ) : (
@@ -1322,6 +1441,46 @@ export default function Budget() {
                 </DialogContent>
             </Dialog>
 
+            {/* Manage Snooze Modal */}
+            <Dialog open={!!unsnoozeItem} onOpenChange={(open) => !open && setUnsnoozeItem(null)}>
+                <DialogContent className="max-w-sm rounded-[2rem]">
+                    <DialogHeader className="items-center text-center">
+                        <div className="w-12 h-12 rounded-full bg-yellow-500/10 flex items-center justify-center mb-2">
+                            <BellOff className="w-6 h-6 text-yellow-500" />
+                        </div>
+                        <DialogTitle>{t('budget.manageSnooze', 'Manage Snooze')}</DialogTitle>
+                        <DialogDescription>
+                            {unsnoozeItem?.title}
+                            {unsnoozeItem?.snoozeUntil && (
+                                <div className="mt-2 text-xs font-bold text-yellow-600 dark:text-yellow-500 bg-yellow-500/10 px-3 py-1.5 rounded-full inline-flex items-center gap-1.5">
+                                    <Clock className="w-3 h-3" />
+                                    {isIndefiniteSnooze(unsnoozeItem.snoozeUntil)
+                                        ? t('budget.snoozedIndefinitely', 'Snoozed Until Un-snoozed')
+                                        : `${t('budget.snoozedUntil', 'Snoozed until')} ${formatDate(unsnoozeItem.snoozeUntil)}`}
+                                </div>
+                            )}
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter className="flex-col sm:flex-col gap-2 mt-4">
+                        <Button
+                            className="w-full bg-yellow-600 hover:bg-yellow-700 text-white font-black h-12 rounded-xl"
+                            onClick={async () => {
+                                if (unsnoozeItem) {
+                                    await handleUnsnooze(unsnoozeItem)
+                                    setUnsnoozeItem(null)
+                                }
+                            }}
+                        >
+                            <RotateCcw className="w-4 h-4 mr-2" />
+                            {t('budget.unsnooze', 'Un-snooze')}
+                        </Button>
+                        <Button variant="ghost" onClick={() => setUnsnoozeItem(null)} className="rounded-xl h-11">
+                            {t('common.close', 'Close')}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
             <DividendDistributionModal
                 isOpen={isDividendModalOpen}
                 onClose={() => setIsDividendModalOpen(false)}
@@ -1340,18 +1499,21 @@ export default function Budget() {
                 queuePosition={reminderIndex + 1}
                 queueTotal={reminderQueue.length}
                 iqdPreference={iqdPreference}
+                isLoading={isProcessing}
             />
             <BudgetLockModal
                 isOpen={reminderStep === 'lock'}
                 onLock={handleReminderLock}
                 onSkip={handleReminderLockSkip}
                 item={currentReminder}
+                isLoading={isProcessing}
             />
             <BudgetSnoozeModal
                 isOpen={reminderStep === 'snooze'}
                 onSnooze={handleReminderSnooze}
-                onDismiss={handleReminderSnoozeDismiss}
+                onDismiss={() => handleReminderSnooze(-1)}
                 item={currentReminder}
+                isLoading={isProcessing}
             />
         </div>
     )

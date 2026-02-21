@@ -17,6 +17,7 @@ interface BudgetLockModalProps {
     onLock: () => void
     onSkip: () => void
     item: BudgetReminderItem | null
+    isLoading?: boolean
 }
 
 const ACCENT: Record<ReminderCategory, { color: string; bg: string; border: string; button: string }> = {
@@ -40,7 +41,7 @@ const ACCENT: Record<ReminderCategory, { color: string; bg: string; border: stri
     },
 }
 
-export function BudgetLockModal({ isOpen, onLock, onSkip, item }: BudgetLockModalProps) {
+export function BudgetLockModal({ isOpen, onLock, onSkip, item, isLoading }: BudgetLockModalProps) {
     const { t } = useTranslation()
 
     if (!item) return null
@@ -87,17 +88,19 @@ export function BudgetLockModal({ isOpen, onLock, onSkip, item }: BudgetLockModa
                     <DialogFooter className="w-full flex flex-col gap-3 sm:flex-col">
                         <Button
                             onClick={onLock}
+                            disabled={isLoading}
                             className={cn(
                                 "w-full h-12 rounded-2xl font-black shadow-lg border-t border-white/10 transition-all active:scale-95 text-white gap-2",
                                 accent.button
                             )}
                         >
                             <Lock className="w-4 h-4" />
-                            {t('budget.reminder.lockConfirm', 'Lock')}
+                            {isLoading ? t('common.processing', 'Processing...') : t('budget.reminder.lockConfirm', 'Lock')}
                         </Button>
                         <Button
                             variant="ghost"
                             onClick={onSkip}
+                            disabled={isLoading}
                             className="w-full h-12 rounded-2xl font-bold text-muted-foreground transition-all active:scale-95"
                         >
                             {t('budget.reminder.lockSkip', 'Skip')}

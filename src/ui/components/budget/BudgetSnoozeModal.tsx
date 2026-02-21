@@ -18,9 +18,10 @@ interface BudgetSnoozeModalProps {
     onSnooze: (minutes: number) => void
     onDismiss: () => void
     item: BudgetReminderItem | null
+    isLoading?: boolean
 }
 
-export function BudgetSnoozeModal({ isOpen, onSnooze, onDismiss, item }: BudgetSnoozeModalProps) {
+export function BudgetSnoozeModal({ isOpen, onSnooze, onDismiss, item, isLoading }: BudgetSnoozeModalProps) {
     const { t } = useTranslation()
     const [selectedMinutes, setSelectedMinutes] = useState<number>(0)
 
@@ -80,12 +81,14 @@ export function BudgetSnoozeModal({ isOpen, onSnooze, onDismiss, item }: BudgetS
                     {options.map((option) => (
                         <button
                             key={option.value}
+                            disabled={isLoading}
                             onClick={() => setSelectedMinutes(option.value)}
                             className={cn(
                                 "w-full flex items-center justify-between p-4 border transition-all h-14 rounded-xl",
                                 selectedMinutes === option.value
                                     ? "border-emerald-500 bg-emerald-50/50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 font-medium shadow-sm"
-                                    : "border-border hover:border-border/80 hover:bg-secondary/20"
+                                    : "border-border hover:border-border/80 hover:bg-secondary/20",
+                                isLoading && "opacity-50 cursor-not-allowed"
                             )}
                         >
                             <span className="text-sm">{option.label}</span>
@@ -98,8 +101,9 @@ export function BudgetSnoozeModal({ isOpen, onSnooze, onDismiss, item }: BudgetS
                     <Button
                         className="w-full h-12 rounded-xl font-black bg-emerald-600 hover:bg-emerald-700 text-white"
                         onClick={handleConfirm}
+                        disabled={isLoading}
                     >
-                        {t('common.confirm', 'Confirm')}
+                        {isLoading ? t('common.processing', 'Processing...') : t('common.confirm', 'Confirm')}
                     </Button>
                 </DialogFooter>
             </DialogContent>

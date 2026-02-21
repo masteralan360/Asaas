@@ -1097,6 +1097,12 @@
         "allocationSaved": "Budget allocation updated",
         "estimatedLimit": "Estimated Limit",
         "basedOnRevenue": "Based on {{month}} revenue",
+        "startPoint": "Start",
+        "snoozedItems": "Snoozed Reminders",
+        "snoozedItemsDesc": "These items are currently snoozed. Un-snooze to be reminded again.",
+        "snoozedUntil": "Snoozed until",
+        "unsnooze": "Un-snooze",
+        "snoozedIndefinitely": "Snoozed Until Un-snoozed",
         "status": {
             "paid": "Paid",
             "pending": "Pending"

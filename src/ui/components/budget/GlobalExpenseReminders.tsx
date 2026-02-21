@@ -1,10 +1,11 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import { useLocation } from 'wouter'
 import { useAuth } from '@/auth'
 import { useWorkspace } from '@/workspace'
 import { BudgetReminderModal } from './BudgetReminderModal'
 import { BudgetLockModal } from './BudgetLockModal'
 import { BudgetSnoozeModal } from './BudgetSnoozeModal'
-import { scanDueItems, getReminderConfig, getVirtualSnooze } from '@/lib/budgetReminders'
+import { scanDueItems, getReminderConfig, getVirtualSnooze, setVirtualSnooze, INDEFINITE_SNOOZE_DATE } from '@/lib/budgetReminders'
 import type { BudgetReminderItem } from '@/lib/budgetReminders'
 import { updateExpense, createExpense, fetchTableFromSupabase } from '@/local-db/hooks'
 import { db } from '@/local-db/database'
@@ -12,6 +13,7 @@ import { useToast } from '@/ui/components'
 import { useTranslation } from 'react-i18next'
 
 export function GlobalExpenseReminders() {
+    const [location] = useLocation()
     const { user } = useAuth()
     const { features } = useWorkspace()
     const workspaceId = user?.workspaceId
@@ -21,6 +23,13 @@ export function GlobalExpenseReminders() {
     const [queue, setQueue] = useState<BudgetReminderItem[]>([])
     const [currentIndex, setCurrentIndex] = useState(0)
     const [step, setStep] = useState<'idle' | 'reminder' | 'lock' | 'snooze'>('idle')
+    const [isProcessing, setIsProcessing] = useState(false)
+    const isChecking = useRef(false)
+    const stepRef = useRef(step)
+
+    useEffect(() => {
+        stepRef.current = step
+    }, [step])
 
     useEffect(() => {
         if (!user || !workspaceId) return
@@ -28,6 +37,10 @@ export function GlobalExpenseReminders() {
         let mounted = true
 
         const checkOverdueExpenses = async () => {
+            // Guard: stop if on budget page (handled by Budget.tsx), already checking, or already showing something
+            if (location === '/budget' || isChecking.current || stepRef.current !== 'idle') return
+            isChecking.current = true
+
             try {
                 console.log('[GlobalExpenseReminders] Startup/Refresh check: syncing and querying for overdue items...')
 
@@ -48,8 +61,12 @@ export function GlobalExpenseReminders() {
 
                 const virtualSnoozeMap = new Map<string, { until: string | null; count: number }>()
 
-                // Pre-fill virtualSnoozeMap for dividends
+                // Pre-fill virtualSnoozeMap for salaries and dividends
                 for (const emp of employees) {
+                    if (emp.salary && emp.salary > 0) {
+                        const vs = await getVirtualSnooze('salary', emp.id, monthStr)
+                        if (vs.until || vs.count > 0) virtualSnoozeMap.set(`salary_${emp.id}`, vs)
+                    }
                     if (emp.hasDividends && emp.dividendAmount && emp.dividendAmount > 0) {
                         const vd = await getVirtualSnooze('dividend', emp.id, monthStr)
                         if (vd.until || vd.count > 0) virtualSnoozeMap.set(`dividend_${emp.id}`, vd)
@@ -75,6 +92,8 @@ export function GlobalExpenseReminders() {
                 }
             } catch (err) {
                 console.error('[GlobalExpenseReminders] Unexpected error during check:', err)
+            } finally {
+                isChecking.current = false
             }
         }
 
@@ -92,7 +111,7 @@ export function GlobalExpenseReminders() {
             clearInterval(interval)
             window.removeEventListener('focus', checkOverdueExpenses)
         }
-    }, [user, workspaceId])
+    }, [user, workspaceId, location]) // Re-run on location change to apply route guard immediately
 
     const currentItem = queue[currentIndex] || null
 
@@ -108,11 +127,20 @@ export function GlobalExpenseReminders() {
     }
 
     const handlePaid = async () => {
-        if (!currentItem || !workspaceId) return
+        if (!currentItem || !workspaceId || isProcessing) return
+        setIsProcessing(true)
 
         try {
             console.log(`[GlobalExpenseReminders] Marking ${currentItem.category} as paid`)
-            if (currentItem.category === 'salary' && currentItem.employeeId) {
+            if (currentItem.expenseId && !currentItem.isRecurringTemplate) {
+                // Update existing record (real expense or snoozed salary/dividend marker)
+                await updateExpense(currentItem.expenseId, {
+                    status: 'paid',
+                    paidAt: new Date().toISOString(),
+                    snoozeUntil: null,
+                    snoozeCount: 0
+                })
+            } else if (currentItem.category === 'salary' && currentItem.employeeId) {
                 const newExp = await createExpense(workspaceId, {
                     description: currentItem.title,
                     type: 'one-time',
@@ -127,27 +155,20 @@ export function GlobalExpenseReminders() {
                     employeeId: currentItem.employeeId
                 })
                 if (newExp) currentItem.expenseId = newExp.id
-            } else if (currentItem.expenseId) {
-                if (currentItem.isRecurringTemplate) {
-                    const newExp = await createExpense(workspaceId, {
-                        description: currentItem.title,
-                        type: 'one-time',
-                        category: currentItem.expenseCategory as any || 'operational',
-                        amount: currentItem.amount,
-                        currency: currentItem.currency as any,
-                        status: 'paid',
-                        dueDate: currentItem.dueDate,
-                        paidAt: new Date().toISOString(),
-                        snoozeUntil: null,
-                        snoozeCount: 0
-                    })
-                    if (newExp) currentItem.expenseId = newExp.id
-                } else {
-                    await updateExpense(currentItem.expenseId, {
-                        status: 'paid',
-                        paidAt: new Date().toISOString()
-                    })
-                }
+            } else if (currentItem.expenseId && currentItem.isRecurringTemplate) {
+                const newExp = await createExpense(workspaceId, {
+                    description: currentItem.title,
+                    type: 'one-time',
+                    category: currentItem.expenseCategory as any || 'operational',
+                    amount: currentItem.amount,
+                    currency: currentItem.currency as any,
+                    status: 'paid',
+                    dueDate: currentItem.dueDate,
+                    paidAt: new Date().toISOString(),
+                    snoozeUntil: null,
+                    snoozeCount: 0
+                })
+                if (newExp) currentItem.expenseId = newExp.id
             }
             toast({ description: t('budget.statusUpdated', 'Status updated') })
             setStep('lock')
@@ -155,21 +176,23 @@ export function GlobalExpenseReminders() {
             console.error('[GlobalExpenseReminders] Error marking paid:', err)
             toast({ variant: 'destructive', description: t('common.error', 'Failed to update') })
             advance()
+        } finally {
+            setIsProcessing(false)
         }
     }
 
     const handleLock = async () => {
-        if (!currentItem || !currentItem.expenseId) return
+        if (!currentItem || !currentItem.expenseId || isProcessing) return
+        setIsProcessing(true)
 
         try {
             console.log(`[GlobalExpenseReminders] Locking expense ${currentItem.expenseId}`)
             await updateExpense(currentItem.expenseId, { isLocked: true })
             toast({ description: t('budget.expenseLocked', 'Payment locked') })
-        } catch (err) {
-            console.error('[GlobalExpenseReminders] Error locking:', err)
-            toast({ variant: 'destructive', description: t('budget.errorLocking', 'Error locking') })
+        } finally {
+            advance()
+            setIsProcessing(false)
         }
-        advance()
     }
 
     const handleLockSkip = () => advance()
@@ -177,9 +200,12 @@ export function GlobalExpenseReminders() {
     const handleSnoozeOpen = () => setStep('snooze')
 
     const handleSnooze = async (minutes: number) => {
-        if (!currentItem || !workspaceId) return
+        if (!currentItem || !workspaceId || isProcessing) return
+        setIsProcessing(true)
 
-        const snoozeUntil = new Date(Date.now() + minutes * 60000).toISOString()
+        const snoozeUntil = minutes === -1
+            ? INDEFINITE_SNOOZE_DATE
+            : new Date(Date.now() + minutes * 60000).toISOString()
         const newCount = (currentItem.snoozeCount || 0) + 1
 
         try {
@@ -206,20 +232,45 @@ export function GlobalExpenseReminders() {
                         employeeId: currentItem.employeeId
                     })
                 }
+            } else if (currentItem.isRecurringTemplate && workspaceId) {
+                // Materialize snooze record instead of updating template
+                await createExpense(workspaceId, {
+                    description: currentItem.title,
+                    type: 'one-time',
+                    category: currentItem.expenseCategory as any || 'other',
+                    amount: currentItem.amount,
+                    currency: currentItem.currency as any,
+                    status: 'snoozed',
+                    dueDate: currentItem.dueDate || new Date().toISOString(),
+                    paidAt: null,
+                    snoozeUntil,
+                    snoozeCount: newCount
+                })
             } else if (currentItem.expenseId) {
                 await updateExpense(currentItem.expenseId, {
                     snoozeUntil,
                     snoozeCount: newCount,
                     status: 'snoozed' // Maintain standard flow
                 })
+            } else {
+                // Virtual items (Dividends) — store in app_settings
+                const now = new Date()
+                const monthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+                await setVirtualSnooze(
+                    currentItem.category,
+                    currentItem.employeeId || currentItem.id,
+                    monthStr,
+                    snoozeUntil,
+                    newCount
+                )
             }
-        } catch (err) {
-            console.error('[GlobalExpenseReminders] Error snoozing:', err)
+        } finally {
+            advance()
+            setIsProcessing(false)
         }
-        advance()
     }
 
-    const handleSnoozeDismiss = () => advance()
+    const handleSnoozeDismiss = () => handleSnooze(-1)
 
     if (step === 'idle' || !currentItem) return null
 
@@ -233,6 +284,7 @@ export function GlobalExpenseReminders() {
                 queuePosition={currentIndex + 1}
                 queueTotal={queue.length}
                 iqdPreference={features.default_currency === 'usd' ? undefined : (features as any).primary_iqd_rate}
+                isLoading={isProcessing}
             />
 
             <BudgetLockModal
@@ -240,6 +292,7 @@ export function GlobalExpenseReminders() {
                 onLock={handleLock}
                 onSkip={handleLockSkip}
                 item={currentItem}
+                isLoading={isProcessing}
             />
 
             <BudgetSnoozeModal
@@ -247,6 +300,7 @@ export function GlobalExpenseReminders() {
                 onSnooze={handleSnooze}
                 onDismiss={handleSnoozeDismiss}
                 item={currentItem}
+                isLoading={isProcessing}
             />
         </>
     )

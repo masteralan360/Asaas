@@ -20,6 +20,7 @@ interface BudgetReminderModalProps {
     queuePosition?: number
     queueTotal?: number
     iqdPreference?: string
+    isLoading?: boolean
 }
 
 const THEME: Record<ReminderCategory, {
@@ -67,7 +68,8 @@ export function BudgetReminderModal({
     item,
     queuePosition = 1,
     queueTotal = 1,
-    iqdPreference
+    iqdPreference,
+    isLoading
 }: BudgetReminderModalProps) {
     const { t } = useTranslation()
 
@@ -122,7 +124,9 @@ export function BudgetReminderModal({
                     {/* Expense details */}
                     <div className="w-full bg-muted/30 rounded-2xl p-4 space-y-3 border border-border/50">
                         <div className="flex justify-between items-center">
-                            <span className="text-sm text-muted-foreground font-medium">{item.title}</span>
+                            <span className="text-sm text-muted-foreground font-medium">
+                                {item.title?.replace(/\s*\(Salary\)$/, '')}
+                            </span>
                             <span className={cn("text-lg font-black", theme.color)}>
                                 {formatCurrency(item.amount, item.currency as any, iqdPreference as any)}
                             </span>
@@ -158,16 +162,18 @@ export function BudgetReminderModal({
                     <DialogFooter className="w-full flex flex-col gap-3 sm:flex-col">
                         <Button
                             onClick={onPaid}
+                            disabled={isLoading}
                             className={cn(
                                 "w-full h-12 rounded-2xl font-black shadow-lg border-t border-white/10 transition-all active:scale-95 text-white",
                                 theme.button, theme.glow
                             )}
                         >
-                            {t('budget.reminder.yesPaid', 'Yes, I Paid')}
+                            {isLoading ? t('common.processing', 'Processing...') : t('budget.reminder.yesPaid', 'Yes, I Paid')}
                         </Button>
                         <Button
                             variant="outline"
                             onClick={onSnooze}
+                            disabled={isLoading}
                             className="w-full h-12 rounded-2xl font-black transition-all active:scale-95 gap-2"
                         >
                             <BellOff className="w-4 h-4" />

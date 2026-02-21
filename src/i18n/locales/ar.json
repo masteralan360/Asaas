@@ -1093,6 +1093,12 @@
         "allocationSaved": "تم تحديث مخصص الميزانية",
         "estimatedLimit": "الحد التقديري",
         "basedOnRevenue": "بناءً على إيرادات {{month}}",
+        "startPoint": "البداية",
+        "snoozedItems": "التذكيرات المؤجلة",
+        "snoozedItemsDesc": "هذه العناصر مؤجلة حالياً. قم بإلغاء التأجيل ليتم تذكيرك مرة أخرى.",
+        "snoozedUntil": "مؤجل حتى",
+        "unsnooze": "إلغاء التأجيل",
+        "snoozedIndefinitely": "مؤجل حتى يتم إلغاء التأجيل",
         "form": {
             "desc": "الوصف",
             "amount": "المبلغ",
@@ -1115,6 +1121,34 @@
             "paid": "مدفوع",
             "pending": "معلق",
             "snoozed": "مؤجل"
+        },
+        "reminder": {
+            "didYouPay": "هل دفعت؟",
+            "yesPaid": "نعم، دفعت",
+            "noSnooze": "لا، ذكرني لاحقاً",
+            "overdue": "متأخر",
+            "dueToday": "مستحق اليوم",
+            "dueTomorrow": "مستحق غداً",
+            "dueIn": "خلال {{days}} أيام",
+            "snoozedTimes": "تأجل {{count}} مرة",
+            "lockTitle": "قفل هذه الدفعة؟",
+            "lockDesc": "القفل يمنع التعديلات العرضية. لا يمكن التراجع عن هذا الإجراء.",
+            "lockConfirm": "قفل",
+            "lockSkip": "تخطي",
+            "snoozeTitle": "تأجيل التذكير",
+            "snoozeDesc": "متى تريد أن نذكرك مرة أخرى؟",
+            "category": {
+                "expense": "مصروف",
+                "salary": "راتب",
+                "dividend": "أرباح"
+            },
+            "snooze": {
+                "ignore": "رفض (بدون تذكير)",
+                "1h": "ساعة واحدة",
+                "6h": "٦ ساعات",
+                "tomorrow": "غداً",
+                "onDueDate": "في تاريخ الاستحقاق"
+            }
         }
     },
     "admin": {
