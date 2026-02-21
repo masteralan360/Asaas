@@ -8,7 +8,7 @@ import { useTheme } from './theme-provider';
 import { useTranslation } from 'react-i18next';
 import { toast } from '@/ui/components/use-toast';
 import { connectionManager } from '@/lib/connectionManager';
-import { NotificationPopupController } from './popups/NotificationPopupController';
+import { NotificationPopupController } from './novupopups/NotificationPopupController';
 import { getPopupIdFromNotification } from '@/lib/notificationPopups';
 import { cn } from '@/lib/utils';
 

@@ -49,6 +49,10 @@ import {
 
 import { useExchangeRate } from '@/context/ExchangeRateContext'
 import { useCallback } from 'react'
+import { scanDueItems, getReminderConfig, getVirtualSnooze, setVirtualSnooze, type BudgetReminderItem } from '@/lib/budgetReminders'
+import { BudgetReminderModal } from '@/ui/components/budget/BudgetReminderModal'
+import { BudgetLockModal } from '@/ui/components/budget/BudgetLockModal'
+import { BudgetSnoozeModal } from '@/ui/components/budget/BudgetSnoozeModal'
 
 export default function Budget() {
     const { t } = useTranslation()
@@ -68,6 +72,12 @@ export default function Budget() {
     const [allocCurrency, setAllocCurrency] = useState<CurrencyCode>(baseCurrency as any || 'usd')
     const [isDividendModalOpen, setIsDividendModalOpen] = useState(false)
     const workspaceUsers = useWorkspaceUsers(workspaceId)
+
+    // ─── Budget Reminder System ─────────────────────────────────
+    const [reminderQueue, setReminderQueue] = useState<BudgetReminderItem[]>([])
+    const [reminderIndex, setReminderIndex] = useState(0)
+    const [reminderStep, setReminderStep] = useState<'idle' | 'reminder' | 'lock' | 'snooze'>('idle')
+    const [reminderScanned, setReminderScanned] = useState(false)
 
     const monthStr = useMemo(() => {
         const year = selectedMonth.getFullYear()
@@ -102,6 +112,156 @@ export default function Budget() {
 
     const [expenseAmountDisplay, setExpenseAmountDisplay] = useState<string>('')
     const [lockConfirmExpense, setLockConfirmExpense] = useState<any>(null)
+
+    // ─── Budget Reminder Scanner Effect ──────────────────────────
+    useEffect(() => {
+        if (reminderScanned || !workspaceId || expenses.length === 0) return
+
+        const runScan = async () => {
+            const config = await getReminderConfig()
+
+            // Build virtual snooze map for salary/dividend items
+            const virtualSnoozeMap = new Map<string, { until: string | null; count: number }>()
+            for (const emp of employees) {
+                if (emp.salary && emp.salary > 0) {
+                    const vSnooze = await getVirtualSnooze('salary', emp.id, monthStr)
+                    if (vSnooze.until || vSnooze.count > 0) virtualSnoozeMap.set(`salary_${emp.id}`, vSnooze)
+                }
+                if (emp.hasDividends && emp.dividendAmount && emp.dividendAmount > 0) {
+                    const vSnooze = await getVirtualSnooze('dividend', emp.id, monthStr)
+                    if (vSnooze.until || vSnooze.count > 0) virtualSnoozeMap.set(`dividend_${emp.id}`, vSnooze)
+                }
+            }
+
+            const items = scanDueItems(expenses, employees, monthStr, config, virtualSnoozeMap)
+
+            if (items.length > 0) {
+                setReminderQueue(items)
+                setReminderIndex(0)
+                setReminderStep('reminder')
+            }
+            setReminderScanned(true)
+        }
+
+        runScan()
+    }, [expenses, employees, workspaceId, monthStr, reminderScanned])
+
+    // Reset scan when month changes
+    useEffect(() => {
+        setReminderScanned(false)
+        setReminderQueue([])
+        setReminderIndex(0)
+        setReminderStep('idle')
+    }, [monthStr])
+
+    const currentReminder = reminderQueue[reminderIndex] || null
+
+    const advanceReminder = () => {
+        const next = reminderIndex + 1
+        if (next < reminderQueue.length) {
+            setReminderIndex(next)
+            setReminderStep('reminder')
+        } else {
+            setReminderStep('idle')
+        }
+    }
+
+    const handleReminderPaid = async () => {
+        if (!currentReminder || !workspaceId) return
+
+        try {
+            if (currentReminder.category === 'expense' && currentReminder.expenseId) {
+                // Real expense — toggle status to paid
+                await updateExpense(currentReminder.expenseId, {
+                    status: 'paid',
+                    paidAt: new Date().toISOString()
+                })
+            } else if (currentReminder.category === 'salary' && currentReminder.employeeId) {
+                // Virtual salary — create a payroll expense record
+                await createExpense(workspaceId, {
+                    description: `${currentReminder.employeeName} (${t('hr.salary', 'Salary')})`,
+                    type: 'one-time',
+                    category: 'payroll',
+                    amount: currentReminder.amount,
+                    currency: currentReminder.currency as any,
+                    status: 'paid',
+                    dueDate: currentReminder.dueDate,
+                    paidAt: new Date().toISOString(),
+                    snoozeUntil: null,
+                    snoozeCount: 0,
+                    employeeId: currentReminder.employeeId
+                })
+            }
+            // After marking paid, show lock modal
+            toast({ description: t('budget.statusUpdated', 'Status updated') })
+            setReminderStep('lock')
+        } catch {
+            toast({ variant: 'destructive', description: t('common.error', 'Failed to update') })
+            advanceReminder()
+        }
+    }
+
+    const handleReminderLock = async () => {
+        if (!currentReminder) return
+
+        try {
+            if (currentReminder.expenseId) {
+                await updateExpense(currentReminder.expenseId, { isLocked: true })
+            } else if (currentReminder.category === 'salary' && currentReminder.employeeId) {
+                // Find the just-created payroll expense to lock it
+                const monthStart = new Date(selectedMonth.getFullYear(), selectedMonth.getMonth(), 1)
+                const monthEnd = new Date(selectedMonth.getFullYear(), selectedMonth.getMonth() + 1, 0, 23, 59, 59)
+                const payrollExp = expenses.find(e =>
+                    e.type === 'one-time' &&
+                    e.category === 'payroll' &&
+                    e.employeeId === currentReminder.employeeId &&
+                    new Date(e.dueDate) >= monthStart &&
+                    new Date(e.dueDate) <= monthEnd &&
+                    !e.isDeleted
+                )
+                if (payrollExp) await updateExpense(payrollExp.id, { isLocked: true })
+            }
+            toast({ description: t('budget.expenseLocked', 'Payment locked') })
+        } catch {
+            toast({ variant: 'destructive', description: t('budget.errorLocking', 'Error locking') })
+        }
+        advanceReminder()
+    }
+
+    const handleReminderLockSkip = () => advanceReminder()
+
+    const handleReminderSnoozeOpen = () => setReminderStep('snooze')
+
+    const handleReminderSnooze = async (minutes: number) => {
+        if (!currentReminder) return
+
+        const snoozeUntil = new Date(Date.now() + minutes * 60000).toISOString()
+        const newCount = (currentReminder.snoozeCount || 0) + 1
+
+        try {
+            if (currentReminder.category === 'expense' && currentReminder.expenseId) {
+                await updateExpense(currentReminder.expenseId, {
+                    snoozeUntil,
+                    snoozeCount: newCount,
+                    status: 'snoozed'
+                })
+            } else {
+                // Virtual items — store in app_settings
+                await setVirtualSnooze(
+                    currentReminder.category,
+                    currentReminder.employeeId || currentReminder.id,
+                    monthStr,
+                    snoozeUntil,
+                    newCount
+                )
+            }
+        } catch (err) {
+            console.warn('[BudgetReminder] Failed to save snooze:', err)
+        }
+        advanceReminder()
+    }
+
+    const handleReminderSnoozeDismiss = () => advanceReminder()
 
     const handleConfirmLock = async () => {
         if (!lockConfirmExpense?.expenseRecordId) return
@@ -1027,6 +1187,29 @@ export default function Budget() {
                 baseCurrency={baseCurrency}
                 iqdPreference={iqdPreference}
             />
-        </div >
+
+            {/* ─── Budget Reminder Modals ─────────────────────── */}
+            <BudgetReminderModal
+                isOpen={reminderStep === 'reminder'}
+                onPaid={handleReminderPaid}
+                onSnooze={handleReminderSnoozeOpen}
+                item={currentReminder}
+                queuePosition={reminderIndex + 1}
+                queueTotal={reminderQueue.length}
+                iqdPreference={iqdPreference}
+            />
+            <BudgetLockModal
+                isOpen={reminderStep === 'lock'}
+                onLock={handleReminderLock}
+                onSkip={handleReminderLockSkip}
+                item={currentReminder}
+            />
+            <BudgetSnoozeModal
+                isOpen={reminderStep === 'snooze'}
+                onSnooze={handleReminderSnooze}
+                onDismiss={handleReminderSnoozeDismiss}
+                item={currentReminder}
+            />
+        </div>
     )
 }

@@ -1100,6 +1100,34 @@
         "status": {
             "paid": "Paid",
             "pending": "Pending"
+        },
+        "reminder": {
+            "didYouPay": "Did you pay?",
+            "yesPaid": "Yes, I Paid",
+            "noSnooze": "No, Remind Me Later",
+            "overdue": "Overdue",
+            "dueToday": "Due Today",
+            "dueTomorrow": "Due Tomorrow",
+            "dueIn": "In {{days}} days",
+            "snoozedTimes": "Snoozed {{count}} time(s)",
+            "lockTitle": "Lock this payment?",
+            "lockDesc": "Locking prevents accidental edits. This action cannot be undone.",
+            "lockConfirm": "Lock",
+            "lockSkip": "Skip",
+            "snoozeTitle": "Snooze Reminder",
+            "snoozeDesc": "When should we remind you about this again?",
+            "category": {
+                "expense": "Expense",
+                "salary": "Salary",
+                "dividend": "Dividend"
+            },
+            "snooze": {
+                "ignore": "Dismiss (no reminder)",
+                "1h": "1 hour",
+                "6h": "6 hours",
+                "tomorrow": "Tomorrow",
+                "onDueDate": "On due date"
+            }
         }
     },
     "updater": {

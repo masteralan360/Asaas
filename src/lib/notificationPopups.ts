@@ -1,5 +1,5 @@
-import { ExperimentalNovuModal } from '@/ui/components/popups/ExperimentalNovuModal';
-import { Experimental2NovuModal } from '@/ui/components/popups/Experimental2NovuModal';
+import { ExperimentalNovuModal } from '@/ui/components/novupopups/ExperimentalNovuModal';
+import { Experimental2NovuModal } from '@/ui/components/novupopups/Experimental2NovuModal';
 
 /**
  * Interface defining the rules for triggering a popup.
