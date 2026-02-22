@@ -4,7 +4,7 @@ import i18n from '@/i18n/config'
 import { I18nextProvider } from 'react-i18next'
 import html2canvas from 'html2canvas'
 import { jsPDF } from 'jspdf'
-import { A4InvoiceTemplate } from '@/ui/components/A4InvoiceTemplate'
+import { A4InvoiceTemplate, ModernA4InvoiceTemplate } from '@/ui/components'
 import { SaleReceiptBase } from '@/ui/components/SaleReceipt'
 import { UniversalInvoice } from '@/types'
 
@@ -274,12 +274,15 @@ export async function generateInvoicePdf(options: PDFGeneratorOptions): Promise<
     const element = createElement(
         I18nextProvider,
         { i18n: pdfI18n },
-        createElement(A4InvoiceTemplate, {
-            data,
-            features: processedFeatures,
-            workspaceId,
-            workspaceName: workspaceName || workspaceId || 'Asaas'
-        })
+        createElement(
+            features?.a4_template === 'modern' ? ModernA4InvoiceTemplate : A4InvoiceTemplate,
+            {
+                data,
+                features: processedFeatures,
+                workspaceId,
+                workspaceName: workspaceName || workspaceId || 'Asaas'
+            }
+        )
     )
     const renderResult = await renderToCanvas(element, A4_WIDTH_MM)
     return canvasToA4Pdf(renderResult)

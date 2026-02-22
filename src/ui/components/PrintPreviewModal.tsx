@@ -11,6 +11,7 @@ import {
     useToast,
     PdfViewer,
     A4InvoiceTemplate,
+    ModernA4InvoiceTemplate,
     SaleReceiptBase
 } from '@/ui/components'
 import { Printer, X, Maximize2, Minimize2, Loader2 } from 'lucide-react'
@@ -506,12 +507,21 @@ export function PrintPreviewModal({
                                     />
                                 </div>
                             ) : (
-                                <A4InvoiceTemplate
-                                    data={pdfData}
-                                    features={features}
-                                    workspaceId={workspaceId || undefined}
-                                    workspaceName={workspaceName || workspaceId || 'Asaas'}
-                                />
+                                features?.a4_template === 'modern' ? (
+                                    <ModernA4InvoiceTemplate
+                                        data={pdfData}
+                                        features={features}
+                                        workspaceId={workspaceId || undefined}
+                                        workspaceName={workspaceName || workspaceId || 'Asaas'}
+                                    />
+                                ) : (
+                                    <A4InvoiceTemplate
+                                        data={pdfData}
+                                        features={features}
+                                        workspaceId={workspaceId || undefined}
+                                        workspaceName={workspaceName || workspaceId || 'Asaas'}
+                                    />
+                                )
                             )}
                         </div>
                     </div>
