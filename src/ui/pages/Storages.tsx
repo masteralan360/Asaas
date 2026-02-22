@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react'
-import { useStorages, createStorage, updateStorage, deleteStorage, getReserveStorageId, useProducts, useCategories, type Storage } from '@/local-db'
+import { useStorages, createStorage, updateStorage, deleteStorage, getReserveStorageId, useProducts, useCategories, type Storage, type CurrencyCode } from '@/local-db'
+import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useExchangeRate } from '@/context/ExchangeRateContext'
 import { useWorkspace } from '@/workspace'
 import { Button } from '@/ui/components/button'
 import { Plus, Search, Edit, Trash2, Warehouse, ShieldCheck, Package, Filter, LayoutGrid, Info } from 'lucide-react'
@@ -39,6 +40,64 @@ export default function Storages() {
     })
     const [selectedCategoryId, setSelectedCategoryId] = useState<string>('all')
     const [inventorySearch, setInventorySearch] = useState('')
+
+    const { exchangeData, eurRates, tryRates } = useExchangeRate()
+    const settlementCurrency = (features.default_currency || 'usd') as CurrencyCode
+
+    const convertPrice = useCallback((amount: number, from: CurrencyCode, to: CurrencyCode) => {
+        if (from === to) return amount
+
+        const getRate = (pair: 'usd_iqd' | 'usd_eur' | 'eur_iqd') => {
+            if (pair === 'usd_iqd') return exchangeData ? exchangeData.rate / 100 : null
+            if (pair === 'usd_eur') return eurRates.usd_eur ? eurRates.usd_eur.rate / 100 : null
+            if (pair === 'eur_iqd') return eurRates.eur_iqd ? eurRates.eur_iqd.rate / 100 : null
+            return null
+        }
+
+        let converted = amount
+
+        if (from === 'usd' && to === 'iqd') {
+            const r = getRate('usd_iqd'); if (r) converted = amount * r
+        } else if (from === 'iqd' && to === 'usd') {
+            const r = getRate('usd_iqd'); if (r) converted = amount / r
+        } else if (from === 'usd' && to === 'eur') {
+            const r = getRate('usd_eur'); if (r) converted = amount * r
+        } else if (from === 'eur' && to === 'usd') {
+            const r = getRate('usd_eur'); if (r) converted = amount / r
+        } else if (from === 'eur' && to === 'iqd') {
+            const r = getRate('eur_iqd'); if (r) converted = amount * r
+        } else if (from === 'iqd' && to === 'eur') {
+            const r = getRate('eur_iqd'); if (r) converted = amount / r
+        } else if (from === 'try' && to === 'iqd') {
+            if (tryRates.try_iqd) converted = amount * (tryRates.try_iqd.rate / 100)
+        } else if (from === 'iqd' && to === 'try') {
+            if (tryRates.try_iqd) converted = amount / (tryRates.try_iqd.rate / 100)
+        } else if (from === 'usd' && to === 'try') {
+            if (tryRates.usd_try) converted = amount * (tryRates.usd_try.rate / 100)
+        } else if (from === 'try' && to === 'usd') {
+            if (tryRates.usd_try) converted = amount / (tryRates.usd_try.rate / 100)
+        } else if (from === 'try' && to === 'eur') {
+            const tryIqdRate = tryRates.try_iqd ? tryRates.try_iqd.rate / 100 : null
+            const eurIqdRate = eurRates.eur_iqd ? eurRates.eur_iqd.rate / 100 : null
+            if (tryIqdRate && eurIqdRate) converted = (amount * tryIqdRate) / eurIqdRate
+        } else if (from === 'eur' && to === 'try') {
+            const eurIqdRate = eurRates.eur_iqd ? eurRates.eur_iqd.rate / 100 : null
+            const tryIqdRate = tryRates.try_iqd ? tryRates.try_iqd.rate / 100 : null
+            if (eurIqdRate && tryIqdRate) converted = (amount * eurIqdRate) / tryIqdRate
+        }
+
+        if (to === 'iqd') return Math.round(converted)
+        return Math.round(converted * 100) / 100
+    }, [exchangeData, eurRates, tryRates])
+
+    const totalStorageValue = useMemo(() => {
+        if (!selectedStorageId) return 0
+        const storageProducts = products.filter(p => p.storageId === selectedStorageId)
+        return storageProducts.reduce((sum, product) => {
+            const converted = convertPrice(product.price, product.currency, settlementCurrency)
+            return sum + (converted * product.quantity)
+        }, 0)
+    }, [products, selectedStorageId, convertPrice, settlementCurrency])
 
     useEffect(() => {
         if (selectedStorageId) {
@@ -288,6 +347,15 @@ export default function Storages() {
                                         </div>
                                         <div className="text-xl font-black text-primary leading-none">
                                             {inventoryProducts.length}
+                                        </div>
+                                    </div>
+
+                                    <div className="px-5 py-2.5 rounded-2xl bg-primary/10 border border-primary/20 border-solid">
+                                        <div className="text-[10px] font-black uppercase tracking-widest text-primary/70 mb-0.5">
+                                            {t('storages.totalValue', 'Storage Value')}
+                                        </div>
+                                        <div className="text-xl font-black text-primary leading-none">
+                                            {formatCurrency(totalStorageValue, settlementCurrency, features.iqd_display_preference)}
                                         </div>
                                     </div>
                                 </div>

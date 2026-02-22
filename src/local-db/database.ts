@@ -1,5 +1,5 @@
 import Dexie, { type EntityTable } from 'dexie'
-import type { Product, Category, Customer, Supplier, PurchaseOrder, SalesOrder, Invoice, User, SyncQueueItem, Sale, SaleItem, OfflineMutation, Workspace, AppSetting, Storage, Employee, Expense, BudgetAllocation } from './models'
+import type { Product, Category, Customer, Supplier, PurchaseOrder, SalesOrder, Invoice, User, SyncQueueItem, Sale, SaleItem, OfflineMutation, Workspace, AppSetting, Storage, Employee, Expense, BudgetAllocation, WorkspaceContact } from './models'
 
 // Asaas Database using Dexie.js for IndexedDB
 export class AsaasDatabase extends Dexie {
@@ -21,11 +21,12 @@ export class AsaasDatabase extends Dexie {
     syncQueue!: EntityTable<SyncQueueItem, 'id'>
     offline_mutations!: EntityTable<OfflineMutation, 'id'>
     app_settings!: EntityTable<AppSetting, 'key'>
+    workspace_contacts!: EntityTable<WorkspaceContact, 'id'>
 
     constructor() {
         super('AsaasDatabase')
 
-        this.version(31).stores({
+        this.version(33).stores({
             products: 'id, sku, name, categoryId, storageId, workspaceId, currency, syncStatus, updatedAt, isDeleted, canBeReturned',
             categories: 'id, name, workspaceId, syncStatus, updatedAt, isDeleted',
             suppliers: 'id, name, workspaceId, syncStatus, updatedAt, isDeleted',
@@ -44,6 +45,7 @@ export class AsaasDatabase extends Dexie {
             budgetAllocations: 'id, month, type, workspaceId, syncStatus, updatedAt, startPoint, [workspaceId+month]',
             syncQueue: 'id, entityType, entityId, operation, timestamp',
             offline_mutations: 'id, workspaceId, entityType, entityId, status, createdAt, [entityType+entityId+status]',
+            workspace_contacts: 'id, workspaceId, type, value, syncStatus, updatedAt',
             app_settings: 'key'
         })
     }

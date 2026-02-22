@@ -18,6 +18,7 @@ pub fn run() {
         // let _ = window.set_shadow(true);
         
         // Show window after configuration
+        let _ = window.maximize();
         let _ = window.show();
       }
 

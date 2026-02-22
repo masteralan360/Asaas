@@ -83,4 +83,6 @@ export {
     PaginationPrevious
 } from './ui/pagination'
 export { AppPagination } from './AppPagination'
-
+export { WorkspaceContactsManager } from './workspace/WorkspaceContactsManager'
+export { RegisterWorkspaceContactsModal } from './modals/RegisterWorkspaceContactsModal'
+export type { AdminContact } from './modals/RegisterWorkspaceContactsModal'

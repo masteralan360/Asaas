@@ -2,12 +2,12 @@ import { useAuth } from '@/auth'
 import { supabase } from '@/auth/supabase'
 import { useSyncStatus, clearQueue } from '@/sync'
 import { db, clearDatabase } from '@/local-db'
-import { Card, CardContent, CardHeader, CardTitle, CardDescription, Button, Label, LanguageSwitcher, Input, CurrencySelector, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Tabs, TabsList, TabsTrigger, TabsContent, Switch, Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, useToast } from '@/ui/components'
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, Button, Label, LanguageSwitcher, Input, CurrencySelector, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Tabs, TabsList, TabsTrigger, TabsContent, Switch, Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, useToast, RegisterWorkspaceContactsModal } from '@/ui/components'
 import { useTranslation } from 'react-i18next'
 import { useWorkspace } from '@/workspace'
 import { Coins } from 'lucide-react'
 import type { IQDDisplayPreference } from '@/local-db/models'
-import { Settings as SettingsIcon, Database, Cloud, Trash2, RefreshCw, User, Copy, Check, CreditCard, Globe, Download, AlertCircle, Printer } from 'lucide-react'
+import { Settings as SettingsIcon, Database, Cloud, Trash2, RefreshCw, User, Copy, Check, CreditCard, Globe, Download, AlertCircle, Printer, Contact } from 'lucide-react'
 import { formatDateTime, cn } from '@/lib/utils'
 import { useTheme } from '@/ui/components/theme-provider'
 import { Moon, Sun, Monitor, Unlock, Server, MessageSquare, Bell } from 'lucide-react'
@@ -19,6 +19,7 @@ import { check } from '@tauri-apps/plugin-updater';
 import { platformService } from '@/services/platformService'
 import { Image as ImageIcon } from 'lucide-react'
 import { assetManager } from '@/lib/assetManager'
+import { useWorkspaceContacts } from '@/local-db/hooks'
 
 export function Settings() {
     const { user, signOut, isSupabaseConfigured, updateUser } = useAuth()
@@ -57,6 +58,9 @@ export function Settings() {
     const activeSupabaseUrl = customUrl || import.meta.env.VITE_SUPABASE_URL || ''
     const activeSupabaseKey = customKey || import.meta.env.VITE_SUPABASE_ANON_KEY || ''
     /* --- Connection Settings (Web) State End --- */
+
+    const [contactsModalOpen, setContactsModalOpen] = useState(false)
+    const workspaceContacts = useWorkspaceContacts(user?.workspaceId)
 
     const [version, setVersion] = useState('')
 
@@ -448,12 +452,15 @@ export function Settings() {
 
             <Tabs defaultValue="general" className="w-full space-y-6">
                 <TabsList className={cn(
-                    "flex md:grid w-full max-w-full md:max-w-[500px] overflow-x-auto overflow-y-hidden no-scrollbar justify-start md:justify-center h-auto p-1",
-                    user?.role === 'admin' ? "md:grid-cols-3" : "md:grid-cols-2"
+                    "flex md:grid w-full max-w-full md:max-w-[600px] overflow-x-auto overflow-y-hidden no-scrollbar justify-start md:justify-center h-auto p-1",
+                    user?.role === 'admin' ? "md:grid-cols-4" : "md:grid-cols-3"
                 )}>
                     <TabsTrigger value="general">{t('settings.tabs.general') || 'General'}</TabsTrigger>
                     {(user?.role === 'admin' || user?.role === 'staff') && (
                         <TabsTrigger value="profile">{t('settings.tabs.profile') || 'Profile Settings'}</TabsTrigger>
+                    )}
+                    {(user?.role === 'admin' || user?.role === 'staff') && (
+                        <TabsTrigger value="workspace">{t('settings.tabs.workspace') || 'Workspace Settings'}</TabsTrigger>
                     )}
                     {user?.role === 'admin' && (
                         <TabsTrigger value="advanced">{t('settings.tabs.advanced') || 'Advanced'}</TabsTrigger>
@@ -612,6 +619,395 @@ export function Settings() {
                         </Card>
                     )}
 
+                    {/* Sync Status (Admin & Staff Only) */}
+                    {(user?.role === 'admin' || user?.role === 'staff') && (
+                        <Card>
+                            <CardHeader>
+                                <CardTitle className="flex items-center gap-2">
+                                    <Cloud className="w-5 h-5" />
+                                    {t('settings.syncStatus')}
+                                </CardTitle>
+                                <CardDescription>{t('settings.syncDesc')}</CardDescription>
+                            </CardHeader>
+                            <CardContent className="space-y-4">
+                                <div className="grid gap-4 md:grid-cols-2">
+                                    <div>
+                                        <Label className="text-muted-foreground">{t('settings.connection')}</Label>
+                                        <p className={`font-medium ${isOnline ? 'text-emerald-500' : 'text-red-500'}`}>
+                                            {isOnline ? t('settings.online') : t('settings.offline')}
+                                        </p>
+                                    </div>
+                                    <div>
+                                        <Label className="text-muted-foreground">{t('settings.syncState')}</Label>
+                                        <p className="font-medium capitalize">{syncState}</p>
+                                    </div>
+                                    <div>
+                                        <Label className="text-muted-foreground">{t('settings.pendingChanges')}</Label>
+                                        <p className="font-medium">{pendingCount} items</p>
+                                    </div>
+                                    <div>
+                                        <Label className="text-muted-foreground">{t('settings.lastSynced')}</Label>
+                                        <p className="font-medium">
+                                            {lastSyncTime ? formatDateTime(lastSyncTime) : t('settings.never')}
+                                        </p>
+                                    </div>
+                                </div>
+
+                                {!isSupabaseConfigured && (
+                                    <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                                        <p className="text-sm text-amber-500">
+                                            Supabase is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to enable cloud sync.
+                                        </p>
+                                    </div>
+                                )}
+
+                                <div className="flex gap-2">
+                                    <Button onClick={sync} disabled={isSyncing || !isOnline || !isSupabaseConfigured}>
+                                        <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
+                                        {isSyncing ? t('settings.syncing') : t('settings.syncNow')}
+                                    </Button>
+                                    {isElectron && (
+                                        <>
+                                            <Button
+                                                variant="outline"
+                                                onClick={handleOpenSyncMediaModal}
+                                                disabled={!isOnline || !isSupabaseConfigured || mediaSyncProgress !== null}
+                                                className="gap-2"
+                                            >
+                                                <ImageIcon className={cn("w-4 h-4", mediaSyncProgress && "animate-pulse")} />
+                                                {mediaSyncProgress
+                                                    ? `${t('settings.syncingMedia') || 'Syncing...'} (${mediaSyncProgress.current}/${mediaSyncProgress.total})`
+                                                    : t('settings.syncMedia') || 'Upload Media'}
+                                            </Button>
+
+                                            <Button
+                                                variant="secondary"
+                                                onClick={() => assetManager.triggerScan()}
+                                                disabled={!isOnline || !isSupabaseConfigured}
+                                                className="gap-2"
+                                                title="Check for new media from other devices"
+                                            >
+                                                <Download className="w-4 h-4" />
+                                                {t('settings.downloadMedia') || 'Download Media'}
+                                            </Button>
+                                        </>
+                                    )}
+                                    {pendingCount > 0 && (
+                                        <Button variant="outline" onClick={handleClearSyncQueue}>
+                                            {t('settings.clearQueue')}
+                                        </Button>
+                                    )}
+                                </div>
+                            </CardContent>
+                        </Card>
+                    )}
+
+                    {/* Media Sync Modal */}
+                    <Dialog open={isSyncMediaModalOpen} onOpenChange={setIsSyncMediaModalOpen}>
+                        <DialogContent className="max-w-md">
+                            <DialogHeader>
+                                <DialogTitle className="flex items-center gap-2">
+                                    <ImageIcon className="w-5 h-5 text-primary" />
+                                    {t('settings.syncMediaModal.title') || 'Sync All Media'}
+                                </DialogTitle>
+                                <DialogDescription>
+                                    {localMediaCount !== null
+                                        ? `${t('settings.syncMediaModal.countDesc', { count: localMediaCount }) || `Found ${localMediaCount} local files ready to sync.`} ${t('settings.syncMediaModal.desc') || 'This will upload all local product images and the workspace logo to the cloud.'}`
+                                        : t('settings.syncMediaModal.desc') || 'This will upload all local product images and the workspace logo to the cloud so they can be synced to other devices in your workspace.'}
+                                </DialogDescription>
+                            </DialogHeader>
+
+                            <div className="space-y-4 py-4">
+                                <div className="space-y-2">
+                                    <Label>{t('settings.syncMediaModal.expiry') || 'Expiration Time (Hours)'}</Label>
+                                    <div className="flex items-center gap-4">
+                                        <Input
+                                            type="number"
+                                            min={1}
+                                            max={48}
+                                            value={expiryHours}
+                                            onChange={(e) => setExpiryHours(Math.max(1, Math.min(48, parseInt(e.target.value) || 24)))}
+                                            className="w-24"
+                                        />
+                                        <span className="text-sm text-muted-foreground">
+                                            {t('settings.syncMediaModal.expiryDesc') || 'Hours until the temporary cloud buffer is cleared.'}
+                                        </span>
+                                    </div>
+                                    <p className="text-[11px] text-amber-500 font-medium italic">
+                                        {t('settings.syncMediaModal.note') || 'Note: Other devices must be online during this period to receive the media.'}
+                                    </p>
+                                </div>
+                            </div>
+
+                            <DialogFooter>
+                                <Button variant="ghost" onClick={() => setIsSyncMediaModalOpen(false)}>
+                                    {t('common.cancel')}
+                                </Button>
+                                <Button onClick={handleSyncMedia} className="gap-2">
+                                    <Cloud className="w-4 h-4" />
+                                    {t('settings.syncMediaModal.confirm') || 'Start Upload'}
+                                </Button>
+                            </DialogFooter>
+                        </DialogContent>
+                    </Dialog>
+
+                    {/* POS Settings */}
+                    <Card>
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2">
+                                <CreditCard className="w-5 h-5" />
+                                {t('settings.pos.title')}
+                            </CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-6">
+                            <div className="space-y-2">
+                                <Label>{t('settings.pos.hotkey')}</Label>
+                                <Input
+                                    value={posHotkey}
+                                    onChange={handleHotkeyChange}
+                                    maxLength={1}
+                                    className="w-20 text-center font-mono uppercase"
+                                />
+                                <p className="text-sm text-muted-foreground">
+                                    {t('settings.pos.hotkeyDesc')}
+                                </p>
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label>{t('settings.pos.barcodeHotkey')}</Label>
+                                <Input
+                                    value={barcodeHotkey}
+                                    onChange={handleBarcodeHotkeyChange}
+                                    maxLength={1}
+                                    className="w-20 text-center font-mono uppercase"
+                                />
+                                <p className="text-sm text-muted-foreground">
+                                    {t('settings.pos.barcodeHotkeyDesc')}
+                                </p>
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                </TabsContent>
+
+                <TabsContent value="profile" className="space-y-6 mt-0">
+                    <Card>
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2">
+                                <User className="w-5 h-5" />
+                                {t('settings.profile.title') || 'Profile Settings'}
+                            </CardTitle>
+                            <CardDescription>
+                                {t('settings.profile.desc') || 'Manage your personal and workspace profile information.'}
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-6">
+                            {/* Profile Picture Section */}
+                            <div className="space-y-4">
+                                <Label className="text-sm font-bold uppercase tracking-wider text-muted-foreground">Profile Picture</Label>
+                                <div className="flex items-center gap-6">
+                                    <div className="w-24 h-24 rounded-full bg-gradient-to-br from-primary to-purple-600 flex items-center justify-center text-3xl font-bold text-white overflow-hidden shadow-lg border-2 border-background">
+                                        {user?.profileUrl ? (
+                                            <img
+                                                src={platformService.convertFileSrc(user.profileUrl)}
+                                                alt={user.name}
+                                                className="w-full h-full object-cover"
+                                            />
+                                        ) : (
+                                            user?.name?.charAt(0).toUpperCase() || 'U'
+                                        )}
+                                    </div>
+                                    <div className="flex flex-col gap-2">
+                                        <div className="flex gap-2">
+                                            <Button variant="outline" size="sm" onClick={handleProfilePictureUpload} className="gap-2">
+                                                <ImageIcon className="w-4 h-4" />
+                                                {t('settings.profile.change_picture') || 'Change Picture'}
+                                            </Button>
+                                            {user?.profileUrl && (
+                                                <Button
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    onClick={handleRemoveProfilePicture}
+                                                    className="h-9 w-9 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                                    title={t('common.delete') || 'Delete'}
+                                                >
+                                                    <Trash2 className="w-4 h-4" />
+                                                </Button>
+                                            )}
+                                        </div>
+                                        <p className="text-[11px] text-muted-foreground max-w-[200px]">
+                                            Optimized for all devices. Syncs automatically.
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* User Information Section */}
+                            <div className="pt-6 border-t border-border/50 space-y-4">
+                                <Label className="text-sm font-bold uppercase tracking-wider text-muted-foreground">User Information</Label>
+                                <div className="grid gap-4 md:grid-cols-2">
+                                    <div className="space-y-1">
+                                        <Label className="text-xs text-muted-foreground">Store Employee</Label>
+                                        <p className="font-medium text-lg">{user?.name}</p>
+                                    </div>
+                                    <div className="space-y-1">
+                                        <Label className="text-xs text-muted-foreground">Email Address</Label>
+                                        <p className="font-medium text-lg">{user?.email}</p>
+                                    </div>
+                                    <div className="space-y-1">
+                                        <Label className="text-xs text-muted-foreground">Account Role</Label>
+                                        <div className="flex items-center gap-2">
+                                            <span className={cn(
+                                                "px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-widest",
+                                                user?.role === 'admin' ? "bg-primary/20 text-primary" : "bg-muted text-muted-foreground"
+                                            )}>
+                                                {user?.role}
+                                            </span>
+                                        </div>
+                                    </div>
+                                    {user?.role === 'admin' && (
+                                        <div className="space-y-1">
+                                            <Label className="text-xs text-muted-foreground">{t('workspaceConfig.contacts.title', 'Workspace Contacts')}</Label>
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                className={cn("w-full justify-start text-left font-normal h-10", workspaceContacts.length > 0 ? "text-foreground" : "text-muted-foreground")}
+                                                onClick={() => setContactsModalOpen(true)}
+                                            >
+                                                <Contact className="mr-2 h-4 w-4 opacity-50" />
+                                                {workspaceContacts.length > 0
+                                                    ? `${workspaceContacts.length} contact${workspaceContacts.length > 1 ? 's' : ''} configured`
+                                                    : (t('workspaceConfig.contacts.addContacts', 'Add Contacts'))}
+                                            </Button>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Workspace Logo Section (Admin Only) */}
+                            {user?.role === 'admin' && (
+                                <div className="pt-6 border-t border-border/50 space-y-4">
+                                    <div className="flex flex-col gap-1">
+                                        <Label className="text-sm font-bold uppercase tracking-wider text-muted-foreground">{t('settings.branding.title')}</Label>
+                                        <p className="text-sm text-muted-foreground">{t('settings.branding.subtitle')}</p>
+                                    </div>
+
+                                    <div className="space-y-4 max-w-sm">
+                                        <div className="space-y-2">
+                                            <Label className="text-xs text-slate-500 uppercase font-semibold">{t('settings.branding.name')}</Label>
+                                            <div className="flex gap-2">
+                                                <Input
+                                                    value={localWorkspaceName}
+                                                    onChange={(e) => setLocalWorkspaceName(e.target.value)}
+                                                    placeholder={t('settings.branding.namePlaceholder') || "Enter workspace name"}
+                                                    className="flex-1"
+                                                />
+                                                <Button
+                                                    size="sm"
+                                                    onClick={async () => {
+                                                        await updateSettings({ name: localWorkspaceName });
+                                                        toast({
+                                                            title: t('settings.branding.nameSuccess') || "Workspace name updated",
+                                                            duration: 3000
+                                                        });
+                                                    }}
+                                                    disabled={localWorkspaceName === workspaceName}
+                                                >
+                                                    {t('common.save') || "Save"}
+                                                </Button>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex items-center gap-6 pt-4">
+                                        <div className="w-24 h-24 rounded-2xl bg-muted/50 border-2 border-dashed border-border flex items-center justify-center overflow-hidden relative group">
+                                            {features.logo_url ? (
+                                                <img
+                                                    src={getDisplayLogoUrl(features.logo_url)}
+                                                    alt="Workspace Logo"
+                                                    className="w-full h-full object-contain p-2"
+                                                />
+                                            ) : (
+                                                <ImageIcon className="w-8 h-8 opacity-20" />
+                                            )}
+                                            <div
+                                                className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center cursor-pointer"
+                                                onClick={handleLogoUpload}
+                                            >
+                                                <RefreshCw className="w-5 h-5 text-white" />
+                                            </div>
+                                        </div>
+
+                                        <div className="flex flex-col gap-2">
+                                            <div className="flex gap-2">
+                                                <Button variant="outline" size="sm" onClick={handleLogoUpload} className="gap-2">
+                                                    <ImageIcon className="w-4 h-4" />
+                                                    {features.logo_url ? 'Change Logo' : 'Upload Logo'}
+                                                </Button>
+                                                {features.logo_url && (
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        onClick={handleRemoveLogo}
+                                                        className="h-9 w-9 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                                        title={t('common.delete') || 'Delete'}
+                                                    >
+                                                        <Trash2 className="w-4 h-4" />
+                                                    </Button>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                        </CardContent>
+                    </Card>
+
+                    {/* Contact Modal (rendered outside card but inside profile tab) */}
+                    {user?.role === 'admin' && (
+                        <RegisterWorkspaceContactsModal
+                            open={contactsModalOpen}
+                            onOpenChange={setContactsModalOpen}
+                            contacts={workspaceContacts.map(p => ({ type: p.type, value: p.value, label: p.label || '', is_primary: p.is_primary }))}
+                            onContactsChange={async (newContacts) => {
+                                if (!user?.workspaceId) return
+                                await supabase.from('workspace_contacts').delete().eq('workspace_id', user.workspaceId)
+                                if (newContacts.length > 0) {
+                                    const payload = newContacts.map(p => ({
+                                        workspace_id: user.workspaceId,
+                                        type: p.type,
+                                        value: p.value,
+                                        label: p.label || null,
+                                        is_primary: p.is_primary
+                                    }))
+                                    await supabase.from('workspace_contacts').insert(payload)
+                                }
+                                // Re-fetch from Supabase and write to local DB for instant UI update
+                                const { data } = await supabase.from('workspace_contacts').select('*').eq('workspace_id', user.workspaceId)
+                                await db.workspace_contacts.where('workspaceId').equals(user.workspaceId).delete()
+                                if (data && data.length > 0) {
+                                    const localRecords = data.map((r: any) => ({
+                                        id: r.id,
+                                        workspaceId: r.workspace_id,
+                                        type: r.type,
+                                        value: r.value,
+                                        label: r.label,
+                                        is_primary: r.is_primary,
+                                        syncStatus: 'synced' as const,
+                                        lastSyncedAt: new Date().toISOString(),
+                                        version: r.version || 1,
+                                        createdAt: r.created_at,
+                                        updatedAt: r.updated_at
+                                    }))
+                                    await db.workspace_contacts.bulkPut(localRecords)
+                                }
+                            }}
+                        />
+                    )}
+                </TabsContent>
+
+
+                <TabsContent value="workspace" className="space-y-6 mt-0">
                     {/* Printing Settings */}
                     <Card>
                         <CardHeader>
@@ -625,6 +1021,47 @@ export function Settings() {
                         </CardHeader>
                         <CardContent>
                             <div className="flex flex-col gap-6">
+                                <div className="grid gap-6 md:grid-cols-2">
+                                    <div className="flex flex-col gap-2">
+                                        <Label className="text-xs text-slate-500 uppercase font-semibold">{t('settings.printing.receiptTemplate') || 'Normal Receipt Template'}</Label>
+                                        <Select
+                                            value={features.receipt_template || 'primary'}
+                                            onValueChange={(val: any) => updateSettings({ receipt_template: val })}
+                                            disabled
+                                        >
+                                            <SelectTrigger>
+                                                <SelectValue placeholder="Select template" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="primary">{t('settings.printing.primary') || 'Primary'}</SelectItem>
+                                                <SelectItem value="modern" disabled>{t('settings.printing.modern') || 'Modern (Coming Soon)'}</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                        <p className="text-[10px] text-muted-foreground italic">
+                                            {t('settings.printing.templateDesc') || 'Standard 80mm receipt design.'}
+                                        </p>
+                                    </div>
+
+                                    <div className="flex flex-col gap-2">
+                                        <Label className="text-xs text-slate-500 uppercase font-semibold">{t('settings.printing.a4Template') || 'A4 Invoice Template'}</Label>
+                                        <Select
+                                            value={features.a4_template || 'primary'}
+                                            onValueChange={(val: any) => updateSettings({ a4_template: val })}
+                                        >
+                                            <SelectTrigger>
+                                                <SelectValue placeholder="Select template" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="primary">{t('settings.printing.primary') || 'Primary'}</SelectItem>
+                                                <SelectItem value="modern">{t('settings.printing.modern') || 'Modern'}</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                        <p className="text-[10px] text-muted-foreground italic">
+                                            {t('settings.printing.templateDesc') || 'Full page A4 invoice design.'}
+                                        </p>
+                                    </div>
+                                </div>
+
                                 <div className="flex flex-col gap-2 max-w-sm">
                                     <Label className="text-xs text-slate-500 uppercase font-semibold">{t('settings.printing.language') || 'Print Language'}</Label>
                                     <Select
@@ -896,333 +1333,6 @@ export function Settings() {
                         </Card>
                     )}
 
-                    {/* Sync Status (Admin & Staff Only) */}
-                    {(user?.role === 'admin' || user?.role === 'staff') && (
-                        <Card>
-                            <CardHeader>
-                                <CardTitle className="flex items-center gap-2">
-                                    <Cloud className="w-5 h-5" />
-                                    {t('settings.syncStatus')}
-                                </CardTitle>
-                                <CardDescription>{t('settings.syncDesc')}</CardDescription>
-                            </CardHeader>
-                            <CardContent className="space-y-4">
-                                <div className="grid gap-4 md:grid-cols-2">
-                                    <div>
-                                        <Label className="text-muted-foreground">{t('settings.connection')}</Label>
-                                        <p className={`font-medium ${isOnline ? 'text-emerald-500' : 'text-red-500'}`}>
-                                            {isOnline ? t('settings.online') : t('settings.offline')}
-                                        </p>
-                                    </div>
-                                    <div>
-                                        <Label className="text-muted-foreground">{t('settings.syncState')}</Label>
-                                        <p className="font-medium capitalize">{syncState}</p>
-                                    </div>
-                                    <div>
-                                        <Label className="text-muted-foreground">{t('settings.pendingChanges')}</Label>
-                                        <p className="font-medium">{pendingCount} items</p>
-                                    </div>
-                                    <div>
-                                        <Label className="text-muted-foreground">{t('settings.lastSynced')}</Label>
-                                        <p className="font-medium">
-                                            {lastSyncTime ? formatDateTime(lastSyncTime) : t('settings.never')}
-                                        </p>
-                                    </div>
-                                </div>
-
-                                {!isSupabaseConfigured && (
-                                    <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
-                                        <p className="text-sm text-amber-500">
-                                            Supabase is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to enable cloud sync.
-                                        </p>
-                                    </div>
-                                )}
-
-                                <div className="flex gap-2">
-                                    <Button onClick={sync} disabled={isSyncing || !isOnline || !isSupabaseConfigured}>
-                                        <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
-                                        {isSyncing ? t('settings.syncing') : t('settings.syncNow')}
-                                    </Button>
-                                    {isElectron && (
-                                        <>
-                                            <Button
-                                                variant="outline"
-                                                onClick={handleOpenSyncMediaModal}
-                                                disabled={!isOnline || !isSupabaseConfigured || mediaSyncProgress !== null}
-                                                className="gap-2"
-                                            >
-                                                <ImageIcon className={cn("w-4 h-4", mediaSyncProgress && "animate-pulse")} />
-                                                {mediaSyncProgress
-                                                    ? `${t('settings.syncingMedia') || 'Syncing...'} (${mediaSyncProgress.current}/${mediaSyncProgress.total})`
-                                                    : t('settings.syncMedia') || 'Upload Media'}
-                                            </Button>
-
-                                            <Button
-                                                variant="secondary"
-                                                onClick={() => assetManager.triggerScan()}
-                                                disabled={!isOnline || !isSupabaseConfigured}
-                                                className="gap-2"
-                                                title="Check for new media from other devices"
-                                            >
-                                                <Download className="w-4 h-4" />
-                                                {t('settings.downloadMedia') || 'Download Media'}
-                                            </Button>
-                                        </>
-                                    )}
-                                    {pendingCount > 0 && (
-                                        <Button variant="outline" onClick={handleClearSyncQueue}>
-                                            {t('settings.clearQueue')}
-                                        </Button>
-                                    )}
-                                </div>
-                            </CardContent>
-                        </Card>
-                    )}
-
-                    {/* Media Sync Modal */}
-                    <Dialog open={isSyncMediaModalOpen} onOpenChange={setIsSyncMediaModalOpen}>
-                        <DialogContent className="max-w-md">
-                            <DialogHeader>
-                                <DialogTitle className="flex items-center gap-2">
-                                    <ImageIcon className="w-5 h-5 text-primary" />
-                                    {t('settings.syncMediaModal.title') || 'Sync All Media'}
-                                </DialogTitle>
-                                <DialogDescription>
-                                    {localMediaCount !== null
-                                        ? `${t('settings.syncMediaModal.countDesc', { count: localMediaCount }) || `Found ${localMediaCount} local files ready to sync.`} ${t('settings.syncMediaModal.desc') || 'This will upload all local product images and the workspace logo to the cloud.'}`
-                                        : t('settings.syncMediaModal.desc') || 'This will upload all local product images and the workspace logo to the cloud so they can be synced to other devices in your workspace.'}
-                                </DialogDescription>
-                            </DialogHeader>
-
-                            <div className="space-y-4 py-4">
-                                <div className="space-y-2">
-                                    <Label>{t('settings.syncMediaModal.expiry') || 'Expiration Time (Hours)'}</Label>
-                                    <div className="flex items-center gap-4">
-                                        <Input
-                                            type="number"
-                                            min={1}
-                                            max={48}
-                                            value={expiryHours}
-                                            onChange={(e) => setExpiryHours(Math.max(1, Math.min(48, parseInt(e.target.value) || 24)))}
-                                            className="w-24"
-                                        />
-                                        <span className="text-sm text-muted-foreground">
-                                            {t('settings.syncMediaModal.expiryDesc') || 'Hours until the temporary cloud buffer is cleared.'}
-                                        </span>
-                                    </div>
-                                    <p className="text-[11px] text-amber-500 font-medium italic">
-                                        {t('settings.syncMediaModal.note') || 'Note: Other devices must be online during this period to receive the media.'}
-                                    </p>
-                                </div>
-                            </div>
-
-                            <DialogFooter>
-                                <Button variant="ghost" onClick={() => setIsSyncMediaModalOpen(false)}>
-                                    {t('common.cancel')}
-                                </Button>
-                                <Button onClick={handleSyncMedia} className="gap-2">
-                                    <Cloud className="w-4 h-4" />
-                                    {t('settings.syncMediaModal.confirm') || 'Start Upload'}
-                                </Button>
-                            </DialogFooter>
-                        </DialogContent>
-                    </Dialog>
-
-                    {/* POS Settings */}
-                    <Card>
-                        <CardHeader>
-                            <CardTitle className="flex items-center gap-2">
-                                <CreditCard className="w-5 h-5" />
-                                {t('settings.pos.title')}
-                            </CardTitle>
-                        </CardHeader>
-                        <CardContent className="space-y-6">
-                            <div className="space-y-2">
-                                <Label>{t('settings.pos.hotkey')}</Label>
-                                <Input
-                                    value={posHotkey}
-                                    onChange={handleHotkeyChange}
-                                    maxLength={1}
-                                    className="w-20 text-center font-mono uppercase"
-                                />
-                                <p className="text-sm text-muted-foreground">
-                                    {t('settings.pos.hotkeyDesc')}
-                                </p>
-                            </div>
-
-                            <div className="space-y-2">
-                                <Label>{t('settings.pos.barcodeHotkey')}</Label>
-                                <Input
-                                    value={barcodeHotkey}
-                                    onChange={handleBarcodeHotkeyChange}
-                                    maxLength={1}
-                                    className="w-20 text-center font-mono uppercase"
-                                />
-                                <p className="text-sm text-muted-foreground">
-                                    {t('settings.pos.barcodeHotkeyDesc')}
-                                </p>
-                            </div>
-                        </CardContent>
-                    </Card>
-
-                </TabsContent>
-
-                <TabsContent value="profile" className="space-y-6 mt-0">
-                    <Card>
-                        <CardHeader>
-                            <CardTitle className="flex items-center gap-2">
-                                <User className="w-5 h-5" />
-                                {t('settings.profile.title') || 'Profile Settings'}
-                            </CardTitle>
-                            <CardDescription>
-                                {t('settings.profile.desc') || 'Manage your personal and workspace profile information.'}
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent className="space-y-6">
-                            {/* Profile Picture Section */}
-                            <div className="space-y-4">
-                                <Label className="text-sm font-bold uppercase tracking-wider text-muted-foreground">Profile Picture</Label>
-                                <div className="flex items-center gap-6">
-                                    <div className="w-24 h-24 rounded-full bg-gradient-to-br from-primary to-purple-600 flex items-center justify-center text-3xl font-bold text-white overflow-hidden shadow-lg border-2 border-background">
-                                        {user?.profileUrl ? (
-                                            <img
-                                                src={platformService.convertFileSrc(user.profileUrl)}
-                                                alt={user.name}
-                                                className="w-full h-full object-cover"
-                                            />
-                                        ) : (
-                                            user?.name?.charAt(0).toUpperCase() || 'U'
-                                        )}
-                                    </div>
-                                    <div className="flex flex-col gap-2">
-                                        <div className="flex gap-2">
-                                            <Button variant="outline" size="sm" onClick={handleProfilePictureUpload} className="gap-2">
-                                                <ImageIcon className="w-4 h-4" />
-                                                {t('settings.profile.change_picture') || 'Change Picture'}
-                                            </Button>
-                                            {user?.profileUrl && (
-                                                <Button
-                                                    variant="ghost"
-                                                    size="icon"
-                                                    onClick={handleRemoveProfilePicture}
-                                                    className="h-9 w-9 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                                                    title={t('common.delete') || 'Delete'}
-                                                >
-                                                    <Trash2 className="w-4 h-4" />
-                                                </Button>
-                                            )}
-                                        </div>
-                                        <p className="text-[11px] text-muted-foreground max-w-[200px]">
-                                            Optimized for all devices. Syncs automatically.
-                                        </p>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* User Information Section */}
-                            <div className="pt-6 border-t border-border/50 space-y-4">
-                                <Label className="text-sm font-bold uppercase tracking-wider text-muted-foreground">User Information</Label>
-                                <div className="grid gap-4 md:grid-cols-2">
-                                    <div className="space-y-1">
-                                        <Label className="text-xs text-muted-foreground">Store Employee</Label>
-                                        <p className="font-medium text-lg">{user?.name}</p>
-                                    </div>
-                                    <div className="space-y-1">
-                                        <Label className="text-xs text-muted-foreground">Email Address</Label>
-                                        <p className="font-medium text-lg">{user?.email}</p>
-                                    </div>
-                                    <div className="space-y-1">
-                                        <Label className="text-xs text-muted-foreground">Account Role</Label>
-                                        <div className="flex items-center gap-2">
-                                            <span className={cn(
-                                                "px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-widest",
-                                                user?.role === 'admin' ? "bg-primary/20 text-primary" : "bg-muted text-muted-foreground"
-                                            )}>
-                                                {user?.role}
-                                            </span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Workspace Logo Section (Admin Only) */}
-                            {user?.role === 'admin' && (
-                                <div className="pt-6 border-t border-border/50 space-y-4">
-                                    <div className="flex flex-col gap-1">
-                                        <Label className="text-sm font-bold uppercase tracking-wider text-muted-foreground">{t('settings.branding.title')}</Label>
-                                        <p className="text-sm text-muted-foreground">{t('settings.branding.subtitle')}</p>
-                                    </div>
-
-                                    <div className="space-y-4 max-w-sm">
-                                        <div className="space-y-2">
-                                            <Label className="text-xs text-slate-500 uppercase font-semibold">{t('settings.branding.name')}</Label>
-                                            <div className="flex gap-2">
-                                                <Input
-                                                    value={localWorkspaceName}
-                                                    onChange={(e) => setLocalWorkspaceName(e.target.value)}
-                                                    placeholder={t('settings.branding.namePlaceholder') || "Enter workspace name"}
-                                                    className="flex-1"
-                                                />
-                                                <Button
-                                                    size="sm"
-                                                    onClick={async () => {
-                                                        await updateSettings({ name: localWorkspaceName });
-                                                        toast({
-                                                            title: t('settings.branding.nameSuccess') || "Workspace name updated",
-                                                            duration: 3000
-                                                        });
-                                                    }}
-                                                    disabled={localWorkspaceName === workspaceName}
-                                                >
-                                                    {t('common.save') || "Save"}
-                                                </Button>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <div className="flex items-center gap-6 pt-4">
-                                        <div className="w-24 h-24 rounded-2xl bg-muted/50 border-2 border-dashed border-border flex items-center justify-center overflow-hidden relative group">
-                                            {features.logo_url ? (
-                                                <img
-                                                    src={getDisplayLogoUrl(features.logo_url)}
-                                                    alt="Workspace Logo"
-                                                    className="w-full h-full object-contain p-2"
-                                                />
-                                            ) : (
-                                                <ImageIcon className="w-8 h-8 opacity-20" />
-                                            )}
-                                            <div
-                                                className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center cursor-pointer"
-                                                onClick={handleLogoUpload}
-                                            >
-                                                <RefreshCw className="w-5 h-5 text-white" />
-                                            </div>
-                                        </div>
-
-                                        <div className="flex flex-col gap-2">
-                                            <div className="flex gap-2">
-                                                <Button variant="outline" size="sm" onClick={handleLogoUpload} className="gap-2">
-                                                    <ImageIcon className="w-4 h-4" />
-                                                    {features.logo_url ? 'Change Logo' : 'Upload Logo'}
-                                                </Button>
-                                                {features.logo_url && (
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="icon"
-                                                        onClick={handleRemoveLogo}
-                                                        className="h-9 w-9 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                                                        title={t('common.delete') || 'Delete'}
-                                                    >
-                                                        <Trash2 className="w-4 h-4" />
-                                                    </Button>
-                                                )}
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-                        </CardContent>
-                    </Card>
                 </TabsContent>
 
                 <TabsContent value="advanced" className="space-y-6 mt-0">

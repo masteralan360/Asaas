@@ -13,7 +13,6 @@ interface AuthUser {
     workspaceCode: string
     workspaceName?: string
     profileUrl?: string
-    phone?: string
     isConfigured?: boolean
 }
 
@@ -33,7 +32,7 @@ interface AuthContextType {
         passkey: string;
         workspaceName?: string;
         workspaceCode?: string;
-        phone?: string;
+        adminContacts?: { type: 'phone' | 'email' | 'address'; value: string; label?: string; is_primary: boolean }[];
     }) => Promise<{ error: Error | null }>
     signOut: () => Promise<void>
     hasRole: (roles: UserRole[]) => boolean
@@ -65,7 +64,6 @@ function parseUserFromSupabase(user: User): AuthUser {
         workspaceCode: user.user_metadata?.workspace_code ?? '',
         workspaceName: user.user_metadata?.workspace_name,
         profileUrl: user.user_metadata?.profile_url,
-        phone: user.user_metadata?.phone,
         isConfigured: user.user_metadata?.is_configured
     }
 }
@@ -337,7 +335,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
     }
 
-    const signUp = async ({ email, password, name, role = 'viewer', passkey, workspaceName, workspaceCode, phone }: {
+    const signUp = async ({ email, password, name, role = 'viewer', passkey, workspaceName, workspaceCode, adminContacts }: {
         email: string;
         password: string;
         name: string;
@@ -345,10 +343,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         passkey: string;
         workspaceName?: string;
         workspaceCode?: string;
-        phone?: string;
+        adminContacts?: { type: 'phone' | 'email' | 'address'; value: string; label?: string; is_primary: boolean }[];
     }) => {
         if (!isSupabaseConfigured) {
-            setUser({ ...DEMO_USER, email, name, role, phone, workspaceName: workspaceName || 'Local Workspace' })
+            setUser({ ...DEMO_USER, email, name, role, workspaceName: workspaceName || 'Local Workspace' })
             return { error: null }
         }
 
@@ -364,6 +362,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
                 workspaceId = wsData?.id || (Array.isArray(wsData) ? wsData[0]?.id : (wsData?.create_workspace?.id || ''))
                 resolvedWorkspaceName = wsData?.name || (Array.isArray(wsData) ? wsData[0]?.name : (wsData?.create_workspace?.name || workspaceName))
+
+
             } else {
                 if (!workspaceCode) throw new Error('Workspace code is required to join')
 
@@ -393,13 +393,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                         name,
                         role,
                         passkey,
-                        phone,
                         workspace_id: workspaceId,
                         workspace_code: resolvedWorkspaceCode,
                         workspace_name: resolvedWorkspaceName
                     }
                 }
             })
+
+            // Insert workspace contacts AFTER signUp so the session is active for RLS
+            if (!error && role === 'admin' && workspaceId && adminContacts && adminContacts.length > 0) {
+                const contactsPayload = adminContacts.map(p => ({
+                    workspace_id: workspaceId,
+                    type: p.type,
+                    value: p.value,
+                    label: p.label || null,
+                    is_primary: p.is_primary
+                }))
+                const { error: contactsErr } = await supabase.from('workspace_contacts').insert(contactsPayload)
+                if (contactsErr) console.error('[Auth] Failed to insert workspace contacts:', contactsErr)
+            }
+
             return { error: error as Error | null }
         } catch (err: any) {
             return { error: err as Error }

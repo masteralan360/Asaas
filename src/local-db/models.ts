@@ -313,7 +313,7 @@ export interface SaleItem {
 // Sync Queue Item for tracking pending changes
 export interface SyncQueueItem {
     id: string
-    entityType: 'products' | 'customers' | 'suppliers' | 'purchase_orders' | 'sales_orders' | 'invoices' | 'users' | 'sales' | 'categories' | 'storages' | 'employees' | 'expenses' | 'budget_allocations'
+    entityType: 'products' | 'customers' | 'suppliers' | 'purchase_orders' | 'sales_orders' | 'invoices' | 'users' | 'sales' | 'categories' | 'storages' | 'employees' | 'expenses' | 'budget_allocations' | 'workspace_contacts'
     entityId: string
     operation: 'create' | 'update' | 'delete'
     data: Record<string, unknown>
@@ -344,13 +344,22 @@ export interface Workspace extends BaseEntity {
     max_discount_percent?: number
     print_lang?: 'auto' | 'en' | 'ar' | 'ku'
     print_qr?: boolean
+    receipt_template?: 'primary' | 'modern'
+    a4_template?: 'primary' | 'modern'
     subscription_expires_at?: string | null
+}
+
+export interface WorkspaceContact extends Omit<BaseEntity, 'isDeleted'> {
+    type: 'phone' | 'email' | 'address'
+    value: string
+    label?: string
+    is_primary: boolean
 }
 
 export interface OfflineMutation {
     id: string
     workspaceId: string
-    entityType: 'products' | 'customers' | 'suppliers' | 'purchase_orders' | 'sales_orders' | 'invoices' | 'users' | 'sales' | 'categories' | 'workspaces' | 'storages' | 'employees' | 'expenses' | 'budget_allocations'
+    entityType: 'products' | 'customers' | 'suppliers' | 'purchase_orders' | 'sales_orders' | 'invoices' | 'users' | 'sales' | 'categories' | 'workspaces' | 'storages' | 'employees' | 'expenses' | 'budget_allocations' | 'workspace_contacts'
     entityId: string
     operation: 'create' | 'update' | 'delete'
     payload: Record<string, unknown>

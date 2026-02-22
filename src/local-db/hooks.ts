@@ -2,7 +2,7 @@ import { useEffect } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 
 import { db } from './database'
-import type { Product, Category, Customer, Supplier, PurchaseOrder, SalesOrder, Invoice, OfflineMutation, Sale, SaleItem, Employee, Expense, BudgetAllocation, User } from './models'
+import type { Product, Category, Customer, Supplier, PurchaseOrder, SalesOrder, Invoice, OfflineMutation, Sale, SaleItem, Employee, Expense, BudgetAllocation, User, WorkspaceContact } from './models'
 import { generateId, toSnakeCase, toCamelCase } from '@/lib/utils'
 import { convertToStoreBase } from '@/lib/currency'
 import { supabase } from '@/auth/supabase'
@@ -733,7 +733,7 @@ export async function fetchTableFromSupabase<T extends { id: string, syncStatus:
         .eq('workspace_id', workspaceId)
 
     // Only filter by is_deleted for tables that still have that column
-    if (tableName !== 'expenses' && tableName !== 'budget_allocations') {
+    if (tableName !== 'expenses' && tableName !== 'budget_allocations' && tableName !== 'workspace_contacts') {
         query = query.eq('is_deleted', false)
     }
 
@@ -1840,6 +1840,122 @@ export function useMonthlyRevenue(workspaceId: string | undefined, monthStr: str
     }, [workspaceId, monthStr])
 
     return financials ?? { revenue: {}, profit: {} }
+}
+
+// ===================
+// WORKSPACE CONTACTS HOOKS
+// ===================
+
+export function useWorkspaceContacts(workspaceId: string | undefined) {
+    const isOnline = useNetworkStatus()
+
+    const contacts = useLiveQuery(
+        () => workspaceId ? db.workspace_contacts.where('workspaceId').equals(workspaceId).toArray() : [],
+        [workspaceId]
+    )
+
+    useEffect(() => {
+        async function fetchFromSupabase() {
+            if (isOnline && workspaceId) {
+                const { data, error } = await supabase
+                    .from('workspace_contacts')
+                    .select('*')
+                    .eq('workspace_id', workspaceId)
+
+                if (data && !error) {
+                    await db.transaction('rw', db.workspace_contacts, async () => {
+                        const remoteIds = new Set(data.map(d => d.id))
+                        const localItems = await db.workspace_contacts.where('workspaceId').equals(workspaceId).toArray()
+
+                        // Cleanup local synced items that are gone from server
+                        for (const local of localItems) {
+                            if (!remoteIds.has(local.id) && local.syncStatus === 'synced') {
+                                await db.workspace_contacts.delete(local.id)
+                            }
+                        }
+
+                        for (const remoteItem of data) {
+                            const localItem = toCamelCase(remoteItem as any) as unknown as WorkspaceContact
+                            localItem.syncStatus = 'synced'
+                            localItem.lastSyncedAt = new Date().toISOString()
+                            await db.workspace_contacts.put(localItem)
+                        }
+                    })
+                }
+            }
+        }
+        fetchFromSupabase()
+    }, [isOnline, workspaceId])
+
+    return contacts ?? []
+}
+
+export async function createWorkspaceContact(workspaceId: string, data: Omit<WorkspaceContact, 'id' | 'workspaceId' | 'createdAt' | 'updatedAt' | 'syncStatus' | 'lastSyncedAt' | 'version'>): Promise<WorkspaceContact> {
+    const now = new Date().toISOString()
+    const id = generateId()
+
+    const contact: WorkspaceContact = {
+        ...data,
+        id,
+        workspaceId,
+        createdAt: now,
+        updatedAt: now,
+        syncStatus: isOnline() ? 'synced' : 'pending',
+        lastSyncedAt: isOnline() ? now : null,
+        version: 1
+    }
+
+    if (isOnline()) {
+        const payload = toSnakeCase(contact as any)
+        const { error } = await supabase.from('workspace_contacts').insert(payload)
+        if (error) throw error
+        await db.workspace_contacts.put(contact)
+    } else {
+        await db.workspace_contacts.put(contact)
+        await addToOfflineMutations('workspace_contacts', id, 'create', contact as any, workspaceId)
+    }
+
+    return contact
+}
+
+export async function updateWorkspaceContact(id: string, data: Partial<WorkspaceContact>): Promise<void> {
+    const now = new Date().toISOString()
+    const existing = await db.workspace_contacts.get(id)
+    if (!existing) throw new Error('Contact not found')
+
+    const updated = {
+        ...existing,
+        ...data,
+        updatedAt: now,
+        syncStatus: isOnline() ? 'synced' : 'pending',
+        lastSyncedAt: isOnline() ? now : existing.lastSyncedAt,
+        version: existing.version + 1
+    } as WorkspaceContact
+
+    if (isOnline()) {
+        const payload = toSnakeCase({ ...data, updatedAt: now })
+        const { error } = await supabase.from('workspace_contacts').update(payload).eq('id', id)
+        if (error) throw error
+        await db.workspace_contacts.put(updated)
+    } else {
+        await db.workspace_contacts.put(updated)
+        await addToOfflineMutations('workspace_contacts', id, 'update', updated as any, existing.workspaceId)
+    }
+}
+
+export async function deleteWorkspaceContact(id: string): Promise<void> {
+    const existing = await db.workspace_contacts.get(id)
+    if (!existing) return
+
+    if (isOnline()) {
+        const { error } = await supabase.from('workspace_contacts').delete().eq('id', id)
+        if (error) throw error
+        await db.workspace_contacts.delete(id)
+    } else {
+        // OFFLINE: Local Hard Delete + Mutation Record
+        await db.workspace_contacts.delete(id)
+        await addToOfflineMutations('workspace_contacts', id, 'delete', { id }, existing.workspaceId)
+    }
 }
 
 export async function setBudgetAllocation(workspaceId: string, data: Omit<BudgetAllocation, 'id' | 'workspaceId' | 'createdAt' | 'updatedAt' | 'syncStatus' | 'lastSyncedAt' | 'version'>): Promise<BudgetAllocation> {

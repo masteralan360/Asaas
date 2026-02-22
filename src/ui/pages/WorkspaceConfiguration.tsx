@@ -190,6 +190,7 @@ export function WorkspaceConfiguration() {
                             </div>
                         </div>
 
+
                         {/* Feature Toggles */}
                         <div className="space-y-3">
                             {featureToggles.map((feature) => {

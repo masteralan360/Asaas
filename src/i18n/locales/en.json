@@ -462,12 +462,18 @@
             "language": "Language",
             "auto": "Auto",
             "qrTitle": "QR Code",
-            "qrDesc": "Enable QR code on receipts"
+            "qrDesc": "Include a QR code on invoices for digital verification.",
+            "receiptTemplate": "Normal Receipt Template",
+            "a4Template": "A4 Invoice Template",
+            "primary": "Primary",
+            "modern": "Modern",
+            "templateDesc": "Choose the design for your printed documents."
         },
         "tabs": {
-            "general": "General Settings",
+            "general": "General",
             "profile": "Profile Settings",
-            "advanced": "Advanced Settings"
+            "workspace": "Workspace Settings",
+            "advanced": "Advanced"
         },
         "appearance": "Appearance",
         "appearanceDesc": "Customize the look and feel of the application",
@@ -1009,6 +1015,18 @@
             "ordersDesc": "Create and track customer orders",
             "invoices": "Invoicing",
             "invoicesDesc": "Generate and manage invoices"
+        },
+        "phones": {
+            "title": "Workspace Phone Lines",
+            "addPhoneNumbers": "Add Phone Numbers",
+            "addPhoneNumbersDesc": "Add contact numbers for your workspace. The primary number will be used for main communications.",
+            "line": "Line",
+            "primary": "PRIMARY",
+            "numberLabel": "Phone Number",
+            "tagLabel": "Label (Optional)",
+            "setPrimary": "Set as Primary",
+            "addAnotherLine": "Add Another Line",
+            "noPhones": "No phone numbers added yet."
         }
     },
     "storages": {
@@ -1025,6 +1043,7 @@
         "custom": "Custom",
         "label": "Select Storage",
         "totalItems": "Matched Items",
+        "totalValue": "Storage Value",
         "tryDifferentFilter": "Try adjusting your filters or search",
         "noReserve": "Reserve storage not found",
         "created": "Storage created successfully",

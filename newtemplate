@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+    <title>A4 Full Page Invoice Preview</title>
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;display=swap"
+        rel="stylesheet" />
+    <link
+        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+        rel="stylesheet" />
+    <script>
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#197fe6",
+                        "background-light": "#e2e8f0",
+                        "background-dark": "#111921",
+                    },
+                    fontFamily: {
+                        "display": ["Inter", "sans-serif"]
+                    },
+                    borderRadius: {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    screens: {
+                        'print': { 'raw': 'print' },
+                    }
+                },
+            },
+        }
+    </script>
+    <style>
+        .a4-container {
+            width: 210mm;
+            height: 297mm;
+            margin: 0 auto;
+            background: white;
+            box-shadow: 0 0 25px rgba(0, 0, 0, 0.15);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 2rem 0;
+        }
+
+        @media print {
+            body {
+                background: white;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+                display: block;
+                padding: 0;
+                margin: 0;
+            }
+
+            .no-print {
+                display: none;
+            }
+
+            .a4-container {
+                margin: 0;
+                box-shadow: none;
+                width: 100%;
+                height: 100%;
+                page-break-after: avoid;
+            }
+
+            @page {
+                size: A4;
+                margin: 0;
+            }
+        }
+    </style>
+</head>
+
+<body
+    class="bg-slate-200 dark:bg-background-dark font-display text-slate-900 dark:text-slate-100 antialiased overflow-x-hidden">
+    <div class="a4-container relative p-[15mm] md:p-[20mm] dark:bg-slate-900 dark:text-slate-100">
+        <header class="flex justify-between items-start border-b border-slate-200 pb-4 mb-4">
+            <div class="w-20 h-20 flex-shrink-0">
+                <div
+                    class="w-full h-full bg-slate-100 rounded-xl flex flex-col items-center justify-center border border-slate-200 text-slate-400 overflow-hidden">
+                    <span class="material-symbols-outlined text-3xl mb-1">image</span>
+                    <span class="text-[8px] font-bold uppercase tracking-wider">Logo Here</span>
+                </div>
+            </div>
+            <div class="flex-1 text-center px-4 pt-1">
+                <h1 class="text-2xl font-extrabold text-primary tracking-tight mb-1">Acme Corp International</h1>
+                <p class="text-slate-500 text-[10px] font-medium">Providing Quality Solutions Since 1995</p>
+                <div class="mt-1 text-[9px] text-slate-400 flex flex-col gap-0.5">
+                    <span>123 Business Rd, Tech City, TC 90210</span>
+                    <span>contact@acmecorp.com | +1 (555) 123-4567</span>
+                </div>
+            </div>
+            <div class="w-16 flex flex-col items-end gap-1 flex-shrink-0">
+                <div
+                    class="bg-white p-1 border border-slate-200 rounded-lg w-16 h-16 flex items-center justify-center overflow-hidden">
+                    <svg class="w-full h-full text-slate-800" fill="currentColor" viewBox="0 0 24 24"
+                        xmlns="http://www.w3.org/2000/svg">
+                        <path
+                            d="M3 3h6v6H3V3zm2 2v2h2V5H5zm8-2h6v6h-6V3zm2 2v2h2V5h-2zM3 13h6v6H3v-6zm2 2v2h2v-2H5zm13-2h3v2h-3v-2zm-3 0h2v2h-2v-2zm-3 4h3v2h-3v-2zm3 0h2v2h-2v-2zm-6 0h2v2h-2v-2zM15 15h2v2h-2v-2zm-2-2h2v2h-2v-2zm6 2h2v2h-2v-2zm-2 2h2v2h-2v-2z">
+                        </path>
+                        <rect height="2" width="2" x="15" y="11"></rect>
+                        <rect height="2" width="2" x="11" y="15"></rect>
+                    </svg>
+                </div>
+                <span class="text-[8px] text-slate-400 font-mono text-right">Scan to Verify</span>
+            </div>
+        </header>
+        <div class="grid grid-cols-3 gap-3 mb-4">
+            <div
+                class="flex flex-col gap-0.5 p-2 rounded-lg bg-slate-50 border border-slate-100 dark:bg-slate-800/50 dark:border-slate-700">
+                <span class="text-[9px] uppercase tracking-wider font-semibold text-slate-400">Invoice Date</span>
+                <span class="text-xs font-bold text-slate-800 dark:text-white">Oct 24, 2023</span>
+            </div>
+            <div
+                class="flex flex-col gap-0.5 p-2 rounded-lg bg-slate-50 border border-slate-100 dark:bg-slate-800/50 dark:border-slate-700">
+                <span class="text-[9px] uppercase tracking-wider font-semibold text-slate-400">Time</span>
+                <span class="text-xs font-bold text-slate-800 dark:text-white">14:30 PM</span>
+            </div>
+            <div
+                class="flex flex-col gap-0.5 p-2 rounded-lg bg-slate-50 border border-slate-100 dark:bg-slate-800/50 dark:border-slate-700">
+                <span class="text-[9px] uppercase tracking-wider font-semibold text-slate-400">Invoice Number</span>
+                <span class="text-xs font-bold text-slate-800 dark:text-white">#002394</span>
+            </div>
+        </div>
+        <div class="grid grid-cols-2 gap-8 mb-4">
+            <div class="flex flex-col gap-2">
+                <div>
+                    <h3
+                        class="text-primary text-[10px] font-bold uppercase tracking-wide border-b border-primary/20 pb-1 mb-1">
+                        Sold To</h3>
+                    <div class="flex flex-col gap-3 mt-1 mb-0.5">
+                        <div class="border-b border-slate-300 dark:border-slate-600 w-full h-4"></div>
+                        <div class="border-b border-slate-300 dark:border-slate-600 w-full h-4"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="flex flex-col gap-2">
+                <div>
+                    <h3
+                        class="text-primary text-[10px] font-bold uppercase tracking-wide border-b border-primary/20 pb-1 mb-1">
+                        Shipped To</h3>
+                    <div class="flex flex-col gap-3 mt-1 mb-0.5">
+                        <div class="border-b border-slate-300 dark:border-slate-600 w-full h-4"></div>
+                        <div class="border-b border-slate-300 dark:border-slate-600 w-full h-4"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="flex-grow mb-4 flex flex-col">
+            <div class="overflow-hidden rounded border border-slate-200 dark:border-slate-700 flex-grow">
+                <table class="w-full text-left border-collapse h-full table-fixed">
+                    <thead>
+                        <tr
+                            class="bg-slate-50 text-slate-500 text-[9px] uppercase tracking-wider font-semibold border-b border-slate-200 dark:bg-slate-800 dark:border-slate-700 h-8">
+                            <th class="px-2 w-1/4 border-r border-slate-200 dark:border-slate-700">Product Name</th>
+                            <th class="px-2 w-[15%] border-r border-slate-200 dark:border-slate-700">Description</th>
+                            <th class="px-2 w-12 text-center border-r border-slate-200 dark:border-slate-700">Qty</th>
+                            <th class="px-2 w-20 text-right border-r border-slate-200 dark:border-slate-700">Unit Price
+                            </th>
+                            <th class="px-2 w-12 text-right border-r border-slate-200 dark:border-slate-700">Disc.</th>
+                            <th class="px-2 w-20 text-right">Line Total</th>
+                        </tr>
+                    </thead>
+                    <tbody class="text-[10px]">
+                        <tr
+                            class="border-b border-slate-100 last:border-0 hover:bg-slate-50/50 transition-colors dark:border-slate-700 dark:hover:bg-slate-800/30 h-6">
+                            <td
+                                class="px-2 font-semibold text-slate-800 dark:text-white border-r border-slate-100 dark:border-slate-700 truncate">
+                                Consulting Services</td>
+                            <td
+                                class="px-2 text-slate-500 dark:text-slate-400 border-r border-slate-100 dark:border-slate-700">
+                            </td>
+                            <td class="px-2 text-center text-slate-500 border-r border-slate-100 dark:border-slate-700">
+                                1</td>
+                            <td
+                                class="px-2 text-right font-medium text-slate-700 dark:text-slate-300 border-r border-slate-100 dark:border-slate-700">
+                                $500.00</td>
+                            <td class="px-2 text-right text-slate-400 border-r border-slate-100 dark:border-slate-700">-
+                            </td>
+                            <td class="px-2 text-right font-bold text-slate-900 dark:text-white">$500.00</td>
+                        </tr>
+                        <tr
+                            class="border-b border-slate-100 last:border-0 hover:bg-slate-50/50 transition-colors dark:border-slate-700 dark:hover:bg-slate-800/30 h-6">
+                            <td
+                                class="px-2 font-semibold text-slate-800 dark:text-white border-r border-slate-100 dark:border-slate-700 truncate">
+                                Hardware License</td>
+                            <td
+                                class="px-2 text-slate-500 dark:text-slate-400 border-r border-slate-100 dark:border-slate-700">
+                            </td>
+                            <td class="px-2 text-center text-slate-500 border-r border-slate-100 dark:border-slate-700">
+                                2</td>
+                            <td
+                                class="px-2 text-right font-medium text-slate-700 dark:text-slate-300 border-r border-slate-100 dark:border-slate-700">
+                                $150.00</td>
+                            <td
+                                class="px-2 text-right text-green-600 font-medium border-r border-slate-100 dark:border-slate-700">
+                                10%</td>
+                            <td class="px-2 text-right font-bold text-slate-900 dark:text-white">$270.00</td>
+                        </tr>
+                        <tr
+                            class="border-b border-slate-100 last:border-0 hover:bg-slate-50/50 transition-colors dark:border-slate-700 dark:hover:bg-slate-800/30 h-6">
+                            <td
+                                class="px-2 font-semibold text-slate-800 dark:text-white border-r border-slate-100 dark:border-slate-700 truncate">
+                                Support Hours</td>
+                            <td
+                                class="px-2 text-slate-500 dark:text-slate-400 border-r border-slate-100 dark:border-slate-700">
+                            </td>
+                            <td class="px-2 text-center text-slate-500 border-r border-slate-100 dark:border-slate-700">
+                                5</td>
+                            <td
+                                class="px-2 text-right font-medium text-slate-700 dark:text-slate-300 border-r border-slate-100 dark:border-slate-700">
+                                $100.00</td>
+                            <td class="px-2 text-right text-slate-400 border-r border-slate-100 dark:border-slate-700">-
+                            </td>
+                            <td class="px-2 text-right font-bold text-slate-900 dark:text-white">$500.00</td>
+                        </tr>
+                        <tr
+                            class="border-b border-slate-100 last:border-0 hover:bg-slate-50/50 transition-colors dark:border-slate-700 dark:hover:bg-slate-800/30 h-6">
+                            <td
+                                class="px-2 font-semibold text-slate-800 dark:text-white border-r border-slate-100 dark:border-slate-700 truncate">
+                                Setup Fee</td>
+                            <td
+                                class="px-2 text-slate-500 dark:text-slate-400 border-r border-slate-100 dark:border-slate-700">
+                            </td>
+                            <td class="px-2 text-center text-slate-500 border-r border-slate-100 dark:border-slate-700">
+                                1</td>
+                            <td
+                                class="px-2 text-right font-medium text-slate-700 dark:text-slate-300 border-r border-slate-100 dark:border-slate-700">
+                                $200.00</td>
+                            <td
+                                class="px-2 text-right text-green-600 font-medium border-r border-slate-100 dark:border-slate-700">
+                                50%</td>
+                            <td class="px-2 text-right font-bold text-slate-900 dark:text-white">$100.00</td>
+                        </tr>
+                        <tr
+                            class="border-b border-slate-100 last:border-0 hover:bg-slate-50/50 transition-colors dark:border-slate-700 dark:hover:bg-slate-800/30 h-6">
+                            <td class="px-2 border-r border-slate-100 dark:border-slate-700"></td>
+                            <td class="px-2 border-r border-slate-100 dark:border-slate-700"></td>
+                            <td class="px-2 border-r border-slate-100 dark:border-slate-700"></td>
+                            <td class="px-2 border-r border-slate-100 dark:border-slate-700"></td>
+                            <td class="px-2 border-r border-slate-100 dark:border-slate-700"></td>
+                            <td class="px-2"></td>
+                        </tr>
+                        <tr
+                            class="border-b border-slate-100 last:border-0 hover:bg-slate-50/50 transition-colors dark:border-slate-700 dark:hover:bg-slate-800/30 h-6">
+                            <td class="px-2 border-r border-slate-100 dark:border-slate-700"></td>
+                            <td class="px-2 border-r border-slate-100 dark:border-slate-700"></td>
+                            <td class="px-2 border-r border-slate-100 dark:border-slate-700"></td>
+                            <td class="px-2 border-r border-slate-100 dark:border-slate-700"></td>
+                            <td class="px-2 border-r border-slate-100 dark:border-slate-700"></td>
+                            <td class="px-2"></td>
+                        </tr>
+                        <tr
+                            class="border-b border-slate-100 last:border-0 hover:bg-slate-50/50 transition-colors dark:border-slate-700 dark:hover:bg-slate-800/30 h-6">
+                            <td class="px-2 border-r border-slate-100 dark:border-slate-700"></td>
+                            <td class="px-2 border-r border-slate-100 dark:border-slate-700"></td>
+                            <td class="px-2 border-r border-slate-100 dark:border-slate-700"></td>
+                            <td class="px-2 border-r border-slate-100 dark:border-slate-700"></td>
+                            <td class="px-2 border-r border-slate-100 dark:border-slate-700"></td>
+                            <td class="px-2"></td>
+                        </tr>
+                        <tr
+                            class="border-b border-slate-100 last:border-0 hover:bg-slate-50/50 transition-colors dark:border-slate-700 dark:hover:bg-slate-800/30 h-6">
+                            <td class="px-2 border-r border-slate-100 dark:border-slate-700"></td>
+                            <td class="px-2 border-r border-slate-100 dark:border-slate-700"></td>
+                            <td class="px-2 border-r border-slate-100 dark:border-slate-700"></td>
+                            <td class="px-2 border-r border-slate-100 dark:border-slate-700"></td>
+                            <td class="px-2 border-r border-slate-100 dark:border-slate-700"></td>
+                            <td class="px-2"></td>
+                        </tr>
+                        <tr
+                            class="border-b border-slate-100 last:border-0 hover:bg-slate-50/50 transition-colors dark:border-slate-700 dark:hover:bg-slate-800/30 h-6">
+                            <td class="px-2 border-r border-slate-100 dark:border-slate-700"></td>
+                            <td class="px-2 border-r border-slate-100 dark:border-slate-700"></td>
+                            <td class="px-2 border-r border-slate-100 dark:border-slate-700"></td>
+                            <td class="px-2 border-r border-slate-100 dark:border-slate-700"></td>
+                            <td class="px-2 border-r border-slate-100 dark:border-slate-700"></td>
+                            <td class="px-2"></td>
+                        </tr>
+                        <tr
+                            class="border-b border-slate-100 last:border-0 hover:bg-slate-50/50 transition-colors dark:border-slate-700 dark:hover:bg-slate-800/30 h-6">
+                            <td class="px-2 border-r border-slate-100 dark:border-slate-700"></td>
+                            <td class="px-2 border-r border-slate-100 dark:border-slate-700"></td>
+                            <td class="px-2 border-r border-slate-100 dark:border-slate-700"></td>
+                            <td class="px-2 border-r border-slate-100 dark:border-slate-700"></td>
+                            <td class="px-2 border-r border-slate-100 dark:border-slate-700"></td>
+                            <td class="px-2"></td>
+                        </tr>
+                        <tr
+                            class="border-b border-slate-100 last:border-0 hover:bg-slate-50/50 transition-colors dark:border-slate-700 dark:hover:bg-slate-800/30 h-6">
+                            <td class="px-2 border-r border-slate-100 dark:border-slate-700"></td>
+                            <td class="px-2 border-r border-slate-100 dark:border-slate-700"></td>
+                            <td class="px-2 border-r border-slate-100 dark:border-slate-700"></td>
+                            <td class="px-2 border-r border-slate-100 dark:border-slate-700"></td>
+                            <td class="px-2 border-r border-slate-100 dark:border-slate-700"></td>
+                            <td class="px-2"></td>
+                        </tr>
+                        <tr
+                            class="border-b border-slate-100 last:border-0 hover:bg-slate-50/50 transition-colors dark:border-slate-700 dark:hover:bg-slate-800/30 h-6">
+                            <td class="px-2 border-r border-slate-100 dark:border-slate-700"></td>
+                            <td class="px-2 border-r border-slate-100 dark:border-slate-700"></td>
+                            <td class="px-2 border-r border-slate-100 dark:border-slate-700"></td>
+                            <td class="px-2 border-r border-slate-100 dark:border-slate-700"></td>
+                            <td class="px-2 border-r border-slate-100 dark:border-slate-700"></td>
+                            <td class="px-2"></td>
+                        </tr>
+                        <tr
+                            class="border-b border-slate-100 last:border-0 hover:bg-slate-50/50 transition-colors dark:border-slate-700 dark:hover:bg-slate-800/30 h-6">
+                            <td class="px-2 border-r border-slate-100 dark:border-slate-700"></td>
+                            <td class="px-2 border-r border-slate-100 dark:border-slate-700"></td>
+                            <td class="px-2 border-r border-slate-100 dark:border-slate-700"></td>
+                            <td class="px-2 border-r border-slate-100 dark:border-slate-700"></td>
+                            <td class="px-2 border-r border-slate-100 dark:border-slate-700"></td>
+                            <td class="px-2"></td>
+                        </tr>
+                        <tr
+                            class="border-b border-slate-100 last:border-0 hover:bg-slate-50/50 transition-colors dark:border-slate-700 dark:hover:bg-slate-800/30 h-6">
+                            <td class="px-2 border-r border-slate-100 dark:border-slate-700"></td>
+                            <td class="px-2 border-r border-slate-100 dark:border-slate-700"></td>
+                            <td class="px-2 border-r border-slate-100 dark:border-slate-700"></td>
+                            <td class="px-2 border-r border-slate-100 dark:border-slate-700"></td>
+                            <td class="px-2 border-r border-slate-100 dark:border-slate-700"></td>
+                            <td class="px-2"></td>
+                        </tr>
+                        <tr
+                            class="border-b border-slate-100 last:border-0 hover:bg-slate-50/50 transition-colors dark:border-slate-700 dark:hover:bg-slate-800/30 h-6">
+                            <td class="px-2 border-r border-slate-100 dark:border-slate-700"></td>
+                            <td class="px-2 border-r border-slate-100 dark:border-slate-700"></td>
+                            <td class="px-2 border-r border-slate-100 dark:border-slate-700"></td>
+                            <td class="px-2 border-r border-slate-100 dark:border-slate-700"></td>
+                            <td class="px-2 border-r border-slate-100 dark:border-slate-700"></td>
+                            <td class="px-2"></td>
+                        </tr>
+                        <tr
+                            class="border-b border-slate-100 last:border-0 hover:bg-slate-50/50 transition-colors dark:border-slate-700 dark:hover:bg-slate-800/30 h-6">
+                            <td class="px-2 border-r border-slate-100 dark:border-slate-700"></td>
+                            <td class="px-2 border-r border-slate-100 dark:border-slate-700"></td>
+                            <td class="px-2 border-r border-slate-100 dark:border-slate-700"></td>
+                            <td class="px-2 border-r border-slate-100 dark:border-slate-700"></td>
+                            <td class="px-2 border-r border-slate-100 dark:border-slate-700"></td>
+                            <td class="px-2"></td>
+                        </tr>
+                        <tr
+                            class="border-b border-slate-100 last:border-0 hover:bg-slate-50/50 transition-colors dark:border-slate-700 dark:hover:bg-slate-800/30 h-6">
+                            <td class="px-2 border-r border-slate-100 dark:border-slate-700"></td>
+                            <td class="px-2 border-r border-slate-100 dark:border-slate-700"></td>
+                            <td class="px-2 border-r border-slate-100 dark:border-slate-700"></td>
+                            <td class="px-2 border-r border-slate-100 dark:border-slate-700"></td>
+                            <td class="px-2 border-r border-slate-100 dark:border-slate-700"></td>
+                            <td class="px-2"></td>
+                        </tr>
+                        <tr
+                            class="border-b border-slate-100 last:border-0 hover:bg-slate-50/50 transition-colors dark:border-slate-700 dark:hover:bg-slate-800/30 h-6">
+                            <td class="px-2 border-r border-slate-100 dark:border-slate-700"></td>
+                            <td class="px-2 border-r border-slate-100 dark:border-slate-700"></td>
+                            <td class="px-2 border-r border-slate-100 dark:border-slate-700"></td>
+                            <td class="px-2 border-r border-slate-100 dark:border-slate-700"></td>
+                            <td class="px-2 border-r border-slate-100 dark:border-slate-700"></td>
+                            <td class="px-2"></td>
+                        </tr>
+                        <tr
+                            class="border-b border-slate-100 last:border-0 hover:bg-slate-50/50 transition-colors dark:border-slate-700 dark:hover:bg-slate-800/30 h-6">
+                            <td class="px-2 border-r border-slate-100 dark:border-slate-700"></td>
+                            <td class="px-2 border-r border-slate-100 dark:border-slate-700"></td>
+                            <td class="px-2 border-r border-slate-100 dark:border-slate-700"></td>
+                            <td class="px-2 border-r border-slate-100 dark:border-slate-700"></td>
+                            <td class="px-2 border-r border-slate-100 dark:border-slate-700"></td>
+                            <td class="px-2"></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <div class="mt-auto pt-6 border-t border-slate-200 flex flex-col md:flex-row gap-8">
+            <div class="md:w-3/5 pr-4 flex flex-col justify-between">
+                <div>
+                    <h4 class="text-xs font-bold text-slate-800 mb-1 dark:text-white">Terms &amp; Conditions</h4>
+                    <div class="flex flex-col gap-4 mt-2 w-full mb-4">
+                        <div class="border-b border-slate-300 dark:border-slate-600 w-full h-3"></div>
+                        <div class="border-b border-slate-300 dark:border-slate-600 w-full h-3"></div>
+                        <div class="border-b border-slate-300 dark:border-slate-600 w-full h-3"></div>
+                    </div>
+                </div>
+                <div class="flex flex-col gap-2 mt-auto">
+                    <div class="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Exchange Rates</div>
+                    <div class="flex flex-wrap gap-3">
+                        <div
+                            class="px-2 py-1 bg-slate-100 rounded text-[10px] font-mono font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
+                            1 USD = 1,300 IQD</div>
+                        <div
+                            class="px-2 py-1 bg-slate-100 rounded text-[10px] font-mono font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
+                            1 EUR = 2,000 IQD</div>
+                        <div
+                            class="px-2 py-1 bg-slate-100 rounded text-[10px] font-mono font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
+                            1 TRY = 250 IQD</div>
+                    </div>
+                </div>
+            </div>
+            <div class="md:w-2/5">
+                <div class="bg-slate-50 rounded-lg p-5 border border-slate-100 dark:bg-slate-800 dark:border-slate-700">
+                    <div class="flex justify-between items-center mb-2">
+                        <span class="text-xs text-slate-500 font-medium">Subtotal</span>
+                        <span class="text-xs font-bold text-slate-700 dark:text-slate-300">1,781,000 IQD</span>
+                    </div>
+                    <div class="flex justify-between items-center mb-3 pb-3 border-b border-slate-200 border-dashed">
+                        <span class="text-xs text-slate-500 font-medium">Total (USD)</span>
+                        <span class="text-xs font-bold text-slate-700 dark:text-slate-300">$1,370.00</span>
+                    </div>
+                    <div class="flex justify-between items-end">
+                        <div class="flex flex-col">
+                            <span class="text-[10px] uppercase tracking-wider font-bold text-primary">Grand Total</span>
+                            <span class="text-[9px] text-slate-400">(IQD Currency)</span>
+                        </div>
+                        <span class="text-xl font-black text-primary leading-none">1,781,000</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="absolute bottom-0 left-0 w-full h-1.5 bg-primary"></div>
+    </div>
+</body>
+
+</html>

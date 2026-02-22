@@ -1,14 +1,13 @@
 import { useState } from 'react'
 import { useLocation } from 'wouter'
 import { useAuth } from '@/auth'
-import { Button, Input, Label, Card, CardContent, CardHeader, CardTitle, CardDescription, Select, SelectTrigger, SelectValue, SelectContent, SelectItem, LanguageSwitcher, ThemeToggle } from '@/ui/components'
-import { Mail, Lock, User, Loader2, Key } from 'lucide-react'
+import { Button, Input, Label, Card, CardContent, CardHeader, CardTitle, CardDescription, Select, SelectTrigger, SelectValue, SelectContent, SelectItem, LanguageSwitcher, ThemeToggle, RegisterWorkspaceContactsModal, type AdminContact } from '@/ui/components'
+import { Mail, Lock, User, Loader2, Key, Contact } from 'lucide-react'
 import type { UserRole } from '@/local-db/models'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 import { useTheme } from '@/ui/components/theme-provider'
 import { useLogo } from '@/hooks/useFavicon'
-import { Phone } from 'lucide-react'
 
 export function Register() {
     const [, setLocation] = useLocation()
@@ -17,13 +16,14 @@ export function Register() {
     const { style } = useTheme()
     const logoPath = useLogo(i18n.language, style)
     const [name, setName] = useState('')
-    const [phone, setPhone] = useState('')
     const [email, setEmail] = useState('')
     const [password, setPassword] = useState('')
     const [passkey, setPasskey] = useState('')
     const [role, setRole] = useState<UserRole>('staff')
     const [workspaceName, setWorkspaceName] = useState('')
     const [workspaceCode, setWorkspaceCode] = useState('')
+    const [adminContacts, setAdminContacts] = useState<AdminContact[]>([])
+    const [contactsModalOpen, setContactsModalOpen] = useState(false)
     const [error, setError] = useState('')
     const [isLoading, setIsLoading] = useState(false)
 
@@ -39,9 +39,9 @@ export function Register() {
                 name,
                 role,
                 passkey,
-                phone,
                 workspaceName: role === 'admin' ? workspaceName : undefined,
-                workspaceCode: role !== 'admin' ? workspaceCode : undefined
+                workspaceCode: role !== 'admin' ? workspaceCode : undefined,
+                adminContacts: role === 'admin' ? adminContacts : undefined
             })
             if (error) {
                 // Show real error message from database triggers
@@ -122,21 +122,6 @@ export function Register() {
                                 </div>
 
                                 <div className="space-y-2">
-                                    <Label htmlFor="phone">{t('auth.phoneNumber') || 'Phone Number'}</Label>
-                                    <div className="relative">
-                                        <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                                        <Input
-                                            id="phone"
-                                            type="text"
-                                            placeholder="+1 (555) 000-0000"
-                                            value={phone}
-                                            onChange={(e) => setPhone(e.target.value)}
-                                            className="pl-10"
-                                        />
-                                    </div>
-                                </div>
-
-                                <div className="space-y-2">
                                     <Label htmlFor="email">{t('auth.email')}</Label>
                                     <div className="relative">
                                         <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -200,19 +185,35 @@ export function Register() {
                                 </div>
 
                                 {role === 'admin' ? (
-                                    <div className="space-y-2">
-                                        <Label htmlFor="workspaceName">{t('auth.workspaceName')}</Label>
-                                        <div className="relative">
-                                            <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                                            <Input
-                                                id="workspaceName"
-                                                type="text"
-                                                placeholder="e.g. My Awesome Corp"
-                                                value={workspaceName}
-                                                onChange={(e) => setWorkspaceName(e.target.value)}
-                                                className="pl-10"
-                                                required
-                                            />
+                                    <div className="space-y-4">
+                                        <div className="space-y-2">
+                                            <Label htmlFor="workspaceName">{t('auth.workspaceName')}</Label>
+                                            <div className="relative">
+                                                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                                                <Input
+                                                    id="workspaceName"
+                                                    type="text"
+                                                    placeholder="e.g. My Awesome Corp"
+                                                    value={workspaceName}
+                                                    onChange={(e) => setWorkspaceName(e.target.value)}
+                                                    className="pl-10"
+                                                    required
+                                                />
+                                            </div>
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label>{t('workspaceConfig.contacts.title', 'Workspace Contacts')}</Label>
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                className={cn("w-full justify-start text-left font-normal h-10", adminContacts.length > 0 ? "text-foreground" : "text-muted-foreground")}
+                                                onClick={() => setContactsModalOpen(true)}
+                                            >
+                                                <Contact className="mr-2 h-4 w-4 opacity-50" />
+                                                {adminContacts.length > 0
+                                                    ? `${adminContacts.length} contact${adminContacts.length > 1 ? 's' : ''} added`
+                                                    : (t('workspaceConfig.contacts.addContacts', 'Add Contacts'))}
+                                            </Button>
                                         </div>
                                     </div>
                                 ) : (
@@ -260,6 +261,13 @@ export function Register() {
                         </CardContent>
                     </Card>
                 </div>
+
+                <RegisterWorkspaceContactsModal
+                    open={contactsModalOpen}
+                    onOpenChange={setContactsModalOpen}
+                    contacts={adminContacts}
+                    onContactsChange={setAdminContacts}
+                />
             </div>
         </div>
     )
