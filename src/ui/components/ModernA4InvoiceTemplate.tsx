@@ -1,19 +1,32 @@
 import { forwardRef } from 'react'
 import { UniversalInvoice } from '@/types'
-import { formatCurrency } from '@/lib/utils'
+import { cn, formatCurrency } from '@/lib/utils'
 import { platformService } from '@/services/platformService'
 import { useTranslation } from 'react-i18next'
 import { ReactQRCode } from '@lglab/react-qr-code'
+import { Mail, MapPin, Phone } from 'lucide-react'
+
+interface WorkspaceContactPair {
+    primary?: string
+    nonPrimary?: string
+}
+
+interface WorkspaceFooterContacts {
+    address?: WorkspaceContactPair
+    email?: WorkspaceContactPair
+    phone?: WorkspaceContactPair
+}
 
 interface ModernA4InvoiceTemplateProps {
     data: UniversalInvoice
     features: any
     workspaceId?: string
     workspaceName?: string
+    workspaceFooterContacts?: WorkspaceFooterContacts
 }
 
 export const ModernA4InvoiceTemplate = forwardRef<HTMLDivElement, ModernA4InvoiceTemplateProps>(
-    ({ data, features, workspaceId: propWorkspaceId, workspaceName }, ref) => {
+    ({ data, features, workspaceId: propWorkspaceId, workspaceName, workspaceFooterContacts }, ref) => {
         const { i18n } = useTranslation()
         const printLang = features?.print_lang && features.print_lang !== 'auto' ? features.print_lang : i18n.language
         const t = i18n.getFixedT(printLang)
@@ -61,6 +74,39 @@ export const ModernA4InvoiceTemplate = forwardRef<HTMLDivElement, ModernA4Invoic
             ? new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false }).format(createdAt)
             : '--:--'
 
+        const footerContactGroups = [
+            {
+                key: 'address',
+                primary: workspaceFooterContacts?.address?.primary?.trim() || '',
+                nonPrimary: workspaceFooterContacts?.address?.nonPrimary?.trim() || '',
+                valueDir: 'auto' as const,
+                icon: MapPin,
+            },
+            {
+                key: 'email',
+                primary: workspaceFooterContacts?.email?.primary?.trim() || '',
+                nonPrimary: workspaceFooterContacts?.email?.nonPrimary?.trim() || '',
+                valueDir: 'ltr' as const,
+                icon: Mail,
+            },
+            {
+                key: 'phone',
+                primary: workspaceFooterContacts?.phone?.primary?.trim() || '',
+                nonPrimary: workspaceFooterContacts?.phone?.nonPrimary?.trim() || '',
+                valueDir: 'ltr' as const,
+                icon: Phone,
+            }
+        ].map((group) => {
+            const entries: Array<{ type: 'primary' | 'nonPrimary'; value: string }> = []
+            if (group.primary.length > 0) entries.push({ type: 'primary', value: group.primary })
+            if (group.nonPrimary.length > 0) entries.push({ type: 'nonPrimary', value: group.nonPrimary })
+            return { ...group, entries }
+        }).filter((group) => group.entries.length > 0)
+        const hasFooterContacts = footerContactGroups.length > 0
+        const minimumTableRows = hasFooterContacts
+            ? (footerContactGroups.length >= 3 ? 12 : footerContactGroups.length === 2 ? 13 : 14)
+            : 15
+
         // Brand Color from reference
         const BRAND_COLOR = '#197fe6'
 
@@ -76,13 +122,68 @@ export const ModernA4InvoiceTemplate = forwardRef<HTMLDivElement, ModernA4Invoic
                     __html: `
 @media print {
     @page { size: A4; margin: 0; }
-    body { background: white; -webkit-print-color-adjust: exact; print-color-adjust: exact; display: block; padding: 0; margin: 0; }
+    body { background: white !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; display: block; padding: 0; margin: 0; }
     .no-print { display: none; }
-    .a4-container { margin: 0; box-shadow: none; width: 100%; height: 100%; page-break-after: avoid; }
+    .a4-container { margin: 0 !important; box-shadow: none !important; width: 100% !important; height: 100% !important; page-break-after: avoid; }
 }
-.text-primary { color: ${BRAND_COLOR}; }
-.bg-primary { background-color: ${BRAND_COLOR}; }
-.border-primary { border-color: ${BRAND_COLOR}; }
+
+/* Scope color overrides to the container */
+.a4-container .text-primary { color: ${BRAND_COLOR} !important; }
+.a4-container .bg-primary { background-color: ${BRAND_COLOR} !important; }
+.a4-container .border-primary { border-color: ${BRAND_COLOR} !important; }
+
+.a4-container .modern-footer-row {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+    row-gap: 8px;
+    line-height: 1.2;
+}
+.a4-container .modern-footer-group {
+    display: inline-flex;
+    align-items: center;
+    white-space: nowrap;
+}
+.a4-container .modern-footer-icon {
+    width: 16px;
+    height: 16px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    vertical-align: middle;
+    line-height: 1;
+    flex-shrink: 0;
+    margin-right: 8px;
+}
+.a4-container .modern-footer-entry {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    line-height: 1.2;
+}
+.a4-container .modern-footer-entry + .modern-footer-entry {
+    margin-left: 12px;
+}
+.a4-container .modern-footer-primary-dot {
+    color: ${BRAND_COLOR};
+    font-size: 10px;
+    line-height: 1;
+    display: inline;
+    vertical-align: middle;
+}
+.a4-container .modern-footer-value {
+    line-height: 1.2;
+    display: inline;
+}
+.a4-container .modern-footer-separator {
+    display: inline-flex;
+    align-items: center;
+    margin: 0 16px;
+    color: #cbd5e1;
+    font-weight: 700;
+    line-height: 1.2;
+}
 `}} />
 
                 {/* HEADER */}
@@ -120,23 +221,31 @@ export const ModernA4InvoiceTemplate = forwardRef<HTMLDivElement, ModernA4Invoic
                                 />
                             </div>
                         )}
-                        <span className="text-[8px] text-slate-400 font-mono text-right">{tr('common.scanToVerify', 'Scan to Verify')}</span>
+                        <span className={cn("text-[8px] text-slate-400 text-right", !isRTL && "font-mono")}>
+                            {tr('common.scanToVerify', 'Scan to Verify')}
+                        </span>
                     </div>
                 </header>
 
                 {/* INFO GRID */}
                 <div className="grid grid-cols-3 gap-3 mb-4 shrink-0">
-                    <div className="flex flex-col items-center text-center gap-0.5 p-2 rounded-lg bg-slate-50 border border-slate-100 dark:bg-slate-800/50 dark:border-slate-700">
-                        <span className="text-[9px] uppercase tracking-wider font-semibold text-slate-400">{tr('invoice.date', 'Date')}</span>
-                        <span className="text-xs font-bold text-slate-800 dark:text-white">{dateLabel}</span>
+                    <div className="flex flex-col items-center justify-center text-center gap-1 p-3 rounded-lg bg-slate-50 border border-slate-100 dark:bg-slate-800/50 dark:border-slate-700 min-h-[60px]">
+                        <span className={cn("text-[10px] font-semibold text-slate-400", !isRTL && "uppercase tracking-wider")}>
+                            {tr('invoice.date', 'Date')}
+                        </span>
+                        <span className="text-sm font-bold text-slate-800 dark:text-white leading-none">{dateLabel}</span>
                     </div>
-                    <div className="flex flex-col items-center text-center gap-0.5 p-2 rounded-lg bg-slate-50 border border-slate-100 dark:bg-slate-800/50 dark:border-slate-700">
-                        <span className="text-[9px] uppercase tracking-wider font-semibold text-slate-400">{tr('common.time', 'Time')}</span>
-                        <span className="text-xs font-bold text-slate-800 dark:text-white">{timeLabel}</span>
+                    <div className="flex flex-col items-center justify-center text-center gap-1 p-3 rounded-lg bg-slate-50 border border-slate-100 dark:bg-slate-800/50 dark:border-slate-700 min-h-[60px]">
+                        <span className={cn("text-[10px] font-semibold text-slate-400", !isRTL && "uppercase tracking-wider")}>
+                            {tr('common.time', 'Time')}
+                        </span>
+                        <span className="text-sm font-bold text-slate-800 dark:text-white leading-none">{timeLabel}</span>
                     </div>
-                    <div className="flex flex-col items-center text-center gap-0.5 p-2 rounded-lg bg-slate-50 border border-slate-100 dark:bg-slate-800/50 dark:border-slate-700">
-                        <span className="text-[9px] uppercase tracking-wider font-semibold text-slate-400">{tr('invoice.number', 'Invoice #')}</span>
-                        <span className="text-xs font-bold text-slate-800 dark:text-white">{data.invoiceid || `#${String(data.id).slice(0, 8)}`}</span>
+                    <div className="flex flex-col items-center justify-center text-center gap-1 p-3 rounded-lg bg-slate-50 border border-slate-100 dark:bg-slate-800/50 dark:border-slate-700 min-h-[60px]">
+                        <span className={cn("text-[10px] font-semibold text-slate-400", !isRTL && "uppercase tracking-wider")}>
+                            {tr('invoice.number', 'Invoice #')}
+                        </span>
+                        <span className="text-sm font-bold text-slate-800 dark:text-white leading-none">{data.invoiceid || `#${String(data.id).slice(0, 8)}`}</span>
                     </div>
                 </div>
 
@@ -144,7 +253,7 @@ export const ModernA4InvoiceTemplate = forwardRef<HTMLDivElement, ModernA4Invoic
                 <div className="grid grid-cols-2 gap-8 mb-4 shrink-0">
                     <div className="flex flex-col gap-2">
                         <div>
-                            <h3 className="text-primary text-[10px] font-bold uppercase tracking-wide border-b border-primary/20 pb-1 mb-1">
+                            <h3 className={cn("text-primary text-[10px] font-bold border-b border-primary/20 pb-1 mb-1", !isRTL && "uppercase tracking-wide")}>
                                 {tr('invoice.soldTo', 'Sold To:')}
                             </h3>
                             <div className="flex flex-col gap-1 mt-1">
@@ -156,13 +265,13 @@ export const ModernA4InvoiceTemplate = forwardRef<HTMLDivElement, ModernA4Invoic
                     </div>
                     <div className="flex flex-col gap-2">
                         <div>
-                            <h3 className="text-primary text-[10px] font-bold uppercase tracking-wide border-b border-primary/20 pb-1 mb-0.5">
+                            <h3 className={cn("text-primary text-[10px] font-bold border-b border-primary/20 pb-1 mb-1", !isRTL && "uppercase tracking-wide")}>
                                 {tr('invoice.soldBy', 'Sold By:')}
                             </h3>
-                            <div className="flex flex-col gap-1 mt-0">
+                            <div className="flex flex-col gap-1 mt-1">
                                 <span className="font-bold text-slate-800 text-xs">{data.cashier_name || ''}</span>
-                                <div className="text-[9px] text-slate-500">{shippedToLabel} ___________________________________________________________________________</div>
-                                <div className="text-[9px] text-slate-500">{viaLabel} ___________________________________________________________________________</div>
+                                <div className="text-[9px] text-slate-500">{shippedToLabel}_______________________________________________________________________ </div>
+                                <div className="text-[9px] text-slate-500">{viaLabel}______________________________________________________________________ </div>
                             </div>
                         </div>
                     </div>
@@ -171,17 +280,17 @@ export const ModernA4InvoiceTemplate = forwardRef<HTMLDivElement, ModernA4Invoic
                 {/* ITEMS TABLE */}
                 <div className="flex-grow mb-4 flex flex-col min-h-0">
                     <div className="overflow-hidden rounded border border-slate-200 dark:border-slate-700 flex-grow">
-                        <table className="w-full text-left border-collapse table-fixed">
+                        <table className={cn("w-full border-collapse table-fixed", isRTL ? "text-right" : "text-left")}>
                             <thead>
-                                <tr className="bg-slate-50 text-slate-500 text-[9px] uppercase tracking-wider font-semibold border-b border-slate-200 dark:bg-slate-800 dark:border-slate-700 h-8">
+                                <tr className={cn("bg-slate-50 text-slate-500 text-[11px] font-bold border-b border-slate-200 dark:bg-slate-800 dark:border-slate-700 h-10", !isRTL && "uppercase tracking-wider")}>
                                     <th className="px-2 w-1/3 border-r border-slate-200 dark:border-slate-700">{tr('invoice.productName', 'Product Name')}</th>
                                     <th className="px-2 w-12 text-center border-r border-slate-200 dark:border-slate-700">{tr('invoice.qty', 'Qty')}</th>
-                                    <th className="px-2 w-24 text-right border-r border-slate-200 dark:border-slate-700">{tr('invoice.price', 'Price')}</th>
+                                    <th className="px-2 w-24 text-end border-r border-slate-200 dark:border-slate-700">{tr('invoice.price', 'Price')}</th>
                                     <th className="px-2 w-16 text-center border-r border-slate-200 dark:border-slate-700">{tr('invoice.discount', 'Discount')}</th>
-                                    <th className="px-2 w-28 text-right">{tr('invoice.total', 'Total')}</th>
+                                    <th className="px-2 w-28 text-end">{tr('invoice.total', 'Total')}</th>
                                 </tr>
                             </thead>
-                            <tbody className="text-[10px]">
+                            <tbody className="text-xs">
                                 {items.map((item, idx) => {
                                     const quantityRaw = Number(item.quantity)
                                     const quantity = Number.isFinite(quantityRaw) ? quantityRaw : 0
@@ -196,28 +305,28 @@ export const ModernA4InvoiceTemplate = forwardRef<HTMLDivElement, ModernA4Invoic
                                     const priceToShow = unitPrice + (quantity > 0 ? (discountAmount / quantity) : 0)
 
                                     return (
-                                        <tr key={idx} className="border-b border-slate-100 last:border-0 hover:bg-slate-50/50 transition-colors dark:border-slate-700 h-7">
+                                        <tr key={idx} className="border-b border-slate-100 last:border-0 hover:bg-slate-50/50 transition-colors dark:border-slate-700 h-9">
                                             <td className="px-2 font-semibold text-slate-800 dark:text-white border-r border-slate-100 dark:border-slate-700 truncate">
                                                 {item.product_name}
                                             </td>
                                             <td className="px-2 text-center text-slate-500 border-r border-slate-100 dark:border-slate-700 font-bold">
                                                 {quantity}
                                             </td>
-                                            <td className="px-2 text-right font-medium text-slate-700 dark:text-slate-300 border-r border-slate-100 dark:border-slate-700 tabular-nums">
+                                            <td className="px-2 text-end font-medium text-slate-700 dark:text-slate-300 border-r border-slate-100 dark:border-slate-700 tabular-nums">
                                                 {formatCurrency(priceToShow, settlementCurrency, iqdDisplayPreference)}
                                             </td>
                                             <td className="px-2 text-center text-green-600 font-medium border-r border-slate-100 dark:border-slate-700">
                                                 {discountAmount > 0 ? formatCurrency(discountAmount, settlementCurrency, iqdDisplayPreference) : '-'}
                                             </td>
-                                            <td className="px-2 text-right font-bold text-slate-900 dark:text-white tabular-nums">
+                                            <td className="px-2 text-end font-bold text-slate-900 dark:text-white tabular-nums">
                                                 {formatCurrency(total, settlementCurrency, iqdDisplayPreference)}
                                             </td>
                                         </tr>
                                     )
                                 })}
                                 {/* Fill empty space to keep layout consistent if needed */}
-                                {items.length < 15 && Array.from({ length: 15 - items.length }).map((_, i) => (
-                                    <tr key={`empty-${i}`} className="border-b border-slate-50 last:border-0 h-7 opacity-20">
+                                {items.length < minimumTableRows && Array.from({ length: minimumTableRows - items.length }).map((_, i) => (
+                                    <tr key={`empty-${i}`} className="border-b border-slate-50 last:border-0 h-9 opacity-20">
                                         <td className="px-2 border-r border-slate-50">&nbsp;</td>
                                         <td className="px-2 border-r border-slate-50">&nbsp;</td>
                                         <td className="px-2 border-r border-slate-50">&nbsp;</td>
@@ -234,7 +343,9 @@ export const ModernA4InvoiceTemplate = forwardRef<HTMLDivElement, ModernA4Invoic
                 <div className="mt-auto pt-4 border-t border-slate-200 flex flex-row gap-6 shrink-0">
                     <div className="flex-1 pr-4 flex flex-col justify-between">
                         <div>
-                            <h4 className="text-[10px] font-bold text-slate-800 mb-1 dark:text-white uppercase tracking-wider">{tr('invoice.terms', 'Terms & Conditions')}</h4>
+                            <h4 className={cn("text-[10px] font-bold text-slate-800 mb-1 dark:text-white", !isRTL && "uppercase tracking-wider")}>
+                                {tr('invoice.terms', 'Terms & Conditions')}
+                            </h4>
                             <div className="flex flex-col gap-3 mt-1 w-full opacity-40">
                                 <div className="border-b border-slate-200 dark:border-slate-600 w-full h-3"></div>
                                 <div className="border-b border-slate-200 dark:border-slate-600 w-full h-3"></div>
@@ -243,10 +354,12 @@ export const ModernA4InvoiceTemplate = forwardRef<HTMLDivElement, ModernA4Invoic
 
                         {data.exchange_rates && data.exchange_rates.length > 0 && (
                             <div className="flex flex-col gap-2 mt-4">
-                                <div className="text-[9px] font-semibold text-slate-400 uppercase tracking-widest">{tr('invoice.exchangeRates', 'Exchange Rates')}</div>
+                                <div className={cn("text-[9px] font-semibold text-slate-400", !isRTL && "uppercase tracking-widest")}>
+                                    {tr('invoice.exchangeRates', 'Exchange Rates')}
+                                </div>
                                 <div className="flex flex-wrap gap-2">
                                     {data.exchange_rates.slice(0, 3).map((rate: any, i: number) => (
-                                        <div key={i} className="px-2 py-1 bg-slate-50 rounded text-[9px] font-mono font-medium text-slate-600 border border-slate-100 tabular-nums">
+                                        <div key={i} className={cn("px-2 py-1 bg-slate-50 rounded text-[9px] font-medium text-slate-600 border border-slate-100 tabular-nums", !isRTL && "font-mono")}>
                                             {rate.pair}: {rate.rate}
                                         </div>
                                     ))}
@@ -258,14 +371,16 @@ export const ModernA4InvoiceTemplate = forwardRef<HTMLDivElement, ModernA4Invoic
                     <div className="w-[280px]">
                         <div className="bg-slate-50 rounded-lg p-4 border border-slate-100 dark:bg-slate-800/50">
                             <div className="flex justify-between items-center mb-1">
-                                <span className="text-[10px] text-slate-500 font-medium uppercase">{tr('invoice.subtotal', 'Subtotal')}</span>
+                                <span className={cn("text-[10px] text-slate-500 font-medium", !isRTL && "uppercase")}>
+                                    {tr('invoice.subtotal', 'Subtotal')}
+                                </span>
                                 <span className="text-xs font-bold text-slate-700 tabular-nums">
                                     {formatCurrency(subtotalAmount, settlementCurrency, iqdDisplayPreference)}
                                 </span>
                             </div>
                             {Object.entries(currencyTotals).map(([code, amount]) => (
                                 <div key={code} className="flex justify-between items-center mb-2 pb-2 border-b border-slate-200 border-dashed">
-                                    <span className="text-[10px] text-slate-300 font-bold lowercase italic">
+                                    <span className={cn("text-[10px] text-slate-300 font-bold", !isRTL && "lowercase italic")}>
                                         {tr('common.total', 'Total')} ({code}):
                                     </span>
                                     <span className="text-xs font-bold text-slate-500 tabular-nums">
@@ -275,8 +390,12 @@ export const ModernA4InvoiceTemplate = forwardRef<HTMLDivElement, ModernA4Invoic
                             ))}
                             <div className="flex justify-between items-end">
                                 <div className="flex flex-col">
-                                    <span className="text-[10px] uppercase tracking-wider font-black text-primary italic leading-tight">{tr('invoice.total', 'Total')}</span>
-                                    <span className="text-[8px] text-slate-400 uppercase font-medium">({settlementCurrency.toUpperCase()})</span>
+                                    <span className={cn("text-[10px] font-black text-primary italic leading-tight", !isRTL && "uppercase tracking-wider")}>
+                                        {tr('invoice.total', 'Total')}
+                                    </span>
+                                    <span className={cn("text-[8px] text-slate-400 font-medium", !isRTL && "uppercase")}>
+                                        ({settlementCurrency.toUpperCase()})
+                                    </span>
                                 </div>
                                 <span className="text-xl font-black text-primary leading-none tracking-tighter tabular-nums">
                                     {formatCurrency(totalAmount, settlementCurrency, iqdDisplayPreference)}
@@ -284,11 +403,38 @@ export const ModernA4InvoiceTemplate = forwardRef<HTMLDivElement, ModernA4Invoic
                             </div>
                         </div>
 
-                        <div className="mt-4 text-center text-[8px] text-slate-400 uppercase tracking-widest font-bold">
+                        <div className={cn("mt-4 text-center text-[8px] text-slate-400 font-bold", !isRTL && "uppercase tracking-widest")}>
                             {data.origin === 'pos' ? tr('invoice.posSystem', 'POS System') : 'Asaas'} | {tr('invoice.generated', 'Generated Automatically')}
                         </div>
                     </div>
                 </div>
+
+                {hasFooterContacts && (
+                    <div dir="ltr" className="mt-4 pt-4 pb-2 border-t border-slate-200 shrink-0">
+                        <div className="modern-footer-row text-[11px] text-slate-500">
+                            {footerContactGroups.map((group, groupIndex) => (
+                                <div key={group.key} className="modern-footer-group">
+                                    <span className="modern-footer-icon text-primary">
+                                        <group.icon className="block w-3.5 h-3.5 text-primary shrink-0" />
+                                    </span>
+                                    {group.entries.map((entry, entryIndex) => (
+                                        <span key={`${group.key}-${entry.type}-${entryIndex}`} className="modern-footer-entry">
+                                            {entryIndex > 0 && (
+                                                <span className="modern-footer-primary-dot" aria-hidden="true">{'\u25CF'}</span>
+                                            )}
+                                            <span dir={group.valueDir} className="modern-footer-value font-medium text-slate-500 whitespace-nowrap">
+                                                {entry.value}
+                                            </span>
+                                        </span>
+                                    ))}
+                                    {groupIndex < footerContactGroups.length - 1 && (
+                                        <span className="modern-footer-separator select-none" aria-hidden="true">|</span>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
 
                 {/* BOTTOM ACCENT */}
                 <div className="absolute bottom-0 left-0 w-full h-1.5 bg-primary"></div>
@@ -298,3 +444,4 @@ export const ModernA4InvoiceTemplate = forwardRef<HTMLDivElement, ModernA4Invoic
 )
 
 ModernA4InvoiceTemplate.displayName = 'ModernA4InvoiceTemplate'
+

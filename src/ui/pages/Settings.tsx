@@ -968,7 +968,7 @@ export function Settings() {
                         <RegisterWorkspaceContactsModal
                             open={contactsModalOpen}
                             onOpenChange={setContactsModalOpen}
-                            contacts={workspaceContacts.map(p => ({ type: p.type, value: p.value, label: p.label || '', is_primary: p.is_primary }))}
+                            contacts={workspaceContacts.map(p => ({ type: p.type, value: p.value, label: p.label || '', isPrimary: p.isPrimary }))}
                             onContactsChange={async (newContacts) => {
                                 if (!user?.workspaceId) return
                                 await supabase.from('workspace_contacts').delete().eq('workspace_id', user.workspaceId)
@@ -978,7 +978,7 @@ export function Settings() {
                                         type: p.type,
                                         value: p.value,
                                         label: p.label || null,
-                                        is_primary: p.is_primary
+                                        is_primary: p.isPrimary
                                     }))
                                     await supabase.from('workspace_contacts').insert(payload)
                                 }
@@ -992,7 +992,7 @@ export function Settings() {
                                         type: r.type,
                                         value: r.value,
                                         label: r.label,
-                                        is_primary: r.is_primary,
+                                        isPrimary: r.is_primary,
                                         syncStatus: 'synced' as const,
                                         lastSyncedAt: new Date().toISOString(),
                                         version: r.version || 1,
@@ -1078,6 +1078,29 @@ export function Settings() {
                                             <SelectItem value="ku">کوردی</SelectItem>
                                         </SelectContent>
                                     </Select>
+                                </div>
+
+                                <div className="flex flex-col gap-2 max-w-sm">
+                                    <Label className="text-xs text-slate-500 uppercase font-semibold">{t('settings.printing.quality') || 'Print Quality'}</Label>
+                                    <div className="flex items-center gap-2">
+                                        <Button
+                                            variant={features.print_quality === 'low' ? 'default' : 'outline'}
+                                            className="flex-1"
+                                            onClick={() => updateSettings({ print_quality: 'low' })}
+                                        >
+                                            {t('settings.printing.low') || 'Low'}
+                                        </Button>
+                                        <Button
+                                            variant={features.print_quality === 'high' ? 'default' : 'outline'}
+                                            className="flex-1"
+                                            onClick={() => updateSettings({ print_quality: 'high' })}
+                                        >
+                                            {t('settings.printing.high') || 'High'}
+                                        </Button>
+                                    </div>
+                                    <p className="text-[10px] text-muted-foreground italic">
+                                        {t('settings.printing.qualityDesc') || 'HIGH quality increases clarity but results in larger PDF files. QR codes are always high quality.'}
+                                    </p>
                                 </div>
 
                                 <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg border border-border max-w-sm">

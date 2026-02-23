@@ -346,6 +346,7 @@ export interface Workspace extends BaseEntity {
     print_qr?: boolean
     receipt_template?: 'primary' | 'modern'
     a4_template?: 'primary' | 'modern'
+    print_quality?: 'low' | 'high'
     subscription_expires_at?: string | null
 }
 
@@ -353,7 +354,7 @@ export interface WorkspaceContact extends Omit<BaseEntity, 'isDeleted'> {
     type: 'phone' | 'email' | 'address'
     value: string
     label?: string
-    is_primary: boolean
+    isPrimary: boolean
 }
 
 export interface OfflineMutation {

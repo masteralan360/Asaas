@@ -470,6 +470,10 @@
             "a4Template": "A4 Invoice Template",
             "primary": "Primary",
             "modern": "Modern",
+            "quality": "Print Quality",
+            "low": "Low",
+            "high": "High",
+            "qualityDesc": "HIGH quality increases clarity but results in larger PDF files. QR codes are always high quality.",
             "templateDesc": "Choose the design for your printed documents."
         },
         "tabs": {
@@ -723,7 +727,7 @@
         "terms": "Terms & Conditions",
         "exchangeRates": "Exchange Rates",
         "generated": "Generated Automatically",
-        "posSystem": "POS System"
+        "posSystem": "Issued via Asaas ERP System"
     },
     "sales": {
         "title": "Sales History",
@@ -1030,6 +1034,25 @@
             "setPrimary": "Set as Primary",
             "addAnotherLine": "Add Another Line",
             "noPhones": "No phone numbers added yet."
+        },
+        "contacts": {
+            "addContacts": "Add Workspace Contacts",
+            "addContactsDesc": "Add contact details for your workspace. The primary contact will be used for main communications.",
+            "contact": "Contact",
+            "primary_phone": "PRIMARY PHONE",
+            "primary_email": "PRIMARY EMAIL",
+            "primary_address": "PRIMARY ADDRESS",
+            "setPrimary": "Set as Primary",
+            "addAnother": "Add Another Contact",
+            "typeLabel": "Type",
+            "valueLabel": "Contact Value",
+            "tagLabel": "Label (Optional)",
+            "tagPlaceholder": "Sales, Support, etc.",
+            "types": {
+                "phone": "Phone",
+                "email": "Email",
+                "address": "Address"
+            }
         }
     },
     "storages": {

@@ -31,12 +31,12 @@ export function WorkspaceContactsManager({ workspaceId }: WorkspaceContactsManag
         if (!newValue) return
 
         try {
-            const primaryOfTypeExists = contacts.some(c => c.type === newType && c.is_primary)
+            const primaryOfTypeExists = contacts.some(c => c.type === newType && c.isPrimary)
             await createWorkspaceContact(workspaceId, {
                 type: newType,
                 value: newValue,
                 label: newLabel || undefined,
-                is_primary: !primaryOfTypeExists
+                isPrimary: !primaryOfTypeExists
             })
             setNewValue('')
             setNewLabel('')
@@ -48,16 +48,16 @@ export function WorkspaceContactsManager({ workspaceId }: WorkspaceContactsManag
     }
 
     const handleTogglePrimary = async (contact: WorkspaceContact) => {
-        if (contact.is_primary) return
+        if (contact.isPrimary) return
 
         try {
             // Unset current primary of same type
-            const currentPrimary = contacts.find(p => p.type === contact.type && p.is_primary)
+            const currentPrimary = contacts.find(p => p.type === contact.type && p.isPrimary)
             if (currentPrimary) {
-                await updateWorkspaceContact(currentPrimary.id, { is_primary: false })
+                await updateWorkspaceContact(currentPrimary.id, { isPrimary: false })
             }
             // Set new primary
-            await updateWorkspaceContact(contact.id, { is_primary: true })
+            await updateWorkspaceContact(contact.id, { isPrimary: true })
         } catch (error) {
             console.error('Failed to update primary contact:', error)
         }
@@ -145,16 +145,16 @@ export function WorkspaceContactsManager({ workspaceId }: WorkspaceContactsManag
                 {contacts.map((c) => (
                     <div
                         key={c.id}
-                        className={`group flex items-center justify-between p-3 rounded-xl border-2 transition-all ${c.is_primary ? 'border-primary/30 bg-primary/5' : 'border-border bg-card'}`}
+                        className={`group flex items-center justify-between p-3 rounded-xl border-2 transition-all ${c.isPrimary ? 'border-primary/30 bg-primary/5' : 'border-border bg-card'}`}
                     >
                         <div className="flex items-center gap-3">
-                            <div className={`p-2 rounded-lg ${c.is_primary ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>
+                            <div className={`p-2 rounded-lg ${c.isPrimary ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>
                                 {getIcon(c.type)}
                             </div>
                             <div>
                                 <div className="font-medium flex items-center gap-2 text-sm">
                                     {c.value}
-                                    {c.is_primary && (
+                                    {c.isPrimary && (
                                         <span className="text-[10px] bg-primary/20 text-primary px-1.5 py-0.5 rounded-full font-bold">
                                             {t(`workspaceConfig.contacts.primary_${c.type}`, `PRIMARY ${c.type.toUpperCase()}`)}
                                         </span>
@@ -171,7 +171,7 @@ export function WorkspaceContactsManager({ workspaceId }: WorkspaceContactsManag
                                 onClick={() => handleTogglePrimary(c)}
                                 title={t('workspaceConfig.contacts.setPrimary', 'Set Primary')}
                             >
-                                {c.is_primary ? <Star className="w-4 h-4 fill-primary text-primary" /> : <StarOff className="w-4 h-4" />}
+                                {c.isPrimary ? <Star className="w-4 h-4 fill-primary text-primary" /> : <StarOff className="w-4 h-4" />}
                             </Button>
                             <Button
                                 variant="ghost"

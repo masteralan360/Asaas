@@ -26,16 +26,29 @@ interface RenderResult {
     heightMm: number
 }
 
+interface WorkspaceContactPair {
+    primary?: string
+    nonPrimary?: string
+}
+
+interface WorkspaceFooterContacts {
+    address?: WorkspaceContactPair
+    email?: WorkspaceContactPair
+    phone?: WorkspaceContactPair
+}
+
 interface PDFGeneratorOptions {
     data: UniversalInvoice
     format: PrintFormat
     features: {
         logo_url?: string | null
         iqd_display_preference?: string
+        print_quality?: 'low' | 'high'
     }
     workspaceName?: string
     workspaceId?: string
     translations?: Record<string, string>
+    workspaceFooterContacts?: WorkspaceFooterContacts
 }
 
 const A4_WIDTH_MM = 210
@@ -59,7 +72,7 @@ async function waitForImages(container: HTMLElement) {
     })))
 }
 
-async function renderToCanvas(element: ReturnType<typeof createElement>, widthMm: number): Promise<RenderResult> {
+async function renderToCanvas(element: ReturnType<typeof createElement>, widthMm: number, quality: 'low' | 'high' = 'low'): Promise<RenderResult> {
     const container = document.createElement('div')
     container.id = 'pdf-render-container'
     container.style.position = 'fixed'
@@ -84,7 +97,8 @@ async function renderToCanvas(element: ReturnType<typeof createElement>, widthMm
     await waitForImages(container)
 
     const HIGH_SCALE = 6 // Higher scale for perfect QR pixel capture
-    const LOW_SCALE = 1.25
+    const LOW_SCALE = quality === 'high' ? 2.5 : 1.25
+    const JPEG_QUALITY = quality === 'high' ? 0.9 : 0.6
 
     let sharpZones: { x: number, y: number, width: number, height: number }[] = []
 
@@ -159,7 +173,7 @@ async function renderToCanvas(element: ReturnType<typeof createElement>, widthMm
     container.remove()
 
     return {
-        background: lowResCanvas.toDataURL('image/jpeg', 0.6),
+        background: lowResCanvas.toDataURL('image/jpeg', JPEG_QUALITY),
         qrs,
         widthMm,
         heightMm: calculatedHeightMm
@@ -222,7 +236,7 @@ async function preprocessLogoUrl(logoUrl?: string | null) {
  * Generates a PDF blob from invoice data using the HTML templates.
  */
 export async function generateInvoicePdf(options: PDFGeneratorOptions): Promise<Blob> {
-    const { data, format, features = {} as any, workspaceName, workspaceId } = options
+    const { data, format, features = {} as any, workspaceName, workspaceId, workspaceFooterContacts } = options
 
     // Inject workspaceId into data for QR codes
     if (workspaceId && !data.workspaceId) {
@@ -267,24 +281,30 @@ export async function generateInvoicePdf(options: PDFGeneratorOptions): Promise<
                 })
             )
         )
-        const renderResult = await renderToCanvas(element, RECEIPT_WIDTH_MM)
+        const renderResult = await renderToCanvas(element, RECEIPT_WIDTH_MM, features?.print_quality)
         return canvasToReceiptPdf(renderResult)
     }
 
+    const isModernA4 = features?.a4_template === 'modern'
     const element = createElement(
         I18nextProvider,
         { i18n: pdfI18n },
-        createElement(
-            features?.a4_template === 'modern' ? ModernA4InvoiceTemplate : A4InvoiceTemplate,
-            {
+        isModernA4
+            ? createElement(ModernA4InvoiceTemplate, {
+                data,
+                features: processedFeatures,
+                workspaceId,
+                workspaceName: workspaceName || workspaceId || 'Asaas',
+                workspaceFooterContacts
+            })
+            : createElement(A4InvoiceTemplate, {
                 data,
                 features: processedFeatures,
                 workspaceId,
                 workspaceName: workspaceName || workspaceId || 'Asaas'
-            }
-        )
+            })
     )
-    const renderResult = await renderToCanvas(element, A4_WIDTH_MM)
+    const renderResult = await renderToCanvas(element, A4_WIDTH_MM, features?.print_quality)
     return canvasToA4Pdf(renderResult)
 
 }

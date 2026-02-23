@@ -32,7 +32,7 @@ interface AuthContextType {
         passkey: string;
         workspaceName?: string;
         workspaceCode?: string;
-        adminContacts?: { type: 'phone' | 'email' | 'address'; value: string; label?: string; is_primary: boolean }[];
+        adminContacts?: { type: 'phone' | 'email' | 'address'; value: string; label?: string; isPrimary: boolean }[];
     }) => Promise<{ error: Error | null }>
     signOut: () => Promise<void>
     hasRole: (roles: UserRole[]) => boolean
@@ -343,7 +343,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         passkey: string;
         workspaceName?: string;
         workspaceCode?: string;
-        adminContacts?: { type: 'phone' | 'email' | 'address'; value: string; label?: string; is_primary: boolean }[];
+        adminContacts?: { type: 'phone' | 'email' | 'address'; value: string; label?: string; isPrimary: boolean }[];
     }) => {
         if (!isSupabaseConfigured) {
             setUser({ ...DEMO_USER, email, name, role, workspaceName: workspaceName || 'Local Workspace' })
@@ -407,7 +407,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                     type: p.type,
                     value: p.value,
                     label: p.label || null,
-                    is_primary: p.is_primary
+                    is_primary: p.isPrimary
                 }))
                 const { error: contactsErr } = await supabase.from('workspace_contacts').insert(contactsPayload)
                 if (contactsErr) console.error('[Auth] Failed to insert workspace contacts:', contactsErr)

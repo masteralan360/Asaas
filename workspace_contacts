@@ -1,9 +1,0 @@
-workspace_contacts
-- id
-- workspace_id
-- type ('phone','email','address')
-- value (string)
-- label
-- is_primary
-- created_at
-- updated_at

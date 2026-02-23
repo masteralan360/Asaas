@@ -27,6 +27,7 @@ export interface WorkspaceFeatures {
     print_qr: boolean
     receipt_template: 'primary' | 'modern'
     a4_template: 'primary' | 'modern'
+    print_quality: 'low' | 'high'
     subscription_expires_at: string | null
 }
 
@@ -46,7 +47,7 @@ interface WorkspaceContextType {
     isLocked: boolean
     hasFeature: (feature: 'allow_pos' | 'allow_customers' | 'allow_suppliers' | 'allow_orders' | 'allow_invoices' | 'allow_whatsapp') => boolean
     refreshFeatures: () => Promise<void>
-    updateSettings: (settings: Partial<Pick<WorkspaceFeatures, 'default_currency' | 'iqd_display_preference' | 'eur_conversion_enabled' | 'try_conversion_enabled' | 'allow_whatsapp' | 'logo_url' | 'print_lang' | 'print_qr' | 'receipt_template' | 'a4_template'>> & { name?: string }) => Promise<void>
+    updateSettings: (settings: Partial<Pick<WorkspaceFeatures, 'default_currency' | 'iqd_display_preference' | 'eur_conversion_enabled' | 'try_conversion_enabled' | 'allow_whatsapp' | 'logo_url' | 'print_lang' | 'print_qr' | 'receipt_template' | 'a4_template' | 'print_quality'>> & { name?: string }) => Promise<void>
     activeWorkspace: { id: string } | undefined
 }
 
@@ -69,6 +70,7 @@ const defaultFeatures: WorkspaceFeatures = {
     print_qr: false,
     receipt_template: 'primary',
     a4_template: 'primary',
+    print_quality: 'low',
     subscription_expires_at: null
 }
 
@@ -194,6 +196,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                         print_qr: (localWorkspace as any).print_qr ?? false,
                         receipt_template: (localWorkspace as any).receipt_template ?? 'primary',
                         a4_template: (localWorkspace as any).a4_template ?? 'primary',
+                        print_quality: (localWorkspace as any).print_quality ?? 'low',
                         subscription_expires_at: (localWorkspace as any).subscription_expires_at ?? null
                     })
                 } else {
@@ -220,6 +223,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                     print_qr: featureData.print_qr ?? false,
                     receipt_template: featureData.receipt_template ?? 'primary',
                     a4_template: featureData.a4_template ?? 'primary',
+                    print_quality: featureData.print_quality ?? 'low',
                     subscription_expires_at: featureData.subscription_expires_at ?? null
                 }
                 setFeatures(fetchedFeatures)
@@ -252,6 +256,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                     print_qr: fetchedFeatures.print_qr,
                     receipt_template: fetchedFeatures.receipt_template,
                     a4_template: fetchedFeatures.a4_template,
+                    print_quality: fetchedFeatures.print_quality,
                     subscription_expires_at: fetchedFeatures.subscription_expires_at,
                     logo_url: fetchedFeatures.logo_url,
                     syncStatus: 'synced',
@@ -295,6 +300,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                         print_qr: (localWorkspace as any).print_qr ?? false,
                         receipt_template: (localWorkspace as any).receipt_template ?? 'primary',
                         a4_template: (localWorkspace as any).a4_template ?? 'primary',
+                        print_quality: (localWorkspace as any).print_quality ?? 'low',
                         subscription_expires_at: (localWorkspace as any).subscription_expires_at ?? null
                     })
                 }
@@ -357,6 +363,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                         print_qr: data.print_qr ?? features.print_qr,
                         receipt_template: data.receipt_template ?? features.receipt_template,
                         a4_template: data.a4_template ?? features.a4_template,
+                        print_quality: data.print_quality ?? features.print_quality,
                         subscription_expires_at: data.subscription_expires_at ?? features.subscription_expires_at
                     }
 
@@ -407,7 +414,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         await fetchFeatures()
     }
 
-    const updateSettings = async (settings: Partial<Pick<WorkspaceFeatures, 'default_currency' | 'iqd_display_preference' | 'eur_conversion_enabled' | 'try_conversion_enabled' | 'allow_whatsapp' | 'logo_url' | 'print_lang' | 'print_qr' | 'receipt_template' | 'a4_template'>> & { name?: string }) => {
+    const updateSettings = async (settings: Partial<Pick<WorkspaceFeatures, 'default_currency' | 'iqd_display_preference' | 'eur_conversion_enabled' | 'try_conversion_enabled' | 'allow_whatsapp' | 'logo_url' | 'print_lang' | 'print_qr' | 'receipt_template' | 'a4_template' | 'print_quality'>> & { name?: string }) => {
         const workspaceId = user?.workspaceId
         if (!workspaceId) return
 

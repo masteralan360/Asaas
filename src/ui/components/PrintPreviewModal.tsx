@@ -16,7 +16,7 @@ import {
 } from '@/ui/components'
 import { Printer, X, Maximize2, Minimize2, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { saveInvoiceFromSnapshot } from '@/local-db/hooks'
+import { saveInvoiceFromSnapshot, useWorkspaceContacts } from '@/local-db/hooks'
 import { useAuth } from '@/auth'
 import { db, type Invoice } from '@/local-db'
 import { generateInvoicePdf, type PrintFormat } from '@/services/pdfGenerator'
@@ -44,6 +44,17 @@ type PdfBlobs = {
     receipt?: Blob
 }
 
+type WorkspaceContactPair = {
+    primary?: string
+    nonPrimary?: string
+}
+
+type WorkspaceFooterContacts = {
+    address?: WorkspaceContactPair
+    email?: WorkspaceContactPair
+    phone?: WorkspaceContactPair
+}
+
 export function PrintPreviewModal({
     isOpen,
     onClose,
@@ -61,6 +72,7 @@ export function PrintPreviewModal({
     const { toast } = useToast()
     const { user } = useAuth()
     const workspaceId = user?.workspaceId
+    const workspaceContacts = useWorkspaceContacts(workspaceId)
 
     // Generate a stable ID for new invoices to ensure QR code consistency
     // If pdfData.id exists (history), we use that. If not (new sale), we generate one.
@@ -121,6 +133,36 @@ export function PrintPreviewModal({
         snapshots: t_print('sales.print.snapshots') || 'Snapshots'
     }), [t_print])
 
+    const workspaceFooterContacts = useMemo<WorkspaceFooterContacts>(() => {
+        const pickContactPair = (type: 'address' | 'email' | 'phone'): WorkspaceContactPair => {
+            const contactsOfType = workspaceContacts.filter((contact) =>
+                contact.type === type
+                && typeof contact.value === 'string'
+                && contact.value.trim().length > 0
+            )
+            if (contactsOfType.length === 0) return {}
+
+            const primaryContact = contactsOfType.find((contact) => contact.isPrimary) || contactsOfType[0]
+            const primary = primaryContact.value.trim()
+            const nonPrimaryContact = contactsOfType.find((contact) =>
+                contact.id !== primaryContact.id
+                && (!contact.isPrimary || contact.value.trim() !== primary)
+            )
+            const nonPrimary = nonPrimaryContact?.value.trim()
+
+            return {
+                ...(primary ? { primary } : {}),
+                ...(nonPrimary ? { nonPrimary } : {})
+            }
+        }
+
+        return {
+            address: pickContactPair('address'),
+            email: pickContactPair('email'),
+            phone: pickContactPair('phone')
+        }
+    }, [workspaceContacts])
+
     const handleHtmlPrint = useReactToPrint({
         contentRef: htmlPrintRef,
         documentTitle: title || 'Print_Preview',
@@ -152,11 +194,12 @@ export function PrintPreviewModal({
                 logo_url: features.logo_url || undefined
             },
             workspaceName: workspaceName || workspaceId || '',
-            translations
+            translations,
+            workspaceFooterContacts
         })
 
         return { [format]: blob }
-    }, [features, pdfData, translations, workspaceId, workspaceName, effectiveId, printFormat])
+    }, [features, pdfData, translations, workspaceId, workspaceName, effectiveId, printFormat, workspaceFooterContacts])
 
     const ensurePdfBlobs = useCallback(async (requestedFormat?: PrintFormat): Promise<{ a4?: Blob; receipt?: Blob }> => {
         const format = requestedFormat || printFormat;
@@ -201,6 +244,13 @@ export function PrintPreviewModal({
             document.body.appendChild(iframe)
         })
     }
+
+    // Force fresh PDF generation for each open/format/session change to avoid stale preview blobs.
+    useEffect(() => {
+        if (!isOpen || !hasPdfData) return
+        setPdfBlobs({})
+        setPdfUrl(null)
+    }, [isOpen, hasPdfData, printFormat, effectiveId, workspaceFooterContacts])
 
     useEffect(() => {
         if (!isOpen) {
@@ -301,7 +351,8 @@ export function PrintPreviewModal({
                             logo_url: features?.logo_url || undefined
                         },
                         workspaceName: workspaceName || workspaceId || '',
-                        translations
+                        translations,
+                        workspaceFooterContacts
                     })
 
                     const path = `${workspaceId}/printed-invoices/${printFormat === 'a4' ? 'A4' : 'receipts'}/${savedInvoice.id}.pdf`
@@ -513,6 +564,7 @@ export function PrintPreviewModal({
                                         features={features}
                                         workspaceId={workspaceId || undefined}
                                         workspaceName={workspaceName || workspaceId || 'Asaas'}
+                                        workspaceFooterContacts={workspaceFooterContacts}
                                     />
                                 ) : (
                                     <A4InvoiceTemplate

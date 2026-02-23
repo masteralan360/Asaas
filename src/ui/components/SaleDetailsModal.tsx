@@ -264,7 +264,14 @@ export function SaleDetailsModal({ sale, isOpen, onClose, onReturnItem, onReturn
                             </div>
                             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                                 {sale.exchange_rates.map((rate: any, idx: number) => (
-                                    <div key={idx} className="bg-card border border-primary/10 shadow-sm rounded-sm p-3 space-y-1">
+                                    <div key={idx} className="bg-card border border-primary/10 shadow-sm rounded-sm p-3 space-y-1 relative overflow-hidden">
+                                        {/* Source Badge */}
+                                        {(rate.source || sale.exchange_source) && (
+                                            <div className="absolute top-0 right-0 px-1.5 py-0.5 bg-primary/10 text-primary text-[8px] font-bold uppercase tracking-wider rounded-bl-sm border-l border-b border-primary/5">
+                                                {rate.source || sale.exchange_source}
+                                            </div>
+                                        )}
+
                                         <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
                                             {rate.pair}
                                         </div>
