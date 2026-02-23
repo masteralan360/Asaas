@@ -465,6 +465,7 @@ function App() {
                             version={version}
                             date={currentPatch.date}
                             highlights={currentPatch.highlights}
+                            teamMessages={currentPatch.teamMessages}
                         />
                     )}
                 </DateRangeProvider>

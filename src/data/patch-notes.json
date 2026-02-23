@@ -32,5 +32,66 @@
         "content": "FIXED CONTENT"
       }
     ]
+  },
+  "v0.0.14": {
+    "date": "2026-02-23",
+    "highlights": {
+      "en": [
+        {
+          "type": "new",
+          "title": "New Title",
+          "content": "New Content"
+        },
+        {
+          "type": "improved",
+          "title": "Improved",
+          "content": "Improved"
+        },
+        {
+          "type": "fixed",
+          "title": "fixed",
+          "content": "fixed"
+        }
+      ],
+      "ar": [
+        {
+          "type": "new",
+          "title": "عربي",
+          "content": "عربي"
+        },
+        {
+          "type": "improved",
+          "title": "عربي",
+          "content": "عربي"
+        },
+        {
+          "type": "fixed",
+          "title": "عربي",
+          "content": "عربي"
+        }
+      ],
+      "ku": [
+        {
+          "type": "new",
+          "title": "kurdish",
+          "content": "kurdish"
+        },
+        {
+          "type": "improved",
+          "title": "kurdish",
+          "content": "kurdish"
+        },
+        {
+          "type": "fixed",
+          "title": "kurdish",
+          "content": "kurdish"
+        }
+      ]
+    },
+    "teamMessages": {
+      "en": "hi",
+      "ar": "سلام",
+      "ku": "سلاو"
+    }
   }
 }

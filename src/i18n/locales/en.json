@@ -89,7 +89,8 @@
         "getStarted": "Let's Go!",
         "badge_new": "New",
         "badge_improved": "Improved",
-        "badge_fixed": "Fixed"
+        "badge_fixed": "Fixed",
+        "fromTeam": "From the Team"
     },
     "messages": {
         "saleCompleted": "Sale completed successfully",

@@ -88,7 +88,8 @@
         "getStarted": "لنبدأ!",
         "badge_new": "جديد",
         "badge_improved": "تحسين",
-        "badge_fixed": "تم الإصلاح"
+        "badge_fixed": "تم الإصلاح",
+        "fromTeam": "من فريق العمل"
     },
     "messages": {
         "saleCompleted": "تم إتمام البيع بنجاح",

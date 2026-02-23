@@ -10,7 +10,8 @@ export interface PatchHighlight {
 
 export interface PatchNote {
     date: string
-    highlights: PatchHighlight[]
+    highlights: Record<string, PatchHighlight[]>
+    teamMessages: Record<string, string>
 }
 
 export function usePatchNotes() {

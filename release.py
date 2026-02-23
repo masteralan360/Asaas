@@ -48,9 +48,9 @@ def update_version(new_version):
         json.dump(pkg_data, f, indent=2)
 
 
-def update_patch_notes(version, highlights):
+def update_patch_notes(version, localized_highlights, localized_team_messages):
     """Save patch notes to src/data/patch-notes.json"""
-    if not highlights:
+    if not any(localized_highlights.values()) and not any(localized_team_messages.values()):
         return
         
     # Read existing notes
@@ -66,7 +66,8 @@ def update_patch_notes(version, highlights):
     import datetime
     data[f"v{version}"] = {
         "date": datetime.datetime.now().strftime("%Y-%m-%d"),
-        "highlights": highlights
+        "highlights": localized_highlights,
+        "teamMessages": localized_team_messages
     }
 
     # Save back
@@ -153,10 +154,27 @@ class ReleaseApp:
         self.msg_entry.pack()
         
         # Highlights
-        self.highlights = []
+        self.localized_highlights = {'en': [], 'ar': [], 'ku': []}
+        self.localized_team_msg = {'en': '', 'ar': '', 'ku': ''}
+        self.current_lang = 'en'
+        
         ttk.Button(root, text="📝 Manage Highlights", command=self.manage_highlights).pack(pady=10)
-        self.highlights_label = ttk.Label(root, text="0 highlights added", foreground='gray')
+        self.highlights_label = ttk.Label(root, text="0 highlights (EN: 0, AR: 0, KU: 0)", foreground='gray')
         self.highlights_label.pack()
+        
+        # Team Message
+        self.has_team_msg = tk.BooleanVar(value=False)
+        ttk.Checkbutton(root, text="Include Team Message?", variable=self.has_team_msg, command=self.toggle_team_msg).pack(pady=(10, 0))
+        
+        # Language selector for team message
+        lang_frame = ttk.Frame(root)
+        lang_frame.pack(pady=5)
+        self.team_lang_var = tk.StringVar(value="en")
+        for l in ['en', 'ar', 'ku']:
+            ttk.Radiobutton(lang_frame, text=l.upper(), variable=self.team_lang_var, value=l, command=self.switch_team_msg_lang).pack(side=tk.LEFT, padx=5)
+            
+        self.team_msg_text = tk.Text(root, width=40, height=3, font=('Segoe UI', 9), state='disabled')
+        self.team_msg_text.pack(padx=20, pady=5)
         
         # Update message when version changes
         self.version_var.trace('w', self.update_msg)
@@ -207,17 +225,24 @@ class ReleaseApp:
         """Open a window to manage typed highlights"""
         win = tk.Toplevel(self.root)
         win.title("Manage Highlights")
-        win.geometry("500x600")
+        win.geometry("500x700")
         win.grab_set()
         
         main_frame = ttk.Frame(win, padding=20)
         main_frame.pack(fill='both', expand=True)
         
-        ttk.Label(main_frame, text="Add Update Highlights", font=('Segoe UI', 12, 'bold')).pack(pady=(0, 15))
+        ttk.Label(main_frame, text="Add Update Highlights", font=('Segoe UI', 12, 'bold')).pack(pady=(0, 10))
         
-        # List of highlights with delete buttons
+        # Language Selector for highlights list
+        self.h_lang_var = tk.StringVar(value="en")
+        l_frame = ttk.Frame(main_frame)
+        l_frame.pack(pady=5)
+        for l in ['en', 'ar', 'ku']:
+            ttk.Radiobutton(l_frame, text=l.upper(), variable=self.h_lang_var, value=l, command=lambda: refresh_list()).pack(side=tk.LEFT, padx=5)
+
+        # List of highlights
         list_frame = ttk.Frame(main_frame)
-        list_frame.pack(fill='both', expand=True)
+        list_frame.pack(fill='both', expand=True, pady=10)
         
         canvas = tk.Canvas(list_frame)
         scrollbar = ttk.Scrollbar(list_frame, orient="vertical", command=canvas.yview)
@@ -238,7 +263,8 @@ class ReleaseApp:
             for widget in scrollable_frame.winfo_children():
                 widget.destroy()
             
-            for i, h in enumerate(self.highlights):
+            lang = self.h_lang_var.get()
+            for i, h in enumerate(self.localized_highlights[lang]):
                 item = ttk.Frame(scrollable_frame, padding=5)
                 item.pack(fill='x', pady=2)
                 
@@ -249,18 +275,19 @@ class ReleaseApp:
                 content_preview = ttk.Label(item, text=h['content'][:30] + "..." if len(h['content']) > 30 else h['content'], font=('Segoe UI', 8))
                 content_preview.pack(side=tk.LEFT, padx=10)
                 
-                ttk.Button(item, text="X", width=3, command=lambda idx=i: remove_h(idx)).pack(side=tk.RIGHT)
+                ttk.Button(item, text="X", width=3, command=lambda idx=i: remove_h(idx, lang)).pack(side=tk.RIGHT)
             
-            self.highlights_label.config(text=f"{len(self.highlights)} highlights added")
+            counts = [f"{l.upper()}: {len(self.localized_highlights[l])}" for l in ['en', 'ar', 'ku']]
+            self.highlights_label.config(text=f"Highlights ({', '.join(counts)})")
 
-        def remove_h(idx):
-            self.highlights.pop(idx)
+        def remove_h(idx, lang):
+            self.localized_highlights[lang].pop(idx)
             refresh_list()
 
         refresh_list()
         
         # Add new highlight form
-        form = ttk.LabelFrame(main_frame, text="Add New", padding=10)
+        form = ttk.LabelFrame(main_frame, text="Add New Highlight", padding=10)
         form.pack(fill='x', pady=10)
         
         ttk.Label(form, text="Type:").grid(row=0, column=0, sticky='w')
@@ -283,7 +310,8 @@ class ReleaseApp:
                 messagebox.showerror("Error", "Title is required!")
                 return
             
-            self.highlights.append({
+            lang = self.h_lang_var.get()
+            self.localized_highlights[lang].append({
                 'type': type_var.get(),
                 'title': title,
                 'content': content
@@ -295,6 +323,35 @@ class ReleaseApp:
         ttk.Button(form, text="➕ Add Highlight", command=add_h).grid(row=3, column=1, sticky='e', pady=5)
         
         ttk.Button(main_frame, text="✅ Done", command=win.destroy).pack(pady=10)
+
+    def switch_team_msg_lang(self):
+        """Save current team message and switch view to another language"""
+        old_lang = self.current_lang
+        new_lang = self.team_lang_var.get()
+        
+        # Save current text to dictionary
+        self.localized_team_msg[old_lang] = self.team_msg_text.get('1.0', tk.END).strip()
+        
+        # Switch current language
+        self.current_lang = new_lang
+        
+        # Update text area with new language content
+        self.team_msg_text.config(state='normal')
+        self.team_msg_text.delete('1.0', tk.END)
+        self.team_msg_text.insert('1.0', self.localized_team_msg[new_lang])
+        if not self.has_team_msg.get():
+             self.team_msg_text.config(state='disabled')
+
+    def toggle_team_msg(self):
+        """Enable/Disable team message text area"""
+        if self.has_team_msg.get():
+            self.team_msg_text.config(state='normal')
+            self.team_msg_text.focus()
+        else:
+            # Save before disabling
+            self.localized_team_msg[self.current_lang] = self.team_msg_text.get('1.0', tk.END).strip()
+            self.team_msg_text.delete('1.0', tk.END)
+            self.team_msg_text.config(state='disabled')
 
     def build_apk(self):
         """Run android build and rename APK"""
@@ -373,7 +430,12 @@ class ReleaseApp:
         
         try:
             update_version(version)
-            update_patch_notes(version, self.highlights)
+            
+            # Save current team message before finalizing
+            self.localized_team_msg[self.current_lang] = self.team_msg_text.get('1.0', tk.END).strip()
+            
+            team_messages = {l: self.localized_team_msg[l] for l in ['en', 'ar', 'ku'] if self.localized_team_msg[l]}
+            update_patch_notes(version, self.localized_highlights, team_messages)
             
             self.status_var.set("Pushing to GitHub...")
             self.root.update()

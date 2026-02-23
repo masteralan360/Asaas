@@ -88,7 +88,8 @@
         "getStarted": "با دەست پێ بکەین!",
         "badge_new": "نوێ",
         "badge_improved": "باشتر کراوە",
-        "badge_fixed": "چاککراوە"
+        "badge_fixed": "چاککراوە",
+        "fromTeam": "لە لایەن تیمەوە"
     },
     "messages": {
         "saleCompleted": "کرداری فرۆشتن بە سەرکەوتوویی تەواو بوو",

@@ -88,3 +88,20 @@ export { WorkspaceContactsManager } from './workspace/WorkspaceContactsManager'
 export { RegisterWorkspaceContactsModal } from './modals/RegisterWorkspaceContactsModal'
 export type { AdminContact } from './modals/RegisterWorkspaceContactsModal'
 export { PatchNoteModal } from './modals/PatchNoteModal'
+export {
+    DropdownMenu,
+    DropdownMenuTrigger,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuCheckboxItem,
+    DropdownMenuRadioItem,
+    DropdownMenuLabel,
+    DropdownMenuSeparator,
+    DropdownMenuShortcut,
+    DropdownMenuGroup,
+    DropdownMenuPortal,
+    DropdownMenuSub,
+    DropdownMenuSubContent,
+    DropdownMenuSubTrigger,
+    DropdownMenuRadioGroup,
+} from './ui/dropdown-menu'
