@@ -14,6 +14,7 @@ from pathlib import Path
 SCRIPT_DIR = Path(__file__).parent
 TAURI_CONF = SCRIPT_DIR / "src-tauri" / "tauri.conf.json"
 PACKAGE_JSON = SCRIPT_DIR / "package.json"
+PATCH_NOTES = SCRIPT_DIR / "src" / "data" / "patch-notes.json"
 
 
 def read_version():
@@ -45,6 +46,36 @@ def update_version(new_version):
     pkg_data['version'] = new_version
     with open(PACKAGE_JSON, 'w') as f:
         json.dump(pkg_data, f, indent=2)
+
+
+def update_patch_notes(version, notes_text):
+    """Save patch notes to src/data/patch-notes.json"""
+    if not notes_text.strip():
+        return
+        
+    notes = [n.strip().replace('• ', '').replace('- ', '') for n in notes_text.split('\n') if n.strip()]
+    if not notes or (len(notes) == 1 and not notes[0]):
+        return
+
+    # Read existing notes
+    if PATCH_NOTES.exists():
+        with open(PATCH_NOTES, 'r', encoding='utf-8') as f:
+            try:
+                data = json.load(f)
+            except json.JSONDecodeError:
+                data = {}
+    else:
+        data = {}
+
+    import datetime
+    data[f"v{version}"] = {
+        "date": datetime.datetime.now().strftime("%Y-%m-%d"),
+        "notes": notes
+    }
+
+    # Save back
+    with open(PATCH_NOTES, 'w', encoding='utf-8') as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
 
 
 def is_git_clean():
@@ -95,7 +126,7 @@ class ReleaseApp:
     def __init__(self, root):
         self.root = root
         root.title("Asaas Release Helper")
-        root.geometry("400x450")
+        root.geometry("400x550")
         root.resizable(False, False)
         
         # Style
@@ -124,6 +155,13 @@ class ReleaseApp:
         self.msg_var = tk.StringVar(value=f"Release v{increment_version(current)}")
         self.msg_entry = ttk.Entry(root, textvariable=self.msg_var, width=40)
         self.msg_entry.pack()
+        
+        # Patch Notes
+        ttk.Label(root, text="Update Highlights (One per line):").pack(pady=(10, 5))
+        self.notes_text = tk.Text(root, width=40, height=4, font=('Segoe UI', 9))
+        self.notes_text.pack(padx=20)
+        # Sample notes
+        self.notes_text.insert('1.0', "• ")
         
         # Update message when version changes
         self.version_var.trace('w', self.update_msg)
@@ -247,6 +285,7 @@ class ReleaseApp:
         
         try:
             update_version(version)
+            update_patch_notes(version, self.notes_text.get('1.0', tk.END))
             
             self.status_var.set("Pushing to GitHub...")
             self.root.update()

@@ -2,8 +2,9 @@ import { Route, Switch, Router, Link } from 'wouter'
 import { useHashLocation } from '@/hooks/useHashLocation'
 import { AuthProvider, ProtectedRoute, GuestRoute } from '@/auth'
 import { WorkspaceProvider } from '@/workspace'
-import { Layout, Toaster, TitleBar } from '@/ui/components'
+import { Layout, Toaster, TitleBar, PatchNoteModal } from '@/ui/components'
 import { lazy, Suspense, useEffect, useCallback, useState } from 'react'
+import { usePatchNotes } from '@/hooks/usePatchNotes'
 import { RotateCw } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useWorkspace } from '@/workspace'
@@ -237,6 +238,7 @@ function FaviconHandler() {
 
 
 function App() {
+    const { showModal, currentPatch, version, dismissModal } = usePatchNotes()
 
     useEffect(() => {
         if (isMobile()) {
@@ -456,6 +458,15 @@ function App() {
                         </ExchangeRateProvider>
                     )}
                     <Toaster />
+                    {currentPatch && (
+                        <PatchNoteModal
+                            isOpen={showModal}
+                            onClose={dismissModal}
+                            version={version}
+                            date={currentPatch.date}
+                            notes={currentPatch.notes}
+                        />
+                    )}
                 </DateRangeProvider>
             </WorkspaceProvider>
         </AuthProvider>
