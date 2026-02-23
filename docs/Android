@@ -1,0 +1,19 @@
+On Tauri Android, the application stores its data in the App's Internal Storage, which is private to the application.
+
+📍 Storage Locations:
+LocalStorage & Cookies: These are handled by the Android WebView (Chrome/System WebView). They are stored in an internal SQLite database within the app's data folder:  /data/user/0/com.asaas.app/app_webview/Default/Local Storage/
+
+Files (Plugins FS): If you use the Tauri FS plugin (e.g., for logs or downloaded attachments), they typically go to:
+
+Data Directory: /data/user/0/com.asaas.app/files/
+Cache Directory: /data/user/0/com.asaas.app/cache/
+IndexedDB (Dexie): Since your app uses Dexie, the database files are also tucked inside the WebView's data directory, usually under: /data/user/0/com.asaas.app/app_webview/Default/IndexedDB/
+
+🔍 How to access them for debugging:
+Since Android is "sandboxed," you cannot browse these folders with a standard file manager unless your phone is rooted.
+
+The best ways to debug on Android are:
+
+Chrome DevTools: Connect your phone via USB, enable "USB Debugging," then open chrome://inspect/#devices on your PC. You can then view the Application tab to see exactly what is in LocalStorage and IndexedDB on the phone.
+Logcat: Use tauri android dev. All console.log statements from your app will stream directly into your terminal.
+Wipe Data: If you need to reset the app completely, go to Android Settings > Apps > Asaas > Storage > Clear Data. This will wipe everything (LocalStorage, IndexedDB, and configuration).
