@@ -12,5 +12,25 @@
       "New update",
       "New update"
     ]
+  },
+  "v0.0.13": {
+    "date": "2026-02-23",
+    "highlights": [
+      {
+        "type": "new",
+        "title": "New",
+        "content": "NEW CONTENT"
+      },
+      {
+        "type": "improved",
+        "title": "IMPROVED",
+        "content": "IMPROVED CONTENT"
+      },
+      {
+        "type": "fixed",
+        "title": "Fixed",
+        "content": "FIXED CONTENT"
+      }
+    ]
   }
 }

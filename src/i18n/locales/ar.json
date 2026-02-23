@@ -81,7 +81,14 @@
             "continue": "مواصلة التحرير"
         },
         "exchangeRates": "أسعار الصرف المباشرة",
-        "sales": "مبيعات"
+        "sales": "مبيعات",
+        "newUpdate": "تحديث جديد متاح!",
+        "whatsNew": "ما الجديد",
+        "highlights": "أهم التحديثات",
+        "getStarted": "لنبدأ!",
+        "badge_new": "جديد",
+        "badge_improved": "تحسين",
+        "badge_fixed": "تم الإصلاح"
     },
     "messages": {
         "saleCompleted": "تم إتمام البيع بنجاح",

@@ -48,15 +48,11 @@ def update_version(new_version):
         json.dump(pkg_data, f, indent=2)
 
 
-def update_patch_notes(version, notes_text):
+def update_patch_notes(version, highlights):
     """Save patch notes to src/data/patch-notes.json"""
-    if not notes_text.strip():
+    if not highlights:
         return
         
-    notes = [n.strip().replace('• ', '').replace('- ', '') for n in notes_text.split('\n') if n.strip()]
-    if not notes or (len(notes) == 1 and not notes[0]):
-        return
-
     # Read existing notes
     if PATCH_NOTES.exists():
         with open(PATCH_NOTES, 'r', encoding='utf-8') as f:
@@ -70,7 +66,7 @@ def update_patch_notes(version, notes_text):
     import datetime
     data[f"v{version}"] = {
         "date": datetime.datetime.now().strftime("%Y-%m-%d"),
-        "notes": notes
+        "highlights": highlights
     }
 
     # Save back
@@ -156,12 +152,11 @@ class ReleaseApp:
         self.msg_entry = ttk.Entry(root, textvariable=self.msg_var, width=40)
         self.msg_entry.pack()
         
-        # Patch Notes
-        ttk.Label(root, text="Update Highlights (One per line):").pack(pady=(10, 5))
-        self.notes_text = tk.Text(root, width=40, height=4, font=('Segoe UI', 9))
-        self.notes_text.pack(padx=20)
-        # Sample notes
-        self.notes_text.insert('1.0', "• ")
+        # Highlights
+        self.highlights = []
+        ttk.Button(root, text="📝 Manage Highlights", command=self.manage_highlights).pack(pady=10)
+        self.highlights_label = ttk.Label(root, text="0 highlights added", foreground='gray')
+        self.highlights_label.pack()
         
         # Update message when version changes
         self.version_var.trace('w', self.update_msg)
@@ -207,6 +202,99 @@ class ReleaseApp:
         else:
             messagebox.showerror("Error", message)
         self.status_var.set("Ready")
+
+    def manage_highlights(self):
+        """Open a window to manage typed highlights"""
+        win = tk.Toplevel(self.root)
+        win.title("Manage Highlights")
+        win.geometry("500x600")
+        win.grab_set()
+        
+        main_frame = ttk.Frame(win, padding=20)
+        main_frame.pack(fill='both', expand=True)
+        
+        ttk.Label(main_frame, text="Add Update Highlights", font=('Segoe UI', 12, 'bold')).pack(pady=(0, 15))
+        
+        # List of highlights with delete buttons
+        list_frame = ttk.Frame(main_frame)
+        list_frame.pack(fill='both', expand=True)
+        
+        canvas = tk.Canvas(list_frame)
+        scrollbar = ttk.Scrollbar(list_frame, orient="vertical", command=canvas.yview)
+        scrollable_frame = ttk.Frame(canvas)
+        
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+        
+        def refresh_list():
+            for widget in scrollable_frame.winfo_children():
+                widget.destroy()
+            
+            for i, h in enumerate(self.highlights):
+                item = ttk.Frame(scrollable_frame, padding=5)
+                item.pack(fill='x', pady=2)
+                
+                type_color = {'new': 'blue', 'improved': 'green', 'fixed': 'orange'}.get(h['type'], 'black')
+                label = ttk.Label(item, text=f"[{h['type'].upper()}] {h['title']}", foreground=type_color, font=('Segoe UI', 9, 'bold'))
+                label.pack(side=tk.LEFT, fill='x', expand=True)
+                
+                content_preview = ttk.Label(item, text=h['content'][:30] + "..." if len(h['content']) > 30 else h['content'], font=('Segoe UI', 8))
+                content_preview.pack(side=tk.LEFT, padx=10)
+                
+                ttk.Button(item, text="X", width=3, command=lambda idx=i: remove_h(idx)).pack(side=tk.RIGHT)
+            
+            self.highlights_label.config(text=f"{len(self.highlights)} highlights added")
+
+        def remove_h(idx):
+            self.highlights.pop(idx)
+            refresh_list()
+
+        refresh_list()
+        
+        # Add new highlight form
+        form = ttk.LabelFrame(main_frame, text="Add New", padding=10)
+        form.pack(fill='x', pady=10)
+        
+        ttk.Label(form, text="Type:").grid(row=0, column=0, sticky='w')
+        type_var = tk.StringVar(value="new")
+        type_cb = ttk.Combobox(form, textvariable=type_var, values=["new", "improved", "fixed"], state="readonly", width=10)
+        type_cb.grid(row=0, column=1, sticky='w', padx=5)
+        
+        ttk.Label(form, text="Title:").grid(row=1, column=0, sticky='w', pady=5)
+        title_entry = ttk.Entry(form, width=40)
+        title_entry.grid(row=1, column=1, sticky='w', padx=5)
+        
+        ttk.Label(form, text="Content:").grid(row=2, column=0, sticky='nw', pady=5)
+        content_text = tk.Text(form, width=30, height=3, font=('Segoe UI', 9))
+        content_text.grid(row=2, column=1, sticky='w', padx=5, pady=5)
+        
+        def add_h():
+            title = title_entry.get().strip()
+            content = content_text.get('1.0', tk.END).strip()
+            if not title:
+                messagebox.showerror("Error", "Title is required!")
+                return
+            
+            self.highlights.append({
+                'type': type_var.get(),
+                'title': title,
+                'content': content
+            })
+            title_entry.delete(0, tk.END)
+            content_text.delete('1.0', tk.END)
+            refresh_list()
+            
+        ttk.Button(form, text="➕ Add Highlight", command=add_h).grid(row=3, column=1, sticky='e', pady=5)
+        
+        ttk.Button(main_frame, text="✅ Done", command=win.destroy).pack(pady=10)
 
     def build_apk(self):
         """Run android build and rename APK"""
@@ -285,7 +373,7 @@ class ReleaseApp:
         
         try:
             update_version(version)
-            update_patch_notes(version, self.notes_text.get('1.0', tk.END))
+            update_patch_notes(version, self.highlights)
             
             self.status_var.set("Pushing to GitHub...")
             self.root.update()

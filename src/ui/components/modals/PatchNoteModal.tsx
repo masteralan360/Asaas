@@ -7,74 +7,137 @@ import {
     DialogFooter,
     Button
 } from '@/ui/components'
-import { Sparkles, CheckCircle2, Rocket } from 'lucide-react'
+import { Sparkles, Rocket, Zap, Bug, ArrowRight, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { PatchHighlight } from '@/hooks/usePatchNotes'
+import { cn } from '@/lib/utils'
 
 interface PatchNoteModalProps {
     isOpen: boolean
     onClose: () => void
     version: string
     date: string
-    notes: string[]
+    highlights: PatchHighlight[]
 }
 
-export function PatchNoteModal({ isOpen, onClose, version, date, notes }: PatchNoteModalProps) {
+const highlightConfig = {
+    new: {
+        icon: Sparkles,
+        color: 'text-blue-500',
+        bgColor: 'bg-blue-50 dark:bg-blue-900/30',
+        badge: 'bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300',
+        label: 'common.badge_new'
+    },
+    improved: {
+        icon: Zap,
+        color: 'text-green-500',
+        bgColor: 'bg-green-50 dark:bg-green-900/30',
+        badge: 'bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-300',
+        label: 'common.badge_improved'
+    },
+    fixed: {
+        icon: Bug,
+        color: 'text-orange-500',
+        bgColor: 'bg-orange-50 dark:bg-orange-900/30',
+        badge: 'bg-orange-100 text-orange-700 dark:bg-orange-900/50 dark:text-orange-300',
+        label: 'common.badge_fixed'
+    }
+}
+
+export function PatchNoteModal({ isOpen, onClose, version, date, highlights }: PatchNoteModalProps) {
     const { t } = useTranslation()
 
     return (
         <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-            <DialogContent className="sm:max-w-[450px] p-0 overflow-hidden border-none bg-background/95 backdrop-blur-xl shadow-2xl">
+            <DialogContent className="sm:max-w-[450px] p-0 overflow-hidden border-none bg-background/95 backdrop-blur-xl shadow-2xl flex flex-col max-h-[90vh] rounded-2xl">
                 {/* Header Decoration */}
-                <div className="h-32 bg-gradient-to-br from-primary via-primary/80 to-primary/60 relative overflow-hidden flex items-center justify-center">
-                    <div className="absolute inset-0 opacity-20">
-                        <div className="absolute top-0 left-0 w-24 h-24 bg-white rounded-full blur-3xl -translate-x-1/2 -translate-y-1/2" />
-                        <div className="absolute bottom-0 right-0 w-32 h-32 bg-white rounded-full blur-3xl translate-x-1/4 translate-y-1/4" />
+                <div className="flex-none bg-gradient-to-br from-[#2DD4BF] via-primary to-primary-dark relative overflow-hidden flex flex-col items-center justify-center p-8 text-white">
+                    <button
+                        onClick={onClose}
+                        className="absolute top-4 right-4 text-white/80 hover:text-white transition-colors p-1 rounded-full hover:bg-white/10"
+                    >
+                        <X className="w-5 h-5" />
+                    </button>
+
+                    <div className="mx-auto w-14 h-14 bg-white/20 backdrop-blur-md rounded-2xl flex items-center justify-center mb-5 shadow-lg ring-1 ring-white/30 animate-in zoom-in duration-500">
+                        <Rocket className="w-7 h-7 text-white" />
                     </div>
 
-                    <div className="relative z-10 flex flex-col items-center text-white">
-                        <div className="bg-white/20 p-3 rounded-2xl backdrop-blur-md mb-3 animate-bounce">
-                            <Rocket className="w-8 h-8 text-white" />
-                        </div>
-                        <h2 className="text-2xl font-black tracking-tight">{t('common.newUpdate') || "New Update Available!"}</h2>
-                        <div className="flex items-center gap-2 mt-1 px-3 py-1 bg-white/10 rounded-full text-xs font-bold backdrop-blur-sm border border-white/10">
-                            <Sparkles className="w-3 h-3 text-yellow-300" />
-                            {version} • {date}
-                        </div>
+                    <h2 className="text-2xl md:text-3xl font-black tracking-tight mb-3 drop-shadow-sm text-center">
+                        {t('common.newUpdate')}
+                    </h2>
+
+                    <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/20 backdrop-blur-sm border border-white/20 text-xs font-semibold shadow-sm">
+                        <Sparkles className="w-3.5 h-3.5 text-yellow-300" />
+                        <span dir="ltr">{version} • {date}</span>
                     </div>
+
+                    {/* Background glows */}
+                    <div className="absolute top-[-20%] left-[-20%] w-[60%] h-[60%] bg-white/10 rounded-full blur-[80px]" />
+                    <div className="absolute bottom-[-20%] right-[-20%] w-[60%] h-[60%] bg-black/10 rounded-full blur-[80px]" />
                 </div>
 
-                <div className="p-6 space-y-6">
+                <div className="flex-1 overflow-y-auto p-8 space-y-8 custom-scrollbar">
                     <DialogHeader className="hidden">
-                        <DialogTitle>{t('common.whatsNew') || "What's New"}</DialogTitle>
+                        <DialogTitle>{t('common.whatsNew')}</DialogTitle>
                         <DialogDescription>Latest changes and improvements</DialogDescription>
                     </DialogHeader>
 
-                    <div className="space-y-4">
-                        <p className="text-sm font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-2">
-                            {t('common.highlights') || "Highlights"}
-                        </p>
+                    <div className="space-y-6">
+                        <h3 className="text-[11px] font-black text-muted-foreground uppercase tracking-[0.2em] px-1">
+                            {t('common.highlights')}
+                        </h3>
 
-                        <div className="space-y-3">
-                            {notes.map((note, idx) => (
-                                <div key={idx} className="flex gap-3 items-start animate-in slide-in-from-left-4 duration-500 fill-mode-both" style={{ animationDelay: `${idx * 100}ms` }}>
-                                    <div className="mt-1 bg-primary/10 p-1 rounded-md text-primary shrink-0">
-                                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        <div className="space-y-6 px-1">
+                            {highlights.map((h, idx) => {
+                                const cfg = highlightConfig[h.type] || highlightConfig.new
+                                const Icon = cfg.icon
+                                return (
+                                    <div
+                                        key={idx}
+                                        className="flex gap-4 items-start animate-in slide-in-from-bottom-4 duration-700 fill-mode-both"
+                                        style={{ animationDelay: `${idx * 150}ms` }}
+                                    >
+                                        <div className={cn("mt-0.5 p-2.5 rounded-xl shrink-0 transition-transform hover:scale-110", cfg.bgColor)}>
+                                            <Icon className={cn("w-5 h-5", cfg.color)} />
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                                                <h4 className="font-bold text-foreground text-sm uppercase tracking-tight">
+                                                    {h.title}
+                                                </h4>
+                                                <span className={cn("px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider", cfg.badge)}>
+                                                    {t(cfg.label)}
+                                                </span>
+                                            </div>
+                                            <p className="text-[13px] text-muted-foreground font-medium leading-relaxed">
+                                                {h.content}
+                                            </p>
+                                        </div>
                                     </div>
-                                    <p className="text-sm text-foreground/90 font-medium leading-relaxed">
-                                        {note}
-                                    </p>
-                                </div>
-                            ))}
+                                )
+                            })}
                         </div>
+                    </div>
+
+                    {/* Team Message */}
+                    <div className="relative p-5 rounded-2xl bg-muted/30 border border-border/50 group hover:bg-muted/50 transition-colors">
+                        <div className="absolute -top-3 left-4 bg-background px-2 text-[10px] font-black text-primary uppercase tracking-[0.15em]">
+                            From the Team
+                        </div>
+                        <p className="text-[13px] text-foreground italic leading-relaxed font-medium">
+                            "We're really excited about this release! The team has been working hard on performance improvements based on your feedback. Thanks for being part of our journey."
+                        </p>
                     </div>
                 </div>
 
-                <DialogFooter className="p-6 pt-0">
+                <DialogFooter className="flex-none p-8 pt-2">
                     <Button
                         onClick={onClose}
-                        className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-bold h-12 rounded-xl transition-all active:scale-95 shadow-lg shadow-primary/20"
+                        className="w-full bg-primary hover:bg-primary-dark text-white font-bold h-12 rounded-xl transition-all active:scale-95 shadow-xl shadow-primary/20 flex items-center justify-center gap-2 group"
                     >
-                        {t('common.getStarted') || "Let's Go!"}
+                        {t('common.getStarted')}
+                        <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
                     </Button>
                 </DialogFooter>
             </DialogContent>

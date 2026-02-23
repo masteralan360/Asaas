@@ -464,7 +464,7 @@ function App() {
                             onClose={dismissModal}
                             version={version}
                             date={currentPatch.date}
-                            notes={currentPatch.notes}
+                            highlights={currentPatch.highlights}
                         />
                     )}
                 </DateRangeProvider>

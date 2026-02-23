@@ -82,7 +82,14 @@
         },
         "exchangeRates": "Live Exchange Rates",
         "sales": "Sales",
-        "revenue": "Revenue"
+        "revenue": "Revenue",
+        "newUpdate": "New Update Installed!",
+        "whatsNew": "What's New",
+        "highlights": "Highlights",
+        "getStarted": "Let's Go!",
+        "badge_new": "New",
+        "badge_improved": "Improved",
+        "badge_fixed": "Fixed"
     },
     "messages": {
         "saleCompleted": "Sale completed successfully",
