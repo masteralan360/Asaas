@@ -70,7 +70,9 @@ export function PatchNoteModal({ isOpen, onClose, version, date, highlights, tea
         <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
             <DialogContent className="sm:max-w-[480px] p-0 overflow-hidden border-none bg-background/95 backdrop-blur-2xl shadow-[0_32px_64px_-16px_rgba(0,0,0,0.3)] flex flex-col max-h-[90vh] rounded-[2rem]">
                 {/* Header Decoration */}
-                <div className="flex-none bg-gradient-to-br from-teal-400 via-primary/95 to-primary relative overflow-hidden flex flex-col items-center justify-center p-10 text-white">
+                <div className="flex-none bg-gradient-to-br from-teal-500 via-primary to-primary relative overflow-hidden flex flex-col items-center justify-center p-10 transition-colors duration-500">
+                    {/* Shadow overlay to ensure text contrast */}
+                    <div className="absolute inset-0 bg-black/20 pointer-events-none" />
                     {/* Language Switcher */}
                     <div className="absolute top-4 left-4 z-10">
                         <DropdownMenu>
@@ -106,11 +108,11 @@ export function PatchNoteModal({ isOpen, onClose, version, date, highlights, tea
                         <Rocket className="w-8 h-8 text-white drop-shadow-[0_0_15px_rgba(255,255,255,0.5)]" />
                     </div>
 
-                    <h2 className="text-3xl md:text-4xl font-black tracking-tight mb-4 drop-shadow-[0_2px_4px_rgba(0,0,0,0.1)] text-center">
+                    <h2 className="text-3xl md:text-4xl font-black tracking-tight mb-4 drop-shadow-[0_2px_8px_rgba(0,0,0,0.3)] text-center text-white z-10">
                         {t('common.newUpdate')}
                     </h2>
 
-                    <div className="inline-flex items-center gap-2.5 px-5 py-2 rounded-full bg-white/10 backdrop-blur-md border border-white/20 text-[11px] font-black tracking-wide shadow-inner">
+                    <div className="inline-flex items-center gap-2.5 px-5 py-2 rounded-full bg-white/15 backdrop-blur-md border border-white/20 text-[11px] font-black tracking-wide shadow-inner text-white z-10">
                         <Sparkles className="w-4 h-4 text-yellow-300" />
                         <span dir="ltr">{version} • {date}</span>
                     </div>
@@ -185,7 +187,7 @@ export function PatchNoteModal({ isOpen, onClose, version, date, highlights, tea
                 <DialogFooter className="flex-none p-10 pt-2">
                     <Button
                         onClick={onClose}
-                        className="w-full bg-primary hover:bg-primary-dark text-white font-black h-14 rounded-2xl transition-all active:scale-[0.98] shadow-2xl shadow-primary/20 flex items-center justify-center gap-3 group text-base tracking-tight"
+                        className="w-full bg-primary hover:bg-primary-dark text-primary-foreground font-black h-14 rounded-2xl transition-all active:scale-[0.98] shadow-2xl shadow-primary/20 flex items-center justify-center gap-3 group text-base tracking-tight"
                     >
                         {t('common.getStarted')}
                         <ArrowRight className={cn("w-5 h-5 transition-transform duration-300 group-hover:translate-x-1.5", isRTL && "rotate-180 group-hover:-translate-x-1.5")} />

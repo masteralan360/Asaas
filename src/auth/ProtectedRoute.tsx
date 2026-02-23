@@ -47,8 +47,14 @@ export function ProtectedRoute({
     // Redirect admins to workspace configuration if not configured
     // Note: features.is_configured defaults to true (in WorkspaceContext) until fetched.
     // However, fetch happens fast. If isLoading/featuresLoading is false, we trust the value.
+    // Redirect admins to workspace configuration if not configured
     if (user?.role === 'admin' && !features.is_configured && location !== '/workspace-configuration') {
         return <Redirect to="/workspace-configuration" />
+    }
+
+    // Redirect admins away from workspace configuration if already configured
+    if (user?.role === 'admin' && features.is_configured && location === '/workspace-configuration') {
+        return <Redirect to="/" />
     }
 
     // Redirect locked workspace members to locked workspace page
