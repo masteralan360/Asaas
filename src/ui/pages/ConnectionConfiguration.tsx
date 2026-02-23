@@ -32,8 +32,8 @@ export function ConnectionConfiguration() {
 
         try {
             setIsSaving(true)
-            await setAppSetting('supabase_url', decrypt(trimmedUrl))
-            await setAppSetting('supabase_anon_key', decrypt(trimmedKey))
+            await setAppSetting('supabase_url', trimmedUrl)
+            await setAppSetting('supabase_anon_key', trimmedKey)
 
             // Reload the app to apply changes
             await relaunch();

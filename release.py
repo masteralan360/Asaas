@@ -159,8 +159,13 @@ class ReleaseApp:
         self.current_lang = 'en'
         
         ttk.Button(root, text="📝 Manage Highlights", command=self.manage_highlights).pack(pady=10)
+        self.highlights_btn = root.winfo_children()[-1] # Grabbing last added button
         self.highlights_label = ttk.Label(root, text="0 highlights (EN: 0, AR: 0, KU: 0)", foreground='gray')
         self.highlights_label.pack()
+
+        # Stealth Update
+        self.stealth_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(root, text="🤫 Stealth Update (Skip Patch Notes)", variable=self.stealth_var, command=self.toggle_stealth).pack(pady=(10, 0))
         
         # Team Message
         self.has_team_msg = tk.BooleanVar(value=False)
@@ -202,6 +207,32 @@ class ReleaseApp:
         
         ttk.Label(root, text="(Use this only to test the APK on your phone manually)", 
                   foreground='#666666', font=('Segoe UI', 8, 'italic')).pack()
+
+    def toggle_stealth(self):
+        """Enable/Disable highlighting tools when stealth is on"""
+        is_stealth = self.stealth_var.get()
+        state = 'disabled' if is_stealth else 'normal'
+        
+        self.highlights_btn.config(state=state)
+        # Keep msg_entry enabled so user can edit it
+        self.msg_entry.config(state='normal')
+        
+        # Disable team message checkbox too
+        for child in self.root.winfo_children():
+            if isinstance(child, ttk.Checkbutton) and "Team Message" in child.cget("text"):
+                child.config(state=state)
+        
+        current_msg = self.msg_var.get()
+        if is_stealth:
+            self.status_var.set("Stealth mode active")
+            if "(Stealth)" not in current_msg:
+                self.msg_var.set(f"{current_msg} (Stealth)")
+        else:
+            self.status_var.set("Ready")
+            if " (Stealth)" in current_msg:
+                self.msg_var.set(current_msg.replace(" (Stealth)", ""))
+            elif "(Stealth)" in current_msg:
+                self.msg_var.set(current_msg.replace("(Stealth)", ""))
 
     def update_msg(self, *args):
         self.msg_var.set(f"Release v{self.version_var.get()}")
@@ -431,11 +462,14 @@ class ReleaseApp:
         try:
             update_version(version)
             
-            # Save current team message before finalizing
-            self.localized_team_msg[self.current_lang] = self.team_msg_text.get('1.0', tk.END).strip()
-            
-            team_messages = {l: self.localized_team_msg[l] for l in ['en', 'ar', 'ku'] if self.localized_team_msg[l]}
-            update_patch_notes(version, self.localized_highlights, team_messages)
+            if not self.stealth_var.get():
+                # Save current team message before finalizing
+                self.localized_team_msg[self.current_lang] = self.team_msg_text.get('1.0', tk.END).strip()
+                
+                team_messages = {l: self.localized_team_msg[l] for l in ['en', 'ar', 'ku'] if self.localized_team_msg[l]}
+                update_patch_notes(version, self.localized_highlights, team_messages)
+            else:
+                print("Skipping patch notes (Stealth mode)")
             
             self.status_var.set("Pushing to GitHub...")
             self.root.update()
