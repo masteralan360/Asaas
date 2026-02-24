@@ -1247,7 +1247,8 @@
         "snoozedIndefinitely": "Snoozed Until Un-snoozed",
         "status": {
             "paid": "Paid",
-            "pending": "Pending"
+            "pending": "Pending",
+            "snoozed": "Snoozed"
         },
         "reminder": {
             "didYouPay": "Did you pay?",
