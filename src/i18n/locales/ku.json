@@ -143,7 +143,8 @@
         "currencyConverter": "گۆڕینەوەی دراو",
         "members": "ئەندامەکان",
         "tools": "ئامرازەکان",
-        "actions": "کردارەکان"
+        "actions": "کردارەکان",
+        "loans": "قەرزارەکان"
     },
     "report": {
         "print": "چاپکردنی ڕاپۆرتی ئەدا",
@@ -703,7 +704,8 @@
         "printReceipt": "چاپکردنی پسوڵە",
         "continueSale": "بەردەوامبە",
         "backToPos": "گەڕانەوە بۆ POS",
-        "outOfStock": "تەواو بووە"
+        "outOfStock": "تەواو بووە",
+        "loan": "Loan"
     },
     "print": {
         "clickToExpand": "کلیک بکە بۆ گەورەکردن",
@@ -823,7 +825,16 @@
             }
         },
         "confirmDelete": "سڕینەوەی فرۆشتن",
-        "deleteWarning": "سڕینەوەی ئەم فرۆشتنە تۆمارەکە بە هەمیشەیی لادەبات و بەرهەمەکان دەگەڕێنێتەوە بۆ کۆگاکان. ئەم کارە ناگەڕێتەوە."
+        "deleteWarning": "سڕینەوەی ئەم فرۆشتنە تۆمارەکە بە هەمیشەیی لادەبات و بەرهەمەکان دەگەڕێنێتەوە بۆ کۆگاکان. ئەم کارە ناگەڕێتەوە.",
+        "loanStatus": "دۆخی قەرز",
+        "loanPending": "قەرزی چاوەڕوان",
+        "loanActive": "قەرزی چالاک",
+        "loanOverdue": "قەرزی دواخراو",
+        "loanCompleted": "قەرزی تەواوبوو",
+        "loanBalance": "ماوە",
+        "loanNextDue": "دوا بەروار",
+        "openLoan": "کردنەوەی قەرز",
+        "loanPendingMessage": "تۆماری قەرز لە چاوەڕوانی هاوکاتکردن یان بەستەری پەیوەندییە."
     },
     "categories": {
         "title": "لقەکان",
@@ -1114,6 +1125,8 @@
     "budget": {
         "title": "بەڕێوەبردنی بودجە",
         "subtitle": "بەدواداچوون و بەڕێوەبردنی خەرجییەکانت بکە",
+        "setBudgetSubtitle": "سنووری خەرجییەکانت بۆ ئەم مانگە دیاری بکە",
+        "addExpenseSubtitle": "تێچوویەکی دەستی بۆ بەدواداچوونی مانگانەت زیاد بکە",
         "totalAllocated": "کۆی تەرخانکراوی کارگێڕی",
         "paid": "کۆی دراوە",
         "pending": "شایستە داراییە ماوەکان",
@@ -1235,5 +1248,76 @@
         "noWorkspaces": "هیچ شوێنێکی کار نەدۆزرایەوە.",
         "noActiveWorkspaces": "هیچ شوێنێکی کاری چالاک نەدۆزرایەوە.",
         "manageFeatures": "بەڕێوەبردنی دەستگەیشتن بە ميزاتەکان بۆ هەر شوێنێکی کار."
+    },
+    "loans": {
+        "title": "قەرزەکان",
+        "searchPlaceholder": "گەڕان بەپێی ناوی قەرزوەرگر یان ژمارەی قەرز...",
+        "registerFromPos": "تۆمارکردنی قەرز",
+        "createManualLoan": "دروستکردنی قەرزی دەستی",
+        "borrowerIdentity": "ناسنامەی قەرزوەرگر",
+        "borrower": "قەرزوەرگر",
+        "borrowerName": "ناوی قەرزوەرگر",
+        "borrowerPhone": "تەلەفۆنی قەرزوەرگر",
+        "borrowerAddress": "ناونیشانی قەرزوەرگر",
+        "borrowerNationalId": "ناسنامەی نیشتمانی قەرزوەرگر",
+        "principal": "کۆی قەرز",
+        "paid": "دراوە",
+        "balance": "ماوە",
+        "nextDue": "بەروبەری داهاتوو",
+        "dueDate": "ڕێککەوتی کۆتایی",
+        "dueToday": "ئەمڕۆ کۆتایی دێت",
+        "activeLoans": "قەرزە چالاکەکان",
+        "overdueLoans": "قەرزە دواکەوتووەکان",
+        "totalOutstanding": "کۆی گشتی شایستەکان",
+        "loanNo": "ژمارەی قەرز",
+        "source": "سەرچاوە",
+        "status": "بارودۆخ",
+        "recordPayment": "تۆمارکردنی پارەدان",
+        "paymentAmount": "بڕی پارەدان",
+        "adjustment": "دەستکاری قەرز",
+        "notes": "تێبینییەکان",
+        "installmentSchedule": "خشتەی قیستەکان",
+        "installmentCount": "ژمارەی قیستەکان",
+        "frequency": "دووبارەبوونەوە",
+        "firstDueDate": "یەکەم ڕێککەوتی کۆتایی",
+        "planned": "پلاندانراو",
+        "summary": "کورتی قەرز",
+        "recentActivity": "چالاکی ئەم دواییە",
+        "currencyHint": "دراوی جێگیرکردن",
+        "pay": "بدە",
+        "completedPercent": "تەواوبوو",
+        "frequencies": {
+            "weekly": "هەفتانە",
+            "biweekly": "دوو هەفتە جارێک",
+            "monthly": "مانگانە"
+        },
+        "filters": {
+            "all": "هەموو",
+            "active": "چالاک",
+            "overdue": "دواکەوتوو",
+            "completed": "تەواوبوو"
+        },
+        "statuses": {
+            "active": "چالاک",
+            "overdue": "دواکەوتوو",
+            "completed": "تەواوبوو"
+        },
+        "installmentStatuses": {
+            "unpaid": "نەدراوە",
+            "partial": "بەشێکی",
+            "paid": "دراوە",
+            "overdue": "دواکەوتوو"
+        },
+        "activities": {
+            "paymentReceived": "پارەکە وەرگیرا",
+            "loanDisbursed": "قەرزەکە درا"
+        },
+        "messages": {
+            "loanCreated": "قەرزەکە بە سەرکەوتوویی دروستکرا.",
+            "loanCreateFailed": "دروستکردنی قەرز سەرکەوتوو نەبوو.",
+            "paymentRecorded": "پارەدانەکە بە سەرکەوتوویی تۆمارکرا.",
+            "paymentRecordFailed": "تۆمارکردنی پارەدان سەرکەوتوو نەبوو.",
+            "loanNotFound": "قەرزەکە نەدۆزرایەوە."
+        }
     }
 }

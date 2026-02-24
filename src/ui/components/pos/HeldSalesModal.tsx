@@ -20,8 +20,8 @@ export interface HeldSale {
         sources: Record<string, string>
     }
     settlementCurrency: string
-    paymentType: 'cash' | 'digital'
-    digitalProvider: string
+    paymentType: 'cash' | 'digital' | 'loan'
+    digitalProvider?: string
     timestamp: string
     total: number
 }

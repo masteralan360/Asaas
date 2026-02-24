@@ -27,6 +27,7 @@ import { useDateRange } from '@/context/DateRangeContext'
 import { DateRangeFilters } from '@/ui/components/DateRangeFilters'
 import { r2Service } from '@/services/r2Service'
 import { PdfViewer } from '@/ui/components'
+import { open } from '@tauri-apps/plugin-shell'
 
 
 
@@ -108,15 +109,25 @@ export function InvoicesHistory() {
         }
     }
 
-    const handleDownload = () => {
+    const handleDownload = async () => {
         if (!pdfUrl || !selectedInvoice) return
-        const link = document.createElement('a')
-        link.href = pdfUrl
-        link.download = `invoice-${selectedInvoice.invoiceid.replace('#', '')}.pdf`
-        link.target = '_blank'
-        document.body.appendChild(link)
-        link.click()
-        document.body.removeChild(link)
+
+        try {
+            // Use Tauri Shell API to open the URL in the default browser
+            // This works on both desktop and mobile in Tauri v2
+            await open(pdfUrl)
+        } catch (error) {
+            console.error('[InvoicesHistory] Failed to open URL with Tauri shell:', error)
+
+            // Fallback for non-Tauri environments (browser)
+            const link = document.createElement('a')
+            link.href = pdfUrl
+            link.download = `invoice-${selectedInvoice.invoiceid.replace('#', '')}.pdf`
+            link.target = '_blank'
+            document.body.appendChild(link)
+            link.click()
+            document.body.removeChild(link)
+        }
     }
 
     const filteredInvoices = invoices.filter(

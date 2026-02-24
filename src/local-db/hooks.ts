@@ -2,7 +2,31 @@ import { useEffect } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 
 import { db } from './database'
-import type { Product, Category, Customer, Supplier, PurchaseOrder, SalesOrder, Invoice, OfflineMutation, Sale, SaleItem, Employee, Expense, BudgetAllocation, User, WorkspaceContact } from './models'
+import type {
+    Product,
+    Category,
+    Customer,
+    Supplier,
+    PurchaseOrder,
+    SalesOrder,
+    Invoice,
+    OfflineMutation,
+    Sale,
+    SaleItem,
+    Employee,
+    Expense,
+    BudgetAllocation,
+    User,
+    WorkspaceContact,
+    Loan,
+    LoanInstallment,
+    LoanPayment,
+    CurrencyCode,
+    InstallmentFrequency,
+    InstallmentStatus,
+    LoanPaymentMethod,
+    LoanStatus
+} from './models'
 import { generateId, toSnakeCase, toCamelCase } from '@/lib/utils'
 import { convertToStoreBase } from '@/lib/currency'
 import { supabase } from '@/auth/supabase'
@@ -2074,5 +2098,525 @@ export function useBudgetLimitReached(
 
         return limit > 0 && total >= limit
     }, [workspaceId, monthStr, financials, baseCurrency, rates]) ?? false
+}
+
+// ===================
+// LOANS HOOKS
+// ===================
+
+function normalizeDueDate(value: string): string {
+    const d = new Date(value)
+    if (Number.isNaN(d.getTime())) {
+        return new Date().toISOString().slice(0, 10)
+    }
+    return d.toISOString().slice(0, 10)
+}
+
+function roundLoanAmount(amount: number, currency: CurrencyCode): number {
+    if (currency === 'iqd') {
+        return Math.round(amount)
+    }
+    return Number(amount.toFixed(2))
+}
+
+function generateLoanNo(id: string, now = new Date()): string {
+    return `LN-${now.getFullYear()}-${id.replace(/-/g, '').slice(0, 6).toUpperCase()}`
+}
+
+function addInstallmentDate(baseDate: string, frequency: InstallmentFrequency, index: number): string {
+    const d = new Date(`${baseDate}T00:00:00`)
+    if (frequency === 'weekly') {
+        d.setDate(d.getDate() + (index * 7))
+    } else if (frequency === 'biweekly') {
+        d.setDate(d.getDate() + (index * 14))
+    } else {
+        d.setMonth(d.getMonth() + index)
+    }
+    return d.toISOString().slice(0, 10)
+}
+
+function computeInstallmentStatus(dueDate: string, balanceAmount: number): InstallmentStatus {
+    if (balanceAmount <= 0) return 'paid'
+    const today = new Date().toISOString().slice(0, 10)
+    return dueDate < today ? 'overdue' : 'unpaid'
+}
+
+function computeLoanStatus(nextDueDate: string | null | undefined, balanceAmount: number): LoanStatus {
+    if (balanceAmount <= 0) return 'completed'
+    const today = new Date().toISOString().slice(0, 10)
+    if (nextDueDate && nextDueDate < today) return 'overdue'
+    return 'active'
+}
+
+function createInstallmentPlan(
+    principalAmount: number,
+    settlementCurrency: CurrencyCode,
+    installmentCount: number,
+    installmentFrequency: InstallmentFrequency,
+    firstDueDate: string
+): Array<{ installmentNo: number; dueDate: string; plannedAmount: number }> {
+    const safeCount = Math.max(1, Math.trunc(installmentCount))
+    const safePrincipal = roundLoanAmount(Math.max(0, principalAmount), settlementCurrency)
+    const baseAmount = roundLoanAmount(safePrincipal / safeCount, settlementCurrency)
+    const plan: Array<{ installmentNo: number; dueDate: string; plannedAmount: number }> = []
+    let accumulated = 0
+
+    for (let i = 0; i < safeCount; i++) {
+        const dueDate = addInstallmentDate(firstDueDate, installmentFrequency, i)
+        const plannedAmount = i === safeCount - 1
+            ? roundLoanAmount(safePrincipal - accumulated, settlementCurrency)
+            : baseAmount
+        accumulated = roundLoanAmount(accumulated + plannedAmount, settlementCurrency)
+        plan.push({
+            installmentNo: i + 1,
+            dueDate,
+            plannedAmount
+        })
+    }
+
+    return plan
+}
+
+function toSupabaseLoanPayload(entity: Record<string, unknown>): Record<string, unknown> {
+    const payload = toSnakeCase(entity)
+    // Local offline metadata; not present in Supabase schema
+    delete payload.sync_status
+    delete payload.last_synced_at
+    for (const key of Object.keys(payload)) {
+        if (payload[key] === undefined) {
+            delete payload[key]
+        }
+    }
+    return payload
+}
+
+async function enqueueLoanCreateMutations(workspaceId: string, loan: Loan, installments: LoanInstallment[]) {
+    await addToOfflineMutations('loans', loan.id, 'create', loan as unknown as Record<string, unknown>, workspaceId)
+    await Promise.all(
+        installments.map(installment =>
+            addToOfflineMutations(
+                'loan_installments',
+                installment.id,
+                'create',
+                installment as unknown as Record<string, unknown>,
+                workspaceId
+            )
+        )
+    )
+}
+
+interface LoanCreateInput {
+    saleId?: string | null
+    source: 'pos' | 'manual'
+    borrowerName: string
+    borrowerPhone: string
+    borrowerAddress: string
+    borrowerNationalId: string
+    principalAmount: number
+    settlementCurrency: CurrencyCode
+    installmentCount: number
+    installmentFrequency: InstallmentFrequency
+    firstDueDate: string
+    notes?: string
+    createdBy?: string
+}
+
+async function createLoanAggregate(workspaceId: string, input: LoanCreateInput): Promise<{ loan: Loan; installments: LoanInstallment[] }> {
+    const now = new Date().toISOString()
+    const loanId = generateId()
+    const firstDueDate = normalizeDueDate(input.firstDueDate)
+    const principalAmount = roundLoanAmount(Math.max(0, Number(input.principalAmount || 0)), input.settlementCurrency)
+    const borrowerName = typeof input.borrowerName === 'string' ? input.borrowerName.trim() : ''
+    const borrowerPhone = typeof input.borrowerPhone === 'string' ? input.borrowerPhone.trim() : ''
+    const borrowerAddress = typeof input.borrowerAddress === 'string' ? input.borrowerAddress.trim() : ''
+    const borrowerNationalId = typeof input.borrowerNationalId === 'string' ? input.borrowerNationalId.trim() : ''
+
+    if (!principalAmount || principalAmount <= 0) {
+        throw new Error('Invalid principal amount')
+    }
+    if (!borrowerName || !borrowerPhone || !borrowerAddress || !borrowerNationalId) {
+        throw new Error('Missing borrower information')
+    }
+
+    const plan = createInstallmentPlan(
+        principalAmount,
+        input.settlementCurrency,
+        input.installmentCount,
+        input.installmentFrequency,
+        firstDueDate
+    )
+
+    const installments: LoanInstallment[] = plan.map(entry => {
+        const status = computeInstallmentStatus(entry.dueDate, entry.plannedAmount)
+        return {
+            id: generateId(),
+            workspaceId,
+            loanId,
+            installmentNo: entry.installmentNo,
+            dueDate: entry.dueDate,
+            plannedAmount: entry.plannedAmount,
+            paidAmount: 0,
+            balanceAmount: entry.plannedAmount,
+            status,
+            paidAt: null,
+            createdAt: now,
+            updatedAt: now,
+            syncStatus: 'pending',
+            lastSyncedAt: null,
+            version: 1,
+            isDeleted: false
+        }
+    })
+
+    const nextDueDate = installments.find(item => item.balanceAmount > 0)?.dueDate || null
+    const loan: Loan = {
+        id: loanId,
+        workspaceId,
+        saleId: input.saleId ?? null,
+        loanNo: generateLoanNo(loanId),
+        source: input.source,
+        borrowerName,
+        borrowerPhone,
+        borrowerAddress,
+        borrowerNationalId,
+        principalAmount,
+        totalPaidAmount: 0,
+        balanceAmount: principalAmount,
+        settlementCurrency: input.settlementCurrency,
+        installmentCount: Math.max(1, Math.trunc(input.installmentCount)),
+        installmentFrequency: input.installmentFrequency,
+        firstDueDate,
+        nextDueDate,
+        status: computeLoanStatus(nextDueDate, principalAmount),
+        notes: input.notes?.trim(),
+        createdBy: input.createdBy,
+        createdAt: now,
+        updatedAt: now,
+        syncStatus: 'pending',
+        lastSyncedAt: null,
+        version: 1,
+        isDeleted: false
+    }
+
+    await db.transaction('rw', [db.loans, db.loan_installments], async () => {
+        await db.loans.put(loan)
+        for (const installment of installments) {
+            await db.loan_installments.put(installment)
+        }
+    })
+
+    if (!isOnline()) {
+        await enqueueLoanCreateMutations(workspaceId, loan, installments)
+        return { loan, installments }
+    }
+
+    try {
+        const loanPayload = toSupabaseLoanPayload(loan as unknown as Record<string, unknown>)
+        const installmentPayload = installments.map(installment =>
+            toSupabaseLoanPayload(installment as unknown as Record<string, unknown>)
+        )
+
+        const { error: loanError } = await supabase.from('loans').upsert(loanPayload)
+        if (loanError) throw loanError
+
+        const { error: installmentError } = await supabase.from('loan_installments').upsert(installmentPayload)
+        if (installmentError) throw installmentError
+
+        const syncedAt = new Date().toISOString()
+        await db.transaction('rw', [db.loans, db.loan_installments], async () => {
+            await db.loans.update(loan.id, { syncStatus: 'synced', lastSyncedAt: syncedAt })
+            for (const installment of installments) {
+                await db.loan_installments.update(installment.id, { syncStatus: 'synced', lastSyncedAt: syncedAt })
+            }
+        })
+
+        return {
+            loan: { ...loan, syncStatus: 'synced', lastSyncedAt: syncedAt },
+            installments: installments.map(item => ({ ...item, syncStatus: 'synced', lastSyncedAt: syncedAt }))
+        }
+    } catch (error) {
+        console.error('[Loans] Online create failed, queued offline mutation:', error)
+        await enqueueLoanCreateMutations(workspaceId, loan, installments)
+        return { loan, installments }
+    }
+}
+
+export function useLoans(workspaceId: string | undefined) {
+    const online = useNetworkStatus()
+
+    const loans = useLiveQuery(
+        () => workspaceId
+            ? db.loans.where('workspaceId').equals(workspaceId).and(item => !item.isDeleted).reverse().sortBy('createdAt')
+            : [],
+        [workspaceId]
+    )
+
+    useEffect(() => {
+        if (online && workspaceId) {
+            fetchTableFromSupabase('loans', db.loans, workspaceId)
+        }
+    }, [online, workspaceId])
+
+    return loans ?? []
+}
+
+export function useLoan(loanId: string | undefined) {
+    return useLiveQuery(() => loanId ? db.loans.get(loanId) : undefined, [loanId])
+}
+
+export function useLoanBySaleId(saleId: string | undefined, workspaceId?: string) {
+    const online = useNetworkStatus()
+
+    const loan = useLiveQuery(
+        async () => {
+            if (!saleId) return undefined
+            const rows = await db.loans.where('saleId').equals(saleId).and(item => !item.isDeleted).toArray()
+            if (rows.length === 0) return undefined
+            return rows.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())[0]
+        },
+        [saleId]
+    )
+
+    useEffect(() => {
+        if (online && workspaceId) {
+            fetchTableFromSupabase('loans', db.loans, workspaceId)
+        }
+    }, [online, workspaceId])
+
+    return loan
+}
+
+export function useLoanInstallments(loanId: string | undefined, workspaceId?: string) {
+    const online = useNetworkStatus()
+
+    const installments = useLiveQuery(
+        () => loanId
+            ? db.loan_installments.where('loanId').equals(loanId).and(item => !item.isDeleted).sortBy('installmentNo')
+            : [],
+        [loanId]
+    )
+
+    useEffect(() => {
+        if (online && workspaceId) {
+            fetchTableFromSupabase('loan_installments', db.loan_installments, workspaceId)
+        }
+    }, [online, workspaceId])
+
+    return installments ?? []
+}
+
+export function useLoanPayments(loanId: string | undefined, workspaceId?: string) {
+    const online = useNetworkStatus()
+
+    const payments = useLiveQuery(
+        async () => {
+            if (!loanId) return []
+            const rows = await db.loan_payments.where('loanId').equals(loanId).and(item => !item.isDeleted).toArray()
+            return rows.sort((a, b) => new Date(b.paidAt).getTime() - new Date(a.paidAt).getTime())
+        },
+        [loanId]
+    )
+
+    useEffect(() => {
+        if (online && workspaceId) {
+            fetchTableFromSupabase('loan_payments', db.loan_payments, workspaceId)
+        }
+    }, [online, workspaceId])
+
+    return payments ?? []
+}
+
+export async function createManualLoan(
+    workspaceId: string,
+    input: Omit<LoanCreateInput, 'source'>
+): Promise<{ loan: Loan; installments: LoanInstallment[] }> {
+    return createLoanAggregate(workspaceId, { ...input, source: 'manual' })
+}
+
+export async function createLoanFromPosSale(
+    workspaceId: string,
+    input: Omit<LoanCreateInput, 'source'>
+): Promise<{ loan: Loan; installments: LoanInstallment[] }> {
+    return createLoanAggregate(workspaceId, { ...input, source: 'pos' })
+}
+
+interface LoanPaymentInput {
+    loanId: string
+    amount: number
+    paymentMethod: LoanPaymentMethod
+    note?: string
+    paidAt?: string
+    createdBy?: string
+}
+
+export async function recordLoanPayment(workspaceId: string, input: LoanPaymentInput): Promise<{
+    loan: Loan
+    payment: LoanPayment
+    installments: LoanInstallment[]
+}> {
+    const loan = await db.loans.get(input.loanId)
+    if (!loan || loan.isDeleted) {
+        throw new Error('Loan not found')
+    }
+
+    const installmentRows = await db.loan_installments
+        .where('loanId')
+        .equals(input.loanId)
+        .and(item => !item.isDeleted)
+        .sortBy('installmentNo')
+
+    if (installmentRows.length === 0) {
+        throw new Error('Loan installments not found')
+    }
+
+    const requestedAmount = roundLoanAmount(Math.max(0, Number(input.amount || 0)), loan.settlementCurrency)
+    const payableAmount = roundLoanAmount(Math.min(requestedAmount, loan.balanceAmount), loan.settlementCurrency)
+    if (payableAmount <= 0) {
+        throw new Error('Invalid payment amount')
+    }
+
+    const paidAt = input.paidAt ? new Date(input.paidAt).toISOString() : new Date().toISOString()
+    let remaining = payableAmount
+    const now = new Date().toISOString()
+
+    const updatedInstallments: LoanInstallment[] = installmentRows.map(item => ({ ...item }))
+    for (const installment of updatedInstallments) {
+        if (remaining <= 0) break
+        if (installment.balanceAmount <= 0) continue
+
+        const applied = roundLoanAmount(Math.min(installment.balanceAmount, remaining), loan.settlementCurrency)
+        if (applied <= 0) continue
+
+        installment.paidAmount = roundLoanAmount(installment.paidAmount + applied, loan.settlementCurrency)
+        installment.balanceAmount = roundLoanAmount(Math.max(installment.balanceAmount - applied, 0), loan.settlementCurrency)
+        installment.status = installment.balanceAmount <= 0 ? 'paid' : 'partial'
+        installment.paidAt = installment.status === 'paid' ? paidAt : installment.paidAt
+        installment.updatedAt = now
+        installment.version = installment.version + 1
+        installment.syncStatus = 'pending'
+        installment.lastSyncedAt = null
+        remaining = roundLoanAmount(Math.max(remaining - applied, 0), loan.settlementCurrency)
+    }
+
+    const today = new Date().toISOString().slice(0, 10)
+    for (const installment of updatedInstallments) {
+        if (installment.status === 'paid') continue
+        if (installment.balanceAmount <= 0) {
+            installment.status = 'paid'
+            continue
+        }
+        if (installment.dueDate < today && installment.status !== 'partial') {
+            installment.status = 'overdue'
+        } else if (installment.status !== 'partial') {
+            installment.status = 'unpaid'
+        }
+    }
+
+    const updatedLoan: Loan = {
+        ...loan,
+        totalPaidAmount: roundLoanAmount(loan.totalPaidAmount + payableAmount, loan.settlementCurrency),
+        balanceAmount: roundLoanAmount(Math.max(loan.balanceAmount - payableAmount, 0), loan.settlementCurrency),
+        updatedAt: now,
+        version: loan.version + 1,
+        syncStatus: 'pending',
+        lastSyncedAt: null
+    }
+
+    const nextDueDate = updatedInstallments.find(item => item.balanceAmount > 0)?.dueDate || null
+    updatedLoan.nextDueDate = nextDueDate
+    updatedLoan.status = computeLoanStatus(nextDueDate, updatedLoan.balanceAmount)
+    if (updatedInstallments.some(item => item.status === 'overdue')) {
+        updatedLoan.status = updatedLoan.balanceAmount <= 0 ? 'completed' : 'overdue'
+    }
+
+    const payment: LoanPayment = {
+        id: generateId(),
+        workspaceId,
+        loanId: loan.id,
+        amount: payableAmount,
+        paymentMethod: input.paymentMethod,
+        paidAt,
+        note: input.note?.trim(),
+        createdBy: input.createdBy,
+        createdAt: now,
+        updatedAt: now,
+        syncStatus: 'pending',
+        lastSyncedAt: null,
+        version: 1,
+        isDeleted: false
+    }
+
+    await db.transaction('rw', [db.loans, db.loan_installments, db.loan_payments], async () => {
+        await db.loans.put(updatedLoan)
+        for (const installment of updatedInstallments) {
+            await db.loan_installments.put(installment)
+        }
+        await db.loan_payments.put(payment)
+    })
+
+    const enqueueMutations = async () => {
+        await addToOfflineMutations('loans', updatedLoan.id, 'update', updatedLoan as unknown as Record<string, unknown>, workspaceId)
+        await Promise.all(updatedInstallments.map(installment =>
+            addToOfflineMutations(
+                'loan_installments',
+                installment.id,
+                'update',
+                installment as unknown as Record<string, unknown>,
+                workspaceId
+            )
+        ))
+        await addToOfflineMutations('loan_payments', payment.id, 'create', payment as unknown as Record<string, unknown>, workspaceId)
+    }
+
+    if (!isOnline()) {
+        await enqueueMutations()
+        return { loan: updatedLoan, payment, installments: updatedInstallments }
+    }
+
+    try {
+        const { error: loanError } = await supabase
+            .from('loans')
+            .update(toSnakeCase({
+                totalPaidAmount: updatedLoan.totalPaidAmount,
+                balanceAmount: updatedLoan.balanceAmount,
+                nextDueDate: updatedLoan.nextDueDate,
+                status: updatedLoan.status,
+                updatedAt: updatedLoan.updatedAt,
+                version: updatedLoan.version
+            }))
+            .eq('id', updatedLoan.id)
+        if (loanError) throw loanError
+
+        const { error: installmentsError } = await supabase.from('loan_installments').upsert(
+            updatedInstallments.map(installment =>
+                toSupabaseLoanPayload(installment as unknown as Record<string, unknown>)
+            )
+        )
+        if (installmentsError) throw installmentsError
+
+        const { error: paymentError } = await supabase
+            .from('loan_payments')
+            .insert(toSupabaseLoanPayload(payment as unknown as Record<string, unknown>))
+        if (paymentError) throw paymentError
+
+        const syncedAt = new Date().toISOString()
+        await db.transaction('rw', [db.loans, db.loan_installments, db.loan_payments], async () => {
+            await db.loans.update(updatedLoan.id, { syncStatus: 'synced', lastSyncedAt: syncedAt })
+            for (const installment of updatedInstallments) {
+                await db.loan_installments.update(installment.id, { syncStatus: 'synced', lastSyncedAt: syncedAt })
+            }
+            await db.loan_payments.update(payment.id, { syncStatus: 'synced', lastSyncedAt: syncedAt })
+        })
+
+        return {
+            loan: { ...updatedLoan, syncStatus: 'synced', lastSyncedAt: syncedAt },
+            payment: { ...payment, syncStatus: 'synced', lastSyncedAt: syncedAt },
+            installments: updatedInstallments.map(item => ({ ...item, syncStatus: 'synced', lastSyncedAt: syncedAt }))
+        }
+    } catch (error) {
+        console.error('[Loans] Payment sync failed, queued offline mutation:', error)
+        await enqueueMutations()
+        return { loan: updatedLoan, payment, installments: updatedInstallments }
+    }
 }
 

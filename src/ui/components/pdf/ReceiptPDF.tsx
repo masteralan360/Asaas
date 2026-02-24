@@ -194,9 +194,14 @@ export function ReceiptPDF({ data, features, workspaceName, translations: t }: R
     const getPaymentMethodLabel = (method?: string) => {
         if (!method) return ''
         const labels: Record<string, string> = {
-            cash: 'Cash', fib: 'FIB', qicard: 'QiCard', zaincash: 'ZainCash', fastpay: 'FastPay'
+            cash: 'Cash',
+            fib: 'FIB',
+            qicard: 'QiCard',
+            zaincash: 'ZainCash',
+            fastpay: 'FastPay',
+            loan: 'Loan'
         }
-        return labels[method] || 'Cash'
+        return labels[method] || method.toUpperCase()
     }
 
     return (

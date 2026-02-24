@@ -1,5 +1,5 @@
 import Dexie, { type EntityTable } from 'dexie'
-import type { Product, Category, Customer, Supplier, PurchaseOrder, SalesOrder, Invoice, User, SyncQueueItem, Sale, SaleItem, OfflineMutation, Workspace, AppSetting, Storage, Employee, Expense, BudgetAllocation, WorkspaceContact } from './models'
+import type { Product, Category, Customer, Supplier, PurchaseOrder, SalesOrder, Invoice, User, SyncQueueItem, Sale, SaleItem, OfflineMutation, Workspace, AppSetting, Storage, Employee, Expense, BudgetAllocation, WorkspaceContact, Loan, LoanInstallment, LoanPayment } from './models'
 
 // Asaas Database using Dexie.js for IndexedDB
 export class AsaasDatabase extends Dexie {
@@ -22,11 +22,14 @@ export class AsaasDatabase extends Dexie {
     offline_mutations!: EntityTable<OfflineMutation, 'id'>
     app_settings!: EntityTable<AppSetting, 'key'>
     workspace_contacts!: EntityTable<WorkspaceContact, 'id'>
+    loans!: EntityTable<Loan, 'id'>
+    loan_installments!: EntityTable<LoanInstallment, 'id'>
+    loan_payments!: EntityTable<LoanPayment, 'id'>
 
     constructor() {
         super('AsaasDatabase')
 
-        this.version(33).stores({
+        this.version(34).stores({
             products: 'id, sku, name, categoryId, storageId, workspaceId, currency, syncStatus, updatedAt, isDeleted, canBeReturned',
             categories: 'id, name, workspaceId, syncStatus, updatedAt, isDeleted',
             suppliers: 'id, name, workspaceId, syncStatus, updatedAt, isDeleted',
@@ -46,6 +49,9 @@ export class AsaasDatabase extends Dexie {
             syncQueue: 'id, entityType, entityId, operation, timestamp',
             offline_mutations: 'id, workspaceId, entityType, entityId, status, createdAt, [entityType+entityId+status]',
             workspace_contacts: 'id, workspaceId, type, value, syncStatus, updatedAt',
+            loans: 'id, workspaceId, saleId, status, nextDueDate, borrowerName, loanNo, syncStatus, updatedAt, isDeleted',
+            loan_installments: 'id, loanId, workspaceId, dueDate, status, syncStatus, updatedAt, isDeleted, [loanId+installmentNo]',
+            loan_payments: 'id, loanId, workspaceId, paidAt, syncStatus, updatedAt, isDeleted',
             app_settings: 'key'
         })
     }

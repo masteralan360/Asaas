@@ -103,7 +103,8 @@ export const SaleReceiptBase = forwardRef<HTMLDivElement, SaleReceiptBaseProps>(
                                                     data.payment_method === 'qicard' ? 'QiCard' :
                                                         data.payment_method === 'zaincash' ? 'ZainCash' :
                                                             data.payment_method === 'fastpay' ? 'FastPay' :
-                                                                t('pos.cash') || 'Cash'}
+                                                                data.payment_method === 'loan' ? (t('pos.loan') || 'Loan') :
+                                                                    data.payment_method.toUpperCase()}
                                         </span>
                                     </div>
                                 )}

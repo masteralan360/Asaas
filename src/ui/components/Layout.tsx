@@ -43,6 +43,7 @@ import {
     Warehouse,
     ArrowRightLeft,
     Wallet,
+    HandCoins,
     AlertCircle,
     PanelRightOpen,
     PanelRightClose
@@ -66,6 +67,7 @@ const routePrefetchMap: Record<string, () => Promise<unknown>> = {
     '/': () => import('@/ui/pages/Dashboard'),
     '/pos': () => import('@/ui/pages/POS'),
     '/sales': () => import('@/ui/pages/Sales'),
+    '/loans': () => import('@/ui/pages/Loans'),
     '/revenue': () => import('@/ui/pages/Revenue'),
     '/budget': () => import('@/ui/pages/Budget'),
     '/performance': () => import('@/ui/pages/TeamPerformance'),
@@ -222,6 +224,7 @@ export function Layout({ children }: LayoutProps) {
         ] : []),
         // Sales - always visible (history of transactions)
         { name: t('nav.sales') || 'Sales', href: '/sales', icon: Receipt },
+        { name: t('nav.loans') || 'Loans', href: '/loans', icon: HandCoins },
         // Revenue - admin only
         ...(user?.role === 'admin' ? [
             { name: t('nav.revenue') || 'Net Revenue', href: '/revenue', icon: BarChart3 },

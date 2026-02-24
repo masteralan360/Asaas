@@ -143,7 +143,8 @@
         "currencyConverter": "محول العملات",
         "members": "الأعضاء",
         "tools": "أدوات",
-        "actions": "إجراءات"
+        "actions": "إجراءات",
+        "loans": "القروض"
     },
     "report": {
         "print": "طباعة تقرير الأداء",
@@ -706,7 +707,8 @@
         "printReceipt": "طباعة الفاتورة",
         "continueSale": "متابعة البيع",
         "backToPos": "العودة إلى نقطة البيع",
-        "outOfStock": "نفذ المخزون"
+        "outOfStock": "نفذ المخزون",
+        "loan": "Loan"
     },
     "print": {
         "clickToExpand": "اضغط للتوسيع",
@@ -826,7 +828,16 @@
             }
         },
         "confirmDelete": "حذف البيع",
-        "deleteWarning": "حذف هذا البيع سيؤدي إلى إزالة السجل نهائياً واستعادة العناصر إلى المخزون. لا يمكن التراجع عن هذا الإجراء."
+        "deleteWarning": "حذف هذا البيع سيؤدي إلى إزالة السجل نهائياً واستعادة العناصر إلى المخزون. لا يمكن التراجع عن هذا الإجراء.",
+        "loanStatus": "حالة القرض",
+        "loanPending": "قرض قيد الانتظار",
+        "loanActive": "قرض نشط",
+        "loanOverdue": "قرض متأخر",
+        "loanCompleted": "قرض مكتمل",
+        "loanBalance": "المتبقي",
+        "loanNextDue": "الاستحقاق القادم",
+        "openLoan": "فتح القرض",
+        "loanPendingMessage": "سجل القرض قيد المزامنة أو لم يتم ربطه بعد."
     },
     "categories": {
         "title": "الفئات",
@@ -1126,6 +1137,8 @@
     "budget": {
         "title": "إدارة الميزانية",
         "subtitle": "تتبع وإدارة مصاريفك",
+        "setBudgetSubtitle": "حدد حدود الإنفاق لهذا الشهر",
+        "addExpenseSubtitle": "أضف تكلفة يدوية إلى مساراتك الشهرية",
         "totalAllocated": "إجمالي المخصص التشغيلي",
         "paid": "إجمالي المدفوع",
         "pending": "المستحقات القائمة",
@@ -1247,5 +1260,76 @@
         "noWorkspaces": "لم يتم العثور على مساحات عمل.",
         "noActiveWorkspaces": "لم يتم العثور على مساحات عمل نشطة.",
         "manageFeatures": "إدارة الوصول للميزات لكل مساحة عمل."
+    },
+    "loans": {
+        "title": "القروض",
+        "searchPlaceholder": "البحث عن طريق اسم المقترض أو رقم القرض...",
+        "registerFromPos": "تسجيل قرض",
+        "createManualLoan": "إنشاء قرض يدوي",
+        "borrowerIdentity": "هوية المقترض",
+        "borrower": "المقترض",
+        "borrowerName": "اسم المقترض",
+        "borrowerPhone": "هاتف المقترض",
+        "borrowerAddress": "عنوان المقترض",
+        "borrowerNationalId": "الرقم الوطني للمقترض",
+        "principal": "المبلغ الأصلي",
+        "paid": "المدفوع",
+        "balance": "الرصيد",
+        "nextDue": "الاستحقاق القادم",
+        "dueDate": "تاريخ الاستحقاق",
+        "dueToday": "استحقاق اليوم",
+        "activeLoans": "القروض النشطة",
+        "overdueLoans": "القروض المتأخرة",
+        "totalOutstanding": "إجمالي المستحقات",
+        "loanNo": "رقم القرض",
+        "source": "المصدر",
+        "status": "الحالة",
+        "recordPayment": "تسجيل دفعة",
+        "paymentAmount": "مبلغ الدفعة",
+        "adjustment": "تعديل القرض",
+        "notes": "ملاحظات",
+        "installmentSchedule": "جدول الأقساط",
+        "installmentCount": "عدد الأقساط",
+        "frequency": "التكرار",
+        "firstDueDate": "تاريخ الاستحقاق الأول",
+        "planned": "مخطط",
+        "summary": "ملخص القرض",
+        "recentActivity": "النشاط الأخير",
+        "currencyHint": "عملة التسوية",
+        "pay": "دفع",
+        "completedPercent": "تم الانتهاء منها",
+        "frequencies": {
+            "weekly": "أسبوعي",
+            "biweekly": "كل أسبوعين",
+            "monthly": "شهري"
+        },
+        "filters": {
+            "all": "الكل",
+            "active": "نشط",
+            "overdue": "متأخر",
+            "completed": "مكتمل"
+        },
+        "statuses": {
+            "active": "نشط",
+            "overdue": "متأخر",
+            "completed": "مكتمل"
+        },
+        "installmentStatuses": {
+            "unpaid": "غير مدفوع",
+            "partial": "جزئي",
+            "paid": "مدفوع",
+            "overdue": "متأخر"
+        },
+        "activities": {
+            "paymentReceived": "تم استلام الدفعة",
+            "loanDisbursed": "تم صرف القرض"
+        },
+        "messages": {
+            "loanCreated": "تم إنشاء القرض بنجاح.",
+            "loanCreateFailed": "فشل إنشاء القرض.",
+            "paymentRecorded": "تم تسجيل الدفعة بنجاح.",
+            "paymentRecordFailed": "فشل تسجيل الدفعة.",
+            "loanNotFound": "القرض غير موجود."
+        }
     }
 }

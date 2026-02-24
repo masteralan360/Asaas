@@ -2,10 +2,11 @@ import { useState } from 'react'
 import { useLocation } from 'wouter'
 import { useTranslation } from 'react-i18next'
 import { Sale, SaleItem } from '@/types'
-import { formatCurrency, formatDateTime, formatSnapshotTime, cn, formatSaleDetailsForWhatsApp } from '@/lib/utils'
+import { formatCurrency, formatDate, formatDateTime, formatSnapshotTime, cn, formatSaleDetailsForWhatsApp } from '@/lib/utils'
 import { whatsappManager } from '@/lib/whatsappWebviewManager'
 import { WhatsAppNumberInputModal } from '@/ui/components/modals/WhatsAppNumberInputModal'
 import { useTheme } from '@/ui/components/theme-provider'
+import { type Loan, useLoanBySaleId } from '@/local-db'
 import {
     Table,
     TableBody,
@@ -24,6 +25,38 @@ import { isMobile } from '@/lib/platform'
 import { useAuth } from '@/auth'
 import { useWorkspace } from '@/workspace'
 
+type EffectiveLoanStatus = 'pending' | 'active' | 'overdue' | 'completed'
+
+function resolveEffectiveLoanStatus(loan: Loan | undefined): EffectiveLoanStatus {
+    if (!loan) return 'pending'
+    if (loan.balanceAmount <= 0) return 'completed'
+    const today = new Date().toISOString().slice(0, 10)
+    if (loan.nextDueDate && loan.nextDueDate < today) return 'overdue'
+    return 'active'
+}
+
+function getLoanStatusLabelKey(status: EffectiveLoanStatus): string {
+    if (status === 'active') return 'sales.loanActive'
+    if (status === 'overdue') return 'sales.loanOverdue'
+    if (status === 'completed') return 'sales.loanCompleted'
+    return 'sales.loanPending'
+}
+
+function getLoanStatusFallbackLabel(status: EffectiveLoanStatus): string {
+    if (status === 'active') return 'Loan Active'
+    if (status === 'overdue') return 'Loan Overdue'
+    if (status === 'completed') return 'Loan Completed'
+    return 'Loan Pending'
+}
+
+function getLoanStatusChipClass(status: EffectiveLoanStatus, neoStyle: boolean): string {
+    const base = neoStyle ? "rounded-[var(--radius)]" : "rounded-full"
+    if (status === 'overdue') return `${base} bg-destructive/10 text-destructive border border-destructive/20`
+    if (status === 'completed') return `${base} bg-blue-500/10 text-blue-600 dark:text-blue-300 border border-blue-500/20`
+    if (status === 'active') return `${base} bg-emerald-500/10 text-emerald-600 dark:text-emerald-300 border border-emerald-500/20`
+    return `${base} bg-slate-500/10 text-slate-600 dark:text-slate-300 border border-slate-500/20`
+}
+
 interface SaleDetailsModalProps {
     sale: Sale | null
     isOpen: boolean
@@ -40,6 +73,7 @@ export function SaleDetailsModal({ sale, isOpen, onClose, onReturnItem, onReturn
     const [showWhatsAppModal, setShowWhatsAppModal] = useState(false)
     const [, setLocation] = useLocation()
     const { style } = useTheme()
+    const linkedLoan = useLoanBySaleId(sale?.id, user?.workspaceId)
 
     const handleWhatsAppConfirm = async (phone: string) => {
         if (!sale) return
@@ -87,6 +121,20 @@ export function SaleDetailsModal({ sale, isOpen, onClose, onReturnItem, onReturn
         item.settlement_currency &&
         item.original_currency !== item.settlement_currency
     ) ?? false
+
+    const isLoanSale = sale.payment_method === 'loan'
+    const loanStatus = resolveEffectiveLoanStatus(linkedLoan)
+    const loanStatusLabel = t(getLoanStatusLabelKey(loanStatus)) || getLoanStatusFallbackLabel(loanStatus)
+    const loanStatusClass = getLoanStatusChipClass(loanStatus, style === 'neo-orange')
+    const loanBalanceLabel = t('sales.loanBalance') || 'Balance'
+    const loanNextDueLabel = t('sales.loanNextDue') || 'Next Due'
+    const loanSourceLabel = t('loans.source') || 'Source'
+    const loanPendingMessage = t('sales.loanPendingMessage') || 'Loan record pending sync/link'
+    const loanBalanceValue = linkedLoan
+        ? formatCurrency(linkedLoan.balanceAmount, linkedLoan.settlementCurrency, features.iqd_display_preference)
+        : '-'
+    const loanNextDueValue = linkedLoan?.nextDueDate ? formatDate(linkedLoan.nextDueDate) : '-'
+    const loanSourceValue = linkedLoan?.source === 'pos' ? 'POS' : (t('common.manual') || 'Manual')
 
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
@@ -173,6 +221,9 @@ export function SaleDetailsModal({ sale, isOpen, onClose, onReturnItem, onReturn
                                     <span>FastPay</span>
                                 </>
                             )}
+                            {sale.payment_method === 'loan' && (
+                                <span>{t('pos.loan') || 'Loan'}</span>
+                            )}
                             {(!sale.payment_method || sale.payment_method === 'cash') && (
                                 <span>{t('pos.cash') || 'Cash'} ({(sale.settlement_currency || 'USD').toUpperCase()})</span>
                             )}
@@ -182,6 +233,66 @@ export function SaleDetailsModal({ sale, isOpen, onClose, onReturnItem, onReturn
 
                 {/* ═══════════════ CONTENT ═══════════════ */}
                 <div className="px-6 py-4 space-y-4">
+                    {isLoanSale && (
+                        <div className={cn(
+                            "p-3 border rounded-xl",
+                            loanStatus === 'overdue' ? "bg-destructive/5 border-destructive/20" : "bg-secondary/20 border-border"
+                        )}>
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                                <div className="flex items-center gap-2">
+                                    <span className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">
+                                        {t('sales.loanStatus') || 'Loan Status'}
+                                    </span>
+                                    <span className={cn("px-2 py-0.5 text-[10px] font-bold uppercase", loanStatusClass)}>
+                                        {loanStatusLabel}
+                                    </span>
+                                </div>
+                                {linkedLoan && (
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="h-7 px-2 text-[10px] font-semibold"
+                                        onClick={() => {
+                                            onClose()
+                                            setLocation(`/loans/${linkedLoan.id}`)
+                                        }}
+                                    >
+                                        {t('sales.openLoan') || 'Open Loan'}
+                                        <ArrowRight className="w-3 h-3 ml-1" />
+                                    </Button>
+                                )}
+                            </div>
+
+                            <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                <div className="rounded-lg border border-border/70 bg-background/50 px-2.5 py-2">
+                                    <div className="text-[10px] uppercase font-semibold tracking-wide text-muted-foreground">
+                                        {loanBalanceLabel}
+                                    </div>
+                                    <div className="mt-0.5 text-xs font-bold">{loanBalanceValue}</div>
+                                </div>
+                                <div className="rounded-lg border border-border/70 bg-background/50 px-2.5 py-2">
+                                    <div className="text-[10px] uppercase font-semibold tracking-wide text-muted-foreground">
+                                        {loanNextDueLabel}
+                                    </div>
+                                    <div className="mt-0.5 text-xs font-bold">{loanNextDueValue}</div>
+                                </div>
+                                {linkedLoan && (
+                                    <div className="rounded-lg border border-border/70 bg-background/50 px-2.5 py-2">
+                                        <div className="text-[10px] uppercase font-semibold tracking-wide text-muted-foreground">
+                                            {loanSourceLabel}
+                                        </div>
+                                        <div className="mt-0.5 text-xs font-bold">{loanSourceValue}</div>
+                                    </div>
+                                )}
+                            </div>
+
+                            {!linkedLoan && (
+                                <p className="mt-2 text-xs text-muted-foreground">
+                                    {loanPendingMessage}
+                                </p>
+                            )}
+                        </div>
+                    )}
 
                     {/* ─── Status Banners ─── */}
                     <div className="space-y-2">

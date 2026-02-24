@@ -42,7 +42,7 @@ export interface Sale {
     exchange_rates?: any[]
     created_at: string
     origin: 'pos' | 'manual'
-    payment_method?: 'cash' | 'fib' | 'qicard' | 'zaincash' | 'fastpay'
+    payment_method?: 'cash' | 'fib' | 'qicard' | 'zaincash' | 'fastpay' | 'loan'
     cashier_name?: string
     items?: SaleItem[]
     is_returned?: boolean

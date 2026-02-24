@@ -1188,7 +1188,7 @@ export default function Budget() {
                             </div>
                             <div>
                                 <DialogTitle className="text-xl font-black tracking-tight">{t('budget.addExpense', 'Create New Expense')}</DialogTitle>
-                                <DialogDescription className="text-xs font-semibold text-muted-foreground/80 lowercase">
+                                <DialogDescription className="text-xs font-semibold text-muted-foreground/80">
                                     {t('budget.addExpenseSubtitle', 'Add a manual cost to your monthly tracks')}
                                 </DialogDescription>
                             </div>
@@ -1266,28 +1266,29 @@ export default function Budget() {
 
             <Dialog open={isAllocationDialogOpen} onOpenChange={setIsAllocationDialogOpen}>
                 <DialogContent className={cn(
-                    "max-w-md w-[95vw] sm:w-full p-0 bg-background/95 backdrop-blur-3xl overflow-hidden rounded-[2.5rem] shadow-2xl transition-all duration-500",
-                    "border-[3px] border-amber-500/50 shadow-amber-500/10"
+                    "max-w-md w-[95vw] sm:w-full p-0 bg-white dark:bg-zinc-950 overflow-hidden rounded-[2.5rem] shadow-2xl transition-all duration-500 border-none",
                 )}>
-                    <div className="p-6 md:p-8 space-y-6">
-                        <DialogHeader className="flex flex-row items-center gap-4 space-y-0">
-                            <div className="p-3 rounded-2xl bg-amber-500/10 text-amber-600 dark:text-amber-400">
+                    <div className="p-8 space-y-8">
+                        <DialogHeader className="flex flex-row items-center gap-4 space-y-0 relative">
+                            <div className="p-4 rounded-3xl bg-orange-50 dark:bg-orange-500/10 text-orange-500">
                                 <TrendingUp className="w-6 h-6" />
                             </div>
-                            <div>
-                                <DialogTitle className="text-xl font-black tracking-tight">{t('budget.setBudgetTitle', 'Monthly Budget Allocation')}</DialogTitle>
-                                <DialogDescription className="text-xs font-semibold text-muted-foreground/80 lowercase">
-                                    {t('budget.setBudgetSubtitle', 'Define your spending limits for this month')}
+                            <div className="space-y-1">
+                                <DialogTitle className="text-2xl tracking-tight text-slate-900 dark:text-white">
+                                    {t('budget.setBudgetTitle', 'Monthly Budget Allocation')}
+                                </DialogTitle>
+                                <DialogDescription className="text-sm font-medium text-slate-400 dark:text-zinc-500">
+                                    {t('budget.setBudgetSubtitle', 'define your spending limits for this month')}
                                 </DialogDescription>
                             </div>
                         </DialogHeader>
+
                         <form
                             onSubmit={async (e) => {
                                 e.preventDefault()
                                 if (!workspaceId || isSaving) return
 
                                 setIsSaving(true)
-                                // Snap close for instant feeling
                                 setIsAllocationDialogOpen(false)
 
                                 try {
@@ -1300,15 +1301,17 @@ export default function Budget() {
                                     toast({ description: t('budget.allocationSaved', 'Budget allocation updated') })
                                 } catch (error) {
                                     toast({ variant: 'destructive', description: t('common.error', 'Failed to save budget') })
-                                    setIsAllocationDialogOpen(true) // Restore if failed
+                                    setIsAllocationDialogOpen(true)
                                 } finally {
                                     setIsSaving(false)
                                 }
                             }}
-                            className="space-y-4 pt-4"
+                            className="space-y-6"
                         >
-                            <div className="space-y-2">
-                                <Label>{t('budget.form.type', 'Allocation Type')}</Label>
+                            <div className="space-y-3">
+                                <Label className="text-sm font-medium text-slate-900 dark:text-white">
+                                    {t('budget.form.type', 'Allocation Type')}
+                                </Label>
                                 <Select value={allocType} onValueChange={(val: any) => {
                                     setAllocType(val)
                                     if (val === 'percentage') {
@@ -1316,19 +1319,21 @@ export default function Budget() {
                                         if (numeric > 100) setAllocAmountDisplay("100")
                                     }
                                 }}>
-                                    <SelectTrigger>
+                                    <SelectTrigger className="h-14 rounded-2xl border-slate-100 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-900/50 text-base font-medium px-6">
                                         <SelectValue />
                                     </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="fixed">{t('budget.type.fixed', 'Fixed Amount')}</SelectItem>
-                                        <SelectItem value="percentage">{t('budget.type.percentage', 'Percentage of Revenue')}</SelectItem>
+                                    <SelectContent className="rounded-2xl border-slate-100 dark:border-zinc-800">
+                                        <SelectItem value="fixed" className="rounded-xl">{t('budget.type.fixed', 'Fixed Amount')}</SelectItem>
+                                        <SelectItem value="percentage" className="rounded-xl">{t('budget.type.percentage', 'Percentage of Revenue')}</SelectItem>
                                     </SelectContent>
                                 </Select>
                             </div>
 
                             <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-2">
-                                    <Label>{t('budget.form.amount', 'Amount / %')}</Label>
+                                <div className="space-y-3">
+                                    <Label className="text-sm font-black text-slate-900 dark:text-white">
+                                        {t('budget.form.amount', 'Amount / %')}
+                                    </Label>
                                     <div className="relative">
                                         <Input
                                             value={allocAmountDisplay}
@@ -1341,38 +1346,43 @@ export default function Budget() {
                                                 setAllocAmountDisplay(formatNumberWithCommas(val));
                                             }}
                                             placeholder="0"
-                                            className={cn(allocType === 'percentage' && "pr-8")}
+                                            className={cn(
+                                                "h-14 rounded-2xl border-slate-100 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-900/50 text-base font-bold px-6",
+                                                allocType === 'percentage' && "pr-10"
+                                            )}
                                             required
                                         />
                                         {allocType === 'percentage' && (
-                                            <div className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground font-black pointer-events-none">
+                                            <div className="absolute right-6 top-1/2 -translate-y-1/2 text-slate-400 font-bold pointer-events-none">
                                                 %
                                             </div>
                                         )}
                                     </div>
                                 </div>
-                                <div className="space-y-2">
-                                    <Label>{t('budget.payroll.currency', 'Currency')}</Label>
+                                <div className="space-y-3">
+                                    <Label className="text-sm font-black text-slate-900 dark:text-white">
+                                        {t('budget.payroll.currency', 'Currency')}
+                                    </Label>
                                     <Select value={allocCurrency} onValueChange={(val: any) => setAllocCurrency(val)}>
-                                        <SelectTrigger>
+                                        <SelectTrigger className="h-14 rounded-2xl border-slate-100 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-900/50 text-base font-medium px-6">
                                             <SelectValue />
                                         </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="usd">USD</SelectItem>
-                                            <SelectItem value="iqd">IQD</SelectItem>
-                                            <SelectItem value="eur">EUR</SelectItem>
-                                            <SelectItem value="try">TRY</SelectItem>
+                                        <SelectContent className="rounded-2xl border-slate-100 dark:border-zinc-800">
+                                            <SelectItem value="usd" className="rounded-xl">USD</SelectItem>
+                                            <SelectItem value="iqd" className="rounded-xl">IQD</SelectItem>
+                                            <SelectItem value="eur" className="rounded-xl">EUR</SelectItem>
+                                            <SelectItem value="try" className="rounded-xl">TRY</SelectItem>
                                         </SelectContent>
                                     </Select>
                                 </div>
                             </div>
 
-                            <div className="p-4 bg-secondary/50 rounded-xl space-y-2">
+                            <div className="p-8 bg-slate-50/50 dark:bg-zinc-900/50 rounded-[2rem] border border-slate-100 dark:border-zinc-800 space-y-6">
                                 <div className="flex justify-between items-center">
-                                    <h4 className="text-xs font-bold uppercase tracking-widest opacity-60">
+                                    <h4 className="text-[10px] font-black uppercase tracking-[0.15em] text-slate-400 dark:text-zinc-500">
                                         {t('budget.estimatedBudgetLimit', 'Proposed Budget Limit')}
                                     </h4>
-                                    <p className="text-sm font-black">
+                                    <p className="text-xl font-black text-slate-900 dark:text-white tabular-nums">
                                         {formatCurrency(
                                             allocType === 'fixed'
                                                 ? convertToStoreBase(parseFormattedNumber(allocAmountDisplay), allocCurrency)
@@ -1383,17 +1393,19 @@ export default function Budget() {
                                     </p>
                                 </div>
 
-                                <div className="flex justify-between items-center pt-2 border-t border-black/5 dark:border-white/5">
-                                    <h4 className="text-xs font-bold uppercase tracking-widest opacity-60">
+                                <div className="h-px bg-slate-100 dark:bg-zinc-800 w-full" />
+
+                                <div className="flex justify-between items-center">
+                                    <h4 className="text-[10px] font-black uppercase tracking-[0.15em] text-slate-400 dark:text-zinc-500">
                                         {t('budget.actualSurplus', 'Projected Surplus')}
                                     </h4>
                                     <p className={cn(
-                                        "text-sm font-black",
+                                        "text-xl font-black tabular-nums",
                                         (metrics.referenceProfit - (
                                             allocType === 'fixed'
                                                 ? convertToStoreBase(parseFormattedNumber(allocAmountDisplay), allocCurrency)
                                                 : metrics.referenceProfit * (parseFormattedNumber(allocAmountDisplay) / 100)
-                                        )) >= 0 ? "text-emerald-600" : "text-red-600"
+                                        )) >= 0 ? "text-teal-500" : "text-red-500"
                                     )}>
                                         {formatCurrency(
                                             metrics.referenceProfit - (
@@ -1406,13 +1418,18 @@ export default function Budget() {
                                         )}
                                     </p>
                                 </div>
-                                <p className="text-[10px] text-muted-foreground pt-1 italic">
+                                <p className="text-xs text-slate-400 dark:text-zinc-500 italic font-medium">
                                     {t('budget.surplusNote', 'Remaining revenue after the proposed budget limit')}
                                 </p>
                             </div>
 
-                            <DialogFooter className="pt-4">
-                                <Button type="submit" className="w-full">{t('common.save', 'Save Allocation')}</Button>
+                            <DialogFooter>
+                                <Button
+                                    type="submit"
+                                    className="w-full h-16 rounded-2xl bg-[#1DA185] hover:bg-[#198f76] text-white text-lg font-black shadow-xl shadow-teal-500/10 transition-all active:scale-[0.98] border-none"
+                                >
+                                    {t('common.save', 'Save Allocation')}
+                                </Button>
                             </DialogFooter>
                         </form>
                     </div>

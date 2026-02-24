@@ -54,6 +54,7 @@ const Storages = lazy(() => import('@/ui/pages/Storages').then(m => ({ default: 
 const InventoryTransfer = lazy(() => import('@/ui/pages/InventoryTransfer').then(m => ({ default: m.default })))
 const HR = lazy(() => import('@/ui/pages/HR').then(m => ({ default: m.default })))
 const Budget = lazy(() => import('@/ui/pages/Budget').then(m => ({ default: m.default })))
+const Loans = lazy(() => import('@/ui/pages/Loans').then(m => ({ default: m.Loans })))
 
 
 
@@ -398,6 +399,20 @@ function App() {
                                             <ProtectedRoute allowedRoles={['admin']}>
                                                 <Layout>
                                                     <Budget />
+                                                </Layout>
+                                            </ProtectedRoute>
+                                        </Route>
+                                        <Route path="/loans">
+                                            <ProtectedRoute allowedRoles={['admin', 'staff', 'viewer']}>
+                                                <Layout>
+                                                    <Loans />
+                                                </Layout>
+                                            </ProtectedRoute>
+                                        </Route>
+                                        <Route path="/loans/:loanId">
+                                            <ProtectedRoute allowedRoles={['admin', 'staff', 'viewer']}>
+                                                <Layout>
+                                                    <Loans />
                                                 </Layout>
                                             </ProtectedRoute>
                                         </Route>

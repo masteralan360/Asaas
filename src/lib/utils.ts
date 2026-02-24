@@ -129,7 +129,15 @@ export function formatSaleDetailsForWhatsApp(sale: any, t: (key: string) => stri
 
     // Payment Method
     if (sale.payment_method) {
-        const method = sale.payment_method.charAt(0).toUpperCase() + sale.payment_method.slice(1)
+        const methodMap: Record<string, string> = {
+            cash: 'Cash',
+            fib: 'FIB',
+            qicard: 'QiCard',
+            zaincash: 'ZainCash',
+            fastpay: 'FastPay',
+            loan: 'Loan'
+        }
+        const method = methodMap[sale.payment_method] || sale.payment_method.toUpperCase()
         text += `*${t('pos.paymentMethod') || 'Payment Method'}:* ${method}\n`
     }
 

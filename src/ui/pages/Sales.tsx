@@ -1,12 +1,13 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useLocation } from 'wouter'
 import { useAuth } from '@/auth'
 import { supabase } from '@/auth/supabase'
 import { Sale } from '@/types'
 import { mapSaleToUniversal } from '@/lib/mappings'
 import { formatCurrency, formatDateTime, formatCompactDateTime, formatDate, cn } from '@/lib/utils'
 
-import { db, useSales, toUISale } from '@/local-db'
+import { db, useLoans, useSales, toUISale, type Loan } from '@/local-db'
 import { useWorkspace } from '@/workspace'
 import { isMobile } from '@/lib/platform'
 import { useDateRange } from '@/context/DateRangeContext'
@@ -38,6 +39,10 @@ import {
     PrintPreviewModal,
     SalesNoteModal,
     ExportPreviewModal,
+    Tooltip,
+    TooltipContent,
+    TooltipProvider,
+    TooltipTrigger,
     useToast,
     AppPagination
 } from '@/ui/components'
@@ -56,13 +61,47 @@ import {
     List
 } from 'lucide-react'
 
+type EffectiveLoanStatus = 'pending' | 'active' | 'overdue' | 'completed'
+
+function resolveEffectiveLoanStatus(loan: Loan | undefined): EffectiveLoanStatus {
+    if (!loan) return 'pending'
+    if (loan.balanceAmount <= 0) return 'completed'
+    const today = new Date().toISOString().slice(0, 10)
+    if (loan.nextDueDate && loan.nextDueDate < today) return 'overdue'
+    return 'active'
+}
+
+function getLoanStatusChipClass(status: EffectiveLoanStatus, neoStyle: boolean): string {
+    const base = neoStyle ? "rounded-[var(--radius)]" : "rounded-full"
+    if (status === 'overdue') return `${base} bg-destructive/10 text-destructive border border-destructive/20`
+    if (status === 'completed') return `${base} bg-blue-500/10 text-blue-600 dark:text-blue-300 border border-blue-500/20`
+    if (status === 'active') return `${base} bg-emerald-500/10 text-emerald-600 dark:text-emerald-300 border border-emerald-500/20`
+    return `${base} bg-slate-500/10 text-slate-600 dark:text-slate-300 border border-slate-500/20`
+}
+
+function getLoanStatusLabelKey(status: EffectiveLoanStatus): string {
+    if (status === 'active') return 'sales.loanActive'
+    if (status === 'overdue') return 'sales.loanOverdue'
+    if (status === 'completed') return 'sales.loanCompleted'
+    return 'sales.loanPending'
+}
+
+function getLoanStatusFallbackLabel(status: EffectiveLoanStatus): string {
+    if (status === 'active') return 'Loan Active'
+    if (status === 'overdue') return 'Loan Overdue'
+    if (status === 'completed') return 'Loan Completed'
+    return 'Loan Pending'
+}
+
 export function Sales() {
     const { user } = useAuth()
     const { t } = useTranslation()
+    const [, setLocation] = useLocation()
     const { features, workspaceName, activeWorkspace } = useWorkspace()
     const { style } = useTheme()
     const { toast } = useToast()
     const rawSales = useSales(user?.workspaceId)
+    const loans = useLoans(user?.workspaceId)
     const allSales = useMemo(() => rawSales.map(toUISale), [rawSales])
     const isLoading = rawSales === undefined
     const [selectedSale, setSelectedSale] = useState<Sale | null>(null)
@@ -136,6 +175,38 @@ export function Sales() {
         })
         return Array.from(map.entries()).map(([id, name]) => ({ id, name }))
     }, [allSales])
+
+    const loanBySaleId = useMemo(() => {
+        const map = new Map<string, Loan>()
+        for (const loan of loans) {
+            if (!loan.saleId || loan.isDeleted) continue
+            const existing = map.get(loan.saleId)
+            if (!existing || new Date(loan.updatedAt).getTime() > new Date(existing.updatedAt).getTime()) {
+                map.set(loan.saleId, loan)
+            }
+        }
+        return map
+    }, [loans])
+
+    const getLoanIndicator = (sale: Sale) => {
+        if (sale.payment_method !== 'loan') return null
+        const loan = loanBySaleId.get(sale.id)
+        const status = resolveEffectiveLoanStatus(loan)
+        const label = t(getLoanStatusLabelKey(status)) || getLoanStatusFallbackLabel(status)
+        const statusLabel = t('sales.loanStatus') || 'Loan Status'
+        const balanceLabel = t('sales.loanBalance') || 'Balance'
+        const nextDueLabel = t('sales.loanNextDue') || 'Next Due'
+        const pendingMessage = t('sales.loanPendingMessage') || 'Loan record pending sync/link'
+        const balanceValue = loan
+            ? formatCurrency(loan.balanceAmount, loan.settlementCurrency, features.iqd_display_preference)
+            : '-'
+        const nextDueValue = loan?.nextDueDate ? formatDate(loan.nextDueDate) : '-'
+        const tooltipText = loan
+            ? `${statusLabel}: ${label} | ${balanceLabel}: ${balanceValue} | ${nextDueLabel}: ${nextDueValue}`
+            : pendingMessage
+
+        return { loan, status, label, tooltipText }
+    }
 
     const getEffectiveTotal = (sale: Sale) => {
         // If the sale itself is marked returned
@@ -588,324 +659,151 @@ export function Sales() {
     }, [dateRange, customDates, selectedCashier])
 
     return (
-        <div className="space-y-6">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div>
-                    <div className="flex items-center gap-3">
-                        <h1 className="text-2xl font-bold flex items-center gap-2">
-                            <Receipt className="w-6 h-6 text-primary" />
-                            {t('sales.title') || 'Sales History'}
-                            {isLoading && (
-                                <Loader2 className="w-4 h-4 animate-spin text-primary/50 ml-1" />
+        <TooltipProvider>
+            <div className="space-y-6">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div>
+                        <div className="flex items-center gap-3">
+                            <h1 className="text-2xl font-bold flex items-center gap-2">
+                                <Receipt className="w-6 h-6 text-primary" />
+                                {t('sales.title') || 'Sales History'}
+                                {isLoading && (
+                                    <Loader2 className="w-4 h-4 animate-spin text-primary/50 ml-1" />
+                                )}
+                            </h1>
+                            {getDateDisplay() && (
+                                <div className={cn(
+                                    "px-3 py-1 text-sm font-bold bg-primary text-primary-foreground shadow-sm animate-pop-in",
+                                    style === 'neo-orange' ? "rounded-[var(--radius)] neo-border" : "rounded-lg"
+                                )}>
+                                    {getDateDisplay()}
+                                </div>
                             )}
-                        </h1>
-                        {getDateDisplay() && (
-                            <div className={cn(
-                                "px-3 py-1 text-sm font-bold bg-primary text-primary-foreground shadow-sm animate-pop-in",
-                                style === 'neo-orange' ? "rounded-[var(--radius)] neo-border" : "rounded-lg"
-                            )}>
-                                {getDateDisplay()}
-                            </div>
-                        )}
-                    </div>
-                    <p className="text-muted-foreground">
-                        {t('sales.subtitle') || 'View past transactions'}
-                    </p>
-                </div>
-
-                <div className="hidden md:flex items-center bg-background/30 p-1 rounded-xl border border-border/50 backdrop-blur-md">
-                    <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setViewMode('table')}
-                        className={cn(
-                            "h-8 px-4 font-black uppercase tracking-widest text-[10px] flex items-center gap-2 transition-all",
-                            viewMode === 'table'
-                                ? "bg-primary text-primary-foreground shadow-lg"
-                                : "text-muted-foreground hover:bg-background/50"
-                        )}
-                    >
-                        <List className="w-3.5 h-3.5" />
-                        {t('sales.view.table')}
-                    </Button>
-                    <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setViewMode('grid')}
-                        className={cn(
-                            "h-8 px-4 font-black uppercase tracking-widest text-[10px] flex items-center gap-2 transition-all",
-                            viewMode === 'grid'
-                                ? "bg-primary text-primary-foreground shadow-lg"
-                                : "text-muted-foreground hover:bg-background/50"
-                        )}
-                    >
-                        <LayoutGrid className="w-3.5 h-3.5" />
-                        {t('sales.view.grid')}
-                    </Button>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-3">
-                    <DateRangeFilters />
-
-                    {availableCashiers.length > 0 && (
-                        <div className={cn(
-                            "flex flex-col gap-1 bg-secondary/30 p-2 px-3 border min-w-[140px]",
-                            style === 'neo-orange' ? "rounded-[var(--radius)] border-black dark:border-white" : "rounded-xl border-border/40 backdrop-blur-md shadow-sm"
-                        )}>
-                            <div className="flex items-center gap-2">
-                                <Filter className="w-3 h-3 text-muted-foreground/70" />
-                                <span className="text-[9px] uppercase font-black tracking-tighter text-muted-foreground/60 whitespace-nowrap">
-                                    {t('sales.filters.cashier') || 'Filter By Cashier'}
-                                </span>
-                            </div>
-                            <Select value={selectedCashier} onValueChange={setSelectedCashier}>
-                                <SelectTrigger className="h-7 text-[11px] w-full bg-background/40 border-none focus-visible:ring-1 focus-visible:ring-primary/30 transition-all font-medium">
-                                    <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="all">
-                                        {t('sales.filters.allCashiers') || 'All Cashiers'}
-                                    </SelectItem>
-                                    {availableCashiers.map((cashier) => (
-                                        <SelectItem key={cashier.id} value={cashier.id}>
-                                            {cashier.name || 'Unknown'}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
                         </div>
-                    )}
-                </div>
-            </div>
-
-            <Card className={cn(
-                "overflow-hidden backdrop-blur-sm",
-                style === 'neo-orange' ? "border-2 border-black dark:border-white bg-card" : "border-border/50 bg-card/50"
-            )}>
-                <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between space-y-0 gap-4 pb-4">
-                    <div className="flex flex-col gap-1">
-                        <CardTitle>{t('sales.listTitle') || 'Recent Sales'}</CardTitle>
-                        {totalCount > 0 && (
-                            <p className="text-[10px] text-muted-foreground font-black uppercase tracking-[0.2em] opacity-70">
-                                {t('sales.pagination.total', { count: totalCount }) || `${totalCount} Sales Found`}
-                            </p>
-                        )}
+                        <p className="text-muted-foreground">
+                            {t('sales.subtitle') || 'View past transactions'}
+                        </p>
                     </div>
-                    <div className="flex flex-col sm:flex-row items-center gap-4">
-                        <AppPagination
-                            currentPage={currentPage}
-                            totalCount={totalCount}
-                            pageSize={pageSize}
-                            onPageChange={setCurrentPage}
-                            className="w-auto"
-                        />
+
+                    <div className="hidden md:flex items-center bg-background/30 p-1 rounded-xl border border-border/50 backdrop-blur-md">
                         <Button
-                            onClick={() => setIsExportModalOpen(true)}
-                            disabled={sales.length === 0}
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setViewMode('table')}
                             className={cn(
-                                "h-10 px-6 font-black transition-all flex gap-3 items-center group relative overflow-hidden",
-                                style === 'neo-orange'
-                                    ? "rounded-[var(--radius)] bg-emerald-500 text-black border-2 border-black dark:border-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-none translate-y-[-2px] active:translate-y-0"
-                                    : "rounded-full bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-100 dark:border-emerald-500/20 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-500/20 hover:shadow-[0_0_20px_-5px_rgba(16,185,129,0.3)] hover:scale-[1.02] active:scale-95",
-                                "uppercase tracking-widest text-[10px]"
+                                "h-8 px-4 font-black uppercase tracking-widest text-[10px] flex items-center gap-2 transition-all",
+                                viewMode === 'table'
+                                    ? "bg-primary text-primary-foreground shadow-lg"
+                                    : "text-muted-foreground hover:bg-background/50"
                             )}
                         >
-                            <FileSpreadsheet className="w-4 h-4 transition-transform group-hover:rotate-12" />
-                            <span className="hidden sm:inline">
-                                {t('sales.export.button')}
-                            </span>
-                            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 dark:via-white/5 to-transparent -translate-x-full group-hover:animate-shimmer" />
+                            <List className="w-3.5 h-3.5" />
+                            {t('sales.view.table')}
+                        </Button>
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setViewMode('grid')}
+                            className={cn(
+                                "h-8 px-4 font-black uppercase tracking-widest text-[10px] flex items-center gap-2 transition-all",
+                                viewMode === 'grid'
+                                    ? "bg-primary text-primary-foreground shadow-lg"
+                                    : "text-muted-foreground hover:bg-background/50"
+                            )}
+                        >
+                            <LayoutGrid className="w-3.5 h-3.5" />
+                            {t('sales.view.grid')}
                         </Button>
                     </div>
-                </CardHeader>
-                <CardContent>
-                    {isLoading ? (
-                        <div className="flex justify-center py-8">
-                            <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
-                        </div>
-                    ) : sales.length === 0 ? (
-                        <div className="text-center py-8 text-muted-foreground">
-                            {t('common.noData')}
-                        </div>
-                    ) : (isMobile() || viewMode === 'grid') ? (
-                        <div className={cn(
-                            "grid gap-4",
-                            viewMode === 'grid' && !isMobile() ? "grid-cols-1 lg:grid-cols-2 xl:grid-cols-3" : "grid-cols-1"
-                        )}>
-                            {sales.map((sale) => {
-                                const isFullyReturned = sale.is_returned || (sale.items && sale.items.length > 0 && sale.items.every((item: SaleItem) =>
-                                    item.is_returned || (item.returned_quantity || 0) >= item.quantity
-                                ))
-                                const returnedItemsCount = sale.items?.filter((item: SaleItem) => item.is_returned).length || 0
-                                const partialReturnedItemsCount = sale.items?.filter((item: SaleItem) => (item.returned_quantity || 0) > 0 && !item.is_returned).length || 0
-                                const totalReturnedQuantity = sale.items?.reduce((sum: number, item: SaleItem) => {
-                                    if (item.is_returned) return sum + (item.quantity || 0)
-                                    if ((item.returned_quantity || 0) > 0) return sum + (item.returned_quantity || 0)
-                                    return sum
-                                }, 0) || 0
-                                const hasAnyReturn = returnedItemsCount > 0 || partialReturnedItemsCount > 0
 
-                                return (
-                                    <div
-                                        key={sale.id}
-                                        className={cn(
-                                            "p-4 border shadow-sm space-y-4 transition-all active:scale-[0.98]",
-                                            style === 'neo-orange' ? "rounded-[var(--radius)] border-2 border-black dark:border-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]" : "rounded-[2rem] md:rounded-2xl border-border",
-                                            isFullyReturned ? 'bg-destructive/5 border-destructive/20' : hasAnyReturn ? 'bg-orange-500/5' : 'bg-card'
-                                        )}
-                                    >
-                                        <div className="flex justify-between items-start">
-                                            <div className="space-y-2">
-                                                <div className="flex flex-col gap-1">
-                                                    <div className="flex items-center gap-2">
-                                                        <span className="text-[10px] font-mono font-bold text-muted-foreground uppercase tracking-wider">
-                                                            {formatCompactDateTime(sale.created_at)}
-                                                        </span>
-                                                        {sale.sequenceId ? (
-                                                            <span className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-primary/10 text-primary rounded border border-primary/20">
-                                                                #{String(sale.sequenceId).padStart(5, '0')}
-                                                            </span>
-                                                        ) : (
-                                                            <span className="text-[10px] text-muted-foreground/50 font-mono">
-                                                                #{sale.id.slice(0, 8)}
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                    <div className="flex flex-wrap gap-1.5">
-                                                        {isFullyReturned && (
-                                                            <span className={cn(
-                                                                "px-2 py-0.5 text-[9px] font-bold bg-destructive/10 text-destructive border border-destructive/20 uppercase",
-                                                                style === 'neo-orange' ? "rounded-[var(--radius)]" : "rounded-full"
-                                                            )}>
-                                                                {t('sales.return.returnedStatus') || 'RETURNED'}
-                                                            </span>
-                                                        )}
-                                                        {sale.system_review_status === 'flagged' && (
-                                                            <span className={cn(
-                                                                "px-2 py-0.5 text-[9px] font-bold bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-400 border border-orange-200 dark:border-orange-500/30 uppercase flex items-center gap-1",
-                                                                style === 'neo-orange' ? "rounded-[var(--radius)]" : "rounded-full"
-                                                            )}>
-                                                                ⚠️ {t('sales.flagged') || 'FLAGGED'}
-                                                            </span>
-                                                        )}
-                                                        {hasAnyReturn && !isFullyReturned && (
-                                                            <span className={cn(
-                                                                "px-2 py-0.5 text-[9px] font-bold bg-orange-500/10 text-orange-600 border border-orange-500/20 uppercase",
-                                                                style === 'neo-orange' ? "rounded-[var(--radius)]" : "rounded-full"
-                                                            )}>
-                                                                -{totalReturnedQuantity} {t('sales.return.returnedLabel') || 'returned'}
-                                                            </span>
-                                                        )}
-                                                        <span className={cn(
-                                                            "px-2 py-0.5 text-[9px] font-bold bg-secondary text-secondary-foreground uppercase",
-                                                            style === 'neo-orange' ? "rounded-[var(--radius)] border border-black dark:border-white" : "rounded-full"
-                                                        )}>
-                                                            {sale.origin}
-                                                        </span>
-                                                    </div>
-                                                </div>
-                                                <div className="text-sm font-bold text-foreground/80">
-                                                    {t('sales.cashier')}: <span className="text-primary font-black">{sale.cashier_name}</span>
-                                                </div>
-                                            </div>
-                                            <div className="text-right">
-                                                <div className="text-xl font-black text-primary leading-none">
-                                                    {formatCurrency(getEffectiveTotal(sale), sale.settlement_currency || 'usd', features.iqd_display_preference)}
-                                                </div>
-                                                <div className="text-[10px] font-bold text-primary/40 uppercase tracking-widest mt-1">
-                                                    {sale.settlement_currency || 'usd'}
-                                                </div>
-                                            </div>
-                                        </div>
+                    <div className="flex flex-wrap items-center gap-3">
+                        <DateRangeFilters />
 
-                                        <div className="flex items-center justify-between pt-3 border-t border-border/50 gap-2">
-                                            <div className="flex gap-2">
-                                                <Button
-                                                    variant="secondary"
-                                                    size="sm"
-                                                    className={cn(
-                                                        "h-10 px-4 font-bold flex gap-2",
-                                                        style === 'neo-orange' ? "rounded-[var(--radius)] neo-border shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]" : "rounded-xl"
-                                                    )}
-                                                    onClick={() => setSelectedSale(sale)}
-                                                >
-                                                    <Eye className="w-4 h-4" />
-                                                    {t('common.view')}
-                                                </Button>
-                                                <Button
-                                                    variant="outline"
-                                                    size="icon"
-                                                    className={cn(
-                                                        "h-10 w-10",
-                                                        style === 'neo-orange' ? "rounded-[var(--radius)] neo-border shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]" : "rounded-xl"
-                                                    )}
-                                                    onClick={() => onPrintClick(sale)}
-                                                >
-                                                    <Printer className="w-4 h-4" />
-                                                </Button>
-                                                <Button
-                                                    variant="outline"
-                                                    size="icon"
-                                                    className={cn(
-                                                        "h-10 w-10",
-                                                        style === 'neo-orange' ? "rounded-[var(--radius)] neo-border shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]" : "rounded-xl",
-                                                        sale.notes && "text-primary bg-primary/5 border-primary/20"
-                                                    )}
-                                                    onClick={() => {
-                                                        setSelectedSaleForNote(sale)
-                                                        setIsNoteModalOpen(true)
-                                                    }}
-                                                >
-                                                    <StickyNote className={cn("w-4 h-4", sale.notes && "fill-primary/20")} />
-                                                </Button>
-                                            </div>
-                                            <div className="flex gap-1">
-                                                {!isFullyReturned && (user?.role === 'admin' || user?.role === 'staff') && (
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="icon"
-                                                        className={cn(
-                                                            "h-10 w-10 text-orange-600 hover:bg-orange-50",
-                                                            style === 'neo-orange' ? "rounded-[var(--radius)] border-2 border-orange-600 shadow-[2px_2px_0px_0px_rgba(234,88,12,0.5)]" : "rounded-xl"
-                                                        )}
-                                                        onClick={() => handleReturnSale(sale)}
-                                                    >
-                                                        <RotateCcw className="w-4 h-4" />
-                                                    </Button>
-                                                )}
-                                                {user?.role === 'admin' && (
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="icon"
-                                                        className={cn(
-                                                            "h-10 w-10 text-destructive hover:bg-destructive/5",
-                                                            style === 'neo-orange' ? "rounded-[var(--radius)] border-2 border-destructive shadow-[2px_2px_0px_0px_rgba(0,0,0,0.2)]" : "rounded-xl"
-                                                        )}
-                                                        onClick={() => handleDeleteSale(sale)}
-                                                    >
-                                                        <Trash2 className="w-4 h-4" />
-                                                    </Button>
-                                                )}
-                                            </div>
-                                        </div>
-                                    </div>
-                                )
-                            })}
+                        {availableCashiers.length > 0 && (
+                            <div className={cn(
+                                "flex flex-col gap-1 bg-secondary/30 p-2 px-3 border min-w-[140px]",
+                                style === 'neo-orange' ? "rounded-[var(--radius)] border-black dark:border-white" : "rounded-xl border-border/40 backdrop-blur-md shadow-sm"
+                            )}>
+                                <div className="flex items-center gap-2">
+                                    <Filter className="w-3 h-3 text-muted-foreground/70" />
+                                    <span className="text-[9px] uppercase font-black tracking-tighter text-muted-foreground/60 whitespace-nowrap">
+                                        {t('sales.filters.cashier') || 'Filter By Cashier'}
+                                    </span>
+                                </div>
+                                <Select value={selectedCashier} onValueChange={setSelectedCashier}>
+                                    <SelectTrigger className="h-7 text-[11px] w-full bg-background/40 border-none focus-visible:ring-1 focus-visible:ring-primary/30 transition-all font-medium">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all">
+                                            {t('sales.filters.allCashiers') || 'All Cashiers'}
+                                        </SelectItem>
+                                        {availableCashiers.map((cashier) => (
+                                            <SelectItem key={cashier.id} value={cashier.id}>
+                                                {cashier.name || 'Unknown'}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                <Card className={cn(
+                    "overflow-hidden backdrop-blur-sm",
+                    style === 'neo-orange' ? "border-2 border-black dark:border-white bg-card" : "border-border/50 bg-card/50"
+                )}>
+                    <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between space-y-0 gap-4 pb-4">
+                        <div className="flex flex-col gap-1">
+                            <CardTitle>{t('sales.listTitle') || 'Recent Sales'}</CardTitle>
+                            {totalCount > 0 && (
+                                <p className="text-[10px] text-muted-foreground font-black uppercase tracking-[0.2em] opacity-70">
+                                    {t('sales.pagination.total', { count: totalCount }) || `${totalCount} Sales Found`}
+                                </p>
+                            )}
                         </div>
-                    ) : (
-                        <Table>
-                            <TableHeader>
-                                <TableRow>
-                                    <TableHead className="w-[80px]">{t('sales.id') || '#'}</TableHead>
-                                    <TableHead className="text-start">{t('sales.date') || 'Date'}</TableHead>
-                                    <TableHead className="text-start">{t('sales.cashier') || 'Cashier'}</TableHead>
-                                    <TableHead className="text-start">{t('sales.origin') || 'Origin'}</TableHead>
-                                    <TableHead className="text-start">{t('sales.notes.title') || 'Notes'}</TableHead>
-                                    <TableHead className="text-end">{t('sales.total') || 'Total'}</TableHead>
-                                    <TableHead className="text-end">{t('common.actions')}</TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
+                        <div className="flex flex-col sm:flex-row items-center gap-4">
+                            <AppPagination
+                                currentPage={currentPage}
+                                totalCount={totalCount}
+                                pageSize={pageSize}
+                                onPageChange={setCurrentPage}
+                                className="w-auto"
+                            />
+                            <Button
+                                onClick={() => setIsExportModalOpen(true)}
+                                disabled={sales.length === 0}
+                                className={cn(
+                                    "h-10 px-6 font-black transition-all flex gap-3 items-center group relative overflow-hidden",
+                                    style === 'neo-orange'
+                                        ? "rounded-[var(--radius)] bg-emerald-500 text-black border-2 border-black dark:border-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-none translate-y-[-2px] active:translate-y-0"
+                                        : "rounded-full bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-100 dark:border-emerald-500/20 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-500/20 hover:shadow-[0_0_20px_-5px_rgba(16,185,129,0.3)] hover:scale-[1.02] active:scale-95",
+                                    "uppercase tracking-widest text-[10px]"
+                                )}
+                            >
+                                <FileSpreadsheet className="w-4 h-4 transition-transform group-hover:rotate-12" />
+                                <span className="hidden sm:inline">
+                                    {t('sales.export.button')}
+                                </span>
+                                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 dark:via-white/5 to-transparent -translate-x-full group-hover:animate-shimmer" />
+                            </Button>
+                        </div>
+                    </CardHeader>
+                    <CardContent>
+                        {isLoading ? (
+                            <div className="flex justify-center py-8">
+                                <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+                            </div>
+                        ) : sales.length === 0 ? (
+                            <div className="text-center py-8 text-muted-foreground">
+                                {t('common.noData')}
+                            </div>
+                        ) : (isMobile() || viewMode === 'grid') ? (
+                            <div className={cn(
+                                "grid gap-4",
+                                viewMode === 'grid' && !isMobile() ? "grid-cols-1 lg:grid-cols-2 xl:grid-cols-3" : "grid-cols-1"
+                            )}>
                                 {sales.map((sale) => {
                                     const isFullyReturned = sale.is_returned || (sale.items && sale.items.length > 0 && sale.items.every((item: SaleItem) =>
                                         item.is_returned || (item.returned_quantity || 0) >= item.quantity
@@ -918,251 +816,494 @@ export function Sales() {
                                         return sum
                                     }, 0) || 0
                                     const hasAnyReturn = returnedItemsCount > 0 || partialReturnedItemsCount > 0
+                                    const loanIndicator = getLoanIndicator(sale)
 
                                     return (
-                                        <TableRow
+                                        <div
                                             key={sale.id}
-                                            className={isFullyReturned ? 'bg-destructive/10 border-destructive/20' : hasAnyReturn ? 'bg-orange-500/10 border-orange-500/20 dark:bg-orange-500/5 dark:border-orange-500/10' : ''}
+                                            className={cn(
+                                                "p-4 border shadow-sm space-y-4 transition-all active:scale-[0.98]",
+                                                style === 'neo-orange' ? "rounded-[var(--radius)] border-2 border-black dark:border-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]" : "rounded-[2rem] md:rounded-2xl border-border",
+                                                isFullyReturned ? 'bg-destructive/5 border-destructive/20' : hasAnyReturn ? 'bg-orange-500/5' : 'bg-card'
+                                            )}
                                         >
-                                            <TableCell className="font-mono text-sm font-bold text-primary">
-                                                {sale.sequenceId ? (
-                                                    <span>#{String(sale.sequenceId).padStart(5, '0')}</span>
-                                                ) : (
-                                                    <span className="text-muted-foreground/40 text-xs">#{sale.id.slice(0, 4)}...</span>
-                                                )}
-                                            </TableCell>
-                                            <TableCell className="text-start font-mono text-sm">
-                                                <div className="flex flex-col gap-1">
-                                                    <span className="text-muted-foreground">
-                                                        {formatDateTime(sale.created_at)}
-                                                    </span>
-                                                    <div className="flex items-center gap-2">
-                                                        {isFullyReturned && (
-                                                            <span className={cn(
-                                                                "px-2 py-0.5 text-[10px] font-bold bg-destructive/20 text-destructive dark:bg-destructive/30 dark:text-destructive-foreground border border-destructive/30",
-                                                                style === 'neo-orange' ? "rounded-[var(--radius)]" : "rounded-full"
-                                                            )}>
-                                                                {(t('sales.return.returnedStatus') || 'RETURNED').toUpperCase()}
+                                            <div className="flex justify-between items-start">
+                                                <div className="space-y-2">
+                                                    <div className="flex flex-col gap-1">
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="text-[10px] font-mono font-bold text-muted-foreground uppercase tracking-wider">
+                                                                {formatCompactDateTime(sale.created_at)}
                                                             </span>
-                                                        )}
-                                                        {sale.system_review_status === 'flagged' && (
+                                                            {sale.sequenceId ? (
+                                                                <span className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-primary/10 text-primary rounded border border-primary/20">
+                                                                    #{String(sale.sequenceId).padStart(5, '0')}
+                                                                </span>
+                                                            ) : (
+                                                                <span className="text-[10px] text-muted-foreground/50 font-mono">
+                                                                    #{sale.id.slice(0, 8)}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        <div className="flex flex-wrap gap-1.5">
+                                                            {isFullyReturned && (
+                                                                <span className={cn(
+                                                                    "px-2 py-0.5 text-[9px] font-bold bg-destructive/10 text-destructive border border-destructive/20 uppercase",
+                                                                    style === 'neo-orange' ? "rounded-[var(--radius)]" : "rounded-full"
+                                                                )}>
+                                                                    {t('sales.return.returnedStatus') || 'RETURNED'}
+                                                                </span>
+                                                            )}
+                                                            {sale.system_review_status === 'flagged' && (
+                                                                <span className={cn(
+                                                                    "px-2 py-0.5 text-[9px] font-bold bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-400 border border-orange-200 dark:border-orange-500/30 uppercase flex items-center gap-1",
+                                                                    style === 'neo-orange' ? "rounded-[var(--radius)]" : "rounded-full"
+                                                                )}>
+                                                                    ⚠️ {t('sales.flagged') || 'FLAGGED'}
+                                                                </span>
+                                                            )}
+                                                            {hasAnyReturn && !isFullyReturned && (
+                                                                <span className={cn(
+                                                                    "px-2 py-0.5 text-[9px] font-bold bg-orange-500/10 text-orange-600 border border-orange-500/20 uppercase",
+                                                                    style === 'neo-orange' ? "rounded-[var(--radius)]" : "rounded-full"
+                                                                )}>
+                                                                    -{totalReturnedQuantity} {t('sales.return.returnedLabel') || 'returned'}
+                                                                </span>
+                                                            )}
                                                             <span className={cn(
-                                                                "px-2 py-0.5 text-[10px] font-bold bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-400 border border-orange-200 dark:border-orange-500/30 flex items-center gap-1",
-                                                                style === 'neo-orange' ? "rounded-[var(--radius)]" : "rounded-full"
-                                                            )} title={sale.system_review_reason || ''}>
-                                                                ⚠️ {(t('sales.flagged') || 'FLAGGED').toUpperCase()}
-                                                            </span>
-                                                        )}
-                                                        {hasAnyReturn && !isFullyReturned && (
-                                                            <div className={cn(
-                                                                "inline-flex items-center px-2.5 py-0.5 text-xs font-medium bg-orange-100 text-orange-800 dark:bg-orange-500/20 dark:text-orange-400 border border-orange-200 dark:border-orange-500/30",
-                                                                style === 'neo-orange' ? "rounded-[var(--radius)]" : "rounded-full"
+                                                                "px-2 py-0.5 text-[9px] font-bold bg-secondary text-secondary-foreground uppercase",
+                                                                style === 'neo-orange' ? "rounded-[var(--radius)] border border-black dark:border-white" : "rounded-full"
                                                             )}>
-                                                                -{totalReturnedQuantity} {t('sales.return.returnedLabel') || 'returned'}
-                                                            </div>
-                                                        )}
+                                                                {sale.origin}
+                                                            </span>
+                                                            {loanIndicator && (
+                                                                <Tooltip>
+                                                                    <TooltipTrigger asChild>
+                                                                        {loanIndicator.loan ? (
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={(e) => {
+                                                                                    e.stopPropagation()
+                                                                                    setLocation(`/loans/${loanIndicator.loan!.id}`)
+                                                                                }}
+                                                                                className={cn(
+                                                                                    "px-2 py-0.5 text-[9px] font-bold uppercase transition-colors hover:brightness-95",
+                                                                                    getLoanStatusChipClass(loanIndicator.status, style === 'neo-orange')
+                                                                                )}
+                                                                            >
+                                                                                {loanIndicator.label}
+                                                                            </button>
+                                                                        ) : (
+                                                                            <span
+                                                                                className={cn(
+                                                                                    "px-2 py-0.5 text-[9px] font-bold uppercase",
+                                                                                    getLoanStatusChipClass(loanIndicator.status, style === 'neo-orange')
+                                                                                )}
+                                                                            >
+                                                                                {loanIndicator.label}
+                                                                            </span>
+                                                                        )}
+                                                                    </TooltipTrigger>
+                                                                    <TooltipContent className="text-xs">
+                                                                        {loanIndicator.tooltipText}
+                                                                    </TooltipContent>
+                                                                </Tooltip>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                    <div className="text-sm font-bold text-foreground/80">
+                                                        {t('sales.cashier')}: <span className="text-primary font-black">{sale.cashier_name}</span>
                                                     </div>
                                                 </div>
-                                            </TableCell>
-                                            <TableCell className="text-start">
-                                                {sale.cashier_name}
-                                            </TableCell>
-                                            <TableCell className="text-start">
-                                                <span className={cn(
-                                                    "px-2 py-1 text-xs font-medium bg-secondary text-secondary-foreground uppercase",
-                                                    style === 'neo-orange' ? "rounded-[var(--radius)] border border-black dark:border-white" : "rounded-full"
-                                                )}>
-                                                    {sale.origin}
-                                                </span>
-                                            </TableCell>
-                                            <TableCell className="text-start">
-                                                <Button
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    onClick={() => {
-                                                        setSelectedSaleForNote(sale)
-                                                        setIsNoteModalOpen(true)
-                                                    }}
-                                                    className={cn(
-                                                        "text-xs font-medium h-8 px-3 rounded-lg flex items-center gap-2 transition-all",
-                                                        sale.notes
-                                                            ? "bg-primary/5 text-primary hover:bg-primary/10 border border-primary/20"
-                                                            : "text-muted-foreground hover:bg-muted"
-                                                    )}
-                                                >
-                                                    <StickyNote className={cn("w-3.5 h-3.5", sale.notes ? "fill-primary/20" : "")} />
-                                                    {sale.notes ? (t('sales.notes.viewNote') || 'View Notes..') : (t('sales.notes.addNote') || 'Add Note')}
-                                                </Button>
-                                            </TableCell>
+                                                <div className="text-right">
+                                                    <div className="text-xl font-black text-primary leading-none">
+                                                        {formatCurrency(getEffectiveTotal(sale), sale.settlement_currency || 'usd', features.iqd_display_preference)}
+                                                    </div>
+                                                    <div className="text-[10px] font-bold text-primary/40 uppercase tracking-widest mt-1">
+                                                        {sale.settlement_currency || 'usd'}
+                                                    </div>
+                                                </div>
+                                            </div>
 
-                                            <TableCell className="text-end font-bold">
-                                                {formatCurrency(getEffectiveTotal(sale), sale.settlement_currency || 'usd', features.iqd_display_preference)}
-                                            </TableCell>
-                                            <TableCell className="text-end">
-                                                <Button
-                                                    variant="ghost"
-                                                    size="icon"
-                                                    onClick={() => setSelectedSale(sale)}
-                                                    title={t('sales.details') || "View Details"}
-                                                >
-                                                    <Eye className="w-4 h-4" />
-                                                </Button>
-                                                <Button
-                                                    variant="ghost"
-                                                    size="icon"
-                                                    onClick={() => onPrintClick(sale)}
-                                                    title={t('common.print') || "Print Receipt"}
-                                                >
-                                                    <Printer className="w-4 h-4" />
-                                                </Button>
-                                                {!sale.is_returned && (user?.role === 'admin' || user?.role === 'staff') && (
+                                            <div className="flex items-center justify-between pt-3 border-t border-border/50 gap-2">
+                                                <div className="flex gap-2">
                                                     <Button
-                                                        variant="ghost"
-                                                        size="icon"
-                                                        onClick={() => handleReturnSale(sale)}
-                                                        title={t('sales.return') || "Return Sale"}
-                                                        className="text-orange-600 hover:text-orange-700 hover:bg-orange-50"
+                                                        variant="secondary"
+                                                        size="sm"
+                                                        className={cn(
+                                                            "h-10 px-4 font-bold flex gap-2",
+                                                            style === 'neo-orange' ? "rounded-[var(--radius)] neo-border shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]" : "rounded-xl"
+                                                        )}
+                                                        onClick={() => setSelectedSale(sale)}
                                                     >
-                                                        <RotateCcw className="w-4 h-4" />
+                                                        <Eye className="w-4 h-4" />
+                                                        {t('common.view')}
                                                     </Button>
-                                                )}
-                                                {user?.role === 'admin' && (
                                                     <Button
-                                                        variant="ghost"
+                                                        variant="outline"
                                                         size="icon"
-                                                        className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                                                        onClick={() => handleDeleteSale(sale)}
+                                                        className={cn(
+                                                            "h-10 w-10",
+                                                            style === 'neo-orange' ? "rounded-[var(--radius)] neo-border shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]" : "rounded-xl"
+                                                        )}
+                                                        onClick={() => onPrintClick(sale)}
                                                     >
-                                                        <Trash2 className="w-4 h-4" />
+                                                        <Printer className="w-4 h-4" />
                                                     </Button>
-                                                )}
-                                                {/* Return badge moved to date cell */}
-                                            </TableCell>
-                                        </TableRow>
+                                                    <Button
+                                                        variant="outline"
+                                                        size="icon"
+                                                        className={cn(
+                                                            "h-10 w-10",
+                                                            style === 'neo-orange' ? "rounded-[var(--radius)] neo-border shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]" : "rounded-xl",
+                                                            sale.notes && "text-primary bg-primary/5 border-primary/20"
+                                                        )}
+                                                        onClick={() => {
+                                                            setSelectedSaleForNote(sale)
+                                                            setIsNoteModalOpen(true)
+                                                        }}
+                                                    >
+                                                        <StickyNote className={cn("w-4 h-4", sale.notes && "fill-primary/20")} />
+                                                    </Button>
+                                                </div>
+                                                <div className="flex gap-1">
+                                                    {!isFullyReturned && (user?.role === 'admin' || user?.role === 'staff') && (
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            className={cn(
+                                                                "h-10 w-10 text-orange-600 hover:bg-orange-50",
+                                                                style === 'neo-orange' ? "rounded-[var(--radius)] border-2 border-orange-600 shadow-[2px_2px_0px_0px_rgba(234,88,12,0.5)]" : "rounded-xl"
+                                                            )}
+                                                            onClick={() => handleReturnSale(sale)}
+                                                        >
+                                                            <RotateCcw className="w-4 h-4" />
+                                                        </Button>
+                                                    )}
+                                                    {user?.role === 'admin' && (
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            className={cn(
+                                                                "h-10 w-10 text-destructive hover:bg-destructive/5",
+                                                                style === 'neo-orange' ? "rounded-[var(--radius)] border-2 border-destructive shadow-[2px_2px_0px_0px_rgba(0,0,0,0.2)]" : "rounded-xl"
+                                                            )}
+                                                            onClick={() => handleDeleteSale(sale)}
+                                                        >
+                                                            <Trash2 className="w-4 h-4" />
+                                                        </Button>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
                                     )
                                 })}
-                            </TableBody>
-                        </Table>
-                    )}
-                </CardContent>
-            </Card>
+                            </div>
+                        ) : (
+                            <Table>
+                                <TableHeader>
+                                    <TableRow>
+                                        <TableHead className="w-[80px]">{t('sales.id') || '#'}</TableHead>
+                                        <TableHead className="text-start">{t('sales.date') || 'Date'}</TableHead>
+                                        <TableHead className="text-start">{t('sales.cashier') || 'Cashier'}</TableHead>
+                                        <TableHead className="text-start">{t('sales.origin') || 'Origin'}</TableHead>
+                                        <TableHead className="text-start">{t('sales.notes.title') || 'Notes'}</TableHead>
+                                        <TableHead className="text-end">{t('sales.total') || 'Total'}</TableHead>
+                                        <TableHead className="text-end">{t('common.actions')}</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {sales.map((sale) => {
+                                        const isFullyReturned = sale.is_returned || (sale.items && sale.items.length > 0 && sale.items.every((item: SaleItem) =>
+                                            item.is_returned || (item.returned_quantity || 0) >= item.quantity
+                                        ))
+                                        const returnedItemsCount = sale.items?.filter((item: SaleItem) => item.is_returned).length || 0
+                                        const partialReturnedItemsCount = sale.items?.filter((item: SaleItem) => (item.returned_quantity || 0) > 0 && !item.is_returned).length || 0
+                                        const totalReturnedQuantity = sale.items?.reduce((sum: number, item: SaleItem) => {
+                                            if (item.is_returned) return sum + (item.quantity || 0)
+                                            if ((item.returned_quantity || 0) > 0) return sum + (item.returned_quantity || 0)
+                                            return sum
+                                        }, 0) || 0
+                                        const hasAnyReturn = returnedItemsCount > 0 || partialReturnedItemsCount > 0
+                                        const loanIndicator = getLoanIndicator(sale)
 
-            {/* Sale Details Modal */}
-            <SaleDetailsModal
-                isOpen={!!selectedSale}
-                onClose={() => setSelectedSale(null)}
-                sale={selectedSale}
-                onReturnItem={handleReturnItem}
-                onReturnSale={handleReturnSale}
-                onDownloadInvoice={onPrintClick}
-            />
+                                        return (
+                                            <TableRow
+                                                key={sale.id}
+                                                className={isFullyReturned ? 'bg-destructive/10 border-destructive/20' : hasAnyReturn ? 'bg-orange-500/10 border-orange-500/20 dark:bg-orange-500/5 dark:border-orange-500/10' : ''}
+                                            >
+                                                <TableCell className="font-mono text-sm font-bold text-primary">
+                                                    {sale.sequenceId ? (
+                                                        <span>#{String(sale.sequenceId).padStart(5, '0')}</span>
+                                                    ) : (
+                                                        <span className="text-muted-foreground/40 text-xs">#{sale.id.slice(0, 4)}...</span>
+                                                    )}
+                                                </TableCell>
+                                                <TableCell className="text-start font-mono text-sm">
+                                                    <div className="flex flex-col gap-1">
+                                                        <span className="text-muted-foreground">
+                                                            {formatDateTime(sale.created_at)}
+                                                        </span>
+                                                        <div className="flex items-center gap-2">
+                                                            {isFullyReturned && (
+                                                                <span className={cn(
+                                                                    "px-2 py-0.5 text-[10px] font-bold bg-destructive/20 text-destructive dark:bg-destructive/30 dark:text-destructive-foreground border border-destructive/30",
+                                                                    style === 'neo-orange' ? "rounded-[var(--radius)]" : "rounded-full"
+                                                                )}>
+                                                                    {(t('sales.return.returnedStatus') || 'RETURNED').toUpperCase()}
+                                                                </span>
+                                                            )}
+                                                            {sale.system_review_status === 'flagged' && (
+                                                                <span className={cn(
+                                                                    "px-2 py-0.5 text-[10px] font-bold bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-400 border border-orange-200 dark:border-orange-500/30 flex items-center gap-1",
+                                                                    style === 'neo-orange' ? "rounded-[var(--radius)]" : "rounded-full"
+                                                                )} title={sale.system_review_reason || ''}>
+                                                                    ⚠️ {(t('sales.flagged') || 'FLAGGED').toUpperCase()}
+                                                                </span>
+                                                            )}
+                                                            {hasAnyReturn && !isFullyReturned && (
+                                                                <div className={cn(
+                                                                    "inline-flex items-center px-2.5 py-0.5 text-xs font-medium bg-orange-100 text-orange-800 dark:bg-orange-500/20 dark:text-orange-400 border border-orange-200 dark:border-orange-500/30",
+                                                                    style === 'neo-orange' ? "rounded-[var(--radius)]" : "rounded-full"
+                                                                )}>
+                                                                    -{totalReturnedQuantity} {t('sales.return.returnedLabel') || 'returned'}
+                                                                </div>
+                                                            )}
+                                                            {loanIndicator && (
+                                                                <Tooltip>
+                                                                    <TooltipTrigger asChild>
+                                                                        {loanIndicator.loan ? (
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={(e) => {
+                                                                                    e.stopPropagation()
+                                                                                    setLocation(`/loans/${loanIndicator.loan!.id}`)
+                                                                                }}
+                                                                                className={cn(
+                                                                                    "px-2 py-0.5 text-[10px] font-bold uppercase transition-colors hover:brightness-95",
+                                                                                    getLoanStatusChipClass(loanIndicator.status, style === 'neo-orange')
+                                                                                )}
+                                                                            >
+                                                                                {loanIndicator.label}
+                                                                            </button>
+                                                                        ) : (
+                                                                            <span
+                                                                                className={cn(
+                                                                                    "px-2 py-0.5 text-[10px] font-bold uppercase",
+                                                                                    getLoanStatusChipClass(loanIndicator.status, style === 'neo-orange')
+                                                                                )}
+                                                                            >
+                                                                                {loanIndicator.label}
+                                                                            </span>
+                                                                        )}
+                                                                    </TooltipTrigger>
+                                                                    <TooltipContent className="text-xs">
+                                                                        {loanIndicator.tooltipText}
+                                                                    </TooltipContent>
+                                                                </Tooltip>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                </TableCell>
+                                                <TableCell className="text-start">
+                                                    {sale.cashier_name}
+                                                </TableCell>
+                                                <TableCell className="text-start">
+                                                    <span className={cn(
+                                                        "px-2 py-1 text-xs font-medium bg-secondary text-secondary-foreground uppercase",
+                                                        style === 'neo-orange' ? "rounded-[var(--radius)] border border-black dark:border-white" : "rounded-full"
+                                                    )}>
+                                                        {sale.origin}
+                                                    </span>
+                                                </TableCell>
+                                                <TableCell className="text-start">
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        onClick={() => {
+                                                            setSelectedSaleForNote(sale)
+                                                            setIsNoteModalOpen(true)
+                                                        }}
+                                                        className={cn(
+                                                            "text-xs font-medium h-8 px-3 rounded-lg flex items-center gap-2 transition-all",
+                                                            sale.notes
+                                                                ? "bg-primary/5 text-primary hover:bg-primary/10 border border-primary/20"
+                                                                : "text-muted-foreground hover:bg-muted"
+                                                        )}
+                                                    >
+                                                        <StickyNote className={cn("w-3.5 h-3.5", sale.notes ? "fill-primary/20" : "")} />
+                                                        {sale.notes ? (t('sales.notes.viewNote') || 'View Notes..') : (t('sales.notes.addNote') || 'Add Note')}
+                                                    </Button>
+                                                </TableCell>
 
-            {/* Return Decline Modal */}
-            <ReturnDeclineModal
-                isOpen={showDeclineModal}
-                onClose={() => {
-                    setShowDeclineModal(false)
-                    setFilteredReturnItems([])
-                    setSaleToReturn(null)
-                }}
-                products={nonReturnableProducts}
-                returnableProducts={filteredReturnItems.map(item => item.product?.name || item.product_name || 'Product')}
-                onContinue={filteredReturnItems.length > 0 ? () => {
-                    if (saleToReturn) {
-                        finalizeReturn(saleToReturn, filteredReturnItems, isWholeSaleReturn, true)
-                    }
-                } : undefined}
-            />
+                                                <TableCell className="text-end font-bold">
+                                                    {formatCurrency(getEffectiveTotal(sale), sale.settlement_currency || 'usd', features.iqd_display_preference)}
+                                                </TableCell>
+                                                <TableCell className="text-end">
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        onClick={() => setSelectedSale(sale)}
+                                                        title={t('sales.details') || "View Details"}
+                                                    >
+                                                        <Eye className="w-4 h-4" />
+                                                    </Button>
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        onClick={() => onPrintClick(sale)}
+                                                        title={t('common.print') || "Print Receipt"}
+                                                    >
+                                                        <Printer className="w-4 h-4" />
+                                                    </Button>
+                                                    {!sale.is_returned && (user?.role === 'admin' || user?.role === 'staff') && (
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            onClick={() => handleReturnSale(sale)}
+                                                            title={t('sales.return') || "Return Sale"}
+                                                            className="text-orange-600 hover:text-orange-700 hover:bg-orange-50"
+                                                        >
+                                                            <RotateCcw className="w-4 h-4" />
+                                                        </Button>
+                                                    )}
+                                                    {user?.role === 'admin' && (
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                                                            onClick={() => handleDeleteSale(sale)}
+                                                        >
+                                                            <Trash2 className="w-4 h-4" />
+                                                        </Button>
+                                                    )}
+                                                    {/* Return badge moved to date cell */}
+                                                </TableCell>
+                                            </TableRow>
+                                        )
+                                    })}
+                                </TableBody>
+                            </Table>
+                        )}
+                    </CardContent>
+                </Card>
 
-            {/* Return Rules Sequence */}
-            {rulesQueue.length > 0 && currentRuleIndex >= 0 && (
-                <ReturnRulesDisplayModal
-                    isOpen={true}
-                    onClose={handleCancelRules}
-                    productName={rulesQueue[currentRuleIndex].productName}
-                    rules={rulesQueue[currentRuleIndex].rules}
-                    isLast={currentRuleIndex === rulesQueue.length - 1}
-                    onContinue={handleNextRule}
-                    onBack={handleBackRule}
-                    showBack={currentRuleIndex > 0}
+                {/* Sale Details Modal */}
+                <SaleDetailsModal
+                    isOpen={!!selectedSale}
+                    onClose={() => setSelectedSale(null)}
+                    sale={selectedSale}
+                    onReturnItem={handleReturnItem}
+                    onReturnSale={handleReturnSale}
+                    onDownloadInvoice={onPrintClick}
                 />
-            )}
 
-            {/* Return Confirmation Modal */}
-            <ReturnConfirmationModal
-                isOpen={returnModalOpen}
-                onClose={() => setReturnModalOpen(false)}
-                onConfirm={handleReturnConfirm}
-                title={saleToReturn ? t('sales.return.confirmTitle') || 'Return Sale' : ''}
-                message={saleToReturn ? (t('sales.return.confirmMessage') || 'Are you sure you want to return this sale?') : ''}
-                isItemReturn={saleToReturn?.items?.length === 1 && saleToReturn?.items?.[0]?.quantity > 1 && selectedSale?.items?.filter(i => i.product_id === saleToReturn?.items?.[0]?.product_id).length === 1}
-                maxQuantity={saleToReturn?.items?.[0]?.quantity || 1}
-                itemName={saleToReturn?.items?.[0]?.product_name || ''}
-            />
+                {/* Return Decline Modal */}
+                <ReturnDeclineModal
+                    isOpen={showDeclineModal}
+                    onClose={() => {
+                        setShowDeclineModal(false)
+                        setFilteredReturnItems([])
+                        setSaleToReturn(null)
+                    }}
+                    products={nonReturnableProducts}
+                    returnableProducts={filteredReturnItems.map(item => item.product?.name || item.product_name || 'Product')}
+                    onContinue={filteredReturnItems.length > 0 ? () => {
+                        if (saleToReturn) {
+                            finalizeReturn(saleToReturn, filteredReturnItems, isWholeSaleReturn, true)
+                        }
+                    } : undefined}
+                />
 
-            {/* Sales Note Modal */}
-            <SalesNoteModal
-                isOpen={isNoteModalOpen}
-                onClose={() => {
-                    setIsNoteModalOpen(false)
-                    setSelectedSaleForNote(null)
-                }}
-                sale={selectedSaleForNote}
-                onSave={handleSaveNote}
-            />
+                {/* Return Rules Sequence */}
+                {rulesQueue.length > 0 && currentRuleIndex >= 0 && (
+                    <ReturnRulesDisplayModal
+                        isOpen={true}
+                        onClose={handleCancelRules}
+                        productName={rulesQueue[currentRuleIndex].productName}
+                        rules={rulesQueue[currentRuleIndex].rules}
+                        isLast={currentRuleIndex === rulesQueue.length - 1}
+                        onContinue={handleNextRule}
+                        onBack={handleBackRule}
+                        showBack={currentRuleIndex > 0}
+                    />
+                )}
 
-            <ExportPreviewModal
-                isOpen={isExportModalOpen}
-                onClose={() => setIsExportModalOpen(false)}
-                filters={{
-                    dateRange,
-                    customDates,
-                    selectedCashier
-                }}
-            />
+                {/* Return Confirmation Modal */}
+                <ReturnConfirmationModal
+                    isOpen={returnModalOpen}
+                    onClose={() => setReturnModalOpen(false)}
+                    onConfirm={handleReturnConfirm}
+                    title={saleToReturn ? t('sales.return.confirmTitle') || 'Return Sale' : ''}
+                    message={saleToReturn ? (t('sales.return.confirmMessage') || 'Are you sure you want to return this sale?') : ''}
+                    isItemReturn={saleToReturn?.items?.length === 1 && saleToReturn?.items?.[0]?.quantity > 1 && selectedSale?.items?.filter(i => i.product_id === saleToReturn?.items?.[0]?.product_id).length === 1}
+                    maxQuantity={saleToReturn?.items?.[0]?.quantity || 1}
+                    itemName={saleToReturn?.items?.[0]?.product_name || ''}
+                />
 
-            <PrintSelectionModal
-                isOpen={showPrintModal}
-                onClose={() => setShowPrintModal(false)}
-                onSelect={handlePrintSelection}
-            />
+                {/* Sales Note Modal */}
+                <SalesNoteModal
+                    isOpen={isNoteModalOpen}
+                    onClose={() => {
+                        setIsNoteModalOpen(false)
+                        setSelectedSaleForNote(null)
+                    }}
+                    sale={selectedSaleForNote}
+                    onSave={handleSaveNote}
+                />
 
-            <DeleteConfirmationModal
-                isOpen={deleteModalOpen}
-                onClose={() => {
-                    setDeleteModalOpen(false)
-                    setSaleToDelete(null)
-                }}
-                onConfirm={confirmDeleteSale}
-                itemName={saleToDelete ? (saleToDelete.sequenceId ? `#${String(saleToDelete.sequenceId).padStart(5, '0')}` : `#${saleToDelete.id.slice(0, 8)}`) : ''}
-                isLoading={isLoading}
-                title={t('sales.confirmDelete')}
-                description={t('sales.deleteWarning')}
-            />
+                <ExportPreviewModal
+                    isOpen={isExportModalOpen}
+                    onClose={() => setIsExportModalOpen(false)}
+                    filters={{
+                        dateRange,
+                        customDates,
+                        selectedCashier
+                    }}
+                />
 
-            {/* Print Preview Modal */}
-            <PrintPreviewModal
-                isOpen={showPrintPreview}
-                onClose={() => {
-                    setShowPrintPreview(false)
-                    setPrintingSale(null)
-                    setSaleToPrintSelection(null)
-                }}
-                onConfirm={handleConfirmPrint}
-                title={printFormat === 'a4' ? (t('sales.print.a4') || 'A4 Invoice') : (t('sales.print.receipt') || 'Receipt')}
-                features={features}
-                workspaceName={workspaceName}
-                pdfData={printingSale ? mapSaleToUniversal(printingSale) : undefined}
-                invoiceData={printingSale ? {
-                    sequenceId: printingSale.sequenceId,
-                    totalAmount: printingSale.total_amount,
-                    settlementCurrency: (printingSale.settlement_currency || 'usd') as any,
-                    origin: printingSale.origin || 'pos',
-                    cashierName: printingSale.cashier_name,
-                    createdByName: user?.name || 'Unknown',
-                    printFormat: printFormat
-                } : undefined}
-            />
-        </div>
+                <PrintSelectionModal
+                    isOpen={showPrintModal}
+                    onClose={() => setShowPrintModal(false)}
+                    onSelect={handlePrintSelection}
+                />
+
+                <DeleteConfirmationModal
+                    isOpen={deleteModalOpen}
+                    onClose={() => {
+                        setDeleteModalOpen(false)
+                        setSaleToDelete(null)
+                    }}
+                    onConfirm={confirmDeleteSale}
+                    itemName={saleToDelete ? (saleToDelete.sequenceId ? `#${String(saleToDelete.sequenceId).padStart(5, '0')}` : `#${saleToDelete.id.slice(0, 8)}`) : ''}
+                    isLoading={isLoading}
+                    title={t('sales.confirmDelete')}
+                    description={t('sales.deleteWarning')}
+                />
+
+                {/* Print Preview Modal */}
+                <PrintPreviewModal
+                    isOpen={showPrintPreview}
+                    onClose={() => {
+                        setShowPrintPreview(false)
+                        setPrintingSale(null)
+                        setSaleToPrintSelection(null)
+                    }}
+                    onConfirm={handleConfirmPrint}
+                    title={printFormat === 'a4' ? (t('sales.print.a4') || 'A4 Invoice') : (t('sales.print.receipt') || 'Receipt')}
+                    features={features}
+                    workspaceName={workspaceName}
+                    pdfData={printingSale ? mapSaleToUniversal(printingSale) : undefined}
+                    invoiceData={printingSale ? {
+                        sequenceId: printingSale.sequenceId,
+                        totalAmount: printingSale.total_amount,
+                        settlementCurrency: (printingSale.settlement_currency || 'usd') as any,
+                        origin: printingSale.origin || 'pos',
+                        cashierName: printingSale.cashier_name,
+                        createdByName: user?.name || 'Unknown',
+                        printFormat: printFormat
+                    } : undefined}
+                />
+            </div>
+        </TooltipProvider>
     )
 }

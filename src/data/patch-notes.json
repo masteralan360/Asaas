@@ -93,5 +93,32 @@
       "ar": "سلام",
       "ku": "سلاو"
     }
+  },
+  "v0.0.23": {
+    "date": "2026-02-25",
+    "highlights": {
+      "en": [
+        {
+          "type": "new",
+          "title": "new",
+          "content": ""
+        }
+      ],
+      "ar": [
+        {
+          "type": "new",
+          "title": "new",
+          "content": ""
+        }
+      ],
+      "ku": [
+        {
+          "type": "new",
+          "title": "new",
+          "content": ""
+        }
+      ]
+    },
+    "teamMessages": {}
   }
 }

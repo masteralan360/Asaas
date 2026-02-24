@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/auth'
 import { supabase } from '@/auth/supabase'
-import { addToOfflineMutations, useProducts, useCategories, useStorages, type Product, type Category, type CurrencyCode } from '@/local-db'
+import { addToOfflineMutations, createLoanFromPosSale, useProducts, useCategories, useStorages, type Product, type Category, type CurrencyCode } from '@/local-db'
 import { db } from '@/local-db/database'
 import { formatCurrency, generateId, cn } from '@/lib/utils'
 import { CartItem } from '@/types'
@@ -53,6 +53,23 @@ import { platformService } from '@/services/platformService'
 import { ExchangeRateList } from '@/ui/components' // Import ExchangeRateList
 import { CheckoutSuccessModal, HeldSalesModal, type HeldSale, StorageSelector, CrossStorageWarningModal } from '@/ui/components'
 import { mapSaleToUniversal } from '@/lib/mappings'
+import { LoanRegistrationModal, type LoanRegistrationData } from '@/ui/components/pos/LoanRegistrationModal'
+
+function isLoanRegistrationData(value: unknown): value is LoanRegistrationData {
+    if (!value || typeof value !== 'object') return false
+    const payload = value as Partial<LoanRegistrationData>
+    return (
+        typeof payload.borrowerName === 'string' &&
+        typeof payload.borrowerPhone === 'string' &&
+        typeof payload.borrowerAddress === 'string' &&
+        typeof payload.borrowerNationalId === 'string' &&
+        Number.isFinite(Number(payload.installmentCount)) &&
+        (payload.installmentFrequency === 'weekly' ||
+            payload.installmentFrequency === 'biweekly' ||
+            payload.installmentFrequency === 'monthly') &&
+        typeof payload.firstDueDate === 'string'
+    )
+}
 
 
 export function POS() {
@@ -152,8 +169,9 @@ export function POS() {
     const [negotiatedPriceInput, setNegotiatedPriceInput] = useState('')
     const isAdmin = user?.role === 'admin'
 
-    const [paymentType, setPaymentType] = useState<'cash' | 'digital'>('cash')
+    const [paymentType, setPaymentType] = useState<'cash' | 'digital' | 'loan'>('cash')
     const [digitalProvider, setDigitalProvider] = useState<'fib' | 'qicard' | 'zaincash' | 'fastpay'>('fib')
+    const [isLoanRegistrationModalOpen, setIsLoanRegistrationModalOpen] = useState(false)
 
     // Held Sales State
     const [heldSales, setHeldSales] = useState<HeldSale[]>(() => {
@@ -816,7 +834,7 @@ export function POS() {
             },
             settlementCurrency,
             paymentType,
-            digitalProvider,
+            digitalProvider: paymentType === 'digital' ? digitalProvider : undefined,
             timestamp: new Date().toISOString(),
             total: totalAmount
         }
@@ -845,8 +863,10 @@ export function POS() {
         setRestoredSale(sale)
         // Settlement currency is handled by features.default_currency, which we already use.
         // If we needed to force it, we'd need more state, but for now we assume it matches.
-        setPaymentType(sale.paymentType)
-        setDigitalProvider(sale.digitalProvider as any)
+        setPaymentType((sale.paymentType as any) || 'cash')
+        if (sale.paymentType === 'digital') {
+            setDigitalProvider((sale.digitalProvider as any) || 'fib')
+        }
         setHeldSales(prev => prev.filter(s => s.id !== sale.id))
         setIsHeldSalesModalOpen(false)
 
@@ -861,8 +881,21 @@ export function POS() {
         setHeldSales(prev => prev.filter(s => s.id !== id))
     }
 
-    const handleCheckout = async () => {
+    const handleCheckout = async (loanRegistrationData?: LoanRegistrationData) => {
         if (cart.length === 0 || !user) return
+
+        const validLoanRegistrationData = isLoanRegistrationData(loanRegistrationData)
+            ? loanRegistrationData
+            : undefined
+
+        if (paymentType === 'loan' && !validLoanRegistrationData) {
+            setIsLoanRegistrationModalOpen(true)
+            return
+        }
+
+        if (paymentType === 'loan' && validLoanRegistrationData) {
+            setIsLoanRegistrationModalOpen(false)
+        }
 
         const isMixedCurrency = cart.some(item => {
             const product = products.find(p => p.id === item.product_id)
@@ -1045,7 +1078,11 @@ export function POS() {
             exchange_rate_timestamp: snapshotTimestamp,
             exchange_rates: exchangeRatesSnapshot,
             origin: 'pos',
-            payment_method: (paymentType === 'cash' ? 'cash' : digitalProvider) as 'cash' | 'fib' | 'qicard' | 'zaincash' | 'fastpay',
+            payment_method: (paymentType === 'cash'
+                ? 'cash'
+                : paymentType === 'loan'
+                    ? 'loan'
+                    : digitalProvider) as 'cash' | 'fib' | 'qicard' | 'zaincash' | 'fastpay' | 'loan',
             // System Verification (offline-first, immutable)
             system_verified: verificationResult.verified,
             system_review_status: verificationResult.status,
@@ -1109,8 +1146,35 @@ export function POS() {
                 isDeleted: false
             })
 
+            if (paymentType === 'loan' && validLoanRegistrationData) {
+                try {
+                    await createLoanFromPosSale(user.workspaceId, {
+                        saleId,
+                        borrowerName: validLoanRegistrationData.borrowerName,
+                        borrowerPhone: validLoanRegistrationData.borrowerPhone,
+                        borrowerAddress: validLoanRegistrationData.borrowerAddress,
+                        borrowerNationalId: validLoanRegistrationData.borrowerNationalId,
+                        principalAmount: totalAmount,
+                        settlementCurrency: settlementCurrency as CurrencyCode,
+                        installmentCount: validLoanRegistrationData.installmentCount,
+                        installmentFrequency: validLoanRegistrationData.installmentFrequency,
+                        firstDueDate: validLoanRegistrationData.firstDueDate,
+                        notes: validLoanRegistrationData.notes,
+                        createdBy: user.id
+                    })
+                } catch (loanErr) {
+                    console.error('[POS] Loan registration failed after checkout:', loanErr)
+                    toast({
+                        variant: 'destructive',
+                        title: t('messages.error'),
+                        description: t('loans.messages.loanCreateFailed') || 'Loan registration failed. Sale was completed.'
+                    })
+                }
+            }
+
             setCart([])
             setDiscountValue('')
+            setIsLoanRegistrationModalOpen(false)
             setCompletedSaleData(saleData)
             setIsSuccessModalOpen(true)
 
@@ -1224,8 +1288,35 @@ export function POS() {
                         system_review_reason: verificationResult.reason
                     }, user.workspaceId)
 
+                    if (paymentType === 'loan' && validLoanRegistrationData) {
+                        try {
+                            await createLoanFromPosSale(user.workspaceId, {
+                                saleId,
+                                borrowerName: validLoanRegistrationData.borrowerName,
+                                borrowerPhone: validLoanRegistrationData.borrowerPhone,
+                                borrowerAddress: validLoanRegistrationData.borrowerAddress,
+                                borrowerNationalId: validLoanRegistrationData.borrowerNationalId,
+                                principalAmount: totalAmount,
+                                settlementCurrency: settlementCurrency as CurrencyCode,
+                                installmentCount: validLoanRegistrationData.installmentCount,
+                                installmentFrequency: validLoanRegistrationData.installmentFrequency,
+                                firstDueDate: validLoanRegistrationData.firstDueDate,
+                                notes: validLoanRegistrationData.notes,
+                                createdBy: user.id
+                            })
+                        } catch (loanErr) {
+                            console.error('[POS] Offline loan registration failed:', loanErr)
+                            toast({
+                                variant: 'destructive',
+                                title: t('messages.error'),
+                                description: t('loans.messages.loanCreateFailed') || 'Loan registration failed. Sale was completed.'
+                            })
+                        }
+                    }
+
                     setCart([])
                     setDiscountValue('')
+                    setIsLoanRegistrationModalOpen(false)
                     setCompletedSaleData(saleDataOffline)
                     setIsSuccessModalOpen(true)
                     return
@@ -1329,6 +1420,7 @@ export function POS() {
                                 setDiscountType={setDiscountType}
                                 hasTrulyMissingRates={hasTrulyMissingRates}
                                 hasLoadingRates={hasLoadingRates}
+                                t={t}
                             />
                         )}
                     </div>
@@ -1782,6 +1874,18 @@ export function POS() {
                                             <Zap className="w-3 h-3" />
                                             {t('pos.digital') || 'Digital'}
                                         </button>
+                                        <button
+                                            onClick={() => setPaymentType('loan')}
+                                            className={cn(
+                                                "px-3 py-1.5 rounded-md text-xs font-medium transition-colors flex items-center gap-1.5",
+                                                paymentType === 'loan'
+                                                    ? "bg-background shadow-sm"
+                                                    : "hover:bg-background/50"
+                                            )}
+                                        >
+                                            <Coins className="w-3 h-3" />
+                                            {t('pos.loan') || 'Loan'}
+                                        </button>
                                     </div>
                                 </div>
 
@@ -1876,7 +1980,7 @@ export function POS() {
                                 <Button
                                     size="lg"
                                     className="flex-[3] h-14 text-xl shadow-lg shadow-primary/20 rounded-2xl"
-                                    onClick={handleCheckout}
+                                    onClick={() => handleCheckout()}
                                     disabled={cart.length === 0 || isLoading || hasTrulyMissingRates}
                                 >
                                     {isLoading ? (
@@ -2133,6 +2237,14 @@ export function POS() {
                 onRestore={handleRestoreSale}
                 onDelete={handleDeleteHeldSale}
                 iqdPreference={features.iqd_display_preference}
+            />
+
+            <LoanRegistrationModal
+                isOpen={isLoanRegistrationModalOpen}
+                onOpenChange={setIsLoanRegistrationModalOpen}
+                settlementCurrency={settlementCurrency as CurrencyCode}
+                isSubmitting={isLoading}
+                onSubmit={(data) => handleCheckout(data)}
             />
 
             <CheckoutSuccessModal
@@ -2583,11 +2695,11 @@ interface MobileCartProps {
     features: WorkspaceFeatures
     totalAmount: number
     settlementCurrency: string
-    paymentType: 'cash' | 'digital'
-    setPaymentType: (t: 'cash' | 'digital') => void
+    paymentType: 'cash' | 'digital' | 'loan'
+    setPaymentType: (t: 'cash' | 'digital' | 'loan') => void
     digitalProvider: 'fib' | 'qicard' | 'zaincash' | 'fastpay'
     setDigitalProvider: (p: 'fib' | 'qicard' | 'zaincash' | 'fastpay') => void
-    handleCheckout: () => void
+    handleCheckout: (loanRegistrationData?: LoanRegistrationData) => void
     handleHoldSale: () => void
     isLoading: boolean
     getDisplayImageUrl: (url?: string) => string
@@ -2602,6 +2714,7 @@ interface MobileCartProps {
     setDiscountType: (type: 'percent' | 'amount') => void
     hasTrulyMissingRates: boolean
     hasLoadingRates: boolean
+    t: any
 }
 
 function MobileCart({
@@ -2611,7 +2724,7 @@ function MobileCart({
     getDisplayImageUrl, products, convertPrice, openPriceEdit,
     clearNegotiatedPrice, isAdmin,
     discountValue, setDiscountValue, discountType, setDiscountType,
-    hasTrulyMissingRates, hasLoadingRates
+    hasTrulyMissingRates, hasLoadingRates, t
 }: MobileCartProps) {
     const [isExpanded, setIsExpanded] = useState(false)
     const [isDragging, setIsDragging] = useState(false)
@@ -2904,6 +3017,15 @@ function MobileCart({
                             >
                                 <Zap className="w-4 h-4" /> Digital
                             </button>
+                            <button
+                                onClick={() => setPaymentType('loan')}
+                                className={cn(
+                                    "flex-1 py-3.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all",
+                                    paymentType === 'loan' ? "bg-background shadow-md text-foreground" : "text-muted-foreground opacity-60"
+                                )}
+                            >
+                                <Coins className="w-4 h-4" /> {t('pos.loan') || 'Loan'}
+                            </button>
                         </div>
 
                         {/* Digital Provider Sub-toggle */}
@@ -2997,7 +3119,7 @@ function MobileCart({
                             <div className="flex gap-2 pt-2">
                                 <Button
                                     className="flex-[4] h-14 rounded-2xl text-lg font-black shadow-xl shadow-primary/20 active:scale-95 transition-all text-primary-foreground"
-                                    onClick={handleCheckout}
+                                    onClick={() => handleCheckout()}
                                     disabled={cart.length === 0 || isLoading || hasTrulyMissingRates}
                                 >
                                     {isLoading ? <Loader2 className="animate-spin w-6 h-6" /> : (

@@ -131,6 +131,7 @@
         "invoices": "Invoices",
         "pos": "Point of Sale",
         "sales": "Sales History",
+        "loans": "Loans",
         "storages": "Storages",
         "inventoryTransfer": "Inventory Transfer",
         "suppliers": "Suppliers",
@@ -696,6 +697,7 @@
         "paymentMethod": "Payment Method",
         "digital": "Digital",
         "cash": "Cash",
+        "loan": "Loan",
         "currencyConverter": "Currency Converter",
         "netProfit": "Net Profit",
         "projectedSurplus": "Projected Net Surplus",
@@ -835,7 +837,87 @@
         "discount": "Discount",
         "grandTotal": "Total",
         "downloadInvoice": "Download Invoice",
-        "returnSale": "Return Sale"
+        "returnSale": "Return Sale",
+        "loanStatus": "Loan Status",
+        "loanPending": "Loan Pending",
+        "loanActive": "Loan Active",
+        "loanOverdue": "Loan Overdue",
+        "loanCompleted": "Loan Completed",
+        "loanBalance": "Balance",
+        "loanNextDue": "Next Due",
+        "openLoan": "Open Loan",
+        "loanPendingMessage": "Loan record pending sync/link."
+    },
+    "loans": {
+        "title": "Loans",
+        "searchPlaceholder": "Search by borrower name or loan number...",
+        "registerFromPos": "Register Loan",
+        "createManualLoan": "Create Manual Loan",
+        "borrowerIdentity": "Borrower Identity",
+        "borrower": "Borrower",
+        "borrowerName": "Borrower Name",
+        "borrowerPhone": "Borrower Phone",
+        "borrowerAddress": "Borrower Address",
+        "borrowerNationalId": "Borrower National ID",
+        "principal": "Principal",
+        "paid": "Paid",
+        "balance": "Balance",
+        "nextDue": "Next Due",
+        "dueDate": "Due Date",
+        "dueToday": "Due Today",
+        "activeLoans": "Active Loans",
+        "overdueLoans": "Overdue Loans",
+        "totalOutstanding": "Total Outstanding",
+        "loanNo": "Loan No.",
+        "source": "Source",
+        "status": "Status",
+        "recordPayment": "Record Payment",
+        "paymentAmount": "Payment Amount",
+        "adjustment": "Loan Adjustment",
+        "notes": "Notes",
+        "installmentSchedule": "Installment Schedule",
+        "installmentCount": "Installment Count",
+        "frequency": "Frequency",
+        "firstDueDate": "First Due Date",
+        "planned": "Planned",
+        "summary": "Loan Summary",
+        "recentActivity": "Recent Activity",
+        "currencyHint": "Settlement Currency",
+        "pay": "Pay",
+        "completedPercent": "completed",
+        "frequencies": {
+            "weekly": "Weekly",
+            "biweekly": "Biweekly",
+            "monthly": "Monthly"
+        },
+        "filters": {
+            "all": "All",
+            "active": "Active",
+            "overdue": "Overdue",
+            "completed": "Completed"
+        },
+        "statuses": {
+            "active": "Active",
+            "overdue": "Overdue",
+            "completed": "Completed"
+        },
+        "installmentStatuses": {
+            "unpaid": "Unpaid",
+            "partial": "Partial",
+            "paid": "Paid",
+            "overdue": "Overdue"
+        },
+        "activities": {
+            "paymentReceived": "Payment Received",
+            "loanDisbursed": "Loan Disbursed"
+        },
+        "messages": {
+            "loanCreated": "Loan created successfully.",
+            "loanCreateFailed": "Loan creation failed.",
+            "paymentRecorded": "Payment recorded successfully.",
+            "paymentRecordFailed": "Failed to record payment.",
+            "loanNotFound": "Loan not found."
+        }
     },
     "categories": {
         "title": "Categories",
@@ -1130,6 +1212,8 @@
     "budget": {
         "title": "Budget Management",
         "subtitle": "Track and manage your expenses",
+        "setBudgetSubtitle": "Define your spending limits for this month",
+        "addExpenseSubtitle": "Add a manual cost to your monthly tracks",
         "totalAllocated": "Total Allocated",
         "paid": "Total Paid",
         "pending": "Outstanding",
