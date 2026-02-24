@@ -455,7 +455,7 @@
     "settings": {
         "title": "Settings",
         "subtitle": "Manage your account and application settings",
-        "downloadMedia": "Download Media",
+        "downloadMedia": "Download Workspace Media",
         "updater": {
             "title": "Application Updates",
             "description": "Check for the latest version of Asaas.",
@@ -524,6 +524,7 @@
         "syncing": "Syncing...",
         "syncMedia": "Sync Media",
         "syncingMedia": "Syncing Media...",
+        "downloadingMedia": "Downloading Workspace Media...",
         "syncMediaModal": {
             "title": "Sync All Media",
             "desc": "This will upload all local product images and the workspace logo to the cloud so they can be synced to other devices in your workspace.",
@@ -546,7 +547,11 @@
             "clearDataConfirm": "This will delete ALL local data including products, customers, orders, and invoices. Are you sure?",
             "noMediaToSync": "No local media found to sync.",
             "mediaSyncComplete": "Media sync complete! {{count}} files queued.",
-            "onlineRequired": "Internet connection is required for media sync."
+            "onlineRequired": "Internet connection is required for media sync.",
+            "noCloudMediaFound": "No cloud media found for this workspace.",
+            "mediaDownloadComplete": "Workspace media download complete! {{count}} files saved locally.",
+            "mediaDownloadFailed": "Workspace media download failed: {{error}}",
+            "r2ListNotAvailable": "Cloud media listing endpoint is not available. Please update your R2 worker."
         },
         "branding": {
             "title": "Workspace Branding",

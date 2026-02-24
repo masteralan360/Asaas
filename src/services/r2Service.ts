@@ -112,6 +112,39 @@ class R2Service {
     }
 
     /**
+     * List object keys by prefix
+     */
+    public async listObjects(prefix: string): Promise<string[]> {
+        if (!this.workerUrl || !this.authToken) {
+            throw new Error('R2 configuration missing');
+        }
+
+        const baseUrl = this.workerUrl.endsWith('/') ? this.workerUrl : `${this.workerUrl}/`;
+        const url = new URL(baseUrl);
+        url.searchParams.set('list', '1');
+        url.searchParams.set('prefix', prefix);
+
+        const response = await fetch(url.toString(), {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${this.authToken}`
+            }
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text().catch(() => '');
+            throw new Error(`R2 List Failed: ${response.status}${errorText ? ` ${errorText}` : ''}`);
+        }
+
+        const payload = await response.json() as { keys?: unknown };
+        if (!Array.isArray(payload.keys)) {
+            return [];
+        }
+
+        return payload.keys.filter((key): key is string => typeof key === 'string');
+    }
+
+    /**
      * Check if R2 is configured
      */
     public isConfigured(): boolean {

@@ -10,7 +10,7 @@ import { useTranslation } from 'react-i18next'
 import { useWorkspace } from '@/workspace'
 import { ExchangeRateProvider } from '@/context/ExchangeRateContext'
 import { DateRangeProvider } from '@/context/DateRangeContext'
-import { isSupabaseConfigured } from '@/auth/supabase'
+import { isBackendConfigurationRequired, isSupabaseConfigured } from '@/auth/supabase'
 import { isMobile } from '@/lib/platform'
 import { useTheme } from '@/ui/components/theme-provider'
 import { useFavicon } from '@/hooks/useFavicon'
@@ -264,7 +264,7 @@ function App() {
                     <UpdateHandler />
                     <FaviconHandler />
                     {(!isMobile()) && <TitleBar />}
-                    {isTauri && !isSupabaseConfigured ? (
+                    {isTauri && isBackendConfigurationRequired && !isSupabaseConfigured ? (
                         <Suspense fallback={<LoadingState />}>
                             <ConnectionConfiguration />
                         </Suspense>
@@ -290,10 +290,12 @@ function App() {
                                             <LockedWorkspace />
                                         </Route>
 
-                                        {/* Connection Configuration Route - Electron Guard */}
-                                        <Route path="/connection-configuration">
-                                            <ConnectionConfiguration />
-                                        </Route>
+                                        {/* Connection Configuration Route */}
+                                        {isBackendConfigurationRequired && (
+                                            <Route path="/connection-configuration">
+                                                <ConnectionConfiguration />
+                                            </Route>
+                                        )}
 
 
 

@@ -17,8 +17,25 @@ const EncryptedStorage = {
     }
 }
 
-const supabaseUrl = getAppSettingSync('supabase_url') || /* import.meta.env.VITE_SUPABASE_URL || */ ''
-const supabaseAnonKey = getAppSettingSync('supabase_anon_key') || /* import.meta.env.VITE_SUPABASE_ANON_KEY || */ ''
+const parseBooleanEnv = (value: string | undefined): boolean => {
+    if (!value) return false
+    const normalized = value.trim().toLowerCase()
+    return normalized === 'true' || normalized === '1' || normalized === 'yes' || normalized === 'on'
+}
+
+const envSupabaseUrl = import.meta.env.VITE_SUPABASE_URL || ''
+const envSupabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || ''
+const customSupabaseUrl = getAppSettingSync('supabase_url') || ''
+const customSupabaseAnonKey = getAppSettingSync('supabase_anon_key') || ''
+
+export const isBackendConfigurationRequired = parseBooleanEnv(import.meta.env.VITE_REQUIRE_BACKEND_CONFIGURATION)
+
+const supabaseUrl = isBackendConfigurationRequired
+    ? customSupabaseUrl
+    : (envSupabaseUrl || customSupabaseUrl || '')
+const supabaseAnonKey = isBackendConfigurationRequired
+    ? customSupabaseAnonKey
+    : (envSupabaseAnonKey || customSupabaseAnonKey || '')
 
 // Check if Supabase is configured with valid values
 const isUrlValid = supabaseUrl && supabaseUrl.startsWith('https://') && !supabaseUrl.includes('your_supabase_url')

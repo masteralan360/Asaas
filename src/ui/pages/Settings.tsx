@@ -1,5 +1,5 @@
 import { useAuth } from '@/auth'
-import { supabase } from '@/auth/supabase'
+import { isBackendConfigurationRequired, supabase } from '@/auth/supabase'
 import { useSyncStatus, clearQueue } from '@/sync'
 import { db, clearDatabase } from '@/local-db'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, Button, Label, LanguageSwitcher, Input, CurrencySelector, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Tabs, TabsList, TabsTrigger, TabsContent, Switch, Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, useToast, RegisterWorkspaceContactsModal } from '@/ui/components'
@@ -17,6 +17,7 @@ import { getAppSettingSync, setAppSetting } from '@/local-db/settings'
 import { decrypt } from '@/lib/encryption'
 import { check } from '@tauri-apps/plugin-updater';
 import { platformService } from '@/services/platformService'
+import { r2Service } from '@/services/r2Service'
 import { Image as ImageIcon } from 'lucide-react'
 import { assetManager } from '@/lib/assetManager'
 import { useWorkspaceContacts } from '@/local-db/hooks'
@@ -53,10 +54,15 @@ export function Settings() {
     const [isSyncMediaModalOpen, setIsSyncMediaModalOpen] = useState(false)
     const [expiryHours, setExpiryHours] = useState(24)
     const [mediaSyncProgress, setMediaSyncProgress] = useState<{ total: number, current: number, fileName: string } | null>(null)
+    const [mediaDownloadProgress, setMediaDownloadProgress] = useState<{ total: number, current: number, fileName: string } | null>(null)
     const [localMediaCount, setLocalMediaCount] = useState<number | null>(null)
 
-    const activeSupabaseUrl = customUrl || import.meta.env.VITE_SUPABASE_URL || ''
-    const activeSupabaseKey = customKey || import.meta.env.VITE_SUPABASE_ANON_KEY || ''
+    const activeSupabaseUrl = isBackendConfigurationRequired
+        ? (customUrl || '')
+        : (import.meta.env.VITE_SUPABASE_URL || customUrl || '')
+    const activeSupabaseKey = isBackendConfigurationRequired
+        ? (customKey || '')
+        : (import.meta.env.VITE_SUPABASE_ANON_KEY || customKey || '')
     /* --- Connection Settings (Web) State End --- */
 
     const [contactsModalOpen, setContactsModalOpen] = useState(false)
@@ -320,6 +326,92 @@ export function Settings() {
             alert('Media sync failed: ' + error)
         } finally {
             setMediaSyncProgress(null)
+        }
+    }
+
+    const handleDownloadWorkspaceMedia = async () => {
+        if (!user?.workspaceId) return
+        if (!isElectron) return
+
+        if (!isOnline) {
+            alert(t('settings.messages.onlineRequired') || 'Internet connection is required for media sync.')
+            return
+        }
+
+        if (!isSupabaseConfigured) {
+            alert(t('settings.messages.r2ListNotAvailable') || 'Cloud media listing endpoint is not available. Please update your R2 worker.')
+            return
+        }
+
+        if (!r2Service.isConfigured()) {
+            alert(t('settings.messages.r2ListNotAvailable') || 'Cloud media listing endpoint is not available. Please update your R2 worker.')
+            return
+        }
+
+        const workspaceId = user.workspaceId
+        const allowedFolders = ['product-images', 'profile-images', 'workspace-logos']
+
+        try {
+            const keySet = new Set<string>()
+
+            for (const folder of allowedFolders) {
+                const prefix = `${workspaceId}/${folder}/`
+                const keys = await r2Service.listObjects(prefix)
+                for (const key of keys) {
+                    keySet.add(key)
+                }
+            }
+
+            const keys = Array.from(keySet)
+            if (keys.length === 0) {
+                alert(t('settings.messages.noCloudMediaFound') || 'No cloud media found for this workspace.')
+                return
+            }
+
+            let downloadedCount = 0
+            setMediaDownloadProgress({ total: keys.length, current: 0, fileName: '' })
+
+            for (let i = 0; i < keys.length; i++) {
+                const key = keys[i]
+                const parts = key.split('/')
+                const wsPart = parts[0]
+                const folderPart = parts[1]
+                const restPath = parts.slice(2).join('/')
+
+                setMediaDownloadProgress(prev => prev ? { ...prev, current: i + 1, fileName: restPath || key } : null)
+
+                if (wsPart !== workspaceId || !allowedFolders.includes(folderPart) || !restPath) {
+                    console.warn('[Settings] Skipping unexpected R2 key:', key)
+                    continue
+                }
+
+                const data = await r2Service.download(key)
+                if (!data) continue
+
+                const localRelativePath = `${folderPart}/${workspaceId}/${restPath}`
+                const savedPath = await platformService.saveDownloadedFile(workspaceId, localRelativePath, data, folderPart)
+                if (savedPath) {
+                    downloadedCount++
+                }
+            }
+
+            alert(
+                t('settings.messages.mediaDownloadComplete', { count: downloadedCount })
+                || `Media download complete! ${downloadedCount} files saved locally.`
+            )
+        } catch (error) {
+            console.error('[Settings] Media download failed:', error)
+            const errorMessage = error instanceof Error ? error.message : String(error)
+            if (errorMessage.includes('R2 List Failed: 404') || errorMessage.includes('Object Not Found')) {
+                alert(t('settings.messages.r2ListNotAvailable') || 'Cloud media listing endpoint is not available. Please update your R2 worker.')
+            } else {
+                alert(
+                    t('settings.messages.mediaDownloadFailed', { error: errorMessage })
+                    || `Media download failed: ${errorMessage}`
+                )
+            }
+        } finally {
+            setMediaDownloadProgress(null)
         }
     }
 
@@ -682,13 +774,15 @@ export function Settings() {
 
                                             <Button
                                                 variant="secondary"
-                                                onClick={() => assetManager.triggerScan()}
-                                                disabled={!isOnline || !isSupabaseConfigured}
+                                                onClick={handleDownloadWorkspaceMedia}
+                                                disabled={!isOnline || !isSupabaseConfigured || mediaDownloadProgress !== null || mediaSyncProgress !== null}
                                                 className="gap-2"
-                                                title="Check for new media from other devices"
+                                                title={t('settings.downloadMedia') || 'Download Workspace Media'}
                                             >
-                                                <Download className="w-4 h-4" />
-                                                {t('settings.downloadMedia') || 'Download Media'}
+                                                <Download className={cn("w-4 h-4", mediaDownloadProgress && "animate-pulse")} />
+                                                {mediaDownloadProgress
+                                                    ? `${t('settings.downloadingMedia') || 'Downloading Media...'} (${mediaDownloadProgress.current}/${mediaDownloadProgress.total})`
+                                                    : t('settings.downloadMedia') || 'Download Workspace Media'}
                                             </Button>
                                         </>
                                     )}
@@ -1508,7 +1602,7 @@ export function Settings() {
                     )}
 
                     {/* Connection Settings (Electron Only) */}
-                    {isElectron && (
+                    {isElectron && isBackendConfigurationRequired && (
                         <>
                             {/* --- Connection Settings (Web) Section Start --- */}
                             <Card className="border-muted bg-muted/5">

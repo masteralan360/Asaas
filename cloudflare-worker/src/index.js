@@ -15,8 +15,51 @@ export default {
     const url = new URL(request.url);
     const path = url.pathname.slice(1);
     const AUTH_TOKEN = env.AUTH_TOKEN;
+    const authHeader = request.headers.get("Authorization");
 
     if (request.method === "GET") {
+      const isListRequest = url.searchParams.get("list") === "1";
+      if (isListRequest) {
+        if (!AUTH_TOKEN || authHeader !== `Bearer ${AUTH_TOKEN}`) {
+          return new Response("Unauthorized", {
+            status: 401,
+            headers: corsHeaders
+          });
+        }
+
+        const prefix = url.searchParams.get("prefix");
+        if (!prefix) {
+          return new Response(JSON.stringify({ error: "Missing prefix query parameter" }), {
+            status: 400,
+            headers: { ...corsHeaders, "Content-Type": "application/json" }
+          });
+        }
+
+        try {
+          let cursor = undefined;
+          const keys = [];
+
+          do {
+            const listResult = await env.MY_BUCKET.list({ prefix, cursor });
+            for (const object of listResult.objects || []) {
+              if (object?.key) {
+                keys.push(object.key);
+              }
+            }
+            cursor = listResult.truncated ? listResult.cursor : undefined;
+          } while (cursor);
+
+          return new Response(JSON.stringify({ keys }), {
+            headers: { ...corsHeaders, "Content-Type": "application/json" }
+          });
+        } catch (e) {
+          return new Response(JSON.stringify({ error: e?.message || "Failed to list objects" }), {
+            status: 500,
+            headers: { ...corsHeaders, "Content-Type": "application/json" }
+          });
+        }
+      }
+
       const object = await env.MY_BUCKET.get(path);
       if (object === null) {
         return new Response("Object Not Found", {
@@ -34,7 +77,6 @@ export default {
     }
 
     // Check Auth for PUT/DELETE
-    const authHeader = request.headers.get("Authorization");
     if (!AUTH_TOKEN || authHeader !== `Bearer ${AUTH_TOKEN}`) {
       return new Response("Unauthorized", {
         status: 401,
