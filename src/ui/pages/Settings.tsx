@@ -338,11 +338,6 @@ export function Settings() {
             return
         }
 
-        if (!isSupabaseConfigured) {
-            alert(t('settings.messages.r2ListNotAvailable') || 'Cloud media listing endpoint is not available. Please update your R2 worker.')
-            return
-        }
-
         if (!r2Service.isConfigured()) {
             alert(t('settings.messages.r2ListNotAvailable') || 'Cloud media listing endpoint is not available. Please update your R2 worker.')
             return
@@ -402,7 +397,11 @@ export function Settings() {
         } catch (error) {
             console.error('[Settings] Media download failed:', error)
             const errorMessage = error instanceof Error ? error.message : String(error)
-            if (errorMessage.includes('R2 List Failed: 404') || errorMessage.includes('Object Not Found')) {
+            if (
+                errorMessage.includes('R2 List Failed: 404')
+                || errorMessage.includes('R2 List Endpoint Missing')
+                || errorMessage.includes('Object Not Found')
+            ) {
                 alert(t('settings.messages.r2ListNotAvailable') || 'Cloud media listing endpoint is not available. Please update your R2 worker.')
             } else {
                 alert(

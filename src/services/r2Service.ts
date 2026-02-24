@@ -3,6 +3,25 @@
  * This avoids exposing R2 keys in the client and handles CORS/Auth securely.
  */
 class R2Service {
+    private normalizePath(path: string): string {
+        const cleanPath = path.startsWith('/') ? path.slice(1) : path;
+        return cleanPath
+            .split('/')
+            .map(segment => {
+                if (!segment) return '';
+
+                // Avoid double-encoding already encoded keys while still supporting raw/unicode chars.
+                let decoded = segment;
+                try {
+                    decoded = decodeURIComponent(segment);
+                } catch {
+                    decoded = segment;
+                }
+                return encodeURIComponent(decoded);
+            })
+            .join('/');
+    }
+
     private readEnvValue(value?: string | null): string | undefined {
         const trimmed = value?.trim();
         return trimmed ? trimmed : undefined;
@@ -57,8 +76,7 @@ class R2Service {
      */
     public getUrl(path: string): string {
         if (!this.workerUrl) return '';
-        // Ensure path doesn't have leading slash
-        const cleanPath = path.startsWith('/') ? path.slice(1) : path;
+        const cleanPath = this.normalizePath(path);
         const baseUrl = this.workerUrl.endsWith('/') ? this.workerUrl : `${this.workerUrl}/`;
         return `${baseUrl}${cleanPath}`;
     }
@@ -124,15 +142,24 @@ class R2Service {
         url.searchParams.set('list', '1');
         url.searchParams.set('prefix', prefix);
 
-        const response = await fetch(url.toString(), {
-            method: 'GET',
-            headers: {
-                'Authorization': `Bearer ${this.authToken}`
-            }
-        });
+        let response: Response;
+        try {
+            response = await fetch(url.toString(), {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${this.authToken}`
+                }
+            });
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            throw new Error(`R2 List Request Failed: ${message}`);
+        }
 
         if (!response.ok) {
             const errorText = await response.text().catch(() => '');
+            if (response.status === 404 && errorText.toLowerCase().includes('object not found')) {
+                throw new Error('R2 List Endpoint Missing: 404 Object Not Found');
+            }
             throw new Error(`R2 List Failed: ${response.status}${errorText ? ` ${errorText}` : ''}`);
         }
 
