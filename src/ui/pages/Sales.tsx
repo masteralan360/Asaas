@@ -93,6 +93,11 @@ function getLoanStatusFallbackLabel(status: EffectiveLoanStatus): string {
     return 'Loan Pending'
 }
 
+function saleHasAnyReturnActivity(sale: Sale): boolean {
+    if (sale.is_returned) return true
+    return (sale.items || []).some(item => item.is_returned || (item.returned_quantity || 0) > 0)
+}
+
 export function Sales() {
     const { user } = useAuth()
     const { t } = useTranslation()
@@ -280,6 +285,7 @@ export function Sales() {
     const [printFormat, setPrintFormat] = useState<'receipt' | 'a4'>(() => {
         return (localStorage.getItem('sales_print_format') as 'receipt' | 'a4') || 'receipt'
     })
+    const [a4Variant, setA4Variant] = useState<'standard' | 'refund'>('standard')
 
 
     useEffect(() => {
@@ -305,6 +311,11 @@ export function Sales() {
 
     const handlePrintSelection = (format: 'receipt' | 'a4') => {
         setPrintFormat(format)
+        if (format === 'a4' && saleToPrintSelection && saleHasAnyReturnActivity(saleToPrintSelection)) {
+            setA4Variant('refund')
+        } else {
+            setA4Variant('standard')
+        }
         setShowPrintModal(false)
         if (saleToPrintSelection) {
             setPrintingSale(saleToPrintSelection)
@@ -317,6 +328,7 @@ export function Sales() {
         setShowPrintPreview(false)
         setPrintingSale(null)
         setSaleToPrintSelection(null)
+        setA4Variant('standard')
     }
 
     const handleDeleteSale = (sale: Sale) => {
@@ -1265,6 +1277,7 @@ export function Sales() {
                     isOpen={showPrintModal}
                     onClose={() => setShowPrintModal(false)}
                     onSelect={handlePrintSelection}
+                    a4Variant={saleToPrintSelection && saleHasAnyReturnActivity(saleToPrintSelection) ? 'refund' : 'standard'}
                 />
 
                 <DeleteConfirmationModal
@@ -1287,12 +1300,17 @@ export function Sales() {
                         setShowPrintPreview(false)
                         setPrintingSale(null)
                         setSaleToPrintSelection(null)
+                        setA4Variant('standard')
                     }}
                     onConfirm={handleConfirmPrint}
-                    title={printFormat === 'a4' ? (t('sales.print.a4') || 'A4 Invoice') : (t('sales.print.receipt') || 'Receipt')}
+                    title={printFormat === 'a4'
+                        ? (a4Variant === 'refund'
+                            ? (t('sales.print.a4Refund') || 'A4 Refund Invoice')
+                            : (t('sales.print.a4') || 'A4 Invoice'))
+                        : (t('sales.print.receipt') || 'Receipt')}
                     features={features}
                     workspaceName={workspaceName}
-                    pdfData={printingSale ? mapSaleToUniversal(printingSale) : undefined}
+                    pdfData={printingSale ? mapSaleToUniversal(printingSale, { a4Variant }) : undefined}
                     invoiceData={printingSale ? {
                         sequenceId: printingSale.sequenceId,
                         totalAmount: printingSale.total_amount,

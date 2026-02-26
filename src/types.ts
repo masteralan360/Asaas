@@ -82,6 +82,12 @@ export interface UniversalInvoiceItem {
     original_currency?: string
     settlement_currency?: string
     discount_amount?: number
+    refunded_quantity?: number
+    active_quantity?: number
+    original_quantity?: number
+    refunded_amount?: number
+    active_amount?: number
+    refund_status?: 'fully_refunded' | 'partially_refunded' | 'not_refunded'
 }
 
 export interface UniversalInvoice {
@@ -109,5 +115,14 @@ export interface UniversalInvoice {
     customer_id?: string
     order_id?: string
     workspaceId?: string
+    is_refund_invoice?: boolean
+    refund_summary?: {
+        is_fully_returned: boolean
+        refund_reason?: string
+        returned_at?: string
+        original_total: number
+        refunded_total: number
+        active_total: number
+    }
 }
 

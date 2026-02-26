@@ -12,9 +12,10 @@ interface PrintSelectionModalProps {
     isOpen: boolean
     onClose: () => void
     onSelect: (format: 'receipt' | 'a4') => void
+    a4Variant: 'standard' | 'refund'
 }
 
-export function PrintSelectionModal({ isOpen, onClose, onSelect }: PrintSelectionModalProps) {
+export function PrintSelectionModal({ isOpen, onClose, onSelect, a4Variant }: PrintSelectionModalProps) {
     const { t } = useTranslation()
 
     return (
@@ -50,8 +51,16 @@ export function PrintSelectionModal({ isOpen, onClose, onSelect }: PrintSelectio
                             <FileText className="w-6 h-6 text-foreground" />
                         </div>
                         <div className="space-y-1">
-                            <div className="font-bold">{t('sales.print.a4') || 'A4 Invoice'}</div>
-                            <div className="text-xs text-muted-foreground">{t('sales.print.a4desc') || 'Detailed full-page document'}</div>
+                            <div className="font-bold">
+                                {a4Variant === 'refund'
+                                    ? (t('sales.print.a4Refund') || 'A4 Refund Invoice')
+                                    : (t('sales.print.a4') || 'A4 Invoice')}
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                                {a4Variant === 'refund'
+                                    ? (t('sales.print.a4RefundDesc') || 'Refund-focused full-page A4')
+                                    : (t('sales.print.a4desc') || 'Detailed full-page document')}
+                            </div>
                         </div>
                     </Button>
                 </div>

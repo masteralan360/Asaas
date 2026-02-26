@@ -12,6 +12,8 @@ import {
     PdfViewer,
     A4InvoiceTemplate,
     ModernA4InvoiceTemplate,
+    RefundA4InvoiceTemplate,
+    RefundPrimaryA4InvoiceTemplate,
     SaleReceiptBase
 } from '@/ui/components'
 import { Printer, X, Maximize2, Minimize2, Loader2 } from 'lucide-react'
@@ -558,7 +560,23 @@ export function PrintPreviewModal({
                                     />
                                 </div>
                             ) : (
-                                features?.a4_template === 'modern' ? (
+                                pdfData?.is_refund_invoice ? (
+                                    features?.a4_template === 'modern' ? (
+                                        <RefundA4InvoiceTemplate
+                                            data={pdfData}
+                                            features={features}
+                                            workspaceId={workspaceId || undefined}
+                                            workspaceName={workspaceName || workspaceId || 'Asaas'}
+                                        />
+                                    ) : (
+                                        <RefundPrimaryA4InvoiceTemplate
+                                            data={pdfData}
+                                            features={features}
+                                            workspaceId={workspaceId || undefined}
+                                            workspaceName={workspaceName || workspaceId || 'Asaas'}
+                                        />
+                                    )
+                                ) : features?.a4_template === 'modern' ? (
                                     <ModernA4InvoiceTemplate
                                         data={pdfData}
                                         features={features}

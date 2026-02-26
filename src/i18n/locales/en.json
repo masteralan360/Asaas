@@ -742,7 +742,37 @@
         "terms": "Terms & Conditions",
         "exchangeRates": "Exchange Rates",
         "generated": "Generated Automatically",
-        "posSystem": "Issued via Asaas ERP System"
+        "posSystem": "Issued via Asaas ERP System",
+        "refund": {
+            "title": "Refund Invoice",
+            "subtitle": "Return and refund details",
+            "status": {
+                "full": "Fully Returned",
+                "partial": "Partially Returned"
+            },
+            "reason": "Refund Reason",
+            "returnedAt": "Returned At",
+            "notProvided": "Not provided",
+            "watermark": "RETURNED",
+            "table": {
+                "product": "Product",
+                "qtySold": "Qty Sold",
+                "refundedQty": "Refunded Qty",
+                "activeQty": "Active Qty",
+                "unitPrice": "Unit Price",
+                "refundedAmount": "Refunded Amount",
+                "activeAmount": "Active Amount",
+                "status": "Status",
+                "statusFully": "Fully Refunded",
+                "statusPartial": "Partially Refunded",
+                "statusNone": "Not Refunded"
+            },
+            "totals": {
+                "original": "Original Total",
+                "refunded": "Refunded Total",
+                "remaining": "Remaining Total"
+            }
+        }
     },
     "sales": {
         "title": "Sales History",
@@ -792,8 +822,10 @@
         "print": {
             "receipt": "Print Receipt",
             "a4": "Print A4",
+            "a4Refund": "Print Refund A4",
             "receiptdesc": "80mm Thermal Receipt",
-            "a4desc": "Detailed full-page A4"
+            "a4desc": "Detailed full-page A4",
+            "a4RefundDesc": "Refund-focused full-page A4"
         },
         "receipt": {
             "thankYou": "Thank you for shopping with us!",

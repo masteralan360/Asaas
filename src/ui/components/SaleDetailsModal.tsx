@@ -3,6 +3,7 @@ import { useLocation } from 'wouter'
 import { useTranslation } from 'react-i18next'
 import { Sale, SaleItem } from '@/types'
 import { formatCurrency, formatDate, formatDateTime, formatSnapshotTime, cn, formatSaleDetailsForWhatsApp } from '@/lib/utils'
+import { localizeReturnReason } from '@/lib/returnReasons'
 import { whatsappManager } from '@/lib/whatsappWebviewManager'
 import { WhatsAppNumberInputModal } from '@/ui/components/modals/WhatsAppNumberInputModal'
 import { useTheme } from '@/ui/components/theme-provider'
@@ -67,7 +68,7 @@ interface SaleDetailsModalProps {
 }
 
 export function SaleDetailsModal({ sale, isOpen, onClose, onReturnItem, onReturnSale, onDownloadInvoice }: SaleDetailsModalProps) {
-    const { t } = useTranslation()
+    const { t, i18n } = useTranslation()
     const { user } = useAuth()
     const { features } = useWorkspace()
     const [showWhatsAppModal, setShowWhatsAppModal] = useState(false)
@@ -91,6 +92,12 @@ export function SaleDetailsModal({ sale, isOpen, onClose, onReturnItem, onReturn
     const returnedItemsCount = sale.items?.filter(item => item.is_returned).length || 0
     const partialReturnedItemsCount = sale.items?.filter(item => (item.returned_quantity || 0) > 0 && !item.is_returned).length || 0
     const hasAnyReturn = returnedItemsCount > 0 || partialReturnedItemsCount > 0
+    const localizedReturnReason = localizeReturnReason(
+        sale.return_reason,
+        i18n,
+        i18n.language,
+        t('invoice.refund.notProvided') || 'Not provided'
+    )
 
     const netTotal = (() => {
         if (sale.is_returned) return 0
@@ -330,7 +337,7 @@ export function SaleDetailsModal({ sale, isOpen, onClose, onReturnItem, onReturn
                                         <div className="flex flex-col gap-0.5 opacity-80">
                                             {sale.return_reason && (
                                                 <p className="text-[10px] font-semibold">
-                                                    {t('sales.return.reason') || 'Reason'}: {sale.return_reason}
+                                                    {t('sales.return.reason') || 'Reason'}: {localizedReturnReason}
                                                 </p>
                                             )}
                                             {sale.returned_at && (

@@ -733,7 +733,37 @@
         "terms": "مەرج و ڕێساکان",
         "exchangeRates": "نرخی ئاڵوگۆڕ",
         "generated": "بە شێوەی خۆکار دروستکراوە",
-        "posSystem": "سیستەمی ASAAS"
+        "posSystem": "سیستەمی ASAAS",
+        "refund": {
+            "title": "پسوڵەی گەڕاوە",
+            "subtitle": "وردەکاری گەڕاندنەوە و پارەگەڕاندنەوە",
+            "status": {
+                "full": "تەواو گەڕاوەتەوە",
+                "partial": "بەشێکی گەڕاوەتەوە"
+            },
+            "reason": "هۆکاری گەڕاندنەوە",
+            "returnedAt": "کاتی گەڕاندنەوە",
+            "notProvided": "بەردەست نییە",
+            "watermark": "گەڕاوە",
+            "table": {
+                "product": "بەرهەم",
+                "qtySold": "بڕی فرۆشراو",
+                "refundedQty": "بڕی گەڕاوە",
+                "activeQty": "بڕی ماوە",
+                "unitPrice": "نرخی یەکە",
+                "refundedAmount": "بڕی پارەی گەڕاوە",
+                "activeAmount": "بڕی ماوە",
+                "status": "دۆخ",
+                "statusFully": "تەواو گەڕاوە",
+                "statusPartial": "بەشێکی گەڕاوە",
+                "statusNone": "نەگەڕاوە"
+            },
+            "totals": {
+                "original": "کۆی سەرەکی",
+                "refunded": "کۆی گەڕاوە",
+                "remaining": "کۆی ماوە"
+            }
+        }
     },
     "sales": {
         "title": "مێژووی فرۆشتن",
@@ -788,8 +818,10 @@
         "print": {
             "receipt": "چاپکردنی پسوڵە",
             "a4": "چاپکردنی A4",
+            "a4Refund": "چاپکردنی A4 گەڕاوە",
             "receiptdesc": "پسوڵەی ٨٠ ملم",
-            "a4desc": "پسوڵەی A4 بە وردی"
+            "a4desc": "پسوڵەی A4 بە وردی",
+            "a4RefundDesc": "پسوڵەی A4 تایبەت بە گەڕاوەکان"
         },
         "receipt": {
             "thankYou": "سوپاس بۆ کڕینەکەت!",

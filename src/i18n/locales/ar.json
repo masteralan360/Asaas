@@ -736,7 +736,37 @@
         "terms": "الشروط والأحكام",
         "exchangeRates": "أسعار الصرف",
         "generated": " ",
-        "posSystem": "تم إصدار هذه الفاتورة عبر نظام اساس"
+        "posSystem": "تم إصدار هذه الفاتورة عبر نظام اساس",
+        "refund": {
+            "title": "فاتورة مرتجعات",
+            "subtitle": "تفاصيل الإرجاع والاسترداد",
+            "status": {
+                "full": "مرتجع بالكامل",
+                "partial": "مرتجع جزئياً"
+            },
+            "reason": "سبب الإرجاع",
+            "returnedAt": "تاريخ الإرجاع",
+            "notProvided": "غير متوفر",
+            "watermark": "مرتجع",
+            "table": {
+                "product": "المنتج",
+                "qtySold": "الكمية المباعة",
+                "refundedQty": "الكمية المرتجعة",
+                "activeQty": "الكمية غير المرتجعة",
+                "unitPrice": "سعر الوحدة",
+                "refundedAmount": "مبلغ الاسترداد",
+                "activeAmount": "المبلغ المتبقي",
+                "status": "الحالة",
+                "statusFully": "مرتجع بالكامل",
+                "statusPartial": "مرتجع جزئياً",
+                "statusNone": "غير مرتجع"
+            },
+            "totals": {
+                "original": "الإجمالي الأصلي",
+                "refunded": "إجمالي المسترد",
+                "remaining": "الإجمالي المتبقي"
+            }
+        }
     },
     "sales": {
         "title": "سجل المبيعات",
@@ -791,8 +821,10 @@
         "print": {
             "receipt": "طباعة وصل",
             "a4": "طباعة A4",
+            "a4Refund": "طباعة A4 للمرتجع",
             "receiptdesc": "وصل 80mm",
-            "a4desc": "وصل A4 مفصل"
+            "a4desc": "وصل A4 مفصل",
+            "a4RefundDesc": "فاتورة A4 خاصة بالمرتجعات"
         },
         "receipt": {
             "thankYou": "شكراً لتسوقكم معنا!",

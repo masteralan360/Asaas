@@ -62,8 +62,7 @@ export function ReturnConfirmationModal({
     }
 
     const handleReturnConfirm = () => {
-        const finalReason = selectedReason === 'other' ? otherReason :
-            returnReasons.find(r => r.value === selectedReason)?.label || selectedReason
+        const finalReason = selectedReason === 'other' ? otherReason.trim() : selectedReason
         onConfirm(finalReason, isItemReturn ? returnQuantity : undefined)
         handleClose()
     }
