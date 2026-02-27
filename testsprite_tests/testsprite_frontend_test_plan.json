@@ -1,0 +1,1374 @@
+[
+  {
+    "id": "TC001",
+    "title": "Registration fails when using an existing email address",
+    "description": "Verifies the UI shows an 'email already in use' error when attempting to register with an existing email.",
+    "category": "User Registration",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /register"
+      },
+      {
+        "type": "action",
+        "description": "Type \"Existing User\" into the \"Name\" field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"existing.user@example.com\" into the \"Email\" field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"ValidPass!234\" into the \"Password\" field"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Register\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"email already in use\" is visible"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/register\""
+      }
+    ]
+  },
+  {
+    "id": "TC002",
+    "title": "Registration validation: required fields block submission when empty",
+    "description": "Verifies the Register action is blocked and validation messaging appears when submitting an empty form.",
+    "category": "User Registration",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /register"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Register\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"Name\" is visible"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"Email\" is visible"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"Password\" is visible"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/register\""
+      }
+    ]
+  },
+  {
+    "id": "TC003",
+    "title": "Registration validation: invalid email format shows an error",
+    "description": "Verifies the user is warned when entering an invalid email format and cannot complete registration.",
+    "category": "User Registration",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /register"
+      },
+      {
+        "type": "action",
+        "description": "Type \"Email Format Test\" into the \"Name\" field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"not-an-email\" into the \"Email\" field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"ValidPass!234\" into the \"Password\" field"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Register\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"invalid email\" is visible"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/register\""
+      }
+    ]
+  },
+  {
+    "id": "TC004",
+    "title": "Registration validation: weak password shows an error",
+    "description": "Verifies the user sees a password strength/requirements error when using a weak password.",
+    "category": "User Registration",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /register"
+      },
+      {
+        "type": "action",
+        "description": "Type \"Weak Password Test\" into the \"Name\" field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"new.user+weakpass@example.com\" into the \"Email\" field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"123\" into the \"Password\" field"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Register\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"password\" is visible"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/register\""
+      }
+    ]
+  },
+  {
+    "id": "TC005",
+    "title": "Navigate from Register to Login using the Login link",
+    "description": "Verifies users can reach the login page from the registration page via a visible link.",
+    "category": "User Registration",
+    "priority": "Low",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /register"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify element \"Login\" is visible"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Login\" link"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/login\""
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"Login\" is visible"
+      }
+    ]
+  },
+  {
+    "id": "TC006",
+    "title": "View dashboard overview metrics and charts after login",
+    "description": "Verifies an authenticated user can reach the Dashboard and see key overview content.",
+    "category": "Dashboard",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the email/username field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click on the \"Log in\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/\""
+      },
+      {
+        "type": "assertion",
+        "description": "Verify element \"Dashboard\" is visible"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify element \"Overview\" is visible"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify element \"Recent activity\" is visible"
+      }
+    ]
+  },
+  {
+    "id": "TC007",
+    "title": "Dashboard shows metrics and charts (content presence check)",
+    "description": "Verifies the Dashboard page renders typical metric cards and chart sections for an authenticated user.",
+    "category": "Dashboard",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the email/username field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click on the \"Log in\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify element \"Metrics\" is visible"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify element \"Chart\" is visible"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify element \"Recent activity\" is visible"
+      }
+    ]
+  },
+  {
+    "id": "TC008",
+    "title": "Dashboard loads without empty-state errors after login",
+    "description": "Verifies the Dashboard does not show a visible error state on initial load for an authenticated user.",
+    "category": "Dashboard",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the email/username field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click on the \"Log in\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify element \"Dashboard\" is visible"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"Error\" is not visible"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"Something went wrong\" is not visible"
+      }
+    ]
+  },
+  {
+    "id": "TC009",
+    "title": "Dashboard displays recent activity list container",
+    "description": "Verifies the Dashboard includes a visible Recent Activity section container for an authenticated user.",
+    "category": "Dashboard",
+    "priority": "Low",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the email/username field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click on the \"Log in\" button"
+      },
+      {
+        "type": "action",
+        "description": "Scroll to the \"Recent activity\" section"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify element \"Recent activity\" is visible"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify element \"Activity\" is visible"
+      }
+    ]
+  },
+  {
+    "id": "TC010",
+    "title": "Negative login prevents access to Dashboard content",
+    "description": "Verifies invalid credentials do not allow reaching Dashboard and an error is shown on the login page.",
+    "category": "Dashboard",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"fake.user@example.com\" into the email/username field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"WrongPassword123!\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click on the \"Log in\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/login\""
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"Invalid\" is visible"
+      }
+    ]
+  },
+  {
+    "id": "TC011",
+    "title": "Login form required field validation blocks Dashboard access",
+    "description": "Verifies the login form enforces required fields and does not proceed to the Dashboard when missing credentials.",
+    "category": "Dashboard",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Click on the \"Log in\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/login\""
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"required\" is visible"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"password\" is visible"
+      }
+    ]
+  },
+  {
+    "id": "TC012",
+    "title": "Complete a POS sale by searching and adding an item to cart",
+    "description": "Verifies a cashier can search for a product, add it to cart, checkout, and see a receipt confirming the sale is saved locally.",
+    "category": "Point of Sale (POS)",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the email/username field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Log in\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/\""
+      },
+      {
+        "type": "action",
+        "description": "Click on \"POS\" in the main navigation"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/pos\""
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"Checkout\" is visible"
+      }
+    ]
+  },
+  {
+    "id": "TC013",
+    "title": "Add item to cart from product search results",
+    "description": "Verifies searching by product name or SKU returns results and selecting a result can add the item to the cart.",
+    "category": "Point of Sale (POS)",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the email/username field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Log in\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/\""
+      },
+      {
+        "type": "action",
+        "description": "Click on \"POS\" in the main navigation"
+      },
+      {
+        "type": "action",
+        "description": "Click on the product search input field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"SKU\" into the product search input field"
+      }
+    ]
+  },
+  {
+    "id": "TC014",
+    "title": "Adjust quantity before adding to cart",
+    "description": "Verifies quantity can be increased/decreased for a selected product before it is added to the cart.",
+    "category": "Point of Sale (POS)",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the email/username field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Log in\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/\""
+      },
+      {
+        "type": "action",
+        "description": "Click on \"POS\" in the main navigation"
+      },
+      {
+        "type": "action",
+        "description": "Click on the product search input field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"Test\" into the product search input field"
+      }
+    ]
+  },
+  {
+    "id": "TC015",
+    "title": "Checkout flow requires selecting a payment method",
+    "description": "Verifies the checkout flow prompts for a payment method selection before allowing the sale to be completed.",
+    "category": "Point of Sale (POS)",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the email/username field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Log in\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/\""
+      },
+      {
+        "type": "action",
+        "description": "Click on \"POS\" in the main navigation"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Checkout\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"Payment\" is visible"
+      }
+    ]
+  },
+  {
+    "id": "TC016",
+    "title": "Complete sale and view receipt confirmation",
+    "description": "Verifies completing a sale shows a receipt/confirmation view indicating the sale was saved locally.",
+    "category": "Point of Sale (POS)",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the email/username field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Log in\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/\""
+      },
+      {
+        "type": "action",
+        "description": "Click on \"POS\" in the main navigation"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Checkout\" button"
+      },
+      {
+        "type": "action",
+        "description": "Select a payment method option from the payment method dropdown"
+      }
+    ]
+  },
+  {
+    "id": "TC017",
+    "title": "Checkout is blocked when cart is empty",
+    "description": "Verifies the user cannot proceed to complete a sale when no items have been added to the cart.",
+    "category": "Point of Sale (POS)",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the email/username field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Log in\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/\""
+      },
+      {
+        "type": "action",
+        "description": "Click on \"POS\" in the main navigation"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Checkout\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"Cart is empty\" is visible"
+      }
+    ]
+  },
+  {
+    "id": "TC018",
+    "title": "Keyboard-friendly POS search and add flow (Enter to select)",
+    "description": "Verifies the POS supports keyboard navigation by allowing a user to select a product from search using the Enter key.",
+    "category": "Point of Sale (POS)",
+    "priority": "Low",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the email/username field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Log in\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/\""
+      },
+      {
+        "type": "action",
+        "description": "Click on \"POS\" in the main navigation"
+      },
+      {
+        "type": "action",
+        "description": "Click on the product search input field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"Test\" into the product search input field"
+      }
+    ]
+  },
+  {
+    "id": "TC019",
+    "title": "Create a new product successfully and verify it appears in the product list",
+    "description": "Verifies a user can create a product with required fields and see it listed in the products table.",
+    "category": "Product Management",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the email/username field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Sign in\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/\""
+      },
+      {
+        "type": "action",
+        "description": "Click on \"Products\" in the main navigation"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/products\""
+      },
+      {
+        "type": "action",
+        "description": "Click the \"New Product\" button"
+      },
+      {
+        "type": "action",
+        "description": "Type \"Test Product A\" into the product name field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"SKU-TPA-001\" into the SKU field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"19.99\" into the price field"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Save\" product button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"Test Product A\" is visible"
+      }
+    ]
+  },
+  {
+    "id": "TC020",
+    "title": "Attempt to save a new product with empty required fields and verify validation messages",
+    "description": "Verifies required-field validation prevents saving a product when fields are left empty.",
+    "category": "Product Management",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the email/username field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Sign in\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/\""
+      },
+      {
+        "type": "action",
+        "description": "Click on \"Products\" in the main navigation"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/products\""
+      },
+      {
+        "type": "action",
+        "description": "Click the \"New Product\" button"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Save\" product button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"Required\" is visible"
+      }
+    ]
+  },
+  {
+    "id": "TC021",
+    "title": "Cancel out of the New Product form without creating a product",
+    "description": "Verifies a user can exit the new product workflow without saving and return to the products list.",
+    "category": "Product Management",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the email/username field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Sign in\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/\""
+      },
+      {
+        "type": "action",
+        "description": "Click on \"Products\" in the main navigation"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/products\""
+      },
+      {
+        "type": "action",
+        "description": "Click the \"New Product\" button"
+      },
+      {
+        "type": "action",
+        "description": "Type \"Unsaved Product\" into the product name field"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Cancel\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/products\""
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"Unsaved Product\" is not visible"
+      }
+    ]
+  },
+  {
+    "id": "TC022",
+    "title": "Create two distinct products and verify both appear in the list",
+    "description": "Verifies multiple product creations work and the list shows both new items.",
+    "category": "Product Management",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the email/username field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Sign in\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/\""
+      },
+      {
+        "type": "action",
+        "description": "Click on \"Products\" in the main navigation"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/products\""
+      },
+      {
+        "type": "action",
+        "description": "Click the \"New Product\" button"
+      },
+      {
+        "type": "action",
+        "description": "Type \"Test Product B\" into the product name field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"SKU-TPB-001\" into the SKU field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"5.00\" into the price field"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Save\" product button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"Test Product B\" is visible"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"New Product\" button"
+      },
+      {
+        "type": "action",
+        "description": "Type \"Test Product C\" into the product name field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"SKU-TPC-001\" into the SKU field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"7.50\" into the price field"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Save\" product button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"Test Product C\" is visible"
+      }
+    ]
+  },
+  {
+    "id": "TC023",
+    "title": "Create a product with a long name and verify it is displayed in the list",
+    "description": "Verifies the UI accepts and displays a product with a long but valid name.",
+    "category": "Product Management",
+    "priority": "Low",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the email/username field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Sign in\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/\""
+      },
+      {
+        "type": "action",
+        "description": "Click on \"Products\" in the main navigation"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/products\""
+      },
+      {
+        "type": "action",
+        "description": "Click the \"New Product\" button"
+      },
+      {
+        "type": "action",
+        "description": "Type \"Test Product With A Very Long Name For UI Validation\" into the product name field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"SKU-LONG-001\" into the SKU field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"1.25\" into the price field"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Save\" product button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"Test Product With A Very Long Name For UI Validation\" is visible"
+      }
+    ]
+  },
+  {
+    "id": "TC024",
+    "title": "Attempt to save with only some required fields filled and verify validation errors remain",
+    "description": "Verifies partial input still triggers validation for missing required fields.",
+    "category": "Product Management",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the email/username field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Sign in\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/\""
+      },
+      {
+        "type": "action",
+        "description": "Click on \"Products\" in the main navigation"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/products\""
+      },
+      {
+        "type": "action",
+        "description": "Click the \"New Product\" button"
+      },
+      {
+        "type": "action",
+        "description": "Type \"Partial Product\" into the product name field"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Save\" product button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"Required\" is visible"
+      }
+    ]
+  },
+  {
+    "id": "TC025",
+    "title": "Save a workspace setting (default currency) successfully",
+    "description": "Verifies a user can change a workspace setting and see a success confirmation with the updated value persisted on the page.",
+    "category": "Settings & Workspace Configuration",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the email/username field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Log in\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/\""
+      },
+      {
+        "type": "action",
+        "description": "Click \"Settings\" in the app navigation/menu"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/settings\""
+      },
+      {
+        "type": "action",
+        "description": "Select a different option from the \"Default currency\" dropdown"
+      }
+    ]
+  },
+  {
+    "id": "TC026",
+    "title": "Confirm success toast appears after saving settings",
+    "description": "Verifies saving settings shows a visible success message/toast.",
+    "category": "Settings & Workspace Configuration",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the email/username field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Log in\" button"
+      },
+      {
+        "type": "action",
+        "description": "Click \"Settings\" in the app navigation/menu"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Save settings\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"Settings saved\" is visible"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"Success\" is visible"
+      }
+    ]
+  },
+  {
+    "id": "TC027",
+    "title": "Verify updated currency value persists after saving",
+    "description": "Verifies the changed currency value remains selected after a save operation completes.",
+    "category": "Settings & Workspace Configuration",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the email/username field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Log in\" button"
+      },
+      {
+        "type": "action",
+        "description": "Click \"Settings\" in the app navigation/menu"
+      },
+      {
+        "type": "action",
+        "description": "Select a different option from the \"Default currency\" dropdown"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Save settings\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the \"Default currency\" dropdown shows the newly selected option"
+      }
+    ]
+  },
+  {
+    "id": "TC028",
+    "title": "Save settings with no changes does not show an error",
+    "description": "Verifies clicking save without changing fields does not display an error and remains on Settings page.",
+    "category": "Settings & Workspace Configuration",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the email/username field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Log in\" button"
+      },
+      {
+        "type": "action",
+        "description": "Click \"Settings\" in the app navigation/menu"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Save settings\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify URL contains \"/settings\""
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"Permission denied\" is not visible"
+      }
+    ]
+  },
+  {
+    "id": "TC029",
+    "title": "Non-admin cannot save an admin-only setting",
+    "description": "Verifies a non-admin user receives a permission denied error when attempting to save an admin-only setting change.",
+    "category": "Settings & Workspace Configuration",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the email/username field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Log in\" button"
+      },
+      {
+        "type": "action",
+        "description": "Click \"Settings\" in the app navigation/menu"
+      },
+      {
+        "type": "action",
+        "description": "Click the admin-only setting control (e.g., an \"Admin controls\" toggle or field) to change its value"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Save settings\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"Permission denied\" is visible"
+      }
+    ]
+  },
+  {
+    "id": "TC030",
+    "title": "Admin-only setting remains unchanged after permission denied",
+    "description": "Verifies that after a permission denied error, the admin-only setting does not appear saved/persisted.",
+    "category": "Settings & Workspace Configuration",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the email/username field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Log in\" button"
+      },
+      {
+        "type": "action",
+        "description": "Click \"Settings\" in the app navigation/menu"
+      },
+      {
+        "type": "action",
+        "description": "Click the admin-only setting control (e.g., an \"Admin controls\" toggle or field) to change its value"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Save settings\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"Permission denied\" is visible"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the admin-only setting control shows its original value"
+      }
+    ]
+  },
+  {
+    "id": "TC031",
+    "title": "Theme setting can be changed and saved",
+    "description": "Verifies changing the theme setting can be saved and reflected in the UI.",
+    "category": "Settings & Workspace Configuration",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the email/username field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Log in\" button"
+      },
+      {
+        "type": "action",
+        "description": "Click \"Settings\" in the app navigation/menu"
+      },
+      {
+        "type": "action",
+        "description": "Select a different option from the \"Theme\" dropdown"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Save settings\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"Settings saved\" is visible"
+      }
+    ]
+  },
+  {
+    "id": "TC032",
+    "title": "Feature flag toggle can be changed and saved",
+    "description": "Verifies a workspace feature flag can be toggled and successfully saved with confirmation.",
+    "category": "Settings & Workspace Configuration",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_USER}}\" into the email/username field"
+      },
+      {
+        "type": "action",
+        "description": "Type \"{{LOGIN_PASSWORD}}\" into the password field"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Log in\" button"
+      },
+      {
+        "type": "action",
+        "description": "Click \"Settings\" in the app navigation/menu"
+      },
+      {
+        "type": "action",
+        "description": "Click a workspace feature flag toggle to change its state"
+      },
+      {
+        "type": "action",
+        "description": "Click the \"Save settings\" button"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text \"Settings saved\" is visible"
+      }
+    ]
+  }
+]

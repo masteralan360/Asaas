@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react'
+import { useReactToPrint } from 'react-to-print'
 
 import { useTranslation } from 'react-i18next'
 import {
@@ -18,7 +19,8 @@ import {
     Circle,
     Lock,
     BellOff,
-    RotateCcw
+    RotateCcw,
+    Printer
 } from 'lucide-react'
 import { useWorkspace } from '@/workspace'
 import { useExpenses, createExpense, deleteExpense, updateExpense, useBudgetAllocation, useBudgetAllocations, useMonthlyRevenue, setBudgetAllocation, useEmployees, useWorkspaceUsers, fetchTableFromSupabase } from '@/local-db'
@@ -58,12 +60,13 @@ import { BudgetReminderModal } from '@/ui/components/budget/BudgetReminderModal'
 import { BudgetLockModal } from '@/ui/components/budget/BudgetLockModal'
 import { BudgetSnoozeModal } from '@/ui/components/budget/BudgetSnoozeModal'
 import { SnoozedBudgetItemsBell } from '@/ui/components/budget/SnoozedBudgetItemsBell'
+import { BudgetPrintTemplate } from '@/ui/components/budget/BudgetPrintTemplate'
 
 
 export default function Budget() {
-    const { t } = useTranslation()
+    const { t, i18n } = useTranslation()
     const { toast } = useToast()
-    const { activeWorkspace, features } = useWorkspace()
+    const { activeWorkspace, features, workspaceName } = useWorkspace()
     const { exchangeData, eurRates, tryRates } = useExchangeRate()
     const workspaceId = activeWorkspace?.id
     const baseCurrency = (features.default_currency || 'usd') as any
@@ -77,7 +80,13 @@ export default function Budget() {
     const [allocType, setAllocType] = useState<'fixed' | 'percentage'>('fixed')
     const [allocCurrency, setAllocCurrency] = useState<CurrencyCode>(baseCurrency as any || 'usd')
     const [isDividendModalOpen, setIsDividendModalOpen] = useState(false)
+    const printRef = useRef<HTMLDivElement>(null)
     const workspaceUsers = useWorkspaceUsers(workspaceId)
+    const printLang = features?.print_lang && features.print_lang !== 'auto' ? features.print_lang : i18n.language
+    const handlePrintBudget = useReactToPrint({
+        contentRef: printRef,
+        documentTitle: `Budget_${selectedMonth.getFullYear()}-${String(selectedMonth.getMonth() + 1).padStart(2, '0')}`
+    })
 
     // ─── Budget Reminder System ─────────────────────────────────
     const [reminderQueue, setReminderQueue] = useState<BudgetReminderItem[]>([])
@@ -666,6 +675,11 @@ export default function Budget() {
         }
     }, [expenses, employees, workspaceUsers, selectedMonth, convertToStoreBase, currentAllocation, monthlyFinancials, t, baseCurrency, iqdPreference])
 
+    const sortedDisplayExpenses = useMemo(
+        () => [...metrics.displayExpenses].sort((a, b) => new Date(b.dueDate).getTime() - new Date(a.dueDate).getTime()),
+        [metrics.displayExpenses]
+    )
+
     const [isSaving, setIsSaving] = useState(false)
 
     const handleAddExpense = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -783,6 +797,8 @@ export default function Budget() {
         } catch (error) {
             console.error(error)
             toast({ variant: 'destructive', description: t('common.error', 'Failed to update status') })
+        } finally {
+            setIsProcessing(false)
         }
     }
 
@@ -1022,6 +1038,10 @@ export default function Budget() {
             <div className="flex items-center justify-between pt-4">
                 <h2 className="text-lg font-semibold">{t('budget.expenseList', 'Monthly Expenses')}</h2>
                 <div className="flex gap-2">
+                    <Button variant="outline" onClick={() => handlePrintBudget()} className="gap-2">
+                        <Printer className="w-4 h-4" />
+                        {t('common.print') || 'Print'}
+                    </Button>
                     <Button variant="outline" onClick={() => setIsAllocationDialogOpen(true)} className="gap-2">
                         <Calendar className="w-4 h-4" />
                         {t('budget.setBudget', 'Set Budget')}
@@ -1034,7 +1054,7 @@ export default function Budget() {
             </div>
 
             <div className="grid gap-4">
-                {metrics.displayExpenses.sort((a, b) => new Date(b.dueDate).getTime() - new Date(a.dueDate).getTime()).map((expense) => (
+                {sortedDisplayExpenses.map((expense) => (
                     <div
                         key={expense.id}
                         className={cn(
@@ -1174,6 +1194,20 @@ export default function Budget() {
                         </div>
                     </div>
                 ))}
+            </div>
+
+            <div className="fixed left-[-10000px] top-0 pointer-events-none">
+                <div ref={printRef}>
+                    <BudgetPrintTemplate
+                        workspaceName={workspaceName}
+                        printLang={printLang}
+                        month={monthStr}
+                        baseCurrency={baseCurrency}
+                        iqdPreference={iqdPreference}
+                        metrics={metrics}
+                        expenses={sortedDisplayExpenses}
+                    />
+                </div>
             </div>
 
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>

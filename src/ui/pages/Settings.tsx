@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription, Button, Labe
 import { useTranslation } from 'react-i18next'
 import { useWorkspace } from '@/workspace'
 import { Coins } from 'lucide-react'
-import type { IQDDisplayPreference } from '@/local-db/models'
+import type { IQDDisplayPreference, CurrencyCode } from '@/local-db/models'
 import { Settings as SettingsIcon, Database, Cloud, Trash2, RefreshCw, User, Copy, Check, CreditCard, Globe, Download, AlertCircle, Printer, Contact } from 'lucide-react'
 import { formatDateTime, cn } from '@/lib/utils'
 import { useTheme } from '@/ui/components/theme-provider'
@@ -31,6 +31,8 @@ export function Settings() {
     const { t } = useTranslation()
     const { alerts, forceAlert } = useExchangeRate()
     const [copied, setCopied] = useState(false)
+    const [isCurrencyModalOpen, setIsCurrencyModalOpen] = useState(false)
+    const [pendingCurrency, setPendingCurrency] = useState<'usd' | 'iqd' | 'eur' | 'try' | null>(null)
     const [posHotkey, setPosHotkey] = useState(localStorage.getItem('pos_hotkey') || '')
     const [barcodeHotkey, setBarcodeHotkey] = useState(localStorage.getItem('barcode_hotkey') || '')
     const [exchangeRateSource, setExchangeRateSource] = useState(localStorage.getItem('primary_exchange_rate_source') || 'xeiqd')
@@ -197,6 +199,19 @@ export function Settings() {
     const handleThresholdChange = (val: string) => {
         setExchangeRateThreshold(val)
         localStorage.setItem('exchange_rate_threshold', val)
+    }
+
+    const handleCurrencySelect = (val: CurrencyCode) => {
+        setPendingCurrency(val)
+        setIsCurrencyModalOpen(true)
+    }
+
+    const confirmCurrencyChange = async () => {
+        if (pendingCurrency) {
+            await updateSettings({ default_currency: pendingCurrency })
+            setPendingCurrency(null)
+            setIsCurrencyModalOpen(false)
+        }
     }
 
     const handleWhatsappAutoLaunchChange = (val: boolean) => {
@@ -844,6 +859,7 @@ export function Settings() {
                         </DialogContent>
                     </Dialog>
 
+
                     {/* POS Settings */}
                     <Card>
                         <CardHeader>
@@ -1229,7 +1245,7 @@ export function Settings() {
                                     <CurrencySelector
                                         label={t('settings.currency.default') || 'Default Currency'}
                                         value={features.default_currency}
-                                        onChange={(val) => updateSettings({ default_currency: val })}
+                                        onChange={handleCurrencySelect}
                                         iqdDisplayPreference={features.iqd_display_preference}
                                     />
 
@@ -1756,8 +1772,25 @@ export function Settings() {
                     )}
                 </TabsContent>
 
-
-
+                {/* Currency Confirmation Modal */}
+                <Dialog open={isCurrencyModalOpen} onOpenChange={setIsCurrencyModalOpen}>
+                    <DialogContent>
+                        <DialogHeader>
+                            <DialogTitle>{t('settings.currency.confirmTitle') || 'Change Currency'}</DialogTitle>
+                            <DialogDescription>
+                                {t('settings.currency.confirmDesc') || 'Are you sure you want to change the default currency? This will affect how prices and total amounts are displayed across the application.'}
+                            </DialogDescription>
+                        </DialogHeader>
+                        <DialogFooter>
+                            <Button variant="ghost" onClick={() => setIsCurrencyModalOpen(false)}>
+                                {t('common.cancel') || 'Cancel'}
+                            </Button>
+                            <Button onClick={confirmCurrencyChange} className="bg-primary text-primary-foreground">
+                                {t('common.confirm') || 'Confirm'}
+                            </Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
             </Tabs >
         </div >
     )

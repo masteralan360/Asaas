@@ -1,8 +1,8 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/auth'
-import { supabase } from '@/auth/supabase'
 import { Sale, SaleItem } from '@/types'
+import { useSales, toUISale } from '@/local-db'
 import { formatCurrency, formatDateTime, formatDate } from '@/lib/utils'
 import { cn } from '@/lib/utils'
 import { isMobile } from '@/lib/platform'
@@ -41,7 +41,6 @@ import {
     X,
     FileSpreadsheet,
     TrendingDown,
-    Loader2,
     DollarSign,
     TrendingUp,
     Package,
@@ -64,14 +63,8 @@ export function Revenue() {
     const { user } = useAuth()
     const { t, i18n } = useTranslation()
     const { features } = useWorkspace()
-    const [sales, setSales] = useState<Sale[]>([])
-    const [trendStats, setTrendStats] = useState<{
-        revenue: number,
-        cost: number,
-        profit: number,
-        margin: number
-    }>({ revenue: 0, cost: 0, profit: 0, margin: 0 })
-    const [isLoading, setIsLoading] = useState(true)
+    const rawSales = useSales(user?.workspaceId)
+    const allSales = useMemo<Sale[]>(() => rawSales.map(toUISale), [rawSales])
     const [selectedSale, setSelectedSale] = useState<Sale | null>(null)
     const [selectedMetric, setSelectedMetric] = useState<MetricType | null>(null)
     const [isMetricModalOpen, setIsMetricModalOpen] = useState(false)
@@ -97,6 +90,30 @@ export function Revenue() {
     const [currentPage, setCurrentPage] = useState(1)
     const itemsPerPage = 25
     const listRef = useRef<HTMLDivElement>(null)
+
+    const sales = useMemo(() => {
+        let result = allSales
+        const now = new Date()
+
+        if (dateRange === 'today') {
+            const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0)
+            result = result.filter(s => new Date(s.created_at) >= startOfDay)
+        } else if (dateRange === 'month') {
+            const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+            result = result.filter(s => new Date(s.created_at) >= startOfMonth)
+        } else if (dateRange === 'custom' && customDates.start && customDates.end) {
+            const start = new Date(customDates.start)
+            start.setHours(0, 0, 0, 0)
+            const end = new Date(customDates.end)
+            end.setHours(23, 59, 59, 999)
+            result = result.filter(s => {
+                const d = new Date(s.created_at)
+                return d >= start && d <= end
+            })
+        }
+
+        return [...result].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    }, [allSales, dateRange, customDates])
 
     // Clear selection when date filters change
     useEffect(() => {
@@ -149,159 +166,53 @@ export function Revenue() {
         setIsMetricModalOpen(true)
     }
 
-    const fetchSales = async () => {
-        setIsLoading(true)
-        try {
-            let query = supabase
-                .from('sales')
-                .select(`
-                    *,
-                    items:sale_items(
-                        *,
-                        product:product_id(name, sku, category, cost_price)
-                    )
-                `)
-                .eq('workspace_id', user?.workspaceId)
-
-            const now = new Date()
-            if (dateRange === 'today') {
-                const startOfDay = new Date(now.setHours(0, 0, 0, 0)).toISOString()
-                query = query.gte('created_at', startOfDay)
-            } else if (dateRange === 'month') {
-                const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
-                query = query.gte('created_at', startOfMonth)
-            } else if (dateRange === 'custom' && customDates.start && customDates.end) {
-                const start = new Date(customDates.start)
-                start.setHours(0, 0, 0, 0)
-                const end = new Date(customDates.end)
-                end.setHours(23, 59, 59, 999)
-                query = query.gte('created_at', start.toISOString()).lte('created_at', end.toISOString())
-            } else if (dateRange === 'allTime') {
-                // No date filtering needed for 'allTime'
-            }
-
-            const { data, error } = await query.order('created_at', { ascending: false })
-
-            if (error) throw error
-
-            // Fetch profiles for cashiers
-            const cashierIds = Array.from(new Set((data || []).map((s: any) => s.cashier_id).filter(Boolean)))
-            let profilesMap: Record<string, string> = {}
-
-            if (cashierIds.length > 0) {
-                const { data: profiles } = await supabase
-                    .from('profiles')
-                    .select('id, name')
-                    .in('id', cashierIds)
-
-                if (profiles) {
-                    profilesMap = profiles.reduce((acc: Record<string, string>, curr: { id: string, name: string }) => ({
-                        ...acc,
-                        [curr.id]: curr.name
-                    }), {})
-                }
-            }
-
-
-            const formattedSales: Sale[] = (data || []).map((sale: any) => ({
-                ...sale,
-                sequenceId: sale.sequence_id,
-                cashier_name: profilesMap[sale.cashier_id || ''] || 'Staff',
-                items: sale.items?.map((item: any) => ({
-                    ...item,
-                    product_name: item.product?.name || 'Unknown Product',
-                    product_sku: item.product?.sku || '',
-                    product_category: item.product?.category || 'Uncategorized'
-                }))
-            }))
-
-            setSales(formattedSales)
-        } catch (err) {
-            console.error('Error fetching sales for revenue:', err)
-        } finally {
-            setIsLoading(false)
+    const trendStats = useMemo(() => {
+        const calcTrend = (current: number, previous: number) => {
+            if (previous === 0) return current > 0 ? 100 : 0
+            return ((current - previous) / previous) * 100
         }
-    }
 
-    const fetchTrendStats = async () => {
-        try {
-            const endDate = new Date()
-            const startDate = new Date()
-            startDate.setDate(endDate.getDate() - 14) // Last 14 days
+        const now = new Date()
+        const currentStart = new Date(now)
+        currentStart.setDate(currentStart.getDate() - 7)
+        const previousStart = new Date(currentStart)
+        previousStart.setDate(previousStart.getDate() - 7)
 
-            const { data, error } = await supabase
-                .from('sales')
-                .select(`
-                    created_at,
-                    settlement_currency,
-                    is_returned,
-                    items:sale_items(
-                        quantity,
-                        returned_quantity,
-                        converted_unit_price,
-                        converted_cost_price
-                    )
-                `)
-                .eq('workspace_id', user?.workspaceId)
-                .gte('created_at', startDate.toISOString())
-                .lte('created_at', endDate.toISOString())
+        let currentRevenue = 0
+        let currentCost = 0
+        let previousRevenue = 0
+        let previousCost = 0
 
-            if (error) throw error
+        allSales.forEach((sale) => {
+            if (sale.is_returned) return
+            const saleDate = new Date(sale.created_at)
+            if (saleDate < previousStart || saleDate > now) return
 
-            const currentStart = new Date()
-            currentStart.setDate(currentStart.getDate() - 7)
-
-            let currentRevenue = 0
-            let currentCost = 0
-            let previousRevenue = 0
-            let previousCost = 0
-
-            data?.forEach((sale: any) => {
-                if (sale.is_returned) return
-
-                const saleDate = new Date(sale.created_at)
-                let saleRevenue = 0
-                let saleCost = 0
-
-                sale.items?.forEach((item: any) => {
-                    const netQty = item.quantity - (item.returned_quantity || 0)
-                    if (netQty <= 0) return
-                    saleRevenue += item.converted_unit_price * netQty
-                    saleCost += (item.converted_cost_price || 0) * netQty
-                })
-
-                if (saleDate >= currentStart) {
-                    currentRevenue += saleRevenue
-                    currentCost += saleCost
-                } else {
-                    previousRevenue += saleRevenue
-                    previousCost += saleCost
-                }
+            let saleRevenue = 0
+            let saleCost = 0
+            sale.items?.forEach((item: SaleItem) => {
+                const netQty = item.quantity - (item.returned_quantity || 0)
+                if (netQty <= 0) return
+                saleRevenue += item.converted_unit_price * netQty
+                saleCost += (item.converted_cost_price || 0) * netQty
             })
 
-            const calcTrend = (current: number, previous: number) => {
-                if (previous === 0) return current > 0 ? 100 : 0
-                return ((current - previous) / previous) * 100
+            if (saleDate >= currentStart) {
+                currentRevenue += saleRevenue
+                currentCost += saleCost
+            } else {
+                previousRevenue += saleRevenue
+                previousCost += saleCost
             }
+        })
 
-            setTrendStats({
-                revenue: calcTrend(currentRevenue, previousRevenue),
-                cost: calcTrend(currentCost, previousCost),
-                profit: calcTrend(currentRevenue - currentCost, previousRevenue - previousCost),
-                margin: 0
-            })
-
-        } catch (err) {
-            console.error('Error fetching trend stats:', err)
+        return {
+            revenue: calcTrend(currentRevenue, previousRevenue),
+            cost: calcTrend(currentCost, previousCost),
+            profit: calcTrend(currentRevenue - currentCost, previousRevenue - previousCost),
+            margin: 0
         }
-    }
-
-    useEffect(() => {
-        if (user?.workspaceId) {
-            fetchSales()
-            fetchTrendStats()
-        }
-    }, [user?.workspaceId, dateRange, customDates])
+    }, [allSales])
 
     const calculateStats = (salesData: Sale[], defaultCurrency: string) => {
         const statsByCurrency: Record<string, {
@@ -554,21 +465,7 @@ export function Revenue() {
         const startIndex = (currentPage - 1) * itemsPerPage
         return stats.saleStats.slice(startIndex, startIndex + itemsPerPage)
     }, [stats.saleStats, currentPage])
-
-
-    // Only show global loader on initial fetch
-    if (isLoading && sales.length === 0) {
-        return (
-            <div className="flex items-center justify-center min-h-[400px]">
-                <div className="flex flex-col items-center gap-4">
-                    <Loader2 className="w-8 h-8 animate-spin text-primary" />
-                    <p className="text-sm text-muted-foreground animate-pulse">
-                        {t('common.loading') || 'Loading analytics...'}
-                    </p>
-                </div>
-            </div>
-        )
-    }
+    const salesById = useMemo(() => new Map(sales.map(s => [s.id, s])), [sales])
 
     return (
         <TooltipProvider>
@@ -1145,7 +1042,7 @@ export function Revenue() {
                                     viewMode === 'grid' && !isMobile() ? "grid-cols-1 lg:grid-cols-2 xl:grid-cols-3" : "grid-cols-1"
                                 )}>
                                     {paginatedSales.map((sale, idx) => {
-                                        const originalSale = sales.find(s => s.id === sale.id)
+                                        const originalSale = salesById.get(sale.id)
                                         const isFullyReturned = originalSale ? (originalSale.is_returned || (originalSale.items && originalSale.items.length > 0 && originalSale.items.every((item: any) =>
                                             item.is_returned || (item.returned_quantity || 0) >= item.quantity
                                         ))) : false
@@ -1275,7 +1172,7 @@ export function Revenue() {
                                     </TableHeader>
                                     <TableBody>
                                         {paginatedSales.map((sale, idx) => {
-                                            const originalSale = sales.find(s => s.id === sale.id)
+                                            const originalSale = salesById.get(sale.id)
                                             const isFullyReturned = originalSale ? (originalSale.is_returned || (originalSale.items && originalSale.items.length > 0 && originalSale.items.every((item: any) =>
                                                 item.is_returned || (item.returned_quantity || 0) >= item.quantity
                                             ))) : false

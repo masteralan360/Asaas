@@ -1,0 +1,20 @@
+{
+  "status": "commited",
+  "type": "frontend",
+  "scope": "codebase",
+  "localEndpoint": "http://localhost:5173",
+  "loginUser": "admin@example.com",
+  "loginPassword": "admin123",
+  "executionArgs": {
+    "projectName": "Asaas",
+    "projectPath": "e:\\ERP System\\Asaas",
+    "testIds": [],
+    "additionalInstruction": "use admin@example.com as email and admin123 as password",
+    "serverMode": "development",
+    "envs": {
+      "API_KEY": "sk-user-jUh4RsJ8AaSnBfgh6XP_t8riMqiWEUanoipWXHAC9gGTTfM8bHADFb-J_ujBf3EAcJcLf6RxHrrFZDEXVpvLKeDvzB23Ulh0FVu4Yj86PCzMPe01DZhbGk5TBfjUwKXwhzw"
+    }
+  },
+  "serverPort": 12113,
+  "proxy": "http://ba65b5a8-aac5-4a2b-bab6-02dc3481b8be:bIGdCTYmpiZ8IUiPh64pgiPLYHL6jf0Q@tun.testsprite.com:8080"
+}

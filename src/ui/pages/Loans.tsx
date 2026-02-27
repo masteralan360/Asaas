@@ -1,7 +1,8 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { Link, useLocation, useRoute } from 'wouter'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useTranslation } from 'react-i18next'
+import { useReactToPrint } from 'react-to-print'
 import { useAuth } from '@/auth'
 import { db } from '@/local-db/database'
 import {
@@ -29,9 +30,10 @@ import {
     TableRow,
     AppPagination
 } from '@/ui/components'
-import { Search, Plus, ArrowLeft } from 'lucide-react'
+import { Search, Plus, ArrowLeft, Printer } from 'lucide-react'
 import { CreateManualLoanModal } from '@/ui/components/loans/CreateManualLoanModal'
 import { RecordLoanPaymentModal } from '@/ui/components/loans/RecordLoanPaymentModal'
+import { LoanDetailsPrintTemplate, LoanListPrintTemplate } from '@/ui/components/loans/LoanPrintTemplates'
 
 type LoanFilter = 'all' | 'active' | 'overdue' | 'completed'
 
@@ -55,15 +57,16 @@ function isLoanOverdue(loan: Loan) {
 }
 
 function LoanListView({ workspaceId }: { workspaceId: string }) {
-    const { t } = useTranslation()
+    const { t, i18n } = useTranslation()
     const [, navigate] = useLocation()
-    const { features } = useWorkspace()
+    const { features, workspaceName } = useWorkspace()
     const { user } = useAuth()
     const isReadOnly = user?.role === 'viewer'
     const [search, setSearch] = useState('')
     const [filter, setFilter] = useState<LoanFilter>('all')
     const [currentPage, setCurrentPage] = useState(1)
     const [createOpen, setCreateOpen] = useState(false)
+    const printRef = useRef<HTMLDivElement>(null)
     const pageSize = 15
     const loans = useLoans(workspaceId)
     const installments = useLiveQuery(
@@ -105,6 +108,11 @@ function LoanListView({ workspaceId }: { workspaceId: string }) {
 
     const currency = features.default_currency || 'usd'
     const iqdPreference = features.iqd_display_preference
+    const printLang = features?.print_lang && features.print_lang !== 'auto' ? features.print_lang : i18n.language
+    const handlePrintList = useReactToPrint({
+        contentRef: printRef,
+        documentTitle: `Loans_${new Date().toISOString().split('T')[0]}`
+    })
 
     return (
         <div className="space-y-4">
@@ -167,8 +175,12 @@ function LoanListView({ workspaceId }: { workspaceId: string }) {
                                 </button>
                             ))}
                         </div>
+                        <Button variant="outline" onClick={() => handlePrintList()} className="gap-2 print:hidden">
+                            <Printer className="w-4 h-4" />
+                            {t('common.print') || 'Print'}
+                        </Button>
                         {!isReadOnly && (
-                            <Button onClick={() => setCreateOpen(true)} className="gap-2">
+                            <Button onClick={() => setCreateOpen(true)} className="gap-2 print:hidden">
                                 <Plus className="w-4 h-4" />
                                 {t('loans.createManualLoan') || 'Create Manual Loan'}
                             </Button>
@@ -187,7 +199,7 @@ function LoanListView({ workspaceId }: { workspaceId: string }) {
                                     <TableHead className="text-end">{t('loans.balance') || 'Balance'}</TableHead>
                                     <TableHead>{t('loans.nextDue') || 'Next Due'}</TableHead>
                                     <TableHead>{t('loans.status') || 'Status'}</TableHead>
-                                    <TableHead className="text-end">{t('common.actions') || 'Actions'}</TableHead>
+                                    <TableHead className="text-end print:hidden">{t('common.actions') || 'Actions'}</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
@@ -218,7 +230,7 @@ function LoanListView({ workspaceId }: { workspaceId: string }) {
                                                 {isLoanOverdue(loan) ? (t('loans.statuses.overdue') || 'Overdue') : (t(`loans.statuses.${loan.status}`) || loan.status)}
                                             </span>
                                         </TableCell>
-                                        <TableCell className="text-end">
+                                        <TableCell className="text-end print:hidden">
                                             <Button variant="ghost" size="sm" onClick={() => navigate(`/loans/${loan.id}`)}>
                                                 {t('common.view') || 'View'}
                                             </Button>
@@ -234,6 +246,7 @@ function LoanListView({ workspaceId }: { workspaceId: string }) {
                         totalCount={filtered.length}
                         pageSize={pageSize}
                         onPageChange={setCurrentPage}
+                        className="print:hidden"
                     />
                 </CardContent>
             </Card>
@@ -247,19 +260,39 @@ function LoanListView({ workspaceId }: { workspaceId: string }) {
                     onCreated={(loanId) => navigate(`/loans/${loanId}`)}
                 />
             )}
+
+            <div className="fixed left-[-10000px] top-0 pointer-events-none">
+                <div ref={printRef}>
+                    <LoanListPrintTemplate
+                        workspaceName={workspaceName}
+                        printLang={printLang}
+                        loans={filtered}
+                        filter={filter}
+                        displayCurrency={currency}
+                        iqdPreference={iqdPreference}
+                        metrics={metrics}
+                    />
+                </div>
+            </div>
         </div>
     )
 }
 
 function LoanDetailsView({ workspaceId, loanId }: { workspaceId: string; loanId: string }) {
-    const { t } = useTranslation()
-    const { features } = useWorkspace()
+    const { t, i18n } = useTranslation()
+    const { features, workspaceName } = useWorkspace()
     const { user } = useAuth()
     const isReadOnly = user?.role === 'viewer'
     const loan = useLoan(loanId)
     const installments = useLoanInstallments(loanId, workspaceId)
     const payments = useLoanPayments(loanId, workspaceId)
     const [paymentModalOpen, setPaymentModalOpen] = useState(false)
+    const printRef = useRef<HTMLDivElement>(null)
+    const printLang = features?.print_lang && features.print_lang !== 'auto' ? features.print_lang : i18n.language
+    const handlePrintLoan = useReactToPrint({
+        contentRef: printRef,
+        documentTitle: `${loan?.loanNo || 'Loan'}_${new Date().toISOString().split('T')[0]}`
+    })
 
     if (!loan) {
         return (
@@ -301,9 +334,17 @@ function LoanDetailsView({ workspaceId, loanId }: { workspaceId: string; loanId:
                     <span>/</span>
                     <span className="text-foreground font-semibold">{loan.loanNo}</span>
                 </div>
-                {!isReadOnly && (
-                    <Button onClick={() => setPaymentModalOpen(true)}>{t('loans.recordPayment') || 'Record Payment'}</Button>
-                )}
+                <div className="flex items-center gap-2">
+                    <Button variant="outline" onClick={() => handlePrintLoan()} className="gap-2 print:hidden">
+                        <Printer className="w-4 h-4" />
+                        {t('common.print') || 'Print'}
+                    </Button>
+                    {!isReadOnly && (
+                        <Button onClick={() => setPaymentModalOpen(true)} className="print:hidden">
+                            {t('loans.recordPayment') || 'Record Payment'}
+                        </Button>
+                    )}
+                </div>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -320,27 +361,52 @@ function LoanDetailsView({ workspaceId, loanId }: { workspaceId: string; loanId:
                         </CardContent>
                     </Card>
 
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>{t('loans.summary') || 'Loan Summary'}</CardTitle>
+                    <Card className="overflow-hidden border-none shadow-none bg-transparent">
+                        <CardHeader className="flex flex-row items-center justify-between pb-2">
+                            <CardTitle className="text-xl font-bold">{t('loans.summary') || 'Loan Summary'}</CardTitle>
+                            <span className="px-2 py-0.5 rounded-md bg-primary/10 text-primary text-[10px] font-bold uppercase tracking-wider">
+                                {t('loans.principalOnly') || 'Principal Only'}
+                            </span>
                         </CardHeader>
-                        <CardContent className="space-y-3">
-                            <div className="flex justify-between">
-                                <span className="text-muted-foreground">{t('loans.principal') || 'Principal'}</span>
-                                <span className="font-semibold">{formatCurrency(loan.principalAmount, loan.settlementCurrency, features.iqd_display_preference)}</span>
+                        <CardContent className="space-y-4">
+                            {/* Main Principal Card */}
+                            <div className="bg-muted/30 rounded-2xl p-6 relative overflow-hidden group border border-border/40 text-center">
+                                <div className="relative z-10">
+                                    <div className="text-sm text-muted-foreground font-medium mb-1">{t('loans.totalPrincipal') || 'Total Principal'}</div>
+                                    <div className="text-4xl font-black tracking-tight tracking-tighter">
+                                        {formatCurrency(loan.principalAmount, loan.settlementCurrency, features.iqd_display_preference)}
+                                    </div>
+                                </div>
                             </div>
-                            <div className="flex justify-between">
-                                <span className="text-muted-foreground">{t('loans.paid') || 'Paid'}</span>
-                                <span className="font-semibold text-emerald-500">{formatCurrency(loan.totalPaidAmount, loan.settlementCurrency, features.iqd_display_preference)}</span>
+
+                            {/* Stats Grid */}
+                            <div className="grid grid-cols-2 gap-4 text-center">
+                                <div className="bg-muted/20 rounded-2xl p-5 border border-border/40">
+                                    <div className="text-[11px] text-muted-foreground font-bold uppercase tracking-wider mb-2">{t('loans.totalRepaid') || 'Total Repaid'}</div>
+                                    <div className="text-2xl font-bold text-emerald-500">
+                                        {formatCurrency(loan.totalPaidAmount, loan.settlementCurrency, features.iqd_display_preference)}
+                                    </div>
+                                </div>
+                                <div className="bg-muted/20 rounded-2xl p-5 border border-border/40">
+                                    <div className="text-[11px] text-muted-foreground font-bold uppercase tracking-wider mb-2">{t('loans.balanceDue') || 'Balance Due'}</div>
+                                    <div className="text-2xl font-bold text-blue-500">
+                                        {formatCurrency(loan.balanceAmount, loan.settlementCurrency, features.iqd_display_preference)}
+                                    </div>
+                                </div>
                             </div>
-                            <div className="flex justify-between">
-                                <span className="text-muted-foreground">{t('loans.balance') || 'Balance'}</span>
-                                <span className="font-semibold">{formatCurrency(loan.balanceAmount, loan.settlementCurrency, features.iqd_display_preference)}</span>
+
+                            {/* Bottom Progress Section */}
+                            <div className="pt-2 space-y-2">
+                                <div className="w-full bg-muted/40 h-1.5 rounded-full overflow-hidden">
+                                    <div
+                                        className="h-full bg-emerald-500 transition-all duration-500 ease-out shadow-[0_0_8px_rgba(16,185,129,0.3)]"
+                                        style={{ width: `${paidPercent}%` }}
+                                    />
+                                </div>
+                                <div className="text-[10px] font-bold text-muted-foreground/80 uppercase tracking-widest text-center">
+                                    {Math.round(paidPercent)}% {t('loans.completedStep') || 'Repayment Completed'}
+                                </div>
                             </div>
-                            <div className="w-full bg-muted h-2 rounded-full overflow-hidden">
-                                <div className="h-full bg-primary" style={{ width: `${paidPercent}%` }} />
-                            </div>
-                            <div className="text-xs text-muted-foreground">{Math.round(paidPercent)}% {t('loans.completedPercent') || 'completed'}</div>
                         </CardContent>
                     </Card>
 
@@ -348,13 +414,34 @@ function LoanDetailsView({ workspaceId, loanId }: { workspaceId: string; loanId:
                         <CardHeader>
                             <CardTitle>{t('loans.recentActivity') || 'Recent Activity'}</CardTitle>
                         </CardHeader>
-                        <CardContent className="space-y-2">
-                            {activityRows.slice(0, 8).map(row => (
-                                <div key={row.id} className="text-sm">
-                                    <div className="font-medium">{row.label}</div>
-                                    <div className="text-muted-foreground text-xs">{formatDate(row.date)} • {formatCurrency(row.amount, loan.settlementCurrency, features.iqd_display_preference)}</div>
-                                </div>
-                            ))}
+                        <CardContent>
+                            <div className="relative ps-4 space-y-6 before:absolute before:start-0 before:top-2 before:bottom-2 before:w-0.5 before:bg-border/60">
+                                {activityRows.slice(0, 8).map(row => {
+                                    const isDisbursement = row.id.includes('created');
+                                    return (
+                                        <div key={row.id} className="relative group">
+                                            {/* Timeline Node */}
+                                            <div className={cn(
+                                                "absolute -start-[1.375rem] top-1.5 w-3 h-3 rounded-full border-2 border-background z-10 transition-transform group-hover:scale-125",
+                                                isDisbursement ? "bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.4)]" : "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]"
+                                            )} />
+
+                                            <div className="space-y-0.5">
+                                                <div className="font-bold text-sm leading-none transition-colors group-hover:text-primary">
+                                                    {row.label}
+                                                </div>
+                                                <div className="text-muted-foreground text-xs font-medium flex items-center gap-1.5 pt-1">
+                                                    <span>{formatDate(row.date)}</span>
+                                                    <span className="w-1 h-1 rounded-full bg-muted-foreground/30" />
+                                                    <span className="font-bold text-foreground/80">
+                                                        {formatCurrency(row.amount, loan.settlementCurrency, features.iqd_display_preference)}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
                         </CardContent>
                     </Card>
                 </div>
@@ -374,7 +461,7 @@ function LoanDetailsView({ workspaceId, loanId }: { workspaceId: string; loanId:
                                         <TableHead className="text-end">{t('loans.paid') || 'Paid'}</TableHead>
                                         <TableHead className="text-end">{t('loans.balance') || 'Balance'}</TableHead>
                                         <TableHead>{t('loans.status') || 'Status'}</TableHead>
-                                        <TableHead className="text-end">{t('common.actions') || 'Actions'}</TableHead>
+                                        <TableHead className="text-end print:hidden">{t('common.actions') || 'Actions'}</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
@@ -396,7 +483,7 @@ function LoanDetailsView({ workspaceId, loanId }: { workspaceId: string; loanId:
                                                     {t(`loans.installmentStatuses.${item.status}`) || item.status}
                                                 </span>
                                             </TableCell>
-                                            <TableCell className="text-end">
+                                            <TableCell className="text-end print:hidden">
                                                 {!isReadOnly && item.balanceAmount > 0 && (
                                                     <Button variant="ghost" size="sm" onClick={() => setPaymentModalOpen(true)}>
                                                         {t('loans.pay') || 'Pay'}
@@ -420,6 +507,19 @@ function LoanDetailsView({ workspaceId, loanId }: { workspaceId: string; loanId:
                     loan={loan}
                 />
             )}
+
+            <div className="fixed left-[-10000px] top-0 pointer-events-none">
+                <div ref={printRef}>
+                    <LoanDetailsPrintTemplate
+                        workspaceName={workspaceName}
+                        printLang={printLang}
+                        loan={loan}
+                        installments={installments}
+                        payments={payments}
+                        iqdPreference={features.iqd_display_preference}
+                    />
+                </div>
+            </div>
         </div>
     )
 }

@@ -475,7 +475,7 @@ function App() {
                         </ExchangeRateProvider>
                     )}
                     <Toaster />
-                    {currentPatch && (
+                    {isTauri && currentPatch && (
                         <PatchNoteModal
                             isOpen={showModal}
                             onClose={dismissModal}

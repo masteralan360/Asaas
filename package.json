@@ -43,7 +43,10 @@
     "android:build:release": "tauri android build"
   },
   "dependencies": {
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.1",
     "@lglab/react-qr-code": "^1.4.9",
+    "@mui/material": "^7.3.8",
     "@novu/node": "^2.6.6",
     "@novu/react": "^3.13.0",
     "@radix-ui/react-alert-dialog": "^1.1.2",

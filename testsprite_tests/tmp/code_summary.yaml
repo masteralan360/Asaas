@@ -1,0 +1,50 @@
+version: "2"
+type: frontend
+tech_stack:
+  - TypeScript
+  - React (Vite)
+  - TailwindCSS
+  - Supabase
+  - Radix UI
+routes:
+  - path: /login
+    file: src/ui/pages/Login.tsx
+    auth_required: false
+    description: User login page
+  - path: /register
+    file: src/ui/pages/Register.tsx
+    auth_required: false
+    description: User registration page
+  - path: /
+    file: src/ui/pages/Dashboard.tsx
+    auth_required: true
+    description: Main dashboard
+  - path: /pos
+    file: src/ui/pages/POS.tsx
+    auth_required: true
+    description: Point of Sale interface
+  - path: /products
+    file: src/ui/pages/Products.tsx
+    auth_required: true
+    description: Product management
+  - path: /settings
+    file: src/ui/pages/Settings.tsx
+    auth_required: true
+    description: System and workspace settings
+features:
+  - name: User Login
+    description: Login with email and password credentials
+    files:
+      - src/ui/pages/Login.tsx
+      - src/auth/AuthProvider.tsx
+    entry_route: /login
+    user_interactions:
+      - Fill email input field
+      - Fill password input field
+      - Click Login button to submit
+      - See error message on invalid credentials
+    api_calls:
+      - method: POST
+        endpoint: /auth/v1/token
+    auth_required: false
+known_limitations: []

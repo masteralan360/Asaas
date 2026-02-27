@@ -50,6 +50,7 @@ import {
 } from 'lucide-react'
 import { useState } from 'react'
 import { Button } from './button'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from './dialog'
 import { useTranslation } from 'react-i18next'
 import { useEffect } from 'react'
 import { supabase } from '@/auth/supabase'
@@ -134,6 +135,7 @@ export function Layout({ children }: LayoutProps) {
     const [copied, setCopied] = useState(false)
     const [version, setVersion] = useState('')
     const [whatsappStatus, setWhatsappStatus] = useState<'live' | 'off'>(whatsappManager.isActive() ? 'live' : 'off')
+    const [isSignOutModalOpen, setIsSignOutModalOpen] = useState(false)
 
     const copyToClipboard = (text: string) => {
         navigator.clipboard.writeText(text)
@@ -527,7 +529,7 @@ export function Layout({ children }: LayoutProps) {
                         <Button
                             variant="ghost"
                             size="icon"
-                            onClick={signOut}
+                            onClick={() => setIsSignOutModalOpen(true)}
                             className={cn("text-muted-foreground hover:text-destructive", (isMini && !mobileSidebarOpen) && "h-8 w-8 mt-1")}
                             title="Sign Out"
                         >
@@ -642,6 +644,29 @@ export function Layout({ children }: LayoutProps) {
                     </Suspense>
                 </main>
             </div>
+
+            {/* Sign Out Confirmation Modal */}
+            <Dialog open={isSignOutModalOpen} onOpenChange={setIsSignOutModalOpen}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>{t('auth.signOutConfirmTitle') || 'Sign Out'}</DialogTitle>
+                        <DialogDescription>
+                            {t('auth.signOutConfirmDesc') || 'Are you sure you want to sign out?'}
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter>
+                        <Button variant="ghost" onClick={() => setIsSignOutModalOpen(false)}>
+                            {t('common.cancel') || 'Cancel'}
+                        </Button>
+                        <Button variant="destructive" onClick={() => {
+                            setIsSignOutModalOpen(false)
+                            signOut()
+                        }}>
+                            {t('auth.signOut') || 'Sign Out'}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     )
 }
