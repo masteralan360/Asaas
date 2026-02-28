@@ -1280,6 +1280,31 @@
         "setBudget": "Set Budget",
         "addExpense": "New Expense",
         "expenseList": "Monthly Expenses",
+        "tabs": {
+            "monthlyExpenses": "Monthly Expenses",
+            "dividendsWithdrawal": "Dividends Withdrawal"
+        },
+        "dividendsWithdrawal": {
+            "title": "Dividends Withdrawal",
+            "subtitle": "Review and distribute this month dividends"
+        },
+        "dividend": {
+            "status": {
+                "paid": "Paid",
+                "snoozed": "Snoozed",
+                "overdue": "Overdue",
+                "dueToday": "Due Today",
+                "upcoming": "Upcoming"
+            },
+            "action": {
+                "markPaid": "Mark Paid",
+                "markUnpaid": "Mark Unpaid",
+                "snooze": "Snooze",
+                "unsnooze": "Un-snooze"
+            },
+            "empty": "No dividend withdrawals for this month",
+            "paidPersisted": "Dividend payment status saved"
+        },
         "allocationSaved": "Budget allocation updated",
         "estimatedLimit": "Estimated Limit",
         "basedOnRevenue": "Based on {{month}} revenue",
@@ -1289,6 +1314,13 @@
         "snoozedUntil": "Snoozed until",
         "unsnooze": "Un-snooze",
         "snoozedIndefinitely": "Snoozed Until Un-snoozed",
+        "deleteSeries": "Delete Recurring Series",
+        "deleteOccurrence": "Delete This Month Only",
+        "deletedOccurrenceKeepsSeries": "Deleted this month item. Recurring series is still active.",
+        "form": {
+            "subcategory": "Subcategory",
+            "subcategoryPlaceholder": "e.g. Internet / Ads / Fuel"
+        },
         "status": {
             "paid": "Paid",
             "pending": "Pending",

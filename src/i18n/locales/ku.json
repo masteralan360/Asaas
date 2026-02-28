@@ -1187,6 +1187,31 @@
         "setBudget": "دیاریکردنی بودجە",
         "addExpense": "خەرجی نوێ",
         "expenseList": "خەرجییە کارگێڕییەکان",
+        "tabs": {
+            "monthlyExpenses": "خەرجییە کارگێڕییەکان",
+            "dividendsWithdrawal": "وەرگرتنی دابەشکردنی قازانج"
+        },
+        "dividendsWithdrawal": {
+            "title": "وەرگرتنی دابەشکردنی قازانج",
+            "subtitle": "راپۆرت و کردارەکانی دابەشکردنی قازانجی ئەم مانگە"
+        },
+        "dividend": {
+            "status": {
+                "paid": "دراوە",
+                "snoozed": "دواخراو",
+                "overdue": "دواکەوتووە",
+                "dueToday": "ئەمڕۆ مۆڵەتی تەواوە",
+                "upcoming": "لە ڕێگایە"
+            },
+            "action": {
+                "markPaid": "وەک دراوە نیشان بکە",
+                "markUnpaid": "وەک نەدراوە نیشان بکە",
+                "snooze": "دواخستن",
+                "unsnooze": "هەڵوەشاندنەوەی دواخستن"
+            },
+            "empty": "هیچ دابەشکردنی قازانج بۆ ئەم مانگە نییە",
+            "paidPersisted": "دۆخی پارەدان بۆ قازانج پاشەکەوت کرا"
+        },
         "allocationSaved": "تەرخانکردنی بودجە نوێکرایەوە",
         "estimatedLimit": "سنووری خەمڵێنراو",
         "basedOnRevenue": "لەسەر بنەمای داهاتی مانگی {{month}}",
@@ -1196,12 +1221,17 @@
         "snoozedUntil": "دواخراوە تا",
         "unsnooze": "پاشگەزبوونەوە لە دواخستن",
         "snoozedIndefinitely": "دواخرا تاوەکو پاشگەزبوونەوە لە دواخستن",
+        "deleteSeries": "سڕینەوەی زنجیرەی دووبارەبوونەوە",
+        "deleteOccurrence": "سڕینەوەی تەنها ئەم مانگە",
+        "deletedOccurrenceKeepsSeries": "بڕگەی ئەم مانگە سڕایەوە. زنجیرەی دووبارەبوونەوە هێشتا چالاکە.",
         "form": {
             "desc": "وەسف",
             "amount": "بڕ",
             "category": "پۆل",
             "type": "جۆر",
-            "dueDate": "بەرواری کۆتایی"
+            "dueDate": "بەرواری کۆتایی",
+            "subcategory": "پۆلی لاوەکی",
+            "subcategoryPlaceholder": "بۆ نموونە: ئینتەرنێت / ڕیکلام / بەنزین"
         },
         "cat": {
             "payroll": "مووچەی ستاف",

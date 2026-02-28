@@ -41,10 +41,9 @@ import {
     DialogTitle,
     DialogDescription,
     DialogFooter,
-    useToast,
-    DividendDistributionModal
+    useToast
 } from '@/ui/components'
-import type { DividendRecipient } from '@/ui/components/DividendModal'
+import type { DividendRecipient } from '@/ui/components/budget/DividendDistributionPanel'
 import { Label } from '@/ui/components/label'
 import {
     Select,
@@ -53,14 +52,63 @@ import {
     SelectTrigger,
     SelectValue
 } from '@/ui/components/select'
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/ui/components/tabs'
 
 import { useExchangeRate } from '@/context/ExchangeRateContext'
-import { scanDueItems, getSnoozedItems, getReminderConfig, getVirtualSnooze, setVirtualSnooze, type BudgetReminderItem, INDEFINITE_SNOOZE_DATE, isIndefiniteSnooze } from '@/lib/budgetReminders'
+import { scanDueItems, getSnoozedItems, getReminderConfig, getVirtualSnooze, setVirtualSnooze, getVirtualPaid, setVirtualPaid, type BudgetReminderItem, INDEFINITE_SNOOZE_DATE, isIndefiniteSnooze, isSnoozeActive } from '@/lib/budgetReminders'
 import { BudgetReminderModal } from '@/ui/components/budget/BudgetReminderModal'
 import { BudgetLockModal } from '@/ui/components/budget/BudgetLockModal'
 import { BudgetSnoozeModal } from '@/ui/components/budget/BudgetSnoozeModal'
 import { SnoozedBudgetItemsBell } from '@/ui/components/budget/SnoozedBudgetItemsBell'
 import { BudgetPrintTemplate } from '@/ui/components/budget/BudgetPrintTemplate'
+import { DividendDistributionPanel } from '@/ui/components/budget/DividendDistributionPanel'
+
+const normalizeExpenseField = (value?: string | null) => (value || '').trim().toLowerCase()
+
+const isRecurringOccurrenceMatch = (
+    recurringTemplate: any,
+    expenseRecord: any,
+    monthStart: Date,
+    monthEnd: Date
+): boolean => {
+    if (!recurringTemplate || !expenseRecord || expenseRecord.type !== 'one-time') return false
+
+    const expenseDueDate = new Date(expenseRecord.dueDate)
+    if (isNaN(expenseDueDate.getTime()) || expenseDueDate < monthStart || expenseDueDate > monthEnd) return false
+
+    if (expenseRecord.category !== recurringTemplate.category) return false
+    if (normalizeExpenseField(expenseRecord.description) !== normalizeExpenseField(recurringTemplate.description)) return false
+    if (normalizeExpenseField(expenseRecord.subcategory) !== normalizeExpenseField(recurringTemplate.subcategory)) return false
+
+    const recurringDay = new Date(recurringTemplate.dueDate).getDate()
+    if (isNaN(recurringDay)) return false
+
+    const projectedDay = Math.min(
+        recurringDay,
+        new Date(expenseDueDate.getFullYear(), expenseDueDate.getMonth() + 1, 0).getDate()
+    )
+
+    return expenseDueDate.getDate() === projectedDay
+}
+
+type DividendWithdrawalStatus = 'paid' | 'snoozed' | 'overdue' | 'dueToday' | 'upcoming'
+
+interface DividendWithdrawalRow {
+    employeeId: string
+    employeeName: string
+    formula: string
+    dueDate: Date
+    amount: number
+    currency: string
+    status: DividendWithdrawalStatus
+    snoozeUntil: string | null
+    snoozeCount: number
+}
+
+const isSameDay = (a: Date, b: Date) =>
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
 
 
 export default function Budget() {
@@ -79,22 +127,28 @@ export default function Budget() {
     const [allocAmountDisplay, setAllocAmountDisplay] = useState<string>('')
     const [allocType, setAllocType] = useState<'fixed' | 'percentage'>('fixed')
     const [allocCurrency, setAllocCurrency] = useState<CurrencyCode>(baseCurrency as any || 'usd')
-    const [isDividendModalOpen, setIsDividendModalOpen] = useState(false)
+    const [activeBudgetTab, setActiveBudgetTab] = useState<'expenses' | 'dividends'>('expenses')
     const printRef = useRef<HTMLDivElement>(null)
+    const dividendsPrintRef = useRef<HTMLDivElement>(null)
     const workspaceUsers = useWorkspaceUsers(workspaceId)
     const printLang = features?.print_lang && features.print_lang !== 'auto' ? features.print_lang : i18n.language
     const handlePrintBudget = useReactToPrint({
         contentRef: printRef,
         documentTitle: `Budget_${selectedMonth.getFullYear()}-${String(selectedMonth.getMonth() + 1).padStart(2, '0')}`
     })
+    const handlePrintDividends = useReactToPrint({
+        contentRef: dividendsPrintRef,
+        documentTitle: `Dividends_${selectedMonth.getFullYear()}-${String(selectedMonth.getMonth() + 1).padStart(2, '0')}`
+    })
 
-    // ─── Budget Reminder System ─────────────────────────────────
     const [reminderQueue, setReminderQueue] = useState<BudgetReminderItem[]>([])
     const [snoozedItems, setSnoozedItems] = useState<BudgetReminderItem[]>([])
     const [reminderIndex, setReminderIndex] = useState(0)
     const [reminderStep, setReminderStep] = useState<'idle' | 'reminder' | 'lock' | 'snooze'>('idle')
     const [reminderScanned, setReminderScanned] = useState(false)
     const [isProcessing, setIsProcessing] = useState(false)
+    const [dividendPaidMap, setDividendPaidMap] = useState<Map<string, boolean>>(new Map())
+    const [dividendSnoozeMap, setDividendSnoozeMap] = useState<Map<string, { until: string | null; count: number }>>(new Map())
     const isCheckingReminders = useRef(false)
     const reminderStepRef = useRef(reminderStep)
 
@@ -112,7 +166,6 @@ export default function Budget() {
     const allAllocations = useBudgetAllocations(workspaceId)
     const monthlyFinancials = useMonthlyRevenue(workspaceId, monthStr)
 
-    // ─── Start Point Boundary ─────────────────────────────────────
     const startPointMonth = useMemo(() => {
         const sp = allAllocations.find(a => a.startPoint === true)
         return sp?.month ?? null // e.g. "2026-02"
@@ -123,7 +176,6 @@ export default function Budget() {
         return monthStr <= startPointMonth
     }, [monthStr, startPointMonth])
 
-    // ─── Wake from idle: re-sync Supabase → local DB ─────────────
     useEffect(() => {
         const unsubscribe = connectionManager.subscribe((event) => {
             if (event === 'wake' && workspaceId) {
@@ -160,7 +212,6 @@ export default function Budget() {
     }
     const handleNextMonth = () => setSelectedMonth(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))
 
-    // ─── Auto-open allocation modal for unallocated months ────────
     useEffect(() => {
         // Only trigger if start_point exists (user has set at least one allocation)
         // and the current month has no allocation yet
@@ -172,8 +223,28 @@ export default function Budget() {
     const [expenseAmountDisplay, setExpenseAmountDisplay] = useState<string>('')
     const [lockConfirmExpense, setLockConfirmExpense] = useState<any>(null)
     const [unsnoozeItem, setUnsnoozeItem] = useState<BudgetReminderItem | null>(null)
+    const [dividendSnoozeItem, setDividendSnoozeItem] = useState<BudgetReminderItem | null>(null)
 
-    // ─── Budget Reminder Scanner Effect ──────────────────────────
+    const loadVirtualReminderMaps = useCallback(async () => {
+        const virtualSnoozeMap = new Map<string, { until: string | null; count: number }>()
+        const virtualPaidMap = new Map<string, boolean>()
+
+        for (const emp of employees) {
+            if (emp.salary && emp.salary > 0) {
+                const vs = await getVirtualSnooze('salary', emp.id, monthStr)
+                if (vs.until || vs.count > 0) virtualSnoozeMap.set(`salary_${emp.id}`, vs)
+            }
+            if (emp.hasDividends && emp.dividendAmount && emp.dividendAmount > 0) {
+                const vd = await getVirtualSnooze('dividend', emp.id, monthStr)
+                if (vd.until || vd.count > 0) virtualSnoozeMap.set(`dividend_${emp.id}`, vd)
+                const paid = await getVirtualPaid('dividend', emp.id, monthStr)
+                if (paid) virtualPaidMap.set(`dividend_${emp.id}`, true)
+            }
+        }
+
+        return { virtualSnoozeMap, virtualPaidMap }
+    }, [employees, monthStr])
+
     const runScan = useCallback(async () => {
         if (!workspaceId || isCheckingReminders.current || reminderStepRef.current !== 'idle' || (expenses.length === 0 && employees.length === 0)) return
         isCheckingReminders.current = true
@@ -181,39 +252,27 @@ export default function Budget() {
 
             const config = await getReminderConfig()
 
-            // Build virtual snooze map for employees (salaries/dividends)
-            const virtualSnoozeMap = new Map<string, { until: string | null; count: number }>()
-            for (const emp of employees) {
-                if (emp.salary && emp.salary > 0) {
-                    const vs = await getVirtualSnooze('salary', emp.id, monthStr)
-                    if (vs.until || vs.count > 0) virtualSnoozeMap.set(`salary_${emp.id}`, vs)
-                }
-                if (emp.hasDividends && emp.dividendAmount && emp.dividendAmount > 0) {
-                    const vd = await getVirtualSnooze('dividend', emp.id, monthStr)
-                    if (vd.until || vd.count > 0) virtualSnoozeMap.set(`dividend_${emp.id}`, vd)
-                }
-            }
+            const { virtualSnoozeMap, virtualPaidMap } = await loadVirtualReminderMaps()
 
             // Scan for due items
-            const dueItems = scanDueItems(expenses, employees, monthStr, config, virtualSnoozeMap)
+            const dueItems = scanDueItems(expenses, employees, monthStr, config, virtualSnoozeMap, virtualPaidMap)
+            const popupDueItems = dueItems.filter(item => item.category !== 'dividend')
 
             // Scan for snoozed items
             const snoozed = getSnoozedItems(expenses, employees, monthStr, virtualSnoozeMap)
+            const expenseSnoozed = snoozed.filter(item => item.category !== 'dividend')
+            const dividendSnoozes = new Map([...virtualSnoozeMap].filter(([key]) => key.startsWith('dividend_')))
+            const dividendPaid = new Map([...virtualPaidMap].filter(([key]) => key.startsWith('dividend_')))
 
-            // Using a ref or state to check if component is mounted to prevent state updates on unmounted component
-            // For simplicity, assuming `isMounted` is handled elsewhere or not strictly needed for this snippet.
-            // If `isMounted` is truly needed, it should be defined using useRef and useEffect cleanup.
-            // For now, I'll apply the `if (isMounted)` as provided in the instruction, assuming it's a placeholder.
-            const isMounted = true; // Placeholder, replace with actual mount check if necessary
-            if (isMounted) {
-                setReminderQueue(dueItems)
-                setSnoozedItems(snoozed)
-                setReminderIndex(0)
-                if (dueItems.length > 0) {
-                    setReminderStep('reminder')
-                } else {
-                    setReminderStep('idle'); // If no due items, ensure step is idle
-                }
+            setReminderQueue(popupDueItems)
+            setSnoozedItems(expenseSnoozed)
+            setDividendSnoozeMap(dividendSnoozes)
+            setDividendPaidMap(dividendPaid)
+            setReminderIndex(0)
+            if (popupDueItems.length > 0) {
+                setReminderStep('reminder')
+            } else {
+                setReminderStep('idle')
             }
             setReminderScanned(true)
         } catch (err) {
@@ -221,7 +280,7 @@ export default function Budget() {
         } finally {
             isCheckingReminders.current = false
         }
-    }, [expenses, employees, workspaceId, monthStr])
+    }, [expenses, employees, workspaceId, monthStr, loadVirtualReminderMaps])
 
     useEffect(() => {
         if (reminderScanned || !workspaceId) return
@@ -236,6 +295,8 @@ export default function Budget() {
         setReminderScanned(false)
         setReminderQueue([])
         setSnoozedItems([])
+        setDividendSnoozeMap(new Map())
+        setDividendPaidMap(new Map())
         setReminderIndex(0)
         setReminderStep('idle')
     }, [monthStr])
@@ -246,28 +307,30 @@ export default function Budget() {
         // Allow refresh if we have either expenses OR employees (for virtual reminders)
         if (expenses.length === 0 && employees.length === 0) {
             setSnoozedItems([]) // Clear if no data
+            setDividendSnoozeMap(new Map())
+            setDividendPaidMap(new Map())
             return
         }
 
         async function refreshSnoozed() {
-            const virtualSnoozeMap = new Map<string, { until: string | null; count: number }>()
-            for (const emp of employees) {
-                if (emp.salary && emp.salary > 0) {
-                    const vs = await getVirtualSnooze('salary', emp.id, monthStr)
-                    if (vs.until || vs.count > 0) virtualSnoozeMap.set(`salary_${emp.id}`, vs)
-                }
-                if (emp.hasDividends && emp.dividendAmount && emp.dividendAmount > 0) {
-                    const vd = await getVirtualSnooze('dividend', emp.id, monthStr)
-                    if (vd.until || vd.count > 0) virtualSnoozeMap.set(`dividend_${emp.id}`, vd)
-                }
-            }
+            const { virtualSnoozeMap, virtualPaidMap } = await loadVirtualReminderMaps()
             const snoozed = getSnoozedItems(expenses, employees, monthStr, virtualSnoozeMap)
-            setSnoozedItems(snoozed)
+            setSnoozedItems(snoozed.filter(item => item.category !== 'dividend'))
+            setDividendSnoozeMap(new Map([...virtualSnoozeMap].filter(([key]) => key.startsWith('dividend_'))))
+            setDividendPaidMap(new Map([...virtualPaidMap].filter(([key]) => key.startsWith('dividend_'))))
         }
         refreshSnoozed()
-    }, [expenses, employees, workspaceId, monthStr])
+    }, [expenses, employees, workspaceId, monthStr, loadVirtualReminderMaps])
 
     const currentReminder = reminderQueue[reminderIndex] || null
+    const getReminderSubcategory = useCallback((item: BudgetReminderItem): string | null => {
+        const templateId = item.originalTemplateId || item.expenseId
+        if (!templateId) return null
+
+        const template = expenses.find(exp => exp.id === templateId)
+        const subcategory = template?.subcategory?.trim()
+        return subcategory ? subcategory : null
+    }, [expenses])
 
     const advanceReminder = () => {
         const next = reminderIndex + 1
@@ -298,6 +361,7 @@ export default function Budget() {
                         description: currentReminder.title,
                         type: 'one-time',
                         category: currentReminder.expenseCategory as any || 'operational',
+                        subcategory: getReminderSubcategory(currentReminder),
                         amount: currentReminder.amount,
                         currency: currentReminder.currency as any,
                         status: 'paid',
@@ -309,7 +373,6 @@ export default function Budget() {
                     if (newExp) currentReminder.expenseId = newExp.id
                 }
             } else if (currentReminder.category === 'salary' && currentReminder.employeeId) {
-                // Virtual salary (no existing record) — create a payroll expense record
                 await createExpense(workspaceId, {
                     description: `${currentReminder.employeeName} (${t('hr.salary', 'Salary')})`,
                     type: 'one-time',
@@ -385,6 +448,7 @@ export default function Budget() {
                         description: currentReminder.title,
                         type: 'one-time',
                         category: currentReminder.expenseCategory as any || 'other',
+                        subcategory: getReminderSubcategory(currentReminder),
                         amount: currentReminder.amount,
                         currency: currentReminder.currency as any,
                         status: 'snoozed',
@@ -485,6 +549,7 @@ export default function Budget() {
         const month = selectedMonth.getMonth()
         const monthStart = new Date(year, month, 1)
         const monthEnd = new Date(year, month + 1, 0, 23, 59, 59)
+        const recurringTemplates = expenses.filter(e => e.type === 'recurring')
 
         const monthExpenses = expenses.filter(e => {
             const date = new Date(e.dueDate)
@@ -494,10 +559,21 @@ export default function Budget() {
                 return date >= monthStart && date <= monthEnd
             }
             return false
-        }).map(e => ({ ...e, isVirtual: false, isRecurringVirtual: false }))
+        }).map(e => {
+            const recurringTemplate = recurringTemplates.find(template =>
+                isRecurringOccurrenceMatch(template, e, monthStart, monthEnd)
+            )
+
+            return {
+                ...e,
+                isVirtual: false,
+                isRecurringVirtual: false,
+                isRecurringLinked: !!recurringTemplate,
+                recurringTemplateId: recurringTemplate?.id
+            }
+        })
 
         // Process Recurring Templates
-        const recurringTemplates = expenses.filter(e => e.type === 'recurring')
         const virtualRecurringExpenses: any[] = []
 
         recurringTemplates.forEach(template => {
@@ -505,21 +581,22 @@ export default function Budget() {
             const templateDate = new Date(template.dueDate)
             const projectedDate = new Date(year, month, Math.min(templateDate.getDate(), new Date(year, month + 1, 0).getDate()))
 
-            // Check if already paid (exists as one-time in this month with same description)
-            // We match by Description + Amount to be safe, or just Description
-            const isPaid = monthExpenses.some(e =>
-                e.description?.trim().toLowerCase() === template.description?.trim().toLowerCase()
+            // Check if this recurring template has an occurrence materialized for this month.
+            const hasMaterializedOccurrence = monthExpenses.some(e =>
+                isRecurringOccurrenceMatch(template, e, monthStart, monthEnd)
             )
 
-            if (!isPaid) {
+            if (!hasMaterializedOccurrence) {
                 virtualRecurringExpenses.push({
                     ...template,
                     id: `v-recurring-${template.id}-${month}`, // Unique ID for key
                     originalTemplateId: template.id,
+                    recurringTemplateId: template.id,
                     dueDate: projectedDate.toISOString(),
                     status: 'pending',
                     isVirtual: true,
-                    isRecurringVirtual: true
+                    isRecurringVirtual: true,
+                    isRecurringLinked: true
                 })
             }
         })
@@ -543,7 +620,6 @@ export default function Budget() {
         const virtualExpenses: any[] = []
         let personnelPaid = 0
         let personnelPending = 0
-        const today = new Date()
 
         // Pass 1: Personnel Salaries (Base ONLY)
         employees.forEach(emp => {
@@ -557,6 +633,7 @@ export default function Budget() {
                     e.type === 'one-time' &&
                     e.category === 'payroll' &&
                     e.employeeId === emp.id &&
+                    new Date(e.dueDate) >= monthStart &&
                     new Date(e.dueDate) <= monthEnd
                 )
 
@@ -611,9 +688,7 @@ export default function Budget() {
 
                 const finalAmount = emp.isFired ? 0 : amount
                 const currency = emp.dividendType === 'fixed' ? (emp.dividendCurrency as any || 'usd') : baseCurrency
-                const pDay = Number(emp.dividendPayday) || 30
-                let payDate = new Date(year, month, Math.min(pDay, new Date(year, month + 1, 0).getDate()))
-                const status = today >= payDate ? 'paid' : 'pending'
+                const status = dividendPaidMap.get(`dividend_${emp.id}`) ? 'paid' : 'pending'
                 const baseAmount = convertToStoreBase(finalAmount, currency)
 
                 dividendTotal += baseAmount
@@ -673,12 +748,155 @@ export default function Budget() {
             displayExpenses: [...monthExpenses, ...virtualRecurringExpenses, ...virtualExpenses],
             dividendRecipients
         }
-    }, [expenses, employees, workspaceUsers, selectedMonth, convertToStoreBase, currentAllocation, monthlyFinancials, t, baseCurrency, iqdPreference])
+    }, [expenses, employees, workspaceUsers, selectedMonth, convertToStoreBase, currentAllocation, monthlyFinancials, t, baseCurrency, iqdPreference, dividendPaidMap])
 
     const sortedDisplayExpenses = useMemo(
         () => [...metrics.displayExpenses].sort((a, b) => new Date(b.dueDate).getTime() - new Date(a.dueDate).getTime()),
         [metrics.displayExpenses]
     )
+
+    const dividendRows = useMemo<DividendWithdrawalRow[]>(() => {
+        const year = selectedMonth.getFullYear()
+        const month = selectedMonth.getMonth()
+        const today = new Date()
+
+        return employees
+            .filter(emp => emp.hasDividends && emp.dividendAmount && emp.dividendAmount > 0 && !emp.isFired)
+            .map(emp => {
+                const dividendAmount = emp.dividendAmount ?? 0
+                const amount = emp.dividendType === 'fixed'
+                    ? dividendAmount
+                    : metrics.profitPool * (dividendAmount / 100)
+                const currency = emp.dividendType === 'fixed'
+                    ? (emp.dividendCurrency as any || 'usd')
+                    : baseCurrency
+
+                const payday = Number(emp.dividendPayday) || 30
+                const dueDate = new Date(year, month, Math.min(payday, new Date(year, month + 1, 0).getDate()))
+                const virtualKey = `dividend_${emp.id}`
+                const isPaid = dividendPaidMap.get(virtualKey) === true
+                const virtualSnooze = dividendSnoozeMap.get(virtualKey)
+                const snoozed = virtualSnooze ? isSnoozeActive(virtualSnooze.until) : false
+
+                let status: DividendWithdrawalStatus = 'upcoming'
+                if (isPaid) {
+                    status = 'paid'
+                } else if (snoozed) {
+                    status = 'snoozed'
+                } else if (isSameDay(dueDate, today)) {
+                    status = 'dueToday'
+                } else if (dueDate < today) {
+                    status = 'overdue'
+                }
+
+                return {
+                    employeeId: emp.id,
+                    employeeName: emp.name,
+                    formula: emp.dividendType === 'fixed'
+                        ? formatCurrency(dividendAmount, currency as any, iqdPreference)
+                        : `${dividendAmount}%`,
+                    dueDate,
+                    amount,
+                    currency,
+                    status,
+                    snoozeUntil: virtualSnooze?.until || null,
+                    snoozeCount: virtualSnooze?.count || 0,
+                }
+            })
+            .sort((a, b) => a.dueDate.getTime() - b.dueDate.getTime())
+    }, [employees, selectedMonth, metrics.profitPool, baseCurrency, iqdPreference, dividendPaidMap, dividendSnoozeMap])
+
+    const openDividendSnooze = (row: DividendWithdrawalRow) => {
+        setDividendSnoozeItem({
+            id: `dividend-${row.employeeId}`,
+            category: 'dividend',
+            title: row.employeeName,
+            amount: row.amount,
+            currency: row.currency,
+            dueDate: row.dueDate.toISOString(),
+            status: 'pending',
+            employeeId: row.employeeId,
+            employeeName: row.employeeName,
+            snoozeUntil: row.snoozeUntil,
+            snoozeCount: row.snoozeCount,
+            isLocked: false
+        })
+    }
+
+    const handleDividendMarkPaid = async (row: DividendWithdrawalRow) => {
+        if (isProcessing) return
+        setIsProcessing(true)
+        try {
+            await setVirtualPaid('dividend', row.employeeId, monthStr, true)
+            await setVirtualSnooze('dividend', row.employeeId, monthStr, '', 0)
+            toast({ description: t('budget.dividend.paidPersisted', 'Dividend payment status saved') })
+            setReminderScanned(false)
+        } catch (error) {
+            console.error('[Budget] Failed to mark dividend paid:', error)
+            toast({ variant: 'destructive', description: t('common.error', 'Failed to update status') })
+        } finally {
+            setIsProcessing(false)
+        }
+    }
+
+    const handleDividendMarkUnpaid = async (row: DividendWithdrawalRow) => {
+        if (isProcessing) return
+        setIsProcessing(true)
+        try {
+            await setVirtualPaid('dividend', row.employeeId, monthStr, false)
+            toast({ description: t('budget.statusUpdated', 'Status updated') })
+            setReminderScanned(false)
+        } catch (error) {
+            console.error('[Budget] Failed to mark dividend unpaid:', error)
+            toast({ variant: 'destructive', description: t('common.error', 'Failed to update status') })
+        } finally {
+            setIsProcessing(false)
+        }
+    }
+
+    const handleDividendUnsnooze = async (row: DividendWithdrawalRow) => {
+        if (isProcessing) return
+        setIsProcessing(true)
+        try {
+            await setVirtualSnooze('dividend', row.employeeId, monthStr, '', 0)
+            toast({ description: t('budget.unsnoozed', 'Reminder un-snoozed') })
+            setReminderScanned(false)
+        } catch (error) {
+            console.error('[Budget] Failed to un-snooze dividend:', error)
+            toast({ variant: 'destructive', description: t('common.error', 'Failed to un-snooze reminder') })
+        } finally {
+            setIsProcessing(false)
+        }
+    }
+
+    const handleDividendSnooze = async (minutes: number) => {
+        if (!dividendSnoozeItem || !dividendSnoozeItem.employeeId || isProcessing) return
+        setIsProcessing(true)
+
+        const snoozeUntil = minutes === -1
+            ? INDEFINITE_SNOOZE_DATE
+            : new Date(Date.now() + minutes * 60000).toISOString()
+        const newCount = (dividendSnoozeItem.snoozeCount || 0) + 1
+
+        try {
+            await setVirtualSnooze('dividend', dividendSnoozeItem.employeeId, monthStr, snoozeUntil, newCount)
+            setReminderScanned(false)
+        } catch (error) {
+            console.error('[Budget] Failed to snooze dividend:', error)
+            toast({ variant: 'destructive', description: t('common.error', 'Failed to update') })
+        } finally {
+            setIsProcessing(false)
+            setDividendSnoozeItem(null)
+        }
+    }
+
+    const dividendStatusClass: Record<DividendWithdrawalStatus, string> = {
+        paid: 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20',
+        snoozed: 'bg-yellow-500/10 text-yellow-600 border-yellow-500/20',
+        overdue: 'bg-red-500/10 text-red-600 border-red-500/20',
+        dueToday: 'bg-amber-500/10 text-amber-600 border-amber-500/20',
+        upcoming: 'bg-blue-500/10 text-blue-600 border-blue-500/20',
+    }
 
     const [isSaving, setIsSaving] = useState(false)
 
@@ -687,6 +905,8 @@ export default function Budget() {
         if (!workspaceId || isSaving) return
 
         const formData = new FormData(e.currentTarget)
+        const subcategoryInput = (formData.get('subcategory') as string | null)?.trim()
+        const subcategory = subcategoryInput ? subcategoryInput : null
         setIsSaving(true)
         // Optimistically close for better UX
         setIsDialogOpen(false)
@@ -696,6 +916,7 @@ export default function Budget() {
                 description: formData.get('description') as string,
                 type: formData.get('type') as any,
                 category: formData.get('category') as any,
+                subcategory,
                 amount: parseFormattedNumber(expenseAmountDisplay),
                 currency: (formData.get('currency') as any) || baseCurrency || 'usd',
                 status: 'pending',
@@ -751,13 +972,12 @@ export default function Budget() {
                 const dueDateObj = new Date(expense.dueDate)
                 const monthStart = new Date(dueDateObj.getFullYear(), dueDateObj.getMonth(), 1)
                 const monthEnd = new Date(dueDateObj.getFullYear(), dueDateObj.getMonth() + 1, 0, 23, 59, 59)
+                const recurringTemplate =
+                    expenses.find(e => e.id === (expense as any).originalTemplateId && e.type === 'recurring') || expense
 
                 // Check if a record (like a snooze) already exists for this template in this month
                 const existingRecord = expenses.find(e =>
-                    e.type === 'one-time' &&
-                    e.description?.trim().toLowerCase() === expense.description?.trim().toLowerCase() &&
-                    new Date(e.dueDate) >= monthStart &&
-                    new Date(e.dueDate) <= monthEnd
+                    isRecurringOccurrenceMatch(recurringTemplate, e, monthStart, monthEnd)
                 )
 
                 if (existingRecord) {
@@ -772,6 +992,7 @@ export default function Budget() {
                         description: expense.description,
                         type: 'one-time',
                         category: expense.category,
+                        subcategory: expense.subcategory?.trim() ? expense.subcategory.trim() : null,
                         amount: expense.amount,
                         currency: expense.currency,
                         status: 'paid',
@@ -799,6 +1020,31 @@ export default function Budget() {
             toast({ variant: 'destructive', description: t('common.error', 'Failed to update status') })
         } finally {
             setIsProcessing(false)
+        }
+    }
+
+    const handleDeleteDisplayExpense = async (expense: any) => {
+        if (expense.isLocked) return
+
+        try {
+            if ((expense as any).isRecurringVirtual && (expense as any).originalTemplateId) {
+                await deleteExpense((expense as any).originalTemplateId)
+                return
+            }
+
+            await deleteExpense(expense.id)
+
+            if ((expense as any).isRecurringLinked && (expense as any).recurringTemplateId) {
+                toast({
+                    description: t(
+                        'budget.deletedOccurrenceKeepsSeries',
+                        'Deleted this month item. Recurring series is still active.'
+                    )
+                })
+            }
+        } catch (error) {
+            console.error(error)
+            toast({ variant: 'destructive', description: t('common.error', 'Failed to delete expense') })
         }
     }
 
@@ -892,10 +1138,8 @@ export default function Budget() {
                         )}
                         <p className="text-[10px] font-bold uppercase tracking-wider mt-2 opacity-60">
                             {metrics.count} {t('budget.items', 'items')}
-                            {metrics.budgetLimit > 0 && ` • ${Math.round((metrics.total / metrics.budgetLimit) * 100)}% ${t('budget.limit', 'of budget')}`}
-                            {metrics.referenceProfit > 0 && (
-                                <> • {Math.round((metrics.dividendTotal / metrics.referenceProfit) * 100)}% {t('budget.dividends', 'Dividends')}</>
-                            )}
+                            {metrics.budgetLimit > 0 && ` / ${Math.round((metrics.total / metrics.budgetLimit) * 100)}% ${t('budget.limit', 'of budget')}`}
+                            {metrics.referenceProfit > 0 && ` / ${Math.round((metrics.dividendTotal / metrics.referenceProfit) * 100)}% ${t('budget.dividends', 'Dividends')}`}
                         </p>
                     </CardContent>
                 </Card>
@@ -960,7 +1204,7 @@ export default function Budget() {
                             ? 'bg-red-500/5 dark:bg-red-500/10 border-red-500/20 hover:bg-red-500/10 hover:shadow-[0_0_20px_-5px_rgba(239,68,68,0.3)]'
                             : 'bg-sky-500/5 dark:bg-sky-500/10 border-sky-500/20 hover:bg-sky-500/10 hover:shadow-[0_0_20px_-5px_rgba(14,165,233,0.3)]'
                     )}
-                    onClick={() => setIsDividendModalOpen(true)}
+                    onClick={() => setActiveBudgetTab('dividends')}
                 >
                     <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
                         <User className="w-4 h-4 text-sky-500" />
@@ -1035,167 +1279,295 @@ export default function Budget() {
                 </Card>
             </div>
 
-            <div className="flex items-center justify-between pt-4">
-                <h2 className="text-lg font-semibold">{t('budget.expenseList', 'Monthly Expenses')}</h2>
-                <div className="flex gap-2">
-                    <Button variant="outline" onClick={() => handlePrintBudget()} className="gap-2">
-                        <Printer className="w-4 h-4" />
-                        {t('common.print') || 'Print'}
-                    </Button>
-                    <Button variant="outline" onClick={() => setIsAllocationDialogOpen(true)} className="gap-2">
-                        <Calendar className="w-4 h-4" />
-                        {t('budget.setBudget', 'Set Budget')}
-                    </Button>
-                    <Button onClick={() => setIsDialogOpen(true)} className="gap-2">
-                        <Plus className="w-4 h-4" />
-                        {t('budget.addExpense', 'New Expense')}
-                    </Button>
-                </div>
-            </div>
-
-            <div className="grid gap-4">
-                {sortedDisplayExpenses.map((expense) => (
-                    <div
-                        key={expense.id}
-                        className={cn(
-                            "flex items-center justify-between p-4 rounded-xl border transition-shadow group",
-                            expense.isVirtual && !(expense as any).isRecurringVirtual && expense.status === 'paid'
-                                ? 'bg-emerald-500/5 border-emerald-500/20 hover:shadow-emerald-500/10'
-                                : expense.isVirtual && !(expense as any).isRecurringVirtual && expense.status === 'pending'
-                                    ? 'bg-blue-500/5 border-blue-500/20 hover:shadow-blue-500/10'
-                                    : 'bg-card border-border hover:shadow-md',
-                            (expense as any).isFired && "opacity-40 grayscale brightness-75 bg-muted/20"
+            <Tabs
+                value={activeBudgetTab}
+                onValueChange={(value) => setActiveBudgetTab(value as 'expenses' | 'dividends')}
+                className="pt-4 space-y-4"
+            >
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <TabsList className="h-11">
+                        <TabsTrigger value="expenses">
+                            {t('budget.tabs.monthlyExpenses', 'Monthly Expenses')}
+                        </TabsTrigger>
+                        <TabsTrigger value="dividends">
+                            {t('budget.tabs.dividendsWithdrawal', 'Dividends Withdrawal')}
+                        </TabsTrigger>
+                    </TabsList>
+                    <div className="flex gap-2">
+                        {activeBudgetTab === 'expenses' ? (
+                            <>
+                                <Button variant="outline" onClick={() => handlePrintBudget()} className="gap-2">
+                                    <Printer className="w-4 h-4" />
+                                    {t('common.print') || 'Print'}
+                                </Button>
+                                <Button variant="outline" onClick={() => setIsAllocationDialogOpen(true)} className="gap-2">
+                                    <Calendar className="w-4 h-4" />
+                                    {t('budget.setBudget', 'Set Budget')}
+                                </Button>
+                                <Button onClick={() => setIsDialogOpen(true)} className="gap-2">
+                                    <Plus className="w-4 h-4" />
+                                    {t('budget.addExpense', 'New Expense')}
+                                </Button>
+                            </>
+                        ) : (
+                            <Button variant="outline" onClick={() => handlePrintDividends()} className="gap-2">
+                                <Printer className="w-4 h-4" />
+                                {t('common.print') || 'Print'}
+                            </Button>
                         )}
-                    >
-                        <div className="flex items-center gap-4">
-                            <div className={`p-2.5 rounded-lg ${expense.isVirtual && !(expense as any).isRecurringVirtual
-                                ? (expense.status === 'paid' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-blue-500/10 text-blue-500')
-                                : expense.status === 'paid' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-amber-500/10 text-amber-500'
-                                }`}>
-                                {expense.isVirtual && !(expense as any).isRecurringVirtual ? <User className="w-5 h-5" /> :
-                                    expense.status === 'paid' ? <CheckCircle2 className="w-5 h-5" /> : <Clock className="w-5 h-5" />}
-                            </div>
-                            <div>
-                                <div className="font-semibold flex items-center gap-2">
-                                    {expense.description || t(`budget.cat.${expense.category}`)}
-                                    {(expense as any).isRecurringVirtual && (
-                                        <Repeat className="w-3 h-3 text-muted-foreground" />
-                                    )}
-                                </div>
-                                <div className="text-xs text-muted-foreground flex items-center gap-2 mt-0.5">
-                                    <span className="capitalize">{expense.category}</span>
-                                    <span>•</span>
-                                    <Calendar className="w-3 h-3" />
-                                    {formatDate(expense.dueDate)}
-                                </div>
-                            </div>
-                        </div>
-                        <div className="flex items-center gap-6">
-                            <div className="text-end">
-                                <div className={cn(
-                                    "font-bold",
-                                    (expense as any).isFired ? 'text-muted-foreground' : (
-                                        expense.isVirtual && !(expense as any).isRecurringVirtual && expense.status === 'pending' ? 'text-blue-600' :
-                                            expense.status === 'paid' ? 'text-emerald-600' : 'text-amber-600'
-                                    )
-                                )}>
-                                    {(expense as any).isFired ? (
-                                        <div className="flex flex-col items-end">
-                                            <span className="text-[10px] line-through opacity-50">
-                                                {formatCurrency((expense as any).originalAmount || 0, expense.currency, iqdPreference)}
-                                            </span>
-                                            <span>{formatCurrency(0, expense.currency, iqdPreference)}</span>
-                                        </div>
-                                    ) : (
-                                        formatCurrency(expense.amount, expense.currency, iqdPreference)
-                                    )}
-                                </div>
-                                <div className={cn(
-                                    "text-[10px] font-bold uppercase tracking-wider flex items-center justify-end gap-1",
-                                    (expense as any).isFired ? 'text-muted-foreground' : (
-                                        expense.isVirtual && !(expense as any).isRecurringVirtual && expense.status === 'pending' ? 'text-blue-500' :
-                                            expense.status === 'paid' ? 'text-emerald-500' : 'text-amber-500'
-                                    )
-                                )}>
-                                    {(expense as any).isFired ? t('hr.personnel_fired', 'Staff (Fired/Suspended)') : (
-                                        expense.isVirtual && !(expense as any).isRecurringVirtual ? (
-                                            <>
-                                                <span className="text-blue-500">{t('hr.personnel', 'Personnel')}</span> • {expense.status === 'paid' ? t('budget.status.paid', 'Paid') : t('budget.status.pending', 'Pending')}
-                                            </>
-                                        ) : t(`budget.status.${expense.status}`)
-                                    )}
-                                </div>
-                            </div>
-                            <div className="flex gap-2 items-center">
-                                {/* Snooze Indicator */}
-                                {(() => {
-                                    const snoozed = snoozedItems.find(s =>
-                                        (s.category === 'expense' && s.expenseId === expense.id) ||
-                                        (s.category === 'salary' && s.employeeId === expense.employeeId && expense.category === 'payroll') ||
-                                        (s.category === 'dividend' && s.employeeId === expense.employeeId && expense.category === 'dividend')
-                                    )
-                                    if (!snoozed) return null
-                                    return (
-                                        <Button
-                                            variant="ghost"
-                                            size="icon"
-                                            className="text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-600 h-8 w-8"
-                                            onClick={() => setUnsnoozeItem(snoozed)}
-                                            title={t('budget.manageSnooze', 'Manage Snooze')}
-                                        >
-                                            <BellOff className="w-4 h-4 fill-current animate-pulse" />
-                                        </Button>
-                                    )
-                                })()}
-
-                                {expense.isLocked ? (
-                                    <Lock className="w-5 h-5 text-emerald-600 opacity-50 ml-2" />
-                                ) : (
-                                    <>
-                                        {expense.status === 'paid' && expense.category === 'payroll' && expense.expenseRecordId && (
-                                            <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                title={t('budget.lockSalary', 'Lock Salary')}
-                                                onClick={() => setLockConfirmExpense(expense)}
-                                                className="hover:bg-amber-500/10 hover:text-amber-600 text-muted-foreground mr-1 h-8 w-8"
-                                            >
-                                                <Lock className="w-4 h-4" />
-                                            </Button>
-                                        )}
-                                        {(!expense.isVirtual || (expense.isVirtual && ((expense as any).isRecurringVirtual || expense.category === 'payroll'))) && !(expense as any).isFired && (
-                                            <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                className={cn(
-                                                    "hover:bg-emerald-500/10 hover:text-emerald-600",
-                                                    expense.status === 'paid' && "text-emerald-600"
-                                                )}
-                                                onClick={() => handleToggleStatus(expense)}
-                                                title={expense.status === 'paid' ? t('budget.markUnpaid', 'Mark as Unpaid') : t('budget.markPaid', 'Mark as Paid')}
-                                            >
-                                                {expense.status === 'paid' ? <CheckCircle2 className="w-5 h-5" /> : <Circle className="w-5 h-5" />}
-                                            </Button>
-                                        )}
-                                    </>
-                                )}
-                                {(!expense.isVirtual || (expense as any).isRecurringVirtual) && !expense.isLocked && (
-                                    <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        className="opacity-0 group-hover:opacity-100 transition-opacity text-destructive"
-                                        onClick={() => deleteExpense((expense as any).isRecurringVirtual ? (expense as any).originalTemplateId : expense.id)}
-                                        title={(expense as any).isRecurringVirtual ? t('budget.deleteSeries', 'Delete Recurring Series') : t('common.delete', 'Delete')}
-                                    >
-                                        <Trash2 className="w-4 h-4" />
-                                    </Button>
-                                )}
-                            </div>
-                        </div>
                     </div>
-                ))}
-            </div>
+                </div>
 
+                <TabsContent value="expenses" className="mt-0">
+                    <div className="grid gap-4">
+                        {sortedDisplayExpenses.map((expense) => (
+                            <div
+                                key={expense.id}
+                                className={cn(
+                                    "flex items-center justify-between p-4 rounded-xl border transition-shadow group",
+                                    expense.isVirtual && !(expense as any).isRecurringVirtual && expense.status === 'paid'
+                                        ? 'bg-emerald-500/5 border-emerald-500/20 hover:shadow-emerald-500/10'
+                                        : expense.isVirtual && !(expense as any).isRecurringVirtual && expense.status === 'pending'
+                                            ? 'bg-blue-500/5 border-blue-500/20 hover:shadow-blue-500/10'
+                                            : 'bg-card border-border hover:shadow-md',
+                                    (expense as any).isFired && "opacity-40 grayscale brightness-75 bg-muted/20"
+                                )}
+                            >
+                                <div className="flex items-center gap-4">
+                                    <div className={`p-2.5 rounded-lg ${expense.isVirtual && !(expense as any).isRecurringVirtual
+                                        ? (expense.status === 'paid' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-blue-500/10 text-blue-500')
+                                        : expense.status === 'paid' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-amber-500/10 text-amber-500'
+                                        }`}>
+                                        {expense.isVirtual && !(expense as any).isRecurringVirtual ? <User className="w-5 h-5" /> :
+                                            expense.status === 'paid' ? <CheckCircle2 className="w-5 h-5" /> : <Clock className="w-5 h-5" />}
+                                    </div>
+                                    <div>
+                                        <div className="font-semibold flex items-center gap-2">
+                                            {expense.description || String(t(`budget.cat.${expense.category}`, { defaultValue: expense.category }))}
+                                            {((expense as any).isRecurringVirtual || (expense as any).isRecurringLinked) && (
+                                                <Repeat className="w-3 h-3 text-muted-foreground" />
+                                            )}
+                                        </div>
+                                        <div className="text-xs text-muted-foreground flex items-center gap-2 mt-0.5">
+                                            <span>
+                                                {expense.subcategory?.trim()
+                                                    ? `${String(t(`budget.cat.${expense.category}`, { defaultValue: expense.category }))} / ${expense.subcategory.trim()}`
+                                                    : String(t(`budget.cat.${expense.category}`, { defaultValue: expense.category }))}
+                                            </span>
+                                            <span>/</span>
+                                            <Calendar className="w-3 h-3" />
+                                            {formatDate(expense.dueDate)}
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-6">
+                                    <div className="text-end">
+                                        <div className={cn(
+                                            "font-bold",
+                                            (expense as any).isFired ? 'text-muted-foreground' : (
+                                                expense.isVirtual && !(expense as any).isRecurringVirtual && expense.status === 'pending' ? 'text-blue-600' :
+                                                    expense.status === 'paid' ? 'text-emerald-600' : 'text-amber-600'
+                                            )
+                                        )}>
+                                            {(expense as any).isFired ? (
+                                                <div className="flex flex-col items-end">
+                                                    <span className="text-[10px] line-through opacity-50">
+                                                        {formatCurrency((expense as any).originalAmount || 0, expense.currency, iqdPreference)}
+                                                    </span>
+                                                    <span>{formatCurrency(0, expense.currency, iqdPreference)}</span>
+                                                </div>
+                                            ) : (
+                                                formatCurrency(expense.amount, expense.currency, iqdPreference)
+                                            )}
+                                        </div>
+                                        <div className={cn(
+                                            "text-[10px] font-bold uppercase tracking-wider flex items-center justify-end gap-1",
+                                            (expense as any).isFired ? 'text-muted-foreground' : (
+                                                expense.isVirtual && !(expense as any).isRecurringVirtual && expense.status === 'pending' ? 'text-blue-500' :
+                                                    expense.status === 'paid' ? 'text-emerald-500' : 'text-amber-500'
+                                            )
+                                        )}>
+                                            {(expense as any).isFired ? t('hr.personnel_fired', 'Staff (Fired/Suspended)') : (
+                                                expense.isVirtual && !(expense as any).isRecurringVirtual ? (
+                                                    <>
+                                                        <span className="text-blue-500">{t('hr.personnel', 'Personnel')}</span> / {expense.status === 'paid' ? t('budget.status.paid', 'Paid') : t('budget.status.pending', 'Pending')}
+                                                    </>
+                                                ) : t(`budget.status.${expense.status}`)
+                                            )}
+                                        </div>
+                                    </div>
+                                    <div className="flex gap-2 items-center">
+                                        {(() => {
+                                            const snoozed = snoozedItems.find(s =>
+                                                (s.category === 'expense' && s.expenseId === expense.id) ||
+                                                (s.category === 'salary' && s.employeeId === expense.employeeId && expense.category === 'payroll') ||
+                                                (s.category === 'dividend' && s.employeeId === expense.employeeId && expense.category === 'dividend')
+                                            )
+                                            if (!snoozed) return null
+                                            return (
+                                                <Button
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    className="text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-600 h-8 w-8"
+                                                    onClick={() => setUnsnoozeItem(snoozed)}
+                                                    title={t('budget.manageSnooze', 'Manage Snooze')}
+                                                >
+                                                    <BellOff className="w-4 h-4 fill-current animate-pulse" />
+                                                </Button>
+                                            )
+                                        })()}
+
+                                        {expense.isLocked ? (
+                                            <Lock className="w-5 h-5 text-emerald-600 opacity-50 ml-2" />
+                                        ) : (
+                                            <>
+                                                {expense.status === 'paid' && expense.category === 'payroll' && expense.expenseRecordId && (
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        title={t('budget.lockSalary', 'Lock Salary')}
+                                                        onClick={() => setLockConfirmExpense(expense)}
+                                                        className="hover:bg-amber-500/10 hover:text-amber-600 text-muted-foreground mr-1 h-8 w-8"
+                                                    >
+                                                        <Lock className="w-4 h-4" />
+                                                    </Button>
+                                                )}
+                                                {(!expense.isVirtual || (expense.isVirtual && ((expense as any).isRecurringVirtual || expense.category === 'payroll'))) && !(expense as any).isFired && (
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        className={cn(
+                                                            "hover:bg-emerald-500/10 hover:text-emerald-600",
+                                                            expense.status === 'paid' && "text-emerald-600"
+                                                        )}
+                                                        onClick={() => handleToggleStatus(expense)}
+                                                        title={expense.status === 'paid' ? t('budget.markUnpaid', 'Mark as Unpaid') : t('budget.markPaid', 'Mark as Paid')}
+                                                    >
+                                                        {expense.status === 'paid' ? <CheckCircle2 className="w-5 h-5" /> : <Circle className="w-5 h-5" />}
+                                                    </Button>
+                                                )}
+                                            </>
+                                        )}
+                                        {(!expense.isVirtual || (expense as any).isRecurringVirtual) && !expense.isLocked && (
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                className="opacity-0 group-hover:opacity-100 transition-opacity text-destructive"
+                                                onClick={() => handleDeleteDisplayExpense(expense)}
+                                                title={(expense as any).isRecurringVirtual
+                                                    ? t('budget.deleteSeries', 'Delete Recurring Series')
+                                                    : (expense as any).isRecurringLinked
+                                                        ? t('budget.deleteOccurrence', 'Delete This Month Only')
+                                                        : t('common.delete', 'Delete')}
+                                            >
+                                                <Trash2 className="w-4 h-4" />
+                                            </Button>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </TabsContent>
+
+                <TabsContent value="dividends" className="mt-0 space-y-4">
+                    <DividendDistributionPanel
+                        recipients={metrics.dividendRecipients}
+                        surplus={metrics.finalNetProfit}
+                        baseCurrency={baseCurrency}
+                        iqdPreference={iqdPreference}
+                        onPrint={handlePrintDividends}
+                        className="p-4 md:p-6 rounded-[2rem] border bg-card"
+                    />
+
+                    <Card className="rounded-[2rem] border">
+                        <CardHeader>
+                            <CardTitle className="text-lg font-bold">
+                                {t('budget.dividendsWithdrawal.title', 'Dividends Withdrawal')}
+                            </CardTitle>
+                            <p className="text-sm text-muted-foreground">
+                                {t('budget.dividendsWithdrawal.subtitle', 'Review and distribute this month dividends')}
+                            </p>
+                        </CardHeader>
+                        <CardContent className="space-y-3">
+                            {dividendRows.length === 0 ? (
+                                <div className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
+                                    {t('budget.dividend.empty', 'No dividend withdrawals for this month')}
+                                </div>
+                            ) : (
+                                dividendRows.map((row) => (
+                                    <div
+                                        key={row.employeeId}
+                                        className="rounded-xl border p-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between"
+                                    >
+                                        <div className="space-y-1">
+                                            <div className="font-semibold">{row.employeeName}</div>
+                                            <div className="text-xs text-muted-foreground flex flex-wrap items-center gap-2">
+                                                <span>{row.formula}</span>
+                                                <span>/</span>
+                                                <span>{t('budget.form.dueDate', 'Due Date')}: {formatDate(row.dueDate.toISOString())}</span>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex flex-col items-start gap-2 lg:items-end">
+                                            <div className="font-black text-base">
+                                                {formatCurrency(row.amount, row.currency, iqdPreference)}
+                                            </div>
+                                            <span className={cn(
+                                                "text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-full border",
+                                                dividendStatusClass[row.status]
+                                            )}>
+                                                {t(`budget.dividend.status.${row.status}`, row.status)}
+                                            </span>
+                                            <div className="flex flex-wrap gap-2">
+                                                {row.status === 'paid' ? (
+                                                    <Button
+                                                        variant="outline"
+                                                        size="sm"
+                                                        disabled={isProcessing}
+                                                        onClick={() => handleDividendMarkUnpaid(row)}
+                                                    >
+                                                        {t('budget.dividend.action.markUnpaid', 'Mark Unpaid')}
+                                                    </Button>
+                                                ) : (
+                                                    <Button
+                                                        size="sm"
+                                                        disabled={isProcessing}
+                                                        onClick={() => handleDividendMarkPaid(row)}
+                                                        className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                                                    >
+                                                        {t('budget.dividend.action.markPaid', 'Mark Paid')}
+                                                    </Button>
+                                                )}
+
+                                                {row.status === 'snoozed' ? (
+                                                    <Button
+                                                        variant="outline"
+                                                        size="sm"
+                                                        disabled={isProcessing}
+                                                        onClick={() => handleDividendUnsnooze(row)}
+                                                    >
+                                                        {t('budget.dividend.action.unsnooze', 'Un-snooze')}
+                                                    </Button>
+                                                ) : row.status !== 'paid' ? (
+                                                    <Button
+                                                        variant="outline"
+                                                        size="sm"
+                                                        disabled={isProcessing}
+                                                        onClick={() => openDividendSnooze(row)}
+                                                    >
+                                                        {t('budget.dividend.action.snooze', 'Snooze')}
+                                                    </Button>
+                                                ) : null}
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))
+                            )}
+                        </CardContent>
+                    </Card>
+                </TabsContent>
+            </Tabs>
             <div className="fixed left-[-10000px] top-0 pointer-events-none">
                 <div ref={printRef}>
                     <BudgetPrintTemplate
@@ -1206,6 +1578,17 @@ export default function Budget() {
                         iqdPreference={iqdPreference}
                         metrics={metrics}
                         expenses={sortedDisplayExpenses}
+                    />
+                </div>
+            </div>
+            <div className="fixed left-[-10000px] top-0 pointer-events-none">
+                <div ref={dividendsPrintRef}>
+                    <DividendDistributionPanel
+                        recipients={metrics.dividendRecipients}
+                        surplus={metrics.finalNetProfit}
+                        baseCurrency={baseCurrency}
+                        iqdPreference={iqdPreference}
+                        className="p-8 min-w-[950px] bg-background"
                     />
                 </div>
             </div>
@@ -1272,6 +1655,14 @@ export default function Budget() {
                                             <SelectItem value="other">{t('budget.cat.other', 'Other')}</SelectItem>
                                         </SelectContent>
                                     </Select>
+                                </div>
+                                <div className="space-y-2 col-span-2">
+                                    <Label htmlFor="subcategory">{t('budget.form.subcategory', 'Subcategory')}</Label>
+                                    <Input
+                                        id="subcategory"
+                                        name="subcategory"
+                                        placeholder={t('budget.form.subcategoryPlaceholder', 'e.g. Internet / Ads / Fuel')}
+                                    />
                                 </div>
                                 <div className="space-y-2">
                                     <Label htmlFor="type">{t('budget.form.type', 'Type')}</Label>
@@ -1532,16 +1923,6 @@ export default function Budget() {
                 </DialogContent>
             </Dialog>
 
-            <DividendDistributionModal
-                isOpen={isDividendModalOpen}
-                onClose={() => setIsDividendModalOpen(false)}
-                recipients={metrics.dividendRecipients}
-                surplus={metrics.finalNetProfit}
-                baseCurrency={baseCurrency}
-                iqdPreference={iqdPreference}
-            />
-
-            {/* ─── Budget Reminder Modals ─────────────────────── */}
             <BudgetReminderModal
                 isOpen={reminderStep === 'reminder'}
                 onPaid={handleReminderPaid}
@@ -1566,6 +1947,14 @@ export default function Budget() {
                 item={currentReminder}
                 isLoading={isProcessing}
             />
+            <BudgetSnoozeModal
+                isOpen={!!dividendSnoozeItem}
+                onSnooze={handleDividendSnooze}
+                onDismiss={() => handleDividendSnooze(-1)}
+                item={dividendSnoozeItem}
+                isLoading={isProcessing}
+            />
         </div>
     )
 }
+

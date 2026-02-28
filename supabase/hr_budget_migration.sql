@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS public.expenses (
     description TEXT,
     type TEXT CHECK (type IN ('recurring', 'one-time')),
     category TEXT CHECK (category IN ('rent', 'electricity', 'payroll', 'utility', 'marketing', 'general', 'other')),
+    subcategory TEXT,
     amount NUMERIC(15, 2) NOT NULL DEFAULT 0,
     currency TEXT NOT NULL DEFAULT 'usd',
     status TEXT CHECK (status IN ('pending', 'paid', 'snoozed')),

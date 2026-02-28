@@ -5,6 +5,7 @@ interface BudgetPrintExpense {
     id: string
     description?: string
     category?: string
+    subcategory?: string | null
     amount: number
     currency?: string
     status?: string
@@ -162,13 +163,16 @@ export function BudgetPrintTemplate({
                     ) : expenses.map((expense) => {
                         const categoryKey = resolveBudgetCategoryKey(expense.category)
                         const categoryLabel = t(`budget.cat.${categoryKey}`) || categoryKey
+                        const composedCategoryLabel = expense.subcategory?.trim()
+                            ? `${categoryLabel} / ${expense.subcategory.trim()}`
+                            : categoryLabel
                         const status = resolveStatus(expense.status)
                         return (
                             <tr key={expense.id}>
                                 <td className="border border-slate-300 p-2 font-medium">
                                     {expense.description || categoryLabel}
                                 </td>
-                                <td className="border border-slate-300 p-2">{categoryLabel}</td>
+                                <td className="border border-slate-300 p-2">{composedCategoryLabel}</td>
                                 <td className="border border-slate-300 p-2">{formatDate(expense.dueDate)}</td>
                                 <td className="border border-slate-300 p-2 text-end">{formatCurrency(expense.amount, expense.currency || baseCurrency, iqdPreference as any)}</td>
                                 <td className="border border-slate-300 p-2">

@@ -1,7 +1,6 @@
 import type { Expense, Employee } from '@/local-db/models'
 import { getAppSetting, setAppSetting } from '@/local-db/settings'
 
-// ─── Types ──────────────────────────────────────────────────────────────────
 
 export type ReminderCategory = 'expense' | 'salary' | 'dividend'
 
@@ -61,7 +60,6 @@ export interface ReminderConfig {
 const DEFAULT_CONFIG: ReminderConfig = { reminderDaysBefore: 3 }
 const CONFIG_KEY = 'budget_reminder_days_before'
 
-// ─── Config Persistence ─────────────────────────────────────────────────────
 
 export async function getReminderConfig(): Promise<ReminderConfig> {
     const val = await getAppSetting(CONFIG_KEY)
@@ -76,10 +74,13 @@ export async function setReminderConfig(config: ReminderConfig): Promise<void> {
     await setAppSetting(CONFIG_KEY, String(config.reminderDaysBefore))
 }
 
-// ─── Virtual Item Snooze (app_settings based) ───────────────────────────────
 
 function snoozeKey(category: ReminderCategory, id: string, month: string): string {
     return `budget_snooze_${category}_${id}_${month}`
+}
+
+function paidKey(category: ReminderCategory, id: string, month: string): string {
+    return `budget_paid_${category}_${id}_${month}`
 }
 
 export async function getVirtualSnooze(category: ReminderCategory, id: string, month: string): Promise<{ until: string | null; count: number }> {
@@ -97,21 +98,29 @@ export async function setVirtualSnooze(category: ReminderCategory, id: string, m
     await setAppSetting(snoozeKey(category, id, month), JSON.stringify({ until, count }))
 }
 
-// ─── Snooze Check ───────────────────────────────────────────────────────────
+export async function getVirtualPaid(category: ReminderCategory, id: string, month: string): Promise<boolean> {
+    const raw = await getAppSetting(paidKey(category, id, month))
+    return raw === '1'
+}
+
+export async function setVirtualPaid(category: ReminderCategory, id: string, month: string, paid: boolean): Promise<void> {
+    await setAppSetting(paidKey(category, id, month), paid ? '1' : '0')
+}
+
 
 export function isSnoozeActive(snoozeUntil: string | null): boolean {
     if (!snoozeUntil) return false
     return new Date(snoozeUntil) > new Date()
 }
 
-// ─── Scanner ────────────────────────────────────────────────────────────────
 
 export function scanDueItems(
     expenses: Expense[],
     employees: Employee[],
     month: string, // "YYYY-MM"
     config: ReminderConfig,
-    virtualSnoozeMap: Map<string, { until: string | null; count: number }>
+    virtualSnoozeMap: Map<string, { until: string | null; count: number }>,
+    virtualPaidMap?: Map<string, boolean>
 ): BudgetReminderItem[] {
     const now = new Date()
     const [yearStr, monthStr] = month.split('-')
@@ -124,7 +133,6 @@ export function scanDueItems(
 
     const items: BudgetReminderItem[] = []
 
-    // ─── 1. Real Expenses (one-time + recurring virtual projections) ────────
     const applicableExpenses = expenses.filter(e => {
         if (e.status === 'paid') return false
         if (e.isLocked) return false
@@ -196,7 +204,6 @@ export function scanDueItems(
         })
     }
 
-    // ─── 2. Salaries ────────────────────────────────────────────────────────
     for (const emp of employees) {
         if (!emp.salary || emp.salary <= 0 || emp.isFired) continue
 
@@ -218,7 +225,6 @@ export function scanDueItems(
             new Date(e.dueDate) <= monthEnd
         )
 
-        // If paid, skip entirely — salary is done for this month
         if (existingPayrollExp && existingPayrollExp.status === 'paid') continue
 
         // If snoozed or pending, link to the existing expense so future actions update it
@@ -248,15 +254,11 @@ export function scanDueItems(
         }
     }
 
-    // ─── 3. Dividends ───────────────────────────────────────────────────────
     for (const emp of employees) {
         if (!emp.hasDividends || !emp.dividendAmount || emp.dividendAmount <= 0 || emp.isFired) continue
 
         const pDay = Number(emp.dividendPayday) || 30
         const payDate = new Date(year, mon, Math.min(pDay, new Date(year, mon + 1, 0).getDate()))
-
-        // For dividends, "paid" is evaluated by date comparison in Budget.tsx
-        if (now >= payDate) continue // Already past due — treated as paid by budget
 
         // Only remind if within horizon
         if (payDate > reminderHorizon) continue
@@ -265,6 +267,7 @@ export function scanDueItems(
         const vKey = `dividend_${emp.id}`
         const vSnooze = virtualSnoozeMap.get(vKey)
         if (vSnooze && isSnoozeActive(vSnooze.until)) continue
+        if (virtualPaidMap?.get(vKey)) continue
 
         items.push({
             id: `dividend-${emp.id}`,
@@ -288,7 +291,6 @@ export function scanDueItems(
     return items
 }
 
-// ─── Snoozed Items Retrieval ───────────────────────────────────────────────
 
 export function getSnoozedItems(
     expenses: Expense[],
@@ -305,7 +307,6 @@ export function getSnoozedItems(
 
     const snoozed: BudgetReminderItem[] = []
 
-    // ─── 1. Real Expenses (including snoozed Salary records) ────────
     const applicableExpenses = expenses.filter(e => {
         if (e.status !== 'snoozed') return false
         if (!isSnoozeActive(e.snoozeUntil)) return false
@@ -354,7 +355,6 @@ export function getSnoozedItems(
         }
     }
 
-    // ─── 2. Virtual Dividends ────────
     // (Virtual Salaries are handled via Expense records now)
     for (const emp of employees) {
         if (!emp.hasDividends || !emp.dividendAmount || emp.dividendAmount <= 0 || emp.isFired) continue
@@ -386,4 +386,5 @@ export function getSnoozedItems(
     snoozed.sort((a: BudgetReminderItem, b: BudgetReminderItem) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime())
     return snoozed
 }
+
 

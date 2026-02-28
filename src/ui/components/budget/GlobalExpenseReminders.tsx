@@ -5,7 +5,7 @@ import { useWorkspace } from '@/workspace'
 import { BudgetReminderModal } from './BudgetReminderModal'
 import { BudgetLockModal } from './BudgetLockModal'
 import { BudgetSnoozeModal } from './BudgetSnoozeModal'
-import { scanDueItems, getReminderConfig, getVirtualSnooze, setVirtualSnooze, INDEFINITE_SNOOZE_DATE } from '@/lib/budgetReminders'
+import { scanDueItems, getReminderConfig, getVirtualSnooze, setVirtualSnooze, getVirtualPaid, setVirtualPaid, INDEFINITE_SNOOZE_DATE } from '@/lib/budgetReminders'
 import type { BudgetReminderItem } from '@/lib/budgetReminders'
 import { updateExpense, createExpense, fetchTableFromSupabase } from '@/local-db/hooks'
 import { db } from '@/local-db/database'
@@ -60,6 +60,7 @@ export function GlobalExpenseReminders() {
                 const config = await getReminderConfig()
 
                 const virtualSnoozeMap = new Map<string, { until: string | null; count: number }>()
+                const virtualPaidMap = new Map<string, boolean>()
 
                 // Pre-fill virtualSnoozeMap for salaries and dividends
                 for (const emp of employees) {
@@ -70,10 +71,12 @@ export function GlobalExpenseReminders() {
                     if (emp.hasDividends && emp.dividendAmount && emp.dividendAmount > 0) {
                         const vd = await getVirtualSnooze('dividend', emp.id, monthStr)
                         if (vd.until || vd.count > 0) virtualSnoozeMap.set(`dividend_${emp.id}`, vd)
+                        const paid = await getVirtualPaid('dividend', emp.id, monthStr)
+                        if (paid) virtualPaidMap.set(`dividend_${emp.id}`, true)
                     }
                 }
 
-                const items = scanDueItems(expenses, employees, monthStr, config, virtualSnoozeMap)
+                const items = scanDueItems(expenses, employees, monthStr, config, virtualSnoozeMap, virtualPaidMap)
 
                 // Filter strictly for OVERDUE ones for the persistent alert
                 const validOverdue = items.filter(item => {
@@ -169,6 +172,14 @@ export function GlobalExpenseReminders() {
                     snoozeCount: 0
                 })
                 if (newExp) currentItem.expenseId = newExp.id
+            } else if (currentItem.category === 'dividend' && currentItem.employeeId) {
+                const dueDate = new Date(currentItem.dueDate)
+                const dueMonth = `${dueDate.getFullYear()}-${String(dueDate.getMonth() + 1).padStart(2, '0')}`
+                await setVirtualPaid('dividend', currentItem.employeeId, dueMonth, true)
+                await setVirtualSnooze('dividend', currentItem.employeeId, dueMonth, '', 0)
+                toast({ description: t('budget.dividend.paidPersisted', 'Dividend payment status saved') })
+                advance()
+                return
             }
             toast({ description: t('budget.statusUpdated', 'Status updated') })
             setStep('lock')
@@ -254,8 +265,8 @@ export function GlobalExpenseReminders() {
                 })
             } else {
                 // Virtual items (Dividends) — store in app_settings
-                const now = new Date()
-                const monthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+                const dueDate = new Date(currentItem.dueDate)
+                const monthStr = `${dueDate.getFullYear()}-${String(dueDate.getMonth() + 1).padStart(2, '0')}`
                 await setVirtualSnooze(
                     currentItem.category,
                     currentItem.employeeId || currentItem.id,

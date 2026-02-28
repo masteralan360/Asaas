@@ -1200,6 +1200,31 @@
         "setBudget": "تحديد الميزانية",
         "addExpense": "مصروف جديد",
         "expenseList": "المصاريف التشغيلية",
+        "tabs": {
+            "monthlyExpenses": "المصاريف التشغيلية",
+            "dividendsWithdrawal": "سحب توزيعات الأرباح"
+        },
+        "dividendsWithdrawal": {
+            "title": "سحب توزيعات الأرباح",
+            "subtitle": "راجع وادِر صرف توزيعات أرباح هذا الشهر"
+        },
+        "dividend": {
+            "status": {
+                "paid": "مدفوع",
+                "snoozed": "مؤجل",
+                "overdue": "متأخر",
+                "dueToday": "مستحق اليوم",
+                "upcoming": "قادم"
+            },
+            "action": {
+                "markPaid": "تحديد كمدفوع",
+                "markUnpaid": "تحديد كغير مدفوع",
+                "snooze": "تأجيل",
+                "unsnooze": "إلغاء التأجيل"
+            },
+            "empty": "لا توجد توزيعات أرباح لهذا الشهر",
+            "paidPersisted": "تم حفظ حالة دفع الأرباح"
+        },
         "allocationSaved": "تم تحديث مخصص الميزانية",
         "estimatedLimit": "الحد التقديري",
         "basedOnRevenue": "بناءً على إيرادات {{month}}",
@@ -1209,12 +1234,17 @@
         "snoozedUntil": "مؤجل حتى",
         "unsnooze": "إلغاء التأجيل",
         "snoozedIndefinitely": "مؤجل حتى يتم إلغاء التأجيل",
+        "deleteSeries": "حذف السلسلة المتكررة",
+        "deleteOccurrence": "حذف هذا الشهر فقط",
+        "deletedOccurrenceKeepsSeries": "تم حذف بند هذا الشهر. السلسلة المتكررة ما زالت مفعلة.",
         "form": {
             "desc": "الوصف",
             "amount": "المبلغ",
             "category": "الفئة",
             "type": "النوع",
-            "dueDate": "تاريخ الاستحقاق"
+            "dueDate": "تاريخ الاستحقاق",
+            "subcategory": "التصنيف الفرعي",
+            "subcategoryPlaceholder": "مثال: إنترنت / إعلانات / وقود"
         },
         "cat": {
             "payroll": "رواتب الموظفين",

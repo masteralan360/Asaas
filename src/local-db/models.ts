@@ -96,6 +96,7 @@ export interface Expense extends Omit<BaseEntity, 'isDeleted'> {
     description?: string
     type: ExpenseType
     category: ExpenseCategory
+    subcategory?: string | null
     amount: number
     currency: CurrencyCode
     status: ExpenseStatus
