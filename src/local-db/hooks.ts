@@ -2038,6 +2038,18 @@ export function useBudgetLimitReached(
     const now = new Date()
     const monthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
     const financials = useMonthlyRevenue(workspaceId, monthStr)
+    const usdToIqd = rates.usd_iqd
+    const eurToIqd = rates.eur_iqd
+    const tryToIqd = rates.try_iqd
+    const conversionRates = {
+        usd_iqd: usdToIqd,
+        eur_iqd: eurToIqd,
+        try_iqd: tryToIqd
+    }
+    const totalProfit = Object.entries(financials.profit || {}).reduce(
+        (sum, [curr, amt]) => sum + convertToStoreBase(amt, curr, baseCurrency, conversionRates),
+        0
+    )
 
     return useLiveQuery(async () => {
         if (!workspaceId) return false
@@ -2060,10 +2072,31 @@ export function useBudgetLimitReached(
             .equals(workspaceId)
             .toArray()
 
+        const recurringTemplates = allExpenses.filter(e => e.type === 'recurring')
         const monthExpenses = allExpenses.filter(e => {
+            if (e.type !== 'one-time') return false
+            if (e.category === 'payroll' && e.employeeId) return false
             const date = new Date(e.dueDate)
+            if (Number.isNaN(date.getTime())) return false
             return date >= monthStart && date <= monthEnd
         })
+        const virtualRecurringExpenses = recurringTemplates.filter(template =>
+            !monthExpenses.some(expenseRecord => {
+                const expenseDueDate = new Date(expenseRecord.dueDate)
+                if (Number.isNaN(expenseDueDate.getTime())) return false
+                if (expenseRecord.category !== template.category) return false
+                if ((expenseRecord.description || '').trim().toLowerCase() !== (template.description || '').trim().toLowerCase()) return false
+                if ((expenseRecord.subcategory || '').trim().toLowerCase() !== (template.subcategory || '').trim().toLowerCase()) return false
+
+                const recurringDay = new Date(template.dueDate).getDate()
+                if (Number.isNaN(recurringDay)) return false
+                const projectedDay = Math.min(
+                    recurringDay,
+                    new Date(expenseDueDate.getFullYear(), expenseDueDate.getMonth() + 1, 0).getDate()
+                )
+                return expenseDueDate.getDate() === projectedDay
+            })
+        )
 
         // 3. Get Employees for Salaries
         const employees = await db.employees
@@ -2074,30 +2107,28 @@ export function useBudgetLimitReached(
         // 4. Calculate Operational Total (Expenses + Salaries)
         let total = 0
         monthExpenses.forEach(exp => {
-            total += convertToStoreBase(exp.amount, exp.currency, baseCurrency, rates)
+            total += convertToStoreBase(exp.amount, exp.currency, baseCurrency, conversionRates)
+        })
+        virtualRecurringExpenses.forEach(exp => {
+            total += convertToStoreBase(exp.amount, exp.currency, baseCurrency, conversionRates)
         })
 
         employees.forEach(emp => {
-            if (emp.salary && emp.salary > 0 && !emp.isFired) {
-                total += convertToStoreBase(emp.salary, emp.salaryCurrency, baseCurrency, rates)
+            if (emp.salary && emp.salary > 0) {
+                total += convertToStoreBase(emp.salary, emp.salaryCurrency, baseCurrency, conversionRates)
             }
         })
 
         // 5. Calculate Limit
         let limit = 0
         if (allocation.type === 'fixed') {
-            limit = convertToStoreBase(allocation.amount, allocation.currency, baseCurrency, rates)
+            limit = convertToStoreBase(allocation.amount, allocation.currency, baseCurrency, conversionRates)
         } else {
-            // Percentage of profit
-            const totalProfit = Object.entries(financials.profit || {}).reduce(
-                (sum, [curr, amt]) => sum + convertToStoreBase(amt, curr, baseCurrency, rates),
-                0
-            )
             limit = totalProfit * (allocation.amount / 100)
         }
 
         return limit > 0 && total >= limit
-    }, [workspaceId, monthStr, financials, baseCurrency, rates]) ?? false
+    }, [workspaceId, monthStr, totalProfit, baseCurrency, usdToIqd, eurToIqd, tryToIqd]) ?? false
 }
 
 // ===================
