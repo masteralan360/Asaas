@@ -9,6 +9,10 @@ type RunSupabaseActionOptions = {
     platform?: 'web-only' | 'all'
 }
 
+type AbortableSupabaseAction<T> = PromiseLike<T> & {
+    abortSignal?: (signal: AbortSignal) => PromiseLike<T> | Promise<T> | T
+}
+
 export class SupabaseRequestTimeoutError extends Error {
     readonly code = 'SUPABASE_REQUEST_TIMEOUT'
 
@@ -104,7 +108,15 @@ export async function runSupabaseAction<T>(
     const startedAt = Date.now()
     const timeoutMs = options.timeoutMs ?? WEB_REQUEST_TIMEOUT_MS
     const shouldApplyTimeout = options.platform === 'all' ? true : isWeb()
-    const executeAction = () => Promise.resolve().then(() => promiseFactory())
+    const executeAction = (controller?: AbortController | null) => Promise.resolve().then(() => {
+        const action = promiseFactory() as AbortableSupabaseAction<T> | PromiseLike<T> | Promise<T> | T
+
+        if (controller && action && typeof action === 'object' && typeof (action as AbortableSupabaseAction<T>).abortSignal === 'function') {
+            return (action as AbortableSupabaseAction<T>).abortSignal!(controller.signal)
+        }
+
+        return action
+    })
 
     const logResult = (status: 'ok' | 'failed', error?: unknown) => {
         const duration = Date.now() - startedAt
@@ -128,14 +140,16 @@ export async function runSupabaseAction<T>(
     }
 
     let timeoutHandle: ReturnType<typeof setTimeout> | null = null
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null
 
     try {
         const result = await Promise.race<T>([
-            executeAction().catch((error) => {
+            executeAction(controller).catch((error) => {
                 throw normalizeSupabaseActionError(error)
             }),
             new Promise<T>((_, reject) => {
                 timeoutHandle = setTimeout(() => {
+                    controller?.abort()
                     reject(new SupabaseRequestTimeoutError())
                 }, timeoutMs)
             })

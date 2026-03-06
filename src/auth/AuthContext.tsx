@@ -151,6 +151,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const [isLoading, setIsLoading] = useState(true)
     const sessionRef = useRef<Session | null>(null)
     const watchdogRef = useRef<ReturnType<typeof setInterval> | null>(null)
+    const authStateTaskRef = useRef(0)
 
     // Keep sessionRef in sync
     useEffect(() => { sessionRef.current = session }, [session])
@@ -162,9 +163,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             return
         }
 
-        // Register auth state listener FIRST so it catches deferred events
-        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-            console.log(`[Auth] State change: ${_event}`, session?.user?.id)
+        let isMounted = true
+
+        const processAuthStateChange = async (session: Session | null, taskId: number) => {
+            if (!isMounted || taskId !== authStateTaskRef.current) return
+
             setSession(session)
             const parsedUser = session?.user ? parseUserFromSupabase(session.user) : null
 
@@ -178,8 +181,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             if (parsedUser.workspaceId) {
                 const enriched = await enrichUser(parsedUser)
 
+                if (!isMounted || taskId !== authStateTaskRef.current) return
+
                 // Final verify to ensure we haven't logged out during enrichment
-                const { data: { session: currentSession } } = await supabase.auth.getSession()
+                const { data: { session: currentSession } } = await runSupabaseAction(
+                    'auth.verifyStateChangeSession',
+                    () => supabase.auth.getSession(),
+                    { timeoutMs: 5000, platform: 'all' }
+                ) as any
+
+                if (!isMounted || taskId !== authStateTaskRef.current) return
+
                 if (currentSession?.user?.id === parsedUser.id) {
                     setUser({ ...enriched })
                     saveRecovery(enriched)
@@ -188,7 +200,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 setUser(parsedUser)
                 saveRecovery(parsedUser)
             }
+
+            if (!isMounted || taskId !== authStateTaskRef.current) return
             setIsLoading(false)
+        }
+
+        // Register auth state listener FIRST so it catches deferred events
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+            console.log(`[Auth] State change: ${_event}`, session?.user?.id)
+            const taskId = ++authStateTaskRef.current
+            window.setTimeout(() => {
+                void processAuthStateChange(session, taskId)
+            }, 0)
         })
 
         const fetchInitialSession = async () => {
@@ -277,6 +300,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         fetchInitialSession();
 
         return () => {
+            isMounted = false
             subscription.unsubscribe()
         }
     }, [])
@@ -294,11 +318,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             console.log(`[Auth] Connection event: ${event} — verifying session...`)
 
             try {
-                const { data: { session }, error } = await supabase.auth.getSession()
+                const { data: { session }, error } = await runSupabaseAction(
+                    'auth.wakeSessionCheck',
+                    () => supabase.auth.getSession(),
+                    { timeoutMs: 5000, platform: 'all' }
+                ) as any
 
                 if (error || !session) {
                     console.log('[Auth] Session invalid after wake, attempting refresh...')
-                    const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession()
+                    const { data: refreshData, error: refreshError } = await runSupabaseAction(
+                        'auth.wakeRefreshSession',
+                        () => supabase.auth.refreshSession(),
+                        { timeoutMs: 5000, platform: 'all' }
+                    ) as any
 
                     if (refreshError || !refreshData.session) {
                         console.error('[Auth] Session refresh failed — signing out gracefully.')
@@ -342,7 +374,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             // If token expires in less than 2 minutes, proactively refresh
             if (timeUntilExpiry < 2 * 60 * 1000 && timeUntilExpiry > 0) {
                 console.log(`[Auth] Token expires in ${Math.round(timeUntilExpiry / 1000)}s — proactive refresh`)
-                const { error } = await supabase.auth.refreshSession()
+                const { error } = await runSupabaseAction(
+                    'auth.proactiveRefresh',
+                    () => supabase.auth.refreshSession(),
+                    { timeoutMs: 5000, platform: 'all' }
+                ) as any
                 if (error) {
                     console.error('[Auth] Proactive refresh failed:', error)
                 }
@@ -495,7 +531,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const refreshUser = async () => {
         if (!isSupabaseConfigured) return
 
-        const { data: { session }, error } = await supabase.auth.refreshSession()
+        const { data: { session }, error } = await runSupabaseAction(
+            'auth.refreshUser',
+            () => supabase.auth.refreshSession(),
+            { timeoutMs: 5000, platform: 'all' }
+        ) as any
 
         if (error) {
             console.error('Error refreshing session:', error)
