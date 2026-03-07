@@ -181,7 +181,11 @@ class AssetManager extends SimpleEventEmitter {
      * Delete an asset from R2 and locally
      */
     async deleteAsset(remotePath: string): Promise<void> {
-        if (!this.workspaceId) return;
+        if (!this.workspaceId || !remotePath) return;
+
+        if (remotePath.startsWith('data:') || remotePath.startsWith('blob:')) {
+            return;
+        }
 
         try {
             // 1. Resolve R2 key

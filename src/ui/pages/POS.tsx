@@ -19,6 +19,7 @@ import {
     DialogTitle,
     DialogFooter,
     DialogTrigger,
+    DialogClose,
     useToast,
     Label,
     Switch
@@ -44,7 +45,9 @@ import {
     Archive,
     ChevronRight,
     ChevronUp,
-    ChevronDown
+    ChevronDown,
+    Warehouse,
+    Check
 } from 'lucide-react'
 import { BarcodeScanner } from 'react-barcode-scanner'
 import 'react-barcode-scanner/polyfill'
@@ -1351,13 +1354,16 @@ export function POS() {
 
 
     return (
-        <div className="h-full flex flex-col lg:flex-row gap-4 overflow-hidden -m-4 lg:m-0">
+        <div className="h-full flex flex-col lg:flex-row gap-4 overflow-hidden lg:m-0">
             {isLayoutMobile ? (
-                <div className="flex-1 flex flex-col h-full bg-background relative">
+                <div className="flex-1 flex flex-col bg-background relative overflow-hidden">
                     <MobileHeader
                         mobileView={mobileView}
                         setMobileView={setMobileView}
                         totalItems={totalItems}
+                        storages={storages}
+                        selectedStorageId={selectedStorageId}
+                        setSelectedStorageId={setSelectedStorageId}
                         refreshExchangeRate={refreshExchangeRate}
                         exchangeData={exchangeData}
                         heldSalesCount={heldSales.length}
@@ -2397,6 +2403,9 @@ interface MobileHeaderProps {
     mobileView: 'grid' | 'cart'
     setMobileView: (view: 'grid' | 'cart') => void
     totalItems: number
+    storages: ReturnType<typeof useStorages>
+    selectedStorageId: string
+    setSelectedStorageId: (storageId: string) => void
     refreshExchangeRate: () => void
     exchangeData: ExchangeRateResult | null
     heldSalesCount: number
@@ -2411,6 +2420,9 @@ function MobileHeader({
     mobileView,
     setMobileView,
     totalItems,
+    storages,
+    selectedStorageId,
+    setSelectedStorageId,
     refreshExchangeRate,
     exchangeData,
     heldSalesCount,
@@ -2422,93 +2434,141 @@ function MobileHeader({
 }: MobileHeaderProps) {
     return (
         <div className="lg:hidden sticky top-0 z-50">
-            <div className={cn(
-                "flex items-center justify-between px-4 py-3 bg-card border-b border-border",
-                "pt-[calc(0.75rem+var(--safe-area-top))]"
-            )}>
-                <button
-                    className="p-2 -ms-2 rounded-xl hover:bg-secondary transition-colors"
-                    onClick={() => window.dispatchEvent(new CustomEvent('open-mobile-sidebar'))}
-                >
-                    <Menu className="w-6 h-6 text-muted-foreground" />
-                </button>
-                <button
-                    className="bg-secondary/80 backdrop-blur-md px-6 py-2.5 rounded-full flex items-center gap-2 shadow-sm border border-border/50 relative active:scale-95 transition-all"
-                    onClick={() => setMobileView(mobileView === 'grid' ? 'cart' : 'grid')}
-                >
-                    <ShoppingCart className="w-5 h-5" />
-                    <span className="font-bold text-sm tracking-tight">{mobileView === 'grid' ? 'Cart' : 'Catalog'}</span>
-                    {totalItems > 0 && (
-                        <span className="absolute -top-1.5 -right-1.5 bg-emerald-500 text-white text-[10px] w-5 h-5 flex items-center justify-center rounded-full border-2 border-background font-bold shadow-lg animate-in zoom-in">
-                            {totalItems}
-                        </span>
-                    )}
-                </button>
-
-                {/* Actions Area */}
-                <div className="flex items-center gap-1 -me-2">
-                    {/* Held Sales Button (Mobile) */}
-                    {heldSalesCount > 0 && (
+            <div className="border-b border-border bg-card">
+                <div className={cn(
+                    "flex items-center justify-between px-4 py-3 gap-1",
+                    "pt-[calc(0.75rem+var(--safe-area-top))]"
+                )}>
+                    {/* Left Group */}
+                    <div className="flex-1 flex items-center justify-start gap-1">
                         <button
-                            className="p-2 rounded-xl hover:bg-secondary transition-colors relative"
-                            onClick={onOpenHeldSales}
+                            className="p-2 rounded-xl hover:bg-secondary transition-colors shrink-0"
+                            onClick={() => window.dispatchEvent(new CustomEvent('open-mobile-sidebar'))}
                         >
-                            <Archive className="w-5 h-5 text-primary" />
-                            <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-primary rounded-full border border-background shadow-sm" />
+                            <Menu className="w-6 h-6 text-muted-foreground" />
                         </button>
-                    )}
 
-                    {/* Live Rate Modal (Mobile) */}
-                    <Dialog>
-                        <DialogTrigger asChild>
-                            <button className="p-2 rounded-xl hover:bg-secondary transition-colors cursor-pointer text-muted-foreground">
-                                <TrendingUp className="w-6 h-6" />
-                            </button>
-                        </DialogTrigger>
-                        <DialogContent className="max-w-[calc(100vw-2rem)] rounded-2xl p-0 overflow-hidden border-emerald-500/20">
-
-                            <DialogHeader className="p-6 border-b bg-emerald-500/5 items-start rtl:items-start text-start rtl:text-start">
-                                <DialogTitle className="flex items-center gap-2 text-emerald-600">
-                                    <Coins className="w-5 h-5" />
-                                    {t('common.exchangeRates')}
-                                </DialogTitle>
-                            </DialogHeader>
-
-                            <div className="p-2">
-                                <ExchangeRateList isMobile={true} />
-                            </div>
-
-                            <div className="p-4 bg-secondary/30 flex flex-col gap-2">
-                                <div className="flex gap-2 w-full">
-                                    {!showExchangeTicker && (
-                                        <Button
-                                            variant="outline"
-                                            className="flex-1 border-primary/20 text-primary hover:bg-primary/5 h-11 rounded-xl font-bold"
-                                            onClick={() => setShowExchangeTicker(true)}
-                                        >
-                                            <TrendingUp className="w-4 h-4 mr-2" />
-                                            {t('pos.showTicker') || 'Show Ticker'}
-                                        </Button>
-                                    )}
-                                    {showExchangeTicker && <div className="flex-1" />}
-                                    <Button
-                                        className="flex-1 h-11 rounded-xl font-bold"
-                                        onClick={() => {
-                                            refreshExchangeRate();
-                                            toast({
-                                                title: t('pos.ratesUpdated') || 'Rates Updated',
-                                                description: `USD/IQD: ${exchangeData?.rate || '...'}`,
-                                                duration: 2000
-                                            });
-                                        }}
-                                    >
-                                        <RefreshCw className="w-4 h-4 mr-2" />
-                                        {t('common.refresh')}
-                                    </Button>
+                        <Dialog>
+                            <DialogTrigger asChild>
+                                <button className="p-2 rounded-xl hover:bg-secondary transition-colors cursor-pointer text-muted-foreground relative" title={t('storages.selectStorage') || "Select Storage"}>
+                                    <Warehouse className="w-6 h-6" />
+                                </button>
+                            </DialogTrigger>
+                            <DialogContent className="max-w-[calc(100vw-2rem)] rounded-2xl p-0 overflow-hidden border-border z-[60]">
+                                <DialogHeader className="p-6 border-b bg-muted/5 items-start rtl:items-start text-start rtl:text-start">
+                                    <DialogTitle className="flex items-center gap-2">
+                                        <Warehouse className="w-5 h-5 text-primary" />
+                                        {t('storages.selectStorage') || 'Select Storage'}
+                                    </DialogTitle>
+                                </DialogHeader>
+                                <div className="p-4 space-y-2 max-h-[60vh] overflow-y-auto">
+                                    {storages.map(storage => (
+                                        <DialogClose asChild key={storage.id}>
+                                            <button
+                                                onClick={() => setSelectedStorageId(storage.id)}
+                                                className={cn(
+                                                    "w-full flex items-center gap-3 p-3 rounded-xl border transition-all text-left",
+                                                    selectedStorageId === storage.id
+                                                        ? "bg-primary/10 border-primary/30 text-primary"
+                                                        : "bg-card border-border hover:bg-secondary/50"
+                                                )}
+                                            >
+                                                <Warehouse className={cn("w-5 h-5", selectedStorageId === storage.id ? "text-primary" : "text-muted-foreground")} />
+                                                <span className="font-medium flex-1 truncate">
+                                                    {storage.isSystem ? (t(`storages.${storage.name.toLowerCase()}`) || storage.name) : storage.name}
+                                                    {storage.isSystem && (
+                                                        <span className="text-[10px] text-muted-foreground ml-2">({t('storages.system') || 'System'})</span>
+                                                    )}
+                                                </span>
+                                                {selectedStorageId === storage.id && (
+                                                    <Check className="w-4 h-4 text-primary shrink-0" />
+                                                )}
+                                            </button>
+                                        </DialogClose>
+                                    ))}
                                 </div>
-                            </div>
-                        </DialogContent>
-                    </Dialog>
+                            </DialogContent>
+                        </Dialog>
+                    </div>
+
+                    <button
+                        className="bg-secondary/80 backdrop-blur-md px-5 py-2.5 rounded-full flex items-center gap-2 shadow-sm border border-border/50 relative active:scale-95 transition-all shrink-0"
+                        onClick={() => setMobileView(mobileView === 'grid' ? 'cart' : 'grid')}
+                    >
+                        <ShoppingCart className="w-5 h-5" />
+                        <span className="font-bold text-sm tracking-tight">{mobileView === 'grid' ? 'Cart' : 'Catalog'}</span>
+                        {totalItems > 0 && (
+                            <span className="absolute -top-1.5 -right-1.5 bg-emerald-500 text-white text-[10px] w-5 h-5 flex items-center justify-center rounded-full border-2 border-background font-bold shadow-lg animate-in zoom-in">
+                                {totalItems}
+                            </span>
+                        )}
+                    </button>
+
+                    {/* Actions Area - Right Group */}
+                    <div className="flex-1 flex items-center justify-end gap-1">
+                        {/* Held Sales Button (Mobile) */}
+                        {heldSalesCount > 0 && (
+                            <button
+                                className="p-2 rounded-xl hover:bg-secondary transition-colors relative"
+                                onClick={onOpenHeldSales}
+                            >
+                                <Archive className="w-5 h-5 text-primary" />
+                                <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-primary rounded-full border border-background shadow-sm" />
+                            </button>
+                        )}
+
+                        {/* Live Rate Modal (Mobile) */}
+                        <Dialog>
+                            <DialogTrigger asChild>
+                                <button className="p-2 rounded-xl hover:bg-secondary transition-colors cursor-pointer text-muted-foreground">
+                                    <TrendingUp className="w-6 h-6" />
+                                </button>
+                            </DialogTrigger>
+                            <DialogContent className="max-w-[calc(100vw-2rem)] rounded-2xl p-0 overflow-hidden border-emerald-500/20">
+
+                                <DialogHeader className="p-6 border-b bg-emerald-500/5 items-start rtl:items-start text-start rtl:text-start">
+                                    <DialogTitle className="flex items-center gap-2 text-emerald-600">
+                                        <Coins className="w-5 h-5" />
+                                        {t('common.exchangeRates')}
+                                    </DialogTitle>
+                                </DialogHeader>
+
+                                <div className="p-2">
+                                    <ExchangeRateList isMobile={true} />
+                                </div>
+
+                                <div className="p-4 bg-secondary/30 flex flex-col gap-2">
+                                    <div className="flex gap-2 w-full">
+                                        {!showExchangeTicker && (
+                                            <Button
+                                                variant="outline"
+                                                className="flex-1 border-primary/20 text-primary hover:bg-primary/5 h-11 rounded-xl font-bold"
+                                                onClick={() => setShowExchangeTicker(true)}
+                                            >
+                                                <TrendingUp className="w-4 h-4 mr-2" />
+                                                {t('pos.showTicker') || 'Show Ticker'}
+                                            </Button>
+                                        )}
+                                        {showExchangeTicker && <div className="flex-1" />}
+                                        <Button
+                                            className="flex-1 h-11 rounded-xl font-bold"
+                                            onClick={() => {
+                                                refreshExchangeRate();
+                                                toast({
+                                                    title: t('pos.ratesUpdated') || 'Rates Updated',
+                                                    description: `USD/IQD: ${exchangeData?.rate || '...'}`,
+                                                    duration: 2000
+                                                });
+                                            }}
+                                        >
+                                            <RefreshCw className="w-4 h-4 mr-2" />
+                                            {t('common.refresh')}
+                                        </Button>
+                                    </div>
+                                </div>
+                            </DialogContent>
+                        </Dialog>
+                    </div>
                 </div>
             </div>
         </div>
@@ -2602,7 +2662,7 @@ function MobileGrid({ t, search, setSearch, setIsSkuModalOpen, setIsBarcodeModal
             </div>
 
             {/* Products Grid */}
-            <div className="grid grid-cols-2 gap-4 p-4 pt-0 pb-32">
+            <div className="grid grid-cols-2 gap-4 p-4 pt-0 pb-10">
                 {filteredProducts.map((product) => {
                     const cartItem = cart.find(i => i.product_id === product.id)
                     const inCartQuantity = cartItem?.quantity || 0
@@ -2830,7 +2890,7 @@ function MobileCart({
                 ref={scrollContainerRef}
                 className={cn(
                     "flex-1 overflow-y-auto p-4 space-y-4 transition-all duration-300 overscroll-contain relative",
-                    "pb-32" // Perfectly matches the collapsedHeight (120px) to prevent overscroll
+                    "pb-40 text-sm" // Increased padding to clear the 120px fixed checkout bar
                 )}
             >
 

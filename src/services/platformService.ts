@@ -8,6 +8,123 @@ class PlatformService implements PlatformAPI {
     private appDataPath: string = '';
     private tauriConvert: ((path: string) => string) | null = null;
 
+    private async pickImageFileOnWeb(): Promise<File | null> {
+        if (typeof document === 'undefined') return null;
+
+        return new Promise((resolve) => {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = 'image/png,image/jpeg,image/jpg,image/webp';
+            input.style.position = 'fixed';
+            input.style.left = '-9999px';
+
+            let settled = false;
+
+            const cleanup = () => {
+                window.removeEventListener('focus', handleWindowFocus);
+                input.removeEventListener('change', handleChange);
+                input.remove();
+            };
+
+            const finalize = (file: File | null) => {
+                if (settled) return;
+                settled = true;
+                cleanup();
+                resolve(file);
+            };
+
+            const handleChange = () => {
+                finalize(input.files?.[0] ?? null);
+            };
+
+            const handleWindowFocus = () => {
+                window.setTimeout(() => {
+                    if (!settled && (!input.files || input.files.length === 0)) {
+                        finalize(null);
+                    }
+                }, 300);
+            };
+
+            window.addEventListener('focus', handleWindowFocus);
+            input.addEventListener('change', handleChange);
+            document.body.appendChild(input);
+            input.click();
+        });
+    }
+
+    private getImageExtension(file: File | Blob): string {
+        if (file instanceof File) {
+            const fileExt = file.name.split('.').pop()?.toLowerCase();
+            if (fileExt) {
+                return fileExt === 'jpeg' ? 'jpg' : fileExt;
+            }
+        }
+
+        const mimeToExt: Record<string, string> = {
+            'image/png': 'png',
+            'image/jpeg': 'jpg',
+            'image/webp': 'webp'
+        };
+
+        return mimeToExt[file.type] || 'jpg';
+    }
+
+    private async blobToDataUrl(blob: Blob): Promise<string> {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result as string);
+            reader.onerror = () => reject(new Error('Failed to read image as data URL'));
+            reader.readAsDataURL(blob);
+        });
+    }
+
+    private async resizeBrowserImage(file: File | Blob, maxWidth: number): Promise<Blob> {
+        if (typeof document === 'undefined' || maxWidth <= 0) {
+            return file;
+        }
+
+        const objectUrl = URL.createObjectURL(file);
+
+        return new Promise((resolve) => {
+            const img = new Image();
+
+            img.onload = () => {
+                URL.revokeObjectURL(objectUrl);
+
+                if (img.width <= maxWidth) {
+                    resolve(file);
+                    return;
+                }
+
+                const width = maxWidth;
+                const height = Math.round((maxWidth / img.width) * img.height);
+                const canvas = document.createElement('canvas');
+                canvas.width = width;
+                canvas.height = height;
+
+                const ctx = canvas.getContext('2d');
+                if (!ctx) {
+                    resolve(file);
+                    return;
+                }
+
+                ctx.drawImage(img, 0, 0, width, height);
+                canvas.toBlob(
+                    (resizedBlob) => resolve(resizedBlob || file),
+                    'image/jpeg',
+                    0.85
+                );
+            };
+
+            img.onerror = () => {
+                URL.revokeObjectURL(objectUrl);
+                resolve(file);
+            };
+
+            img.src = objectUrl;
+        });
+    }
+
     async initialize() {
         if (isTauri()) {
             // Priority 1: Hydrate from cache immediately
@@ -245,6 +362,33 @@ class PlatformService implements PlatformAPI {
             } catch (error) {
                 console.error('Error picking/saving image in Tauri:', error);
             }
+        }
+
+        try {
+            const selectedFile = await this.pickImageFileOnWeb();
+            if (!selectedFile) return null;
+
+            const fileToPersist = subDir === 'profile-images'
+                ? await this.resizeBrowserImage(selectedFile, 512)
+                : selectedFile;
+
+            const ext = this.getImageExtension(fileToPersist);
+            const fileName = `${Date.now()}.${ext}`;
+            const relativeDest = `${subDir}/${workspaceId}/${fileName}`.replace(/\\/g, '/');
+            const r2Path = `${workspaceId}/${subDir}/${fileName}`.replace(/\\/g, '/');
+
+            if (r2Service.isConfigured()) {
+                try {
+                    await r2Service.upload(r2Path, fileToPersist, fileToPersist.type || 'application/octet-stream');
+                    return relativeDest;
+                } catch (error) {
+                    console.error('[PlatformService] Web image upload failed, falling back to data URL:', error);
+                }
+            }
+
+            return await this.blobToDataUrl(fileToPersist);
+        } catch (error) {
+            console.error('[PlatformService] Error picking/saving image on web:', error);
         }
 
         return null;
