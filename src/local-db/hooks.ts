@@ -32,13 +32,13 @@ import { convertToStoreBase } from '@/lib/currency'
 import { supabase } from '@/auth/supabase'
 import { useNetworkStatus } from '@/hooks/useNetworkStatus'
 import { isOnline } from '@/lib/network'
-import { normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
+import { isRetriableWebRequestError, normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
 
 // ===================
 // CATEGORIES HOOKS
 // ===================
 
-async function runMutation<T>(label: string, promiseFactory: () => Promise<T>): Promise<T> {
+async function runMutation<T>(label: string, promiseFactory: () => PromiseLike<T>): Promise<T> {
     return runSupabaseAction(label, promiseFactory)
 }
 
@@ -52,7 +52,11 @@ function shouldUseOfflineMutationFallback(error: unknown): boolean {
         return true
     }
 
-    return !isOnline()
+    if (!isOnline()) {
+        return true
+    }
+
+    return isRetriableWebRequestError(error)
 }
 
 // ===================
