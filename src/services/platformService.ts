@@ -8,7 +8,7 @@ class PlatformService implements PlatformAPI {
     private appDataPath: string = '';
     private tauriConvert: ((path: string) => string) | null = null;
 
-    private async pickImageFileOnWeb(): Promise<File | null> {
+    private async pickImageFileFromInput(): Promise<File | null> {
         if (typeof document === 'undefined') return null;
 
         return new Promise((resolve) => {
@@ -46,6 +46,7 @@ class PlatformService implements PlatformAPI {
             };
 
             window.addEventListener('focus', handleWindowFocus);
+            input.addEventListener('cancel', () => finalize(null), { once: true });
             input.addEventListener('change', handleChange);
             document.body.appendChild(input);
             input.click();
@@ -332,12 +333,18 @@ class PlatformService implements PlatformAPI {
     }
     async pickAndSaveImage(workspaceId: string, subDir: string = 'product-images'): Promise<string | null> {
         if (isTauri()) {
-            try {
-                // On mobile, ensure we have permissions before opening dialog
-                if (isMobile()) {
-                    await this.requestMobilePermissions();
+            if (isMobile()) {
+                try {
+                    const selectedFile = await this.pickImageFileFromInput();
+                    if (!selectedFile) return null;
+                    return await this.saveImageFile(selectedFile, workspaceId, subDir);
+                } catch (error) {
+                    console.error('[PlatformService] Error picking/saving image on mobile:', error);
+                    return null;
                 }
+            }
 
+            try {
                 const { open } = await import('@tauri-apps/plugin-dialog');
                 const { mkdir, copyFile, BaseDirectory } = await import('@tauri-apps/plugin-fs');
 
@@ -365,7 +372,7 @@ class PlatformService implements PlatformAPI {
         }
 
         try {
-            const selectedFile = await this.pickImageFileOnWeb();
+            const selectedFile = await this.pickImageFileFromInput();
             if (!selectedFile) return null;
 
             const fileToPersist = subDir === 'profile-images'
