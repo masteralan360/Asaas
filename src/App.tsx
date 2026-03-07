@@ -12,7 +12,6 @@ import { ExchangeRateProvider } from '@/context/ExchangeRateContext'
 import { DateRangeProvider } from '@/context/DateRangeContext'
 import { isBackendConfigurationRequired, isSupabaseConfigured } from '@/auth/supabase'
 import { isMobile } from '@/lib/platform'
-import { useTheme } from '@/ui/components/theme-provider'
 import { useFavicon } from '@/hooks/useFavicon'
 import { whatsappManager } from '@/lib/whatsappWebviewManager'
 
@@ -229,9 +228,7 @@ function UpdateHandler() {
  * FaviconHandler - Updates favicon based on language and theme style
  */
 function FaviconHandler() {
-    const { i18n } = useTranslation()
-    const { style } = useTheme()
-    useFavicon(i18n.language, style)
+    useFavicon()
     return null
 }
 

@@ -7,15 +7,13 @@ import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 import { GlobalSearch } from './GlobalSearch'
 import { NotificationCenter } from './NotificationCenter'
-import { useLogo } from '@/hooks/useFavicon'
 
 
 export function TitleBar() {
     const [isMaximized, setIsMaximized] = useState(false)
     const { workspaceName, pendingUpdate, isFullscreen } = useWorkspace()
     const { theme, setTheme, style } = useTheme()
-    const { t, i18n } = useTranslation()
-    const logoPath = useLogo(i18n.language, style)
+    const { t } = useTranslation()
     // @ts-ignore
     const isTauri = !!window.__TAURI_INTERNALS__
 
@@ -104,7 +102,7 @@ export function TitleBar() {
             isFullscreen && "opacity-0 pointer-events-none -translate-y-full"
         )}>
             <div data-tauri-drag-region className="flex items-center gap-3 w-1/3">
-                <img src={logoPath} alt="Logo" className="w-8 h-8 opacity-90 rounded-sm" onError={(e) => e.currentTarget.style.display = 'none'} />
+                <img src="/logo.png" alt="Logo" className="w-8 h-8 opacity-90 rounded-sm" onError={(e) => e.currentTarget.style.display = 'none'} />
                 <span data-tauri-drag-region className="text-sm font-medium opacity-80 truncate">
                     {workspaceName || t('auth.titleName')}
                 </span>

@@ -11,9 +11,7 @@ import { assetManager } from '@/lib/assetManager'
 import { platformService } from '@/services/platformService'
 import { whatsappManager } from '@/lib/whatsappWebviewManager'
 import { ResourceSyncOverlay } from './p2p/ResourceSyncOverlay'
-import { useTheme } from './theme-provider'
 import { NotificationCenter } from './NotificationCenter'
-import { useLogo } from '@/hooks/useFavicon'
 import { ManualRateModals } from './exchange/ManualRateModals'
 import { GlobalExpenseReminders } from './budget/GlobalExpenseReminders'
 
@@ -100,7 +98,6 @@ export function Layout({ children }: LayoutProps) {
     const [location, setLocation] = useLocation()
     const { user, signOut } = useAuth()
     const { hasFeature, workspaceName, isFullscreen, features } = useWorkspace()
-    const { style } = useTheme()
 
     // Budget Alert Monitoring
     const { exchangeData, eurRates, tryRates } = useExchangeRate()
@@ -114,8 +111,7 @@ export function Layout({ children }: LayoutProps) {
         }
     )
 
-    const { t, i18n } = useTranslation()
-    const logoPath = useLogo(i18n.language, style)
+    const { t } = useTranslation()
     const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
     const [desktopSidebarOpen, setDesktopSidebarOpen] = useState(() => {
         if (typeof window !== 'undefined') {
@@ -316,7 +312,7 @@ export function Layout({ children }: LayoutProps) {
                         />
                     ) : !logoError ? (
                         <img
-                            src={logoPath}
+                            src="/logo.png"
                             alt="Logo"
                             className="w-10 h-10 object-contain rounded-sm"
                             onError={() => setLogoError(true)}
