@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 
 import { db } from './database'
@@ -1826,8 +1826,9 @@ export function useBudgetAllocations(workspaceId: string | undefined) {
     return allocations ?? []
 }
 
-export function useBudgetAllocation(workspaceId: string | undefined, month: string | undefined) {
+export function useBudgetAllocationState(workspaceId: string | undefined, month: string | undefined) {
     const isOnline = useNetworkStatus()
+    const [isFetching, setIsFetching] = useState(false)
 
     const allocation = useLiveQuery(
         () => (workspaceId && month) ? db.budgetAllocations.where('[workspaceId+month]').equals([workspaceId, month]).first() : undefined,
@@ -1835,8 +1836,17 @@ export function useBudgetAllocation(workspaceId: string | undefined, month: stri
     )
 
     useEffect(() => {
+        let cancelled = false
+
         async function fetchFromSupabase() {
-            if (isOnline && workspaceId && month) {
+            if (!workspaceId || !month || !isOnline) {
+                if (!cancelled) setIsFetching(false)
+                return
+            }
+
+            if (!cancelled) setIsFetching(true)
+
+            try {
                 // Check if we already have it locally to avoid redundant fetches
                 const localExists = await db.budgetAllocations.where('[workspaceId+month]').equals([workspaceId, month]).count()
                 if (localExists > 0) return
@@ -1854,21 +1864,45 @@ export function useBudgetAllocation(workspaceId: string | undefined, month: stri
                     localItem.lastSyncedAt = new Date().toISOString()
                     await db.budgetAllocations.put(localItem)
                 }
+            } finally {
+                if (!cancelled) setIsFetching(false)
             }
         }
         fetchFromSupabase()
+        return () => {
+            cancelled = true
+        }
     }, [isOnline, workspaceId, month])
 
-    return allocation
+    return {
+        data: allocation,
+        isLoading: isFetching && allocation === undefined
+    }
 }
 
-export function useMonthlyRevenue(workspaceId: string | undefined, monthStr: string | undefined) {
+export function useBudgetAllocation(workspaceId: string | undefined, month: string | undefined) {
+    return useBudgetAllocationState(workspaceId, month).data
+}
+
+type MonthlyRevenueData = { revenue: Record<string, number>; profit: Record<string, number> }
+
+export function useMonthlyRevenueState(workspaceId: string | undefined, monthStr: string | undefined) {
     const isOnline = useNetworkStatus()
+    const [isSyncing, setIsSyncing] = useState(false)
 
     // Sync Effect: Ensure local Dexie has the sales for this month
     useEffect(() => {
+        let cancelled = false
+
         async function syncMonth() {
-            if (isOnline && workspaceId && monthStr) {
+            if (!workspaceId || !monthStr || !isOnline) {
+                if (!cancelled) setIsSyncing(false)
+                return
+            }
+
+            if (!cancelled) setIsSyncing(true)
+
+            try {
                 const [year, month] = monthStr.split('-').map(Number)
                 const monthStart = new Date(year, month - 1, 1).toISOString()
                 const monthEnd = new Date(year, month, 0, 23, 59, 59).toISOString()
@@ -1898,9 +1932,14 @@ export function useMonthlyRevenue(workspaceId: string | undefined, monthStr: str
                         }
                     })
                 }
+            } finally {
+                if (!cancelled) setIsSyncing(false)
             }
         }
         syncMonth()
+        return () => {
+            cancelled = true
+        }
     }, [isOnline, workspaceId, monthStr])
 
     const financials = useLiveQuery(async () => {
@@ -1942,7 +1981,17 @@ export function useMonthlyRevenue(workspaceId: string | undefined, monthStr: str
         return { revenue: revByCurrency, profit: profitByCurrency }
     }, [workspaceId, monthStr])
 
-    return financials ?? { revenue: {}, profit: {} }
+    const data: MonthlyRevenueData = financials ?? { revenue: {}, profit: {} }
+    const hasAnyFinancialData = Object.keys(data.revenue).length > 0 || Object.keys(data.profit).length > 0
+
+    return {
+        data,
+        isLoading: Boolean(workspaceId && monthStr) && (financials === undefined || (isSyncing && !hasAnyFinancialData))
+    }
+}
+
+export function useMonthlyRevenue(workspaceId: string | undefined, monthStr: string | undefined) {
+    return useMonthlyRevenueState(workspaceId, monthStr).data
 }
 
 // ===================

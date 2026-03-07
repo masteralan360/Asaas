@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useLocation } from 'wouter'
 import { useAuth } from '@/auth'
 import { useWorkspace } from '@/workspace'
@@ -7,18 +7,38 @@ import { BudgetLockModal } from './BudgetLockModal'
 import { BudgetSnoozeModal } from './BudgetSnoozeModal'
 import { scanDueItems, getReminderConfig, getVirtualSnooze, setVirtualSnooze, getVirtualPaid, setVirtualPaid, INDEFINITE_SNOOZE_DATE } from '@/lib/budgetReminders'
 import type { BudgetReminderItem } from '@/lib/budgetReminders'
-import { updateExpense, createExpense, fetchTableFromSupabase } from '@/local-db/hooks'
+import { updateExpense, createExpense, fetchTableFromSupabase, useMonthlyRevenue } from '@/local-db/hooks'
 import { db } from '@/local-db/database'
 import { useToast } from '@/ui/components'
 import { useTranslation } from 'react-i18next'
+import { useExchangeRate } from '@/context/ExchangeRateContext'
+import { convertToStoreBase as convertToStoreBaseUtil } from '@/lib/currency'
+import { buildDividendReminderMetaMap } from '@/lib/dividendReminderMeta'
 
 export function GlobalExpenseReminders() {
     const [location] = useLocation()
     const { user } = useAuth()
     const { features } = useWorkspace()
+    const { exchangeData, eurRates, tryRates } = useExchangeRate()
     const workspaceId = user?.workspaceId
     const { toast } = useToast()
     const { t } = useTranslation()
+    const baseCurrency = (features.default_currency || 'usd') as any
+    const iqdPreference = features.iqd_display_preference
+    const currentMonthDate = useMemo(() => new Date(), [])
+    const currentMonthStr = useMemo(
+        () => `${currentMonthDate.getFullYear()}-${String(currentMonthDate.getMonth() + 1).padStart(2, '0')}`,
+        [currentMonthDate]
+    )
+    const monthlyFinancials = useMonthlyRevenue(workspaceId, currentMonthStr)
+
+    const convertToStoreBase = useCallback((amount: number | undefined | null, from: string | undefined | null) => {
+        return convertToStoreBaseUtil(amount, from, baseCurrency, {
+            usd_iqd: (exchangeData?.rate || 145000) / 100,
+            eur_iqd: (eurRates.eur_iqd?.rate || 160000) / 100,
+            try_iqd: (tryRates.try_iqd?.rate || 4500) / 100
+        })
+    }, [baseCurrency, exchangeData, eurRates, tryRates])
 
     const [queue, setQueue] = useState<BudgetReminderItem[]>([])
     const [currentIndex, setCurrentIndex] = useState(0)
@@ -76,7 +96,31 @@ export function GlobalExpenseReminders() {
                     }
                 }
 
+                const dividendReminderMetaMap = buildDividendReminderMetaMap({
+                    expenses,
+                    employees,
+                    selectedDate: currentMonthDate,
+                    monthlyFinancials,
+                    baseCurrency,
+                    iqdPreference,
+                    convertToStoreBase
+                })
+
                 const items = scanDueItems(expenses, employees, monthStr, config, virtualSnoozeMap, virtualPaidMap)
+                    .map(item => {
+                        if (item.category !== 'dividend' || !item.employeeId) return item
+
+                        const meta = dividendReminderMetaMap.get(item.employeeId)
+                        if (!meta) return item
+
+                        return {
+                            ...item,
+                            amount: meta.amount,
+                            currency: meta.currency,
+                            displayAmount: meta.displayAmount,
+                            formula: meta.formula
+                        }
+                    })
 
                 // Filter strictly for OVERDUE ones for the persistent alert
                 const validOverdue = items.filter(item => {
@@ -114,7 +158,7 @@ export function GlobalExpenseReminders() {
             clearInterval(interval)
             window.removeEventListener('focus', checkOverdueExpenses)
         }
-    }, [user, workspaceId, location]) // Re-run on location change to apply route guard immediately
+    }, [user, workspaceId, location, currentMonthDate, monthlyFinancials, baseCurrency, iqdPreference, convertToStoreBase]) // Re-run on location change to apply route guard immediately
 
     const currentItem = queue[currentIndex] || null
 
@@ -281,8 +325,6 @@ export function GlobalExpenseReminders() {
         }
     }
 
-    const handleSnoozeDismiss = () => handleSnooze(-1)
-
     if (step === 'idle' || !currentItem) return null
 
     return (
@@ -294,7 +336,7 @@ export function GlobalExpenseReminders() {
                 item={currentItem}
                 queuePosition={currentIndex + 1}
                 queueTotal={queue.length}
-                iqdPreference={features.default_currency === 'usd' ? undefined : (features as any).primary_iqd_rate}
+                iqdPreference={features.iqd_display_preference}
                 isLoading={isProcessing}
             />
 
@@ -309,8 +351,9 @@ export function GlobalExpenseReminders() {
             <BudgetSnoozeModal
                 isOpen={step === 'snooze'}
                 onSnooze={handleSnooze}
-                onDismiss={handleSnoozeDismiss}
+                onDismiss={() => setStep('reminder')}
                 item={currentItem}
+                iqdPreference={features.iqd_display_preference}
                 isLoading={isProcessing}
             />
         </>

@@ -35,6 +35,8 @@ export interface BudgetReminderItem {
     title: string
     amount: number
     currency: string
+    displayAmount?: string
+    formula?: string
     dueDate: string
     status: 'pending' | 'paid'
     // For real expenses
@@ -59,6 +61,8 @@ export interface ReminderConfig {
 
 const DEFAULT_CONFIG: ReminderConfig = { reminderDaysBefore: 3 }
 const CONFIG_KEY = 'budget_reminder_days_before'
+
+const getDividendReminderId = (employeeId: string, month: string) => `dividend-${employeeId}-${month}`
 
 
 export async function getReminderConfig(): Promise<ReminderConfig> {
@@ -270,11 +274,12 @@ export function scanDueItems(
         if (virtualPaidMap?.get(vKey)) continue
 
         items.push({
-            id: `dividend-${emp.id}`,
+            id: getDividendReminderId(emp.id, month),
             category: 'dividend',
             title: `${emp.name}`,
             amount: emp.dividendAmount,
             currency: (emp.dividendType === 'fixed' ? (emp.dividendCurrency || 'usd') : 'usd'),
+            displayAmount: emp.dividendType === 'percentage' ? `${emp.dividendAmount}%` : undefined,
             dueDate: payDate.toISOString(),
             status: 'pending',
             employeeId: emp.id,
@@ -367,11 +372,12 @@ export function getSnoozedItems(
             const payDate = new Date(year, mon, Math.min(pDay, new Date(year, mon + 1, 0).getDate()))
 
             snoozed.push({
-                id: `dividend-${emp.id}`,
+                id: getDividendReminderId(emp.id, month),
                 category: 'dividend',
                 title: `${emp.name}`,
                 amount: emp.dividendAmount,
                 currency: (emp.dividendType === 'fixed' ? (emp.dividendCurrency || 'usd') : 'usd'),
+                displayAmount: emp.dividendType === 'percentage' ? `${emp.dividendAmount}%` : undefined,
                 dueDate: payDate.toISOString(),
                 status: 'pending',
                 employeeId: emp.id,

@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Bell, BellOff, Receipt, Wallet, TrendingUp, Calendar, Clock, RotateCcw } from 'lucide-react'
 import { Button } from '@/ui/components'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/ui/components/dialog'
@@ -18,11 +19,12 @@ interface SnoozedBudgetItemsBellProps {
 export function SnoozedBudgetItemsBell({ items, onUnsnooze, iqdPreference, isLoading }: SnoozedBudgetItemsBellProps) {
 
     const { t } = useTranslation()
+    const [open, setOpen] = useState(false)
 
     if (items.length === 0) return null
 
     return (
-        <Dialog>
+        <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
                 <Button variant="ghost" size="icon" className="relative group hover:bg-yellow-500/10 h-10 w-10">
                     <Bell className="w-5 h-5 text-yellow-500 fill-yellow-500 animate-pulse transition-transform" />
@@ -57,6 +59,7 @@ export function SnoozedBudgetItemsBell({ items, onUnsnooze, iqdPreference, isLoa
                             item.category === 'expense' ? (item.expenseCategory ? t(`budget.cat.${item.expenseCategory}`) : t('budget.expense')) :
                                 item.category === 'salary' ? t('hr.salary', 'Salary') :
                                     t('budget.dividends', 'Dividends')
+                        const amountDisplay = item.displayAmount || formatCurrency(item.amount, item.currency as any, iqdPreference)
 
                         return (
                             <div key={item.id} className={cn("flex flex-col gap-3 p-4 rounded-xl border relative overflow-hidden", styleTheme)}>
@@ -71,7 +74,10 @@ export function SnoozedBudgetItemsBell({ items, onUnsnooze, iqdPreference, isLoa
                                         </div>
                                     </div>
                                     <div className="text-right">
-                                        <div className="font-black text-base">{formatCurrency(item.amount, item.currency as any, iqdPreference)}</div>
+                                        <div className="font-black text-base">{amountDisplay}</div>
+                                        {item.formula && item.formula !== amountDisplay && (
+                                            <div className="text-xs font-semibold opacity-80 mt-0.5">{item.formula}</div>
+                                        )}
                                         <div className="text-xs font-bold uppercase flex items-center justify-end gap-1 opacity-80 mt-1">
                                             <Calendar className="w-3.5 h-3.5" />
                                             {formatDate(item.dueDate)}
@@ -92,7 +98,10 @@ export function SnoozedBudgetItemsBell({ items, onUnsnooze, iqdPreference, isLoa
                                     size="sm"
                                     variant="secondary"
                                     className="w-full mt-2 bg-background/50 hover:bg-background/80"
-                                    onClick={() => onUnsnooze(item)}
+                                    onClick={() => {
+                                        setOpen(false)
+                                        onUnsnooze(item)
+                                    }}
                                     disabled={isLoading}
                                 >
                                     <RotateCcw className={cn("w-4 h-4 mr-2", isLoading && "animate-spin")} />

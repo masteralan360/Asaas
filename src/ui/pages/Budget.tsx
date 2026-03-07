@@ -23,7 +23,7 @@ import {
     Printer
 } from 'lucide-react'
 import { useWorkspace } from '@/workspace'
-import { useExpenses, createExpense, deleteExpense, updateExpense, useBudgetAllocation, useBudgetAllocations, useMonthlyRevenue, setBudgetAllocation, useEmployees, useWorkspaceUsers, fetchTableFromSupabase } from '@/local-db'
+import { useExpenses, createExpense, deleteExpense, updateExpense, useBudgetAllocationState, useBudgetAllocations, useMonthlyRevenueState, setBudgetAllocation, useEmployees, useWorkspaceUsers, fetchTableFromSupabase } from '@/local-db'
 import { db } from '@/local-db/database'
 import { connectionManager } from '@/lib/connectionManager'
 import { platformService } from '@/services/platformService'
@@ -33,6 +33,7 @@ import { Input } from '@/ui/components/input'
 import { CurrencyCode } from '@/local-db'
 import { formatCurrency, formatDate, formatNumberWithCommas, parseFormattedNumber, cn } from '@/lib/utils'
 import { convertToStoreBase as convertToStoreBaseUtil } from '@/lib/currency'
+import { buildDividendReminderMetaMap } from '@/lib/dividendReminderMeta'
 // sonner removed
 import {
     Dialog,
@@ -111,12 +112,29 @@ interface DividendWithdrawalRow {
     status: DividendWithdrawalStatus
     snoozeUntil: string | null
     snoozeCount: number
+    isAmountLoading: boolean
 }
 
 const isSameDay = (a: Date, b: Date) =>
     a.getFullYear() === b.getFullYear() &&
     a.getMonth() === b.getMonth() &&
     a.getDate() === b.getDate()
+
+const getReminderMonth = (dateLike: string | Date): string | null => {
+    const date = new Date(dateLike)
+    if (isNaN(date.getTime())) return null
+
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+}
+
+const getDividendReminderId = (employeeId: string, dateLike: string | Date) => {
+    const reminderMonth = getReminderMonth(dateLike)
+    return reminderMonth ? `dividend-${employeeId}-${reminderMonth}` : `dividend-${employeeId}`
+}
+
+function LoadingValue({ className }: { className?: string }) {
+    return <span className={cn("inline-block animate-pulse rounded-full bg-black/10 dark:bg-white/10 align-middle", className)} aria-hidden="true" />
+}
 
 
 export default function Budget() {
@@ -171,9 +189,14 @@ export default function Budget() {
         return `${year}-${month}`
     }, [selectedMonth])
 
-    const currentAllocation = useBudgetAllocation(workspaceId, monthStr)
+    const currentAllocationState = useBudgetAllocationState(workspaceId, monthStr)
+    const currentAllocation = currentAllocationState.data
     const allAllocations = useBudgetAllocations(workspaceId)
-    const monthlyFinancials = useMonthlyRevenue(workspaceId, monthStr)
+    const monthlyFinancialsState = useMonthlyRevenueState(workspaceId, monthStr)
+    const monthlyFinancials = monthlyFinancialsState.data
+    const isAllocationLoading = currentAllocationState.isLoading
+    const isMonthlyFinancialsLoading = monthlyFinancialsState.isLoading
+    const isBudgetLimitLoading = isAllocationLoading || (currentAllocation?.type === 'percentage' && isMonthlyFinancialsLoading)
 
     const startPointMonth = useMemo(() => {
         const sp = allAllocations.find(a => a.startPoint === true)
@@ -198,14 +221,14 @@ export default function Budget() {
 
     // Init allocation modal states
     useEffect(() => {
-        if (isAllocationDialogOpen) {
+        if (isAllocationDialogOpen && !isAllocationLoading) {
             setAllocType(currentAllocation?.type || 'fixed')
-            setAllocAmountDisplay(formatNumberWithCommas(currentAllocation?.amount || 0))
+            setAllocAmountDisplay(currentAllocation ? formatNumberWithCommas(currentAllocation.amount || 0) : '')
             setAllocCurrency(currentAllocation?.currency || baseCurrency as any || 'usd')
         } else if (isDialogOpen === false) {
             // setExpenseAmountDisplay('') // This line was commented out in the original, keeping it commented.
         }
-    }, [isAllocationDialogOpen, isDialogOpen, currentAllocation, baseCurrency])
+    }, [isAllocationDialogOpen, isDialogOpen, currentAllocation, baseCurrency, isAllocationLoading])
 
     const convertToStoreBase = useCallback((amount: number | undefined | null, from: string | undefined | null) => {
         return convertToStoreBaseUtil(amount, from, baseCurrency, {
@@ -224,10 +247,10 @@ export default function Budget() {
     useEffect(() => {
         // Only trigger if start_point exists (user has set at least one allocation)
         // and the current month has no allocation yet
-        if (startPointMonth && !currentAllocation && monthStr > startPointMonth) {
+        if (!isAllocationLoading && startPointMonth && !currentAllocation && monthStr > startPointMonth) {
             setIsAllocationDialogOpen(true)
         }
-    }, [monthStr, startPointMonth, currentAllocation])
+    }, [monthStr, startPointMonth, currentAllocation, isAllocationLoading])
 
     const [expenseAmountDisplay, setExpenseAmountDisplay] = useState<string>('')
     const [lockConfirmExpense, setLockConfirmExpense] = useState<any>(null)
@@ -254,6 +277,53 @@ export default function Budget() {
         return { virtualSnoozeMap, virtualPaidMap }
     }, [employees, monthStr])
 
+    const dividendReminderMetaMap = useMemo(() => buildDividendReminderMetaMap({
+        expenses,
+        employees,
+        selectedDate: selectedMonth,
+        monthlyFinancials,
+        baseCurrency,
+        iqdPreference,
+        convertToStoreBase
+    }), [expenses, employees, selectedMonth, monthlyFinancials, baseCurrency, iqdPreference, convertToStoreBase])
+
+    const enrichReminderItem = useCallback((item: BudgetReminderItem): BudgetReminderItem => {
+        if (item.category !== 'dividend' || !item.employeeId) return item
+        if (isMonthlyFinancialsLoading) return item
+        if (getReminderMonth(item.dueDate) !== monthStr) return item
+
+        const meta = dividendReminderMetaMap.get(item.employeeId)
+        if (!meta) return item
+
+        return {
+            ...item,
+            amount: meta.amount,
+            currency: meta.currency,
+            displayAmount: meta.displayAmount,
+            formula: meta.formula
+        }
+    }, [dividendReminderMetaMap, monthStr, isMonthlyFinancialsLoading])
+
+    useEffect(() => {
+        setReminderQueue(prev => prev.map(enrichReminderItem))
+        setSnoozedItems(prev => prev.map(enrichReminderItem))
+        setUnsnoozeItem(prev => prev ? enrichReminderItem(prev) : prev)
+        setDividendSnoozeItem(prev => prev ? enrichReminderItem(prev) : prev)
+    }, [enrichReminderItem])
+
+    const upsertSnoozedItem = useCallback((item: BudgetReminderItem) => {
+        setSnoozedItems(prev => {
+            const next = prev.filter(existing => existing.id !== item.id)
+            next.push(item)
+            next.sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime())
+            return next
+        })
+    }, [])
+
+    const removeSnoozedItem = useCallback((itemId: string) => {
+        setSnoozedItems(prev => prev.filter(existing => existing.id !== itemId))
+    }, [])
+
     const runScan = useCallback(async () => {
         if (!workspaceId || isCheckingReminders.current || reminderStepRef.current !== 'idle' || (expenses.length === 0 && employees.length === 0)) return
         isCheckingReminders.current = true
@@ -265,20 +335,20 @@ export default function Budget() {
 
             // Scan for due items
             const dueItems = scanDueItems(expenses, employees, monthStr, config, virtualSnoozeMap, virtualPaidMap)
-            const popupDueItems = dueItems.filter(item => item.category !== 'dividend')
+                .map(enrichReminderItem)
 
             // Scan for snoozed items
             const snoozed = getSnoozedItems(expenses, employees, monthStr, virtualSnoozeMap)
-            const expenseSnoozed = snoozed.filter(item => item.category !== 'dividend')
+                .map(enrichReminderItem)
             const dividendSnoozes = new Map([...virtualSnoozeMap].filter(([key]) => key.startsWith('dividend_')))
             const dividendPaid = new Map([...virtualPaidMap].filter(([key]) => key.startsWith('dividend_')))
 
-            setReminderQueue(popupDueItems)
-            setSnoozedItems(expenseSnoozed)
+            setReminderQueue(dueItems)
+            setSnoozedItems(snoozed)
             setDividendSnoozeMap(dividendSnoozes)
             setDividendPaidMap(dividendPaid)
             setReminderIndex(0)
-            if (popupDueItems.length > 0) {
+            if (dueItems.length > 0) {
                 setReminderStep('reminder')
             } else {
                 setReminderStep('idle')
@@ -289,7 +359,7 @@ export default function Budget() {
         } finally {
             isCheckingReminders.current = false
         }
-    }, [expenses, employees, workspaceId, monthStr, loadVirtualReminderMaps])
+    }, [expenses, employees, workspaceId, monthStr, loadVirtualReminderMaps, enrichReminderItem])
 
     useEffect(() => {
         if (!workspaceId) return
@@ -323,15 +393,34 @@ export default function Budget() {
 
         async function refreshSnoozed() {
             const { virtualSnoozeMap, virtualPaidMap } = await loadVirtualReminderMaps()
-            const snoozed = getSnoozedItems(expenses, employees, monthStr, virtualSnoozeMap)
-            setSnoozedItems(snoozed.filter(item => item.category !== 'dividend'))
+            const snoozed = getSnoozedItems(expenses, employees, monthStr, virtualSnoozeMap).map(enrichReminderItem)
+            setSnoozedItems(snoozed)
             setDividendSnoozeMap(new Map([...virtualSnoozeMap].filter(([key]) => key.startsWith('dividend_'))))
             setDividendPaidMap(new Map([...virtualPaidMap].filter(([key]) => key.startsWith('dividend_'))))
         }
         refreshSnoozed()
-    }, [expenses, employees, workspaceId, monthStr, loadVirtualReminderMaps])
+    }, [expenses, employees, workspaceId, monthStr, loadVirtualReminderMaps, enrichReminderItem])
 
     const currentReminder = reminderQueue[reminderIndex] || null
+    const updateDividendPaidState = useCallback((employeeId: string, paid: boolean) => {
+        setDividendPaidMap(prev => {
+            const next = new Map(prev)
+            if (paid) next.set(`dividend_${employeeId}`, true)
+            else next.delete(`dividend_${employeeId}`)
+            return next
+        })
+    }, [])
+    const updateDividendSnoozeState = useCallback((employeeId: string, until: string | null, count: number) => {
+        setDividendSnoozeMap(prev => {
+            const next = new Map(prev)
+            if (until && count > 0) {
+                next.set(`dividend_${employeeId}`, { until, count })
+            } else {
+                next.delete(`dividend_${employeeId}`)
+            }
+            return next
+        })
+    }, [])
     const getReminderSubcategory = useCallback((item: BudgetReminderItem): string | null => {
         const templateId = item.originalTemplateId || item.expenseId
         if (!templateId) return null
@@ -395,6 +484,18 @@ export default function Budget() {
                     snoozeCount: 0,
                     employeeId: currentReminder.employeeId
                 })
+            } else if (currentReminder.category === 'dividend' && currentReminder.employeeId) {
+                const dueMonth = getReminderMonth(currentReminder.dueDate) || monthStr
+                await setVirtualPaid('dividend', currentReminder.employeeId, dueMonth, true)
+                await setVirtualSnooze('dividend', currentReminder.employeeId, dueMonth, '', 0)
+                if (dueMonth === monthStr) {
+                    updateDividendPaidState(currentReminder.employeeId, true)
+                    updateDividendSnoozeState(currentReminder.employeeId, null, 0)
+                }
+                removeSnoozedItem(currentReminder.id)
+                toast({ description: t('budget.dividend.paidPersisted', 'Dividend payment status saved') })
+                advanceReminder()
+                return
             }
             // After marking paid, show lock modal
             toast({ description: t('budget.statusUpdated', 'Status updated') })
@@ -498,10 +599,21 @@ export default function Budget() {
                 await setVirtualSnooze(
                     currentReminder.category,
                     currentReminder.employeeId || currentReminder.id,
-                    monthStr,
+                    getReminderMonth(currentReminder.dueDate) || monthStr,
                     snoozeUntil,
                     newCount
                 )
+            } else if (currentReminder.category === 'dividend' && currentReminder.employeeId) {
+                const dueMonth = getReminderMonth(currentReminder.dueDate) || monthStr
+                await setVirtualSnooze('dividend', currentReminder.employeeId, dueMonth, snoozeUntil, newCount)
+                if (dueMonth === monthStr) {
+                    updateDividendSnoozeState(currentReminder.employeeId, snoozeUntil, newCount)
+                    upsertSnoozedItem({
+                        ...currentReminder,
+                        snoozeUntil,
+                        snoozeCount: newCount
+                    })
+                }
             }
         } catch {
             toast({ variant: 'destructive', description: t('common.error', 'Failed to update') })
@@ -536,7 +648,27 @@ export default function Budget() {
 
             if (item.employeeId) {
                 // Clear any virtual snooze record as well (covers dividends and virtual salaries)
-                await setVirtualSnooze(item.category, item.employeeId, monthStr, '', 0)
+                await setVirtualSnooze(item.category, item.employeeId, getReminderMonth(item.dueDate) || monthStr, '', 0)
+            }
+
+            if (item.category === 'dividend' && item.employeeId) {
+                if ((getReminderMonth(item.dueDate) || monthStr) === monthStr) {
+                    updateDividendSnoozeState(item.employeeId, null, 0)
+                }
+                removeSnoozedItem(item.id)
+
+                const restoredItem = {
+                    ...enrichReminderItem(item),
+                    snoozeUntil: null,
+                    snoozeCount: 0
+                }
+
+                setReminderQueue(prev => [
+                    restoredItem,
+                    ...prev.filter(existing => existing.id !== restoredItem.id)
+                ])
+                setReminderIndex(0)
+                setReminderStep('reminder')
             }
 
             toast({ description: t('budget.unsnoozed', 'Reminder un-snoozed') })
@@ -763,6 +895,7 @@ export default function Budget() {
         () => [...metrics.displayExpenses].sort((a, b) => new Date(b.dueDate).getTime() - new Date(a.dueDate).getTime()),
         [metrics.displayExpenses]
     )
+    const isBudgetLimitExceeded = !isBudgetLimitLoading && metrics.budgetLimit > 0 && metrics.total > metrics.budgetLimit
 
     const dividendRows = useMemo<DividendWithdrawalRow[]>(() => {
         const year = selectedMonth.getFullYear()
@@ -773,9 +906,10 @@ export default function Budget() {
             .filter(emp => emp.hasDividends && emp.dividendAmount && emp.dividendAmount > 0 && !emp.isFired)
             .map(emp => {
                 const dividendAmount = emp.dividendAmount ?? 0
+                const isAmountLoading = emp.dividendType === 'percentage' && isMonthlyFinancialsLoading
                 const amount = emp.dividendType === 'fixed'
                     ? dividendAmount
-                    : metrics.profitPool * (dividendAmount / 100)
+                    : (isAmountLoading ? 0 : metrics.profitPool * (dividendAmount / 100))
                 const currency = emp.dividendType === 'fixed'
                     ? (emp.dividendCurrency as any || 'usd')
                     : baseCurrency
@@ -810,18 +944,23 @@ export default function Budget() {
                     status,
                     snoozeUntil: virtualSnooze?.until || null,
                     snoozeCount: virtualSnooze?.count || 0,
+                    isAmountLoading,
                 }
             })
             .sort((a, b) => a.dueDate.getTime() - b.dueDate.getTime())
-    }, [employees, selectedMonth, metrics.profitPool, baseCurrency, iqdPreference, dividendPaidMap, dividendSnoozeMap])
+    }, [employees, selectedMonth, metrics.profitPool, baseCurrency, iqdPreference, dividendPaidMap, dividendSnoozeMap, isMonthlyFinancialsLoading])
 
     const openDividendSnooze = (row: DividendWithdrawalRow) => {
+        if (row.isAmountLoading) return
+
         setDividendSnoozeItem({
-            id: `dividend-${row.employeeId}`,
+            id: getDividendReminderId(row.employeeId, row.dueDate),
             category: 'dividend',
             title: row.employeeName,
             amount: row.amount,
             currency: row.currency,
+            displayAmount: formatCurrency(row.amount, row.currency as any, iqdPreference),
+            formula: row.formula,
             dueDate: row.dueDate.toISOString(),
             status: 'pending',
             employeeId: row.employeeId,
@@ -836,8 +975,12 @@ export default function Budget() {
         if (isProcessing) return
         setIsProcessing(true)
         try {
-            await setVirtualPaid('dividend', row.employeeId, monthStr, true)
-            await setVirtualSnooze('dividend', row.employeeId, monthStr, '', 0)
+            const dueMonth = getReminderMonth(row.dueDate) || monthStr
+            await setVirtualPaid('dividend', row.employeeId, dueMonth, true)
+            await setVirtualSnooze('dividend', row.employeeId, dueMonth, '', 0)
+            updateDividendPaidState(row.employeeId, true)
+            updateDividendSnoozeState(row.employeeId, null, 0)
+            removeSnoozedItem(getDividendReminderId(row.employeeId, row.dueDate))
             toast({ description: t('budget.dividend.paidPersisted', 'Dividend payment status saved') })
 
         } catch (error) {
@@ -852,7 +995,8 @@ export default function Budget() {
         if (isProcessing) return
         setIsProcessing(true)
         try {
-            await setVirtualPaid('dividend', row.employeeId, monthStr, false)
+            await setVirtualPaid('dividend', row.employeeId, getReminderMonth(row.dueDate) || monthStr, false)
+            updateDividendPaidState(row.employeeId, false)
             toast({ description: t('budget.statusUpdated', 'Status updated') })
 
         } catch (error) {
@@ -867,7 +1011,9 @@ export default function Budget() {
         if (isProcessing) return
         setIsProcessing(true)
         try {
-            await setVirtualSnooze('dividend', row.employeeId, monthStr, '', 0)
+            await setVirtualSnooze('dividend', row.employeeId, getReminderMonth(row.dueDate) || monthStr, '', 0)
+            updateDividendSnoozeState(row.employeeId, null, 0)
+            removeSnoozedItem(getDividendReminderId(row.employeeId, row.dueDate))
             toast({ description: t('budget.unsnoozed', 'Reminder un-snoozed') })
 
         } catch (error) {
@@ -888,7 +1034,19 @@ export default function Budget() {
         const newCount = (dividendSnoozeItem.snoozeCount || 0) + 1
 
         try {
-            await setVirtualSnooze('dividend', dividendSnoozeItem.employeeId, monthStr, snoozeUntil, newCount)
+            await setVirtualSnooze(
+                'dividend',
+                dividendSnoozeItem.employeeId,
+                getReminderMonth(dividendSnoozeItem.dueDate) || monthStr,
+                snoozeUntil,
+                newCount
+            )
+            updateDividendSnoozeState(dividendSnoozeItem.employeeId, snoozeUntil, newCount)
+            upsertSnoozedItem({
+                ...dividendSnoozeItem,
+                snoozeUntil,
+                snoozeCount: newCount
+            })
 
         } catch (error) {
             console.error('[Budget] Failed to snooze dividend:', error)
@@ -1105,19 +1263,19 @@ export default function Budget() {
                     className={cn(
                         "cursor-pointer hover:scale-[1.02] transition-all hover:bg-opacity-10 dark:hover:bg-opacity-20 active:scale-95 group relative overflow-hidden rounded-[2rem]",
                         metrics.budgetLimit > 0
-                            ? (metrics.total > metrics.budgetLimit
+                            ? (isBudgetLimitExceeded
                                 ? 'bg-red-500/5 dark:bg-red-500/10 border-red-500/20 hover:shadow-[0_0_20px_-5px_rgba(239,68,68,0.3)]'
                                 : 'bg-blue-500/5 dark:bg-blue-500/10 border-blue-500/20 hover:shadow-[0_0_20px_-5px_rgba(59,130,246,0.3)]')
                             : 'bg-blue-500/5 dark:bg-blue-500/10 border-blue-500/20 hover:shadow-[0_0_20px_-5px_rgba(59,130,246,0.3)]'
                     )}
                 >
                     <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <ArrowRight className={cn("w-4 h-4", metrics.total > metrics.budgetLimit ? "text-red-500" : "text-blue-500")} />
+                        <ArrowRight className={cn("w-4 h-4", isBudgetLimitExceeded ? "text-red-500" : "text-blue-500")} />
                     </div>
                     <CardHeader className="pb-2">
                         <CardTitle className={cn(
                             "text-xs font-black uppercase tracking-[0.2em] flex items-center gap-2",
-                            metrics.total > metrics.budgetLimit ? "text-red-600 dark:text-red-400" : "text-blue-600 dark:text-blue-400"
+                            isBudgetLimitExceeded ? "text-red-600 dark:text-red-400" : "text-blue-600 dark:text-blue-400"
                         )}>
                             <BarChart3 className="w-4 h-4" />
                             {t('budget.totalAllocated', 'Total Allocated')}
@@ -1127,28 +1285,30 @@ export default function Budget() {
                         <div className="flex items-baseline gap-2">
                             <div className={cn(
                                 "text-2xl font-black tracking-tighter tabular-nums",
-                                metrics.total > metrics.budgetLimit ? "text-red-700 dark:text-red-300" : "text-blue-700 dark:text-blue-300"
+                                isBudgetLimitExceeded ? "text-red-700 dark:text-red-300" : "text-blue-700 dark:text-blue-300"
                             )}>
                                 {formatCurrency(metrics.total, baseCurrency, iqdPreference)}
                             </div>
-                            {metrics.budgetLimit > 0 && (
+                            {isBudgetLimitLoading ? (
+                                <LoadingValue className="h-3 w-20" />
+                            ) : metrics.budgetLimit > 0 && (
                                 <div className="text-xs font-bold opacity-60">
                                     / {formatCurrency(metrics.budgetLimit, baseCurrency, iqdPreference)}
                                 </div>
                             )}
                         </div>
-                        {metrics.budgetLimit > 0 && (
+                        {!isBudgetLimitLoading && metrics.budgetLimit > 0 && (
                             <div className="w-full bg-black/5 dark:bg-white/5 h-2 rounded-full mt-3 overflow-hidden border border-black/5 dark:border-white/5">
                                 <div
-                                    className={cn("h-full transition-all duration-1000", metrics.total > metrics.budgetLimit ? 'bg-red-500' : 'bg-blue-500')}
+                                    className={cn("h-full transition-all duration-1000", isBudgetLimitExceeded ? 'bg-red-500' : 'bg-blue-500')}
                                     style={{ width: `${Math.min((metrics.total / metrics.budgetLimit) * 100, 100)}%` }}
                                 />
                             </div>
                         )}
                         <p className="text-[10px] font-bold uppercase tracking-wider mt-2 opacity-60">
                             {metrics.count} {t('budget.items', 'items')}
-                            {metrics.budgetLimit > 0 && ` / ${Math.round((metrics.total / metrics.budgetLimit) * 100)}% ${t('budget.limit', 'of budget')}`}
-                            {metrics.referenceProfit > 0 && ` / ${Math.round((metrics.dividendTotal / metrics.referenceProfit) * 100)}% ${t('budget.dividends', 'Dividends')}`}
+                            {!isBudgetLimitLoading && metrics.budgetLimit > 0 && ` / ${Math.round((metrics.total / metrics.budgetLimit) * 100)}% ${t('budget.limit', 'of budget')}`}
+                            {!isMonthlyFinancialsLoading && metrics.referenceProfit > 0 && ` / ${Math.round((metrics.dividendTotal / metrics.referenceProfit) * 100)}% ${t('budget.dividends', 'Dividends')}`}
                         </p>
                     </CardContent>
                 </Card>
@@ -1232,13 +1392,18 @@ export default function Budget() {
                             "text-2xl font-black tracking-tighter tabular-nums",
                             metrics.isDeficit ? 'text-red-700 dark:text-red-300' : 'text-sky-700 dark:text-sky-300'
                         )}>
-                            {formatCurrency(metrics.dividendTotal, baseCurrency, iqdPreference)}
+                            {isMonthlyFinancialsLoading
+                                ? <LoadingValue className="h-8 w-28" />
+                                : formatCurrency(metrics.dividendTotal, baseCurrency, iqdPreference)
+                            }
                         </div>
-                        {metrics.isDeficit ? (
+                        {!isMonthlyFinancialsLoading && metrics.isDeficit ? (
                             <div className="flex items-center gap-1 mt-2 text-[10px] font-bold text-red-600 dark:text-red-400">
                                 <AlertTriangle className="w-3 h-3" />
                                 {t('budget.dividendsExceedPool', 'Exceeds profit pool by')} {formatCurrency(Math.abs(metrics.finalNetProfit), baseCurrency, iqdPreference)}
                             </div>
+                        ) : isMonthlyFinancialsLoading ? (
+                            <LoadingValue className="mt-2 h-3 w-40" />
                         ) : (
                             <p className="text-[10px] font-bold uppercase tracking-wider mt-2 opacity-60">
                                 {t('budget.profitDistribution', 'Profit share distribution')}
@@ -1276,10 +1441,15 @@ export default function Budget() {
                             "text-2xl font-black tracking-tighter tabular-nums",
                             metrics.isDeficit ? 'text-red-700 dark:text-red-300' : 'text-violet-700 dark:text-violet-300'
                         )}>
-                            {metrics.isDeficit ? '-' : ''}{formatCurrency(Math.abs(metrics.finalNetProfit), baseCurrency, iqdPreference)}
+                            {isMonthlyFinancialsLoading
+                                ? <LoadingValue className="h-8 w-28" />
+                                : <>{metrics.isDeficit ? '-' : ''}{formatCurrency(Math.abs(metrics.finalNetProfit), baseCurrency, iqdPreference)}</>
+                            }
                         </div>
                         <p className="text-[10px] font-bold uppercase tracking-wider mt-2 opacity-60">
-                            {metrics.isDeficit
+                            {isMonthlyFinancialsLoading
+                                ? <LoadingValue className="h-3 w-32" />
+                                : metrics.isDeficit
                                 ? t('budget.projectedDeficit', 'Dividends exceed profit')
                                 : t('budget.projectedSurplus', 'Projected Surplus')
                             }
@@ -1480,14 +1650,36 @@ export default function Budget() {
                 </TabsContent>
 
                 <TabsContent value="dividends" className="mt-0 space-y-4">
-                    <DividendDistributionPanel
-                        recipients={metrics.dividendRecipients}
-                        surplus={metrics.finalNetProfit}
-                        baseCurrency={baseCurrency}
-                        iqdPreference={iqdPreference}
-                        onPrint={handlePrintDividends}
-                        className="p-4 md:p-6 rounded-[2rem] border bg-card"
-                    />
+                    {isMonthlyFinancialsLoading ? (
+                        <Card className="p-4 md:p-6 rounded-[2rem] border bg-card">
+                            <div className="space-y-6 animate-pulse">
+                                <div className="flex items-center justify-between gap-4">
+                                    <div className="space-y-3">
+                                        <div className="h-7 w-56 rounded-full bg-black/10 dark:bg-white/10" />
+                                        <div className="h-4 w-72 rounded-full bg-black/10 dark:bg-white/10" />
+                                    </div>
+                                    <div className="h-10 w-10 rounded-xl bg-black/10 dark:bg-white/10" />
+                                </div>
+                                <div className="grid gap-6 md:grid-cols-2">
+                                    <div className="h-[300px] rounded-[2rem] bg-black/10 dark:bg-white/10" />
+                                    <div className="space-y-4">
+                                        <div className="h-24 rounded-[2rem] bg-black/10 dark:bg-white/10" />
+                                        <div className="h-24 rounded-[2rem] bg-black/10 dark:bg-white/10" />
+                                    </div>
+                                </div>
+                                <div className="h-64 rounded-[2rem] bg-black/10 dark:bg-white/10" />
+                            </div>
+                        </Card>
+                    ) : (
+                        <DividendDistributionPanel
+                            recipients={metrics.dividendRecipients}
+                            surplus={metrics.finalNetProfit}
+                            baseCurrency={baseCurrency}
+                            iqdPreference={iqdPreference}
+                            onPrint={handlePrintDividends}
+                            className="p-4 md:p-6 rounded-[2rem] border bg-card"
+                        />
+                    )}
 
                     <Card className="rounded-[2rem] border">
                         <CardHeader>
@@ -1520,7 +1712,10 @@ export default function Budget() {
 
                                         <div className="flex flex-col items-start gap-2 lg:items-end">
                                             <div className="font-black text-base">
-                                                {formatCurrency(row.amount, row.currency, iqdPreference)}
+                                                {row.isAmountLoading
+                                                    ? <LoadingValue className="h-6 w-28" />
+                                                    : formatCurrency(row.amount, row.currency, iqdPreference)
+                                                }
                                             </div>
                                             <span className={cn(
                                                 "text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-full border",
@@ -1533,7 +1728,7 @@ export default function Budget() {
                                                     <Button
                                                         variant="outline"
                                                         size="sm"
-                                                        disabled={isProcessing}
+                                                        disabled={isProcessing || row.isAmountLoading}
                                                         onClick={() => handleDividendMarkUnpaid(row)}
                                                     >
                                                         {t('budget.dividend.action.markUnpaid', 'Mark Unpaid')}
@@ -1541,7 +1736,7 @@ export default function Budget() {
                                                 ) : (
                                                     <Button
                                                         size="sm"
-                                                        disabled={isProcessing}
+                                                        disabled={isProcessing || row.isAmountLoading}
                                                         onClick={() => handleDividendMarkPaid(row)}
                                                         className="bg-emerald-600 hover:bg-emerald-700 text-white"
                                                     >
@@ -1553,7 +1748,7 @@ export default function Budget() {
                                                     <Button
                                                         variant="outline"
                                                         size="sm"
-                                                        disabled={isProcessing}
+                                                        disabled={isProcessing || row.isAmountLoading}
                                                         onClick={() => handleDividendUnsnooze(row)}
                                                     >
                                                         {t('budget.dividend.action.unsnooze', 'Un-snooze')}
@@ -1562,7 +1757,7 @@ export default function Budget() {
                                                     <Button
                                                         variant="outline"
                                                         size="sm"
-                                                        disabled={isProcessing}
+                                                        disabled={isProcessing || row.isAmountLoading}
                                                         onClick={() => openDividendSnooze(row)}
                                                     >
                                                         {t('budget.dividend.action.snooze', 'Snooze')}
@@ -1822,7 +2017,9 @@ export default function Budget() {
                                         {t('budget.estimatedBudgetLimit', 'Proposed Budget Limit')}
                                     </h4>
                                     <p className="text-xl font-black text-slate-900 dark:text-white tabular-nums">
-                                        {formatCurrency(
+                                        {allocType === 'percentage' && isMonthlyFinancialsLoading ? (
+                                            <LoadingValue className="h-6 w-24 bg-slate-200 dark:bg-zinc-800" />
+                                        ) : formatCurrency(
                                             allocType === 'fixed'
                                                 ? convertToStoreBase(parseFormattedNumber(allocAmountDisplay), allocCurrency)
                                                 : metrics.referenceProfit * (parseFormattedNumber(allocAmountDisplay) / 100),
@@ -1846,7 +2043,9 @@ export default function Budget() {
                                                 : metrics.referenceProfit * (parseFormattedNumber(allocAmountDisplay) / 100)
                                         )) >= 0 ? "text-teal-500" : "text-red-500"
                                     )}>
-                                        {formatCurrency(
+                                        {isMonthlyFinancialsLoading ? (
+                                            <LoadingValue className="h-6 w-24 bg-slate-200 dark:bg-zinc-800" />
+                                        ) : formatCurrency(
                                             metrics.referenceProfit - (
                                                 allocType === 'fixed'
                                                     ? convertToStoreBase(parseFormattedNumber(allocAmountDisplay), allocCurrency)
@@ -1957,15 +2156,17 @@ export default function Budget() {
             <BudgetSnoozeModal
                 isOpen={reminderStep === 'snooze'}
                 onSnooze={handleReminderSnooze}
-                onDismiss={() => handleReminderSnooze(-1)}
+                onDismiss={() => setReminderStep('reminder')}
                 item={currentReminder}
+                iqdPreference={iqdPreference}
                 isLoading={isProcessing}
             />
             <BudgetSnoozeModal
                 isOpen={!!dividendSnoozeItem}
                 onSnooze={handleDividendSnooze}
-                onDismiss={() => handleDividendSnooze(-1)}
+                onDismiss={() => setDividendSnoozeItem(null)}
                 item={dividendSnoozeItem}
+                iqdPreference={iqdPreference}
                 isLoading={isProcessing}
             />
         </div>

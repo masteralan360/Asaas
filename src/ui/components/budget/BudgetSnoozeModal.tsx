@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
     Dialog,
     DialogContent,
@@ -11,6 +11,7 @@ import {
 import { BellOff, Check } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useTranslation } from 'react-i18next'
+import { formatCurrency, formatDate } from '@/lib/utils'
 import type { BudgetReminderItem } from '@/lib/budgetReminders'
 
 interface BudgetSnoozeModalProps {
@@ -18,12 +19,19 @@ interface BudgetSnoozeModalProps {
     onSnooze: (minutes: number) => void
     onDismiss: () => void
     item: BudgetReminderItem | null
+    iqdPreference?: string
     isLoading?: boolean
 }
 
-export function BudgetSnoozeModal({ isOpen, onSnooze, onDismiss, item, isLoading }: BudgetSnoozeModalProps) {
+export function BudgetSnoozeModal({ isOpen, onSnooze, onDismiss, item, iqdPreference, isLoading }: BudgetSnoozeModalProps) {
     const { t } = useTranslation()
-    const [selectedMinutes, setSelectedMinutes] = useState<number>(0)
+    const [selectedMinutes, setSelectedMinutes] = useState<number | null>(null)
+
+    useEffect(() => {
+        if (isOpen) {
+            setSelectedMinutes(null)
+        }
+    }, [isOpen, item?.id])
 
     if (!item) return null
 
@@ -31,10 +39,11 @@ export function BudgetSnoozeModal({ isOpen, onSnooze, onDismiss, item, isLoading
     const now = new Date()
     const msUntilDue = dueDate.getTime() - now.getTime()
     const minutesUntilDue = Math.max(0, Math.floor(msUntilDue / 60000))
+    const amountDisplay = item.displayAmount || formatCurrency(item.amount, item.currency as any, iqdPreference as any)
 
     // Build dynamic options based on time until due
     const options: { label: string; value: number }[] = [
-        { label: t('budget.reminder.snooze.ignore', 'Dismiss (no reminder)'), value: 0 },
+        { label: t('budget.reminder.snooze.ignore', 'Dismiss (no reminder)'), value: -1 },
         { label: t('budget.reminder.snooze.1h', '1 hour'), value: 60 },
         { label: t('budget.reminder.snooze.6h', '6 hours'), value: 360 },
         { label: t('budget.reminder.snooze.tomorrow', 'Tomorrow'), value: 1440 },
@@ -49,7 +58,7 @@ export function BudgetSnoozeModal({ isOpen, onSnooze, onDismiss, item, isLoading
     }
 
     const handleConfirm = () => {
-        if (selectedMinutes > 0) {
+        if (selectedMinutes !== null) {
             onSnooze(selectedMinutes)
         } else {
             onDismiss()
@@ -78,6 +87,16 @@ export function BudgetSnoozeModal({ isOpen, onSnooze, onDismiss, item, isLoading
                 </DialogHeader>
 
                 <div className="p-4 space-y-2">
+                    <div className="rounded-2xl border border-border/60 bg-muted/20 px-4 py-3 text-left">
+                        <div className="text-sm font-semibold">{item.title?.replace(/\s*\(Salary\)$/, '')}</div>
+                        <div className="mt-1 text-lg font-black">{amountDisplay}</div>
+                        {item.formula && item.formula !== amountDisplay && (
+                            <div className="text-[11px] font-semibold text-muted-foreground/70">{item.formula}</div>
+                        )}
+                        <div className="mt-1 text-xs text-muted-foreground">
+                            {t('budget.form.dueDate', 'Due Date')}: {formatDate(item.dueDate)}
+                        </div>
+                    </div>
                     {options.map((option) => (
                         <button
                             key={option.value}
@@ -101,7 +120,7 @@ export function BudgetSnoozeModal({ isOpen, onSnooze, onDismiss, item, isLoading
                     <Button
                         className="w-full h-12 rounded-xl font-black bg-emerald-600 hover:bg-emerald-700 text-white"
                         onClick={handleConfirm}
-                        disabled={isLoading}
+                        disabled={isLoading || selectedMinutes === null}
                     >
                         {isLoading ? t('common.processing', 'Processing...') : t('common.confirm', 'Confirm')}
                     </Button>

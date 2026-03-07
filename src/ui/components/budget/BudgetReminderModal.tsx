@@ -81,6 +81,7 @@ export function BudgetReminderModal({
     const now = new Date()
     const isOverdue = dueDate < now
     const daysUntil = Math.ceil((dueDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+    const amountDisplay = item.displayAmount || formatCurrency(item.amount, item.currency as any, iqdPreference as any)
 
     return (
         <Dialog open={isOpen} onOpenChange={() => { /* controlled externally */ }}>
@@ -128,9 +129,14 @@ export function BudgetReminderModal({
                                 {item.title?.replace(/\s*\(Salary\)$/, '')}
                             </span>
                             <span className={cn("text-lg font-black", theme.color)}>
-                                {formatCurrency(item.amount, item.currency as any, iqdPreference as any)}
+                                {amountDisplay}
                             </span>
                         </div>
+                        {item.formula && item.formula !== amountDisplay && (
+                            <div className="text-[11px] font-semibold text-muted-foreground/70 text-left">
+                                {item.formula}
+                            </div>
+                        )}
                         <div className="flex items-center justify-between text-xs text-muted-foreground">
                             <div className="flex items-center gap-1.5">
                                 <Calendar className="w-3 h-3" />
