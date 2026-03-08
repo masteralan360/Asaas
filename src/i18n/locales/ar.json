@@ -1542,6 +1542,8 @@
         "searchPlaceholder": "البحث عن طريق اسم المقترض أو رقم القرض...",
         "registerFromPos": "تسجيل قرض",
         "createManualLoan": "إنشاء قرض يدوي",
+        "confirmDelete": "حذف القرض",
+        "deleteWarning": "سيؤدي حذف هذا القرض إلى إزالة القرض وجدول الأقساط وسجل الدفعات نهائياً. لا يمكن التراجع عن هذا الإجراء.",
         "borrowerIdentity": "هوية المقترض",
         "borrower": "المقترض",
         "borrowerName": "اسم المقترض",
@@ -1578,6 +1580,10 @@
         "recentActivity": "النشاط الأخير",
         "currencyHint": "عملة التسوية",
         "pay": "دفع",
+        "snoozedItems": "تذكيرات القروض المؤجلة",
+        "snoozedItemsDesc": "هذه التذكيرات الخاصة بالقروض المتأخرة مؤجلة حتى تعيد فتحها بنفسك.",
+        "snoozedAt": "تم التأجيل في",
+        "unsnooze": "إلغاء التأجيل",
         "completedPercent": "تم الانتهاء منها",
         "frequencies": {
             "weekly": "أسبوعي",
@@ -1605,9 +1611,28 @@
             "paymentReceived": "تم استلام الدفعة",
             "loanDisbursed": "تم صرف القرض"
         },
+        "reminder": {
+            "title": "دفعة قرض متأخرة",
+            "description": "هذا القرض لديه دفعة متأخرة. هل تريد تسجيل دفعة الآن؟",
+            "queueProgress": "{{current}} من {{total}} تذكيرات متأخرة",
+            "overdueAmount": "المبلغ المتأخر",
+            "totalBalance": "إجمالي الرصيد",
+            "oldestDueDate": "أقدم تاريخ استحقاق",
+            "overdueInstallments_one": "{{count}} قسط متأخر",
+            "overdueInstallments_other": "{{count}} أقساط متأخرة",
+            "payNow": "نعم، افتح الدفع",
+            "snooze": "تأجيل"
+        },
         "messages": {
             "loanCreated": "تم إنشاء القرض بنجاح.",
             "loanCreateFailed": "فشل إنشاء القرض.",
+            "loanDeleted": "تم حذف القرض بنجاح.",
+            "loanDeleteFailed": "فشل حذف القرض.",
+            "loanDeleteBlocked": "يمكن حذف القروض اليدوية فقط أو القروض التي تم حذف عملية البيع المرتبطة بها.",
+            "reminderSnoozed": "تم تأجيل تذكير القرض.",
+            "reminderSnoozeFailed": "فشل تأجيل التذكير.",
+            "reminderUnsnoozed": "تم إلغاء تأجيل تذكير القرض.",
+            "reminderUnsnoozeFailed": "فشل إلغاء تأجيل التذكير.",
             "paymentRecorded": "تم تسجيل الدفعة بنجاح.",
             "paymentRecordFailed": "فشل تسجيل الدفعة.",
             "loanNotFound": "القرض غير موجود."

@@ -10,6 +10,8 @@ import {
     useLoan,
     useLoanInstallments,
     useLoanPayments,
+    deleteLoan,
+    isLoanDeletionAllowed,
     type Loan,
     type LoanInstallment
 } from '@/local-db'
@@ -28,12 +30,14 @@ import {
     TableHead,
     TableHeader,
     TableRow,
-    AppPagination
+    AppPagination,
+    DeleteConfirmationModal,
+    useToast
 } from '@/ui/components'
-import { Search, Plus, ArrowLeft, Printer } from 'lucide-react'
+import { Search, Plus, ArrowLeft, Printer, Trash2 } from 'lucide-react'
 import { CreateManualLoanModal } from '@/ui/components/loans/CreateManualLoanModal'
-import { RecordLoanPaymentModal } from '@/ui/components/loans/RecordLoanPaymentModal'
 import { LoanDetailsPrintTemplate, LoanListPrintTemplate } from '@/ui/components/loans/LoanPrintTemplates'
+import { useLoanPaymentModal } from '@/ui/components/loans/LoanPaymentModalProvider'
 
 type LoanFilter = 'all' | 'active' | 'overdue' | 'completed'
 
@@ -56,16 +60,23 @@ function isLoanOverdue(loan: Loan) {
     return loan.nextDueDate < new Date().toISOString().slice(0, 10)
 }
 
-function LoanListView({ workspaceId }: { workspaceId: string }) {
+function LoanListView({
+    workspaceId
+}: {
+    workspaceId: string
+}) {
     const { t, i18n } = useTranslation()
     const [, navigate] = useLocation()
     const { features, workspaceName } = useWorkspace()
     const { user } = useAuth()
+    const { toast } = useToast()
     const isReadOnly = user?.role === 'viewer'
     const [search, setSearch] = useState('')
     const [filter, setFilter] = useState<LoanFilter>('all')
     const [currentPage, setCurrentPage] = useState(1)
     const [createOpen, setCreateOpen] = useState(false)
+    const [loanToDelete, setLoanToDelete] = useState<Loan | null>(null)
+    const [isDeletingLoan, setIsDeletingLoan] = useState(false)
     const printRef = useRef<HTMLDivElement>(null)
     const pageSize = 15
     const loans = useLoans(workspaceId)
@@ -73,6 +84,14 @@ function LoanListView({ workspaceId }: { workspaceId: string }) {
         () => db.loan_installments.where('workspaceId').equals(workspaceId).and(item => !item.isDeleted).toArray(),
         [workspaceId]
     ) ?? []
+    const workspaceSales = useLiveQuery(
+        () => db.sales.where('workspaceId').equals(workspaceId).toArray(),
+        [workspaceId]
+    )
+    const activeSaleIds = useMemo(
+        () => new Set((workspaceSales ?? []).filter(item => !item.isDeleted).map(item => item.id)),
+        [workspaceSales]
+    )
 
     const metrics = useMemo(() => {
         const today = new Date().toISOString().slice(0, 10)
@@ -113,6 +132,43 @@ function LoanListView({ workspaceId }: { workspaceId: string }) {
         contentRef: printRef,
         documentTitle: `Loans_${new Date().toISOString().split('T')[0]}`
     })
+    const canDeleteLoanRecord = (loan: Loan) => {
+        if (loan.source === 'manual' || !loan.saleId) {
+            return true
+        }
+
+        if (workspaceSales === undefined) {
+            return false
+        }
+
+        return isLoanDeletionAllowed(loan, activeSaleIds.has(loan.saleId))
+    }
+    const confirmDeleteLoan = async () => {
+        if (!loanToDelete) {
+            return
+        }
+
+        setIsDeletingLoan(true)
+        try {
+            await deleteLoan(loanToDelete.id)
+            toast({
+                title: t('common.success') || 'Success',
+                description: t('loans.messages.loanDeleted')
+            })
+            setLoanToDelete(null)
+        } catch (error: any) {
+            const message = error?.message === 'loan_delete_not_allowed'
+                ? t('loans.messages.loanDeleteBlocked')
+                : error?.message || t('loans.messages.loanDeleteFailed')
+            toast({
+                title: t('common.error') || 'Error',
+                description: message,
+                variant: 'destructive'
+            })
+        } finally {
+            setIsDeletingLoan(false)
+        }
+    }
 
     return (
         <div className="space-y-4">
@@ -231,9 +287,22 @@ function LoanListView({ workspaceId }: { workspaceId: string }) {
                                             </span>
                                         </TableCell>
                                         <TableCell className="text-end print:hidden">
-                                            <Button variant="ghost" size="sm" onClick={() => navigate(`/loans/${loan.id}`)}>
-                                                {t('common.view') || 'View'}
-                                            </Button>
+                                            <div className="flex items-center justify-end gap-1">
+                                                <Button variant="ghost" size="sm" onClick={() => navigate(`/loans/${loan.id}`)}>
+                                                    {t('common.view') || 'View'}
+                                                </Button>
+                                                {!isReadOnly && canDeleteLoanRecord(loan) && (
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        className="text-destructive hover:text-destructive"
+                                                        onClick={() => setLoanToDelete(loan)}
+                                                    >
+                                                        <Trash2 className="w-4 h-4" />
+                                                        {t('common.delete') || 'Delete'}
+                                                    </Button>
+                                                )}
+                                            </div>
                                         </TableCell>
                                     </TableRow>
                                 ))}
@@ -261,6 +330,19 @@ function LoanListView({ workspaceId }: { workspaceId: string }) {
                 />
             )}
 
+            <DeleteConfirmationModal
+                isOpen={!!loanToDelete}
+                onClose={() => {
+                    if (isDeletingLoan) return
+                    setLoanToDelete(null)
+                }}
+                onConfirm={confirmDeleteLoan}
+                itemName={loanToDelete?.loanNo || ''}
+                isLoading={isDeletingLoan}
+                title={t('loans.confirmDelete')}
+                description={t('loans.deleteWarning')}
+            />
+
             <div className="fixed left-[-10000px] top-0 pointer-events-none">
                 <div ref={printRef}>
                     <LoanListPrintTemplate
@@ -278,21 +360,43 @@ function LoanListView({ workspaceId }: { workspaceId: string }) {
     )
 }
 
-function LoanDetailsView({ workspaceId, loanId }: { workspaceId: string; loanId: string }) {
+function LoanDetailsView({
+    workspaceId,
+    loanId,
+    onOpenPayment
+}: {
+    workspaceId: string
+    loanId: string
+    onOpenPayment: (loan: Loan, installment?: LoanInstallment | null) => void
+}) {
     const { t, i18n } = useTranslation()
     const { features, workspaceName } = useWorkspace()
     const { user } = useAuth()
+    const [, navigate] = useLocation()
+    const { toast } = useToast()
     const isReadOnly = user?.role === 'viewer'
     const loan = useLoan(loanId)
     const installments = useLoanInstallments(loanId, workspaceId)
     const payments = useLoanPayments(loanId, workspaceId)
-    const [paymentModalOpen, setPaymentModalOpen] = useState(false)
+    const [deleteOpen, setDeleteOpen] = useState(false)
+    const [isDeletingLoan, setIsDeletingLoan] = useState(false)
     const printRef = useRef<HTMLDivElement>(null)
     const printLang = features?.print_lang && features.print_lang !== 'auto' ? features.print_lang : i18n.language
     const handlePrintLoan = useReactToPrint({
         contentRef: printRef,
         documentTitle: `${loan?.loanNo || 'Loan'}_${new Date().toISOString().split('T')[0]}`
     })
+    const linkedSaleMissingOrDeleted = useLiveQuery(
+        async () => {
+            if (!loan?.saleId) {
+                return true
+            }
+
+            const linkedSale = await db.sales.get(loan.saleId)
+            return !linkedSale || linkedSale.isDeleted
+        },
+        [loan?.saleId]
+    )
 
     if (!loan) {
         return (
@@ -302,6 +406,36 @@ function LoanDetailsView({ workspaceId, loanId }: { workspaceId: string; loanId:
                 </CardContent>
             </Card>
         )
+    }
+
+    const canDeleteCurrentLoan = loan.source === 'manual'
+        ? true
+        : !loan.saleId
+            ? true
+            : linkedSaleMissingOrDeleted === true
+
+    const confirmDeleteLoan = async () => {
+        setIsDeletingLoan(true)
+        try {
+            await deleteLoan(loan.id)
+            toast({
+                title: t('common.success') || 'Success',
+                description: t('loans.messages.loanDeleted')
+            })
+            setDeleteOpen(false)
+            navigate('/loans')
+        } catch (error: any) {
+            const message = error?.message === 'loan_delete_not_allowed'
+                ? t('loans.messages.loanDeleteBlocked')
+                : error?.message || t('loans.messages.loanDeleteFailed')
+            toast({
+                title: t('common.error') || 'Error',
+                description: message,
+                variant: 'destructive'
+            })
+        } finally {
+            setIsDeletingLoan(false)
+        }
     }
 
     const paidPercent = loan.principalAmount > 0
@@ -339,8 +473,14 @@ function LoanDetailsView({ workspaceId, loanId }: { workspaceId: string; loanId:
                         <Printer className="w-4 h-4" />
                         {t('common.print') || 'Print'}
                     </Button>
+                    {!isReadOnly && canDeleteCurrentLoan && (
+                        <Button variant="destructive" onClick={() => setDeleteOpen(true)} className="gap-2 print:hidden">
+                            <Trash2 className="w-4 h-4" />
+                            {t('common.delete') || 'Delete'}
+                        </Button>
+                    )}
                     {!isReadOnly && (
-                        <Button onClick={() => setPaymentModalOpen(true)} className="print:hidden">
+                        <Button onClick={() => onOpenPayment(loan)} className="print:hidden">
                             {t('loans.recordPayment') || 'Record Payment'}
                         </Button>
                     )}
@@ -485,7 +625,7 @@ function LoanDetailsView({ workspaceId, loanId }: { workspaceId: string; loanId:
                                             </TableCell>
                                             <TableCell className="text-end print:hidden">
                                                 {!isReadOnly && item.balanceAmount > 0 && (
-                                                    <Button variant="ghost" size="sm" onClick={() => setPaymentModalOpen(true)}>
+                                                    <Button variant="ghost" size="sm" onClick={() => onOpenPayment(loan, item)}>
                                                         {t('loans.pay') || 'Pay'}
                                                     </Button>
                                                 )}
@@ -499,14 +639,18 @@ function LoanDetailsView({ workspaceId, loanId }: { workspaceId: string; loanId:
                 </Card>
             </div>
 
-            {!isReadOnly && (
-                <RecordLoanPaymentModal
-                    isOpen={paymentModalOpen}
-                    onOpenChange={setPaymentModalOpen}
-                    workspaceId={workspaceId}
-                    loan={loan}
-                />
-            )}
+            <DeleteConfirmationModal
+                isOpen={deleteOpen}
+                onClose={() => {
+                    if (isDeletingLoan) return
+                    setDeleteOpen(false)
+                }}
+                onConfirm={confirmDeleteLoan}
+                itemName={loan.loanNo}
+                isLoading={isDeletingLoan}
+                title={t('loans.confirmDelete')}
+                description={t('loans.deleteWarning')}
+            />
 
             <div className="fixed left-[-10000px] top-0 pointer-events-none">
                 <div ref={printRef}>
@@ -527,14 +671,27 @@ function LoanDetailsView({ workspaceId, loanId }: { workspaceId: string; loanId:
 export function Loans() {
     const { user } = useAuth()
     const [detailMatch, params] = useRoute('/loans/:loanId')
+    const { openLoanPayment } = useLoanPaymentModal()
+    const workspaceId = user?.workspaceId
+    const openPaymentForLoan = (loan: Loan, installment?: LoanInstallment | null) => {
+        openLoanPayment(loan.id, {
+            installmentId: installment?.id ?? null
+        })
+    }
 
-    if (!user?.workspaceId) {
+    if (!workspaceId) {
         return null
     }
 
     if (detailMatch && params?.loanId) {
-        return <LoanDetailsView workspaceId={user.workspaceId} loanId={params.loanId} />
+        return (
+            <LoanDetailsView
+                workspaceId={workspaceId}
+                loanId={params.loanId}
+                onOpenPayment={openPaymentForLoan}
+            />
+        )
     }
 
-    return <LoanListView workspaceId={user.workspaceId} />
+    return <LoanListView workspaceId={workspaceId} />
 }

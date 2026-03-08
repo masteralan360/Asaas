@@ -1063,6 +1063,8 @@
         "searchPlaceholder": "Search by borrower name or loan number...",
         "registerFromPos": "Register Loan",
         "createManualLoan": "Create Manual Loan",
+        "confirmDelete": "Delete Loan",
+        "deleteWarning": "Deleting this loan will permanently remove the loan, its installment schedule, and its payment history. This cannot be undone.",
         "borrowerIdentity": "Borrower Identity",
         "borrower": "Borrower",
         "borrowerName": "Borrower Name",
@@ -1099,6 +1101,10 @@
         "recentActivity": "Recent Activity",
         "currencyHint": "Settlement Currency",
         "pay": "Pay",
+        "snoozedItems": "Snoozed Loan Reminders",
+        "snoozedItemsDesc": "These overdue loan reminders are snoozed until you open them again.",
+        "snoozedAt": "Snoozed at",
+        "unsnooze": "Un-snooze",
         "completedPercent": "completed",
         "frequencies": {
             "weekly": "Weekly",
@@ -1126,9 +1132,28 @@
             "paymentReceived": "Payment Received",
             "loanDisbursed": "Loan Disbursed"
         },
+        "reminder": {
+            "title": "Overdue Loan Payment",
+            "description": "This loan has an overdue payment. Do you want to record a payment now?",
+            "queueProgress": "{{current}} of {{total}} overdue reminders",
+            "overdueAmount": "Overdue Amount",
+            "totalBalance": "Total balance",
+            "oldestDueDate": "Oldest Due Date",
+            "overdueInstallments_one": "{{count}} overdue installment",
+            "overdueInstallments_other": "{{count}} overdue installments",
+            "payNow": "Yes, Open Payment",
+            "snooze": "Snooze"
+        },
         "messages": {
             "loanCreated": "Loan created successfully.",
             "loanCreateFailed": "Loan creation failed.",
+            "loanDeleted": "Loan deleted successfully.",
+            "loanDeleteFailed": "Failed to delete loan.",
+            "loanDeleteBlocked": "Only manual loans or loans whose linked sale was deleted can be removed.",
+            "reminderSnoozed": "Loan reminder snoozed.",
+            "reminderSnoozeFailed": "Failed to snooze reminder.",
+            "reminderUnsnoozed": "Loan reminder un-snoozed.",
+            "reminderUnsnoozeFailed": "Failed to un-snooze reminder.",
             "paymentRecorded": "Payment recorded successfully.",
             "paymentRecordFailed": "Failed to record payment.",
             "loanNotFound": "Loan not found."

@@ -118,6 +118,9 @@ export async function processMutationQueue(userId: string): Promise<{ success: n
                 if (tableName === 'expenses' || tableName === 'budget_allocations') {
                     const { error } = await supabase.from(tableName).delete().eq('id', entityId)
                     if (error) throw error
+                } else if (tableName === 'loans') {
+                    const { error } = await supabase.from(tableName).delete().eq('id', entityId)
+                    if (error) throw error
                 } else {
                     const { error } = await supabase.from(tableName).update({ is_deleted: true, updated_at: new Date().toISOString() }).eq('id', entityId)
                     if (error) throw error
@@ -130,7 +133,15 @@ export async function processMutationQueue(userId: string): Promise<{ success: n
             // Also update the actual entity sync status to 'synced'
             const table = (db as any)[entityType]
             if (table) {
-                await table.update(entityId, { syncStatus: 'synced', lastSyncedAt: new Date().toISOString() })
+                if (operation === 'delete' && entityType === 'loans') {
+                    await db.transaction('rw', [db.loans, db.loan_installments, db.loan_payments], async () => {
+                        await db.loans.delete(entityId)
+                        await db.loan_installments.where('loanId').equals(entityId).delete()
+                        await db.loan_payments.where('loanId').equals(entityId).delete()
+                    })
+                } else {
+                    await table.update(entityId, { syncStatus: 'synced', lastSyncedAt: new Date().toISOString() })
+                }
             }
 
             successCount++

@@ -1529,6 +1529,8 @@
         "searchPlaceholder": "گەڕان بەپێی ناوی قەرزوەرگر یان ژمارەی قەرز...",
         "registerFromPos": "تۆمارکردنی قەرز",
         "createManualLoan": "دروستکردنی قەرزی دەستی",
+        "confirmDelete": "سڕینەوەی قەرز",
+        "deleteWarning": "بە سڕینەوەی ئەم قەرزە، قەرزەکە، خشتەی قیستەکان و مێژووی پارەدانەکانی بە تەواوی دەسڕدرێنەوە. ئەم کردارە ناگەڕێتەوە.",
         "borrowerIdentity": "ناسنامەی قەرزوەرگر",
         "borrower": "قەرزوەرگر",
         "borrowerName": "ناوی قەرزوەرگر",
@@ -1565,6 +1567,10 @@
         "recentActivity": "چالاکی ئەم دواییە",
         "currencyHint": "دراوی جێگیرکردن",
         "pay": "بدە",
+        "snoozedItems": "بیرخستنەوە دواخراوەکانی قەرز",
+        "snoozedItemsDesc": "ئەم بیرخستنەوانەی قەرزی دواکەوتوو دواخراون تا کاتێک خۆت بیانکەیتەوە.",
+        "snoozedAt": "دواخراوە لە",
+        "unsnooze": "پاشگەزبوونەوە لە دواخستن",
         "completedPercent": "تەواوبوو",
         "frequencies": {
             "weekly": "هەفتانە",
@@ -1592,9 +1598,28 @@
             "paymentReceived": "پارەکە وەرگیرا",
             "loanDisbursed": "قەرزەکە درا"
         },
+        "reminder": {
+            "title": "پارەدانی قەرزی دواکەوتوو",
+            "description": "ئەم قەرزە پارەدانی دواکەوتووی هەیە. دەتەوێت ئێستا پارەدان تۆمار بکەیت؟",
+            "queueProgress": "{{current}} لە {{total}} بیرخستنەوەی دواکەوتوو",
+            "overdueAmount": "بڕی دواکەوتوو",
+            "totalBalance": "کۆی ماوە",
+            "oldestDueDate": "کۆنترین بەرواری کۆتایی",
+            "overdueInstallments_one": "{{count}} قیستی دواکەوتوو",
+            "overdueInstallments_other": "{{count}} قیستی دواکەوتوو",
+            "payNow": "بەڵێ، مۆدالی پارەدان بکەرەوە",
+            "snooze": "دواخستن"
+        },
         "messages": {
             "loanCreated": "قەرزەکە بە سەرکەوتوویی دروستکرا.",
             "loanCreateFailed": "دروستکردنی قەرز سەرکەوتوو نەبوو.",
+            "loanDeleted": "قەرزەکە بە سەرکەوتوویی سڕایەوە.",
+            "loanDeleteFailed": "سڕینەوەی قەرز سەرکەوتوو نەبوو.",
+            "loanDeleteBlocked": "تەنها قەرزی دەستی یان ئەو قەرزانەی فرۆشتنی پەیوەندیداریان سڕاوەتەوە دەتوانرێت بسڕدرێنەوە.",
+            "reminderSnoozed": "بیرخستنەوەی قەرز دواخرا.",
+            "reminderSnoozeFailed": "دواخستنی بیرخستنەوە سەرکەوتوو نەبوو.",
+            "reminderUnsnoozed": "بیرخستنەوەی قەرز لە دواخستن پاشگەزبووەوە.",
+            "reminderUnsnoozeFailed": "پاشگەزبوونەوە لە دواخستنی بیرخستنەوە سەرکەوتوو نەبوو.",
             "paymentRecorded": "پارەدانەکە بە سەرکەوتوویی تۆمارکرا.",
             "paymentRecordFailed": "تۆمارکردنی پارەدان سەرکەوتوو نەبوو.",
             "loanNotFound": "قەرزەکە نەدۆزرایەوە."

@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/auth'
-import { formatCurrency } from '@/lib/utils'
-import { recordLoanPayment, type Loan, type LoanPaymentMethod } from '@/local-db'
+import { formatCurrency, formatDate, formatNumberWithCommas, parseFormattedNumber } from '@/lib/utils'
+import { recordLoanPayment, type Loan, type LoanInstallment, type LoanPaymentMethod } from '@/local-db'
 import {
     Dialog,
     DialogContent,
@@ -26,7 +26,46 @@ interface RecordLoanPaymentModalProps {
     onOpenChange: (open: boolean) => void
     workspaceId: string
     loan: Loan | null
+    selectedInstallment?: LoanInstallment | null
     onSaved?: () => void
+}
+
+function sanitizePaymentAmountInput(value: string, currency: Loan['settlementCurrency']): string {
+    const normalized = value.replace(/,/g, '').replace(/[^\d.]/g, '')
+    if (!normalized) {
+        return ''
+    }
+
+    const [rawWhole = '', ...rawFractionParts] = normalized.split('.')
+    const hasDecimal = normalized.includes('.')
+    const whole = rawWhole === '' ? '' : String(Number(rawWhole))
+
+    if (currency === 'iqd') {
+        return rawWhole === '' ? '' : whole
+    }
+
+    const fraction = rawFractionParts.join('').slice(0, 2)
+    if (!hasDecimal) {
+        return rawWhole === '' ? '' : whole
+    }
+
+    return `${whole || '0'}.${fraction}`
+}
+
+function formatPaymentAmountInput(value: string): string {
+    if (!value) {
+        return ''
+    }
+
+    const hasDecimal = value.includes('.')
+    const [whole = '', fraction = ''] = value.split('.')
+    const formattedWhole = whole ? formatNumberWithCommas(whole) : '0'
+
+    if (!hasDecimal) {
+        return formattedWhole
+    }
+
+    return `${formattedWhole}.${fraction}`
 }
 
 export function RecordLoanPaymentModal({
@@ -34,6 +73,7 @@ export function RecordLoanPaymentModal({
     onOpenChange,
     workspaceId,
     loan,
+    selectedInstallment,
     onSaved
 }: RecordLoanPaymentModalProps) {
     const { t } = useTranslation()
@@ -44,18 +84,21 @@ export function RecordLoanPaymentModal({
     const [method, setMethod] = useState<LoanPaymentMethod>('cash')
     const [note, setNote] = useState('')
     const [isSaving, setIsSaving] = useState(false)
+    const paymentBalance = selectedInstallment?.balanceAmount && selectedInstallment.balanceAmount > 0
+        ? selectedInstallment.balanceAmount
+        : loan?.balanceAmount ?? 0
 
     useEffect(() => {
         if (!isOpen || !loan) return
-        setAmount(String(loan.balanceAmount))
+        setAmount(formatPaymentAmountInput(String(paymentBalance)))
         setMethod('cash')
         setNote('')
-    }, [isOpen, loan])
+    }, [isOpen, loan, paymentBalance])
 
     if (!loan) return null
 
-    const numericAmount = Number(amount || 0)
-    const canSubmit = numericAmount > 0 && numericAmount <= loan.balanceAmount
+    const numericAmount = parseFormattedNumber(amount || '0')
+    const canSubmit = numericAmount > 0 && numericAmount <= paymentBalance
 
     const handleSave = async () => {
         if (!canSubmit || isSaving) return
@@ -94,21 +137,41 @@ export function RecordLoanPaymentModal({
                 </DialogHeader>
 
                 <div className="grid gap-4">
-                    <div className="text-sm text-muted-foreground">
-                        {t('loans.balance') || 'Balance'}:{' '}
-                        <span className="font-semibold text-foreground">
-                            {formatCurrency(loan.balanceAmount, loan.settlementCurrency, features.iqd_display_preference)}
-                        </span>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                        <div className="rounded-xl border bg-muted/20 p-3">
+                            <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                                {t('loans.totalPrincipal') || 'Total Principal'}
+                            </div>
+                            <div className="mt-1 text-lg font-bold text-foreground">
+                                {formatCurrency(loan.principalAmount, loan.settlementCurrency, features.iqd_display_preference)}
+                            </div>
+                        </div>
+
+                        <div className="rounded-xl border bg-muted/20 p-3">
+                            <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                                {t('loans.balance') || 'Balance'}
+                            </div>
+                            <div className="mt-1 text-lg font-bold text-foreground">
+                                {formatCurrency(paymentBalance, loan.settlementCurrency, features.iqd_display_preference)}
+                            </div>
+                            {selectedInstallment && (
+                                <div className="mt-1 text-xs text-muted-foreground">
+                                    #{String(selectedInstallment.installmentNo).padStart(2, '0')} - {t('loans.dueDate') || 'Due Date'}: {formatDate(selectedInstallment.dueDate)}
+                                </div>
+                            )}
+                        </div>
                     </div>
 
                     <div className="grid gap-2">
                         <Label>{t('loans.paymentAmount') || 'Payment Amount'}</Label>
                         <Input
-                            type="number"
-                            min={0}
-                            max={loan.balanceAmount}
+                            type="text"
+                            inputMode={loan.settlementCurrency === 'iqd' ? 'numeric' : 'decimal'}
                             value={amount}
-                            onChange={e => setAmount(e.target.value)}
+                            onChange={e => {
+                                const nextValue = sanitizePaymentAmountInput(e.target.value, loan.settlementCurrency)
+                                setAmount(formatPaymentAmountInput(nextValue))
+                            }}
                         />
                     </div>
 
@@ -145,4 +208,3 @@ export function RecordLoanPaymentModal({
         </Dialog>
     )
 }
-

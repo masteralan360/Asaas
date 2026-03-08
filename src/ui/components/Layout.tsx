@@ -14,6 +14,8 @@ import { ResourceSyncOverlay } from './p2p/ResourceSyncOverlay'
 import { NotificationCenter } from './NotificationCenter'
 import { ManualRateModals } from './exchange/ManualRateModals'
 import { GlobalExpenseReminders } from './budget/GlobalExpenseReminders'
+import { GlobalLoanReminders } from './loans/GlobalLoanReminders'
+import { LoanPaymentModalProvider } from './loans/LoanPaymentModalProvider'
 
 import {
     LayoutDashboard,
@@ -268,38 +270,40 @@ export function Layout({ children }: LayoutProps) {
     ]
 
     return (
-        <div className="h-screen overflow-hidden bg-transparent">
-            <ResourceSyncOverlay />
-            <ManualRateModals />
-            <GlobalExpenseReminders />
-            {/* Mobile sidebar backdrop */}
-            {mobileSidebarOpen && (
-                <div
-                    className={cn("fixed inset-0 z-40 bg-black/50 lg:hidden", isTauri && "top-[var(--titlebar-height)]")}
-                    onClick={() => setMobileSidebarOpen(false)}
-                />
-            )}
-
-            {/* Sidebar */}
-            <aside
-                className={cn(
-                    'fixed z-50 transition-all duration-300 ease-in-out flex flex-col',
-                    mobileSidebarOpen ? 'bg-card border-r border-border/50' : 'glass',
-                    'sidebar-gradient shadow-2xl',
-                    isTauri ? 'top-[var(--titlebar-height)] h-[calc(100vh-var(--titlebar-height))]' : 'inset-y-0 h-full',
-                    'pt-[var(--safe-area-top)] pb-[var(--safe-area-bottom)]',
-                    // Desktop state - Width changes based on isMini
-                    isMini
-                        ? (desktopSidebarOpen ? 'w-[70px] lg:translate-x-0 lg:rtl:translate-x-0' : 'lg:-translate-x-full lg:rtl:translate-x-full w-[70px]')
-                        : (desktopSidebarOpen ? 'w-64 lg:translate-x-0 lg:rtl:translate-x-0' : 'lg:-translate-x-full lg:rtl:translate-x-full w-64'),
-
-                    // Positioning
-                    'left-0 rtl:left-auto rtl:right-0',
-                    'border-r rtl:border-r-0 rtl:border-l border-border',
-                    // Mobile state
-                    mobileSidebarOpen ? 'translate-x-0 w-64' : '-translate-x-full rtl:translate-x-full',
+        <LoanPaymentModalProvider>
+            <div className="h-screen overflow-hidden bg-transparent">
+                <ResourceSyncOverlay />
+                <ManualRateModals />
+                <GlobalExpenseReminders />
+                <GlobalLoanReminders />
+                {/* Mobile sidebar backdrop */}
+                {mobileSidebarOpen && (
+                    <div
+                        className={cn("fixed inset-0 z-40 bg-black/50 lg:hidden", isTauri && "top-[var(--titlebar-height)]")}
+                        onClick={() => setMobileSidebarOpen(false)}
+                    />
                 )}
-            >
+
+                {/* Sidebar */}
+                <aside
+                    className={cn(
+                        'fixed z-50 transition-all duration-300 ease-in-out flex flex-col',
+                        mobileSidebarOpen ? 'bg-card border-r border-border/50' : 'glass',
+                        'sidebar-gradient shadow-2xl',
+                        isTauri ? 'top-[var(--titlebar-height)] h-[calc(100vh-var(--titlebar-height))]' : 'inset-y-0 h-full',
+                        'pt-[var(--safe-area-top)] pb-[var(--safe-area-bottom)]',
+                        // Desktop state - Width changes based on isMini
+                        isMini
+                            ? (desktopSidebarOpen ? 'w-[70px] lg:translate-x-0 lg:rtl:translate-x-0' : 'lg:-translate-x-full lg:rtl:translate-x-full w-[70px]')
+                            : (desktopSidebarOpen ? 'w-64 lg:translate-x-0 lg:rtl:translate-x-0' : 'lg:-translate-x-full lg:rtl:translate-x-full w-64'),
+
+                        // Positioning
+                        'left-0 rtl:left-auto rtl:right-0',
+                        'border-r rtl:border-r-0 rtl:border-l border-border',
+                        // Mobile state
+                        mobileSidebarOpen ? 'translate-x-0 w-64' : '-translate-x-full rtl:translate-x-full',
+                    )}
+                >
                 {/* Logo */}
                 <div className={cn(
                     "flex items-center gap-3 px-6 py-5 border-b border-border transition-all duration-300",
@@ -543,18 +547,18 @@ export function Layout({ children }: LayoutProps) {
                         </div>
                     )}
                 </div>
-            </aside>
+                </aside>
 
-            {/* Main content Scroll Container */}
-            <div className={cn(
-                "h-full bg-background transition-[padding] duration-300 ease-in-out flex flex-col overflow-hidden",
-                isTauri && "mt-[var(--titlebar-height)] h-[calc(100vh-var(--titlebar-height))]",
-                // Desktop Sidebar Padding Logic
-                desktopSidebarOpen
-                    ? (isMini ? "lg:pl-[70px] lg:rtl:pl-0 lg:rtl:pr-[70px]" : "lg:pl-64 lg:rtl:pl-0 lg:rtl:pr-64")
-                    : "lg:pl-0",
-                "pb-[var(--safe-area-bottom)]"
-            )}>
+                {/* Main content Scroll Container */}
+                <div className={cn(
+                    "h-full bg-background transition-[padding] duration-300 ease-in-out flex flex-col overflow-hidden",
+                    isTauri && "mt-[var(--titlebar-height)] h-[calc(100vh-var(--titlebar-height))]",
+                    // Desktop Sidebar Padding Logic
+                    desktopSidebarOpen
+                        ? (isMini ? "lg:pl-[70px] lg:rtl:pl-0 lg:rtl:pr-[70px]" : "lg:pl-64 lg:rtl:pl-0 lg:rtl:pr-64")
+                        : "lg:pl-0",
+                    "pb-[var(--safe-area-bottom)]"
+                )}>
                 {/* Top bar */}
                 <header className={cn(
                     "flex-shrink-0 z-30 flex items-center gap-4 px-4 py-3 bg-background/60 backdrop-blur-xl border-b border-border/50",
@@ -642,31 +646,32 @@ export function Layout({ children }: LayoutProps) {
                         {children}
                     </Suspense>
                 </main>
-            </div>
+                </div>
 
-            {/* Sign Out Confirmation Modal */}
-            <Dialog open={isSignOutModalOpen} onOpenChange={setIsSignOutModalOpen}>
-                <DialogContent>
-                    <DialogHeader>
-                        <DialogTitle>{t('auth.signOutConfirmTitle') || 'Sign Out'}</DialogTitle>
-                        <DialogDescription>
-                            {t('auth.signOutConfirmDesc') || 'Are you sure you want to sign out?'}
-                        </DialogDescription>
-                    </DialogHeader>
-                    <DialogFooter>
-                        <Button variant="ghost" onClick={() => setIsSignOutModalOpen(false)}>
-                            {t('common.cancel') || 'Cancel'}
-                        </Button>
-                        <Button variant="destructive" onClick={() => {
-                            setIsSignOutModalOpen(false)
-                            signOut()
-                        }}>
-                            {t('auth.signOut') || 'Sign Out'}
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
-        </div>
+                {/* Sign Out Confirmation Modal */}
+                <Dialog open={isSignOutModalOpen} onOpenChange={setIsSignOutModalOpen}>
+                    <DialogContent>
+                        <DialogHeader>
+                            <DialogTitle>{t('auth.signOutConfirmTitle') || 'Sign Out'}</DialogTitle>
+                            <DialogDescription>
+                                {t('auth.signOutConfirmDesc') || 'Are you sure you want to sign out?'}
+                            </DialogDescription>
+                        </DialogHeader>
+                        <DialogFooter>
+                            <Button variant="ghost" onClick={() => setIsSignOutModalOpen(false)}>
+                                {t('common.cancel') || 'Cancel'}
+                            </Button>
+                            <Button variant="destructive" onClick={() => {
+                                setIsSignOutModalOpen(false)
+                                signOut()
+                            }}>
+                                {t('auth.signOut') || 'Sign Out'}
+                            </Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
+            </div>
+        </LoanPaymentModalProvider>
     )
 }
 

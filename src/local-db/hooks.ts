@@ -2380,6 +2380,15 @@ interface LoanCreateInput {
     createdBy?: string
 }
 
+export function isLoanDeletionAllowed(
+    loan: Pick<Loan, 'source' | 'saleId'>,
+    hasLinkedActiveSale: boolean
+): boolean {
+    if (loan.source === 'manual') return true
+    if (!loan.saleId) return true
+    return !hasLinkedActiveSale
+}
+
 async function createLoanAggregate(workspaceId: string, input: LoanCreateInput): Promise<{ loan: Loan; installments: LoanInstallment[] }> {
     const now = new Date().toISOString()
     const loanId = generateId()
@@ -2446,6 +2455,8 @@ async function createLoanAggregate(workspaceId: string, input: LoanCreateInput):
         installmentFrequency: input.installmentFrequency,
         firstDueDate,
         nextDueDate,
+        overdueReminderSnoozedAt: null,
+        overdueReminderSnoozedForDueDate: null,
         status: computeLoanStatus(nextDueDate, principalAmount),
         notes: input.notes?.trim(),
         createdBy: input.createdBy,
@@ -2610,6 +2621,175 @@ export async function createLoanFromPosSale(
     return createLoanAggregate(workspaceId, { ...input, source: 'pos' })
 }
 
+export async function updateLoanReminderSnooze(
+    loanId: string,
+    input: {
+        snoozedAt: string | null
+        snoozedForDueDate: string | null
+    }
+): Promise<Loan> {
+    const existing = await db.loans.get(loanId)
+    if (!existing || existing.isDeleted) {
+        throw new Error('Loan not found')
+    }
+
+    const now = new Date().toISOString()
+    const updatedLoan: Loan = {
+        ...existing,
+        overdueReminderSnoozedAt: input.snoozedAt,
+        overdueReminderSnoozedForDueDate: input.snoozedForDueDate,
+        updatedAt: now,
+        version: existing.version + 1,
+        syncStatus: 'pending',
+        lastSyncedAt: null
+    }
+
+    await db.loans.put(updatedLoan)
+
+    const enqueueMutation = async () => {
+        await addToOfflineMutations(
+            'loans',
+            updatedLoan.id,
+            'update',
+            updatedLoan as unknown as Record<string, unknown>,
+            existing.workspaceId
+        )
+    }
+
+    if (!isOnline()) {
+        await enqueueMutation()
+        return updatedLoan
+    }
+
+    try {
+        const { error } = await runMutation('loans.reminderSnooze.update', () =>
+            supabase
+                .from('loans')
+                .update(toSnakeCase({
+                    overdueReminderSnoozedAt: updatedLoan.overdueReminderSnoozedAt,
+                    overdueReminderSnoozedForDueDate: updatedLoan.overdueReminderSnoozedForDueDate,
+                    updatedAt: updatedLoan.updatedAt,
+                    version: updatedLoan.version
+                }))
+                .eq('id', updatedLoan.id)
+        )
+        if (error) throw error
+
+        const syncedAt = new Date().toISOString()
+        await db.loans.update(updatedLoan.id, {
+            syncStatus: 'synced',
+            lastSyncedAt: syncedAt
+        })
+
+        return {
+            ...updatedLoan,
+            syncStatus: 'synced',
+            lastSyncedAt: syncedAt
+        }
+    } catch (error) {
+        if (shouldUseOfflineMutationFallback(error)) {
+            console.error('[Loans] Reminder snooze sync failed, queued offline mutation:', error)
+            await enqueueMutation()
+            return updatedLoan
+        }
+
+        await db.loans.put(existing)
+        throw normalizeSupabaseActionError(error)
+    }
+}
+
+export async function deleteLoan(loanId: string): Promise<void> {
+    const loan = await db.loans.get(loanId)
+    if (!loan || loan.isDeleted) {
+        return
+    }
+
+    const linkedSale = loan.saleId ? await db.sales.get(loan.saleId) : undefined
+    const hasLinkedActiveSale = Boolean(linkedSale && !linkedSale.isDeleted)
+    if (!isLoanDeletionAllowed(loan, hasLinkedActiveSale)) {
+        throw new Error('loan_delete_not_allowed')
+    }
+
+    const [installments, payments, offlineMutations] = await Promise.all([
+        db.loan_installments.where('loanId').equals(loanId).toArray(),
+        db.loan_payments.where('loanId').equals(loanId).toArray(),
+        db.offline_mutations.where('workspaceId').equals(loan.workspaceId).toArray()
+    ])
+
+    const installmentIds = new Set(installments.map(item => item.id))
+    const paymentIds = new Set(payments.map(item => item.id))
+    const relatedMutationIds = offlineMutations
+        .filter(mutation => {
+            if (mutation.status === 'synced') {
+                return false
+            }
+
+            if (mutation.entityType === 'loans') {
+                return mutation.entityId === loanId
+            }
+
+            if (mutation.entityType === 'loan_installments') {
+                return installmentIds.has(mutation.entityId)
+            }
+
+            if (mutation.entityType === 'loan_payments') {
+                return paymentIds.has(mutation.entityId)
+            }
+
+            return false
+        })
+        .map(mutation => mutation.id)
+
+    const removeLoanAggregateLocally = async (enqueueDeleteMutation: boolean) => {
+        await db.transaction('rw', [db.loans, db.loan_installments, db.loan_payments, db.offline_mutations], async () => {
+            await db.loans.delete(loanId)
+            if (installments.length > 0) {
+                await db.loan_installments.bulkDelete(installments.map(item => item.id))
+            }
+            if (payments.length > 0) {
+                await db.loan_payments.bulkDelete(payments.map(item => item.id))
+            }
+            if (relatedMutationIds.length > 0) {
+                await db.offline_mutations.bulkDelete(relatedMutationIds)
+            }
+            if (enqueueDeleteMutation) {
+                await db.offline_mutations.add({
+                    id: generateId(),
+                    workspaceId: loan.workspaceId,
+                    entityType: 'loans',
+                    entityId: loanId,
+                    operation: 'delete',
+                    payload: { id: loanId },
+                    createdAt: new Date().toISOString(),
+                    status: 'pending'
+                })
+            }
+        })
+    }
+
+    if (!isOnline()) {
+        await removeLoanAggregateLocally(true)
+        return
+    }
+
+    try {
+        const { error } = await runMutation('loans.delete', () =>
+            supabase.from('loans').delete().eq('id', loanId)
+        )
+        if (error) throw error
+
+        await removeLoanAggregateLocally(false)
+    } catch (error) {
+        if (shouldUseOfflineMutationFallback(error)) {
+            console.error('[Loans] Delete sync failed, queued offline mutation:', error)
+            await removeLoanAggregateLocally(true)
+            return
+        }
+
+        throw normalizeSupabaseActionError(error)
+    }
+}
+
 interface LoanPaymentInput {
     loanId: string
     amount: number
@@ -2698,6 +2878,11 @@ export async function recordLoanPayment(workspaceId: string, input: LoanPaymentI
     if (updatedInstallments.some(item => item.status === 'overdue')) {
         updatedLoan.status = updatedLoan.balanceAmount <= 0 ? 'completed' : 'overdue'
     }
+    const oldestOverdueDueDate = updatedInstallments.find(item => item.balanceAmount > 0 && item.dueDate < today)?.dueDate || null
+    if (!oldestOverdueDueDate || oldestOverdueDueDate !== loan.overdueReminderSnoozedForDueDate) {
+        updatedLoan.overdueReminderSnoozedAt = null
+        updatedLoan.overdueReminderSnoozedForDueDate = null
+    }
 
     const payment: LoanPayment = {
         id: generateId(),
@@ -2751,6 +2936,8 @@ export async function recordLoanPayment(workspaceId: string, input: LoanPaymentI
                     totalPaidAmount: updatedLoan.totalPaidAmount,
                     balanceAmount: updatedLoan.balanceAmount,
                     nextDueDate: updatedLoan.nextDueDate,
+                    overdueReminderSnoozedAt: updatedLoan.overdueReminderSnoozedAt,
+                    overdueReminderSnoozedForDueDate: updatedLoan.overdueReminderSnoozedForDueDate,
                     status: updatedLoan.status,
                     updatedAt: updatedLoan.updatedAt,
                     version: updatedLoan.version
