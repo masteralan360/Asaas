@@ -1,7 +1,7 @@
 {
   "name": "asaas",
   "private": true,
-  "version": "0.0.31",
+  "version": "0.0.32",
   "main": "electron/main.cjs",
   "type": "module",
   "repository": {
@@ -94,6 +94,7 @@
     "scheduler": "^0.23.2",
     "tailwind-merge": "^3.4.0",
     "tailwindcss-animate": "^1.0.7",
+    "tauri-plugin-thermal-printer": "^1.0.1",
     "uuid": "^10.0.0",
     "wouter": "^3.3.5",
     "xlsx": "^0.18.5"

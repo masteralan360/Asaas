@@ -6,7 +6,8 @@ import {
     DialogContent,
     DialogTitle,
     Button,
-    SaleReceiptBase
+    SaleReceiptBase,
+    useToast
 } from '@/ui/components'
 import { CheckCircle2, Printer, Coins } from 'lucide-react'
 import { formatCurrency, cn } from '@/lib/utils'
@@ -36,6 +37,7 @@ export function CheckoutSuccessModal({
     const { t } = useTranslation()
     const { user } = useAuth()
     const { workspaceName, activeWorkspace } = useWorkspace()
+    const { toast } = useToast()
 
     const [timeLeft, setTimeLeft] = useState(15)
     const [isPaused, setIsPaused] = useState(false)
@@ -124,11 +126,32 @@ export function CheckoutSuccessModal({
                 format: 'receipt'
             });
 
-            // 2. Trigger print using react-to-print
-            handlePrint();
+            // 2. Prefer native thermal printing when enabled and configured on this device.
+            let handledByThermalPrinter = false
+            if (features.thermal_printing) {
+                try {
+                    handledByThermalPrinter = await printService.silentPrintReceipt({
+                        saleData,
+                        features,
+                        workspaceName: workspaceName || user?.workspaceId || 'Asaas',
+                        workspaceId: activeWorkspace?.id || user.workspaceId
+                    })
+                } catch (thermalError) {
+                    console.error('[CheckoutSuccessModal] Thermal print failed:', thermalError)
+                    toast({
+                        title: t('settings.printing.thermalPrintErrorTitle', { defaultValue: 'Thermal printing failed' }),
+                        description: t('settings.printing.thermalPrintErrorDesc', {
+                            defaultValue: 'Falling back to the regular receipt print flow for this sale.'
+                        }),
+                        variant: 'destructive'
+                    })
+                }
+            }
 
-            // 3. Trigger silent print structure (placeholder for future native drivers)
-            printService.silentPrintReceipt(saleData);
+            // 3. Fall back to the original browser print flow when thermal printing is disabled or unavailable.
+            if (!handledByThermalPrinter) {
+                handlePrint()
+            }
 
             // Note: We don't onClose() immediately here because handlePrint() 
             // is async in nature (browser dialog), but we want to stay in 

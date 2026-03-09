@@ -17,6 +17,11 @@ export async function setAppSetting(key: string, value: string): Promise<void> {
     localStorage.setItem(`app_setting_${key}`, valueToStore)
 }
 
+export async function clearAppSetting(key: string): Promise<void> {
+    await db.app_settings.delete(key)
+    localStorage.removeItem(`app_setting_${key}`)
+}
+
 export function getAppSettingSync(key: string): string | null {
     const value = localStorage.getItem(`app_setting_${key}`)
     if (!value) return null

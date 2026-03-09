@@ -23,6 +23,8 @@ import { assetManager } from '@/lib/assetManager'
 import { getMonthDisplayPreference, setMonthDisplayPreference, type MonthDisplayPreference } from '@/lib/monthDisplay'
 import { useWorkspaceContacts } from '@/local-db/hooks'
 import { getRetriableActionToast, isRetriableWebRequestError, normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
+import { isLikelyThermalPrinter, isVirtualPrinter, printService, type StoredThermalPrinter } from '@/services/printService'
+import type { PrinterInfo } from 'tauri-plugin-thermal-printer'
 
 export function Settings() {
     const { user, signOut, isSupabaseConfigured, updateUser } = useAuth()
@@ -61,6 +63,13 @@ export function Settings() {
     const [mediaSyncProgress, setMediaSyncProgress] = useState<{ total: number, current: number, fileName: string } | null>(null)
     const [mediaDownloadProgress, setMediaDownloadProgress] = useState<{ total: number, current: number, fileName: string } | null>(null)
     const [localMediaCount, setLocalMediaCount] = useState<number | null>(null)
+    const [isThermalDialogOpen, setIsThermalDialogOpen] = useState(false)
+    const [availableThermalPrinters, setAvailableThermalPrinters] = useState<PrinterInfo[]>([])
+    const [selectedThermalPrinter, setSelectedThermalPrinter] = useState<StoredThermalPrinter | null>(null)
+    const [isScanningThermalPrinters, setIsScanningThermalPrinters] = useState(false)
+    const [isThermalActionPending, setIsThermalActionPending] = useState(false)
+    const [thermalPrinterMessage, setThermalPrinterMessage] = useState<string | null>(null)
+    const [showAllDetectedPrinters, setShowAllDetectedPrinters] = useState(false)
 
     const activeSupabaseUrl = isBackendConfigurationRequired
         ? (customUrl || '')
@@ -94,6 +103,115 @@ export function Settings() {
         })
     }
 
+    const loadSelectedThermalPrinter = async () => {
+        if (!user?.workspaceId) {
+            setSelectedThermalPrinter(null)
+            return
+        }
+
+        const selection = await printService.getSelectedThermalPrinter(user.workspaceId)
+        setSelectedThermalPrinter(selection)
+    }
+
+    const scanThermalPrinters = async () => {
+        setThermalPrinterMessage(null)
+        setShowAllDetectedPrinters(false)
+
+        if (!isElectron) {
+            setAvailableThermalPrinters([])
+            setThermalPrinterMessage(t('settings.printing.thermalDesktopOnly', {
+                defaultValue: 'Thermal printer scanning is available in the desktop Tauri app only.'
+            }))
+            return
+        }
+
+        setIsScanningThermalPrinters(true)
+        try {
+            const printers = await printService.listThermalPrinters()
+            setAvailableThermalPrinters(printers)
+
+            const likelyThermalCount = printers.filter(isLikelyThermalPrinter).length
+            const visiblePrinterCount = printers.filter((printer) => !isVirtualPrinter(printer)).length
+
+            if (printers.length === 0) {
+                setThermalPrinterMessage(t('settings.printing.noThermalPrinters', {
+                    defaultValue: 'No thermal printers were detected on this device.'
+                }))
+            } else if (likelyThermalCount === 0) {
+                setThermalPrinterMessage(
+                    visiblePrinterCount > 0
+                        ? t('settings.printing.noLikelyThermalPrinters', {
+                            defaultValue: 'No likely thermal printers were detected. Virtual and document printers were hidden from the list by default.'
+                        })
+                        : t('settings.printing.noThermalPrinters', {
+                            defaultValue: 'No thermal printers were detected on this device.'
+                        })
+                )
+            }
+        } catch (error) {
+            console.error('[Settings] Failed to scan thermal printers:', error)
+            setAvailableThermalPrinters([])
+            setThermalPrinterMessage(
+                normalizeSupabaseActionError(error).message
+                || t('settings.printing.thermalScanError', { defaultValue: 'Failed to scan thermal printers.' })
+            )
+        } finally {
+            setIsScanningThermalPrinters(false)
+        }
+    }
+
+    const openThermalPrinterDialog = () => {
+        setIsThermalDialogOpen(true)
+    }
+
+    const handleEnableThermalPrinter = async (printer: PrinterInfo) => {
+        if (!user?.workspaceId) return
+
+        setIsThermalActionPending(true)
+        try {
+            const selection = await printService.setSelectedThermalPrinter(user.workspaceId, printer)
+            setSelectedThermalPrinter(selection)
+            await updateSettings({ thermal_printing: true })
+
+            toast({
+                title: t('settings.printing.thermalEnabledTitle', { defaultValue: 'Thermal printing enabled' }),
+                description: t('settings.printing.thermalEnabledDesc', {
+                    defaultValue: `Receipt printing will use ${printer.name} on this device.`
+                })
+            })
+        } catch (error) {
+            showActionError(error, t('settings.printing.thermalEnableError', {
+                defaultValue: 'Failed to enable thermal printing.'
+            }))
+        } finally {
+            setIsThermalActionPending(false)
+        }
+    }
+
+    const handleDisableThermalPrinting = async () => {
+        setIsThermalActionPending(true)
+        try {
+            await updateSettings({ thermal_printing: false })
+            toast({
+                title: t('settings.printing.thermalDisabledTitle', { defaultValue: 'Thermal printing disabled' }),
+                description: t('settings.printing.thermalDisabledDesc', {
+                    defaultValue: 'POS receipts will fall back to the regular print flow on this device.'
+                })
+            })
+        } catch (error) {
+            showActionError(error, t('settings.printing.thermalDisableError', {
+                defaultValue: 'Failed to disable thermal printing.'
+            }))
+        } finally {
+            setIsThermalActionPending(false)
+        }
+    }
+
+    const detectedNonVirtualPrinters = availableThermalPrinters.filter((printer) => !isVirtualPrinter(printer))
+    const likelyThermalPrinters = detectedNonVirtualPrinters.filter(isLikelyThermalPrinter)
+    const hiddenPrinterCount = detectedNonVirtualPrinters.length - likelyThermalPrinters.length
+    const displayedThermalPrinters = showAllDetectedPrinters ? detectedNonVirtualPrinters : likelyThermalPrinters
+
     useEffect(() => {
         // @ts-ignore
         const isTauri = !!window.__TAURI_INTERNALS__
@@ -105,6 +223,17 @@ export function Settings() {
             })
         }
     }, [])
+
+    useEffect(() => {
+        void loadSelectedThermalPrinter()
+    }, [user?.workspaceId])
+
+    useEffect(() => {
+        if (!isThermalDialogOpen) return
+
+        void loadSelectedThermalPrinter()
+        void scanThermalPrinters()
+    }, [isThermalDialogOpen, user?.workspaceId, isElectron])
 
     const [updateStatus, setUpdateStatus] = useState<any>(null)
     const [localWorkspaceName, setLocalWorkspaceName] = useState(workspaceName || '')
@@ -1311,12 +1440,26 @@ export function Settings() {
                                                 {t('settings.printing.thermalTitle', { defaultValue: 'Thermal Printing' })}
                                             </Label>
                                             <p className="text-xs text-muted-foreground">
-                                                {t('settings.printing.thermalDesc', { defaultValue: 'Store a workspace-level thermal printer preference for future use. No printing behavior changes yet.' })}
+                                                {features.thermal_printing
+                                                    ? selectedThermalPrinter
+                                                        ? t('settings.printing.thermalEnabledSummary', {
+                                                            defaultValue: `Enabled on this device with ${selectedThermalPrinter.name}. Click the toggle to manage printers.`
+                                                        })
+                                                        : t('settings.printing.thermalMissingSelection', {
+                                                            defaultValue: 'Thermal printing is enabled for this workspace, but no printer is selected on this device yet.'
+                                                        })
+                                                    : selectedThermalPrinter
+                                                        ? t('settings.printing.thermalSavedSummary', {
+                                                            defaultValue: `Saved printer: ${selectedThermalPrinter.name}. Click the toggle to enable or change it.`
+                                                        })
+                                                        : t('settings.printing.thermalDesc', {
+                                                            defaultValue: 'Scan this device for available thermal printers and enable one for POS receipt printing.'
+                                                        })}
                                             </p>
                                         </div>
                                         <Switch
                                             checked={features.thermal_printing}
-                                            onCheckedChange={(val) => updateSettings({ thermal_printing: val })}
+                                            onCheckedChange={openThermalPrinterDialog}
                                         />
                                     </div>
                                 </div>
@@ -1867,6 +2010,154 @@ export function Settings() {
                         </>
                     )}
                 </TabsContent>
+
+                <Dialog open={isThermalDialogOpen} onOpenChange={setIsThermalDialogOpen}>
+                    <DialogContent className="max-w-2xl">
+                        <DialogHeader>
+                            <DialogTitle>
+                                {t('settings.printing.thermalDialogTitle', { defaultValue: 'Thermal Printers' })}
+                            </DialogTitle>
+                            <DialogDescription>
+                                {t('settings.printing.thermalDialogDesc', {
+                                    defaultValue: 'Scan this device for available thermal printers and choose which one should handle POS receipt printing for this workspace.'
+                                })}
+                            </DialogDescription>
+                        </DialogHeader>
+
+                        <div className="space-y-4">
+                            <div className="flex flex-col gap-3 rounded-xl border border-border bg-muted/30 p-4 md:flex-row md:items-start md:justify-between">
+                                <div className="space-y-1">
+                                    <p className="text-sm font-semibold">
+                                        {t('settings.printing.currentThermalPrinter', { defaultValue: 'Current device printer' })}
+                                    </p>
+                                    {selectedThermalPrinter ? (
+                                        <>
+                                            <p className="text-sm text-foreground">{selectedThermalPrinter.name}</p>
+                                            <p className="text-xs text-muted-foreground">
+                                                {selectedThermalPrinter.interface_type || 'Unknown'} | {selectedThermalPrinter.status || 'Saved'}
+                                            </p>
+                                            <p className="break-all font-mono text-[11px] text-muted-foreground">
+                                                {selectedThermalPrinter.identifier || 'No identifier'}
+                                            </p>
+                                        </>
+                                    ) : (
+                                        <p className="text-xs text-muted-foreground">
+                                            {t('settings.printing.noThermalPrinterSelected', {
+                                                defaultValue: 'No thermal printer is saved for this workspace on this device yet.'
+                                            })}
+                                        </p>
+                                    )}
+                                </div>
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    onClick={scanThermalPrinters}
+                                    disabled={isScanningThermalPrinters}
+                                    className="self-start md:self-auto"
+                                >
+                                    <RefreshCw className={cn('mr-2 h-4 w-4', isScanningThermalPrinters && 'animate-spin')} />
+                                    {t('settings.printing.refreshPrinters', { defaultValue: 'Refresh' })}
+                                </Button>
+                            </div>
+
+                            {thermalPrinterMessage && (
+                                <div className="rounded-xl border border-border bg-muted/30 p-4 text-sm text-muted-foreground">
+                                    {thermalPrinterMessage}
+                                </div>
+                            )}
+
+                            {hiddenPrinterCount > 0 && (
+                                <div className="flex items-center justify-between gap-3 rounded-xl border border-dashed border-border bg-muted/20 p-3 text-sm">
+                                    <p className="text-muted-foreground">
+                                        {showAllDetectedPrinters
+                                            ? t('settings.printing.showingAllPrinters', {
+                                                defaultValue: `Showing all detected printers on this device. ${hiddenPrinterCount} non-thermal-looking printer(s) are included.`
+                                            })
+                                            : t('settings.printing.hiddenNonThermalPrinters', {
+                                                defaultValue: `${hiddenPrinterCount} detected printer(s) were hidden because they do not look like receipt/thermal printers.`
+                                            })}
+                                    </p>
+                                    <Button
+                                        type="button"
+                                        variant="ghost"
+                                        className="shrink-0"
+                                        onClick={() => setShowAllDetectedPrinters(prev => !prev)}
+                                    >
+                                        {showAllDetectedPrinters
+                                            ? t('settings.printing.showLikelyThermalOnly', { defaultValue: 'Show Thermal Only' })
+                                            : t('settings.printing.showAllDetectedPrinters', { defaultValue: 'Show All' })}
+                                    </Button>
+                                </div>
+                            )}
+
+                            <div className="max-h-[50vh] space-y-3 overflow-y-auto pr-1">
+                                {displayedThermalPrinters.map((printer) => {
+                                    const isCurrentSelection = selectedThermalPrinter?.name === printer.name
+
+                                    return (
+                                        <div
+                                            key={`${printer.name}-${printer.identifier}`}
+                                            className={cn(
+                                                'rounded-xl border p-4 transition-colors',
+                                                isCurrentSelection && 'border-emerald-500 bg-emerald-500/5'
+                                            )}
+                                        >
+                                            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                                                <div className="space-y-1">
+                                                    <p className="font-semibold text-foreground">{printer.name}</p>
+                                                    <p className="text-xs text-muted-foreground">
+                                                        {printer.interface_type || 'Unknown interface'} | {printer.status || 'Unknown status'}
+                                                    </p>
+                                                    <p className="break-all font-mono text-[11px] text-muted-foreground">
+                                                        {printer.identifier}
+                                                    </p>
+                                                </div>
+                                                <Button
+                                                    type="button"
+                                                    className="self-start md:self-auto"
+                                                    onClick={() => handleEnableThermalPrinter(printer)}
+                                                    disabled={isThermalActionPending || (features.thermal_printing && isCurrentSelection)}
+                                                >
+                                                    {features.thermal_printing && isCurrentSelection
+                                                        ? t('settings.printing.thermalEnabledButton', { defaultValue: 'Enabled' })
+                                                        : t('settings.printing.enableThermalPrinter', { defaultValue: 'Enable' })}
+                                                </Button>
+                                            </div>
+                                        </div>
+                                    )
+                                })}
+
+                                {displayedThermalPrinters.length === 0 && !isScanningThermalPrinters && (
+                                    <div className="rounded-xl border border-dashed border-border p-6 text-sm text-muted-foreground">
+                                        {t('settings.printing.noDisplayableThermalPrinters', {
+                                            defaultValue: 'No usable thermal printers are currently being shown. Refresh the scan or reveal all detected printers if your device uses an uncommon model name.'
+                                        })}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        <DialogFooter className="gap-2 sm:justify-between">
+                            {features.thermal_printing ? (
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    onClick={handleDisableThermalPrinting}
+                                    disabled={isThermalActionPending}
+                                >
+                                    {t('settings.printing.disableThermalPrinting', { defaultValue: 'Disable Thermal Printing' })}
+                                </Button>
+                            ) : <div />}
+                            <Button
+                                type="button"
+                                variant="default"
+                                onClick={() => setIsThermalDialogOpen(false)}
+                            >
+                                {t('common.close', { defaultValue: 'Close' })}
+                            </Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
 
                 {/* Currency Confirmation Modal */}
                 <Dialog open={isCurrencyModalOpen} onOpenChange={setIsCurrencyModalOpen}>

@@ -7,6 +7,7 @@ pub fn run() {
     .plugin(tauri_plugin_http::init())
     .plugin(tauri_plugin_updater::Builder::new().build())
     .plugin(tauri_plugin_process::init())
+    .plugin(tauri_plugin_thermal_printer::init())
     .setup(|app| {
       use tauri::Manager;
       let window = app.get_webview_window("main").unwrap();
