@@ -228,8 +228,16 @@ export async function pullChanges(workspaceId: string, lastSyncTime: string | nu
                     // So it is SAFE to overwrite Entity table because `offline_mutations` is the intent source of truth for "My Pending Changes".
 
                     if (!localItem || localItem.version < (remoteData as any).version) {
+                        const localThermalPrinting = table === 'workspaces'
+                            ? (localItem as any)?.thermal_printing
+                            : undefined
+                        const workspaceOverrides = table === 'workspaces' && typeof localThermalPrinting === 'boolean'
+                            ? { thermal_printing: localThermalPrinting }
+                            : {}
+
                         await dbTable.put({
                             ...remoteData,
+                            ...workspaceOverrides,
                             syncStatus: 'synced',
                             lastSyncedAt: new Date().toISOString()
                         })

@@ -22,7 +22,6 @@ import {
     DialogClose,
     useToast,
     Label,
-    Switch
 } from '@/ui/components'
 import {
     Search,
@@ -34,7 +33,7 @@ import {
     Loader2,
     Barcode,
     Camera,
-    Settings as SettingsIcon,
+    ScanBarcode,
     Trash2,
     TrendingUp,
     Menu,
@@ -55,6 +54,7 @@ import { isDesktop } from '@/lib/platform'
 import { platformService } from '@/services/platformService'
 import { ExchangeRateList } from '@/ui/components' // Import ExchangeRateList
 import { CheckoutSuccessModal, HeldSalesModal, type HeldSale, StorageSelector, CrossStorageWarningModal } from '@/ui/components'
+import { BarcodeScannerModal } from '@/ui/components/pos/BarcodeScannerModal'
 import { mapSaleToUniversal } from '@/lib/mappings'
 import { LoanRegistrationModal, type LoanRegistrationData } from '@/ui/components/pos/LoanRegistrationModal'
 import { getRetriableActionToast, isRetriableWebRequestError, normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
@@ -100,19 +100,52 @@ export function POS() {
     const [skuInput, setSkuInput] = useState('')
     const [isLoading, setIsLoading] = useState(false)
     const [isBarcodeModalOpen, setIsBarcodeModalOpen] = useState(false)
-    const [isScannerAutoEnabled, setIsScannerAutoEnabled] = useState(() => {
+    const [isCameraScannerAutoEnabled, setIsCameraScannerAutoEnabled] = useState(() => {
         return localStorage.getItem('scanner_auto_enabled') === 'true'
+    })
+    const [isDeviceScannerAutoEnabled, setIsDeviceScannerAutoEnabled] = useState(() => {
+        return localStorage.getItem('scanner_device_auto_enabled') === 'true'
     })
     const [selectedCameraId, setSelectedCameraId] = useState(localStorage.getItem('scanner_camera_id') || '')
     const [cameras, setCameras] = useState<MediaDeviceInfo[]>([])
     const skuInputRef = useRef<HTMLInputElement>(null)
     const lastScannedCode = useRef<string | null>(null)
     const lastScannedTime = useRef<number>(0)
+    const deviceScanBuffer = useRef('')
+    const deviceScanTimeout = useRef<number | null>(null)
+    const deviceScanLastTime = useRef(0)
+    const deviceScanFastCount = useRef(0)
+    const deviceScanActive = useRef(false)
     const [scanDelay, setScanDelay] = useState(() => {
         return Number(localStorage.getItem('scanner_scan_delay')) || 2500
     })
+    const isScannerAutoActive = isCameraScannerAutoEnabled || isDeviceScannerAutoEnabled
+
+    const updateCameraScannerAutoEnabled = (val: boolean) => {
+        setIsCameraScannerAutoEnabled(val)
+        localStorage.setItem('scanner_auto_enabled', String(val))
+        if (val) {
+            setIsDeviceScannerAutoEnabled(false)
+            localStorage.setItem('scanner_device_auto_enabled', 'false')
+        }
+    }
+
+    const updateDeviceScannerAutoEnabled = (val: boolean) => {
+        setIsDeviceScannerAutoEnabled(val)
+        localStorage.setItem('scanner_device_auto_enabled', String(val))
+        if (val) {
+            setIsCameraScannerAutoEnabled(false)
+            localStorage.setItem('scanner_auto_enabled', 'false')
+        }
+    }
 
     const [isLayoutMobile, setIsLayoutMobile] = useState(window.innerWidth < 1024)
+    useEffect(() => {
+        if (isCameraScannerAutoEnabled && isDeviceScannerAutoEnabled) {
+            setIsDeviceScannerAutoEnabled(false)
+            localStorage.setItem('scanner_device_auto_enabled', 'false')
+        }
+    }, [])
     useEffect(() => {
         if (selectedStorageId) {
             localStorage.setItem('pos_selected_storage', selectedStorageId)
@@ -776,8 +809,9 @@ export function POS() {
         }
     }
 
-    const handleBarcodeDetected = useCallback((barcodes: any[]) => {
-        if (!isScannerAutoEnabled || barcodes.length === 0) return
+    const handleBarcodeDetected = useCallback((barcodes: any[], source: 'camera' | 'device') => {
+        const isEnabled = source === 'camera' ? isCameraScannerAutoEnabled : isDeviceScannerAutoEnabled
+        if (!isEnabled || barcodes.length === 0) return
         const text = barcodes[0].rawValue
 
         // Simple debounce/cooldown logic
@@ -816,7 +850,83 @@ export function POS() {
                 duration: 2000,
             })
         }
-    }, [isScannerAutoEnabled, scanDelay, products, addToCart, t, toast, selectedStorageId, storages])
+    }, [isCameraScannerAutoEnabled, isDeviceScannerAutoEnabled, scanDelay, products, addToCart, t, toast, selectedStorageId, storages])
+
+    useEffect(() => {
+        if (!isDeviceScannerAutoEnabled || isBarcodeModalOpen) {
+            deviceScanBuffer.current = ''
+            deviceScanActive.current = false
+            deviceScanFastCount.current = 0
+            if (deviceScanTimeout.current) {
+                window.clearTimeout(deviceScanTimeout.current)
+            }
+            return
+        }
+
+        const commitDeviceScan = () => {
+            if (!deviceScanBuffer.current) return
+            const payload = deviceScanBuffer.current
+            deviceScanBuffer.current = ''
+            deviceScanActive.current = false
+            deviceScanFastCount.current = 0
+            handleBarcodeDetected([{ rawValue: payload }], 'device')
+        }
+
+        const onKeyDown = (event: KeyboardEvent) => {
+            if (!isDeviceScannerAutoEnabled) return
+            if (event.ctrlKey || event.metaKey || event.altKey) return
+            if (event.key === 'Shift' || event.key === 'CapsLock' || event.key === 'Escape') return
+
+            if (event.key === 'Enter' || event.key === 'Tab') {
+                if (deviceScanBuffer.current) {
+                    event.preventDefault()
+                    event.stopPropagation()
+                    commitDeviceScan()
+                }
+                return
+            }
+
+            if (event.key.length !== 1) return
+
+            const now = Date.now()
+            const delta = now - deviceScanLastTime.current
+            deviceScanLastTime.current = now
+
+            if (delta > 0 && delta < 45) {
+                deviceScanFastCount.current += 1
+            } else {
+                deviceScanFastCount.current = 0
+                deviceScanBuffer.current = ''
+                deviceScanActive.current = false
+            }
+
+            deviceScanBuffer.current += event.key
+
+            if (deviceScanFastCount.current >= 2) {
+                deviceScanActive.current = true
+            }
+
+            if (deviceScanActive.current) {
+                event.preventDefault()
+                event.stopPropagation()
+                if (deviceScanTimeout.current) {
+                    window.clearTimeout(deviceScanTimeout.current)
+                }
+                deviceScanTimeout.current = window.setTimeout(() => {
+                    commitDeviceScan()
+                }, 120)
+            }
+        }
+
+        window.addEventListener('keydown', onKeyDown, true)
+        return () => {
+            window.removeEventListener('keydown', onKeyDown, true)
+            if (deviceScanTimeout.current) {
+                window.clearTimeout(deviceScanTimeout.current)
+                deviceScanTimeout.current = null
+            }
+        }
+    }, [isDeviceScannerAutoEnabled, isBarcodeModalOpen, handleBarcodeDetected])
 
     const handleHoldSale = () => {
         if (cart.length === 0) return
@@ -1400,6 +1510,7 @@ export function POS() {
                                 setSearch={setSearch}
                                 setIsSkuModalOpen={setIsSkuModalOpen}
                                 setIsBarcodeModalOpen={setIsBarcodeModalOpen}
+                                isDeviceScannerAutoEnabled={isDeviceScannerAutoEnabled}
                                 filteredProducts={filteredProducts}
                                 cart={cart}
                                 addToCart={addToCart}
@@ -1481,8 +1592,12 @@ export function POS() {
                                     title="Barcode Scanner (Hotkey: K)"
                                     tabIndex={isElectron ? -1 : 0}
                                 >
-                                    <Camera className="w-5 h-5" />
-                                    <div className={`w-2.5 h-2.5 rounded-full ${isScannerAutoEnabled ? 'bg-emerald-500' : 'bg-red-500'} border border-background shadow-sm`} />
+                                    {isDeviceScannerAutoEnabled ? (
+                                        <ScanBarcode className="w-5 h-5" />
+                                    ) : (
+                                        <Camera className="w-5 h-5" />
+                                    )}
+                                    <div className={`w-2.5 h-2.5 rounded-full ${isScannerAutoActive ? 'bg-emerald-500' : 'bg-red-500'} border border-background shadow-sm`} />
                                 </Button>
                             </div>
                         </div>
@@ -2025,126 +2140,47 @@ export function POS() {
             }
 
             {/* --- Shared Modals (Available in both Mobile & Desktop) --- */}
+            {isCameraScannerAutoEnabled && !isBarcodeModalOpen && (
+                <div className="fixed left-2 top-2 h-2 w-2 opacity-0 pointer-events-none">
+                    <BarcodeScanner
+                        onCapture={(barcodes) => handleBarcodeDetected(barcodes, 'camera')}
+                        trackConstraints={{
+                            deviceId: selectedCameraId || undefined,
+                            facingMode: selectedCameraId ? undefined : 'environment'
+                        }}
+                        options={{
+                            formats: [
+                                'code_128',
+                                'code_39',
+                                'code_93',
+                                'codabar',
+                                'ean_13',
+                                'ean_8',
+                                'itf',
+                                'upc_a',
+                                'upc_e',
+                                'qr_code'
+                            ],
+                            delay: 1000
+                        }}
+                    />
+                </div>
+            )}
             {/* Barcode Scanner Modal */}
-            <Dialog open={isBarcodeModalOpen} onOpenChange={setIsBarcodeModalOpen}>
-                <DialogContent className="sm:max-w-2xl w-[95vw] sm:w-full max-h-[90vh] overflow-y-auto">
-                    <DialogHeader>
-                        <DialogTitle className="flex items-center gap-2">
-                            <Camera className="w-5 h-5 text-primary" />
-                            {t('pos.barcodeScanner')}
-                        </DialogTitle>
-                    </DialogHeader>
-
-                    <div className="space-y-6 py-4">
-                        {/* Scanner View */}
-                        <div className="relative aspect-video bg-muted rounded-xl overflow-hidden border border-border shadow-inner group">
-                            {isScannerAutoEnabled ? (
-                                <BarcodeScanner
-                                    onCapture={handleBarcodeDetected}
-                                    trackConstraints={{
-                                        deviceId: selectedCameraId || undefined,
-                                        facingMode: selectedCameraId ? undefined : 'environment'
-                                    }}
-                                    options={{
-                                        formats: [
-                                            'code_128',
-                                            'code_39',
-                                            'code_93',
-                                            'codabar',
-                                            'ean_13',
-                                            'ean_8',
-                                            'itf',
-                                            'upc_a',
-                                            'upc_e',
-                                            'qr_code'
-                                        ],
-                                        delay: 1000
-                                    }}
-                                />
-                            ) : (
-                                <div className="absolute inset-0 flex flex-col items-center justify-center text-muted-foreground bg-muted/50">
-                                    <Camera className="w-12 h-12 opacity-20 mb-2" />
-                                    <p className="font-medium">{t('pos.scannerDisabled')}</p>
-                                </div>
-                            )}
-
-                            {/* Scanner Overlay */}
-                            {isScannerAutoEnabled && (
-                                <div className="absolute inset-x-8 top-1/2 -translate-y-1/2 h-0.5 bg-primary/50 shadow-[0_0_15px_rgba(var(--primary),0.5)] animate-pulse" />
-                            )}
-                        </div>
-
-                        {/* Controls */}
-                        <div className="grid gap-6 md:grid-cols-2">
-                            <div className="space-y-4 p-4 rounded-xl bg-muted/30 border border-border">
-                                <div className="flex items-center justify-between">
-                                    <div className="space-y-0.5">
-                                        <Label className="text-base">{t('pos.autoScanner')}</Label>
-                                        <p className="text-xs text-muted-foreground">{t('pos.autoScannerDesc')}</p>
-                                    </div>
-                                    <Switch
-                                        checked={isScannerAutoEnabled}
-                                        onCheckedChange={(val) => {
-                                            setIsScannerAutoEnabled(val)
-                                            localStorage.setItem('scanner_auto_enabled', String(val))
-                                        }}
-                                    />
-                                </div>
-                            </div>
-
-                            <div className="space-y-4 p-4 rounded-xl bg-muted/30 border border-border">
-                                <div className="space-y-2">
-                                    <Label className="text-sm font-medium">{t('pos.scanDelay')} (ms)</Label>
-                                    <Input
-                                        type="number"
-                                        value={scanDelay}
-                                        onChange={(e) => {
-                                            const val = Number(e.target.value)
-                                            setScanDelay(val)
-                                            localStorage.setItem('scanner_scan_delay', String(val))
-                                        }}
-                                        min={0}
-                                        max={10000}
-                                        step={100}
-                                        className="h-9"
-                                    />
-                                    <p className="text-[10px] text-muted-foreground">{t('pos.scanDelayDesc')}</p>
-                                </div>
-                            </div>
-
-                            <div className="space-y-2 col-span-full">
-                                <Label className="text-sm font-medium flex items-center gap-2">
-                                    <SettingsIcon className="w-4 h-4" />
-                                    {t('pos.selectCamera')}
-                                </Label>
-                                <select
-                                    className="w-full h-10 px-3 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
-                                    value={selectedCameraId}
-                                    onChange={(e) => {
-                                        setSelectedCameraId(e.target.value)
-                                        localStorage.setItem('scanner_camera_id', e.target.value)
-                                    }}
-                                >
-                                    {cameras.map((camera) => (
-                                        <option key={camera.deviceId} value={camera.deviceId}>
-                                            {camera.label || `Camera ${camera.deviceId.slice(0, 5)}`}
-                                        </option>
-                                    ))}
-                                    {cameras.length === 0 && (
-                                        <option value="">{t('pos.cameraNotFound')}</option>
-                                    )}
-                                </select>
-                            </div>
-                        </div>
-                    </div>
-
-                    <DialogFooter>
-                        <Button variant="outline" onClick={() => setIsBarcodeModalOpen(false)}>
-                            {t('common.cancel')}
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
+            <BarcodeScannerModal
+                open={isBarcodeModalOpen}
+                onOpenChange={setIsBarcodeModalOpen}
+                isCameraScannerAutoEnabled={isCameraScannerAutoEnabled}
+                setIsCameraScannerAutoEnabled={updateCameraScannerAutoEnabled}
+                isDeviceScannerAutoEnabled={isDeviceScannerAutoEnabled}
+                setIsDeviceScannerAutoEnabled={updateDeviceScannerAutoEnabled}
+                handleBarcodeDetected={handleBarcodeDetected}
+                selectedCameraId={selectedCameraId}
+                setSelectedCameraId={setSelectedCameraId}
+                scanDelay={scanDelay}
+                setScanDelay={setScanDelay}
+                cameras={cameras}
+            />
 
             {/* SKU Modal */}
             <Dialog open={isSkuModalOpen} onOpenChange={setIsSkuModalOpen}>
@@ -2581,6 +2617,7 @@ interface MobileGridProps {
     setSearch: (s: string) => void
     setIsSkuModalOpen: (o: boolean) => void
     setIsBarcodeModalOpen: (o: boolean) => void
+    isDeviceScannerAutoEnabled: boolean
     filteredProducts: Product[]
     cart: CartItem[]
     addToCart: (p: Product) => void
@@ -2592,7 +2629,7 @@ interface MobileGridProps {
     setSelectedCategory: (id: string) => void
 }
 
-function MobileGrid({ t, search, setSearch, setIsSkuModalOpen, setIsBarcodeModalOpen, filteredProducts, cart, addToCart, updateQuantity, features, getDisplayImageUrl, categories, selectedCategory, setSelectedCategory }: MobileGridProps) {
+function MobileGrid({ t, search, setSearch, setIsSkuModalOpen, setIsBarcodeModalOpen, isDeviceScannerAutoEnabled, filteredProducts, cart, addToCart, updateQuantity, features, getDisplayImageUrl, categories, selectedCategory, setSelectedCategory }: MobileGridProps) {
     return (
         <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-right-4 duration-300">
             {/* Search & Tool Bar */}
@@ -2621,7 +2658,11 @@ function MobileGrid({ t, search, setSearch, setIsSkuModalOpen, setIsBarcodeModal
                     className="h-12 w-12 rounded-2xl border-none bg-muted/30"
                     onClick={() => setIsBarcodeModalOpen(true)}
                 >
-                    <Camera className="w-5 h-5 text-muted-foreground" />
+                    {isDeviceScannerAutoEnabled ? (
+                        <ScanBarcode className="w-5 h-5 text-muted-foreground" />
+                    ) : (
+                        <Camera className="w-5 h-5 text-muted-foreground" />
+                    )}
                 </Button>
             </div>
 

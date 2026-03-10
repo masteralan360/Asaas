@@ -307,6 +307,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             }
 
             const featureData = data as any
+            const localThermalPrinting = cachedSnapshot?.features?.thermal_printing
+                ?? (await db.workspaces.get(workspaceId))?.thermal_printing
+                ?? featuresRef.current.thermal_printing
+                ?? false
             const fetchedFeatures = mergeWorkspaceFeatures({
                 allow_pos: featureData.allow_pos ?? true,
                 allow_customers: featureData.allow_customers ?? true,
@@ -327,7 +331,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                 receipt_template: featureData.receipt_template ?? 'primary',
                 a4_template: featureData.a4_template ?? 'primary',
                 print_quality: featureData.print_quality ?? 'low',
-                thermal_printing: featureData.thermal_printing ?? false,
+                thermal_printing: localThermalPrinting,
                 subscription_expires_at: featureData.subscription_expires_at ?? null
             })
             const nextWorkspaceName = featureData.workspace_name || user?.workspaceName || 'My Workspace'
@@ -419,7 +423,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                             receipt_template: data.receipt_template ?? currentFeatures.receipt_template,
                             a4_template: data.a4_template ?? currentFeatures.a4_template,
                             print_quality: data.print_quality ?? currentFeatures.print_quality,
-                            thermal_printing: data.thermal_printing ?? currentFeatures.thermal_printing,
+                            thermal_printing: currentFeatures.thermal_printing,
                             subscription_expires_at: data.subscription_expires_at ?? currentFeatures.subscription_expires_at
                         })
                         const nextWorkspaceName = data.name || workspaceNameRef.current || user.workspaceName || 'My Workspace'
@@ -499,12 +503,19 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         })
 
         const existing = await db.workspaces.get(workspaceId)
+        const supabaseUpdate: Record<string, unknown> = { ...featureSettings }
+        delete supabaseUpdate.thermal_printing
+        if (name !== undefined) {
+            supabaseUpdate.name = name
+        }
+        const shouldSync = Object.keys(supabaseUpdate).length > 0
+
         const localUpdateData = {
             ...featureSettings,
             ...(name !== undefined && { name }),
             is_configured: newFeatures.is_configured,
             updatedAt: now,
-            syncStatus: 'pending' as const
+            ...(shouldSync ? { syncStatus: 'pending' as const } : {})
         }
 
         if (existing) {
@@ -536,8 +547,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                 print_quality: newFeatures.print_quality,
                 thermal_printing: newFeatures.thermal_printing,
                 subscription_expires_at: newFeatures.subscription_expires_at,
-                syncStatus: 'pending',
-                lastSyncedAt: null,
+                syncStatus: shouldSync ? 'pending' : 'synced',
+                lastSyncedAt: shouldSync ? null : new Date().toISOString(),
                 version: 1,
                 isDeleted: false,
                 createdAt: now,
@@ -545,9 +556,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             })
         }
 
-        const supabaseUpdate: Record<string, unknown> = { ...featureSettings }
-        if (name !== undefined) {
-            supabaseUpdate.name = name
+        if (!shouldSync) {
+            return
         }
 
         if (navigator.onLine) {

@@ -23,7 +23,7 @@ import { assetManager } from '@/lib/assetManager'
 import { getMonthDisplayPreference, setMonthDisplayPreference, type MonthDisplayPreference } from '@/lib/monthDisplay'
 import { useWorkspaceContacts } from '@/local-db/hooks'
 import { getRetriableActionToast, isRetriableWebRequestError, normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
-import { isLikelyThermalPrinter, isVirtualPrinter, printService, type StoredThermalPrinter } from '@/services/printService'
+import { DEFAULT_THERMAL_ROLL_WIDTH, THERMAL_ROLL_WIDTHS, isLikelyThermalPrinter, isVirtualPrinter, printService, type StoredThermalPrinter, type ThermalRollWidth } from '@/services/printService'
 import type { PrinterInfo } from 'tauri-plugin-thermal-printer'
 
 export function Settings() {
@@ -66,6 +66,7 @@ export function Settings() {
     const [isThermalDialogOpen, setIsThermalDialogOpen] = useState(false)
     const [availableThermalPrinters, setAvailableThermalPrinters] = useState<PrinterInfo[]>([])
     const [selectedThermalPrinter, setSelectedThermalPrinter] = useState<StoredThermalPrinter | null>(null)
+    const [selectedThermalRollWidth, setSelectedThermalRollWidth] = useState<ThermalRollWidth>(DEFAULT_THERMAL_ROLL_WIDTH)
     const [isScanningThermalPrinters, setIsScanningThermalPrinters] = useState(false)
     const [isThermalActionPending, setIsThermalActionPending] = useState(false)
     const [thermalPrinterMessage, setThermalPrinterMessage] = useState<string | null>(null)
@@ -106,11 +107,19 @@ export function Settings() {
     const loadSelectedThermalPrinter = async () => {
         if (!user?.workspaceId) {
             setSelectedThermalPrinter(null)
+            setSelectedThermalRollWidth(DEFAULT_THERMAL_ROLL_WIDTH)
             return
         }
 
         const selection = await printService.getSelectedThermalPrinter(user.workspaceId)
         setSelectedThermalPrinter(selection)
+        if (selection?.roll_width_mm) {
+            setSelectedThermalRollWidth(selection.roll_width_mm)
+        } else if (selection?.paper_size === 'Mm58') {
+            setSelectedThermalRollWidth(58)
+        } else {
+            setSelectedThermalRollWidth(DEFAULT_THERMAL_ROLL_WIDTH)
+        }
     }
 
     const scanThermalPrinters = async () => {
@@ -169,7 +178,7 @@ export function Settings() {
 
         setIsThermalActionPending(true)
         try {
-            const selection = await printService.setSelectedThermalPrinter(user.workspaceId, printer)
+            const selection = await printService.setSelectedThermalPrinter(user.workspaceId, printer, selectedThermalRollWidth)
             setSelectedThermalPrinter(selection)
             await updateSettings({ thermal_printing: true })
 
@@ -182,6 +191,30 @@ export function Settings() {
         } catch (error) {
             showActionError(error, t('settings.printing.thermalEnableError', {
                 defaultValue: 'Failed to enable thermal printing.'
+            }))
+        } finally {
+            setIsThermalActionPending(false)
+        }
+    }
+
+    const handleThermalRollWidthChange = async (value: string) => {
+        const nextValue = Number(value) as ThermalRollWidth
+        setSelectedThermalRollWidth(nextValue)
+
+        if (!user?.workspaceId || !selectedThermalPrinter) return
+
+        setIsThermalActionPending(true)
+        try {
+            const selection = await printService.setSelectedThermalPrinter(user.workspaceId, {
+                name: selectedThermalPrinter.name,
+                interface_type: selectedThermalPrinter.interface_type,
+                identifier: selectedThermalPrinter.identifier,
+                status: selectedThermalPrinter.status
+            } as PrinterInfo, nextValue)
+            setSelectedThermalPrinter(selection)
+        } catch (error) {
+            showActionError(error, t('settings.printing.thermalRollWidthError', {
+                defaultValue: 'Failed to update the receipt roll width.'
             }))
         } finally {
             setIsThermalActionPending(false)
@@ -211,6 +244,8 @@ export function Settings() {
     const likelyThermalPrinters = detectedNonVirtualPrinters.filter(isLikelyThermalPrinter)
     const hiddenPrinterCount = detectedNonVirtualPrinters.length - likelyThermalPrinters.length
     const displayedThermalPrinters = showAllDetectedPrinters ? detectedNonVirtualPrinters : likelyThermalPrinters
+    const selectedRollWidthLabel = THERMAL_ROLL_WIDTHS.find((option) => option.value === selectedThermalRollWidth)?.label
+        || `${selectedThermalRollWidth} mm`
 
     useEffect(() => {
         // @ts-ignore
@@ -2039,6 +2074,11 @@ export function Settings() {
                                             <p className="break-all font-mono text-[11px] text-muted-foreground">
                                                 {selectedThermalPrinter.identifier || 'No identifier'}
                                             </p>
+                                            <p className="text-xs text-muted-foreground">
+                                                {t('settings.printing.thermalRollWidthValue', {
+                                                    defaultValue: `Roll width: ${selectedRollWidthLabel}`
+                                                })}
+                                            </p>
                                         </>
                                     ) : (
                                         <p className="text-xs text-muted-foreground">
@@ -2047,6 +2087,27 @@ export function Settings() {
                                             })}
                                         </p>
                                     )}
+                                    <div className="pt-2">
+                                        <Label className="text-[11px] uppercase text-muted-foreground">
+                                            {t('settings.printing.thermalRollWidthLabel', { defaultValue: 'Receipt roll width' })}
+                                        </Label>
+                                        <Select
+                                            value={String(selectedThermalRollWidth)}
+                                            onValueChange={handleThermalRollWidthChange}
+                                            disabled={isThermalActionPending}
+                                        >
+                                            <SelectTrigger className="mt-2 h-9 max-w-[220px]">
+                                                <SelectValue placeholder={t('settings.printing.thermalRollWidthPlaceholder', { defaultValue: 'Choose roll width' })} />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {THERMAL_ROLL_WIDTHS.map((option) => (
+                                                    <SelectItem key={option.value} value={String(option.value)}>
+                                                        {option.label}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
                                 </div>
                                 <Button
                                     type="button"

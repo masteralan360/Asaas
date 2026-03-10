@@ -14,12 +14,24 @@ import {
     type PrintSections
 } from 'tauri-plugin-thermal-printer'
 
+export type ThermalRollWidth = 58 | 76 | 80 | 112
+
+export const THERMAL_ROLL_WIDTHS: { value: ThermalRollWidth; label: string }[] = [
+    { value: 58, label: '57-58 mm' },
+    { value: 80, label: '80 mm (Most Common)' },
+    { value: 76, label: '76 mm' },
+    { value: 112, label: '112 mm' }
+]
+
+export const DEFAULT_THERMAL_ROLL_WIDTH: ThermalRollWidth = 80
+
 export interface StoredThermalPrinter {
     name: string
     interface_type: string
     identifier: string
     status?: string
     paper_size: PaperSize
+    roll_width_mm?: ThermalRollWidth
 }
 
 interface ThermalReceiptPrintRequest {
@@ -103,6 +115,14 @@ function getPrintLanguage(features: WorkspaceFeatures) {
     return features.print_lang && features.print_lang !== 'auto'
         ? features.print_lang
         : i18n.language
+}
+
+function rollWidthToPaperSize(rollWidth?: ThermalRollWidth): PaperSize {
+    return rollWidth === 58 ? 'Mm58' : 'Mm80'
+}
+
+function inferRollWidthFromPaperSize(paperSize?: PaperSize): ThermalRollWidth {
+    return paperSize === 'Mm58' ? 58 : DEFAULT_THERMAL_ROLL_WIDTH
 }
 
 function getTextAlign(features: WorkspaceFeatures): 'left' | 'right' {
@@ -207,7 +227,8 @@ async function getStoredSelectedThermalPrinter(workspaceId: string): Promise<Sto
         if (!parsed?.name) return null
         return {
             ...parsed,
-            paper_size: parsed.paper_size || DEFAULT_PAPER_SIZE
+            paper_size: parsed.paper_size || DEFAULT_PAPER_SIZE,
+            roll_width_mm: parsed.roll_width_mm ?? inferRollWidthFromPaperSize(parsed.paper_size)
         }
     } catch (error) {
         console.error('[PrintService] Failed to parse stored thermal printer:', error)
@@ -244,13 +265,19 @@ export const printService = {
         return getStoredSelectedThermalPrinter(workspaceId)
     },
 
-    async setSelectedThermalPrinter(workspaceId: string, printer: PrinterInfo, paperSize: PaperSize = DEFAULT_PAPER_SIZE): Promise<StoredThermalPrinter> {
+    async setSelectedThermalPrinter(
+        workspaceId: string,
+        printer: PrinterInfo,
+        rollWidth: ThermalRollWidth = DEFAULT_THERMAL_ROLL_WIDTH
+    ): Promise<StoredThermalPrinter> {
+        const paperSize = rollWidthToPaperSize(rollWidth)
         const selection: StoredThermalPrinter = {
             name: printer.name,
             interface_type: printer.interface_type,
             identifier: printer.identifier,
             status: printer.status,
-            paper_size: paperSize
+            paper_size: paperSize,
+            roll_width_mm: rollWidth
         }
 
         await setAppSetting(getThermalPrinterSettingKey(workspaceId), JSON.stringify(selection))
