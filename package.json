@@ -96,6 +96,7 @@
     "tailwindcss-animate": "^1.0.7",
     "tauri-plugin-thermal-printer": "^1.0.1",
     "uuid": "^10.0.0",
+    "web-haptics": "^0.0.6",
     "wouter": "^3.3.5",
     "xlsx": "^0.18.5"
   },

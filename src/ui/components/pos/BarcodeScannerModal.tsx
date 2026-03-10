@@ -60,6 +60,13 @@ export function BarcodeScannerModal({
     const lastKeyTimeRef = useRef(0)
     const fastKeyCountRef = useRef(0)
     const scannerActiveRef = useRef(false)
+    const [hidDevices, setHidDevices] = useState<Array<{ id: string; label: string }>>([])
+    const [selectedHidDeviceId, setSelectedHidDeviceId] = useState(() => {
+        if (typeof localStorage === 'undefined') return ''
+        return localStorage.getItem('pos_barcode_hid_device_id') || ''
+    })
+    const [isHidSupported, setIsHidSupported] = useState(true)
+    const [isHidLoading, setIsHidLoading] = useState(false)
 
     useEffect(() => {
         if (typeof localStorage === 'undefined') return
@@ -70,6 +77,91 @@ export function BarcodeScannerModal({
         if (!open || scannerMode !== 'device') return
         deviceInputRef.current?.focus()
     }, [open, scannerMode])
+
+    const formatHidLabel = (device: any) => {
+        const vendorId = typeof device?.vendorId === 'number'
+            ? device.vendorId.toString(16).padStart(4, '0')
+            : '????'
+        const productId = typeof device?.productId === 'number'
+            ? device.productId.toString(16).padStart(4, '0')
+            : '????'
+        const name = device?.productName || t('pos.hidDeviceFallback', { defaultValue: 'HID Device' })
+        return `${name} (${vendorId}:${productId})`
+    }
+
+    const buildHidId = (device: any) => {
+        const vendorId = typeof device?.vendorId === 'number' ? device.vendorId : 0
+        const productId = typeof device?.productId === 'number' ? device.productId : 0
+        const serial = device?.serialNumber ? String(device.serialNumber) : ''
+        return `${vendorId}:${productId}:${serial}`
+    }
+
+    const syncHidSelection = (devices: Array<{ id: string; label: string }>) => {
+        if (devices.length === 0) {
+            setSelectedHidDeviceId('')
+            return
+        }
+        const exists = devices.some((device) => device.id === selectedHidDeviceId)
+        if (!exists) {
+            setSelectedHidDeviceId(devices[0].id)
+        }
+    }
+
+    const loadHidDevices = async () => {
+        const hid = (navigator as any)?.hid
+        if (!hid) {
+            setIsHidSupported(false)
+            setHidDevices([])
+            return
+        }
+
+        setIsHidSupported(true)
+        setIsHidLoading(true)
+        try {
+            const devices = await hid.getDevices()
+            const mapped = devices.map((device: any) => ({
+                id: buildHidId(device),
+                label: formatHidLabel(device)
+            }))
+            setHidDevices(mapped)
+            syncHidSelection(mapped)
+        } catch (error) {
+            console.error('[BarcodeScannerModal] Failed to load HID devices:', error)
+            setHidDevices([])
+        } finally {
+            setIsHidLoading(false)
+        }
+    }
+
+    const requestHidDevices = async () => {
+        const hid = (navigator as any)?.hid
+        if (!hid) {
+            setIsHidSupported(false)
+            return
+        }
+
+        setIsHidSupported(true)
+        setIsHidLoading(true)
+        try {
+            await hid.requestDevice({ filters: [] })
+        } catch (error) {
+            console.warn('[BarcodeScannerModal] HID request cancelled or failed:', error)
+        } finally {
+            setIsHidLoading(false)
+        }
+
+        await loadHidDevices()
+    }
+
+    useEffect(() => {
+        if (!open || scannerMode !== 'device') return
+        void loadHidDevices()
+    }, [open, scannerMode])
+
+    useEffect(() => {
+        if (typeof localStorage === 'undefined') return
+        localStorage.setItem('pos_barcode_hid_device_id', selectedHidDeviceId)
+    }, [selectedHidDeviceId])
 
     useEffect(() => {
         return () => {
@@ -255,9 +347,50 @@ export function BarcodeScannerModal({
                         </div>
                     ) : (
                         <div className="space-y-6">
-                        <div className="rounded-xl border border-border bg-muted/30 p-4">
-                            <p className="text-sm font-semibold">{t('pos.barcodeScanner') || 'Barcode Scanner'}</p>
-                            <p className="text-xs text-muted-foreground">
+                            <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-end">
+                                <div className="space-y-2">
+                                    <Label className="text-sm font-medium">{t('pos.scannerDevice') || 'Scanner Device'}</Label>
+                                    <Select
+                                        value={selectedHidDeviceId}
+                                        onValueChange={setSelectedHidDeviceId}
+                                        disabled={!isHidSupported || hidDevices.length === 0}
+                                    >
+                                        <SelectTrigger className="h-9">
+                                            <SelectValue placeholder={t('pos.scannerDevicePlaceholder') || 'Select a scanner'} />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {hidDevices.map((device) => (
+                                                <SelectItem key={device.id} value={device.id}>
+                                                    {device.label}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                    {!isHidSupported && (
+                                        <p className="text-[11px] text-muted-foreground">
+                                            {t('pos.hidNotSupported', { defaultValue: 'HID is not supported in this browser.' })}
+                                        </p>
+                                    )}
+                                    {isHidSupported && hidDevices.length === 0 && (
+                                        <p className="text-[11px] text-muted-foreground">
+                                            {t('pos.noScannerDevices', { defaultValue: 'No scanner devices detected.' })}
+                                        </p>
+                                    )}
+                                </div>
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    className="h-9"
+                                    onClick={requestHidDevices}
+                                    disabled={!isHidSupported || isHidLoading}
+                                >
+                                    {t('pos.refreshDevices', { defaultValue: 'Refresh' })}
+                                </Button>
+                            </div>
+
+                            <div className="rounded-xl border border-border bg-muted/30 p-4">
+                                <p className="text-sm font-semibold">{t('pos.barcodeScanner') || 'Barcode Scanner'}</p>
+                                <p className="text-xs text-muted-foreground">
                                 {t('pos.barcodeScannerDeviceDesc', {
                                     defaultValue: 'Use a USB/Bluetooth barcode scanner. Keep the cursor in the input below and scan a code.'
                                 })}
