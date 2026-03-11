@@ -1389,6 +1389,19 @@
         "logoNote": "Images are stored locally on this device",
         "continue": "Continue to Dashboard",
         "note": "Products and Sales History are always enabled. You can modify these settings at any time from the Settings page.",
+        "location": {
+            "title": "Share your location",
+            "desc": "Save your workspace coordinates for maps and future services.",
+            "example": "Example: 40.74032035559755, -73.97990562328214",
+            "cta": "Share Location",
+            "savedCta": "Location saved",
+            "saved": "Location saved to workspace.",
+            "unsupported": "Geolocation is not supported on this device.",
+            "permissionDenied": "Location permission was denied.",
+            "unavailable": "Location information is unavailable.",
+            "timeout": "Location request timed out. Please try again.",
+            "failed": "Failed to capture location."
+        },
         "features": {
             "pos": "Point of Sale (POS)",
             "posDesc": "Enable quick sales and checkout functionality",
@@ -1675,6 +1688,9 @@
         "showDeleted": "Show Deleted",
         "noWorkspaces": "No workspaces found.",
         "noActiveWorkspaces": "No active workspaces found.",
-        "manageFeatures": "Manage feature access for each workspace."
+        "manageFeatures": "Manage feature access for each workspace.",
+        "geolocation": "Workspace Geolocation",
+        "workspaceGeolocation": "Workspace Geolocation",
+        "manageGeolocation": "Manage and track workspace locations."
     }
 }

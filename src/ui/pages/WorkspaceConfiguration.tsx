@@ -22,7 +22,8 @@ import {
     Check,
     ArrowRight,
     ImagePlus,
-    Package
+    Package,
+    MapPin
 } from 'lucide-react'
 import { isTauri as isTauriCheck } from '@/lib/platform'
 import { platformService } from '@/services/platformService'
@@ -38,13 +39,15 @@ interface FeatureToggle {
 
 export function WorkspaceConfiguration() {
     const { user } = useAuth()
-    const { refreshFeatures, features: currentFeatures, isLoading: isWorkspaceLoading } = useWorkspace()
+    const { refreshFeatures, features: currentFeatures, isLoading: isWorkspaceLoading, updateSettings } = useWorkspace()
     const [, navigate] = useLocation()
     const { t } = useTranslation()
     const { toast } = useToast()
 
     const [isLoading, setIsLoading] = useState(false)
+    const [isLocationSaving, setIsLocationSaving] = useState(false)
     const [logoUrl, setLogoUrl] = useState(currentFeatures.logo_url || '')
+    const [coordination, setCoordination] = useState(currentFeatures.coordination || '')
     const isTauri = isTauriCheck()
     const workspaceId = user?.workspaceId || ''
 
@@ -53,6 +56,10 @@ export function WorkspaceConfiguration() {
             navigate('/')
         }
     }, [currentFeatures.is_configured, isWorkspaceLoading, navigate])
+
+    useEffect(() => {
+        setCoordination(currentFeatures.coordination || '')
+    }, [currentFeatures.coordination])
 
     const [features, setFeatures] = useState({
         allow_pos: currentFeatures.allow_pos,
@@ -110,6 +117,69 @@ export function WorkspaceConfiguration() {
         if (!url) return '';
         if (url.startsWith('http')) return url;
         return platformService.convertFileSrc(url);
+    }
+
+    const formatCoordination = (latitude: number, longitude: number) => {
+        const lat = Number.isFinite(latitude) ? latitude.toFixed(14) : String(latitude)
+        const lon = Number.isFinite(longitude) ? longitude.toFixed(14) : String(longitude)
+        return `${lat}, ${lon}`
+    }
+
+    const getLocationErrorMessage = (error: GeolocationPositionError) => {
+        if (error.code === error.PERMISSION_DENIED) {
+            return t('workspaceConfig.location.permissionDenied') || 'Location permission was denied.'
+        }
+        if (error.code === error.POSITION_UNAVAILABLE) {
+            return t('workspaceConfig.location.unavailable') || 'Location information is unavailable.'
+        }
+        if (error.code === error.TIMEOUT) {
+            return t('workspaceConfig.location.timeout') || 'Location request timed out. Please try again.'
+        }
+        return t('workspaceConfig.location.failed') || 'Failed to capture location.'
+    }
+
+    const handleShareLocation = async () => {
+        if (coordination || isLocationSaving) return
+
+        if (typeof navigator === 'undefined' || !navigator.geolocation) {
+            toast({
+                title: t('common.error') || 'Error',
+                description: t('workspaceConfig.location.unsupported') || 'Geolocation is not supported on this device.',
+                variant: 'destructive'
+            })
+            return
+        }
+
+        setIsLocationSaving(true)
+        try {
+            const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+                navigator.geolocation.getCurrentPosition(resolve, reject, {
+                    enableHighAccuracy: true,
+                    timeout: 15000,
+                    maximumAge: 0
+                })
+            })
+
+            const formatted = formatCoordination(position.coords.latitude, position.coords.longitude)
+            setCoordination(formatted)
+            await updateSettings({ coordination: formatted })
+
+            toast({
+                title: t('common.success') || 'Success',
+                description: t('workspaceConfig.location.saved') || 'Location saved to workspace.'
+            })
+        } catch (err: any) {
+            const message = err?.code
+                ? getLocationErrorMessage(err)
+                : (err?.message || (t('workspaceConfig.location.failed') || 'Failed to capture location.'))
+            toast({
+                title: t('common.error') || 'Error',
+                description: message,
+                variant: 'destructive'
+            })
+        } finally {
+            setIsLocationSaving(false)
+        }
     }
 
     const handleSave = async () => {
@@ -209,6 +279,47 @@ export function WorkspaceConfiguration() {
                             </div>
                         </div>
 
+
+                        {/* Workspace Location */}
+                        <div className="bg-muted/30 rounded-lg p-6 space-y-4">
+                            <div className="flex items-start gap-3">
+                                <div className="mt-1 w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                                    <MapPin className="w-5 h-5 text-primary" />
+                                </div>
+                                <div className="flex-1">
+                                    <p className="font-medium">{t('workspaceConfig.location.title') || 'Share your location'}</p>
+                                    <p className="text-sm text-muted-foreground">
+                                        {t('workspaceConfig.location.desc') || 'Save your workspace coordinates for maps and future services.'}
+                                    </p>
+                                </div>
+                            </div>
+
+                            {coordination ? (
+                                <div className="rounded-lg border border-border bg-background px-3 py-2 text-sm font-mono text-foreground">
+                                    {coordination}
+                                </div>
+                            ) : (
+                                <p className="text-xs text-muted-foreground">
+                                    {t('workspaceConfig.location.example') || 'Example: 40.74032035559755, -73.97990562328214'}
+                                </p>
+                            )}
+
+                            <Button
+                                variant="outline"
+                                className="w-full h-10 gap-2"
+                                onClick={handleShareLocation}
+                                disabled={isLocationSaving || Boolean(coordination)}
+                            >
+                                {isLocationSaving ? (
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                ) : (
+                                    <MapPin className="w-4 h-4" />
+                                )}
+                                {coordination
+                                    ? (t('workspaceConfig.location.savedCta') || 'Location saved')
+                                    : (t('workspaceConfig.location.cta') || 'Share Location')}
+                            </Button>
+                        </div>
 
                         {/* Feature Toggles */}
                         <div className="space-y-3">

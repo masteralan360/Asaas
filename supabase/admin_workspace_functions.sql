@@ -16,7 +16,10 @@ RETURNS TABLE (
     allow_orders BOOLEAN,
     allow_invoices BOOLEAN,
     is_configured BOOLEAN,
-    deleted_at TIMESTAMPTZ
+    deleted_at TIMESTAMPTZ,
+    coordination TEXT,
+    logo_url TEXT,
+    subscription_expires_at TIMESTAMPTZ
 )
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -37,7 +40,10 @@ BEGIN
         COALESCE(w.allow_orders, false),
         COALESCE(w.allow_invoices, false),
         COALESCE(w.is_configured, false),
-        w.deleted_at
+        w.deleted_at,
+        w.coordination,
+        w.logo_url,
+        w.subscription_expires_at
     FROM public.workspaces w
     ORDER BY w.created_at DESC;
 END;

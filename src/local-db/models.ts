@@ -392,6 +392,7 @@ export interface Workspace extends BaseEntity {
     allow_invoices: boolean
     allow_whatsapp?: boolean
     logo_url?: string | null
+    coordination?: string | null
     syncStatus: SyncStatus
     // Negotiated price limit (0-100 percentage)
     max_discount_percent?: number

@@ -1274,6 +1274,19 @@
         "logoNote": "الصور مخزنة محلياً على هذا الجهاز",
         "continue": "المتابعة إلى لوحة التحكم",
         "note": "المنتجات وسجل المبيعات مفعلة دائماً. يمكنك تعديل هذه الإعدادات في أي وقت من صفحة الإعدادات.",
+        "location": {
+            "title": "Share your location",
+            "desc": "Save your workspace coordinates for maps and future services.",
+            "example": "Example: 40.74032035559755, -73.97990562328214",
+            "cta": "Share Location",
+            "savedCta": "Location saved",
+            "saved": "Location saved to workspace.",
+            "unsupported": "Geolocation is not supported on this device.",
+            "permissionDenied": "Location permission was denied.",
+            "unavailable": "Location information is unavailable.",
+            "timeout": "Location request timed out. Please try again.",
+            "failed": "Failed to capture location."
+        },
         "features": {
             "pos": "نقطة البيع (POS)",
             "posDesc": "تفعيل وظائف البيع السريع والدفع",
@@ -1541,6 +1554,9 @@
     },
     "admin": {
         "title": "لوحة تحكم المسؤول",
+        "geolocation": "الموقع الجغرافي",
+        "workspaceGeolocation": "الموقع الجغرافي لمساحات العمل",
+        "manageGeolocation": "إدارة وتتبع مواقع مساحات العمل.",
         "users": "المستخدمون المسجلون",
         "workspaces": "تكوين مساحة العمل",
         "subscriptions": "الاشتراكات",

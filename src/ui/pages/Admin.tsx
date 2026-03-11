@@ -14,7 +14,8 @@ import {
     Lock,
     Phone,
     Search,
-    AlertCircle
+    AlertCircle,
+    MapPin
 } from 'lucide-react'
 import {
     Button,
@@ -26,15 +27,20 @@ import {
     TabsContent,
     Switch,
     useToast,
-    DeleteConfirmationModal
+    DeleteConfirmationModal,
+    Map,
+    MapMarker,
+    MarkerContent,
+    MarkerPopup
 } from '@/ui/components'
 import { supabase, isSupabaseConfigured } from '@/auth/supabase'
 import { useLocation } from 'wouter'
 import { useTranslation } from 'react-i18next'
 import { formatDate } from '@/lib/utils'
 import { getRetriableActionToast, isRetriableWebRequestError, normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
+import { r2Service } from '@/services/r2Service'
 
-const SESSION_DURATION = 60 // seconds
+const SESSION_DURATION = 150 // seconds
 
 interface AdminUser {
     id: string
@@ -60,6 +66,8 @@ interface AdminWorkspace {
     locked_workspace: boolean
     subscription_expires_at: string | null
     deleted_at?: string | null
+    coordination?: string
+    logo_url?: string
 }
 
 export function Admin() {
@@ -372,10 +380,10 @@ export function Admin() {
     }
 
     return (
-        <div className="min-h-screen bg-background text-foreground p-4 lg:p-8 pt-[calc(var(--titlebar-height)+1rem)]">
+        <div className="min-h-screen bg-background text-foreground p-4 lg:p-8 pt-[calc(var(--titlebar-height)+2rem)] lg:pt-[calc(var(--titlebar-height)+4rem)]">
             <div className="max-w-6xl mx-auto">
                 {/* Header */}
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-12">
                     <div className="flex items-center gap-4">
                         <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center text-primary border border-primary/20">
                             <ShieldCheck className="w-6 h-6" />
@@ -392,8 +400,6 @@ export function Admin() {
                         </div>
                     </div>
                     <div className="flex items-center gap-3">
-                        <LanguageSwitcher />
-                        <ThemeToggle />
                         <Button variant="outline" onClick={fetchData} disabled={isLoading} className="rounded-xl">
                             <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
                             Refresh Data
@@ -406,10 +412,11 @@ export function Admin() {
                 </div>
 
                 <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-                    <TabsList className="grid w-full grid-cols-3 max-w-[600px]">
+                    <TabsList className="grid w-full grid-cols-4">
                         <TabsTrigger value="users">{t('admin.users') || 'Registered Users'}</TabsTrigger>
                         <TabsTrigger value="workspaces">{t('admin.workspaces') || 'Workspace Configuration'}</TabsTrigger>
                         <TabsTrigger value="subscriptions">{t('admin.subscriptions') || 'Subscriptions'}</TabsTrigger>
+                        <TabsTrigger value="geolocation">{t('admin.geolocation') || 'Workspace Geolocation'}</TabsTrigger>
                     </TabsList>
 
                     {/* USERS TAB */}
@@ -742,6 +749,91 @@ export function Admin() {
                                         </tbody>
                                     </table>
                                 </div>
+                            </div>
+                        </div>
+                    </TabsContent>
+
+                    {/* GEOLOCATION TAB */}
+                    <TabsContent value="geolocation" className="space-y-4">
+                        <div className="bg-card rounded-2xl border border-border shadow-sm overflow-hidden h-[600px] flex flex-col">
+                            <div className="p-6 border-b border-border bg-muted/5">
+                                <h2 className="text-lg font-semibold flex items-center gap-2">
+                                    <MapPin className="w-5 h-5" />
+                                    {t('admin.workspaceGeolocation') || "Workspace Geolocation"}
+                                </h2>
+                                <p className="text-sm text-muted-foreground mt-1">
+                                    {t('admin.manageGeolocation') || "View all active workspaces on the map."}
+                                </p>
+                            </div>
+                            <div className="flex-1 relative">
+                                <Map
+                                    viewport={{ zoom: 3, center: [44.361488, 33.315241] }}
+                                    className="w-full h-full rounded-b-2xl"
+                                >
+                                    {filteredWorkspaces.map(ws => {
+                                        if (!ws.coordination) return null;
+                                        const [latStr, lngStr] = ws.coordination.split(',').map(s => s.trim());
+                                        const lat = parseFloat(latStr);
+                                        const lng = parseFloat(lngStr);
+                                        if (isNaN(lat) || isNaN(lng)) return null;
+
+                                        let logoSrc = undefined;
+                                        if (ws.logo_url) {
+                                            if (ws.logo_url.startsWith('http')) {
+                                                logoSrc = ws.logo_url;
+                                            } else {
+                                                // DB: workspaces/workspaceId/logo.png -> R2: workspaceId/workspaces/logo.png
+                                                const parts = ws.logo_url.split('/');
+                                                let r2Key = ws.logo_url;
+                                                if (parts.length >= 3) {
+                                                    const folderPart = parts[0];
+                                                    const wsIdPart = parts[1];
+                                                    const filePart = parts.slice(2).join('/');
+                                                    r2Key = `${wsIdPart}/${folderPart}/${filePart}`;
+                                                }
+                                                logoSrc = r2Service.getUrl(r2Key);
+                                            }
+                                        }
+
+                                        return (
+                                            <MapMarker
+                                                key={ws.id}
+                                                latitude={lat}
+                                                longitude={lng}
+                                            >
+                                                <MarkerContent>
+                                                    <div className="relative w-10 h-10 rounded-full border-2 border-primary bg-background shadow-lg overflow-hidden flex items-center justify-center">
+                                                        {logoSrc ? (
+                                                            <>
+                                                                <img
+                                                                    src={logoSrc}
+                                                                    alt={ws.name}
+                                                                    className="w-full h-full object-cover relative z-10"
+                                                                    onError={(e) => {
+                                                                        (e.target as HTMLImageElement).style.opacity = '0';
+                                                                    }}
+                                                                />
+                                                                <span className="font-bold text-lg text-primary flex items-center justify-center w-full h-full absolute inset-0 z-0">
+                                                                    {ws.name.charAt(0).toUpperCase()}
+                                                                </span>
+                                                            </>
+                                                        ) : (
+                                                            <span className="font-bold text-lg text-primary flex items-center justify-center w-full h-full">
+                                                                {ws.name.charAt(0).toUpperCase()}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </MarkerContent>
+                                                <MarkerPopup className="p-3 max-w-[200px]">
+                                                    <div className="text-sm font-semibold">{ws.name}</div>
+                                                    <div className="text-xs text-muted-foreground mt-1">
+                                                        {ws.code}
+                                                    </div>
+                                                </MarkerPopup>
+                                            </MapMarker>
+                                        );
+                                    })}
+                                </Map>
                             </div>
                         </div>
                     </TabsContent>

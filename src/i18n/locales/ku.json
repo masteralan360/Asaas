@@ -1225,6 +1225,19 @@
         "logoNote": "وێنەکان بە شێوەی ناوخۆیی لەسەر ئەم ئامێرە پاشەکەوت دەکرێن",
         "continue": "بەردەوامبە بۆ داشبۆرد",
         "note": "بەرهەمەکان و مێژووی فرۆشتن هەمیشە چالاکن. دەتوانیت ئەم ڕێکخستنانە لە هەر کاتێکدا لە پەڕەی ڕێکخستنەکان بگۆڕیت.",
+        "location": {
+            "title": "Share your location",
+            "desc": "Save your workspace coordinates for maps and future services.",
+            "example": "Example: 40.74032035559755, -73.97990562328214",
+            "cta": "Share Location",
+            "savedCta": "Location saved",
+            "saved": "Location saved to workspace.",
+            "unsupported": "Geolocation is not supported on this device.",
+            "permissionDenied": "Location permission was denied.",
+            "unavailable": "Location information is unavailable.",
+            "timeout": "Location request timed out. Please try again.",
+            "failed": "Failed to capture location."
+        },
         "features": {
             "pos": "خاڵی فرۆشتن (POS)",
             "posDesc": "چالاککردنی فرۆشتنی خێرا و پارەدان",

@@ -26,6 +26,7 @@ export interface WorkspaceFeatures {
     try_conversion_enabled: boolean
     locked_workspace: boolean
     logo_url: string | null
+    coordination: string | null
     max_discount_percent: number
     allow_whatsapp: boolean
     print_lang: 'auto' | 'en' | 'ar' | 'ku'
@@ -53,7 +54,7 @@ interface WorkspaceContextType {
     isLocked: boolean
     hasFeature: (feature: 'allow_pos' | 'allow_customers' | 'allow_suppliers' | 'allow_orders' | 'allow_invoices' | 'allow_whatsapp') => boolean
     refreshFeatures: () => Promise<void>
-    updateSettings: (settings: Partial<Pick<WorkspaceFeatures, 'default_currency' | 'iqd_display_preference' | 'eur_conversion_enabled' | 'try_conversion_enabled' | 'allow_whatsapp' | 'logo_url' | 'print_lang' | 'print_qr' | 'receipt_template' | 'a4_template' | 'print_quality' | 'thermal_printing'>> & { name?: string }) => Promise<void>
+    updateSettings: (settings: Partial<Pick<WorkspaceFeatures, 'default_currency' | 'iqd_display_preference' | 'eur_conversion_enabled' | 'try_conversion_enabled' | 'allow_whatsapp' | 'logo_url' | 'coordination' | 'print_lang' | 'print_qr' | 'receipt_template' | 'a4_template' | 'print_quality' | 'thermal_printing'>> & { name?: string }) => Promise<void>
     activeWorkspace: { id: string } | undefined
 }
 
@@ -70,6 +71,7 @@ const defaultFeatures: WorkspaceFeatures = {
     try_conversion_enabled: false,
     locked_workspace: false,
     logo_url: null,
+    coordination: null,
     max_discount_percent: 100,
     allow_whatsapp: false,
     print_lang: 'auto',
@@ -103,6 +105,7 @@ function getFeaturesFromLocalWorkspace(localWorkspace: Workspace): WorkspaceFeat
         try_conversion_enabled: localWorkspace.try_conversion_enabled ?? false,
         locked_workspace: localWorkspace.locked_workspace ?? false,
         logo_url: localWorkspace.logo_url ?? null,
+        coordination: localWorkspace.coordination ?? null,
         max_discount_percent: localWorkspace.max_discount_percent ?? 100,
         allow_whatsapp: localWorkspace.allow_whatsapp ?? false,
         print_lang: localWorkspace.print_lang ?? 'auto',
@@ -208,6 +211,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             allow_invoices: nextFeatures.allow_invoices,
             allow_whatsapp: nextFeatures.allow_whatsapp,
             logo_url: nextFeatures.logo_url,
+            coordination: nextFeatures.coordination,
             max_discount_percent: nextFeatures.max_discount_percent,
             print_lang: nextFeatures.print_lang,
             print_qr: nextFeatures.print_qr,
@@ -324,6 +328,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                 try_conversion_enabled: featureData.try_conversion_enabled ?? false,
                 locked_workspace: featureData.locked_workspace ?? false,
                 logo_url: featureData.logo_url ?? null,
+                coordination: featureData.coordination ?? null,
                 max_discount_percent: featureData.max_discount_percent ?? 100,
                 allow_whatsapp: featureData.allow_whatsapp ?? false,
                 print_lang: featureData.print_lang ?? 'auto',
@@ -416,6 +421,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                             try_conversion_enabled: data.try_conversion_enabled ?? currentFeatures.try_conversion_enabled,
                             locked_workspace: data.locked_workspace ?? currentFeatures.locked_workspace,
                             logo_url: data.logo_url ?? currentFeatures.logo_url,
+                            coordination: data.coordination ?? currentFeatures.coordination,
                             max_discount_percent: data.max_discount_percent ?? currentFeatures.max_discount_percent,
                             allow_whatsapp: data.allow_whatsapp ?? currentFeatures.allow_whatsapp,
                             print_lang: data.print_lang ?? currentFeatures.print_lang,
@@ -479,7 +485,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     }
 
     const updateSettings = async (
-        settings: Partial<Pick<WorkspaceFeatures, 'default_currency' | 'iqd_display_preference' | 'eur_conversion_enabled' | 'try_conversion_enabled' | 'allow_whatsapp' | 'logo_url' | 'print_lang' | 'print_qr' | 'receipt_template' | 'a4_template' | 'print_quality' | 'thermal_printing'>> & { name?: string }
+        settings: Partial<Pick<WorkspaceFeatures, 'default_currency' | 'iqd_display_preference' | 'eur_conversion_enabled' | 'try_conversion_enabled' | 'allow_whatsapp' | 'logo_url' | 'coordination' | 'print_lang' | 'print_qr' | 'receipt_template' | 'a4_template' | 'print_quality' | 'thermal_printing'>> & { name?: string }
     ) => {
         const workspaceId = user?.workspaceId
         if (!workspaceId) return
@@ -539,6 +545,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                 allow_invoices: newFeatures.allow_invoices,
                 allow_whatsapp: newFeatures.allow_whatsapp,
                 logo_url: newFeatures.logo_url,
+                coordination: newFeatures.coordination,
                 max_discount_percent: newFeatures.max_discount_percent,
                 print_lang: newFeatures.print_lang,
                 print_qr: newFeatures.print_qr,
