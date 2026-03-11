@@ -255,7 +255,7 @@ export function Dashboard() {
                                 ))}
                             </div>
                         )}
-                        <Link href="/invoice" className="block mt-6 text-center text-xs font-black uppercase tracking-[0.2em] text-primary hover:text-primary/70 transition-colors">
+                        <Link href="/invoices-history" className="block mt-6 text-center text-xs font-black uppercase tracking-[0.2em] text-primary hover:text-primary/70 transition-colors">
                             {t('common.viewAll') || 'View All Invoices'}
                         </Link>
                     </CardContent>

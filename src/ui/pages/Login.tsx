@@ -4,6 +4,7 @@ import { useAuth } from '@/auth'
 import { Button, Input, Label, Card, CardContent, CardHeader, CardTitle, CardDescription, LanguageSwitcher, ThemeToggle } from '@/ui/components'
 import { Mail, Lock, Loader2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { isMobile } from '@/lib/platform'
 import { cn } from '@/lib/utils'
 import { useFavicon } from '@/hooks/useFavicon'
 
@@ -36,6 +37,42 @@ export function Login() {
             if (error) {
                 setError(error.message)
             } else {
+                // Biometric Enrollment Logic
+                // @ts-ignore
+                const isTauri = !!window.__TAURI_INTERNALS__
+                if (isTauri && isMobile()) {
+                    const biometricChoice = localStorage.getItem('biometric_enabled')
+                    if (biometricChoice === null) {
+                        try {
+                            const { checkStatus } = await import('@tauri-apps/plugin-biometric')
+                            const support = await checkStatus()
+                            
+                            if (support.isAvailable) {
+                                const { ask } = await import('@tauri-apps/plugin-dialog')
+                                const wantsBiometrics = await ask(
+                                    t('auth.biometricPromptMessage', 'Would you like to enable biometric unlock for quicker access next time?'),
+                                    {
+                                        title: t('auth.biometricPromptTitle', 'Enable Biometric Unlock'),
+                                        kind: 'info',
+                                        okLabel: t('common.yes', 'Yes'),
+                                        cancelLabel: t('common.no', 'No')
+                                    }
+                                )
+                                localStorage.setItem('biometric_enabled', wantsBiometrics ? 'true' : 'false')
+                                if (wantsBiometrics) {
+                                    localStorage.setItem('biometric_frequency', '24h')
+                                    localStorage.setItem('biometric_last_auth', Date.now().toString())
+                                }
+                            } else {
+                                // Mark as false if not supported to avoid checking again
+                                localStorage.setItem('biometric_enabled', 'false')
+                            }
+                        } catch (e) {
+                            console.error('Biometric support check failed:', e)
+                        }
+                    }
+                }
+                
                 setLocation('/')
             }
         } catch (err) {

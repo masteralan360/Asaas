@@ -7,11 +7,12 @@ import { useTranslation } from 'react-i18next'
 import { useWorkspace } from '@/workspace'
 import { Coins } from 'lucide-react'
 import type { IQDDisplayPreference, CurrencyCode } from '@/local-db/models'
-import { Settings as SettingsIcon, Database, Cloud, Trash2, RefreshCw, User, Copy, Check, CreditCard, Globe, Download, AlertCircle, Printer, Contact } from 'lucide-react'
+import { Settings as SettingsIcon, Database, Cloud, Trash2, RefreshCw, User, Copy, Check, CreditCard, Globe, Download, AlertCircle, Printer, Contact, Fingerprint } from 'lucide-react'
 import { formatDateTime, cn } from '@/lib/utils'
 import { useTheme } from '@/ui/components/theme-provider'
 import { Moon, Sun, Monitor, Unlock, Server, MessageSquare, Bell } from 'lucide-react'
 import { useState, useEffect } from 'react'
+import { isMobile } from '@/lib/platform'
 import { useExchangeRate } from '@/context/ExchangeRateContext'
 import { getAppSettingSync, setAppSetting } from '@/local-db/settings'
 import { decrypt } from '@/lib/encryption'
@@ -45,6 +46,11 @@ export function Settings() {
     const [exchangeRateThreshold, setExchangeRateThreshold] = useState(localStorage.getItem('exchange_rate_threshold') || '2500')
     const [whatsappAutoLaunch, setWhatsappAutoLaunch] = useState(localStorage.getItem('whatsapp_auto_launch') === 'true')
     const [monthDisplayPreference, setMonthDisplayPreferenceState] = useState<MonthDisplayPreference>(getMonthDisplayPreference())
+
+    // Biometric State
+    const [biometricEnabled, setBiometricEnabled] = useState(localStorage.getItem('biometric_enabled') === 'true')
+    const [biometricFrequency, setBiometricFrequency] = useState(localStorage.getItem('biometric_frequency') || '24h')
+    const [isBiometricDeleteModalOpen, setIsBiometricDeleteModalOpen] = useState(false)
 
     // Connection Settings State
     const [isElectron, setIsElectron] = useState(false)
@@ -434,6 +440,50 @@ export function Settings() {
         } else {
             alert("Invalid Passkey")
         }
+    }
+
+    // Biometric Handlers
+    const handleBiometricToggle = async (checked: boolean) => {
+        if (!isElectron || !isMobile()) return;
+
+        if (checked) {
+            try {
+                const { checkStatus, authenticate } = await import('@tauri-apps/plugin-biometric')
+                const status = await checkStatus()
+                if (status.isAvailable) {
+                    await authenticate('Verify to enable Biometric Unlock')
+                    localStorage.setItem('biometric_enabled', 'true')
+                    setBiometricEnabled(true)
+                    if (!localStorage.getItem('biometric_frequency')) {
+                        localStorage.setItem('biometric_frequency', '24h')
+                        setBiometricFrequency('24h')
+                    }
+                    localStorage.setItem('biometric_last_auth', Date.now().toString())
+                } else {
+                    toast({ title: 'Biometrics unavailable', description: 'This device does not support biometric authentication.', variant: 'destructive' })
+                }
+            } catch (err: any) {
+                toast({ title: 'Authentication failed', description: err.message, variant: 'destructive' })
+            }
+        } else {
+            localStorage.setItem('biometric_enabled', 'false')
+            setBiometricEnabled(false)
+        }
+    }
+
+    const handleBiometricFrequencyChange = (val: string) => {
+        setBiometricFrequency(val)
+        localStorage.setItem('biometric_frequency', val)
+    }
+
+    const handleDeleteBiometric = () => {
+        localStorage.removeItem('biometric_enabled')
+        localStorage.removeItem('biometric_frequency')
+        localStorage.removeItem('biometric_last_auth')
+        setBiometricEnabled(false)
+        setBiometricFrequency('24h')
+        setIsBiometricDeleteModalOpen(false)
+        toast({ title: 'Biometric authentication deleted successfully' })
     }
 
     /* --- Connection Settings (Web) Handlers Start --- */
@@ -949,6 +999,74 @@ export function Settings() {
                             </CardContent>
                         </Card>
                     )}
+
+                    {/* Biometric Authentication (Mobile Only) */}
+                    {isElectron && isMobile() && (
+                        <Card>
+                            <CardHeader>
+                                <CardTitle className="flex items-center gap-2">
+                                    <Fingerprint className="w-5 h-5" />
+                                    Biometric Authentication
+                                </CardTitle>
+                                <CardDescription>Use FaceID or Fingerprint to unlock the application.</CardDescription>
+                            </CardHeader>
+                            <CardContent className="space-y-6">
+                                <div className="flex items-center justify-between">
+                                    <div className="space-y-0.5">
+                                        <Label className="text-sm font-medium">Enable App Lock</Label>
+                                        <p className="text-xs text-muted-foreground">
+                                            Require biometric authentication to open Asaas.
+                                        </p>
+                                    </div>
+                                    <Switch
+                                        checked={biometricEnabled}
+                                        onCheckedChange={handleBiometricToggle}
+                                    />
+                                </div>
+                                {biometricEnabled && (
+                                    <>
+                                        <div className="space-y-2">
+                                            <Label>Authentication Frequency</Label>
+                                            <Select value={biometricFrequency} onValueChange={handleBiometricFrequencyChange}>
+                                                <SelectTrigger className="w-[180px]">
+                                                    <SelectValue />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="always">Every time app opens</SelectItem>
+                                                    <SelectItem value="24h">Every 24 hours</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                        <div className="pt-4 border-t border-border/50">
+                                            <Button variant="destructive" onClick={() => setIsBiometricDeleteModalOpen(true)}>
+                                                Delete Saved Biometric Authentication
+                                            </Button>
+                                        </div>
+                                    </>
+                                )}
+                            </CardContent>
+                        </Card>
+                    )}
+
+                    {/* Biometric Delete Modal */}
+                    <Dialog open={isBiometricDeleteModalOpen} onOpenChange={setIsBiometricDeleteModalOpen}>
+                        <DialogContent className="max-w-md">
+                            <DialogHeader>
+                                <DialogTitle>Disable Biometric Authentication?</DialogTitle>
+                                <DialogDescription>
+                                    This will disable biometric authentication and clear your saved preferences. You will need to re-authenticate if you want to enable it again.
+                                </DialogDescription>
+                            </DialogHeader>
+                            <DialogFooter>
+                                <Button variant="ghost" onClick={() => setIsBiometricDeleteModalOpen(false)}>
+                                    Cancel
+                                </Button>
+                                <Button variant="destructive" onClick={handleDeleteBiometric}>
+                                    Delete
+                                </Button>
+                            </DialogFooter>
+                        </DialogContent>
+                    </Dialog>
 
                     {/* Sync Status (Admin & Staff Only) */}
                     {(user?.role === 'admin' || user?.role === 'staff') && (

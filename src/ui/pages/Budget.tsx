@@ -144,81 +144,89 @@ function BudgetItemRow({
     // Unpaid expenses -> orange
     // Paid -> green
     // Snoozed -> yellow
-    const bgClass = isPaid 
-        ? 'bg-emerald-50/50 border-emerald-100/50 hover:bg-emerald-50/80' 
-        : isSnoozed 
-        ? 'bg-amber-50/50 border-amber-100/50 hover:bg-amber-50/80'
-        : type === 'expense'
-        ? 'bg-orange-50/50 border-orange-100/50 hover:bg-orange-50/80'
-        : 'bg-blue-50/50 border-blue-100/50 hover:bg-blue-50/80'
+    const bgClass = isPaid
+        ? 'bg-emerald-50/50 border-emerald-100/50 hover:bg-emerald-50/80'
+        : isSnoozed
+            ? 'bg-amber-50/50 border-amber-100/50 hover:bg-amber-50/80'
+            : type === 'expense'
+                ? 'bg-orange-50/50 border-orange-100/50 hover:bg-orange-50/80'
+                : 'bg-blue-50/50 border-blue-100/50 hover:bg-blue-50/80'
 
-    const accentColor = isPaid 
-        ? 'text-emerald-600' 
-        : isSnoozed 
-        ? 'text-amber-600'
-        : type === 'expense'
-        ? 'text-orange-600'
-        : 'text-blue-600'
+    const accentColor = isPaid
+        ? 'text-emerald-600'
+        : isSnoozed
+            ? 'text-amber-600'
+            : type === 'expense'
+                ? 'text-orange-600'
+                : 'text-blue-600'
 
-    const iconBg = isPaid 
-        ? 'bg-emerald-100/80' 
-        : isSnoozed 
-        ? 'bg-amber-100/80'
-        : type === 'expense'
-        ? 'bg-orange-100/80'
-        : 'bg-blue-100/80'
+    const iconBg = isPaid
+        ? 'bg-emerald-100/80'
+        : isSnoozed
+            ? 'bg-amber-100/80'
+            : type === 'expense'
+                ? 'bg-orange-100/80'
+                : 'bg-blue-100/80'
 
     const Icon = type === 'payroll' ? User : type === 'dividend' ? Wallet : Receipt
 
     return (
         <div className={cn(
-            "group flex items-center justify-between gap-4 rounded-2xl border p-4 transition-all duration-200",
+            "group flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 rounded-2xl border p-4 transition-all duration-200",
             bgClass
         )}>
-            <div className="flex items-center gap-4">
-                <div className={cn("flex h-10 w-10 items-center justify-center rounded-xl transition-colors", iconBg)}>
-                    <Icon className={cn("h-5 w-5", accentColor)} />
-                </div>
-                <div className="space-y-0.5">
-                    <p className="text-sm font-bold tracking-tight text-foreground/90">{title}</p>
-                    <div className="flex items-center gap-2 text-[11px] font-semibold text-muted-foreground/60 uppercase tracking-tight">
-                        <span>{type}</span>
-                        {subtitle && (
-                            <>
-                                <span>/</span>
-                                <span className="calendar-icon-inline flex items-center gap-1">
-                                    <CalendarDays className="h-3 w-3" />
-                                    {formatDate(dueDate)}
-                                </span>
-                            </>
-                        )}
+            <div className="flex items-start sm:items-center justify-between sm:justify-start w-full sm:w-auto">
+                <div className="flex items-center gap-4">
+                    <div className={cn("flex h-10 w-10 items-center justify-center rounded-xl transition-colors shrink-0", iconBg)}>
+                        <Icon className={cn("h-5 w-5", accentColor)} />
                     </div>
+                    <div className="space-y-0.5">
+                        <p className="text-base font-bold tracking-tight text-foreground">{title}</p>
+                        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 text-xs font-bold text-muted-foreground/80 uppercase tracking-tight">
+                            <span>{type}</span>
+                            {subtitle && (
+                                <>
+                                    <span>/</span>
+                                    <span className="calendar-icon-inline flex items-center gap-1 whitespace-nowrap">
+                                        <CalendarDays className="h-3 w-3" />
+                                        {formatDate(dueDate)}
+                                    </span>
+                                </>
+                            )}
+                        </div>
+                    </div>
+                </div>
+
+                <div className="text-right sm:hidden ml-4 pt-0.5">
+                    <p className={cn("text-lg font-black tracking-tight leading-tight", accentColor)}>
+                        {formatCurrency(amount, currency, iqdPreference)}
+                    </p>
                 </div>
             </div>
 
-            <div className="flex items-center gap-6">
-                <div className="text-right">
-                    <p className={cn("text-base font-black tracking-tight", accentColor)}>
+            <div className="flex items-center justify-end gap-6 pt-3 sm:pt-0 border-t sm:border-t-0 border-border/50 sm:border-transparent w-full sm:w-auto mt-1 sm:mt-0">
+                <div className="text-right hidden sm:block">
+                    <p className={cn("text-lg font-black tracking-tight", accentColor)}>
                         {formatCurrency(amount, currency, iqdPreference)}
                     </p>
                 </div>
 
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center justify-end w-full sm:w-auto gap-1.5">
                     {onEdit && !isLocked && !isPaid && (
-                        <Button 
-                            variant="ghost" 
-                            size="icon" 
+                        <Button
+                            variant="ghost"
+                            size="icon"
                             className="h-8 w-8 rounded-full text-muted-foreground/40 hover:text-foreground hover:bg-background/80"
                             onClick={onEdit}
                         >
-                            <Plus className="h-4 w-4 rotate-45" /> 
+                            <Plus className="h-4 w-4 rotate-45" />
                         </Button>
                     )}
-                    
+
                     {!isPaid && (
-                        <Button 
-                            variant="ghost" 
-                            size="icon" 
+                        <Button
+                            variant="ghost"
+                            size="icon"
                             className={cn(
                                 "h-8 w-8 rounded-full transition-colors",
                                 isSnoozed ? "bg-amber-100 text-amber-600" : "text-muted-foreground/40 hover:text-foreground hover:bg-background/80"
@@ -231,9 +239,9 @@ function BudgetItemRow({
                     )}
 
                     {isPaid && (
-                        <Button 
-                            variant="ghost" 
-                            size="icon" 
+                        <Button
+                            variant="ghost"
+                            size="icon"
                             className={cn(
                                 "h-8 w-8 rounded-full transition-colors",
                                 isLocked ? "bg-blue-50 text-blue-600" : "text-muted-foreground/40 hover:text-foreground hover:bg-background/80"
@@ -245,9 +253,9 @@ function BudgetItemRow({
                     )}
 
                     {onDelete && (
-                        <Button 
-                            variant="ghost" 
-                            size="icon" 
+                        <Button
+                            variant="ghost"
+                            size="icon"
                             className="h-8 w-8 rounded-full text-muted-foreground/40 hover:text-destructive hover:bg-destructive/10"
                             onClick={onDelete}
                         >
@@ -255,13 +263,13 @@ function BudgetItemRow({
                         </Button>
                     )}
 
-                    <Button 
-                        variant="ghost" 
-                        size="icon" 
+                    <Button
+                        variant="ghost"
+                        size="icon"
                         className={cn(
                             "ml-2 h-9 w-9 rounded-full border-2 transition-all duration-300",
-                            isPaid 
-                                ? "border-emerald-500 bg-emerald-500 text-white hover:bg-emerald-600" 
+                            isPaid
+                                ? "border-emerald-500 bg-emerald-500 text-white hover:bg-emerald-600"
                                 : "border-slate-200 text-slate-200 hover:border-emerald-400 hover:text-emerald-400"
                         )}
                         onClick={isPaid ? onUnpay : onPay}
@@ -328,14 +336,14 @@ function SummaryCard({
         <Card className="rounded-2xl border border-border/40 shadow-sm bg-card/40 backdrop-blur-sm">
             <CardContent className="p-5 space-y-2.5">
                 <div className="flex items-center gap-2">
-                    <Icon className={cn("h-3.5 w-3.5", toneClass)} />
-                    <p className={cn("text-[10px] font-black uppercase tracking-[0.1em]", toneClass)}>{title}</p>
+                    <Icon className={cn("h-4 w-4", toneClass)} />
+                    <p className={cn("text-xs font-black uppercase tracking-[0.1em]", toneClass)}>{title}</p>
                 </div>
 
                 <div className="flex items-baseline gap-2">
-                    <p className={cn("text-2xl font-black tracking-tight", toneClass)}>{value}</p>
+                    <p className={cn("text-3xl font-black tracking-tight", toneClass)}>{value}</p>
                     {secondaryValue && (
-                        <p className="text-[10px] font-bold text-muted-foreground/100">{secondaryValue}</p>
+                        <p className="text-xs font-bold text-muted-foreground">{secondaryValue}</p>
                     )}
                 </div>
 
@@ -349,7 +357,7 @@ function SummaryCard({
                     <div className="h-1.5" /> /* Spacer to keep height consistent */
                 )}
 
-                {subtitle && <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground/100">{subtitle}</p>}
+                {subtitle && <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{subtitle}</p>}
             </CardContent>
         </Card>
     )
@@ -399,10 +407,10 @@ export function Budget() {
     const [expenseCategory, setExpenseCategory] = useState('')
     const [expenseSubcategory, setExpenseSubcategory] = useState('')
 
-    const [deleteTarget, setDeleteTarget] = useState<{ 
-        type: 'series' | 'occurrence' | 'hard_delete_occurrence'; 
-        series?: ExpenseSeries | null; 
-        item?: ExpenseItem | null 
+    const [deleteTarget, setDeleteTarget] = useState<{
+        type: 'series' | 'occurrence' | 'hard_delete_occurrence';
+        series?: ExpenseSeries | null;
+        item?: ExpenseItem | null
     } | null>(null)
 
     const [snoozeTarget, setSnoozeTarget] = useState<SnoozeTarget | null>(null)
@@ -859,8 +867,8 @@ export function Budget() {
         <div className="space-y-6">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                    <h1 className="text-3xl font-black tracking-tight">{t('budget.title') || 'Budget Management'}</h1>
-                    <p className="text-sm text-muted-foreground">{t('budget.subtitle') || 'Track and manage your expenses'}</p>
+                    <h1 className="text-4xl font-bold tracking-tight">{t('budget.title') || 'Budget Management'}</h1>
+                    <p className="text-base font-medium text-muted-foreground">{t('budget.subtitle') || 'Track and manage your expenses'}</p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                     <Select value={selectedMonth} onValueChange={setSelectedMonth}>
@@ -947,10 +955,10 @@ export function Budget() {
 
             <Tabs defaultValue="expenses" className="space-y-4">
                 <TabsList className="grid w-full max-w-[400px] grid-cols-2 rounded-2xl bg-secondary/50 p-1">
-                    <TabsTrigger value="expenses" className="rounded-xl text-xs font-bold uppercase">
+                    <TabsTrigger value="expenses" className="rounded-xl text-sm font-bold uppercase">
                         {t('budget.tabs.monthlyExpenses') || 'Monthly Expenses'}
                     </TabsTrigger>
-                    <TabsTrigger value="dividends" className="rounded-xl text-xs font-bold uppercase">
+                    <TabsTrigger value="dividends" className="rounded-xl text-sm font-bold uppercase">
                         {t('budget.tabs.dividendsWithdrawal') || 'Dividends Withdrawal'}
                     </TabsTrigger>
                 </TabsList>
@@ -959,8 +967,8 @@ export function Budget() {
                     <Card className="rounded-2xl border border-border/60">
                         <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                             <div>
-                                <CardTitle className="text-lg">{t('budget.expenseList') || 'Monthly Expenses'}</CardTitle>
-                                <p className="text-xs text-muted-foreground">{t('budget.addExpenseSubtitle') || 'Add a manual cost to your monthly tracks'}</p>
+                                <CardTitle className="text-xl">{t('budget.expenseList') || 'Monthly Expenses'}</CardTitle>
+                                <p className="text-sm font-medium text-muted-foreground">{t('budget.addExpenseSubtitle') || 'Add a manual cost to your monthly tracks'}</p>
                             </div>
                             <Button onClick={() => { resetExpenseForm(); setIsExpenseModalOpen(true) }}>
                                 <Plus className="mr-2 h-4 w-4" />
@@ -969,7 +977,7 @@ export function Budget() {
                         </CardHeader>
                         <CardContent className="space-y-3">
                             {expenseRows.length === 0 && (
-                                <div className="text-sm text-muted-foreground">{t('budget.emptyExpenses') || 'No expenses for this month.'}</div>
+                                <div className="text-base font-medium text-muted-foreground">{t('budget.emptyExpenses') || 'No expenses for this month.'}</div>
                             )}
                             {expenseRows.map(({ item, series }) => (
                                 <BudgetItemRow
@@ -1002,11 +1010,11 @@ export function Budget() {
 
                     <Card className="rounded-2xl border border-border/60">
                         <CardHeader>
-                            <CardTitle className="text-lg">{t('monthlyComparison.fallback.payroll') || 'Payroll'}</CardTitle>
+                            <CardTitle className="text-xl">{t('monthlyComparison.fallback.payroll') || 'Payroll'}</CardTitle>
                         </CardHeader>
                         <CardContent className="space-y-3">
                             {payrollItems.length === 0 && (
-                                <div className="text-sm text-muted-foreground">{t('budget.emptyPayroll') || 'No payroll entries for this month.'}</div>
+                                <div className="text-base font-medium text-muted-foreground">{t('budget.emptyPayroll') || 'No payroll entries for this month.'}</div>
                             )}
                             {payrollItems.map(item => (
                                 <BudgetItemRow
@@ -1033,17 +1041,17 @@ export function Budget() {
                 <TabsContent value="dividends" className="space-y-6">
                     <Card className="rounded-2xl border border-border/60">
                         <CardHeader>
-                            <CardTitle className="text-lg">{t('budget.dividendsWithdrawal.title') || 'Dividends Withdrawal'}</CardTitle>
-                            <p className="text-xs text-muted-foreground">{t('budget.dividendsWithdrawal.subtitle') || 'Review and distribute this month dividends'}</p>
+                            <CardTitle className="text-xl">{t('budget.dividendsWithdrawal.title') || 'Dividends Withdrawal'}</CardTitle>
+                            <p className="text-sm font-medium text-muted-foreground">{t('budget.dividendsWithdrawal.subtitle') || 'Review and distribute this month dividends'}</p>
                         </CardHeader>
                         <CardContent className="space-y-3">
-                            <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
+                            <div className="flex flex-wrap gap-4 text-base font-medium text-muted-foreground">
                                 <span>{t('budget.totalPool') || 'Total Distribution Pool'}: {formatCurrency(surplusPoolBase, baseCurrency, iqdPreference)}</span>
                                 <span>{t('budget.dividends') || 'Dividends'}: {formatCurrency(dividendResult.totalBase, baseCurrency, iqdPreference)}</span>
                                 <span>{t('budget.remainingAfterDivs') || 'Remaining After Distribution'}: {formatCurrency(surplusRemainderBase, baseCurrency, iqdPreference)}</span>
                             </div>
                             {dividendResult.items.length === 0 && (
-                                <div className="text-sm text-muted-foreground">{t('budget.dividend.empty') || 'No dividend withdrawals for this month'}</div>
+                                <div className="text-base font-medium text-muted-foreground">{t('budget.dividend.empty') || 'No dividend withdrawals for this month'}</div>
                             )}
                             {dividendResult.items.map(item => (
                                 <BudgetItemRow

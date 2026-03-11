@@ -3,6 +3,7 @@ import { useAuth } from './AuthContext'
 import { Redirect, useLocation, Link } from 'wouter'
 import type { UserRole } from '@/local-db/models'
 import { useWorkspace } from '@/workspace/WorkspaceContext'
+import { BiometricLock } from '@/ui/components'
 
 interface ProtectedRouteProps {
     children: ReactNode
@@ -95,7 +96,11 @@ export function ProtectedRoute({
         )
     }
 
-    return <>{children}</>
+    return (
+        <BiometricLock>
+            {children}
+        </BiometricLock>
+    )
 }
 
 interface GuestRouteProps {

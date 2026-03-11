@@ -107,3 +107,4 @@ export {
     DropdownMenuRadioGroup,
 } from './ui/dropdown-menu'
 export * from './map'
+export { BiometricLock } from './BiometricLock'
