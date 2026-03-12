@@ -26,6 +26,8 @@ import { useWorkspaceContacts } from '@/local-db/hooks'
 import { getRetriableActionToast, isRetriableWebRequestError, normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
 import { DEFAULT_THERMAL_ROLL_WIDTH, THERMAL_ROLL_WIDTHS, isLikelyThermalPrinter, isVirtualPrinter, printService, type StoredThermalPrinter, type ThermalRollWidth } from '@/services/printService'
 import type { PrinterInfo } from 'tauri-plugin-thermal-printer'
+import { isPermissionGranted, requestPermission } from '@tauri-apps/plugin-notification'
+import { registerDeviceTokenIfNeeded } from '@/services/notificationDevice'
 
 export function Settings() {
     const { user, signOut, isSupabaseConfigured, updateUser } = useAuth()
@@ -431,6 +433,35 @@ export function Settings() {
         if (confirm(t('settings.messages.clearDataConfirm'))) {
             await clearDatabase()
             window.location.reload()
+        }
+    }
+
+    const handleSubscribeToNotifications = async () => {
+        if (!isElectron) return
+        try {
+            let permissionGranted = await isPermissionGranted()
+            if (!permissionGranted) {
+                const permission = await requestPermission()
+                permissionGranted = permission === 'granted'
+            }
+            if (permissionGranted) {
+                if (user?.id) {
+                    await registerDeviceTokenIfNeeded(user.id)
+                }
+                toast({
+                    title: t('settings.notifications.subscribedTitle') || 'Subscribed',
+                    description: t('settings.notifications.subscribedDesc') || 'Successfully subscribed to push notifications.'
+                })
+            } else {
+                toast({
+                    title: t('settings.notifications.deniedTitle') || 'Permission Denied',
+                    description: t('settings.notifications.deniedDesc') || 'Please enable notification permissions in your device settings.',
+                    variant: 'destructive'
+                })
+            }
+        } catch (error: any) {
+            console.error('[Settings] Failed to subscribe to notifications:', error)
+            showActionError(error, 'Failed to subscribe to notifications.')
         }
     }
 
@@ -1335,6 +1366,25 @@ export function Settings() {
                                     )}
                                 </div>
                             </div>
+
+                            {/* Push Notifications Section (Mobile Only) */}
+                            {isElectron && isMobile() && (
+                                <div className="pt-6 border-t border-border/50 space-y-4">
+                                    <Label className="text-sm font-bold uppercase tracking-wider text-muted-foreground">Push Notifications</Label>
+                                    <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg border border-border">
+                                        <div className="space-y-0.5 pr-4">
+                                            <Label className="text-sm font-medium">Enable OS Notifications</Label>
+                                            <p className="text-xs text-muted-foreground">
+                                                Receive OS-level alerts for important workspace events. Recommended for mobile devices.
+                                            </p>
+                                        </div>
+                                        <Button variant="outline" onClick={handleSubscribeToNotifications} className="gap-2 shrink-0">
+                                            <Bell className="w-4 h-4" />
+                                            Subscribe
+                                        </Button>
+                                    </div>
+                                </div>
+                            )}
 
                             {/* Workspace Logo Section (Admin Only) */}
                             {user?.role === 'admin' && (
