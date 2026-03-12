@@ -1,7 +1,12 @@
-import { Novu } from '@novu/node';
+import { Novu } from 'npm:@novu/api'
+
+const novuApiKeyRaw = Deno.env.get('NOVU_API_KEY') || ''
+const novuApiKey = novuApiKeyRaw.startsWith('ApiKey ')
+    ? novuApiKeyRaw
+    : `ApiKey ${novuApiKeyRaw}`
 
 // Setup Novu with the secret API Key
-const novu = new Novu(Deno.env.get('NOVU_API_KEY') || '');
+const novu = new Novu({ secretKey: novuApiKey })
 
 Deno.serve(async (req) => {
     try {
@@ -12,17 +17,18 @@ Deno.serve(async (req) => {
         }
 
         // Trigger the notification
-        const result = await novu.trigger(workflowId, {
+        const result = await novu.trigger({
+            workflowId,
             to: {
                 subscriberId: subscriberId,
             },
             payload: payload || {},
-        });
+        })
 
-        return new Response(JSON.stringify(result.data), {
+        return new Response(JSON.stringify(result.result), {
             headers: { 'Content-Type': 'application/json' },
-        });
+        })
     } catch (error) {
-        return new Response(JSON.stringify({ error: error.message }), { status: 500 });
+        return new Response(JSON.stringify({ error: error.message }), { status: 500 })
     }
-});
+})

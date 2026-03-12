@@ -131,3 +131,6 @@ docs/My whole project conversation before.md
 .env
 .env.production.local
 .env.production.local.example
+.Secrets
+Secrets/google-services.json
+Secrets/novu-ec341-firebase-adminsdk-fbsvc-b69d87b501.json

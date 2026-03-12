@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "184641033770",
+    "project_id": "novu-ec341",
+    "storage_bucket": "novu-ec341.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:184641033770:android:ea96e2ba102d0e25329553",
+        "android_client_info": {
+          "package_name": "com.asaas.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBbPRK3IF5oMxiK2PRngfN4nM-cAyWOItc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -3,6 +3,7 @@ import { useHashLocation } from '@/hooks/useHashLocation'
 import { AuthProvider, ProtectedRoute, GuestRoute } from '@/auth'
 import { WorkspaceProvider } from '@/workspace'
 import { Layout, Toaster, TitleBar, PatchNoteModal } from '@/ui/components'
+import { DeviceTokenBootstrap } from '@/ui/components/DeviceTokenBootstrap'
 import { lazy, Suspense, useEffect, useCallback, useState } from 'react'
 import { usePatchNotes } from '@/hooks/usePatchNotes'
 import { RotateCw } from 'lucide-react'
@@ -259,6 +260,7 @@ function App() {
 
     return (
         <AuthProvider>
+            <DeviceTokenBootstrap />
             <WorkspaceProvider>
                 <DateRangeProvider>
                     <UpdateHandler />

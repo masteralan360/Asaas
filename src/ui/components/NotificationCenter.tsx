@@ -11,6 +11,9 @@ import { connectionManager } from '@/lib/connectionManager';
 import { NotificationPopupController } from './novupopups/NotificationPopupController';
 import { getPopupIdFromNotification } from '@/lib/notificationPopups';
 import { cn } from '@/lib/utils';
+import { isMobile, isTauri } from '@/lib/platform';
+
+
 
 function playNotificationSound() {
     try {
@@ -75,6 +78,36 @@ function InboxWithBadge({ appearance, tabs, notifications }: InboxWithBadgeProps
         });
     }, [t]);
 
+    const sendDesktopNotification = useCallback(async (notification: any) => {
+        if (!isTauri() || isMobile()) return
+
+        try {
+            const { isPermissionGranted, requestPermission, sendNotification } = await import('@tauri-apps/plugin-notification')
+            let permission = await isPermissionGranted()
+            if (!permission) {
+                const requested = await requestPermission()
+                permission = requested === 'granted'
+            }
+            if (!permission) return
+
+            // Map content from Novu message
+            const payload = notification?.payload || {}
+            const title = notification?.subject || payload?.title || t('notifications.newNotificationTitle') || 'New Notification'
+
+            // Build body from multiple possible sources
+            const body = notification?.body ||
+                notification?.content ||
+                payload?.content ||
+                payload?.borrower_name ||
+                (payload?.amount ? `${payload.amount} ${payload.currency || ''}` : '') ||
+                ''
+
+            sendNotification({ title, body })
+        } catch (error) {
+            console.warn('[NotificationCenter] Failed to show desktop notification:', error)
+        }
+    }, [t])
+
     // Process notifications: detect new ones AND catch up on unread ones with popup rules
     useEffect(() => {
         if (!notifications?.length) return;
@@ -111,6 +144,7 @@ function InboxWithBadge({ appearance, tabs, notifications }: InboxWithBadgeProps
                 if (getPopupIdFromNotification(n)) {
                     newPopups.push(n);
                 }
+                void sendDesktopNotification(n)
             }
         }
 
@@ -121,7 +155,7 @@ function InboxWithBadge({ appearance, tabs, notifications }: InboxWithBadgeProps
         if (newPopups.length > 0) {
             setPopupQueue(prev => [...prev, ...newPopups]);
         }
-    }, [notifications, showNotificationToast]);
+    }, [notifications, sendDesktopNotification, showNotificationToast]);
 
     // Sequential display: when popup closes and queue has more items, show the next one
     useEffect(() => {

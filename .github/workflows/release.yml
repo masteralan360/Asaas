@@ -47,6 +47,12 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci --legacy-peer-deps
 
+      - name: Restore google-services.json (Android only)
+        if: matrix.settings.platform == 'ubuntu-latest'
+        run: |
+          mkdir -p src-tauri/gen/android/app
+          echo "${{ secrets.GOOGLE_SERVICES_JSON_B64 }}" | base64 --decode > src-tauri/gen/android/app/google-services.json
+
       - name: Build Windows
         if: matrix.settings.platform == 'windows-latest'
         uses: tauri-apps/tauri-action@v0

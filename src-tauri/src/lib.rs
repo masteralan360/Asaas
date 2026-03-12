@@ -1,3 +1,28 @@
+use std::fs;
+use tauri::Manager;
+
+#[tauri::command]
+fn read_fcm_token(app: tauri::AppHandle) -> Result<Option<String>, String> {
+    let path = app
+        .path()
+        .app_data_dir()
+        .map_err(|err| err.to_string())?
+        .join("fcm-token.txt");
+
+    match fs::read_to_string(path) {
+        Ok(contents) => {
+            let token = contents.trim().to_string();
+            if token.is_empty() {
+                Ok(None)
+            } else {
+                Ok(Some(token))
+            }
+        }
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(err) => Err(err.to_string()),
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     #[allow(unused_mut)]
@@ -6,6 +31,7 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_http::init())
+        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_thermal_printer::init());
@@ -39,6 +65,7 @@ pub fn run() {
             }
             Ok(())
         })
+        .invoke_handler(tauri::generate_handler![read_fcm_token])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

@@ -1,7 +1,7 @@
 {
   "name": "asaas",
   "private": true,
-  "version": "0.0.36",
+  "version": "0.0.37",
   "main": "electron/main.cjs",
   "type": "module",
   "repository": {
@@ -49,7 +49,7 @@
     "@lglab/react-qr-code": "^1.4.9",
     "@lyfie/luthor": "^2.3.6",
     "@mui/material": "^7.3.8",
-    "@novu/node": "^2.6.6",
+    "@novu/api": "^3.14.1",
     "@novu/react": "^3.13.0",
     "@radix-ui/react-alert-dialog": "^1.1.2",
     "@radix-ui/react-avatar": "^1.1.1",
@@ -71,6 +71,7 @@
     "@tauri-apps/plugin-dialog": "^2.6.0",
     "@tauri-apps/plugin-fs": "^2.4.5",
     "@tauri-apps/plugin-http": "^2.5.6",
+    "@tauri-apps/plugin-notification": "^2.3.3",
     "@tauri-apps/plugin-process": "^2.3.1",
     "@tauri-apps/plugin-shell": "^2.3.4",
     "@tauri-apps/plugin-updater": "^2.9.0",

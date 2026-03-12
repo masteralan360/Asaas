@@ -87,6 +87,7 @@
     "dialog:allow-open",
     "dialog:allow-ask",
     "dialog:allow-message",
+    "notification:default",
     "updater:default",
     "process:default",
     "thermal-printer:allow-list-thermal-printers",
