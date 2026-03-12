@@ -26,7 +26,7 @@ import { useWorkspaceContacts } from '@/local-db/hooks'
 import { getRetriableActionToast, isRetriableWebRequestError, normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
 import { DEFAULT_THERMAL_ROLL_WIDTH, THERMAL_ROLL_WIDTHS, isLikelyThermalPrinter, isVirtualPrinter, printService, type StoredThermalPrinter, type ThermalRollWidth } from '@/services/printService'
 import type { PrinterInfo } from 'tauri-plugin-thermal-printer'
-import { isPermissionGranted, requestPermission } from '@tauri-apps/plugin-notification'
+// Notification imports moved to dynamic imports for cross-platform support
 import { registerDeviceTokenIfNeeded } from '@/services/notificationDevice'
 
 export function Settings() {
@@ -437,13 +437,31 @@ export function Settings() {
     }
 
     const handleSubscribeToNotifications = async () => {
-        if (!isElectron) return
         try {
-            let permissionGranted = await isPermissionGranted()
-            if (!permissionGranted) {
-                const permission = await requestPermission()
+            let permissionGranted = false
+            
+            if (isElectron) {
+                // Tauri-specific permission check
+                const { isPermissionGranted: tauriIsGranted, requestPermission: tauriRequest } = await import('@tauri-apps/plugin-notification')
+                permissionGranted = await tauriIsGranted()
+                if (!permissionGranted) {
+                    const permission = await tauriRequest()
+                    permissionGranted = permission === 'granted'
+                }
+            } else {
+                // Standard browser permission check
+                if (!("Notification" in window)) {
+                    toast({
+                        title: 'Not Supported',
+                        description: 'This browser does not support desktop notifications.',
+                        variant: 'destructive'
+                    })
+                    return
+                }
+                const permission = await Notification.requestPermission()
                 permissionGranted = permission === 'granted'
             }
+
             if (permissionGranted) {
                 if (user?.id) {
                     await registerDeviceTokenIfNeeded(user.id)
@@ -455,7 +473,7 @@ export function Settings() {
             } else {
                 toast({
                     title: t('settings.notifications.deniedTitle') || 'Permission Denied',
-                    description: t('settings.notifications.deniedDesc') || 'Please enable notification permissions in your device settings.',
+                    description: t('settings.notifications.deniedDesc') || 'Please enable notification permissions in your device/browser settings.',
                     variant: 'destructive'
                 })
             }
@@ -1183,6 +1201,33 @@ export function Settings() {
                             </CardContent>
                         </Card>
                     )}
+ 
+                    {/* Push Notification Service */}
+                    <Card>
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2">
+                                <Bell className="w-5 h-5" />
+                                Push Notification Service
+                            </CardTitle>
+                            <CardDescription>
+                                Enable push notifications to receive real-time alerts and updates on this device.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <div className="flex items-center justify-between">
+                                <div className="space-y-0.5">
+                                    <Label className="text-sm font-medium">Notification Subscription</Label>
+                                    <p className="text-xs text-muted-foreground">
+                                        {isElectron ? 'Receive OS-level alerts for important workspace events.' : 'Receive browser notifications for important platform events.'}
+                                    </p>
+                                </div>
+                                <Button variant="outline" onClick={handleSubscribeToNotifications} className="gap-2 shrink-0">
+                                    <Bell className="w-4 h-4" />
+                                    Subscribe
+                                </Button>
+                            </div>
+                        </CardContent>
+                    </Card>
 
                     {/* Media Sync Modal */}
                     <Dialog open={isSyncMediaModalOpen} onOpenChange={setIsSyncMediaModalOpen}>
@@ -1367,24 +1412,6 @@ export function Settings() {
                                 </div>
                             </div>
 
-                            {/* Push Notifications Section (Mobile Only) */}
-                            {isElectron && isMobile() && (
-                                <div className="pt-6 border-t border-border/50 space-y-4">
-                                    <Label className="text-sm font-bold uppercase tracking-wider text-muted-foreground">Push Notifications</Label>
-                                    <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg border border-border">
-                                        <div className="space-y-0.5 pr-4">
-                                            <Label className="text-sm font-medium">Enable OS Notifications</Label>
-                                            <p className="text-xs text-muted-foreground">
-                                                Receive OS-level alerts for important workspace events. Recommended for mobile devices.
-                                            </p>
-                                        </div>
-                                        <Button variant="outline" onClick={handleSubscribeToNotifications} className="gap-2 shrink-0">
-                                            <Bell className="w-4 h-4" />
-                                            Subscribe
-                                        </Button>
-                                    </div>
-                                </div>
-                            )}
 
                             {/* Workspace Logo Section (Admin Only) */}
                             {user?.role === 'admin' && (

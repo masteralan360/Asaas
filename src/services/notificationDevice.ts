@@ -1,11 +1,11 @@
 import { supabase, isSupabaseConfigured } from '@/auth/supabase'
 import { isMobile, isTauri } from '@/lib/platform'
+import { requestFirebaseTokenSync } from '@/lib/firebase'
 
-const TOKEN_STORAGE_KEY_PREFIX = 'asaas_fcm_device_token'
+const TOKEN_STORAGE_KEY_PREFIX = 'asaas_device_token'
 
 async function readAndroidFcmToken(): Promise<string | null> {
     if (!isTauri() || !isMobile()) {
-        console.log('[Notifications] readAndroidFcmToken skipped: isTauri=', isTauri(), 'isMobile=', isMobile())
         return null
     }
 
@@ -24,9 +24,16 @@ async function readAndroidFcmToken(): Promise<string | null> {
         console.log('[Notifications] read_fcm_token result:', token ? `${token.substring(0, 12)}...` : 'null')
         return token ?? null
     } catch (error) {
-        console.warn('[Notifications] Failed to read FCM token:', error)
+        console.warn('[Notifications] Failed to read Android FCM token:', error)
         return null
     }
+}
+
+async function readWebPushToken(): Promise<string | null> {
+    if (isTauri() && isMobile()) {
+        return null // Handled by Android natively
+    }
+    return await requestFirebaseTokenSync()
 }
 
 export async function registerDeviceTokenIfNeeded(userId: string): Promise<void> {
@@ -36,30 +43,33 @@ export async function registerDeviceTokenIfNeeded(userId: string): Promise<void>
         console.log('[Notifications] Skipped: Supabase not configured')
         return
     }
-    if (!isTauri() || !isMobile()) {
-        console.log('[Notifications] Skipped: not Tauri mobile. isTauri=', isTauri(), 'isMobile=', isMobile())
-        return
+
+    let token = ''
+    let platform = 'web'
+
+    if (isTauri() && isMobile()) {
+        token = (await readAndroidFcmToken())?.trim() || ''
+        platform = 'android'
+    } else {
+        token = (await readWebPushToken())?.trim() || ''
+        platform = 'web'
     }
 
-    const token = (await readAndroidFcmToken())?.trim() || ''
     if (!token) {
-        console.warn('[Notifications] No FCM token found — cannot register device.')
+        console.warn(`[Notifications] No device token found for ${platform} — cannot register device.`)
         return
     }
 
-    const storageKey = `${TOKEN_STORAGE_KEY_PREFIX}:${userId}`
+    const storageKey = `${TOKEN_STORAGE_KEY_PREFIX}:${platform}:${userId}`
     const cached = localStorage.getItem(storageKey)
     if (cached === token) {
-        console.log('[Notifications] Token already cached, skipping registration.')
+        console.log(`[Notifications] Token already cached for ${platform}, skipping registration.`)
         return
     }
 
-    console.log('[Notifications] Registering device token via Tauri native fetch...')
+    console.log(`[Notifications] Registering ${platform} device token...`)
 
     try {
-        // Use Tauri's native HTTP plugin to bypass CORS
-        const { fetch: tauriFetch } = await import('@tauri-apps/plugin-http')
-
         const { data: sessionData } = await supabase.auth.getSession()
         const accessToken = sessionData?.session?.access_token
         if (!accessToken) {
@@ -71,15 +81,32 @@ export async function registerDeviceTokenIfNeeded(userId: string): Promise<void>
         const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
         const functionUrl = `${supabaseUrl}/functions/v1/register-device-token`
 
-        const response = await tauriFetch(functionUrl, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${accessToken}`,
-                'apikey': supabaseAnonKey
-            },
-            body: JSON.stringify({ token, platform: 'android' })
-        })
+        let response: Response
+
+        if (isTauri()) {
+            // Use Tauri native fetch to avoid CORS if running inside desktop/mobile Tauri app
+            const { fetch: tauriFetch } = await import('@tauri-apps/plugin-http')
+            response = await tauriFetch(functionUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${accessToken}`,
+                    'apikey': supabaseAnonKey
+                },
+                body: JSON.stringify({ token, platform })
+            })
+        } else {
+            // Standard browser fetch
+            response = await fetch(functionUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${accessToken}`,
+                    'apikey': supabaseAnonKey
+                },
+                body: JSON.stringify({ token, platform })
+            })
+        }
 
         if (!response.ok) {
             const errorBody = await response.text()
@@ -88,7 +115,7 @@ export async function registerDeviceTokenIfNeeded(userId: string): Promise<void>
         }
 
         const result = await response.json()
-        console.log('[Notifications] Device token registered successfully!', result)
+        console.log(`[Notifications] ${platform} token registered successfully!`, result)
         localStorage.setItem(storageKey, token)
     } catch (error) {
         console.warn('[Notifications] Failed to register device token:', error)

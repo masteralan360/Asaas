@@ -1,7 +1,7 @@
 {
   "name": "asaas",
   "private": true,
-  "version": "0.0.40",
+  "version": "0.0.41",
   "main": "electron/main.cjs",
   "type": "module",
   "repository": {
@@ -81,6 +81,7 @@
     "crypto-js": "^4.2.0",
     "dexie": "^4.0.9",
     "dexie-react-hooks": "^1.1.7",
+    "firebase": "^12.10.0",
     "html2canvas": "^1.4.1",
     "i18next": "^25.7.3",
     "jspdf": "^4.1.0",
