@@ -58,7 +58,22 @@ export default defineConfig(({ mode }) => {
                 }
             })
         ],
+        // Fallback or explicit host parsing for Tauri mobile dev
         server: {
+            // Tauri expects a fixed port, fail if that port is not available
+            port: 5173,
+            strictPort: true,
+            // If the host is provided by Tauri CLI, tell Vite to listen on it
+            host: process.env.TAURI_DEV_HOST || true,
+            hmr: process.env.TAURI_DEV_HOST ? {
+                protocol: 'ws',
+                host: process.env.TAURI_DEV_HOST,
+                port: 5174,
+            } : undefined,
+            // Setup watch to ignore Tauri files
+            watch: {
+                ignored: ['**/src-tauri/**']
+            },
             proxy: {
                 '/api-xeiqd': {
                     target: 'https://xeiqd.com',

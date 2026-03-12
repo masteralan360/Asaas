@@ -1,7 +1,7 @@
 {
   "name": "asaas",
   "private": true,
-  "version": "0.0.37",
+  "version": "0.0.38",
   "main": "electron/main.cjs",
   "type": "module",
   "repository": {
@@ -30,7 +30,7 @@
     }
   },
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --host",
     "build": "npx tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
