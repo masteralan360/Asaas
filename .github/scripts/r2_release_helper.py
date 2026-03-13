@@ -4,6 +4,8 @@ import base64
 import requests
 import glob
 from pathlib import Path
+from datetime import datetime
+import re
 
 def r2_request(method, path, data=None, content_type=None):
     worker_url = os.environ.get("VITE_R2_WORKER_URL")
@@ -114,6 +116,60 @@ def upload_assets():
                 
         with open(latest_json_path, 'w') as f:
             json.dump(data, f, indent=2)
+    else:
+        print("latest.json not found on disk. Generating it dynamically from artifacts...")
+        # Get version from tauri.conf.json
+        version = "0.0.0"
+        try:
+            with open("src-tauri/tauri.conf.json", 'r') as f:
+                tauri_conf = json.load(f)
+                version = tauri_conf.get("version", "0.0.0")
+        except Exception as e:
+            print(f"Warning: Could not read version from tauri.conf.json: {e}")
+
+        worker_url = os.environ.get("VITE_R2_WORKER_URL")
+        baseUrl = worker_url if worker_url.endswith('/') else f"{worker_url}/"
+        
+        data = {
+            "version": version,
+            "notes": f"Release {version}",
+            "pub_date": datetime.utcnow().isoformat() + "Z",
+            "platforms": {}
+        }
+        
+        # Map artifacts to platforms
+        # We look for .msi (primary) or .exe for windows-x86_64
+        windows_bin = None
+        for f_path in all_files:
+            if f_path.endswith(".msi"):
+                windows_bin = f_path
+                break
+            elif f_path.endswith(".exe") and not windows_bin:
+                windows_bin = f_path
+        
+        if windows_bin:
+            sig_path = f"{windows_bin}.sig"
+            signature = ""
+            if os.path.exists(sig_path):
+                try:
+                    with open(sig_path, 'r') as f:
+                        signature = f.read().strip()
+                except Exception as e:
+                    print(f"Warning: Could not read signature {sig_path}: {e}")
+            
+            filename = os.path.basename(windows_bin)
+            data["platforms"]["windows-x86_64"] = {
+                "signature": signature,
+                "url": f"{baseUrl}asaas-updates/{filename}"
+            }
+            print(f"Dynamically mapped windows-x86_64 to {filename}")
+
+        # Write generated JSON
+        latest_json_path = "latest.json"
+        with open(latest_json_path, 'w') as f:
+            json.dump(data, f, indent=2)
+        print(f"Generated {latest_json_path}")
+        all_files.append(latest_json_path)
 
     # Upload all
     for file_path in all_files:
