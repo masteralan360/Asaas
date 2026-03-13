@@ -58,8 +58,6 @@ const InventoryTransfer = lazy(() => import('@/ui/pages/InventoryTransfer').then
 const HR = lazy(() => import('@/ui/pages/HR').then(m => ({ default: m.default })))
 const Loans = lazy(() => import('@/ui/pages/Loans').then(m => ({ default: m.Loans })))
 
-
-
 function LoadingState() {
     const [isSlow, setIsSlow] = useState(false)
     const { t } = useTranslation()
@@ -121,12 +119,41 @@ function UpdateHandler() {
     const checkForUpdates = useCallback(async (isManual = false) => {
         if (!isTauri || isMobile()) return
 
+        // --- DEBUG: Easy to remove check log ---
+        console.log(`[DEBUG-UPDATER] Triggered check. Manual: ${isManual}, Last Check: ${localStorage.getItem('last_auto_update_check')}`)
+        // ---------------------------------------
+
+        const lastCheck = localStorage.getItem('last_auto_update_check')
+        const checkedThisSession = sessionStorage.getItem('startup_checked')
+        const now = Date.now()
+        const twentyFourHours = 24 * 60 * 60 * 1000
+
+        // Skip automatic checks if already checked this session (refresh protection)
+        // OR if checked within the last 24 hours (interval protection)
+        if (!isManual) {
+            if (checkedThisSession) {
+                console.log('[Tauri] Skipping automatic update check (already checked this session/refresh)')
+                return
+            }
+
+            if (lastCheck && now - parseInt(lastCheck) < twentyFourHours) {
+                console.log('[Tauri] Skipping automatic update check (checked within last 24h)')
+                // Still mark session as checked so refreshes don't keep pinging the logic
+                sessionStorage.setItem('startup_checked', 'true')
+                return
+            }
+        }
+
         try {
             const { check } = await import('@tauri-apps/plugin-updater')
             const { ask, message } = await import('@tauri-apps/plugin-dialog')
 
             console.log('[Tauri] Checking for updates...')
             const update = await check()
+
+            // Update timestamps
+            localStorage.setItem('last_auto_update_check', now.toString())
+            sessionStorage.setItem('startup_checked', 'true')
 
             if (update) {
                 console.log(`[Tauri] Update available: ${update.version}`)
@@ -186,10 +213,22 @@ function UpdateHandler() {
 
     useEffect(() => {
         if (isTauri) {
-            // Delay startup check slightly to ensure network and WebView are fully ready
-            const timer = setTimeout(() => {
+            // 1. Startup check (3s delay)
+            const startupTimer = setTimeout(() => {
                 checkForUpdates()
             }, 3000)
+
+            // 2. Background interval check (every 4 hours)
+            const intervalTimer = setInterval(() => {
+                const lastCheck = localStorage.getItem('last_auto_update_check')
+                const now = Date.now()
+                const twentyFourHours = 24 * 60 * 60 * 1000
+
+                if (!lastCheck || now - parseInt(lastCheck) >= twentyFourHours) {
+                    console.log('[Tauri] 24h interval passed while app open. Checking...')
+                    checkForUpdates()
+                }
+            }, 4 * 60 * 60 * 1000)
 
             const handleManualCheck = () => {
                 checkForUpdates(true)
@@ -217,7 +256,8 @@ function UpdateHandler() {
 
             window.addEventListener('keydown', handleKeyDown)
             return () => {
-                clearTimeout(timer)
+                clearTimeout(startupTimer)
+                clearInterval(intervalTimer)
                 window.removeEventListener('keydown', handleKeyDown)
                 window.removeEventListener('check-for-updates', handleManualCheck)
             }
@@ -227,16 +267,10 @@ function UpdateHandler() {
     return null
 }
 
-/**
- * FaviconHandler - Updates favicon based on language and theme style
- */
 function FaviconHandler() {
     useFavicon()
     return null
 }
-
-
-
 
 function App() {
     const { showModal, currentPatch, version, dismissModal } = usePatchNotes()
