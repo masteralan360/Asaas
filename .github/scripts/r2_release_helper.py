@@ -54,33 +54,47 @@ def clear_updates():
 
 def upload_assets():
     print("Starting asset upload to R2...")
-    # Find Windows assets
+    # Broaden patterns to find assets wherever they might be in the bundle dir
     windows_patterns = [
         "src-tauri/target/release/bundle/msi/*.msi",
         "src-tauri/target/release/bundle/msi/*.msi.sig",
         "src-tauri/target/release/bundle/nsis/*.exe",
         "src-tauri/target/release/bundle/nsis/*.exe.sig",
-        "src-tauri/target/release/bundle/updater/latest.json"
+        "src-tauri/target/release/bundle/updater/latest.json",
+        "src-tauri/target/release/bundle/latest.json",
+        "**/target/release/bundle/updater/latest.json"
     ]
     
     # Find Android assets
     android_patterns = [
         "src-tauri/gen/android/app/build/outputs/apk/universal/release/Asaas-Release-Signed.apk",
-        "src-tauri/gen/android/app/build/outputs/apk/debug/*.apk"
+        "src-tauri/gen/android/app/build/outputs/apk/debug/*.apk",
+        "**/outputs/apk/**/Asaas-Release-Signed.apk"
     ]
     
     all_files = []
+    print("Searching for files using patterns...")
     for p in windows_patterns + android_patterns:
-        all_files.extend(glob.glob(p))
+        matches = glob.glob(p, recursive=True)
+        if matches:
+            print(f"Pattern '{p}' matched: {matches}")
+        all_files.extend(matches)
         
     if not all_files:
         print("No assets found to upload!")
         return
 
-    # Process latest.json if found
-    latest_json_path = "src-tauri/target/release/bundle/updater/latest.json"
-    if os.path.exists(latest_json_path):
-        print("Processing latest.json for R2 URLs...")
+    # Process latest.json if found (look for the most relevant one)
+    latest_json_path = None
+    for f_path in all_files:
+        if os.path.basename(f_path) == "latest.json":
+            latest_json_path = f_path
+            # Prefer the one in 'updater' dir if multiple exist
+            if "/updater/" in f_path:
+                break
+    
+    if latest_json_path and os.path.exists(latest_json_path):
+        print(f"Processing {latest_json_path} for R2 URLs...")
         with open(latest_json_path, 'r') as f:
             data = json.load(f)
             
