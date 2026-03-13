@@ -5,6 +5,10 @@ on:
       - 'v*'
   workflow_dispatch:
 
+env:
+  VITE_R2_WORKER_URL: ${{ secrets.VITE_R2_WORKER_URL }}
+  VITE_R2_AUTH_TOKEN: ${{ secrets.VITE_R2_AUTH_TOKEN }}
+
 jobs:
   release:
     permissions:
@@ -53,6 +57,22 @@ jobs:
           mkdir -p src-tauri/gen/android/app
           echo "${{ secrets.GOOGLE_SERVICES_JSON_B64 }}" | base64 --decode > src-tauri/gen/android/app/google-services.json
 
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install Dependencies
+        run: pip install requests
+
+      - name: Clear R2 Updates (Initial)
+        if: matrix.settings.platform == 'windows-latest'
+        run: python .github/scripts/r2_release_helper.py clear
+        shell: bash
+        env:
+          VITE_R2_WORKER_URL: ${{ secrets.VITE_R2_WORKER_URL }}
+          VITE_R2_AUTH_TOKEN: ${{ secrets.VITE_R2_AUTH_TOKEN }}
+
       - name: Build Windows
         if: matrix.settings.platform == 'windows-latest'
         uses: tauri-apps/tauri-action@v0
@@ -73,6 +93,14 @@ jobs:
           releaseName: "Asaas ${{ github.ref_name }}"
           includeUpdaterJson: true
           releaseBody: "See the assets to download this version and install."
+
+      - name: Upload Windows Assets to R2
+        if: matrix.settings.platform == 'windows-latest'
+        run: python .github/scripts/r2_release_helper.py upload
+        shell: bash
+        env:
+          VITE_R2_WORKER_URL: ${{ secrets.VITE_R2_WORKER_URL }}
+          VITE_R2_AUTH_TOKEN: ${{ secrets.VITE_R2_AUTH_TOKEN }}
 
       - name: Build Android
         if: matrix.settings.platform == 'ubuntu-latest'
@@ -121,3 +149,11 @@ jobs:
           name: "Asaas ${{ github.ref_name }}"
           token: ${{ secrets.GITHUB_TOKEN }}
           fail_on_unmatched_files: false
+
+      - name: Upload Android Assets to R2
+        if: matrix.settings.platform == 'ubuntu-latest'
+        run: python .github/scripts/r2_release_helper.py upload
+        shell: bash
+        env:
+          VITE_R2_WORKER_URL: ${{ secrets.VITE_R2_WORKER_URL }}
+          VITE_R2_AUTH_TOKEN: ${{ secrets.VITE_R2_AUTH_TOKEN }}
