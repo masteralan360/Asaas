@@ -158,11 +158,15 @@ def upload_assets():
                     print(f"Warning: Could not read signature {sig_path}: {e}")
             
             filename = os.path.basename(windows_bin)
-            data["platforms"]["windows-x86_64"] = {
+            details = {
                 "signature": signature,
                 "url": f"{baseUrl}asaas-updates/{filename}"
             }
-            print(f"Dynamically mapped windows-x86_64 to {filename}")
+            # Add all required platform tags for Windows
+            data["platforms"]["windows-x86_64"] = details
+            data["platforms"]["windows-x86_64-msi"] = details
+            data["platforms"]["windows-x86_64-nsis"] = details
+            print(f"Dynamically mapped windows-x86_64 (and aliases) to {filename}")
 
         # Write generated JSON
         latest_json_path = "latest.json"
@@ -170,9 +174,22 @@ def upload_assets():
             json.dump(data, f, indent=2)
         print(f"Generated {latest_json_path}")
         all_files.append(latest_json_path)
+        
+    # Final sanity check: If we have NO desktop binaries and this is a generator run,
+    # we MUST NOT upload an empty latest.json. 
+    # This prevents the Android job from overwriting the Windows job's work.
+    is_desktop_platform = any(f.endswith(".msi") or f.endswith(".exe") for f in all_files)
+    
+    # Filter files for upload: if we aren't a desktop build, remove latest.json from targets
+    files_to_upload = []
+    for f in all_files:
+        if os.path.basename(f) == "latest.json" and not is_desktop_platform:
+            print(f"Skipping {f} upload because no desktop binaries were found (Android job protection)")
+            continue
+        files_to_upload.append(f)
 
     # Upload all
-    for file_path in all_files:
+    for file_path in files_to_upload:
         filename = os.path.basename(file_path)
         r2_path = f"asaas-updates/{filename}"
         print(f"Uploading {file_path} to {r2_path}...")
