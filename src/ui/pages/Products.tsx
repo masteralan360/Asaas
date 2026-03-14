@@ -32,7 +32,7 @@ import {
     Switch,
     DeleteConfirmationModal
 } from '@/ui/components'
-import { Plus, Pencil, Trash2, Package, Search, ImagePlus, Info, Settings, LayoutGrid, List as ListIcon, Camera } from 'lucide-react'
+import { Plus, Pencil, Trash2, Package, Search, ImagePlus, Info, Settings, LayoutGrid, List as ListIcon, Camera, Barcode, Type, Tag, Ruler, Boxes, DollarSign, Wallet, Warehouse, FileText, ChevronRight } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/auth'
 import { useWorkspace } from '@/workspace'
@@ -807,309 +807,434 @@ export function Products() {
                 </CardContent >
             </Card>
 
-            {/* Add/Edit Dialog */}
-            < Dialog open={isDialogOpen} onOpenChange={handleProductDialogChange} >
+            <Dialog open={isDialogOpen} onOpenChange={handleProductDialogChange}>
                 <DialogContent
-                    className="max-w-2xl w-[95vw] sm:w-full max-h-[90vh] overflow-y-auto"
+                    className="max-w-3xl w-[98vw] sm:w-full max-h-[88vh] overflow-hidden flex flex-col p-0 gap-0 border-primary/10 shadow-2xl rounded-xl mt-8 sm:mt-0 sm:top-[52%]"
                     onPointerDownOutside={handleProductOutsideClick}
                 >
-                    {/* ... Dialog Content ... */}
-                    <DialogHeader>
-                        <DialogTitle>{editingProduct ? t('common.edit') : t('products.addProduct')}</DialogTitle>
+                    <DialogHeader className="pt-10 pb-4 px-4 sm:p-10 bg-muted/30 border-b relative">
+                        <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-primary/40 via-primary to-primary/40" />
+                        <DialogTitle className="text-xl sm:text-2xl font-black flex items-center justify-center sm:justify-start gap-3 px-6 sm:px-0">
+                            <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-primary/10 flex items-center justify-center text-primary shadow-inner shrink-0">
+                                {editingProduct ? <Pencil className="w-5 h-5" /> : <Plus className="w-5 h-5" />}
+                            </div>
+                            <div className="flex flex-col min-w-0">
+                                <span className="leading-tight truncate">{editingProduct ? t('common.edit') : t('products.addProduct')}</span>
+                                <span className="text-xs font-bold text-muted-foreground/60 uppercase tracking-widest mt-0.5 hidden sm:block">
+                                    {editingProduct ? `${t('products.table.sku')}: ${formData.sku}` : t('products.subtitle')}
+                                </span>
+                            </div>
+                        </DialogTitle>
                     </DialogHeader>
-                    <form onSubmit={handleSubmit} className="space-y-4">
-                        <div className="grid gap-4 md:grid-cols-2">
-                            <div className="space-y-2">
-                                <Label htmlFor="sku">{t('products.table.sku')}</Label>
-                                <Input
-                                    id="sku"
-                                    value={formData.sku}
-                                    onChange={(e) => setFormData({ ...formData, sku: e.target.value })}
-                                    placeholder="PRD-001"
-                                    required
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="name">{t('products.table.name')}</Label>
-                                <Input
-                                    id="name"
-                                    value={formData.name}
-                                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                                    placeholder={t('products.form.name') || "Product name"}
-                                    required
-                                />
-                            </div>
-                        </div>
 
-                        <div className="space-y-2">
-                            <Label htmlFor="description">{t('products.form.description')}</Label>
-                            <Textarea
-                                id="description"
-                                value={formData.description}
-                                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                                placeholder={t('products.form.description') || "Product description..."}
-                                rows={3}
-                            />
-                        </div>
-
-                        <div className="grid gap-4 md:grid-cols-2">
-                            <div className="space-y-2">
-                                <Label htmlFor="category">{t('products.table.category')}</Label>
-                                <Select value={formData.categoryId || 'none'} onValueChange={(value) => setFormData({ ...formData, categoryId: value === 'none' ? undefined : value })}>
-                                    <SelectTrigger>
-                                        <SelectValue placeholder={t('categories.noCategory')} />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="none">{t('categories.noCategory')}</SelectItem>
-                                        {categories.map((cat) => (
-                                            <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="unit">{t('products.form.unit')}</Label>
-                                <Select value={formData.unit} onValueChange={(value) => setFormData({ ...formData, unit: value })}>
-                                    <SelectTrigger>
-                                        <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {UNITS.map((unit) => (
-                                            <SelectItem key={unit} value={unit}>
-                                                {t(`products.units.${unit}`, unit)}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                        </div>
-
-                        <div className="space-y-2">
-                            <Label htmlFor="storage">{t('storages.title') || 'Storage'}</Label>
-                            <Select
-                                value={formData.storageId}
-                                onValueChange={(value) => setFormData({ ...formData, storageId: value })}
-                                disabled={!!editingProduct && !isDialogOpen} // Only allow changing on creation or explicit edit
-                            >
-                                <SelectTrigger>
-                                    <SelectValue placeholder={t('storages.selectStorage') || 'Select Storage'} />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {storages.map((storage) => (
-                                        <SelectItem key={storage.id} value={storage.id}>
-                                            {storage.isSystem ? (t(`storages.${storage.name.toLowerCase()}`) || storage.name) : storage.name} {storage.isSystem ? `(${t('storages.system') || 'System'})` : ''}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
-
-                        <div className="grid gap-4 md:grid-cols-3">
-                            <div className="space-y-2">
-                                <Label htmlFor="price">{t('products.table.price')}</Label>
-                                <Input
-                                    id="price"
-                                    type="number"
-                                    min="0"
-                                    step="0.01"
-                                    value={formData.price}
-                                    onChange={(e) => setFormData({ ...formData, price: e.target.value === '' ? '' : parseFloat(e.target.value) })}
-                                    placeholder="0.00"
-                                    required
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <CurrencySelector
-                                    label={t('products.form.currency') || "Currency"}
-                                    value={formData.currency}
-                                    onChange={(val) => setFormData({ ...formData, currency: val })}
-                                    iqdDisplayPreference={features.iqd_display_preference}
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="costPrice">{t('products.form.cost')}</Label>
-                                <Input
-                                    id="costPrice"
-                                    type="number"
-                                    min="0"
-                                    step="0.01"
-                                    value={formData.costPrice}
-                                    onChange={(e) => setFormData({ ...formData, costPrice: e.target.value === '' ? '' : parseFloat(e.target.value) })}
-                                    placeholder="0.00"
-                                    required
-                                />
-                            </div>
-                        </div>
-
-                        <div className="grid gap-4 md:grid-cols-2">
-                            <div className="space-y-2">
-                                <Label htmlFor="quantity">{t('products.form.stock')}</Label>
-                                <Input
-                                    id="quantity"
-                                    type="number"
-                                    min="0"
-                                    value={formData.quantity}
-                                    onChange={(e) => setFormData({ ...formData, quantity: e.target.value === '' ? '' : parseInt(e.target.value) })}
-                                    placeholder="0"
-                                    required
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="minStockLevel">{t('products.form.minStock')}</Label>
-                                <Input
-                                    id="minStockLevel"
-                                    type="number"
-                                    min="0"
-                                    value={formData.minStockLevel}
-                                    onChange={(e) => setFormData({ ...formData, minStockLevel: e.target.value === '' ? '' : parseInt(e.target.value) })}
-                                    required
-                                />
-                            </div>
-                        </div>
-
-                        <div className="pt-2">
-                            <div className="flex items-center justify-between p-4 rounded-xl border border-border/60 bg-muted/20 hover:bg-muted/30 transition-colors duration-200">
-                                <div className="space-y-1 text-start">
-                                    <Label htmlFor="canBeReturned" className="text-base font-bold cursor-pointer">
-                                        {t('products.form.canBeReturned') || 'Can be Returned'}
-                                    </Label>
-                                    <p className="text-sm text-muted-foreground leading-relaxed">
-                                        {formData.canBeReturned
-                                            ? (t('products.form.canBeReturnedDesc') || 'Customers can return this product.')
-                                            : (t('products.form.cannotBeReturnedDesc') || 'This product is non-returnable.')}
-                                    </p>
+                    <div className="flex-1 overflow-y-auto p-6 sm:p-10 space-y-8 sm:space-y-10 custom-scrollbar">
+                        <form id="product-form" onSubmit={handleSubmit} className="space-y-8 pb-4">
+                            {/* Section: Basic Information */}
+                            <div className="space-y-4">
+                                <div className="flex items-center gap-2 mb-2">
+                                    <div className="h-4 w-1 bg-primary rounded-full transition-all group-hover:h-6" />
+                                    <h3 className="text-sm font-black uppercase tracking-widest text-primary/80">{t('products.form.basicInfo')}</h3>
                                 </div>
-                                <div className="flex items-center gap-4 ml-4 rtl:ml-0 rtl:mr-4">
-                                    {formData.canBeReturned && (
-                                        <Button
-                                            type="button"
-                                            variant="outline"
-                                            size="sm"
-                                            onClick={() => setReturnRulesModalOpen(true)}
-                                            className="h-9 px-4 gap-2 border-primary/20 hover:border-primary/40 hover:bg-primary/5 transition-all animate-in fade-in zoom-in duration-200"
-                                        >
-                                            <Settings className="w-4 h-4 mr-2 rtl:mr-0 rtl:ml-2" />
-                                            {t('products.form.addRules') || 'Add rules'}
-                                        </Button>
-                                    )}
-                                    <Switch
-                                        id="canBeReturned"
-                                        checked={formData.canBeReturned}
-                                        onCheckedChange={(checked) => setFormData({ ...formData, canBeReturned: checked })}
+                                <div className="grid gap-6 md:grid-cols-2">
+                                    <div className="space-y-2">
+                                        <Label htmlFor="sku" className="flex items-center gap-2 font-bold text-muted-foreground ml-1">
+                                            <Barcode className="w-4 h-4 text-primary/60" />
+                                            {t('products.table.sku')}
+                                        </Label>
+                                        <Input
+                                            id="sku"
+                                            value={formData.sku}
+                                            onChange={(e) => setFormData({ ...formData, sku: e.target.value })}
+                                            placeholder="PRD-001"
+                                            className="h-12 rounded-lg border-border/40 focus:border-primary/40 focus:ring-primary/10 bg-muted/10 font-mono transition-all"
+                                            required
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label htmlFor="name" className="flex items-center gap-2 font-bold text-muted-foreground ml-1">
+                                            <Type className="w-4 h-4 text-primary/60" />
+                                            {t('products.table.name')}
+                                        </Label>
+                                        <Input
+                                            id="name"
+                                            value={formData.name}
+                                            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                                            placeholder={t('products.form.name') || "Product name"}
+                                            className="h-12 rounded-lg border-border/40 focus:border-primary/40 focus:ring-primary/10 bg-muted/10 font-bold transition-all"
+                                            required
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <Label htmlFor="description" className="flex items-center gap-2 font-bold text-muted-foreground ml-1">
+                                        <FileText className="w-4 h-4 text-primary/60" />
+                                        {t('products.form.description')}
+                                    </Label>
+                                    <Textarea
+                                        id="description"
+                                        value={formData.description}
+                                        onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                                        placeholder={t('products.form.description') || "Product description..."}
+                                        rows={3}
+                                        className="rounded-lg border-border/40 focus:border-primary/40 focus:ring-primary/10 bg-muted/10 min-h-[100px] transition-all"
                                     />
                                 </div>
                             </div>
-                        </div>
 
-                        <div className="space-y-4 pt-4 border-t">
-                            <Label className="flex items-center gap-2">
-                                {t('products.form.image') || 'Product Image'}
-                            </Label>
+                            {/* Section: Categorization & Storage */}
+                            <div className="space-y-4">
+                                <div className="flex items-center gap-2 mb-2">
+                                    <div className="h-4 w-1 bg-primary rounded-full transition-all group-hover:h-6" />
+                                    <h3 className="text-sm font-black uppercase tracking-widest text-primary/80">{t('products.form.categorization')}</h3>
+                                </div>
+                                <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                                    <div className="space-y-2">
+                                        <Label htmlFor="category" className="flex items-center gap-2 font-bold text-muted-foreground ml-1">
+                                            <Tag className="w-4 h-4 text-primary/60" />
+                                            {t('products.table.category')}
+                                        </Label>
+                                        <Select value={formData.categoryId || 'none'} onValueChange={(value) => setFormData({ ...formData, categoryId: value === 'none' ? undefined : value })}>
+                                            <SelectTrigger className="h-12 rounded-lg border-border/40 bg-muted/10 focus:ring-primary/10">
+                                                <SelectValue placeholder={t('categories.noCategory')} />
+                                            </SelectTrigger>
+                                            <SelectContent className="rounded-xl shadow-xl">
+                                                <SelectItem value="none" className="rounded-xl">{t('categories.noCategory')}</SelectItem>
+                                                {categories.map((cat) => (
+                                                    <SelectItem key={cat.id} value={cat.id} className="rounded-xl">{cat.name}</SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label htmlFor="unit" className="flex items-center gap-2 font-bold text-muted-foreground ml-1">
+                                            <Ruler className="w-4 h-4 text-primary/60" />
+                                            {t('products.form.unit')}
+                                        </Label>
+                                        <Select value={formData.unit} onValueChange={(value) => setFormData({ ...formData, unit: value })}>
+                                            <SelectTrigger className="h-12 rounded-lg border-border/40 bg-muted/10 focus:ring-primary/10">
+                                                <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent className="rounded-xl shadow-xl">
+                                                {UNITS.map((unit) => (
+                                                    <SelectItem key={unit} value={unit} className="rounded-xl">
+                                                        {t(`products.units.${unit}`, unit)}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                    <div className="space-y-2 md:col-span-2 lg:col-span-1">
+                                        <Label htmlFor="storage" className="flex items-center gap-2 font-bold text-muted-foreground ml-1">
+                                            <Warehouse className="w-4 h-4 text-primary/60" />
+                                            {t('storages.title') || 'Storage'}
+                                        </Label>
+                                        <Select
+                                            value={formData.storageId}
+                                            onValueChange={(value) => setFormData({ ...formData, storageId: value })}
+                                            disabled={!!editingProduct && !isDialogOpen}
+                                        >
+                                            <SelectTrigger className="h-12 rounded-lg border-border/40 bg-muted/10 focus:ring-primary/10">
+                                                <SelectValue placeholder={t('storages.selectStorage') || 'Select Storage'} />
+                                            </SelectTrigger>
+                                            <SelectContent className="rounded-xl shadow-xl">
+                                                {storages.map((storage) => (
+                                                    <SelectItem key={storage.id} value={storage.id} className="rounded-xl">
+                                                        <div className="flex items-center gap-2">
+                                                            {storage.isSystem ? <div className="w-1.5 h-1.5 rounded-full bg-primary" /> : <div className="w-1.5 h-1.5 rounded-full bg-muted-foreground/30" />}
+                                                            {storage.isSystem ? (t(`storages.${storage.name.toLowerCase()}`) || storage.name) : storage.name}
+                                                        </div>
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                </div>
+                            </div>
 
-                            <div className="flex flex-col sm:flex-row gap-4 items-start">
-                                {/* Preview Thumbnail */}
-                                <div className="w-32 h-32 rounded-lg border bg-muted flex items-center justify-center overflow-hidden shrink-0">
-                                    {!formData.imageUrl ? (
-                                        <Package className="w-12 h-12 text-muted-foreground/30" />
-                                    ) : imageError ? (
-                                        <div className="flex flex-col items-center gap-1 px-2 text-center">
-                                            <Package className="w-8 h-8 text-destructive/30" />
-                                            <span className="text-[10px] font-bold text-destructive/60 uppercase">{t('products.form.imageError') || 'Image Error'}</span>
-                                        </div>
-                                    ) : (
-                                        <img
-                                            src={getDisplayImageUrl(formData.imageUrl)}
-                                            alt="Preview"
-                                            className="w-full h-full object-cover animate-in fade-in duration-300"
-                                            onError={() => setImageError(true)}
+                            {/* Section: Pricing */}
+                            <div className="space-y-4 p-5 rounded-xl bg-gradient-to-br from-primary/5 via-transparent to-transparent border border-primary/10 shadow-sm relative overflow-hidden group">
+                                <div className="absolute top-0 right-0 p-4 opacity-[0.03] group-hover:opacity-[0.08] transition-opacity">
+                                    <Wallet className="w-24 h-24" />
+                                </div>
+                                <div className="flex items-center gap-2 mb-2">
+                                    <div className="h-4 w-1 bg-primary rounded-full transition-all group-hover:h-6" />
+                                    <h3 className="text-sm font-black uppercase tracking-widest text-primary/80">{t('products.form.pricing')}</h3>
+                                </div>
+                                <div className="grid gap-6 md:grid-cols-3">
+                                    <div className="space-y-2">
+                                        <Label htmlFor="price" className="flex items-center gap-2 font-bold text-muted-foreground ml-1">
+                                            <DollarSign className="w-4 h-4 text-primary/60" />
+                                            {t('products.table.price')}
+                                        </Label>
+                                        <Input
+                                            id="price"
+                                            type="number"
+                                            min="0"
+                                            step="0.01"
+                                            value={formData.price}
+                                            onChange={(e) => setFormData({ ...formData, price: e.target.value === '' ? '' : parseFloat(e.target.value) })}
+                                            placeholder="0.00"
+                                            className="h-12 rounded-lg border-border/40 focus:border-primary/40 focus:ring-primary/10 bg-background/50 text-lg font-black text-primary transition-all"
+                                            required
                                         />
-                                    )}
+                                    </div>
+                                    <div className="space-y-2">
+                                        <CurrencySelector
+                                            label={t('products.form.currency') || "Currency"}
+                                            value={formData.currency}
+                                            onChange={(val) => setFormData({ ...formData, currency: val })}
+                                            iqdDisplayPreference={features.iqd_display_preference}
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label htmlFor="costPrice" className="flex items-center gap-2 font-bold text-muted-foreground ml-1">
+                                            <Wallet className="w-4 h-4 text-primary/60" />
+                                            {t('products.form.cost')}
+                                        </Label>
+                                        <Input
+                                            id="costPrice"
+                                            type="number"
+                                            min="0"
+                                            step="0.01"
+                                            value={formData.costPrice}
+                                            onChange={(e) => setFormData({ ...formData, costPrice: e.target.value === '' ? '' : parseFloat(e.target.value) })}
+                                            placeholder="0.00"
+                                            className="h-12 rounded-lg border-border/40 focus:border-primary/40 focus:ring-primary/10 bg-background/50 font-bold transition-all"
+                                            required
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Section: Inventory */}
+                            <div className="space-y-4">
+                                <div className="flex items-center gap-2 mb-2">
+                                    <div className="h-4 w-1 bg-primary rounded-full transition-all group-hover:h-6" />
+                                    <h3 className="text-sm font-black uppercase tracking-widest text-primary/80">{t('products.form.inventory')}</h3>
+                                </div>
+                                <div className="grid gap-6 md:grid-cols-2">
+                                    <div className="space-y-2">
+                                        <Label htmlFor="quantity" className="flex items-center gap-2 font-bold text-muted-foreground ml-1">
+                                            <Boxes className="w-4 h-4 text-primary/60" />
+                                            {t('products.form.stock')}
+                                        </Label>
+                                        <Input
+                                            id="quantity"
+                                            type="number"
+                                            min="0"
+                                            value={formData.quantity}
+                                            onChange={(e) => setFormData({ ...formData, quantity: e.target.value === '' ? '' : parseInt(e.target.value) })}
+                                            placeholder="0"
+                                            className="h-12 rounded-lg border-border/40 focus:border-primary/40 focus:ring-primary/10 bg-muted/10 font-black transition-all"
+                                            required
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label htmlFor="minStockLevel" className="flex items-center gap-2 font-bold text-muted-foreground ml-1">
+                                            <Info className="w-4 h-4 text-primary/60" />
+                                            {t('products.form.minStock')}
+                                        </Label>
+                                        <Input
+                                            id="minStockLevel"
+                                            type="number"
+                                            min="0"
+                                            value={formData.minStockLevel}
+                                            onChange={(e) => setFormData({ ...formData, minStockLevel: e.target.value === '' ? '' : parseInt(e.target.value) })}
+                                            className="h-12 rounded-lg border-border/40 focus:border-primary/40 focus:ring-primary/10 bg-muted/10 font-bold transition-all"
+                                            required
+                                        />
+                                    </div>
                                 </div>
 
-                                <div className="flex-1 space-y-2 w-full">
-                                    <div className="flex gap-2">
-                                        <Input
-                                            id="imageUrl"
-                                            value={formData.imageUrl}
-                                            onChange={(e) => {
-                                                setFormData({ ...formData, imageUrl: e.target.value });
-                                                setImageError(false);
-                                            }}
-                                            placeholder={t('products.form.imageUrlPlaceholder') || "Image URL or local path"}
-                                        />
-                                        <div className="flex flex-wrap gap-2 shrink-0">
-                                            {formData.imageUrl && (
+                                <div className="pt-2 px-1">
+                                    <div className="flex items-center justify-between p-5 rounded-xl border border-border/60 bg-muted/30 hover:bg-muted/40 transition-all duration-300">
+                                        <div className="space-y-1 text-start">
+                                            <Label htmlFor="canBeReturned" className="text-base font-black flex items-center gap-2 cursor-pointer text-foreground/90">
+                                                <div className={cn(
+                                                    "w-8 h-8 rounded-xl flex items-center justify-center transition-colors shadow-sm",
+                                                    formData.canBeReturned ? "bg-emerald-500/10 text-emerald-600" : "bg-muted text-muted-foreground"
+                                                )}>
+                                                    <ChevronRight className={cn("w-4 h-4 transition-transform", formData.canBeReturned && "rotate-90")} />
+                                                </div>
+                                                {t('products.form.canBeReturned') || 'Can be Returned'}
+                                            </Label>
+                                            <p className="text-sm text-muted-foreground/80 leading-relaxed font-medium pl-10">
+                                                {formData.canBeReturned
+                                                    ? (t('products.form.canBeReturnedDesc') || 'Customers can return this product.')
+                                                    : (t('products.form.cannotBeReturnedDesc') || 'This product is non-returnable.')}
+                                            </p>
+                                        </div>
+                                        <div className="flex items-center gap-4 ml-4 rtl:ml-0 rtl:mr-4">
+                                            {formData.canBeReturned && (
                                                 <Button
                                                     type="button"
-                                                    variant="ghost"
-                                                    size="icon"
-                                                    onClick={handleRemoveImage}
-                                                    className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-                                                    title={t('common.delete') || 'Delete'}
+                                                    variant="secondary"
+                                                    size="sm"
+                                                    onClick={() => setReturnRulesModalOpen(true)}
+                                                    className="h-10 px-5 gap-2 rounded-xl border border-primary/10 hover:border-primary/30 hover:bg-primary/5 transition-all animate-in fade-in zoom-in duration-200 font-bold"
                                                 >
-                                                    <Trash2 className="w-4 h-4" />
+                                                    <Settings className="w-4 h-4" />
+                                                    {t('products.form.addRules') || 'Add rules'}
                                                 </Button>
                                             )}
-                                            <Button
-                                                type="button"
-                                                variant="outline"
-                                                onClick={handleImageUpload}
-                                                className="flex-1 min-w-[80px]"
-                                            >
-                                                <ImagePlus className="w-4 h-4 sm:mr-2" />
-                                                <span className="hidden sm:inline">{t('products.form.upload') || 'Upload'}</span>
-                                            </Button>
-                                            <Button
-                                                type="button"
-                                                variant="outline"
-                                                onClick={handleCameraClick}
-                                                className="flex-1 min-w-[80px] border-primary/20 hover:border-primary/40 hover:bg-primary/5"
-                                            >
-                                                <Camera className="w-4 h-4 sm:mr-2" />
-                                                <span className="hidden sm:inline">{t('products.form.camera') || 'Camera'}</span>
-                                            </Button>
-
-                                            <input
-                                                type="file"
-                                                ref={cameraInputRef}
-                                                className="hidden"
-                                                accept="image/*"
-                                                capture="environment"
-                                                onChange={handleCameraCapture}
-                                            />
-                                            <input
-                                                type="file"
-                                                ref={imageUploadInputRef}
-                                                className="hidden"
-                                                accept="image/*"
-                                                onChange={handleImageFileInputChange}
+                                            <Switch
+                                                id="canBeReturned"
+                                                checked={formData.canBeReturned}
+                                                onCheckedChange={(checked) => setFormData({ ...formData, canBeReturned: checked })}
+                                                className="data-[state=checked]:bg-emerald-500"
                                             />
                                         </div>
                                     </div>
-                                    <p className="text-[11px] text-muted-foreground italic">
-                                        {isElectron
-                                            ? (t('products.form.localPathDesc') || 'Image will be stored locally in your device.')
-                                            : (t('products.form.webUploadDesc') || 'Image will be synced via secure cloud storage.')}
-                                    </p>
                                 </div>
                             </div>
-                        </div>
 
-                        <DialogFooter className="pt-4 mt-4 border-t">
-                            <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
-                                {t('common.cancel')}
-                            </Button>
-                            <Button
-                                type="submit"
-                                disabled={isLoading}
-                                className={cn(pulseProductSubmit && "animate-save-pulse")}
-                            >
-                                {isLoading ? t('common.loading') : editingProduct ? t('common.save') : t('common.create')}
-                            </Button>
-                        </DialogFooter>
-                    </form>
+                            {/* Section: Visuals */}
+                            <div className="space-y-4">
+                                <div className="flex items-center gap-2 mb-2">
+                                    <div className="h-4 w-1 bg-primary rounded-full transition-all group-hover:h-6" />
+                                    <h3 className="text-sm font-black uppercase tracking-widest text-primary/80">{t('products.form.visuals')}</h3>
+                                </div>
+
+                                <div className="flex flex-col md:flex-row gap-6 items-start p-1">
+                                    {/* Preview Thumbnail */}
+                                    <div className="relative group w-full md:w-44 aspect-square rounded-xl border-2 border-dashed border-primary/20 bg-muted/30 hover:bg-muted/50 hover:border-primary/40 transition-all duration-300 flex items-center justify-center overflow-hidden shrink-0 shadow-inner">
+                                        {!formData.imageUrl ? (
+                                            <div className="flex flex-col items-center gap-3">
+                                                <ImagePlus className="w-8 h-8 text-primary shadow-sm" />
+                                                <span className="text-[10px] font-black uppercase tracking-tighter text-primary/60">{t('products.form.noImage') || 'No Preview'}</span>
+                                            </div>
+                                        ) : imageError ? (
+                                            <div className="flex flex-col items-center gap-2 px-2 text-center animate-in fade-in zoom-in duration-300">
+                                                <Package className="w-10 h-10 text-destructive/30" />
+                                                <span className="text-[11px] font-bold text-destructive/60 uppercase">{t('products.form.imageError') || 'Image Error'}</span>
+                                            </div>
+                                        ) : (
+                                            <>
+                                                <img
+                                                    src={getDisplayImageUrl(formData.imageUrl)}
+                                                    alt="Preview"
+                                                    className="w-full h-full object-cover animate-in fade-in duration-500 group-hover:scale-110"
+                                                    onError={() => setImageError(true)}
+                                                />
+                                                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                                    <Button
+                                                        type="button"
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        onClick={handleRemoveImage}
+                                                        className="h-12 w-12 rounded-full bg-destructive/90 text-white hover:bg-destructive hover:scale-110 transition-all"
+                                                    >
+                                                        <Trash2 className="w-6 h-6" />
+                                                    </Button>
+                                                </div>
+                                            </>
+                                        )}
+                                    </div>
+
+                                    <div className="flex-1 space-y-4 w-full">
+                                        <div className="flex flex-col gap-3">
+                                            <Label htmlFor="imageUrl" className="flex items-center gap-2 font-bold text-muted-foreground ml-1">
+                                                <Info className="w-4 h-4 text-primary/60" />
+                                                {t('products.form.imageUrl') || 'Image Source'}
+                                            </Label>
+                                            <div className="flex flex-col sm:flex-row gap-3">
+                                                <Input
+                                                    id="imageUrl"
+                                                    value={formData.imageUrl}
+                                                    onChange={(e) => {
+                                                        setFormData({ ...formData, imageUrl: e.target.value });
+                                                        setImageError(false);
+                                                    }}
+                                                    placeholder={t('products.form.imageUrlPlaceholder') || "Image URL or local path"}
+                                                    className="h-12 rounded-lg border-border/40 focus:border-primary/40 focus:ring-primary/10 bg-muted/10 transition-all flex-1"
+                                                />
+                                                <div className="flex gap-2">
+                                                    <Button
+                                                        type="button"
+                                                        variant="outline"
+                                                        onClick={handleImageUpload}
+                                                        className="h-12 px-6 rounded-lg gap-2 font-bold border-primary/20 hover:border-primary/50 hover:bg-primary/5 transition-all"
+                                                    >
+                                                        <ImagePlus className="w-4 h-4" />
+                                                        {t('products.form.upload') || 'Upload'}
+                                                    </Button>
+                                                    <Button
+                                                        type="button"
+                                                        variant="outline"
+                                                        onClick={handleCameraClick}
+                                                        className="h-12 w-12 sm:w-auto sm:px-6 rounded-lg gap-2 font-bold border-primary/20 hover:border-primary/50 hover:bg-primary/5 transition-all text-primary"
+                                                    >
+                                                        <Camera className="w-4 h-4" />
+                                                        <span className="hidden sm:inline">{t('products.form.camera') || 'Camera'}</span>
+                                                    </Button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        
+                                        <div className="p-4 rounded-xl bg-muted/30 border border-border/40 flex items-start gap-3">
+                                            <Info className="w-4 h-4 text-primary mt-0.5 shrink-0" />
+                                            <p className="text-[11px] text-muted-foreground/80 leading-relaxed font-medium">
+                                                {isElectron
+                                                    ? (t('products.form.localPathDesc') || 'Image will be stored locally in your device and automatically synced to other devices in your workspace via Cloudflare R2.')
+                                                    : (t('products.form.webUploadDesc') || 'Image will be securely uploaded and synced via cloud storage.')}
+                                            </p>
+                                        </div>
+
+                                        <input
+                                            type="file"
+                                            ref={cameraInputRef}
+                                            className="hidden"
+                                            accept="image/*"
+                                            capture="environment"
+                                            onChange={handleCameraCapture}
+                                        />
+                                        <input
+                                            type="file"
+                                            ref={imageUploadInputRef}
+                                            className="hidden"
+                                            accept="image/*"
+                                            onChange={handleImageFileInputChange}
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+
+                    <DialogFooter className="p-6 bg-muted/30 border-t flex-row justify-end gap-3 sm:gap-4">
+                        <Button
+                            type="button"
+                            variant="ghost"
+                            onClick={() => setIsDialogOpen(false)}
+                            className="h-12 px-8 rounded-lg font-bold text-muted-foreground hover:bg-muted/80 transition-all order-last sm:order-first"
+                        >
+                            {t('common.cancel')}
+                        </Button>
+                        <Button
+                            form="product-form"
+                            type="submit"
+                            disabled={isLoading}
+                            className={cn(
+                                "h-12 px-10 rounded-lg font-black shadow-lg transition-all",
+                                pulseProductSubmit ? "animate-save-pulse bg-emerald-500 scale-105" : "bg-primary shadow-primary/20 hover:shadow-primary/40",
+                                isLoading && "opacity-80"
+                            )}
+                        >
+                            {isLoading ? (
+                                <div className="flex items-center gap-2">
+                                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                    {t('common.loading')}
+                                </div>
+                            ) : (
+                                <div className="flex items-center gap-2">
+                                    {editingProduct ? <span className="uppercase tracking-widest">{t('common.save')}</span> : <span className="uppercase tracking-widest">{t('common.create')}</span>}
+                                </div>
+                            )}
+                        </Button>
+                    </DialogFooter>
                 </DialogContent>
-            </Dialog >
+            </Dialog>
             {/* Category Dialog */}
             < Dialog open={isCategoryDialogOpen} onOpenChange={setIsCategoryDialogOpen} >
                 {/* ... existing Category Dialog content ... */}

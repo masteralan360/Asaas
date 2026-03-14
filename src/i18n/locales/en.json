@@ -387,6 +387,11 @@
         },
         "form": {
             "title": "Product Details",
+            "basicInfo": "Basic Information",
+            "categorization": "Categorization & Storage",
+            "pricing": "Pricing",
+            "inventory": "Inventory",
+            "visuals": "Visuals",
             "name": "Product Name",
             "sku": "SKU",
             "price": "Selling Price",
