@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useLocation } from 'wouter'
 import { useAuth } from '@/auth'
@@ -9,7 +9,7 @@ import { formatCurrency, formatDateTime, formatCompactDateTime, formatDate, cn }
 import { formatLocalizedMonthYear } from '@/lib/monthDisplay'
 import { getRetriableActionToast, isRetriableWebRequestError, normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
 
-import { db, useLoans, useSales, toUISale, type Loan } from '@/local-db'
+import { db, useLoanBySaleId, useLoanInstallments, useLoanPayments, useLoans, useSales, toUISale, type Loan } from '@/local-db'
 import { useWorkspace } from '@/workspace'
 import { isMobile } from '@/lib/platform'
 import { useDateRange } from '@/context/DateRangeContext'
@@ -48,7 +48,9 @@ import {
     useToast,
     AppPagination
 } from '@/ui/components'
+import { LoanDetailsPrintTemplate, LoanReceiptPrintTemplate } from '@/ui/components/loans/LoanPrintTemplates'
 import { SaleItem } from '@/types'
+import { generateTemplatePdf, type PrintFormat } from '@/services/pdfGenerator'
 import {
     Receipt,
     Eye,
@@ -285,6 +287,81 @@ export function Sales() {
         return (localStorage.getItem('sales_print_format') as 'receipt' | 'a4') || 'receipt'
     })
     const [a4Variant, setA4Variant] = useState<'standard' | 'refund'>('standard')
+    const printLang = features?.print_lang && features.print_lang !== 'auto' ? features.print_lang : i18n.language
+    const loanForPrint = useLoanBySaleId(printingSale?.id, user?.workspaceId)
+    const loanPrintInstallments = useLoanInstallments(loanForPrint?.id, user?.workspaceId)
+    const loanPrintPayments = useLoanPayments(loanForPrint?.id, user?.workspaceId)
+    const shouldUseLoanPrint = printingSale?.payment_method === 'loan'
+    const buildLoanQrValue = useCallback((effectiveId: string, format: PrintFormat) => {
+        if (!features.print_qr || !user?.workspaceId) return undefined
+        const folder = format === 'receipt' ? 'receipts' : 'A4'
+        return `https://asaas-r2-proxy.alanepic360.workers.dev/${user.workspaceId}/printed-invoices/${folder}/${effectiveId}.pdf`
+    }, [features.print_qr, user?.workspaceId])
+
+    const renderLoanPrintTemplate = useCallback((effectiveId?: string) => {
+        if (!loanForPrint) return null
+        return (
+            <LoanDetailsPrintTemplate
+                workspaceName={workspaceName}
+                printLang={printLang}
+                loan={loanForPrint}
+                installments={loanPrintInstallments}
+                payments={loanPrintPayments}
+                iqdPreference={features.iqd_display_preference}
+                logoUrl={features.logo_url}
+                qrValue={effectiveId ? buildLoanQrValue(effectiveId, 'a4') : undefined}
+            />
+        )
+    }, [
+        buildLoanQrValue,
+        features.iqd_display_preference,
+        features.logo_url,
+        loanForPrint,
+        loanPrintInstallments,
+        loanPrintPayments,
+        printLang,
+        workspaceName
+    ])
+
+    const renderLoanReceiptTemplate = useCallback((effectiveId?: string) => {
+        if (!loanForPrint) return null
+        return (
+            <LoanReceiptPrintTemplate
+                workspaceName={workspaceName}
+                printLang={printLang}
+                loan={loanForPrint}
+                installments={loanPrintInstallments}
+                payments={loanPrintPayments}
+                iqdPreference={features.iqd_display_preference}
+                logoUrl={features.logo_url}
+                qrValue={effectiveId ? buildLoanQrValue(effectiveId, 'receipt') : undefined}
+            />
+        )
+    }, [
+        buildLoanQrValue,
+        features.iqd_display_preference,
+        features.logo_url,
+        loanForPrint,
+        loanPrintInstallments,
+        loanPrintPayments,
+        printLang,
+        workspaceName
+    ])
+
+    const buildLoanPrintPdf = useCallback(async ({ format, effectiveId }: { format: PrintFormat; effectiveId: string }) => {
+        const loanTemplate = format === 'receipt'
+            ? renderLoanReceiptTemplate(effectiveId)
+            : renderLoanPrintTemplate(effectiveId)
+        if (!loanTemplate) {
+            throw new Error('Loan data not ready')
+        }
+        return generateTemplatePdf({
+            element: loanTemplate,
+            format,
+            printLang,
+            printQuality: features.print_quality
+        })
+    }, [features.print_quality, printLang, renderLoanPrintTemplate, renderLoanReceiptTemplate])
 
 
     useEffect(() => {
@@ -1352,14 +1429,18 @@ export function Sales() {
                         setA4Variant('standard')
                     }}
                     onConfirm={handleConfirmPrint}
-                    title={printFormat === 'a4'
-                        ? (a4Variant === 'refund'
-                            ? (t('sales.print.a4Refund') || 'A4 Refund Invoice')
-                            : (t('sales.print.a4') || 'A4 Invoice'))
-                        : (t('sales.print.receipt') || 'Receipt')}
+                    title={shouldUseLoanPrint
+                        ? (printFormat === 'receipt'
+                            ? (t('sales.print.receipt') || 'Receipt')
+                            : (t('loans.printDetails') || 'Loan Details'))
+                        : (printFormat === 'a4'
+                            ? (a4Variant === 'refund'
+                                ? (t('sales.print.a4Refund') || 'A4 Refund Invoice')
+                                : (t('sales.print.a4') || 'A4 Invoice'))
+                            : (t('sales.print.receipt') || 'Receipt'))}
                     features={features}
                     workspaceName={workspaceName}
-                    pdfData={printingSale ? mapSaleToUniversal(printingSale, { a4Variant }) : undefined}
+                    pdfData={!shouldUseLoanPrint && printingSale ? mapSaleToUniversal(printingSale, { a4Variant }) : undefined}
                     invoiceData={printingSale ? {
                         sequenceId: printingSale.sequenceId,
                         totalAmount: printingSale.total_amount,
@@ -1369,6 +1450,12 @@ export function Sales() {
                         createdByName: user?.name || 'Unknown',
                         printFormat: printFormat
                     } : undefined}
+                    pdfBuilder={shouldUseLoanPrint ? buildLoanPrintPdf : undefined}
+                    printTemplate={shouldUseLoanPrint
+                        ? ({ effectiveId }) => (printFormat === 'receipt'
+                            ? renderLoanReceiptTemplate(effectiveId)
+                            : renderLoanPrintTemplate(effectiveId))
+                        : undefined}
                 />
             </div>
         </TooltipProvider>

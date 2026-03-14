@@ -289,7 +289,7 @@ export interface Invoice extends BaseEntity {
     totalAmount: number;
     settlementCurrency: CurrencyCode;
     // Print-to-Invoice tracking
-    origin?: 'pos' | 'revenue' | 'inventory' | 'manual';
+    origin?: 'pos' | 'revenue' | 'inventory' | 'manual' | 'loans' | 'Loans';
     /** @deprecated Use cashierName for the name string. createdBy might map to system UUID. */
     createdBy?: string;
     cashierName?: string;

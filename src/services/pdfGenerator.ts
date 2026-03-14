@@ -1,4 +1,4 @@
-import { createElement } from 'react'
+import { createElement, type ReactElement } from 'react'
 import { createRoot } from 'react-dom/client'
 import i18n from '@/i18n/config'
 import { I18nextProvider } from 'react-i18next'
@@ -49,6 +49,13 @@ interface PDFGeneratorOptions {
     workspaceId?: string
     translations?: Record<string, string>
     workspaceFooterContacts?: WorkspaceFooterContacts
+}
+
+interface TemplatePdfOptions {
+    element: ReactElement
+    format?: PrintFormat
+    printLang?: string
+    printQuality?: 'low' | 'high'
 }
 
 const A4_WIDTH_MM = 210
@@ -251,7 +258,7 @@ export async function generateInvoicePdf(options: PDFGeneratorOptions): Promise<
     // Create a fixed instance for the specific print language
     const targetLang = features?.print_lang || i18n.language
     const pdfI18n = i18n.cloneInstance({ lng: targetLang })
-    await pdfI18n.loadResources(targetLang)
+    await pdfI18n.changeLanguage(targetLang)
 
     const processedLogoUrl = await preprocessLogoUrl(features?.logo_url)
     const processedFeatures = {
@@ -322,6 +329,31 @@ export async function generateInvoicePdf(options: PDFGeneratorOptions): Promise<
     const renderResult = await renderToCanvas(element, A4_WIDTH_MM, features?.print_quality)
     return canvasToA4Pdf(renderResult)
 
+}
+
+/**
+ * Generates a PDF blob from a custom React element (e.g., Loan print templates).
+ */
+export async function generateTemplatePdf({
+    element,
+    format = 'a4',
+    printLang,
+    printQuality
+}: TemplatePdfOptions): Promise<Blob> {
+    if (!i18n.isInitialized) {
+        await new Promise(resolve => i18n.on('initialized', resolve))
+    }
+
+    const targetLang = printLang || i18n.language
+    const pdfI18n = i18n.cloneInstance({ lng: targetLang })
+    await pdfI18n.changeLanguage(targetLang)
+
+    const wrappedElement = createElement(I18nextProvider, { i18n: pdfI18n }, element)
+
+    const widthMm = format === 'receipt' ? RECEIPT_WIDTH_MM : A4_WIDTH_MM
+    const renderResult = await renderToCanvas(wrappedElement, widthMm, printQuality)
+
+    return format === 'receipt' ? canvasToReceiptPdf(renderResult) : canvasToA4Pdf(renderResult)
 }
 
 /**

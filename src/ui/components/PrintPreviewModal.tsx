@@ -36,8 +36,11 @@ interface PrintPreviewModalProps {
     children?: ReactNode
     showSaveButton?: boolean
     saveButtonText?: string
-    invoiceData?: Omit<Invoice, 'id' | 'workspaceId' | 'createdAt' | 'updatedAt' | 'syncStatus' | 'lastSyncedAt' | 'version' | 'isDeleted' | 'invoiceid'>
+    invoiceData?: Omit<Invoice, 'id' | 'workspaceId' | 'createdAt' | 'updatedAt' | 'syncStatus' | 'lastSyncedAt' | 'version' | 'isDeleted' | 'invoiceid'> & { invoiceid?: string }
     pdfData?: any // UniversalInvoice
+    pdfBuilder?: (options: { format: PrintFormat; effectiveId: string }) => Promise<Blob>
+    documentId?: string
+    printTemplate?: ReactNode | ((options: { effectiveId: string }) => ReactNode)
     features?: WorkspaceFeatures
     workspaceName?: string | null
 }
@@ -68,6 +71,9 @@ export function PrintPreviewModal({
     saveButtonText,
     invoiceData,
     pdfData,
+    pdfBuilder,
+    documentId,
+    printTemplate,
     features,
     workspaceName
 }: PrintPreviewModalProps) {
@@ -82,13 +88,16 @@ export function PrintPreviewModal({
     const [tempId, setTempId] = useState<string>('')
 
     // The actual ID to be used for generation and saving
-    const effectiveId = useMemo(() => pdfData?.id || tempId, [pdfData?.id, tempId])
+    const effectiveId = useMemo(
+        () => pdfData?.id || documentId || tempId,
+        [pdfData?.id, documentId, tempId]
+    )
 
     useEffect(() => {
-        if (isOpen && !pdfData?.id) {
+        if (isOpen && !pdfData?.id && !documentId) {
             setTempId(crypto.randomUUID())
         }
-    }, [isOpen, pdfData?.id])
+    }, [isOpen, pdfData?.id, documentId])
 
     const [isExpanded, setIsExpanded] = useState(false)
     const [isSaving, setIsSaving] = useState(false)
@@ -99,7 +108,7 @@ export function PrintPreviewModal({
     const htmlPrintRef = useRef<HTMLDivElement>(null)
     const templatePrintRef = useRef<HTMLDivElement>(null)
 
-    const hasPdfData = !!(pdfData && features)
+    const hasPdfData = !!pdfBuilder || !!(pdfData && features)
     const printFormat: PrintFormat = (invoiceData?.printFormat || 'a4') as PrintFormat
     const isTauri = useMemo(() => {
         if (typeof window === 'undefined') return false
@@ -166,6 +175,64 @@ export function PrintPreviewModal({
         }
     }, [workspaceContacts])
 
+    const templateContent = useMemo<ReactNode>(() => {
+        if (printTemplate) {
+            return typeof printTemplate === 'function'
+                ? printTemplate({ effectiveId })
+                : printTemplate
+        }
+
+        if (pdfData && features) {
+            return printFormat === 'receipt' ? (
+                <div className="w-[80mm]">
+                    <SaleReceiptBase
+                        data={pdfData}
+                        features={features}
+                        workspaceName={workspaceName || workspaceId || 'Asaas'}
+                        workspaceId={workspaceId || undefined}
+                    />
+                </div>
+            ) : (
+                pdfData?.is_refund_invoice ? (
+                    features?.a4_template === 'modern' ? (
+                        <RefundA4InvoiceTemplate
+                            data={pdfData}
+                            features={features}
+                            workspaceId={workspaceId || undefined}
+                            workspaceName={workspaceName || workspaceId || 'Asaas'}
+                        />
+                    ) : (
+                        <RefundPrimaryA4InvoiceTemplate
+                            data={pdfData}
+                            features={features}
+                            workspaceId={workspaceId || undefined}
+                            workspaceName={workspaceName || workspaceId || 'Asaas'}
+                        />
+                    )
+                ) : features?.a4_template === 'modern' ? (
+                    <ModernA4InvoiceTemplate
+                        data={pdfData}
+                        features={features}
+                        workspaceId={workspaceId || undefined}
+                        workspaceName={workspaceName || workspaceId || 'Asaas'}
+                        workspaceFooterContacts={workspaceFooterContacts}
+                    />
+                ) : (
+                    <A4InvoiceTemplate
+                        data={pdfData}
+                        features={features}
+                        workspaceId={workspaceId || undefined}
+                        workspaceName={workspaceName || workspaceId || 'Asaas'}
+                    />
+                )
+            )
+        }
+
+        return children || null
+    }, [children, effectiveId, features, pdfData, printFormat, printTemplate, workspaceFooterContacts, workspaceId, workspaceName])
+
+    const canTemplatePrint = !!templateContent
+
     const handleHtmlPrint = useReactToPrint({
         contentRef: htmlPrintRef,
         documentTitle: title || 'Print_Preview',
@@ -183,11 +250,17 @@ export function PrintPreviewModal({
     })
 
     const buildPdfBlobs = useCallback(async (requestedFormat?: PrintFormat): Promise<{ a4?: Blob; receipt?: Blob }> => {
+        const format = requestedFormat || printFormat
+
+        if (pdfBuilder) {
+            const blob = await pdfBuilder({ format, effectiveId })
+            return { [format]: blob }
+        }
+
         if (!pdfData || !features) {
             throw new Error('Missing PDF data or features')
         }
 
-        const format = requestedFormat || printFormat;
         const blob = await generateInvoicePdf({
             data: { ...pdfData, id: effectiveId },
             format: format,
@@ -202,7 +275,7 @@ export function PrintPreviewModal({
         })
 
         return { [format]: blob }
-    }, [features, pdfData, translations, workspaceId, workspaceName, effectiveId, printFormat, workspaceFooterContacts])
+    }, [features, pdfData, pdfBuilder, translations, workspaceId, workspaceName, effectiveId, printFormat, workspaceFooterContacts])
 
     const ensurePdfBlobs = useCallback(async (requestedFormat?: PrintFormat): Promise<{ a4?: Blob; receipt?: Blob }> => {
         const format = requestedFormat || printFormat;
@@ -345,18 +418,25 @@ export function PrintPreviewModal({
 
             if (savedInvoice && isOnline() && assetManager) {
                 try {
-                    const finalBlob = await generateInvoicePdf({
-                        data: { ...pdfData, ...savedInvoice, id: savedInvoice.id, invoiceid: savedInvoice.invoiceid, sequenceId: savedInvoice.sequenceId },
-                        format: printFormat,
-                        workspaceId: workspaceId || '',
-                        features: {
-                            ...features,
-                            logo_url: features?.logo_url || undefined
-                        },
-                        workspaceName: workspaceName || workspaceId || '',
-                        translations,
-                        workspaceFooterContacts
-                    })
+                    let finalBlob = activeBlob
+                    if (!pdfBuilder) {
+                        if (!pdfData || !features) {
+                            throw new Error('Missing PDF data or features')
+                        }
+
+                        finalBlob = await generateInvoicePdf({
+                            data: { ...pdfData, ...savedInvoice, id: savedInvoice.id, invoiceid: savedInvoice.invoiceid, sequenceId: savedInvoice.sequenceId },
+                            format: printFormat,
+                            workspaceId: workspaceId || '',
+                            features: {
+                                ...features,
+                                logo_url: features?.logo_url || undefined
+                            },
+                            workspaceName: workspaceName || workspaceId || '',
+                            translations,
+                            workspaceFooterContacts
+                        })
+                    }
 
                     const path = `${workspaceId}/printed-invoices/${printFormat === 'a4' ? 'A4' : 'receipts'}/${savedInvoice.id}.pdf`
 
@@ -425,7 +505,7 @@ export function PrintPreviewModal({
                 })
             }
 
-            if (isTauri) {
+            if (isTauri && canTemplatePrint) {
                 handleTemplatePrint()
                 return
             }
@@ -559,52 +639,10 @@ export function PrintPreviewModal({
                     )}
                 </DialogFooter>
 
-                {hasPdfData && (
+                {hasPdfData && templateContent && (
                     <div className="fixed left-[-10000px] top-0">
                         <div ref={templatePrintRef} className="bg-white text-black">
-                            {printFormat === 'receipt' ? (
-                                <div className="w-[80mm]">
-                                    <SaleReceiptBase
-                                        data={pdfData}
-                                        features={features}
-                                        workspaceName={workspaceName || workspaceId || 'Asaas'}
-                                        workspaceId={workspaceId || undefined}
-                                    />
-                                </div>
-                            ) : (
-                                pdfData?.is_refund_invoice ? (
-                                    features?.a4_template === 'modern' ? (
-                                        <RefundA4InvoiceTemplate
-                                            data={pdfData}
-                                            features={features}
-                                            workspaceId={workspaceId || undefined}
-                                            workspaceName={workspaceName || workspaceId || 'Asaas'}
-                                        />
-                                    ) : (
-                                        <RefundPrimaryA4InvoiceTemplate
-                                            data={pdfData}
-                                            features={features}
-                                            workspaceId={workspaceId || undefined}
-                                            workspaceName={workspaceName || workspaceId || 'Asaas'}
-                                        />
-                                    )
-                                ) : features?.a4_template === 'modern' ? (
-                                    <ModernA4InvoiceTemplate
-                                        data={pdfData}
-                                        features={features}
-                                        workspaceId={workspaceId || undefined}
-                                        workspaceName={workspaceName || workspaceId || 'Asaas'}
-                                        workspaceFooterContacts={workspaceFooterContacts}
-                                    />
-                                ) : (
-                                    <A4InvoiceTemplate
-                                        data={pdfData}
-                                        features={features}
-                                        workspaceId={workspaceId || undefined}
-                                        workspaceName={workspaceName || workspaceId || 'Asaas'}
-                                    />
-                                )
-                            )}
+                            {templateContent}
                         </div>
                     </div>
                 )}

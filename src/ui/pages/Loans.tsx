@@ -1,8 +1,7 @@
-import { useMemo, useRef, useState, useEffect } from 'react'
+import { useCallback, useMemo, useState, useEffect } from 'react'
 import { Link, useLocation, useRoute } from 'wouter'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useTranslation } from 'react-i18next'
-import { useReactToPrint } from 'react-to-print'
 import { useAuth } from '@/auth'
 import { db } from '@/local-db/database'
 import {
@@ -18,6 +17,7 @@ import {
 import { useWorkspace } from '@/workspace'
 import { formatCurrency, formatDate, cn } from '@/lib/utils'
 import { isMobile } from '@/lib/platform'
+import { generateTemplatePdf, type PrintFormat } from '@/services/pdfGenerator'
 import {
     Button,
     Card,
@@ -33,6 +33,7 @@ import {
     TableRow,
     AppPagination,
     DeleteConfirmationModal,
+    PrintPreviewModal,
     useToast
 } from '@/ui/components'
 import { Search, Plus, ArrowLeft, Printer, Trash2, List, LayoutGrid } from 'lucide-react'
@@ -41,6 +42,10 @@ import { LoanDetailsPrintTemplate, LoanListPrintTemplate } from '@/ui/components
 import { useLoanPaymentModal } from '@/ui/components/loans/LoanPaymentModalProvider'
 
 type LoanFilter = 'all' | 'active' | 'overdue' | 'completed'
+
+function escapeRegExp(value: string) {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
 
 function statusClass(status: string) {
     if (status === 'completed') return 'bg-blue-500/15 text-blue-600 dark:text-blue-300'
@@ -85,7 +90,7 @@ function LoanListView({
     const [createOpen, setCreateOpen] = useState(false)
     const [loanToDelete, setLoanToDelete] = useState<Loan | null>(null)
     const [isDeletingLoan, setIsDeletingLoan] = useState(false)
-    const printRef = useRef<HTMLDivElement>(null)
+    const [showPrintPreview, setShowPrintPreview] = useState(false)
     const pageSize = 10
     const loans = useLoans(workspaceId)
     const installments = useLiveQuery(
@@ -136,10 +141,42 @@ function LoanListView({
     const currency = features.default_currency || 'usd'
     const iqdPreference = features.iqd_display_preference
     const printLang = features?.print_lang && features.print_lang !== 'auto' ? features.print_lang : i18n.language
-    const handlePrintList = useReactToPrint({
-        contentRef: printRef,
-        documentTitle: `Loans_${new Date().toISOString().split('T')[0]}`
-    })
+    const buildQrValue = useCallback((effectiveId: string) => {
+        if (!features.print_qr || !workspaceId) return undefined
+        return `https://asaas-r2-proxy.alanepic360.workers.dev/${workspaceId}/printed-invoices/A4/${effectiveId}.pdf`
+    }, [features.print_qr, workspaceId])
+
+    const renderLoanListTemplate = useCallback((effectiveId?: string) => (
+        <LoanListPrintTemplate
+            workspaceName={workspaceName}
+            printLang={printLang}
+            loans={filtered}
+            filter={filter}
+            displayCurrency={currency}
+            iqdPreference={iqdPreference}
+            metrics={metrics}
+            logoUrl={features.logo_url}
+            qrValue={effectiveId ? buildQrValue(effectiveId) : undefined}
+        />
+    ), [buildQrValue, currency, features.logo_url, filter, filtered, iqdPreference, metrics, printLang, workspaceName])
+
+    const buildLoanListPdf = useCallback(async ({ format, effectiveId }: { format: PrintFormat; effectiveId: string }) => {
+        return generateTemplatePdf({
+            element: renderLoanListTemplate(effectiveId),
+            format,
+            printLang,
+            printQuality: features.print_quality
+        })
+    }, [features.print_quality, printLang, renderLoanListTemplate])
+
+    const loanListInvoiceData = useMemo(() => ({
+        totalAmount: metrics.totalOutstanding,
+        settlementCurrency: currency,
+        origin: 'Loans' as const,
+        createdByName: user?.name || 'Unknown',
+        cashierName: user?.name || 'Unknown',
+        printFormat: 'a4' as const
+    }), [currency, metrics.totalOutstanding, user?.name])
     const canDeleteLoanRecord = (loan: Loan) => {
         if (loan.source === 'manual' || !loan.saleId) {
             return true
@@ -269,7 +306,7 @@ function LoanListView({
                                 </button>
                             ))}
                         </div>
-                        <Button variant="outline" onClick={() => handlePrintList()} className="gap-2 print:hidden">
+                        <Button variant="outline" onClick={() => setShowPrintPreview(true)} className="gap-2 print:hidden">
                             <Printer className="w-4 h-4" />
                             {t('common.print') || 'Print'}
                         </Button>
@@ -467,20 +504,17 @@ function LoanListView({
                 title={t('loans.confirmDelete')}
                 description={t('loans.deleteWarning')}
             />
-
-            <div className="fixed left-[-10000px] top-0 pointer-events-none">
-                <div ref={printRef}>
-                    <LoanListPrintTemplate
-                        workspaceName={workspaceName}
-                        printLang={printLang}
-                        loans={filtered}
-                        filter={filter}
-                        displayCurrency={currency}
-                        iqdPreference={iqdPreference}
-                        metrics={metrics}
-                    />
-                </div>
-            </div>
+            <PrintPreviewModal
+                isOpen={showPrintPreview}
+                onClose={() => setShowPrintPreview(false)}
+                onConfirm={() => setShowPrintPreview(false)}
+                title={t('loans.printList') || 'Print Loans List'}
+                features={features}
+                workspaceName={workspaceName}
+                invoiceData={loanListInvoiceData}
+                pdfBuilder={buildLoanListPdf}
+                printTemplate={({ effectiveId }) => renderLoanListTemplate(effectiveId)}
+            />
         </div>
     )
 }
@@ -513,12 +547,84 @@ function LoanDetailsView({
 
     const [deleteOpen, setDeleteOpen] = useState(false)
     const [isDeletingLoan, setIsDeletingLoan] = useState(false)
-    const printRef = useRef<HTMLDivElement>(null)
+    const [showPrintPreview, setShowPrintPreview] = useState(false)
     const printLang = features?.print_lang && features.print_lang !== 'auto' ? features.print_lang : i18n.language
-    const handlePrintLoan = useReactToPrint({
-        contentRef: printRef,
-        documentTitle: `${loan?.loanNo || 'Loan'}_${new Date().toISOString().split('T')[0]}`
-    })
+    const buildQrValue = useCallback((effectiveId: string) => {
+        if (!features.print_qr || !workspaceId) return undefined
+        return `https://asaas-r2-proxy.alanepic360.workers.dev/${workspaceId}/printed-invoices/A4/${effectiveId}.pdf`
+    }, [features.print_qr, workspaceId])
+    const normalizedLoanNo = loan?.loanNo?.trim() || ''
+
+    const renderLoanDetailsTemplate = useCallback((effectiveId?: string) => {
+        if (!loan) return null
+        return (
+            <LoanDetailsPrintTemplate
+                workspaceName={workspaceName}
+                printLang={printLang}
+                loan={loan}
+                installments={installments}
+                payments={payments}
+                iqdPreference={features.iqd_display_preference}
+                logoUrl={features.logo_url}
+                qrValue={effectiveId ? buildQrValue(effectiveId) : undefined}
+            />
+        )
+    }, [buildQrValue, features.iqd_display_preference, features.logo_url, installments, loan, payments, printLang, workspaceName])
+
+    const buildLoanDetailsPdf = useCallback(async ({ format, effectiveId }: { format: PrintFormat; effectiveId: string }) => {
+        const loanDetailsTemplate = renderLoanDetailsTemplate(effectiveId)
+        if (!loanDetailsTemplate) {
+            throw new Error('Loan data not ready')
+        }
+
+        return generateTemplatePdf({
+            element: loanDetailsTemplate,
+            format,
+            printLang,
+            printQuality: features.print_quality
+        })
+    }, [features.print_quality, printLang, renderLoanDetailsTemplate])
+
+    const loanInvoiceId = useLiveQuery(
+        async () => {
+            if (!normalizedLoanNo) return null
+            const matches = await db.invoices
+                .where('invoiceid')
+                .startsWithIgnoreCase(normalizedLoanNo)
+                .toArray()
+
+            const pattern = new RegExp(`^${escapeRegExp(normalizedLoanNo)}(?:-(\\d+))?$`, 'i')
+            const used = new Set(
+                matches
+                    .filter((invoice) => !invoice.isDeleted && pattern.test(invoice.invoiceid))
+                    .map((invoice) => invoice.invoiceid)
+            )
+
+            if (!used.has(normalizedLoanNo)) {
+                return normalizedLoanNo
+            }
+
+            let suffix = 1
+            while (used.has(`${normalizedLoanNo}-${suffix}`)) {
+                suffix += 1
+            }
+            return `${normalizedLoanNo}-${suffix}`
+        },
+        [normalizedLoanNo]
+    )
+
+    const loanDetailsInvoiceData = useMemo(() => {
+        if (!loan) return null
+        return {
+            invoiceid: loanInvoiceId || normalizedLoanNo || loan.loanNo,
+            totalAmount: loan.principalAmount,
+            settlementCurrency: loan.settlementCurrency,
+            origin: 'Loans' as const,
+            createdByName: user?.name || 'Unknown',
+            cashierName: user?.name || 'Unknown',
+            printFormat: 'a4' as const
+        }
+    }, [loan, loanInvoiceId, normalizedLoanNo, user?.name])
     const linkedSaleMissingOrDeleted = useLiveQuery(
         async () => {
             if (!loan?.saleId) {
@@ -602,7 +708,7 @@ function LoanDetailsView({
                     <span className="text-foreground font-semibold">{loan.loanNo}</span>
                 </div>
                 <div className="flex items-center gap-2">
-                    <Button variant="outline" onClick={() => handlePrintLoan()} className="gap-2 print:hidden">
+                    <Button variant="outline" onClick={() => setShowPrintPreview(true)} className="gap-2 print:hidden">
                         <Printer className="w-4 h-4" />
                         {t('common.print') || 'Print'}
                     </Button>
@@ -816,7 +922,7 @@ function LoanDetailsView({
                                 <Table>
                                     <TableHeader>
                                         <TableRow>
-                                            <TableHead className="text-end">#</TableHead>
+                                            <TableHead className="text-start">#</TableHead>
                                             <TableHead>{t('loans.dueDate') || 'Due Date'}</TableHead>
                                             <TableHead className="text-end">{t('loans.planned') || 'Planned'}</TableHead>
                                             <TableHead className="text-end">{t('loans.paid') || 'Paid'}</TableHead>
@@ -873,19 +979,17 @@ function LoanDetailsView({
                 title={t('loans.confirmDelete')}
                 description={t('loans.deleteWarning')}
             />
-
-            <div className="fixed left-[-10000px] top-0 pointer-events-none">
-                <div ref={printRef}>
-                    <LoanDetailsPrintTemplate
-                        workspaceName={workspaceName}
-                        printLang={printLang}
-                        loan={loan}
-                        installments={installments}
-                        payments={payments}
-                        iqdPreference={features.iqd_display_preference}
-                    />
-                </div>
-            </div>
+            <PrintPreviewModal
+                isOpen={showPrintPreview}
+                onClose={() => setShowPrintPreview(false)}
+                onConfirm={() => setShowPrintPreview(false)}
+                title={t('loans.printDetails') || 'Loan Details'}
+                features={features}
+                workspaceName={workspaceName}
+                invoiceData={loanDetailsInvoiceData || undefined}
+                pdfBuilder={buildLoanDetailsPdf}
+                printTemplate={loan ? ({ effectiveId }) => renderLoanDetailsTemplate(effectiveId) : undefined}
+            />
         </div>
     )
 }

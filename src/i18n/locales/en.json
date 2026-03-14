@@ -1140,6 +1140,7 @@
         "paymentAmount": "Payment Amount",
         "adjustment": "Loan Adjustment",
         "notes": "Notes",
+        "noteLabel": "Note:",
         "installmentSchedule": "Installment Schedule",
         "installmentCount": "Installment Count",
         "frequency": "Frequency",

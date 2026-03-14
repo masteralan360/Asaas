@@ -917,9 +917,13 @@ export function useInvoice(id: string | undefined) {
     return invoice
 }
 
-export async function createInvoice(workspaceId: string, data: Omit<Invoice, 'id' | 'workspaceId' | 'createdAt' | 'updatedAt' | 'syncStatus' | 'lastSyncedAt' | 'version' | 'isDeleted' | 'invoiceid'> & { sequenceId?: number }, overrideId?: string): Promise<Invoice> {
+export async function createInvoice(
+    workspaceId: string,
+    data: Omit<Invoice, 'id' | 'workspaceId' | 'createdAt' | 'updatedAt' | 'syncStatus' | 'lastSyncedAt' | 'version' | 'isDeleted' | 'invoiceid'> & { sequenceId?: number; invoiceid?: string },
+    overrideId?: string
+): Promise<Invoice> {
     const now = new Date().toISOString()
-    const invoiceid = `INV-${Date.now().toString(36).toUpperCase()}`
+    const invoiceid = data.invoiceid || `INV-${Date.now().toString(36).toUpperCase()}`
     const id = overrideId || generateId()
 
     const invoice: Invoice = {
@@ -982,7 +986,11 @@ export async function createInvoice(workspaceId: string, data: Omit<Invoice, 'id
 /**
  * Specifically for automated Invoice snapshots from Print Preview
  */
-export async function saveInvoiceFromSnapshot(workspaceId: string, data: Omit<Invoice, 'id' | 'workspaceId' | 'createdAt' | 'updatedAt' | 'syncStatus' | 'lastSyncedAt' | 'version' | 'isDeleted' | 'invoiceid'>, overrideId?: string): Promise<Invoice> {
+export async function saveInvoiceFromSnapshot(
+    workspaceId: string,
+    data: Omit<Invoice, 'id' | 'workspaceId' | 'createdAt' | 'updatedAt' | 'syncStatus' | 'lastSyncedAt' | 'version' | 'isDeleted' | 'invoiceid'> & { invoiceid?: string },
+    overrideId?: string
+): Promise<Invoice> {
 
     // If an overrideId is provided, check if it already exists to avoid unique constraint errors
     if (overrideId) {
