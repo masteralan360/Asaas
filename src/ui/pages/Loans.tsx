@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useMemo, useRef, useState, useEffect } from 'react'
 import { Link, useLocation, useRoute } from 'wouter'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useTranslation } from 'react-i18next'
@@ -17,6 +17,7 @@ import {
 } from '@/local-db'
 import { useWorkspace } from '@/workspace'
 import { formatCurrency, formatDate, cn } from '@/lib/utils'
+import { isMobile } from '@/lib/platform'
 import {
     Button,
     Card,
@@ -34,7 +35,7 @@ import {
     DeleteConfirmationModal,
     useToast
 } from '@/ui/components'
-import { Search, Plus, ArrowLeft, Printer, Trash2 } from 'lucide-react'
+import { Search, Plus, ArrowLeft, Printer, Trash2, List, LayoutGrid } from 'lucide-react'
 import { CreateManualLoanModal } from '@/ui/components/loans/CreateManualLoanModal'
 import { LoanDetailsPrintTemplate, LoanListPrintTemplate } from '@/ui/components/loans/LoanPrintTemplates'
 import { useLoanPaymentModal } from '@/ui/components/loans/LoanPaymentModalProvider'
@@ -74,11 +75,18 @@ function LoanListView({
     const [search, setSearch] = useState('')
     const [filter, setFilter] = useState<LoanFilter>('all')
     const [currentPage, setCurrentPage] = useState(1)
+    const [viewMode, setViewMode] = useState<'table' | 'grid'>(() => {
+        return (localStorage.getItem('loans_view_mode') as 'table' | 'grid') || 'table'
+    })
+
+    useEffect(() => {
+        localStorage.setItem('loans_view_mode', viewMode)
+    }, [viewMode])
     const [createOpen, setCreateOpen] = useState(false)
     const [loanToDelete, setLoanToDelete] = useState<Loan | null>(null)
     const [isDeletingLoan, setIsDeletingLoan] = useState(false)
     const printRef = useRef<HTMLDivElement>(null)
-    const pageSize = 15
+    const pageSize = 10
     const loans = useLoans(workspaceId)
     const installments = useLiveQuery(
         () => db.loan_installments.where('workspaceId').equals(workspaceId).and(item => !item.isDeleted).toArray(),
@@ -211,8 +219,38 @@ function LoanListView({
                                     setCurrentPage(1)
                                     setSearch(e.target.value)
                                 }}
-                                placeholder={t('loans.searchPlaceholder') || 'Search by borrower or loan number'}
+                                placeholder={t('loans.searchPlaceholder') || 'Search by borrower name or loan number'}
                             />
+                        </div>
+                        <div className="hidden md:flex items-center bg-muted/30 p-1 rounded-lg border border-border/40">
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setViewMode('table')}
+                                className={cn(
+                                    "h-7 px-3 font-bold uppercase text-[9px] flex items-center gap-1.5 transition-all",
+                                    viewMode === 'table'
+                                        ? "bg-primary text-primary-foreground shadow-sm"
+                                        : "text-muted-foreground hover:bg-background/50"
+                                )}
+                            >
+                                <List className="w-3 h-3" />
+                                {t('loans.view.table')}
+                            </Button>
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setViewMode('grid')}
+                                className={cn(
+                                    "h-7 px-3 font-bold uppercase text-[9px] flex items-center gap-1.5 transition-all",
+                                    viewMode === 'grid'
+                                        ? "bg-primary text-primary-foreground shadow-sm"
+                                        : "text-muted-foreground hover:bg-background/50"
+                                )}
+                            >
+                                <LayoutGrid className="w-3 h-3" />
+                                {t('loans.view.grid')}
+                            </Button>
                         </div>
                         <div className="flex items-center gap-1 bg-muted/30 rounded-md p-1">
                             {(['all', 'active', 'overdue', 'completed'] as LoanFilter[]).map(value => (
@@ -244,70 +282,157 @@ function LoanListView({
                     </div>
 
                     <div className="rounded-lg border overflow-hidden">
-                        <Table>
-                            <TableHeader>
-                                <TableRow>
-                                    <TableHead>{t('loans.loanNo') || 'Loan No.'}</TableHead>
-                                    <TableHead>{t('loans.borrower') || 'Borrower'}</TableHead>
-                                    <TableHead>{t('loans.source') || 'Source'}</TableHead>
-                                    <TableHead className="text-end">{t('loans.principal') || 'Principal'}</TableHead>
-                                    <TableHead className="text-end">{t('loans.paid') || 'Paid'}</TableHead>
-                                    <TableHead className="text-end">{t('loans.balance') || 'Balance'}</TableHead>
-                                    <TableHead>{t('loans.nextDue') || 'Next Due'}</TableHead>
-                                    <TableHead>{t('loans.status') || 'Status'}</TableHead>
-                                    <TableHead className="text-end print:hidden">{t('common.actions') || 'Actions'}</TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
+                        {(isMobile() || viewMode === 'grid') ? (
+                            <div className={cn(
+                                "grid gap-4 p-4 bg-muted/5",
+                                viewMode === 'grid' && !isMobile() ? "md:grid-cols-2 xl:grid-cols-3" : "grid-cols-1"
+                            )}>
                                 {paginated.length === 0 ? (
-                                    <TableRow>
-                                        <TableCell colSpan={9} className="text-center text-muted-foreground py-10">
-                                            {t('common.noData') || 'No data'}
-                                        </TableCell>
-                                    </TableRow>
-                                ) : paginated.map(loan => (
-                                    <TableRow key={loan.id}>
-                                        <TableCell className="font-semibold text-primary">{loan.loanNo}</TableCell>
-                                        <TableCell>
-                                            <div className="font-medium">{loan.borrowerName}</div>
-                                            <div className="text-xs text-muted-foreground">{loan.borrowerNationalId}</div>
-                                        </TableCell>
-                                        <TableCell>
-                                            <span className={cn('inline-flex px-2 py-0.5 rounded-full text-xs font-medium uppercase', sourceClass(loan.source))}>
-                                                {loan.source}
-                                            </span>
-                                        </TableCell>
-                                        <TableCell className="text-end">{formatCurrency(loan.principalAmount, loan.settlementCurrency, iqdPreference)}</TableCell>
-                                        <TableCell className="text-end">{formatCurrency(loan.totalPaidAmount, loan.settlementCurrency, iqdPreference)}</TableCell>
-                                        <TableCell className="text-end font-semibold">{formatCurrency(loan.balanceAmount, loan.settlementCurrency, iqdPreference)}</TableCell>
-                                        <TableCell>{loan.nextDueDate ? formatDate(loan.nextDueDate) : '-'}</TableCell>
-                                        <TableCell>
-                                            <span className={cn('inline-flex px-2 py-0.5 rounded-full text-xs font-medium capitalize', statusClass(isLoanOverdue(loan) ? 'overdue' : loan.status))}>
-                                                {isLoanOverdue(loan) ? (t('loans.statuses.overdue') || 'Overdue') : (t(`loans.statuses.${loan.status}`) || loan.status)}
-                                            </span>
-                                        </TableCell>
-                                        <TableCell className="text-end print:hidden">
-                                            <div className="flex items-center justify-end gap-1">
-                                                <Button variant="ghost" size="sm" onClick={() => navigate(`/loans/${loan.id}`)}>
+                                    <div className="text-center text-muted-foreground py-10 bg-background rounded-lg border">
+                                        {t('common.noData') || 'No data'}
+                                    </div>
+                                ) : paginated.map(loan => {
+                                    const overdue = isLoanOverdue(loan)
+                                    return (
+                                        <div
+                                            key={loan.id}
+                                            className={cn(
+                                                "p-4 border shadow-sm space-y-4 transition-all active:scale-[0.98] bg-background rounded-2xl",
+                                                overdue ? 'border-red-500/20 bg-red-500/5' : 'border-border'
+                                            )}
+                                        >
+                                            <div className="flex justify-between items-start">
+                                                <div className="space-y-1">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="text-sm font-bold text-primary">
+                                                            {loan.loanNo}
+                                                        </span>
+                                                        <span className={cn('px-2 py-0.5 rounded-full text-[10px] font-bold uppercase', sourceClass(loan.source))}>
+                                                            {loan.source}
+                                                        </span>
+                                                    </div>
+                                                    <div className="text-base font-bold text-foreground">
+                                                        {loan.borrowerName}
+                                                    </div>
+                                                    <div className="text-xs text-muted-foreground">
+                                                        {loan.borrowerNationalId}
+                                                    </div>
+                                                </div>
+                                                <div className="text-right">
+                                                    <span className={cn('inline-flex px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider', statusClass(overdue ? 'overdue' : loan.status))}>
+                                                        {overdue ? (t('loans.statuses.overdue') || 'Overdue') : (t(`loans.statuses.${loan.status}`) || loan.status)}
+                                                    </span>
+                                                    <div className="text-xs text-muted-foreground mt-2 font-medium">
+                                                        {loan.nextDueDate ? formatDate(loan.nextDueDate) : '-'}
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div className="grid grid-cols-3 gap-2 py-3 border-y border-border/50">
+                                                <div className="text-center">
+                                                    <div className="text-[10px] text-muted-foreground font-bold uppercase tracking-tight">{t('loans.principal') || 'Principal'}</div>
+                                                    <div className="text-[11px] font-bold">{formatCurrency(loan.principalAmount, loan.settlementCurrency, iqdPreference)}</div>
+                                                </div>
+                                                <div className="text-center border-x border-border/50">
+                                                    <div className="text-[10px] text-muted-foreground font-bold uppercase tracking-tight">{t('loans.paid') || 'Paid'}</div>
+                                                    <div className="text-[11px] font-bold text-emerald-600">{formatCurrency(loan.totalPaidAmount, loan.settlementCurrency, iqdPreference)}</div>
+                                                </div>
+                                                <div className="text-center">
+                                                    <div className="text-[10px] text-muted-foreground font-bold uppercase tracking-tight">{t('loans.balance') || 'Balance'}</div>
+                                                    <div className="text-[11px] font-bold text-primary">{formatCurrency(loan.balanceAmount, loan.settlementCurrency, iqdPreference)}</div>
+                                                </div>
+                                            </div>
+
+                                            <div className="flex items-center justify-between gap-2 pt-1">
+                                                <Button
+                                                    variant="secondary"
+                                                    className="flex-1 h-9 rounded-xl font-bold gap-2 text-xs"
+                                                    onClick={() => navigate(`/loans/${loan.id}`)}
+                                                >
+                                                    <Search className="w-3.5 h-3.5" />
                                                     {t('common.view') || 'View'}
                                                 </Button>
                                                 {!isReadOnly && canDeleteLoanRecord(loan) && (
                                                     <Button
                                                         variant="ghost"
-                                                        size="sm"
-                                                        className="text-destructive hover:text-destructive"
+                                                        size="icon"
+                                                        className="h-9 w-9 text-destructive hover:text-destructive hover:bg-destructive/5 rounded-xl border border-destructive/10"
                                                         onClick={() => setLoanToDelete(loan)}
                                                     >
                                                         <Trash2 className="w-4 h-4" />
-                                                        {t('common.delete') || 'Delete'}
                                                     </Button>
                                                 )}
                                             </div>
-                                        </TableCell>
+                                        </div>
+                                    )
+                                })}
+                            </div>
+                        ) : (
+                            <Table>
+                                <TableHeader>
+                                    <TableRow>
+                                        <TableHead>{t('loans.loanNo') || 'Loan No.'}</TableHead>
+                                        <TableHead>{t('loans.borrower') || 'Borrower'}</TableHead>
+                                        <TableHead>{t('loans.source') || 'Source'}</TableHead>
+                                        <TableHead className="text-end">{t('loans.principal') || 'Principal'}</TableHead>
+                                        <TableHead className="text-end">{t('loans.paid') || 'Paid'}</TableHead>
+                                        <TableHead className="text-end">{t('loans.balance') || 'Balance'}</TableHead>
+                                        <TableHead>{t('loans.nextDue') || 'Next Due'}</TableHead>
+                                        <TableHead>{t('loans.status') || 'Status'}</TableHead>
+                                        <TableHead className="text-end print:hidden">{t('common.actions') || 'Actions'}</TableHead>
                                     </TableRow>
-                                ))}
-                            </TableBody>
-                        </Table>
+                                </TableHeader>
+                                <TableBody>
+                                    {paginated.length === 0 ? (
+                                        <TableRow>
+                                            <TableCell colSpan={9} className="text-center text-muted-foreground py-10">
+                                                {t('common.noData') || 'No data'}
+                                            </TableCell>
+                                        </TableRow>
+                                    ) : paginated.map(loan => (
+                                        <TableRow key={loan.id}>
+                                            <TableCell className="font-semibold text-primary">{loan.loanNo}</TableCell>
+                                            <TableCell>
+                                                <div className="font-medium">{loan.borrowerName}</div>
+                                                <div className="text-xs text-muted-foreground">{loan.borrowerNationalId}</div>
+                                            </TableCell>
+                                            <TableCell>
+                                                <span className={cn('inline-flex px-2 py-0.5 rounded-full text-xs font-medium uppercase', sourceClass(loan.source))}>
+                                                    {loan.source}
+                                                </span>
+                                            </TableCell>
+                                            <TableCell className="text-end">{formatCurrency(loan.principalAmount, loan.settlementCurrency, iqdPreference)}</TableCell>
+                                            <TableCell className="text-end">{formatCurrency(loan.totalPaidAmount, loan.settlementCurrency, iqdPreference)}</TableCell>
+                                            <TableCell className="text-end font-semibold">{formatCurrency(loan.balanceAmount, loan.settlementCurrency, iqdPreference)}</TableCell>
+                                            <TableCell>{loan.nextDueDate ? formatDate(loan.nextDueDate) : '-'}</TableCell>
+                                            <TableCell>
+                                                <span className={cn('inline-flex px-2 py-0.5 rounded-full text-xs font-medium capitalize', statusClass(isLoanOverdue(loan) ? 'overdue' : loan.status))}>
+                                                    {isLoanOverdue(loan) ? (t('loans.statuses.overdue') || 'Overdue') : (t(`loans.statuses.${loan.status}`) || loan.status)}
+                                                </span>
+                                            </TableCell>
+                                            <TableCell className="text-end print:hidden">
+                                                <div className="flex items-center justify-end gap-1">
+                                                    <Button variant="ghost" size="sm" onClick={() => navigate(`/loans/${loan.id}`)}>
+                                                        {t('common.view') || 'View'}
+                                                    </Button>
+                                                    {!isReadOnly && canDeleteLoanRecord(loan) && (
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            className="text-destructive hover:text-destructive"
+                                                            onClick={() => setLoanToDelete(loan)}
+                                                        >
+                                                            <Trash2 className="w-4 h-4" />
+                                                            {t('common.delete') || 'Delete'}
+                                                        </Button>
+                                                    )}
+                                                </div>
+                                            </TableCell>
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                        )}
                     </div>
 
                     <AppPagination
@@ -378,6 +503,14 @@ function LoanDetailsView({
     const loan = useLoan(loanId)
     const installments = useLoanInstallments(loanId, workspaceId)
     const payments = useLoanPayments(loanId, workspaceId)
+    const [viewMode, setViewMode] = useState<'table' | 'grid'>(() => {
+        return (localStorage.getItem('loan_details_view_mode') as 'table' | 'grid') || 'table'
+    })
+
+    useEffect(() => {
+        localStorage.setItem('loan_details_view_mode', viewMode)
+    }, [viewMode])
+
     const [deleteOpen, setDeleteOpen] = useState(false)
     const [isDeletingLoan, setIsDeletingLoan] = useState(false)
     const printRef = useRef<HTMLDivElement>(null)
@@ -587,53 +720,142 @@ function LoanDetailsView({
                 </div>
 
                 <Card className="lg:col-span-2">
-                    <CardHeader>
+                    <CardHeader className="flex flex-row items-center justify-between pb-2">
                         <CardTitle>{t('loans.installmentSchedule') || 'Installment Schedule'}</CardTitle>
+                        <div className="hidden md:flex items-center bg-muted/30 p-1 rounded-lg border border-border/40">
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setViewMode('table')}
+                                className={cn(
+                                    "h-7 px-3 font-bold uppercase text-[9px] flex items-center gap-1.5 transition-all",
+                                    viewMode === 'table'
+                                        ? "bg-primary text-primary-foreground shadow-sm"
+                                        : "text-muted-foreground hover:bg-background/50"
+                                )}
+                            >
+                                <List className="w-3 h-3" />
+                                {t('loans.view.table')}
+                            </Button>
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setViewMode('grid')}
+                                className={cn(
+                                    "h-7 px-3 font-bold uppercase text-[9px] flex items-center gap-1.5 transition-all",
+                                    viewMode === 'grid'
+                                        ? "bg-primary text-primary-foreground shadow-sm"
+                                        : "text-muted-foreground hover:bg-background/50"
+                                )}
+                            >
+                                <LayoutGrid className="w-3 h-3" />
+                                {t('loans.view.grid')}
+                            </Button>
+                        </div>
                     </CardHeader>
                     <CardContent>
                         <div className="rounded-md border overflow-hidden">
-                            <Table>
-                                <TableHeader>
-                                    <TableRow>
-                                        <TableHead className="text-end">#</TableHead>
-                                        <TableHead>{t('loans.dueDate') || 'Due Date'}</TableHead>
-                                        <TableHead className="text-end">{t('loans.planned') || 'Planned'}</TableHead>
-                                        <TableHead className="text-end">{t('loans.paid') || 'Paid'}</TableHead>
-                                        <TableHead className="text-end">{t('loans.balance') || 'Balance'}</TableHead>
-                                        <TableHead>{t('loans.status') || 'Status'}</TableHead>
-                                        <TableHead className="text-end print:hidden">{t('common.actions') || 'Actions'}</TableHead>
-                                    </TableRow>
-                                </TableHeader>
-                                <TableBody>
+                            {(isMobile() || viewMode === 'grid') ? (
+                                <div className={cn(
+                                    "grid gap-4 p-4 bg-muted/5",
+                                    viewMode === 'grid' && !isMobile() ? "grid-cols-2" : "grid-cols-1"
+                                )}>
                                     {installments.length === 0 ? (
-                                        <TableRow>
-                                            <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
-                                                {t('common.noData') || 'No data'}
-                                            </TableCell>
-                                        </TableRow>
+                                        <div className="text-center text-muted-foreground py-10 bg-background rounded-lg border">
+                                            {t('common.noData') || 'No data'}
+                                        </div>
                                     ) : installments.map((item: LoanInstallment) => (
-                                        <TableRow key={item.id}>
-                                            <TableCell>{String(item.installmentNo).padStart(2, '0')}</TableCell>
-                                            <TableCell>{formatDate(item.dueDate)}</TableCell>
-                                            <TableCell className="text-end">{formatCurrency(item.plannedAmount, loan.settlementCurrency, features.iqd_display_preference)}</TableCell>
-                                            <TableCell className="text-end text-emerald-500">{formatCurrency(item.paidAmount, loan.settlementCurrency, features.iqd_display_preference)}</TableCell>
-                                            <TableCell className="text-end font-semibold">{formatCurrency(item.balanceAmount, loan.settlementCurrency, features.iqd_display_preference)}</TableCell>
-                                            <TableCell>
-                                                <span className={cn('inline-flex px-2 py-0.5 rounded-full text-xs font-medium', statusClass(item.status === 'unpaid' ? 'active' : item.status))}>
+                                        <div
+                                            key={item.id}
+                                            className="p-4 border shadow-sm space-y-4 bg-background rounded-2xl border-border"
+                                        >
+                                            <div className="flex justify-between items-center">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-xs font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-full">
+                                                        #{String(item.installmentNo).padStart(2, '0')}
+                                                    </span>
+                                                    <span className="text-sm font-bold text-foreground">
+                                                        {formatDate(item.dueDate)}
+                                                    </span>
+                                                </div>
+                                                <span className={cn('inline-flex px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider', statusClass(item.status === 'unpaid' ? 'active' : item.status))}>
                                                     {t(`loans.installmentStatuses.${item.status}`) || item.status}
                                                 </span>
-                                            </TableCell>
-                                            <TableCell className="text-end print:hidden">
-                                                {!isReadOnly && item.balanceAmount > 0 && (
-                                                    <Button variant="ghost" size="sm" onClick={() => onOpenPayment(loan, item)}>
+                                            </div>
+
+                                            <div className="grid grid-cols-3 gap-2 py-3 border-y border-border/50">
+                                                <div className="text-center">
+                                                    <div className="text-[10px] text-muted-foreground font-bold uppercase tracking-tight">{t('loans.planned') || 'Planned'}</div>
+                                                    <div className="text-[11px] font-bold">{formatCurrency(item.plannedAmount, loan.settlementCurrency, features.iqd_display_preference)}</div>
+                                                </div>
+                                                <div className="text-center border-x border-border/50">
+                                                    <div className="text-[10px] text-muted-foreground font-bold uppercase tracking-tight">{t('loans.paid') || 'Paid'}</div>
+                                                    <div className="text-[11px] font-bold text-emerald-600">{formatCurrency(item.paidAmount, loan.settlementCurrency, features.iqd_display_preference)}</div>
+                                                </div>
+                                                <div className="text-center">
+                                                    <div className="text-[10px] text-muted-foreground font-bold uppercase tracking-tight">{t('loans.balance') || 'Balance'}</div>
+                                                    <div className="text-[11px] font-bold text-primary">{formatCurrency(item.balanceAmount, loan.settlementCurrency, features.iqd_display_preference)}</div>
+                                                </div>
+                                            </div>
+
+                                            {!isReadOnly && item.balanceAmount > 0 && (
+                                                <div className="pt-1">
+                                                    <Button
+                                                        variant="secondary"
+                                                        className="w-full h-9 rounded-xl font-bold gap-2 text-xs"
+                                                        onClick={() => onOpenPayment(loan, item)}
+                                                    >
                                                         {t('loans.pay') || 'Pay'}
                                                     </Button>
-                                                )}
-                                            </TableCell>
-                                        </TableRow>
+                                                </div>
+                                            )}
+                                        </div>
                                     ))}
-                                </TableBody>
-                            </Table>
+                                </div>
+                            ) : (
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow>
+                                            <TableHead className="text-end">#</TableHead>
+                                            <TableHead>{t('loans.dueDate') || 'Due Date'}</TableHead>
+                                            <TableHead className="text-end">{t('loans.planned') || 'Planned'}</TableHead>
+                                            <TableHead className="text-end">{t('loans.paid') || 'Paid'}</TableHead>
+                                            <TableHead className="text-end">{t('loans.balance') || 'Balance'}</TableHead>
+                                            <TableHead>{t('loans.status') || 'Status'}</TableHead>
+                                            <TableHead className="text-end print:hidden">{t('common.actions') || 'Actions'}</TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {installments.length === 0 ? (
+                                            <TableRow>
+                                                <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                                                    {t('common.noData') || 'No data'}
+                                                </TableCell>
+                                            </TableRow>
+                                        ) : installments.map((item: LoanInstallment) => (
+                                            <TableRow key={item.id}>
+                                                <TableCell>{String(item.installmentNo).padStart(2, '0')}</TableCell>
+                                                <TableCell>{formatDate(item.dueDate)}</TableCell>
+                                                <TableCell className="text-end">{formatCurrency(item.plannedAmount, loan.settlementCurrency, features.iqd_display_preference)}</TableCell>
+                                                <TableCell className="text-end text-emerald-500">{formatCurrency(item.paidAmount, loan.settlementCurrency, features.iqd_display_preference)}</TableCell>
+                                                <TableCell className="text-end font-semibold">{formatCurrency(item.balanceAmount, loan.settlementCurrency, features.iqd_display_preference)}</TableCell>
+                                                <TableCell>
+                                                    <span className={cn('inline-flex px-2 py-0.5 rounded-full text-xs font-medium', statusClass(item.status === 'unpaid' ? 'active' : item.status))}>
+                                                        {t(`loans.installmentStatuses.${item.status}`) || item.status}
+                                                    </span>
+                                                </TableCell>
+                                                <TableCell className="text-end print:hidden">
+                                                    {!isReadOnly && item.balanceAmount > 0 && (
+                                                        <Button variant="ghost" size="sm" onClick={() => onOpenPayment(loan, item)}>
+                                                            {t('loans.pay') || 'Pay'}
+                                                        </Button>
+                                                    )}
+                                                </TableCell>
+                                            </TableRow>
+                                        ))}
+                                    </TableBody>
+                                </Table>
+                            )}
                         </div>
                     </CardContent>
                 </Card>

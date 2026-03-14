@@ -2274,7 +2274,10 @@ function roundLoanAmount(amount: number, currency: CurrencyCode): number {
 }
 
 function generateLoanNo(id: string, now = new Date()): string {
-    return `LN-${now.getFullYear()}-${id.replace(/-/g, '').slice(0, 6).toUpperCase()}`
+    const yyyy = now.getFullYear()
+    const mm = String(now.getMonth() + 1).padStart(2, '0')
+    const dd = String(now.getDate()).padStart(2, '0')
+    return `LN-${yyyy}${mm}${dd}-${id.replace(/-/g, '').slice(0, 6).toUpperCase()}`
 }
 
 function addInstallmentDate(baseDate: string, frequency: InstallmentFrequency, index: number): string {

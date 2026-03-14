@@ -145,28 +145,28 @@ function BudgetItemRow({
     // Paid -> green
     // Snoozed -> yellow
     const bgClass = isPaid
-        ? 'bg-emerald-50/50 border-emerald-100/50 hover:bg-emerald-50/80'
+        ? 'bg-emerald-50/50 border-emerald-100/50 dark:bg-emerald-500/10 dark:border-emerald-500/20 hover:bg-emerald-50/80 dark:hover:bg-emerald-500/15'
         : isSnoozed
-            ? 'bg-amber-50/50 border-amber-100/50 hover:bg-amber-50/80'
+            ? 'bg-amber-50/50 border-amber-100/50 dark:bg-amber-500/10 dark:border-amber-500/20 hover:bg-amber-50/80 dark:hover:bg-amber-500/15'
             : type === 'expense'
-                ? 'bg-orange-50/50 border-orange-100/50 hover:bg-orange-50/80'
-                : 'bg-blue-50/50 border-blue-100/50 hover:bg-blue-50/80'
+                ? 'bg-orange-50/50 border-orange-100/50 dark:bg-orange-500/10 dark:border-orange-500/20 hover:bg-orange-50/80 dark:hover:bg-orange-500/15'
+                : 'bg-blue-50/50 border-blue-100/50 dark:bg-blue-500/10 dark:border-blue-500/20 hover:bg-blue-50/80 dark:hover:bg-blue-500/15'
 
     const accentColor = isPaid
-        ? 'text-emerald-600'
+        ? 'text-emerald-600 dark:text-emerald-400'
         : isSnoozed
-            ? 'text-amber-600'
+            ? 'text-amber-600 dark:text-amber-400'
             : type === 'expense'
-                ? 'text-orange-600'
-                : 'text-blue-600'
+                ? 'text-orange-600 dark:text-orange-400'
+                : 'text-blue-600 dark:text-blue-400'
 
     const iconBg = isPaid
-        ? 'bg-emerald-100/80'
+        ? 'bg-emerald-100/80 dark:bg-emerald-500/20'
         : isSnoozed
-            ? 'bg-amber-100/80'
+            ? 'bg-amber-100/80 dark:bg-amber-500/20'
             : type === 'expense'
-                ? 'bg-orange-100/80'
-                : 'bg-blue-100/80'
+                ? 'bg-orange-100/80 dark:bg-orange-500/20'
+                : 'bg-blue-100/80 dark:bg-blue-500/20'
 
     const Icon = type === 'payroll' ? User : type === 'dividend' ? Wallet : Receipt
 

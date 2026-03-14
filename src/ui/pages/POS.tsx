@@ -46,7 +46,8 @@ import {
     ChevronUp,
     ChevronDown,
     Warehouse,
-    Check
+    Check,
+    Banknote
 } from 'lucide-react'
 import { BarcodeScanner } from 'react-barcode-scanner'
 import 'react-barcode-scanner/polyfill'
@@ -1956,13 +1957,13 @@ export function POS() {
 
                             <div className="space-y-2">
                                 <div className="flex items-center justify-between">
-                                    <span className="text-muted-foreground text-sm">Subtotal</span>
+                                    <span className="text-muted-foreground text-sm">{t('pos.subtotal')}</span>
                                     <span className="font-semibold">
                                         {formatCurrency(totalAmount, settlementCurrency, features.iqd_display_preference)}
                                     </span>
                                 </div>
                                 <div className="flex items-center justify-between text-xl font-bold text-primary pt-1 border-t border-border/50">
-                                    <span>Total</span>
+                                    <span>{t('pos.total')}</span>
                                     <div className="flex flex-col items-end leading-tight">
                                         <div className="flex items-center gap-2">
                                             {originalSubtotal > totalAmount && (
@@ -1985,37 +1986,37 @@ export function POS() {
                                         <button
                                             onClick={() => setPaymentType('cash')}
                                             className={cn(
-                                                "px-3 py-1.5 rounded-md text-xs font-medium transition-colors flex items-center gap-1.5",
+                                                "px-3 py-1.5 rounded-md text-xs font-medium transition-colors flex items-center gap-1.5 border transition-all",
                                                 paymentType === 'cash'
-                                                    ? "bg-background shadow-sm"
-                                                    : "hover:bg-background/50"
+                                                    ? "bg-emerald-100 text-emerald-900 shadow-sm border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-800"
+                                                    : "bg-emerald-50/30 text-emerald-700 border-emerald-100/30 hover:bg-emerald-100/50 dark:bg-emerald-500/5 dark:text-emerald-400 dark:border-emerald-500/10 dark:hover:bg-emerald-500/10"
                                             )}
                                         >
-                                            <CreditCard className="w-3 h-3" />
+                                            <Banknote className={cn("w-3 h-3 transition-colors", paymentType === 'cash' ? "text-emerald-600 dark:text-emerald-400" : "text-emerald-600/80")} />
                                             {t('pos.cash') || 'Cash'}
                                         </button>
                                         <button
                                             onClick={() => setPaymentType('digital')}
                                             className={cn(
-                                                "px-3 py-1.5 rounded-md text-xs font-medium transition-colors flex items-center gap-1.5",
+                                                "px-3 py-1.5 rounded-md text-xs font-medium transition-colors flex items-center gap-1.5 border transition-all",
                                                 paymentType === 'digital'
-                                                    ? "bg-background shadow-sm"
-                                                    : "hover:bg-background/50"
+                                                    ? "bg-blue-100 text-blue-900 shadow-sm border-blue-200 dark:bg-blue-900/40 dark:text-blue-300 dark:border-blue-800"
+                                                    : "bg-blue-50/30 text-blue-700 border-blue-100/30 hover:bg-blue-100/50 dark:bg-blue-500/5 dark:text-blue-400 dark:border-blue-500/10 dark:hover:bg-blue-500/10"
                                             )}
                                         >
-                                            <Zap className="w-3 h-3" />
+                                            <Zap className={cn("w-3 h-3 transition-colors", paymentType === 'digital' ? "text-blue-600 dark:text-blue-400" : "text-blue-600/80")} />
                                             {t('pos.digital') || 'Digital'}
                                         </button>
                                         <button
                                             onClick={() => setPaymentType('loan')}
                                             className={cn(
-                                                "px-3 py-1.5 rounded-md text-xs font-medium transition-colors flex items-center gap-1.5",
+                                                "px-3 py-1.5 rounded-md text-xs font-medium transition-colors flex items-center gap-1.5 border transition-all",
                                                 paymentType === 'loan'
-                                                    ? "bg-background shadow-sm"
-                                                    : "hover:bg-background/50"
+                                                    ? "bg-rose-100 text-rose-900 shadow-sm border-rose-200 dark:bg-rose-900/40 dark:text-rose-300 dark:border-rose-800"
+                                                    : "bg-rose-50/30 text-rose-700 border-rose-100/30 hover:bg-rose-100/50 dark:bg-rose-500/5 dark:text-rose-400 dark:border-rose-500/10 dark:hover:bg-rose-500/10"
                                             )}
                                         >
-                                            <Coins className="w-3 h-3" />
+                                            <Coins className={cn("w-3 h-3 transition-colors", paymentType === 'loan' ? "text-rose-600 dark:text-rose-400" : "text-rose-600/80")} />
                                             {t('pos.loan') || 'Loan'}
                                         </button>
                                     </div>
@@ -2938,7 +2939,7 @@ function MobileCart({
                 {cart.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-20 opacity-30 gap-4">
                         <ShoppingCart className="w-20 h-20" />
-                        <p className="font-bold text-lg">Your cart is empty</p>
+                        <p className="font-bold text-lg">{t('pos.emptyCart')}</p>
                     </div>
                 ) : (
                     cart.map((item) => {
@@ -3068,7 +3069,7 @@ function MobileCart({
                             <span className="text-[10px] font-bold text-muted-foreground uppercase">{settlementCurrency}</span>
                         </div>
                         <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider -mt-1">
-                            {cart.length} {cart.length === 1 ? 'item' : 'items'} • {paymentType}
+                            {cart.length} {cart.length === 1 ? t('common.item') : t('common.items')} • {t(`pos.${paymentType}`)}
                         </span>
                     </div>
 
@@ -3089,7 +3090,7 @@ function MobileCart({
                         >
                             {isLoading ? <Loader2 className="animate-spin w-5 h-5" /> : (
                                 <div className="flex items-center gap-2">
-                                    <span>Checkout</span>
+                                    <span>{t('pos.checkout')}</span>
                                     <ChevronRight className="w-4 h-4" />
                                 </div>
                             )}
@@ -3114,29 +3115,35 @@ function MobileCart({
                             <button
                                 onClick={() => setPaymentType('cash')}
                                 className={cn(
-                                    "flex-1 py-3.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all",
-                                    paymentType === 'cash' ? "bg-background shadow-md text-foreground" : "text-muted-foreground opacity-60"
+                                    "flex-1 py-3.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all border",
+                                    paymentType === 'cash'
+                                        ? "bg-emerald-100 text-emerald-900 shadow-lg border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-800"
+                                        : "bg-emerald-50/30 text-emerald-700 border-emerald-100/30 dark:bg-emerald-500/5 dark:text-emerald-400 dark:border-emerald-500/10"
                                 )}
                             >
-                                <CreditCard className="w-4 h-4" /> Cash
+                                <Banknote className={cn("w-4 h-4 transition-colors", paymentType === 'cash' ? "text-emerald-600 dark:text-emerald-400" : "text-emerald-600/80")} /> {t('pos.cash') || 'Cash'}
                             </button>
                             <button
                                 onClick={() => setPaymentType('digital')}
                                 className={cn(
-                                    "flex-1 py-3.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all",
-                                    paymentType === 'digital' ? "bg-background shadow-md text-foreground" : "text-muted-foreground opacity-60"
+                                    "flex-1 py-3.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all border",
+                                    paymentType === 'digital'
+                                        ? "bg-blue-100 text-blue-900 shadow-lg border-blue-200 dark:bg-blue-900/40 dark:text-blue-300 dark:border-blue-800"
+                                        : "bg-blue-50/30 text-blue-700 border-blue-100/30 dark:bg-blue-500/5 dark:text-blue-400 dark:border-blue-500/10"
                                 )}
                             >
-                                <Zap className="w-4 h-4" /> Digital
+                                <Zap className={cn("w-4 h-4 transition-colors", paymentType === 'digital' ? "text-blue-600 dark:text-blue-400" : "text-blue-600/80")} /> {t('pos.digital') || 'Digital'}
                             </button>
                             <button
                                 onClick={() => setPaymentType('loan')}
                                 className={cn(
-                                    "flex-1 py-3.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all",
-                                    paymentType === 'loan' ? "bg-background shadow-md text-foreground" : "text-muted-foreground opacity-60"
+                                    "flex-1 py-3.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all border",
+                                    paymentType === 'loan'
+                                        ? "bg-rose-100 text-rose-900 shadow-lg border-rose-200 dark:bg-rose-900/40 dark:text-rose-300 dark:border-rose-800"
+                                        : "bg-rose-50/30 text-rose-700 border-rose-100/30 dark:bg-rose-500/5 dark:text-rose-400 dark:border-rose-500/10"
                                 )}
                             >
-                                <Coins className="w-4 h-4" /> {t('pos.loan') || 'Loan'}
+                                <Coins className={cn("w-4 h-4 transition-colors", paymentType === 'loan' ? "text-rose-600 dark:text-rose-400" : "text-rose-600/80")} /> {t('pos.loan') || 'Loan'}
                             </button>
                         </div>
 
@@ -3163,7 +3170,7 @@ function MobileCart({
 
                         {/* Total Discount Input - Mobile Optimized */}
                         <div className="flex flex-col gap-3">
-                            <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider ml-1">Discount</label>
+                            <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider ml-1">{t('pos.totalDiscount')}</label>
                             <div className="flex items-center gap-3 bg-muted/30 p-2 rounded-2xl border border-border/50 transition-all focus-within:border-primary/50 focus-within:bg-background">
                                 <div className="flex-1 relative">
                                     <Input
@@ -3214,11 +3221,11 @@ function MobileCart({
 
                             <div className="space-y-3">
                                 <div className="flex justify-between items-center text-muted-foreground text-sm font-medium">
-                                    <span>Subtotal</span>
+                                    <span>{t('pos.subtotal')}</span>
                                     <span>{formatCurrency(totalAmount, settlementCurrency, features.iqd_display_preference)}</span>
                                 </div>
                                 <div className="flex justify-between items-center pt-2 border-t border-border/50">
-                                    <span className="font-bold text-lg text-foreground">Total Amount</span>
+                                    <span className="font-bold text-lg text-foreground">{t('pos.total')}</span>
                                     <div className="flex flex-col items-end">
                                         <span className="font-black text-2xl text-primary leading-none">
                                             {formatCurrency(totalAmount, settlementCurrency, features.iqd_display_preference)}
@@ -3236,7 +3243,7 @@ function MobileCart({
                                 >
                                     {isLoading ? <Loader2 className="animate-spin w-6 h-6" /> : (
                                         <div className="flex items-center gap-2">
-                                            <span>Checkout</span>
+                                            <span>{t('pos.checkout')}</span>
                                             <Plus className="w-5 h-5" />
                                         </div>
                                     )}

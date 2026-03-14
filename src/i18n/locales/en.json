@@ -933,7 +933,10 @@
         "inCart": "In Cart",
         "addOne": "Add one",
         "removeOne": "Remove one",
-        "totalItems": "Total Items"
+        "totalItems": "Total Items",
+        "total": "Total",
+        "subtotal": "Subtotal",
+        "emptyCart": "Your cart is empty"
     },
     "print": {
         "clickToExpand": "Click to expand",
@@ -1101,6 +1104,10 @@
     },
     "loans": {
         "title": "Loans",
+        "view": {
+            "table": "Loans Details",
+            "grid": "Loans Grid"
+        },
         "searchPlaceholder": "Search by borrower name or loan number...",
         "registerFromPos": "Register Loan",
         "createManualLoan": "Create Manual Loan",
