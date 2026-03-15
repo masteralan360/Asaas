@@ -10,7 +10,7 @@ import type { IQDDisplayPreference, CurrencyCode } from '@/local-db/models'
 import { Settings as SettingsIcon, Database, Cloud, Trash2, RefreshCw, User, Copy, Check, CreditCard, Globe, Download, AlertCircle, Printer, Contact, Fingerprint } from 'lucide-react'
 import { formatDateTime, cn } from '@/lib/utils'
 import { useTheme } from '@/ui/components/theme-provider'
-import { Moon, Sun, Monitor, Unlock, Server, MessageSquare, Bell } from 'lucide-react'
+import { Moon, Sun, Monitor, Unlock, Server, MessageSquare, Bell, MonitorPlay, Wifi } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import { isMobile } from '@/lib/platform'
 import { useExchangeRate } from '@/context/ExchangeRateContext'
@@ -28,12 +28,22 @@ import { DEFAULT_THERMAL_ROLL_WIDTH, THERMAL_ROLL_WIDTHS, isLikelyThermalPrinter
 import type { PrinterInfo } from 'tauri-plugin-thermal-printer'
 // Notification imports moved to dynamic imports for cross-platform support
 import { registerDeviceTokenIfNeeded } from '@/services/notificationDevice'
+import { useKdsStream } from '@/hooks/useKdsStream'
+import { ReactQRCode } from '@lglab/react-qr-code'
 
 export function Settings() {
     const { user, signOut, isSupabaseConfigured, updateUser } = useAuth()
     const { syncState, pendingCount, lastSyncTime, sync, isSyncing, isOnline } = useSyncStatus()
     const { theme, setTheme, style, setStyle } = useTheme()
     const { features, updateSettings, workspaceName, isLocked } = useWorkspace()
+    const { streamUrl, status: kdsStatus, startStream } = useKdsStream(true)
+
+    useEffect(() => {
+        if (features.kds_enabled && kdsStatus === 'idle') {
+            startStream(4004).catch(console.error)
+        }
+    }, [features.kds_enabled, kdsStatus, startStream])
+
     const { toast } = useToast()
     const { t } = useTranslation()
     const { alerts, forceAlert } = useExchangeRate()
@@ -1726,6 +1736,82 @@ export function Settings() {
                                         />
                                     </div>
                                 </div>
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    {/* KDS Streaming */}
+                    <Card>
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2">
+                                <MonitorPlay className="w-5 h-5" />
+                                {t('settings.kds.title') || 'KDS Local Streaming'}
+                            </CardTitle>
+                            <CardDescription>
+                                {t('settings.kds.desc') || 'Stream the Kitchen Display System to other devices on the same local network.'}
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="flex flex-col gap-6">
+                                <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg border border-border">
+                                    <div className="space-y-0.5 pr-4">
+                                        <Label className="text-sm font-medium">{t('settings.kds.enable') || 'Enable KDS Network Hosting'}</Label>
+                                        <p className="text-xs text-muted-foreground max-w-md">
+                                            {t('settings.kds.enableDesc') || 'Turn this device into a KDS host. Kitchen screens can connect via browser to view orders.'}
+                                        </p>
+                                    </div>
+                                    <Switch
+                                        checked={features.kds_enabled}
+                                        onCheckedChange={(val) => {
+                                            updateSettings({ kds_enabled: val })
+                                            if (val && kdsStatus === 'idle') {
+                                                startStream(4004).catch(console.error)
+                                            }
+                                        }}
+                                    />
+                                </div>
+
+                                {features.kds_enabled && (
+                                    <div className="animate-in fade-in slide-in-from-top-2 p-4 border border-emerald-500/20 bg-emerald-500/5 rounded-xl flex flex-col md:flex-row gap-6 items-center">
+                                        <div className="flex-1 space-y-4">
+                                            <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 font-medium">
+                                                <Wifi className="w-4 h-4" />
+                                                <span>{kdsStatus === 'host' ? 'Hosting Active' : kdsStatus === 'reconnecting' ? 'Starting Server...' : 'Ready'}</span>
+                                            </div>
+                                            <div>
+                                                <Label className="text-xs text-muted-foreground uppercase tracking-wider mb-1 block">Access URL</Label>
+                                                <div className="flex items-center gap-2">
+                                                    <Input
+                                                        readOnly
+                                                        value={streamUrl || 'Waiting for connection...'}
+                                                        className="font-mono text-sm bg-background border-emerald-500/20 focus-visible:ring-emerald-500/30"
+                                                    />
+                                                    {streamUrl && (
+                                                        <Button
+                                                            variant="outline"
+                                                            size="icon"
+                                                            onClick={async () => {
+                                                                await navigator.clipboard.writeText(streamUrl)
+                                                                toast({ description: 'Copied to clipboard' })
+                                                            }}
+                                                            className="shrink-0 hover:bg-emerald-500 hover:text-white border-emerald-500/20"
+                                                        >
+                                                            <Copy className="w-4 h-4" />
+                                                        </Button>
+                                                    )}
+                                                </div>
+                                                <p className="text-[10px] text-muted-foreground mt-2 italic">
+                                                    Connect other devices to the same Wi-Fi network and enter this URL in the browser.
+                                                </p>
+                                            </div>
+                                        </div>
+                                        {streamUrl && (
+                                            <div className="shrink-0 p-2 bg-white rounded-xl shadow-sm border border-border">
+                                                <ReactQRCode value={streamUrl} size={100} level="M" />
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
                             </div>
                         </CardContent>
                     </Card>

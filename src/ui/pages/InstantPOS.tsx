@@ -4,6 +4,7 @@ import { useAuth } from '@/auth'
 import { supabase } from '@/auth/supabase'
 import { addToOfflineMutations, useCategories, useProducts } from '@/local-db'
 import { db } from '@/local-db/database'
+import type { CurrencyCode } from '@/local-db/models'
 import { useWorkspace } from '@/workspace'
 import { formatCompactDateTime, formatCurrency, generateId, cn } from '@/lib/utils'
 import { Button, Input, Switch, useToast } from '@/ui/components'
@@ -473,10 +474,10 @@ export function InstantPOS() {
                             totalPrice: item.total_price,
                             costPrice: item.cost_price,
                             convertedCostPrice: item.converted_cost_price,
-                            originalCurrency: item.original_currency,
+                            originalCurrency: item.original_currency as CurrencyCode,
                             originalUnitPrice: item.original_unit_price,
                             convertedUnitPrice: item.converted_unit_price,
-                            settlementCurrency: item.settlement_currency,
+                            settlementCurrency: item.settlement_currency as CurrencyCode,
                             negotiatedPrice: undefined,
                             inventorySnapshot: item.inventory_snapshot
                         })

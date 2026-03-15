@@ -1,5 +1,14 @@
 use std::fs;
+use std::sync::Mutex;
 use tauri::Manager;
+use tokio::sync::broadcast;
+
+mod kds_server;
+
+pub struct KdsState {
+    pub server_url: Mutex<Option<String>>,
+    pub tx: broadcast::Sender<String>,
+}
 
 #[tauri::command]
 fn read_fcm_token(app: tauri::AppHandle) -> Result<Option<String>, String> {
@@ -37,46 +46,39 @@ fn read_fcm_token(app: tauri::AppHandle) -> Result<Option<String>, String> {
 }
 
 #[tauri::command]
-fn debug_fcm_paths(app: tauri::AppHandle) -> Result<Vec<String>, String> {
-    let mut results: Vec<String> = Vec::new();
-
-    if let Ok(app_data) = app.path().app_data_dir() {
-        let p = app_data.join("fcm-token.txt");
-        results.push(format!("app_data_dir: {} (exists={})", p.display(), p.exists()));
-
-        let p_files = app_data.join("files").join("fcm-token.txt");
-        results.push(format!("app_data_dir/files: {} (exists={})", p_files.display(), p_files.exists()));
-
-        if let Some(parent) = app_data.parent() {
-            let p2 = parent.join("fcm-token.txt");
-            results.push(format!("parent_of_app_data: {} (exists={})", p2.display(), p2.exists()));
-
-            let p2_files = parent.join("files").join("fcm-token.txt");
-            results.push(format!("parent/files: {} (exists={})", p2_files.display(), p2_files.exists()));
-
-            if let Ok(entries) = fs::read_dir(parent) {
-                let files: Vec<String> = entries
-                    .filter_map(|e| e.ok())
-                    .map(|e| format!("  -> {}", e.file_name().to_string_lossy()))
-                    .collect();
-                results.push(format!("files in parent ({}): [{}]", parent.display(), files.join(", ")));
-            }
+async fn start_kds_stream(app: tauri::AppHandle, state: tauri::State<'_, KdsState>, port: u16) -> Result<String, String> {
+    {
+        let url_lock = state.server_url.lock().map_err(|e| e.to_string())?;
+        if let Some(url) = &*url_lock {
+            return Ok(url.clone());
         }
-    } else {
-        results.push("app_data_dir: ERROR resolving".to_string());
-    }
+    } // lock dropped
 
-    if let Ok(data_dir) = app.path().data_dir() {
-        let p = data_dir.join("fcm-token.txt");
-        let exists = p.exists();
-        results.push(format!("data_dir: {} (exists={})", p.display(), exists));
-    }
+    let url = kds_server::start_server(app, port).await?;
+    
+    let mut url_lock = state.server_url.lock().map_err(|e| e.to_string())?;
+    *url_lock = Some(url.clone());
+    Ok(url)
+}
 
-    Ok(results)
+#[tauri::command]
+fn get_kds_stream_url(state: tauri::State<'_, KdsState>) -> Result<Option<String>, String> {
+    let url_lock = state.server_url.lock().map_err(|e| e.to_string())?;
+    Ok(url_lock.clone())
+}
+
+#[tauri::command]
+fn broadcast_kds_update(state: tauri::State<'_, KdsState>, event: String, payload: serde_json::Value) -> Result<(), String> {
+    let message = kds_server::KdsMessage { event, payload };
+    let json = serde_json::to_string(&message).map_err(|e| e.to_string())?;
+    let _ = state.tx.send(json);
+    Ok(())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let (tx, _rx) = broadcast::channel(100);
+
     #[allow(unused_mut)]
     let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
@@ -93,7 +95,12 @@ pub fn run() {
         builder = builder.plugin(tauri_plugin_biometric::init());
     }
 
-    builder.setup(|app| {
+    builder
+        .manage(KdsState {
+            server_url: Mutex::new(None),
+            tx,
+        })
+        .setup(|app| {
         use tauri::Manager;
         let window = app.get_webview_window("main").unwrap();
 
@@ -117,7 +124,12 @@ pub fn run() {
             }
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![read_fcm_token, debug_fcm_paths])
+        .invoke_handler(tauri::generate_handler![
+            read_fcm_token,
+            start_kds_stream,
+            get_kds_stream_url,
+            broadcast_kds_update
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

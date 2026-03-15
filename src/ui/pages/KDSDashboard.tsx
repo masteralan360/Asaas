@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type DragEvent } from 'react'
 import { useAuth } from '@/auth'
+import { useKdsStream } from '@/hooks/useKdsStream'
 import { useWorkspace } from '@/workspace'
 import { useCategories, useProducts } from '@/local-db'
 import { cn } from '@/lib/utils'
@@ -132,6 +133,10 @@ export function KDSDashboard() {
     const [draggingId, setDraggingId] = useState<string | null>(null)
     const [dragOverStatus, setDragOverStatus] = useState<KdsColumnStatus | null>(null)
 
+    // @ts-ignore
+    const isMain = !!window.__TAURI_INTERNALS__
+    const { status: streamStatus, streamUrl, broadcast } = useKdsStream(isMain)
+
     useEffect(() => {
         const interval = window.setInterval(() => setNow(new Date()), 1000)
         return () => window.clearInterval(interval)
@@ -148,8 +153,23 @@ export function KDSDashboard() {
             }
         }
         window.addEventListener('storage', handleStorage)
-        return () => window.removeEventListener('storage', handleStorage)
-    }, [])
+
+        const handleStreamUpdate = (event: any) => {
+            const updatedTickets = event.detail
+            if (updatedTickets && Array.isArray(updatedTickets)) {
+                // To avoid loops, we only set if it's actually different or if we are not main
+                if (!isMain) {
+                    setTickets(updatedTickets)
+                }
+            }
+        }
+        window.addEventListener('kds-stream-update', handleStreamUpdate)
+
+        return () => {
+            window.removeEventListener('storage', handleStorage)
+            window.removeEventListener('kds-stream-update', handleStreamUpdate)
+        }
+    }, [isMain])
 
     const productById = useMemo(() => {
         const map = new Map<string, typeof products[number]>()
@@ -206,9 +226,23 @@ export function KDSDashboard() {
                     : ticket.kitchenRoutedAt
             }
         }))
+        // Broadcast the update if we are the main terminal
+        if (isMain) {
+            const nextTickets = tickets.map(ticket => {
+                if (ticket.id !== ticketId) return ticket
+                return {
+                    ...ticket,
+                    status,
+                    kitchenRoutedAt: status === 'preparing'
+                        ? (ticket.kitchenRoutedAt || new Date().toISOString())
+                        : ticket.kitchenRoutedAt
+                }
+            })
+            broadcast('TICKET_UPDATED', nextTickets)
+        }
     }
 
-    const handleDragStart = (event: DragEvent<HTMLDivElement>, ticketId: string) => {
+    const handleDragStart = (event: DragEvent<HTMLElement>, ticketId: string) => {
         event.dataTransfer.setData('text/plain', ticketId)
         event.dataTransfer.effectAllowed = 'move'
         setDraggingId(ticketId)
@@ -219,7 +253,7 @@ export function KDSDashboard() {
         setDragOverStatus(null)
     }
 
-    const handleDrop = (event: DragEvent<HTMLDivElement>, status: KdsColumnStatus) => {
+    const handleDrop = (event: DragEvent<HTMLElement>, status: KdsColumnStatus) => {
         event.preventDefault()
         const ticketId = event.dataTransfer.getData('text/plain') || draggingId
         if (!ticketId) return
@@ -250,6 +284,15 @@ export function KDSDashboard() {
                     )}>
                         {systemStatusLabel}
                     </span>
+                    {streamUrl && (
+                        <span className="flex items-center gap-1.5 rounded-full bg-blue-500/20 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-blue-200 shadow-lg shadow-blue-500/30">
+                            <span className={cn(
+                                "h-1.5 w-1.5 rounded-full",
+                                streamStatus === 'connected' || streamStatus === 'host' ? "bg-blue-400 animate-pulse" : "bg-slate-400"
+                            )} />
+                            {isMain ? 'Streaming' : 'Remote'}
+                        </span>
+                    )}
                 </div>
 
                 <div className="flex flex-wrap items-center gap-5">
