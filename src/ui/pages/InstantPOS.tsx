@@ -6,26 +6,17 @@ import { addToOfflineMutations, useCategories, useProducts } from '@/local-db'
 import { db } from '@/local-db/database'
 import { useWorkspace } from '@/workspace'
 import { formatCompactDateTime, formatCurrency, generateId, cn } from '@/lib/utils'
-import {
-    Button,
-    Card,
-    CardContent,
-    CardHeader,
-    CardTitle,
-    Input,
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-    Switch,
-    useToast
-} from '@/ui/components'
-import { AlertCircle, CheckCircle2, ClipboardList, Minus, Plus, Receipt, Trash2 } from 'lucide-react'
+import { Button, Input, Switch, useToast } from '@/ui/components'
+import { AlertCircle, CheckCircle2, Minus, Plus, Receipt, Search, Trash2 } from 'lucide-react'
 import { normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
+import { platformService } from '@/services/platformService'
 
 const TICKETS_STORAGE_KEY = 'instant_pos_tickets'
 const TICKET_COUNTER_KEY = 'instant_pos_ticket_counter'
+const PENDING_TICKET_TTL_MINUTES = 15
+const PENDING_TICKET_EXTENSION_MINUTES = 5
+const PENDING_TICKET_TTL_MS = PENDING_TICKET_TTL_MINUTES * 60 * 1000
+const PENDING_TICKET_EXTENSION_MS = PENDING_TICKET_EXTENSION_MINUTES * 60 * 1000
 
 type InstantPosStatus = 'pending' | 'preparing' | 'ready' | 'served' | 'paid'
 
@@ -45,25 +36,11 @@ type InstantPosTicket = {
     status: InstantPosStatus
     items: InstantPosItem[]
     kitchenRoutedAt?: string
+    expiresAt?: string
 }
 
 const STATUS_FLOW: InstantPosStatus[] = ['pending', 'preparing', 'ready', 'served', 'paid']
 
-const STATUS_LABELS: Record<InstantPosStatus, string> = {
-    pending: 'Pending',
-    preparing: 'Preparing',
-    ready: 'Ready',
-    served: 'Served',
-    paid: 'Paid / Closed'
-}
-
-const STATUS_BADGES: Record<InstantPosStatus, string> = {
-    pending: 'bg-amber-500/10 text-amber-600 border-amber-500/20',
-    preparing: 'bg-blue-500/10 text-blue-600 border-blue-500/20',
-    ready: 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20',
-    served: 'bg-purple-500/10 text-purple-600 border-purple-500/20',
-    paid: 'bg-slate-500/10 text-slate-600 border-slate-500/20'
-}
 
 function loadTickets(): InstantPosTicket[] {
     if (typeof window === 'undefined') return []
@@ -71,7 +48,17 @@ function loadTickets(): InstantPosTicket[] {
         const raw = localStorage.getItem(TICKETS_STORAGE_KEY)
         if (!raw) return []
         const parsed = JSON.parse(raw)
-        return Array.isArray(parsed) ? parsed : []
+        if (!Array.isArray(parsed)) return []
+        return parsed.map((ticket: InstantPosTicket) => {
+            if (ticket.expiresAt) return ticket
+            if (!ticket.createdAt) return ticket
+            const createdAt = new Date(ticket.createdAt)
+            if (Number.isNaN(createdAt.getTime())) return ticket
+            return {
+                ...ticket,
+                expiresAt: new Date(createdAt.getTime() + PENDING_TICKET_TTL_MS).toISOString()
+            }
+        })
     } catch {
         return []
     }
@@ -93,6 +80,30 @@ function nextTicketNumber(): string {
     return `T-${String(current).padStart(3, '0')}`
 }
 
+function getTicketExpiryDate(ticket: InstantPosTicket) {
+    if (ticket.expiresAt) {
+        const parsed = new Date(ticket.expiresAt)
+        if (!Number.isNaN(parsed.getTime())) return parsed
+    }
+    const createdAt = new Date(ticket.createdAt)
+    if (Number.isNaN(createdAt.getTime())) {
+        return new Date(Date.now() + PENDING_TICKET_TTL_MS)
+    }
+    return new Date(createdAt.getTime() + PENDING_TICKET_TTL_MS)
+}
+
+function formatCountdown(ms: number, expiredLabel: string) {
+    if (ms <= 0) return expiredLabel
+    const totalSeconds = Math.ceil(ms / 1000)
+    const hours = Math.floor(totalSeconds / 3600)
+    const minutes = Math.floor((totalSeconds % 3600) / 60)
+    const seconds = totalSeconds % 60
+    if (hours > 0) {
+        return `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+    }
+    return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+}
+
 export function InstantPOS() {
     const { t } = useTranslation()
     const { toast } = useToast()
@@ -107,12 +118,18 @@ export function InstantPOS() {
     const [selectedCategory, setSelectedCategory] = useState<string>('all')
     const [isKdsSaving, setIsKdsSaving] = useState(false)
     const [isCheckoutLoading, setIsCheckoutLoading] = useState(false)
+    const [now, setNow] = useState(() => Date.now())
 
     const settlementCurrency = features.default_currency || 'usd'
 
     useEffect(() => {
         saveTickets(tickets)
     }, [tickets])
+
+    useEffect(() => {
+        const timer = setInterval(() => setNow(Date.now()), 1000)
+        return () => clearInterval(timer)
+    }, [])
 
     useEffect(() => {
         const handleStorage = (event: StorageEvent) => {
@@ -141,16 +158,21 @@ export function InstantPOS() {
 
     const filteredProducts = useMemo(() => {
         const term = search.trim().toLowerCase()
+        const normalizedSettlement = settlementCurrency?.toLowerCase()
         return products.filter(product => {
             const matchesSearch = !term
                 || (product.name || '').toLowerCase().includes(term)
                 || (product.sku || '').toLowerCase().includes(term)
             if (!matchesSearch) return false
+            if (normalizedSettlement) {
+                const productCurrency = (product.currency || '').toLowerCase()
+                if (productCurrency && productCurrency !== normalizedSettlement) return false
+            }
             if (selectedCategory === 'all') return true
             if (selectedCategory === 'none') return !product.categoryId
             return product.categoryId === selectedCategory
         })
-    }, [products, search, selectedCategory])
+    }, [products, search, selectedCategory, settlementCurrency])
 
     const activeTicketTotals = useMemo(() => {
         if (!activeTicket) {
@@ -162,13 +184,23 @@ export function InstantPOS() {
         return { count, total, hasMixedCurrency }
     }, [activeTicket, settlementCurrency])
 
+    const statusLabels = useMemo(() => ({
+        pending: t('instantPos.status.pending') || 'Pending',
+        preparing: t('instantPos.status.preparing') || 'Preparing',
+        ready: t('instantPos.status.ready') || 'Ready',
+        served: t('instantPos.status.served') || 'Served',
+        paid: t('instantPos.status.paid') || 'Paid / Closed'
+    }), [t])
+
     const createTicket = () => {
+        const createdAt = new Date()
         const ticket: InstantPosTicket = {
             id: generateId(),
             number: nextTicketNumber(),
-            createdAt: new Date().toISOString(),
+            createdAt: createdAt.toISOString(),
             status: 'pending',
-            items: []
+            items: [],
+            expiresAt: new Date(createdAt.getTime() + PENDING_TICKET_TTL_MS).toISOString()
         }
         setTickets(prev => [ticket, ...prev])
         setActiveTicketId(ticket.id)
@@ -183,10 +215,11 @@ export function InstantPOS() {
         if (!product) return
 
         if (!activeTicket) {
+            const createdAt = new Date()
             const newTicket: InstantPosTicket = {
                 id: generateId(),
                 number: nextTicketNumber(),
-                createdAt: new Date().toISOString(),
+                createdAt: createdAt.toISOString(),
                 status: 'pending',
                 items: [{
                     productId: product.id,
@@ -195,7 +228,8 @@ export function InstantPOS() {
                     unitPrice: product.price,
                     quantity: 1,
                     currency: product.currency
-                }]
+                }],
+                expiresAt: new Date(createdAt.getTime() + PENDING_TICKET_TTL_MS).toISOString()
             }
             setTickets(prev => [newTicket, ...prev])
             setActiveTicketId(newTicket.id)
@@ -251,6 +285,9 @@ export function InstantPOS() {
         updateTicket(activeTicket.id, ticket => ({
             ...ticket,
             status,
+            expiresAt: status === 'pending'
+                ? (ticket.expiresAt || new Date(Date.now() + PENDING_TICKET_TTL_MS).toISOString())
+                : ticket.expiresAt,
             kitchenRoutedAt: status === 'preparing' && features.kds_enabled
                 ? (ticket.kitchenRoutedAt || new Date().toISOString())
                 : ticket.kitchenRoutedAt
@@ -501,294 +538,380 @@ export function InstantPOS() {
         }
     }
 
-    const statusIndex = activeTicket ? STATUS_FLOW.indexOf(activeTicket.status) : -1
+    const clearActiveTicket = () => {
+        if (!activeTicket) return
+        updateTicket(activeTicket.id, ticket => ({ ...ticket, items: [] }))
+    }
+
+    const extendPendingExpiry = (ticketId: string) => {
+        updateTicket(ticketId, ticket => {
+            const expiry = getTicketExpiryDate(ticket)
+            const nextExpiry = new Date(expiry.getTime() + PENDING_TICKET_EXTENSION_MS)
+            return {
+                ...ticket,
+                expiresAt: nextExpiry.toISOString()
+            }
+        })
+    }
+
+    const activePendingTimeLeftMs = useMemo(() => {
+        if (!activeTicket || activeTicket.status !== 'pending') return null
+        const expiry = getTicketExpiryDate(activeTicket)
+        return expiry.getTime() - now
+    }, [activeTicket, now])
+
+    const statusAction = activeTicket ? (() => {
+        switch (activeTicket.status) {
+            case 'pending':
+                return { label: t('instantPos.actions.startPreparation') || 'Start Preparation', status: 'preparing' as InstantPosStatus }
+            case 'preparing':
+                return { label: t('instantPos.actions.markReady') || 'Mark Ready', status: 'ready' as InstantPosStatus }
+            case 'ready':
+                return { label: t('instantPos.actions.serveOrder') || 'Serve Order', status: 'served' as InstantPosStatus }
+            default:
+                return null
+        }
+    })() : null
+
+    const getDisplayImageUrl = (url?: string) => {
+        if (!url) return ''
+        if (url.startsWith('http') || url.startsWith('data:')) return url
+        return platformService.convertFileSrc(url)
+    }
 
     return (
-        <div className="flex flex-col gap-4 h-full">
-            <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background text-foreground">
+            <header className="flex flex-wrap items-center justify-between gap-4 border-b border-border/60 bg-card/80 px-6 py-4 backdrop-blur">
                 <div>
-                    <h1 className="text-2xl font-bold">{t('instantPos.title') || 'Instant POS'}</h1>
-                    <p className="text-sm text-muted-foreground">
-                        {t('instantPos.subtitle') || 'Create tickets fast and route orders to the kitchen.'}
-                    </p>
-                </div>
-                <div className="flex flex-wrap items-center gap-3">
-                    <div className="flex items-center gap-3 rounded-xl border border-border/50 bg-muted/30 px-4 py-2">
-                        <div className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">KDS</div>
+                <h1 className="text-xl font-semibold">{t('instantPos.title') || 'New Order'}</h1>
+                <p className="text-xs text-muted-foreground">
+                    {t('instantPos.serverTicket', {
+                        server: user?.name || (t('instantPos.staffFallback') || 'Staff'),
+                        ticket: activeTicket?.number || '--'
+                    }) || `Server: ${user?.name || 'Staff'} | Ticket ${activeTicket?.number || '--'}`}
+                </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
+                <div className="flex items-center gap-2 rounded-full border border-border/60 bg-muted/40 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                    {t('instantPos.kdsLabel') || 'KDS'}
                         <Switch
                             checked={features.kds_enabled}
                             onCheckedChange={handleKdsToggle}
                             disabled={isKdsSaving}
+                            className="scale-75"
                         />
                     </div>
-                    <Button onClick={createTicket} className="gap-2">
+                    <Button
+                        onClick={createTicket}
+                        variant="secondary"
+                        className="gap-2 rounded-full"
+                    >
                         <Receipt className="w-4 h-4" />
                         {t('instantPos.newTicket') || 'New Ticket'}
                     </Button>
                 </div>
-            </div>
+            </header>
 
-            <div className="grid h-full gap-4 lg:grid-cols-[260px_1fr_340px]">
-                <Card className="h-full overflow-hidden">
-                    <CardHeader className="pb-2">
-                        <CardTitle className="flex items-center gap-2 text-base">
-                            <ClipboardList className="w-4 h-4" />
-                            {t('instantPos.tickets') || 'Tickets'}
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-3 overflow-y-auto max-h-[calc(100vh-260px)] custom-scrollbar">
-                        {tickets.length === 0 ? (
-                            <div className="text-sm text-muted-foreground">
-                                {t('instantPos.noTickets') || 'No open tickets yet.'}
-                            </div>
-                        ) : (
-                            tickets.map(ticket => {
-                                const badgeClass = STATUS_BADGES[ticket.status]
-                                const isActive = ticket.id === activeTicketId
-                                const ticketTotal = ticket.items.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0)
-                                return (
-                                    <button
-                                        key={ticket.id}
-                                        onClick={() => setActiveTicketId(ticket.id)}
-                                        className={cn(
-                                            'w-full text-left rounded-xl border px-3 py-3 transition-all',
-                                            isActive
-                                                ? 'border-primary bg-primary/5 shadow-lg'
-                                                : 'border-border/50 hover:border-primary/40'
-                                        )}
-                                    >
-                                        <div className="flex items-center justify-between">
-                                            <div className="font-semibold">{ticket.number}</div>
-                                            <span className={cn('text-[10px] uppercase font-bold px-2 py-0.5 rounded-full border', badgeClass)}>
-                                                {STATUS_LABELS[ticket.status]}
-                                            </span>
-                                        </div>
-                                        <div className="mt-2 text-xs text-muted-foreground flex items-center justify-between">
-                                            <span>{formatCompactDateTime(ticket.createdAt)}</span>
-                                            <span>{formatCurrency(ticketTotal, settlementCurrency, features.iqd_display_preference)}</span>
-                                        </div>
-                                    </button>
-                                )
-                            })
-                        )}
-                    </CardContent>
-                </Card>
+            <div className="flex flex-1 min-h-0 flex-col xl:flex-row">
+                <section className="flex min-h-0 flex-1 flex-col gap-4 p-6">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div className="flex max-w-full items-center gap-2 overflow-x-auto pb-1 custom-scrollbar">
+                            {tickets.length === 0 ? (
+                                <div className="text-xs text-muted-foreground">
+                                    {t('instantPos.noTickets') || 'No open tickets yet.'}
+                                </div>
+                            ) : (
+                                tickets.map(ticket => {
+                                    const isActive = ticket.id === activeTicketId
+                                    return (
+                                        <button
+                                            key={ticket.id}
+                                            onClick={() => setActiveTicketId(ticket.id)}
+                                            className={cn(
+                                                'flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold transition-all',
+                                                isActive
+                                                    ? 'border-primary/60 bg-primary text-primary-foreground shadow-sm'
+                                                    : 'border-border/60 bg-muted/40 text-muted-foreground hover:bg-muted/60'
+                                            )}
+                                            >
+                                                <span>{ticket.number}</span>
+                                                <span className="text-[10px] uppercase tracking-widest opacity-70">
+                                                    {statusLabels[ticket.status]}
+                                                </span>
+                                            </button>
+                                        )
+                                })
+                            )}
+                        </div>
 
-                <Card className="h-full">
-                    <CardHeader className="pb-2">
-                        <CardTitle className="text-base">{t('instantPos.menu') || 'Menu'} </CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                        <div className="flex flex-wrap gap-3">
+                        <div className="relative w-full max-w-[280px]">
+                            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                             <Input
                                 value={search}
                                 onChange={(e) => setSearch(e.target.value)}
-                                placeholder={t('instantPos.search') || 'Search items...'}
-                                className="flex-1 min-w-[180px]"
+                                placeholder={t('instantPos.search') || 'Search menu items...'}
+                                className="h-11 w-full rounded-full pl-10 text-sm"
                             />
-                            <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-                                <SelectTrigger className="w-[180px]">
-                                    <SelectValue placeholder={t('instantPos.category') || 'Category'} />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="all">{t('instantPos.allCategories') || 'All Categories'}</SelectItem>
-                                    <SelectItem value="none">{t('instantPos.uncategorized') || 'Uncategorized'}</SelectItem>
-                                    {categories.map(category => (
-                                        <SelectItem key={category.id} value={category.id}>
-                                            {category.name}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
                         </div>
+                    </div>
 
-                        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                        <button
+                            onClick={() => setSelectedCategory('all')}
+                            className={cn(
+                                'rounded-full px-4 py-2 text-xs font-semibold transition',
+                                selectedCategory === 'all'
+                                    ? 'bg-primary text-primary-foreground shadow-sm'
+                                    : 'bg-muted/40 text-muted-foreground hover:bg-muted/60'
+                            )}
+                        >
+                            {t('instantPos.allCategories') || 'All Items'}
+                        </button>
+                        {categories.map(category => (
+                            <button
+                                key={category.id}
+                                onClick={() => setSelectedCategory(category.id)}
+                                className={cn(
+                                    'rounded-full px-4 py-2 text-xs font-semibold transition',
+                                    selectedCategory === category.id
+                                        ? 'bg-primary text-primary-foreground shadow-sm'
+                                        : 'bg-muted/40 text-muted-foreground hover:bg-muted/60'
+                                )}
+                            >
+                                {category.name}
+                            </button>
+                        ))}
+                        <button
+                            onClick={() => setSelectedCategory('none')}
+                            className={cn(
+                                'rounded-full px-4 py-2 text-xs font-semibold transition',
+                                selectedCategory === 'none'
+                                    ? 'bg-primary text-primary-foreground shadow-sm'
+                                    : 'bg-muted/40 text-muted-foreground hover:bg-muted/60'
+                            )}
+                        >
+                            {t('instantPos.uncategorized') || 'Uncategorized'}
+                        </button>
+                    </div>
+
+                    <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar pr-2">
+                        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
                             {filteredProducts.length === 0 ? (
                                 <div className="col-span-full text-sm text-muted-foreground">
                                     {t('instantPos.noProducts') || 'No products match your search.'}
                                 </div>
                             ) : (
-                                filteredProducts.map(product => (
-                                    <button
-                                        key={product.id}
-                                        onClick={() => addItemToTicket(product.id)}
-                                        className="group flex flex-col gap-2 rounded-xl border border-border/50 bg-background/60 p-3 text-left transition-all hover:border-primary/40 hover:shadow-md"
-                                    >
-                                        <div className="font-semibold line-clamp-2">{product.name}</div>
-                                        <div className="text-xs text-muted-foreground">SKU: {product.sku || '---'}</div>
-                                        <div className="flex items-center justify-between text-sm">
-                                            <span className="font-bold text-primary">
-                                                {formatCurrency(product.price, product.currency, features.iqd_display_preference)}
-                                            </span>
-                                            <span className="text-[10px] text-muted-foreground">{product.quantity} {product.unit}</span>
-                                        </div>
-                                    </button>
-                                ))
-                            )}
-                        </div>
-                    </CardContent>
-                </Card>
-
-                <Card className="h-full">
-                    <CardHeader className="pb-2">
-                        <CardTitle className="text-base">{t('instantPos.ticketDetails') || 'Ticket Details'}</CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                        {!activeTicket ? (
-                            <div className="text-sm text-muted-foreground">
-                                {t('instantPos.selectTicket') || 'Select a ticket to begin.'}
-                            </div>
-                        ) : (
-                            <>
-                                <div className="flex items-center justify-between">
-                                    <div>
-                                        <div className="text-sm text-muted-foreground">{t('instantPos.activeTicket') || 'Active Ticket'}</div>
-                                        <div className="text-xl font-bold">{activeTicket.number}</div>
-                                    </div>
-                                    <span className={cn('text-[10px] uppercase font-bold px-2 py-0.5 rounded-full border', STATUS_BADGES[activeTicket.status])}>
-                                        {STATUS_LABELS[activeTicket.status]}
-                                    </span>
-                                </div>
-
-                                <div className="space-y-2">
-                                    <div className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-                                        {t('instantPos.statusProgress') || 'Status'}
-                                    </div>
-                                    <div className="grid grid-cols-5 gap-2">
-                                        {STATUS_FLOW.map((status, index) => (
-                                            <button
-                                                key={status}
-                                                onClick={() => setTicketStatus(status)}
-                                                className={cn(
-                                                    'rounded-lg px-2 py-2 text-[10px] font-bold uppercase transition-all border',
-                                                    index <= statusIndex
-                                                        ? 'bg-primary text-primary-foreground border-primary'
-                                                        : 'bg-muted/30 text-muted-foreground border-border/40 hover:border-primary/30'
+                                filteredProducts.map(product => {
+                                    const imageUrl = getDisplayImageUrl(product.imageUrl)
+                                    return (
+                                        <button
+                                            key={product.id}
+                                            onClick={() => addItemToTicket(product.id)}
+                                            className="group flex flex-col overflow-hidden rounded-2xl border border-border/60 bg-card/80 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-primary/60 hover:shadow-md"
+                                        >
+                                            <div className="relative h-32 w-full overflow-hidden">
+                                                {imageUrl ? (
+                                                    <img
+                                                        src={imageUrl}
+                                                        alt={product.name}
+                                                        className="h-full w-full object-cover"
+                                                    />
+                                                ) : (
+                                                    <div className="h-full w-full bg-muted/60" />
                                                 )}
-                                            >
-                                                {STATUS_LABELS[status]}
-                                            </button>
-                                        ))}
-                                    </div>
-                                {features.kds_enabled ? (
-                                    <div className="text-xs text-muted-foreground">
-                                        {t('instantPos.kdsActive') || 'Kitchen routing is active for this workspace.'}
-                                    </div>
-                                ) : (
-                                    <div className="text-xs text-muted-foreground">
-                                        {t('instantPos.kdsInactive') || 'Kitchen routing is off. Cashier handles preparation.'}
-                                    </div>
-                                )}
-                                {activeTicket.status === 'pending' && (
-                                    <Button
-                                        variant="outline"
-                                        onClick={() => setTicketStatus('preparing')}
-                                        className="w-full justify-center"
-                                    >
-                                        {features.kds_enabled
-                                            ? (t('instantPos.sendToKitchen') || 'Send to Kitchen')
-                                            : (t('instantPos.startPreparation') || 'Start Preparation')}
-                                    </Button>
-                                )}
-                            </div>
-
-                                <div className="space-y-3">
-                                    {activeTicket.items.length === 0 ? (
-                                        <div className="text-sm text-muted-foreground">
-                                            {t('instantPos.emptyTicket') || 'Add items to start this ticket.'}
-                                        </div>
-                                    ) : (
-                                        activeTicket.items.map(item => (
-                                            <div key={item.productId} className="flex items-start justify-between gap-3 rounded-xl border border-border/50 p-3">
-                                                <div className="flex-1">
-                                                    <div className="font-medium">{item.name}</div>
-                                                    <div className="text-xs text-muted-foreground">{item.sku || '---'}</div>
-                                                    <div className="text-sm font-bold text-primary">
-                                                        {formatCurrency(item.unitPrice, item.currency, features.iqd_display_preference)}
-                                                    </div>
-                                                </div>
-                                                <div className="flex flex-col items-end gap-2">
-                                                    <div className="flex items-center gap-2">
-                                                        <Button
-                                                            variant="outline"
-                                                            size="icon"
-                                                            onClick={() => updateItemQuantity(item.productId, -1)}
-                                                            className="h-8 w-8"
-                                                        >
-                                                            <Minus className="w-3 h-3" />
-                                                        </Button>
-                                                        <span className="text-sm font-bold">{item.quantity}</span>
-                                                        <Button
-                                                            variant="outline"
-                                                            size="icon"
-                                                            onClick={() => updateItemQuantity(item.productId, 1)}
-                                                            className="h-8 w-8"
-                                                        >
-                                                            <Plus className="w-3 h-3" />
-                                                        </Button>
-                                                    </div>
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="icon"
-                                                        className="text-destructive hover:text-destructive"
-                                                        onClick={() => removeItem(item.productId)}
-                                                    >
-                                                        <Trash2 className="w-4 h-4" />
-                                                    </Button>
+                                            </div>
+                                            <div className="flex flex-1 flex-col gap-1 p-3">
+                                                <div className="text-sm font-semibold text-foreground line-clamp-1">{product.name}</div>
+                                                <div className="text-xs font-semibold text-primary">
+                                                    {formatCurrency(product.price, product.currency, features.iqd_display_preference)}
                                                 </div>
                                             </div>
-                                        ))
-                                    )}
+                                        </button>
+                                    )
+                                })
+                            )}
+                        </div>
+                    </div>
+                </section>
+
+                <aside className="flex w-full max-w-full flex-col border-t border-border/60 bg-card/70 px-6 py-5 backdrop-blur xl:w-[360px] xl:border-l xl:border-t-0">
+                    {!activeTicket ? (
+                        <div className="text-sm text-muted-foreground">
+                            {t('instantPos.selectTicket') || 'Select a ticket to begin.'}
+                        </div>
+                    ) : (
+                            <div className="flex h-full flex-col">
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <div className="text-lg font-semibold">
+                                            {t('instantPos.ticketLabel', { number: activeTicket.number }) || `Ticket ${activeTicket.number}`}
+                                        </div>
+                                        <div className="text-xs text-muted-foreground">{formatCompactDateTime(activeTicket.createdAt)}</div>
+                                    </div>
+                                    <button
+                                        onClick={clearActiveTicket}
+                                        className="text-xs font-semibold text-destructive hover:text-destructive/80"
+                                    >
+                                        {t('instantPos.clearAll') || 'Clear All'}
+                                    </button>
                                 </div>
 
-                                <div className="rounded-xl border border-border/60 bg-muted/20 p-4 space-y-3">
-                                    <div className="flex items-center justify-between text-sm">
-                                        <span className="text-muted-foreground">{t('instantPos.items') || 'Items'}</span>
-                                        <span className="font-semibold">{activeTicketTotals.count}</span>
+                                {activePendingTimeLeftMs !== null && (
+                                    <div className="mt-3 flex items-center justify-between rounded-xl border border-border/60 bg-muted/30 px-3 py-2">
+                                        <div className="flex flex-col">
+                                            <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                                                {t('instantPos.pendingTimeout') || 'Pending Timeout'}
+                                            </span>
+                                            <span className={cn(
+                                                "text-sm font-semibold",
+                                                activePendingTimeLeftMs <= 0 ? "text-destructive" : "text-foreground"
+                                            )}>
+                                                {formatCountdown(activePendingTimeLeftMs, t('instantPos.expired') || 'Expired')}
+                                            </span>
+                                        </div>
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => extendPendingExpiry(activeTicket.id)}
+                                            className="h-8 rounded-full px-3"
+                                        >
+                                            {t('instantPos.extendTimeout', { minutes: PENDING_TICKET_EXTENSION_MINUTES }) || `+${PENDING_TICKET_EXTENSION_MINUTES} min`}
+                                        </Button>
                                     </div>
-                                    <div className="flex items-center justify-between">
-                                        <span className="text-lg font-bold">{t('instantPos.total') || 'Total'}</span>
-                                        <span className="text-lg font-bold text-primary">
+                                )}
+
+                                <div className="mt-4 space-y-2">
+                                    <div className="text-[10px] font-semibold uppercase tracking-[0.3em] text-muted-foreground text-center">
+                                        {t('instantPos.orderStatus') || 'Order Status'}
+                                    </div>
+                                <div className="grid grid-cols-5 gap-2">
+                                    {STATUS_FLOW.map(status => (
+                                        <button
+                                            key={status}
+                                            onClick={() => setTicketStatus(status)}
+                                            className={cn(
+                                                'flex items-center justify-center text-center rounded-xl px-2 py-1.5 text-[10px] font-semibold uppercase transition',
+                                                activeTicket.status === status
+                                                    ? 'bg-primary/90 text-primary-foreground shadow-sm'
+                                                    : 'bg-muted/30 text-muted-foreground hover:bg-muted/50 border border-border/40'
+                                            )}
+                                        >
+                                            {statusLabels[status]}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div className="mt-4 flex-1 space-y-3 overflow-y-auto custom-scrollbar pr-1">
+                                {activeTicket.items.length === 0 ? (
+                                    <div className="rounded-2xl border border-dashed border-border/60 bg-muted/30 px-4 py-6 text-center text-sm text-muted-foreground">
+                                        {t('instantPos.emptyTicket') || 'Add items to start this ticket.'}
+                                    </div>
+                                ) : (
+                                    activeTicket.items.map(item => (
+                                        <div key={item.productId} className="rounded-2xl border border-border/60 bg-muted/30 p-3">
+                                            <div className="flex items-start justify-between gap-3">
+                                                <div className="flex items-start gap-3">
+                                                    <div className="rounded-lg bg-primary/10 px-2 py-1 text-xs font-semibold text-primary">
+                                                        {item.quantity}x
+                                                    </div>
+                                                    <div>
+                                                        <div className="text-sm font-semibold text-foreground">{item.name}</div>
+                                                        <div className="text-xs text-muted-foreground">{item.sku || '---'}</div>
+                                                    </div>
+                                                </div>
+                                                <div className="text-sm font-semibold text-foreground">
+                                                    {formatCurrency(item.unitPrice * item.quantity, item.currency, features.iqd_display_preference)}
+                                                </div>
+                                            </div>
+                                            <div className="mt-3 flex items-center justify-between">
+                                                <div className="flex items-center gap-2">
+                                                    <button
+                                                        onClick={() => updateItemQuantity(item.productId, -1)}
+                                                        className="flex h-7 w-7 items-center justify-center rounded-full border border-border/60 bg-background text-foreground hover:bg-muted/60"
+                                                    >
+                                                        <Minus className="h-3 w-3" />
+                                                    </button>
+                                                    <button
+                                                        onClick={() => updateItemQuantity(item.productId, 1)}
+                                                        className="flex h-7 w-7 items-center justify-center rounded-full border border-border/60 bg-background text-foreground hover:bg-muted/60"
+                                                    >
+                                                        <Plus className="h-3 w-3" />
+                                                    </button>
+                                                </div>
+                                                <button
+                                                    onClick={() => removeItem(item.productId)}
+                                                    className="text-xs text-destructive hover:text-destructive/80"
+                                                >
+                                                    <Trash2 className="h-4 w-4" />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+
+                                <div className="mt-4 space-y-3 border-t border-border/60 pt-4">
+                                    <div className="flex items-center justify-between text-xs text-muted-foreground">
+                                        <span>{t('instantPos.subtotal') || 'Subtotal'}</span>
+                                        <span>
                                             {activeTicketTotals.hasMixedCurrency
                                                 ? '--'
                                                 : formatCurrency(activeTicketTotals.total, settlementCurrency, features.iqd_display_preference)}
                                         </span>
                                     </div>
-                                    {activeTicketTotals.hasMixedCurrency && (
-                                        <div className="flex items-center gap-2 text-xs text-amber-500">
-                                            <AlertCircle className="w-3.5 h-3.5" />
-                                            {t('instantPos.currencyWarning') || 'Ticket has mixed currencies. Checkout is disabled.'}
-                                        </div>
-                                    )}
+                                    <div className="flex items-center justify-between text-lg font-semibold">
+                                        <span>{t('common.total') || 'Total'}</span>
+                                    <span className="text-primary">
+                                        {activeTicketTotals.hasMixedCurrency
+                                            ? '--'
+                                            : formatCurrency(activeTicketTotals.total, settlementCurrency, features.iqd_display_preference)}
+                                    </span>
                                 </div>
+                                {activeTicketTotals.hasMixedCurrency && (
+                                    <div className="flex items-center gap-2 rounded-lg bg-destructive/10 px-2 py-1 text-xs text-destructive">
+                                        <AlertCircle className="h-3.5 w-3.5" />
+                                        {t('instantPos.currencyWarning') || 'Ticket has mixed currencies. Checkout is disabled.'}
+                                    </div>
+                                )}
+                            </div>
 
-                                <div className="flex flex-col gap-2">
+                            <div className="mt-4 flex flex-col gap-2">
+                                {statusAction && (
                                     <Button
-                                        className="h-11 text-base font-semibold gap-2"
-                                        onClick={checkoutTicket}
-                                        disabled={
-                                            isCheckoutLoading
-                                            || activeTicket.items.length === 0
-                                            || activeTicketTotals.hasMixedCurrency
-                                        }
+                                        onClick={() => setTicketStatus(statusAction.status)}
+                                        variant="secondary"
+                                        className="h-11 w-full rounded-xl"
                                     >
-                                        <CheckCircle2 className="w-4 h-4" />
-                                        {isCheckoutLoading
-                                            ? (t('instantPos.checkoutLoading') || 'Closing...')
-                                            : (t('instantPos.checkout') || 'Checkout & Close')}
+                                        {statusAction.label}
                                     </Button>
-                                    <Button
-                                        variant="outline"
-                                        onClick={() => closeTicket(activeTicket.id)}
-                                        disabled={isCheckoutLoading}
-                                    >
-                                        {t('instantPos.closeTicket') || 'Close Ticket Without Payment'}
-                                    </Button>
-                                </div>
-                            </>
-                        )}
-                    </CardContent>
-                </Card>
+                                )}
+                                <Button
+                                    className="h-11 w-full rounded-xl"
+                                    onClick={checkoutTicket}
+                                    disabled={
+                                        isCheckoutLoading
+                                        || activeTicket.items.length === 0
+                                        || activeTicketTotals.hasMixedCurrency
+                                    }
+                                >
+                                    <CheckCircle2 className="w-4 h-4" />
+                                    {isCheckoutLoading
+                                        ? (t('instantPos.checkoutLoading') || 'Closing...')
+                                        : (t('instantPos.checkout') || 'Checkout')}
+                                </Button>
+                                <Button
+                                    variant="outline"
+                                    onClick={() => closeTicket(activeTicket.id)}
+                                    disabled={isCheckoutLoading}
+                                    className="h-11 w-full rounded-xl"
+                                >
+                                    {t('instantPos.closeTicket') || 'Close Ticket'}
+                                </Button>
+                            </div>
+                        </div>
+                    )}
+                </aside>
             </div>
         </div>
     )
