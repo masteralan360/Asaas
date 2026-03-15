@@ -31,9 +31,11 @@ import {
     UsersRound,
     CreditCard,
     Receipt,
+    Zap,
     TrendingUp,
     ChevronLeft,
     ChevronRight,
+    ChevronDown,
     BarChart3,
     RotateCw,
     MessageSquare,
@@ -46,7 +48,8 @@ import {
     Wallet,
     AlertCircle,
     PanelRightOpen,
-    PanelRightClose
+    PanelRightClose,
+    Monitor
 } from 'lucide-react'
 import { useState } from 'react'
 import { Button } from './button'
@@ -66,6 +69,8 @@ interface LayoutProps {
 const routePrefetchMap: Record<string, () => Promise<unknown>> = {
     '/': () => import('@/ui/pages/Dashboard'),
     '/pos': () => import('@/ui/pages/POS'),
+    '/instant-pos': () => import('@/ui/pages/InstantPOS'),
+    '/kds': () => import('@/ui/pages/KDSDashboard'),
     '/sales': () => import('@/ui/pages/Sales'),
     '/loans': () => import('@/ui/pages/Loans'),
     '/revenue': () => import('@/ui/pages/Revenue'),
@@ -110,12 +115,24 @@ export function Layout({ children }: LayoutProps) {
         }
         return true
     })
+    const [instantPosOpen, setInstantPosOpen] = useState(() => {
+        if (typeof window !== 'undefined') {
+            return localStorage.getItem('instant_pos_nav_open') === 'true'
+        }
+        return false
+    })
     const [isMini, setIsMini] = useState(() => {
         if (typeof window !== 'undefined') {
             return localStorage.getItem('sidebar_is_mini') === 'true'
         }
         return false
     })
+
+    useEffect(() => {
+        if (typeof window !== 'undefined') {
+            localStorage.setItem('instant_pos_nav_open', String(instantPosOpen))
+        }
+    }, [instantPosOpen])
 
     const [members, setMembers] = useState<{ id: string, name: string, role: string, profile_url?: string }[]>([])
     const [logoError, setLogoError] = useState(false)
@@ -205,11 +222,19 @@ export function Layout({ children }: LayoutProps) {
         }
     }, [isLocked, location])
 
-    const navigation: Array<{ name: string; href: string; icon: any; status?: string; alert?: boolean }> = [
+    const navigation: Array<{ name: string; href: string; icon: any; status?: string; alert?: boolean; children?: Array<{ name: string; href: string; icon?: any }> }> = [
         { name: t('nav.dashboard'), href: '/', icon: LayoutDashboard },
         // POS - requires feature flag AND role
         ...((user?.role === 'admin' || user?.role === 'staff') && hasFeature('allow_pos') ? [
-            { name: t('nav.pos') || 'POS', href: '/pos', icon: CreditCard }
+            { name: t('nav.pos') || 'POS', href: '/pos', icon: CreditCard },
+            {
+                name: t('nav.instantPos') || 'Instant POS',
+                href: '/instant-pos',
+                icon: Zap,
+                children: [
+                    { name: t('nav.kdsDashboard') || 'KDS Dashboard', href: '/kds', icon: Monitor }
+                ]
+            }
         ] : []),
         // Sales - always visible (history of transactions)
         { name: t('nav.sales') || 'Sales', href: '/sales', icon: Receipt },
@@ -256,6 +281,8 @@ export function Layout({ children }: LayoutProps) {
             { name: t('nav.settings'), href: '/settings', icon: Settings }
         ] : []),
     ]
+
+    const isPosLikeRoute = location === '/pos' || location === '/instant-pos'
 
     return (
         <LoanPaymentModalProvider>
@@ -349,56 +376,118 @@ export function Layout({ children }: LayoutProps) {
                     {/* Navigation */}
                     <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto custom-scrollbar">
                         {navigation.map((item) => {
-                            const isActive = location === item.href ||
-                                (item.href !== '/' && location.startsWith(item.href))
-                            return (
-                                <Link
-                                    key={item.href}
-                                    href={item.href}
-                                    onClick={() => {
-                                        setMobileSidebarOpen(false)
-                                        triggerHaptic('selection')
-                                    }}
-                                    onMouseEnter={() => !isMobile() && prefetchRoute(item.href)}
+                            const isInstantPosGroup = item.href === '/instant-pos' && item.children?.length
+                            const isChildActive = isInstantPosGroup
+                                ? item.children!.some(child => location === child.href || (child.href !== '/' && location.startsWith(child.href)))
+                                : false
+                            const isActive = isInstantPosGroup
+                                ? (location === item.href || isChildActive)
+                                : (location === item.href || (item.href !== '/' && location.startsWith(item.href)))
+                            const isOpen = isInstantPosGroup ? (instantPosOpen || isChildActive) : false
+                            const showChildren = isOpen && !(isMini && !mobileSidebarOpen)
+
+                            const parentContent = (
+                                <span
+                                    className={cn(
+                                        'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-300',
+                                        isActive
+                                            ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/30 scale-[1.02]'
+                                            : 'text-muted-foreground hover:bg-primary/5 hover:text-primary',
+                                        (isMini && !mobileSidebarOpen) && "justify-center px-0 py-3"
+                                    )}
+                                    title={(isMini && !mobileSidebarOpen) ? item.name : undefined}
                                 >
-                                    <span
-                                        className={cn(
-                                            'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-300',
-                                            isActive
-                                                ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/30 scale-[1.02]'
-                                                : 'text-muted-foreground hover:bg-primary/5 hover:text-primary',
-                                            (isMini && !mobileSidebarOpen) && "justify-center px-0 py-3"
-                                        )}
-                                        title={(isMini && !mobileSidebarOpen) ? item.name : undefined}
+                                    <item.icon className="w-5 h-5 flex-shrink-0" />
+                                    {!(isMini && !mobileSidebarOpen) && (
+                                        <>
+                                            {item.name}
+                                            {isInstantPosGroup && (
+                                                <ChevronDown className={cn(
+                                                    "ms-auto w-4 h-4 transition-transform",
+                                                    isOpen && "rotate-180"
+                                                )} />
+                                            )}
+                                            {!isInstantPosGroup && item.alert && (
+                                                <div className="ms-auto flex items-center justify-center w-5 h-5 rounded-full bg-red-500 text-white">
+                                                    <AlertCircle className="w-3.5 h-3.5" />
+                                                </div>
+                                            )}
+                                            {!isInstantPosGroup && item.status && (
+                                                <div className={cn(
+                                                    "ms-auto w-2 h-2 rounded-full",
+                                                    item.status === 'live' ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" : "bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.5)]"
+                                                )} />
+                                            )}
+                                        </>
+                                    )}
+                                    {(isMini && !mobileSidebarOpen) && item.alert && (
+                                        <div className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border border-background shadow-sm" />
+                                    )}
+                                    {(isMini && !mobileSidebarOpen) && item.status && (
+                                        <div className={cn(
+                                            "absolute top-2 right-2 w-2 h-2 rounded-full border border-background shadow-sm",
+                                            item.status === 'live' ? "bg-emerald-500" : "bg-red-500"
+                                        )} />
+                                    )}
+                                </span>
+                            )
+
+                            return (
+                                <div key={item.href} className="space-y-1">
+                                    <Link
+                                        href={item.href}
+                                        onClick={() => {
+                                            if (isInstantPosGroup) {
+                                                setInstantPosOpen(prev => !prev)
+                                            }
+                                            if (!isInstantPosGroup) {
+                                                setMobileSidebarOpen(false)
+                                            }
+                                            triggerHaptic('selection')
+                                        }}
+                                        onMouseEnter={() => !isMobile() && prefetchRoute(item.href)}
                                     >
-                                        <item.icon className="w-5 h-5 flex-shrink-0" />
-                                        {!(isMini && !mobileSidebarOpen) && (
-                                            <>
-                                                {item.name}
-                                                {item.alert && (
-                                                    <div className="ms-auto flex items-center justify-center w-5 h-5 rounded-full bg-red-500 text-white">
-                                                        <AlertCircle className="w-3.5 h-3.5" />
-                                                    </div>
-                                                )}
-                                                {item.status && (
-                                                    <div className={cn(
-                                                        "ms-auto w-2 h-2 rounded-full",
-                                                        item.status === 'live' ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" : "bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.5)]"
-                                                    )} />
-                                                )}
-                                            </>
-                                        )}
-                                        {(isMini && !mobileSidebarOpen) && item.alert && (
-                                            <div className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border border-background shadow-sm" />
-                                        )}
-                                        {(isMini && !mobileSidebarOpen) && item.status && (
-                                            <div className={cn(
-                                                "absolute top-2 right-2 w-2 h-2 rounded-full border border-background shadow-sm",
-                                                item.status === 'live' ? "bg-emerald-500" : "bg-red-500"
-                                            )} />
-                                        )}
-                                    </span>
-                                </Link>
+                                        {parentContent}
+                                    </Link>
+
+                                    {isInstantPosGroup && showChildren && (
+                                        <div className={cn(
+                                            "space-y-1 ps-3",
+                                            (isMini && !mobileSidebarOpen) && "ps-0"
+                                        )}>
+                                            {item.children!.map(child => {
+                                                const isChildSelected = location === child.href || (child.href !== '/' && location.startsWith(child.href))
+                                                return (
+                                                    <Link
+                                                        key={child.href}
+                                                        href={child.href}
+                                                        onClick={() => {
+                                                            setMobileSidebarOpen(false)
+                                                            triggerHaptic('selection')
+                                                        }}
+                                                        onMouseEnter={() => !isMobile() && prefetchRoute(child.href)}
+                                                    >
+                                                        <span
+                                                            className={cn(
+                                                                'flex items-center gap-3 px-3 py-2 rounded-lg text-[13px] font-medium transition-all duration-300',
+                                                                isChildSelected
+                                                                    ? 'bg-primary/10 text-primary shadow-sm'
+                                                                    : 'text-muted-foreground hover:bg-primary/5 hover:text-primary'
+                                                            )}
+                                                        >
+                                                            {child.icon ? (
+                                                                <child.icon className="w-4 h-4 flex-shrink-0" />
+                                                            ) : (
+                                                                <span className="w-4 h-4 rounded-full bg-muted-foreground/30" />
+                                                            )}
+                                                            <span>{child.name}</span>
+                                                        </span>
+                                                    </Link>
+                                                )
+                                            })}
+                                        </div>
+                                    )}
+                                </div>
                             )
                         })}
 
@@ -563,7 +652,7 @@ export function Layout({ children }: LayoutProps) {
                     <header className={cn(
                         "flex-shrink-0 z-30 flex items-center gap-4 px-4 py-3 bg-background/60 backdrop-blur-xl border-b border-border/50",
                         "pt-[calc(0.75rem+var(--safe-area-top))]",
-                        location === '/pos' && "hidden lg:flex" // Hide on mobile if POS
+                        isPosLikeRoute && "hidden lg:flex" // Hide on mobile if POS
                     )}>
                         {/* Mobile Toggle */}
                         <button
@@ -640,7 +729,7 @@ export function Layout({ children }: LayoutProps) {
                     <main className={cn(
                         "page-enter flex-1 min-h-0",
                         location === '/whatsapp' ? "p-0" :
-                            location === '/pos' ? "p-0 lg:p-6" : "p-4 lg:p-6 overflow-y-auto custom-scrollbar"
+                            isPosLikeRoute ? "p-0 lg:p-6" : "p-4 lg:p-6 overflow-y-auto custom-scrollbar"
                     )}>
                         <Suspense fallback={<PageLoading />}>
                             {children}

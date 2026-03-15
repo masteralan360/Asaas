@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/auth'
 import { Sale, SaleItem } from '@/types'
 import { useSales, toUISale } from '@/local-db'
-import { formatCurrency, formatDateTime, formatDate } from '@/lib/utils'
+import { formatCurrency, formatDateTime, formatDate, formatOriginLabel } from '@/lib/utils'
 import { cn } from '@/lib/utils'
 import { formatLocalizedMonthYear } from '@/lib/monthDisplay'
 import { isMobile } from '@/lib/platform'
@@ -1097,7 +1097,7 @@ export function Revenue() {
                                                             )}
 
                                                             <span className="px-1.5 py-0.5 rounded-full text-[8px] font-bold bg-secondary uppercase">
-                                                                {sale.origin}
+                                                                {formatOriginLabel(sale.origin)}
                                                             </span>
                                                         </div>
                                                     </div>
@@ -1259,7 +1259,7 @@ export function Revenue() {
                                                     </TableCell>
                                                     <TableCell className="text-start">
                                                         <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-secondary uppercase">
-                                                            {sale.origin}
+                                                            {formatOriginLabel(sale.origin)}
                                                         </span>
                                                     </TableCell>
                                                     <TableCell className="text-end font-medium">

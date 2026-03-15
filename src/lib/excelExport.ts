@@ -1,6 +1,7 @@
 import * as XLSX from 'xlsx';
 import { isTauri } from './platform';
 import { platformService } from '@/services/platformService';
+import { formatOriginLabel } from '@/lib/utils';
 
 /**
  * Utility to export an array of data to an Excel file.
@@ -60,7 +61,7 @@ export const mapRevenueForExport = (saleStats: any[], t: any) => {
     return saleStats.map(sale => ({
         [t('common.date') || 'Date']: new Date(sale.date).toLocaleString(),
         [t('sales.id') || 'Sale ID']: sale.sequenceId ? `#${String(sale.sequenceId).padStart(5, '0')}` : sale.id.slice(0, 8),
-        [t('sales.origin') || 'Origin']: sale.origin?.toUpperCase() || 'POS',
+        [t('sales.origin') || 'Origin']: formatOriginLabel(sale.origin),
         [t('sales.cashier') || 'Cashier']: sale.cashier || 'Staff',
         [t('common.currency') || 'Currency']: sale.currency?.toUpperCase() || 'USD',
         [t('revenue.table.revenue') || 'Revenue']: sale.revenue,

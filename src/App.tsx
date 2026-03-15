@@ -53,6 +53,8 @@ const WhatsApp = lazy(() => import('@/ui/pages/WhatsAppWeb').then(m => ({ defaul
 const Suppliers = lazy(() => import('@/ui/pages/Suppliers').then(m => ({ default: m.default })))
 const Customers = lazy(() => import('@/ui/pages/Customers').then(m => ({ default: m.default })))
 const Orders = lazy(() => import('@/ui/pages/Orders').then(m => ({ default: m.default })))
+const InstantPOS = lazy(() => import('@/ui/pages/InstantPOS').then(m => ({ default: m.InstantPOS })))
+const KDSDashboard = lazy(() => import('@/ui/pages/KDSDashboard').then(m => ({ default: m.KDSDashboard })))
 const Storages = lazy(() => import('@/ui/pages/Storages').then(m => ({ default: m.default })))
 const InventoryTransfer = lazy(() => import('@/ui/pages/InventoryTransfer').then(m => ({ default: m.default })))
 const HR = lazy(() => import('@/ui/pages/HR').then(m => ({ default: m.default })))
@@ -349,6 +351,20 @@ function App() {
                                             <ProtectedRoute allowedRoles={['admin', 'staff']} requiredFeature="allow_pos">
                                                 <Layout>
                                                     <POS />
+                                                </Layout>
+                                            </ProtectedRoute>
+                                        </Route>
+                                        <Route path="/instant-pos">
+                                            <ProtectedRoute allowedRoles={['admin', 'staff']} requiredFeature="allow_pos">
+                                                <Layout>
+                                                    <InstantPOS />
+                                                </Layout>
+                                            </ProtectedRoute>
+                                        </Route>
+                                        <Route path="/kds">
+                                            <ProtectedRoute allowedRoles={['admin', 'staff']} requiredFeature="allow_pos">
+                                                <Layout>
+                                                    <KDSDashboard />
                                                 </Layout>
                                             </ProtectedRoute>
                                         </Route>

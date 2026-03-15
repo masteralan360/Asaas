@@ -289,7 +289,7 @@ export interface Invoice extends BaseEntity {
     totalAmount: number;
     settlementCurrency: CurrencyCode;
     // Print-to-Invoice tracking
-    origin?: 'pos' | 'revenue' | 'inventory' | 'manual' | 'loans' | 'Loans';
+    origin?: 'pos' | 'instant_pos' | 'revenue' | 'inventory' | 'manual' | 'loans' | 'Loans';
     /** @deprecated Use cashierName for the name string. createdBy might map to system UUID. */
     createdBy?: string;
     cashierName?: string;
@@ -422,6 +422,7 @@ export interface Workspace extends BaseEntity {
     allow_orders: boolean
     allow_invoices: boolean
     allow_whatsapp?: boolean
+    kds_enabled?: boolean
     logo_url?: string | null
     coordination?: string | null
     syncStatus: SyncStatus

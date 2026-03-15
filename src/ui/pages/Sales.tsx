@@ -5,7 +5,7 @@ import { useAuth } from '@/auth'
 import { supabase } from '@/auth/supabase'
 import { Sale } from '@/types'
 import { mapSaleToUniversal } from '@/lib/mappings'
-import { formatCurrency, formatDateTime, formatCompactDateTime, formatDate, cn } from '@/lib/utils'
+import { formatCurrency, formatDateTime, formatCompactDateTime, formatDate, formatOriginLabel, cn } from '@/lib/utils'
 import { formatLocalizedMonthYear } from '@/lib/monthDisplay'
 import { getRetriableActionToast, isRetriableWebRequestError, normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
 
@@ -1011,7 +1011,7 @@ export function Sales() {
                                                                 "px-2 py-0.5 text-[9px] font-bold bg-secondary text-secondary-foreground uppercase",
                                                                 style === 'neo-orange' ? "rounded-[var(--radius)] border border-black dark:border-white" : "rounded-full"
                                                             )}>
-                                                                {sale.origin}
+                                                                {formatOriginLabel(sale.origin)}
                                                             </span>
                                                             {loanIndicator && (
                                                                 <Tooltip>
@@ -1250,7 +1250,7 @@ export function Sales() {
                                                         "px-2 py-1 text-xs font-medium bg-secondary text-secondary-foreground uppercase",
                                                         style === 'neo-orange' ? "rounded-[var(--radius)] border border-black dark:border-white" : "rounded-full"
                                                     )}>
-                                                        {sale.origin}
+                                                        {formatOriginLabel(sale.origin)}
                                                     </span>
                                                 </TableCell>
                                                 <TableCell className="text-start">

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useInvoices, type Invoice } from '@/local-db'
-import { formatCurrency, formatDateTime, formatDate } from '@/lib/utils'
+import { formatCurrency, formatDateTime, formatDate, formatOriginLabel } from '@/lib/utils'
 import { formatLocalizedMonthYear } from '@/lib/monthDisplay'
 import {
     Table,
@@ -235,7 +235,7 @@ export function InvoicesHistory() {
 
                                         <TableCell className="text-center">
                                             <span className="px-2 py-0.5 rounded-lg text-[9px] font-bold bg-secondary/50 text-secondary-foreground uppercase tracking-widest">
-                                                {invoice.origin || 'Pos'}
+                                                {formatOriginLabel(invoice.origin)}
                                             </span>
                                         </TableCell>
                                         <TableCell className="text-right font-black tabular-nums">

@@ -175,3 +175,13 @@ export function formatSaleDetailsForWhatsApp(sale: any, t: (key: string) => stri
 
     return text
 }
+
+export function formatOriginLabel(origin?: string | null): string {
+    if (!origin) return 'POS'
+    const normalized = origin.trim().toLowerCase()
+    if (normalized === 'pos') return 'POS'
+    if (normalized === 'instant_pos' || normalized === 'instant-pos' || normalized === 'instant pos') return 'Instant POS'
+    if (normalized === 'manual') return 'Manual'
+    if (normalized === 'loans' || normalized === 'loan') return 'Loans'
+    return origin
+}

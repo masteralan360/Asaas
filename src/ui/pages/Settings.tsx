@@ -48,6 +48,7 @@ export function Settings() {
     const [exchangeRateThreshold, setExchangeRateThreshold] = useState(localStorage.getItem('exchange_rate_threshold') || '2500')
     const [whatsappAutoLaunch, setWhatsappAutoLaunch] = useState(localStorage.getItem('whatsapp_auto_launch') === 'true')
     const [monthDisplayPreference, setMonthDisplayPreferenceState] = useState<MonthDisplayPreference>(getMonthDisplayPreference())
+    const [isKdsSaving, setIsKdsSaving] = useState(false)
 
     // Biometric State
     const [biometricEnabled, setBiometricEnabled] = useState(localStorage.getItem('biometric_enabled') === 'true')
@@ -393,6 +394,24 @@ export function Settings() {
     const handleThresholdChange = (val: string) => {
         setExchangeRateThreshold(val)
         localStorage.setItem('exchange_rate_threshold', val)
+    }
+
+    const handleKdsToggle = async (nextValue: boolean) => {
+        if (isKdsSaving) return
+        setIsKdsSaving(true)
+        try {
+            await updateSettings({ kds_enabled: nextValue })
+            toast({
+                title: t('common.success') || 'Success',
+                description: nextValue
+                    ? (t('settings.pos.kdsEnabledDesc') || 'Kitchen routing enabled for Instant POS.')
+                    : (t('settings.pos.kdsDisabledDesc') || 'Kitchen routing disabled. Cashier handles preparation.')
+            })
+        } catch (error) {
+            showActionError(error, t('settings.pos.kdsToggleError') || 'Failed to update kitchen routing setting.')
+        } finally {
+            setIsKdsSaving(false)
+        }
     }
 
     const handleCurrencySelect = (val: CurrencyCode) => {
@@ -1312,6 +1331,20 @@ export function Settings() {
                                 <p className="text-sm text-muted-foreground">
                                     {t('settings.pos.barcodeHotkeyDesc')}
                                 </p>
+                            </div>
+
+                            <div className="flex items-center justify-between gap-4 rounded-xl border border-border/60 bg-muted/20 p-4">
+                                <div className="space-y-1">
+                                    <Label className="text-sm font-medium">{t('settings.pos.kdsTitle') || 'Kitchen Routing (KDS)'}</Label>
+                                    <p className="text-xs text-muted-foreground">
+                                        {t('settings.pos.kdsDesc') || 'Send Instant POS tickets to the kitchen display/printer when preparing.'}
+                                    </p>
+                                </div>
+                                <Switch
+                                    checked={features.kds_enabled}
+                                    onCheckedChange={handleKdsToggle}
+                                    disabled={isKdsSaving}
+                                />
                             </div>
                         </CardContent>
                     </Card>

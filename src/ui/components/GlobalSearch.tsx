@@ -1,4 +1,4 @@
-import { Search, Command, LayoutDashboard, ShoppingCart, Package, ListOrdered, Users, Settings as SettingsIcon, BarChart3, Users2, Globe, MessageSquare, Moon, Sun, LogOut, ChevronRight, Truck, ShoppingBag, ArrowRightLeft, NotebookPen, Wallet } from 'lucide-react'
+import { Search, Command, LayoutDashboard, ShoppingCart, Package, ListOrdered, Users, Settings as SettingsIcon, BarChart3, Users2, Globe, MessageSquare, Moon, Sun, LogOut, ChevronRight, Truck, ShoppingBag, ArrowRightLeft, NotebookPen, Wallet, Zap } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useState, useEffect, useRef } from 'react'
 import { useHashLocation } from '@/hooks/useHashLocation'
@@ -35,6 +35,7 @@ export function GlobalSearch({ className, placeholder }: GlobalSearchProps) {
         // Navigation (Matches Layout.tsx paths)
         { id: 'nav-dashboard', title: t('nav.dashboard'), category: 'Navigation', icon: LayoutDashboard, action: () => setLocation('/') },
         { id: 'nav-pos', title: t('nav.pos'), category: 'Navigation', icon: ShoppingCart, action: () => setLocation('/pos') },
+        { id: 'nav-instant-pos', title: t('nav.instantPos') || 'Instant POS', category: 'Navigation', icon: Zap, action: () => setLocation('/instant-pos') },
         { id: 'nav-products', title: t('nav.products'), category: 'Navigation', icon: Package, action: () => setLocation('/products') },
         { id: 'nav-sales', title: t('nav.sales'), category: 'Navigation', icon: ListOrdered, action: () => setLocation('/sales') },
         { id: 'nav-customers', title: t('nav.customers'), category: 'Navigation', icon: Users, action: () => setLocation('/customers') },

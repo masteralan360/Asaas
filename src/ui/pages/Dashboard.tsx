@@ -1,6 +1,6 @@
 import { useDashboardStats, useSales } from '@/local-db'
 import { Card, CardContent, CardHeader, CardTitle } from '@/ui/components'
-import { formatCurrency, formatDate } from '@/lib/utils'
+import { formatCurrency, formatDate, formatOriginLabel } from '@/lib/utils'
 import { Package, Users, ShoppingCart, FileText, DollarSign, AlertTriangle, Receipt } from 'lucide-react'
 import { Link } from 'wouter'
 import { useTranslation } from 'react-i18next'
@@ -141,7 +141,7 @@ export function Dashboard() {
                                                 {formatCurrency(sale.totalAmount, sale.settlementCurrency, features.iqd_display_preference)}
                                             </p>
                                             <p className="text-[10px] font-bold uppercase text-muted-foreground/60 tracking-wider">
-                                                {sale.origin || 'pos'}
+                                                {formatOriginLabel(sale.origin)}
                                             </p>
                                         </div>
                                     </div>
@@ -248,7 +248,7 @@ export function Dashboard() {
                                                 {formatCurrency(invoice.totalAmount, invoice.settlementCurrency || 'usd')}
                                             </p>
                                             <p className="text-[10px] font-bold uppercase text-muted-foreground/60 tracking-wider">
-                                                {invoice.origin || 'POS'}
+                                                {formatOriginLabel(invoice.origin)}
                                             </p>
                                         </div>
                                     </div>
