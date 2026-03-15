@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/auth'
 import { supabase } from '@/auth/supabase'
@@ -8,14 +8,14 @@ import type { CurrencyCode } from '@/local-db/models'
 import { useWorkspace } from '@/workspace'
 import { formatCompactDateTime, formatCurrency, generateId, cn, stylizeText } from '@/lib/utils'
 import { Button, Input, Switch, useToast, Textarea, Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/ui/components'
-import { AlertCircle, CheckCircle2, Minus, Plus, Receipt, Search, StickyNote, Trash2 } from 'lucide-react'
+import { AlertCircle, CheckCircle2, ChevronDown, ChevronRight, ChevronUp, Loader2, Menu, Minus, Plus, Receipt, Search, StickyNote, Trash2 } from 'lucide-react'
 import { normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
 import { platformService } from '@/services/platformService'
 import { useKdsStream } from '@/hooks/useKdsStream'
 
 const TICKETS_STORAGE_KEY = 'instant_pos_tickets'
 const TICKET_COUNTER_KEY = 'instant_pos_ticket_counter'
-const PENDING_TICKET_TTL_MINUTES = 15
+const PENDING_TICKET_TTL_MINUTES = 0.3
 const PENDING_TICKET_EXTENSION_MINUTES = 5
 const PENDING_TICKET_TTL_MS = PENDING_TICKET_TTL_MINUTES * 60 * 1000
 const PENDING_TICKET_EXTENSION_MS = PENDING_TICKET_EXTENSION_MINUTES * 60 * 1000
@@ -107,6 +107,331 @@ function formatCountdown(ms: number, expiredLabel: string) {
     return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
 }
 
+interface MobileTicketPanelProps {
+    activeTicket: InstantPosTicket
+    activeTicketTotals: { total: number, hasMixedCurrency: boolean }
+    settlementCurrency: string
+    features: any
+    t: any
+    statusLabels: Record<InstantPosStatus, string>
+    statusAction: { label: string, status: InstantPosStatus } | null
+    activePendingTimeLeftMs: number | null
+    isCheckoutLoading: boolean
+    checkoutTicket: () => void
+    setTicketStatus: (status: InstantPosStatus) => void
+    extendPendingExpiry: (id: string) => void
+    clearActiveTicket: () => void
+    updateItemQuantity: (id: string, delta: number) => void
+    removeItem: (id: string) => void
+    setNoteItem: (item: { productId: string, name: string, note: string } | null) => void
+    closeTicket: (id: string) => void
+}
+
+function MobileTicketPanel({
+    activeTicket, activeTicketTotals, settlementCurrency, features, t,
+    statusLabels, statusAction, activePendingTimeLeftMs, isCheckoutLoading,
+    checkoutTicket, setTicketStatus, extendPendingExpiry, clearActiveTicket,
+    updateItemQuantity, removeItem, setNoteItem, closeTicket
+}: MobileTicketPanelProps) {
+    const [isExpanded, setIsExpanded] = useState(false)
+    const [isDragging, setIsDragging] = useState(false)
+    const [startY, setStartY] = useState<number | null>(null)
+    const [currentY, setCurrentY] = useState(0)
+    const panelRef = useRef<HTMLDivElement>(null)
+    const scrollContainerRef = useRef<HTMLDivElement>(null)
+    const [canScrollUp, setCanScrollUp] = useState(false)
+    const [canScrollDown, setCanScrollDown] = useState(false)
+
+    const checkScroll = useCallback(() => {
+        if (!scrollContainerRef.current) return
+        const { scrollTop, scrollHeight, clientHeight } = scrollContainerRef.current
+        setCanScrollUp(scrollTop > 10)
+        setCanScrollDown(scrollTop + clientHeight < scrollHeight - 10)
+    }, [])
+
+    useEffect(() => {
+        const container = scrollContainerRef.current
+        if (!container) return
+        const handleScroll = () => checkScroll()
+        container.addEventListener('scroll', handleScroll)
+        const observer = new ResizeObserver(() => checkScroll())
+        observer.observe(container)
+        checkScroll()
+        return () => {
+            container.removeEventListener('scroll', handleScroll)
+            observer.disconnect()
+        }
+    }, [activeTicket.items.length, checkScroll])
+
+    const handleTouchStart = (e: React.TouchEvent) => {
+        setStartY(e.touches[0].clientY)
+        setIsDragging(true)
+    }
+
+    const handleTouchMove = (e: React.TouchEvent) => {
+        if (startY === null) return
+        const touchY = e.touches[0].clientY
+        let deltaY = touchY - startY
+        if (isExpanded) {
+            if (deltaY < 0) deltaY = deltaY * 0.2
+            setCurrentY(deltaY)
+        } else {
+            if (deltaY > 0) deltaY = deltaY * 0.2
+            setCurrentY(deltaY)
+        }
+    }
+
+    const handleTouchEnd = () => {
+        if (Math.abs(currentY) > 60) {
+            if (isExpanded && currentY > 0) setIsExpanded(false)
+            else if (!isExpanded && currentY < 0) setIsExpanded(true)
+        }
+        setIsDragging(false)
+        setStartY(null)
+        setCurrentY(0)
+    }
+
+    const collapsedHeight = 120
+    const progress = isDragging
+        ? Math.min(1, Math.max(0, isExpanded ? 1 - (currentY / 100) : (-currentY / 100)))
+        : isExpanded ? 1 : 0
+
+    return (
+        <>
+            <div
+                ref={panelRef}
+                className={cn(
+                    "fixed bottom-0 left-0 right-0 bg-card border-t border-border shadow-[0_-10px_40px_rgba(0,0,0,0.1)] z-40 transition-all duration-500 ease-in-out px-6 pt-2 overscroll-none touch-none flex flex-col xl:hidden",
+                    "h-[85vh]",
+                    isExpanded ? "rounded-t-[2.5rem]" : "rounded-t-[2rem]",
+                    isDragging && "duration-0 transition-none will-change-transform"
+                )}
+                style={{
+                    transform: isDragging
+                        ? `translateY(calc(${isExpanded ? '0px' : `85vh - ${collapsedHeight}px`} + ${currentY}px))`
+                        : isExpanded ? 'none' : `translateY(calc(85vh - ${collapsedHeight}px))`
+                }}
+            >
+                {/* Drag Handle */}
+                <div
+                    className="flex flex-col items-center gap-1.5 cursor-grab active:cursor-grabbing py-4 -mt-3 group touch-none"
+                    onTouchStart={handleTouchStart}
+                    onTouchMove={handleTouchMove}
+                    onTouchEnd={handleTouchEnd}
+                    onClick={() => setIsExpanded(!isExpanded)}
+                >
+                    <div className="w-12 h-1.5 bg-muted-foreground/20 rounded-full group-hover:bg-primary/30 transition-colors" />
+                </div>
+
+                {/* Collapsed Header */}
+                <div className="flex items-center justify-between py-2 touch-none">
+                    <div className="flex flex-col cursor-pointer" onClick={() => setIsExpanded(true)}>
+                        <div className="flex items-baseline gap-1.5">
+                            <span className="text-2xl font-black text-primary">
+                                {formatCurrency(activeTicketTotals.total, settlementCurrency, features.iqd_display_preference)}
+                            </span>
+                            <span className="text-[10px] font-bold text-muted-foreground uppercase">{settlementCurrency}</span>
+                        </div>
+                        <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider -mt-1">
+                            {activeTicket.number} • {activeTicket.items.length} {activeTicket.items.length === 1 ? t('common.item') : t('common.items')} • {statusLabels[activeTicket.status]}
+                        </span>
+                    </div>
+
+                    <div
+                        className="transition-opacity duration-300"
+                        style={{
+                            opacity: Math.max(0, 1 - progress * 2),
+                            pointerEvents: progress > 0.3 ? 'none' : 'auto'
+                        }}
+                    >
+                        <Button
+                            className="h-12 px-6 rounded-2xl font-black shadow-lg shadow-primary/20 active:scale-95 transition-all text-primary-foreground"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                checkoutTicket();
+                            }}
+                            disabled={activeTicket.items.length === 0 || isCheckoutLoading || activeTicketTotals.hasMixedCurrency}
+                        >
+                            {isCheckoutLoading ? <Loader2 className="animate-spin w-5 h-5" /> : (
+                                <div className="flex items-center gap-2">
+                                    <span>{t('pos.checkout')}</span>
+                                    <ChevronRight className="w-4 h-4" />
+                                </div>
+                            )}
+                        </Button>
+                    </div>
+                </div>
+
+                {/* Expanded Content */}
+                <div
+                    className={cn(
+                        "flex-1 flex flex-col min-h-0 touch-auto mt-4 transition-all duration-300 relative",
+                        !isDragging && !isExpanded && "pointer-events-none"
+                    )}
+                    style={{
+                        opacity: progress,
+                        transform: `translateY(${(1 - progress) * 20}px)`
+                    }}
+                >
+                    {isExpanded && canScrollUp && (
+                        <div className="absolute top-2 left-1/2 -translate-x-1/2 z-10 bg-background/80 backdrop-blur-sm p-1.5 rounded-full border border-border shadow-sm animate-bounce pointer-events-none">
+                            <ChevronUp className="w-4 h-4 text-primary" />
+                        </div>
+                    )}
+                    {isExpanded && canScrollDown && (
+                        <div className="absolute bottom-40 left-1/2 -translate-x-1/2 z-10 bg-background/80 backdrop-blur-sm p-1.5 rounded-full border border-border shadow-sm animate-bounce pointer-events-none">
+                            <ChevronDown className="w-4 h-4 text-primary" />
+                        </div>
+                    )}
+
+                    <div
+                        ref={scrollContainerRef}
+                        className="flex-1 overflow-y-auto overscroll-contain custom-scrollbar"
+                    >
+                        <div className="space-y-6 pb-20">
+                            {/* Pending Timeout */}
+                            {activePendingTimeLeftMs !== null && (
+                                <div className="mt-3 flex items-center justify-between rounded-xl border border-border/60 bg-muted/30 px-3 py-2">
+                                    <div className="flex flex-col">
+                                        <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                                            {t('instantPos.pendingTimeout') || 'Pending Timeout'}
+                                        </span>
+                                        <span className={cn(
+                                            "text-sm font-semibold",
+                                            activePendingTimeLeftMs <= 0 ? "text-destructive" : "text-foreground"
+                                        )}>
+                                            {formatCountdown(activePendingTimeLeftMs, t('instantPos.expired') || 'Expired')}
+                                        </span>
+                                    </div>
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => extendPendingExpiry(activeTicket.id)}
+                                        className="h-8 rounded-full px-3"
+                                    >
+                                        {t('instantPos.extendTimeout', { minutes: PENDING_TICKET_EXTENSION_MINUTES }) || `+${PENDING_TICKET_EXTENSION_MINUTES} min`}
+                                    </Button>
+                                </div>
+                            )}
+
+                            {/* Status Actions */}
+                            <div className="grid grid-cols-5 gap-2">
+                                {STATUS_FLOW.map(status => (
+                                    <button
+                                        key={status}
+                                        onClick={() => setTicketStatus(status)}
+                                        className={cn(
+                                            'flex items-center justify-center text-center rounded-xl px-2 py-3 text-[10px] font-semibold uppercase transition',
+                                            activeTicket.status === status
+                                                ? 'bg-primary/90 text-primary-foreground shadow-sm'
+                                                : 'bg-muted/30 text-muted-foreground hover:bg-muted/50 border border-border/40'
+                                        )}
+                                    >
+                                        {statusLabels[status]}
+                                    </button>
+                                ))}
+                            </div>
+
+                            {/* Items List */}
+                            <div className="space-y-3">
+                                {activeTicket.items.length === 0 ? (
+                                    <div className="rounded-2xl border border-dashed border-border/60 bg-muted/30 px-4 py-10 text-center text-sm text-muted-foreground">
+                                        {t('instantPos.emptyTicket') || 'Add items to start this ticket.'}
+                                    </div>
+                                ) : (
+                                    activeTicket.items.map(item => (
+                                        <div key={item.productId} className="rounded-2xl border border-border/60 bg-muted/30 p-4">
+                                            <div className="flex items-start justify-between gap-3">
+                                                <div className="flex items-start gap-3">
+                                                    <div className="rounded-lg bg-primary/10 px-2 py-1 text-xs font-semibold text-primary">
+                                                        {item.quantity}x
+                                                    </div>
+                                                    <div>
+                                                        <div className="text-sm font-semibold text-foreground">{item.name}</div>
+                                                        {item.note && (
+                                                            <div className="text-[10px] italic text-primary/80 font-medium">
+                                                                --{stylizeText(item.note)}
+                                                            </div>
+                                                        )}
+                                                        <div className="text-xs text-muted-foreground">{item.sku || '---'}</div>
+                                                    </div>
+                                                </div>
+                                                <div className="text-sm font-semibold text-foreground">
+                                                    {formatCurrency(item.unitPrice * item.quantity, item.currency, features.iqd_display_preference)}
+                                                </div>
+                                            </div>
+                                            <div className="mt-4 flex items-center justify-between">
+                                                <div className="flex items-center gap-3">
+                                                    <button onClick={() => updateItemQuantity(item.productId, -1)} className="p-2 bg-background rounded-full border border-border/60"><Minus className="w-3 h-3" /></button>
+                                                    <button onClick={() => updateItemQuantity(item.productId, 1)} className="p-2 bg-background rounded-full border border-border/60"><Plus className="w-3 h-3" /></button>
+                                                    <button
+                                                        onClick={() => setNoteItem({ productId: item.productId, name: item.name, note: item.note || '' })}
+                                                        className={cn("h-8 px-3 rounded-full border border-border/60 text-[10px] font-bold uppercase flex items-center gap-1.5", item.note ? "bg-primary/10 text-primary border-primary/40" : "bg-background")}
+                                                    >
+                                                        <StickyNote className="w-3.5 h-3.5" /> {t('common.note')}
+                                                    </button>
+                                                </div>
+                                                <button onClick={() => removeItem(item.productId)} className="text-destructive p-2"><Trash2 className="w-4 h-4" /></button>
+                                            </div>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+
+                            {/* Summary */}
+                            <div className="space-y-4 pt-4 border-t border-border/40">
+                                <div className="flex justify-between items-center text-sm font-medium">
+                                    <span className="text-muted-foreground">{t('instantPos.subtotal')}</span>
+                                    <span>{formatCurrency(activeTicketTotals.total, settlementCurrency, features.iqd_display_preference)}</span>
+                                </div>
+                                <div className="flex justify-between items-center">
+                                    <span className="font-bold text-lg">{t('common.total')}</span>
+                                    <span className="text-2xl font-black text-primary">{formatCurrency(activeTicketTotals.total, settlementCurrency, features.iqd_display_preference)}</span>
+                                </div>
+                                {activeTicketTotals.hasMixedCurrency && (
+                                    <div className="flex items-center gap-2 rounded-lg bg-destructive/10 px-2 py-1 text-xs text-destructive">
+                                        <AlertCircle className="h-3.5 w-3.5" />
+                                        {t('instantPos.currencyWarning')}
+                                    </div>
+                                )}
+
+                                <div className="grid grid-cols-2 gap-3 pt-2">
+                                    {statusAction && (
+                                        <Button
+                                            onClick={() => setTicketStatus(statusAction.status)}
+                                            variant="secondary"
+                                            className="h-14 rounded-2xl font-bold"
+                                        >
+                                            {statusAction.label}
+                                        </Button>
+                                    )}
+                                    <Button className={cn("h-14 rounded-2xl font-black text-lg gap-2", !statusAction && "col-span-2")} onClick={checkoutTicket} disabled={activeTicket.items.length === 0 || isCheckoutLoading || activeTicketTotals.hasMixedCurrency}>
+                                        {isCheckoutLoading ? <Loader2 className="animate-spin" /> : <><CheckCircle2 className="w-5 h-5" /> {t('instantPos.checkout')}</>}
+                                    </Button>
+                                    <Button variant="outline" className="h-14 rounded-2xl font-bold col-span-2" onClick={() => closeTicket(activeTicket.id)} disabled={isCheckoutLoading}>
+                                        {t('instantPos.closeTicket')}
+                                    </Button>
+                                    <Button variant="ghost" className="h-10 rounded-xl text-destructive font-bold col-span-2" onClick={clearActiveTicket} disabled={isCheckoutLoading}>
+                                        {t('instantPos.clearAll')}
+                                    </Button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {/* Backdrop */}
+            {isExpanded && (
+                <div
+                    className="fixed inset-0 bg-black/40 backdrop-blur-[2px] z-30 animate-in fade-in duration-300 xl:hidden"
+                    onClick={() => setIsExpanded(false)}
+                />
+            )}
+        </>
+    )
+}
+
 export function InstantPOS() {
     const { t } = useTranslation()
     const { toast } = useToast()
@@ -148,13 +473,24 @@ export function InstantPOS() {
         return () => clearInterval(timer)
     }, [])
 
+    // Automatic expiry deletion: remove pending tickets that have passed their expiresAt time
+    useEffect(() => {
+        const expiredIds = tickets
+            .filter(ticket => ticket.status === 'pending' && getTicketExpiryDate(ticket).getTime() < now)
+            .map(t => t.id)
+
+        if (expiredIds.length > 0) {
+            setTickets(prev => prev.filter(t => !expiredIds.includes(t.id)))
+        }
+    }, [now, tickets])
+
     useEffect(() => {
         const handleStorage = (event: StorageEvent) => {
             if (event.key === TICKETS_STORAGE_KEY) {
                 setTickets(loadTickets())
             }
         }
-        
+
         // Internal event for same-window updates (e.g. from KDS Dashboard to POS)
         const handleInternalSync = () => {
             setTickets(loadTickets())
@@ -636,19 +972,29 @@ export function InstantPOS() {
 
     return (
         <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background text-foreground">
-            <header className="flex flex-wrap items-center justify-between gap-4 border-b border-border/60 bg-card/80 px-6 py-4 backdrop-blur">
-                <div>
-                <h1 className="text-xl font-semibold">{t('instantPos.title') || 'New Order'}</h1>
-                <p className="text-xs text-muted-foreground">
-                    {t('instantPos.serverTicket', {
-                        server: user?.name || (t('instantPos.staffFallback') || 'Staff'),
-                        ticket: activeTicket?.number || '--'
-                    }) || `Server: ${user?.name || 'Staff'} | Ticket ${activeTicket?.number || '--'}`}
-                </p>
-            </div>
-            <div className="flex flex-wrap items-center gap-3">
-                <div className="flex items-center gap-2 rounded-full border border-border/60 bg-muted/40 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                    {t('instantPos.kdsLabel') || 'KDS'}
+            <header className="flex flex-col gap-4 border-b border-border/60 bg-card/70 px-6 py-5 backdrop-blur sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-4">
+                    <button
+                        className="lg:hidden p-2 -ms-2 rounded-lg hover:bg-secondary transition-colors"
+                        onClick={() => window.dispatchEvent(new CustomEvent('open-mobile-sidebar'))}
+                    >
+                        <Menu className="w-5 h-5" />
+                    </button>
+                    <div>
+                        <h1 className="text-2xl font-black gradient-text">
+                            {t('instantPos.title') || 'Instant POS'}
+                        </h1>
+                        <p className="text-xs text-muted-foreground">
+                            {t('instantPos.serverTicket', {
+                                server: user?.name || (t('instantPos.staffFallback') || 'Staff'),
+                                ticket: activeTicket?.number || '--'
+                            }) || `Server: ${user?.name || 'Staff'} | Ticket ${activeTicket?.number || '--'}`}
+                        </p>
+                    </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-3">
+                    <div className="flex items-center gap-2 rounded-full border border-border/60 bg-muted/40 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                        {t('instantPos.kdsLabel') || 'KDS'}
                         <Switch
                             checked={features.kds_enabled}
                             onCheckedChange={handleKdsToggle}
@@ -688,13 +1034,13 @@ export function InstantPOS() {
                                                     ? 'border-primary/60 bg-primary text-primary-foreground shadow-sm'
                                                     : 'border-border/60 bg-muted/40 text-muted-foreground hover:bg-muted/60'
                                             )}
-                                            >
-                                                <span>{ticket.number}</span>
-                                                <span className="text-[10px] uppercase tracking-widest opacity-70">
-                                                    {statusLabels[ticket.status]}
-                                                </span>
-                                            </button>
-                                        )
+                                        >
+                                            <span>{ticket.number}</span>
+                                            <span className="text-[10px] uppercase tracking-widest opacity-70">
+                                                {statusLabels[ticket.status]}
+                                            </span>
+                                        </button>
+                                    )
                                 })
                             )}
                         </div>
@@ -787,58 +1133,80 @@ export function InstantPOS() {
                             )}
                         </div>
                     </div>
+
+                    {activeTicket && (
+                        <MobileTicketPanel
+                            activeTicket={activeTicket}
+                            activeTicketTotals={activeTicketTotals}
+                            settlementCurrency={settlementCurrency}
+                            features={features}
+                            t={t}
+                            statusLabels={statusLabels}
+                            statusAction={statusAction}
+                            activePendingTimeLeftMs={activePendingTimeLeftMs}
+                            isCheckoutLoading={isCheckoutLoading}
+                            checkoutTicket={checkoutTicket}
+                            setTicketStatus={setTicketStatus}
+                            extendPendingExpiry={extendPendingExpiry}
+                            clearActiveTicket={clearActiveTicket}
+                            updateItemQuantity={updateItemQuantity}
+                            removeItem={removeItem}
+                            setNoteItem={setNoteItem}
+                            closeTicket={closeTicket}
+                        />
+                    )}
                 </section>
 
-                <aside className="flex w-full max-w-full flex-col border-t border-border/60 bg-card/70 px-6 py-5 backdrop-blur xl:w-[360px] xl:border-l xl:border-t-0">
+                <aside className="hidden w-full max-w-full flex-col border-t border-border/60 bg-card/70 px-6 py-5 backdrop-blur xl:flex xl:w-[360px] xl:border-l xl:border-t-0">
                     {!activeTicket ? (
                         <div className="text-sm text-muted-foreground">
                             {t('instantPos.selectTicket') || 'Select a ticket to begin.'}
                         </div>
                     ) : (
-                            <div className="flex h-full flex-col">
-                                <div className="flex items-center justify-between">
-                                    <div>
-                                        <div className="text-lg font-semibold">
-                                            {t('instantPos.ticketLabel', { number: activeTicket.number }) || `Ticket ${activeTicket.number}`}
-                                        </div>
-                                        <div className="text-xs text-muted-foreground">{formatCompactDateTime(activeTicket.createdAt)}</div>
+                        <div className="flex h-full flex-col">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <div className="text-lg font-semibold">
+                                        {t('instantPos.ticketLabel', { number: activeTicket.number }) || `Ticket ${activeTicket.number}`}
                                     </div>
-                                    <button
-                                        onClick={clearActiveTicket}
-                                        className="text-xs font-semibold text-destructive hover:text-destructive/80"
-                                    >
-                                        {t('instantPos.clearAll') || 'Clear All'}
-                                    </button>
+                                    <div className="text-xs text-muted-foreground">{formatCompactDateTime(activeTicket.createdAt)}</div>
                                 </div>
+                                <button
+                                    onClick={clearActiveTicket}
+                                    className="text-xs font-semibold text-destructive hover:text-destructive/80"
+                                >
+                                    {t('instantPos.clearAll') || 'Clear All'}
+                                </button>
+                            </div>
 
-                                {activePendingTimeLeftMs !== null && (
-                                    <div className="mt-3 flex items-center justify-between rounded-xl border border-border/60 bg-muted/30 px-3 py-2">
-                                        <div className="flex flex-col">
-                                            <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                                                {t('instantPos.pendingTimeout') || 'Pending Timeout'}
-                                            </span>
-                                            <span className={cn(
-                                                "text-sm font-semibold",
-                                                activePendingTimeLeftMs <= 0 ? "text-destructive" : "text-foreground"
-                                            )}>
-                                                {formatCountdown(activePendingTimeLeftMs, t('instantPos.expired') || 'Expired')}
-                                            </span>
-                                        </div>
-                                        <Button
-                                            variant="outline"
-                                            size="sm"
-                                            onClick={() => extendPendingExpiry(activeTicket.id)}
-                                            className="h-8 rounded-full px-3"
-                                        >
-                                            {t('instantPos.extendTimeout', { minutes: PENDING_TICKET_EXTENSION_MINUTES }) || `+${PENDING_TICKET_EXTENSION_MINUTES} min`}
-                                        </Button>
+                            {activePendingTimeLeftMs !== null && (
+                                <div className="mt-3 flex items-center justify-between rounded-xl border border-border/60 bg-muted/30 px-3 py-2">
+                                    <div className="flex flex-col">
+                                        <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                                            {t('instantPos.pendingTimeout') || 'Pending Timeout'}
+                                        </span>
+                                        <span className={cn(
+                                            "text-sm font-semibold",
+                                            activePendingTimeLeftMs <= 0 ? "text-destructive" : "text-foreground"
+                                        )}>
+                                            {formatCountdown(activePendingTimeLeftMs, t('instantPos.expired') || 'Expired')}
+                                        </span>
                                     </div>
-                                )}
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => extendPendingExpiry(activeTicket.id)}
+                                        className="h-8 rounded-full px-3"
+                                    >
+                                        {t('instantPos.extendTimeout', { minutes: PENDING_TICKET_EXTENSION_MINUTES }) || `+${PENDING_TICKET_EXTENSION_MINUTES} min`}
+                                    </Button>
+                                </div>
+                            )}
 
-                                <div className="mt-4 space-y-2">
-                                    <div className="text-[10px] font-semibold uppercase tracking-[0.3em] text-muted-foreground text-center">
-                                        {t('instantPos.orderStatus') || 'Order Status'}
-                                    </div>
+                            <div className="mt-4 space-y-2">
+                                <div className="text-[10px] font-semibold uppercase tracking-[0.3em] text-muted-foreground text-center">
+                                    {t('instantPos.orderStatus') || 'Order Status'}
+                                </div>
                                 <div className="grid grid-cols-5 gap-2">
                                     {STATUS_FLOW.map(status => (
                                         <button
@@ -921,17 +1289,17 @@ export function InstantPOS() {
                                 )}
                             </div>
 
-                                <div className="mt-4 space-y-3 border-t border-border/60 pt-4">
-                                    <div className="flex items-center justify-between text-xs text-muted-foreground">
-                                        <span>{t('instantPos.subtotal') || 'Subtotal'}</span>
-                                        <span>
-                                            {activeTicketTotals.hasMixedCurrency
-                                                ? '--'
-                                                : formatCurrency(activeTicketTotals.total, settlementCurrency, features.iqd_display_preference)}
-                                        </span>
-                                    </div>
-                                    <div className="flex items-center justify-between text-lg font-semibold">
-                                        <span>{t('common.total') || 'Total'}</span>
+                            <div className="mt-4 space-y-3 border-t border-border/60 pt-4">
+                                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                                    <span>{t('instantPos.subtotal') || 'Subtotal'}</span>
+                                    <span>
+                                        {activeTicketTotals.hasMixedCurrency
+                                            ? '--'
+                                            : formatCurrency(activeTicketTotals.total, settlementCurrency, features.iqd_display_preference)}
+                                    </span>
+                                </div>
+                                <div className="flex items-center justify-between text-lg font-semibold">
+                                    <span>{t('common.total') || 'Total'}</span>
                                     <span className="text-primary">
                                         {activeTicketTotals.hasMixedCurrency
                                             ? '--'
