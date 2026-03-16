@@ -86,50 +86,40 @@ def upload_assets():
         print("No assets found to upload!")
         return
 
-    # Process latest.json if found (look for the most relevant one)
-    latest_json_path = None
-    for f_path in all_files:
-        if os.path.basename(f_path) == "latest.json":
-            latest_json_path = f_path
-            # Prefer the one in 'updater' dir if multiple exist
-            if "/updater/" in f_path:
-                break
+    # Fetch existing latest.json from R2 so we can merge
+    remote_data = None
+    worker_url = os.environ.get("VITE_R2_WORKER_URL")
+    auth_token = os.environ.get("VITE_R2_AUTH_TOKEN")
     
-    if latest_json_path and os.path.exists(latest_json_path):
-        print(f"Processing {latest_json_path} for R2 URLs...")
-        with open(latest_json_path, 'r') as f:
-            data = json.load(f)
-            
-        worker_url = os.environ.get("VITE_R2_WORKER_URL")
-        if not worker_url:
-            print("Error: VITE_R2_WORKER_URL missing for latest.json processing")
-            exit(1)
-            
+    if worker_url and auth_token:
         baseUrl = worker_url if worker_url.endswith('/') else f"{worker_url}/"
-        
-        # Replace URLs in platforms
-        for platform, details in data.get("platforms", {}).items():
-            if "url" in details:
-                filename = os.path.basename(details["url"])
-                details["url"] = f"{baseUrl}asaas-updates/{filename}"
-                print(f"Updated {platform} URL to R2")
-                
-        with open(latest_json_path, 'w') as f:
-            json.dump(data, f, indent=2)
-    else:
-        print("latest.json not found on disk. Generating it dynamically from artifacts...")
-        # Get version from tauri.conf.json
-        version = "0.0.0"
         try:
-            with open("src-tauri/tauri.conf.json", 'r') as f:
-                tauri_conf = json.load(f)
-                version = tauri_conf.get("version", "0.0.0")
+            r2_url = f"{baseUrl}asaas-updates/latest.json"
+            print(f"Attempting to fetch existing latest.json from {r2_url}")
+            resp = requests.get(r2_url, headers={"Authorization": f"Bearer {auth_token}"})
+            if resp.ok:
+                remote_data = resp.json()
+                print("Successfully fetched existing latest.json from R2")
+            else:
+                print(f"No existing latest.json found on R2 (status {resp.status_code})")
         except Exception as e:
-            print(f"Warning: Could not read version from tauri.conf.json: {e}")
+            print(f"Error fetching existing latest.json: {e}")
+    else:
+        print("Error: R2 environment variables missing for latest.json processing")
+        return
 
-        worker_url = os.environ.get("VITE_R2_WORKER_URL")
-        baseUrl = worker_url if worker_url.endswith('/') else f"{worker_url}/"
-        
+    # Determine version from tauri conf
+    version = "0.0.0"
+    try:
+        with open("src-tauri/tauri.conf.json", 'r') as f:
+            version = json.load(f).get("version", "0.0.0")
+    except Exception as e:
+        print(f"Warning: Could not read version from tauri.conf.json: {e}")
+
+    # Use remote data if it matches our version, else start fresh
+    if remote_data and remote_data.get("version") == version:
+        data = remote_data
+    else:
         data = {
             "version": version,
             "notes": f"Release {version}",
@@ -137,54 +127,93 @@ def upload_assets():
             "platforms": {}
         }
         
-        # Map artifacts to platforms
-        # We look for .msi (primary) or .exe for windows-x86_64
-        windows_bin = None
-        for f_path in all_files:
-            if f_path.endswith(".msi"):
-                windows_bin = f_path
-                break
-            elif f_path.endswith(".exe") and not windows_bin:
-                windows_bin = f_path
-        
-        if windows_bin:
-            sig_path = f"{windows_bin}.sig"
-            signature = ""
-            if os.path.exists(sig_path):
-                try:
-                    with open(sig_path, 'r') as f:
-                        signature = f.read().strip()
-                except Exception as e:
-                    print(f"Warning: Could not read signature {sig_path}: {e}")
-            
-            filename = os.path.basename(windows_bin)
-            details = {
-                "signature": signature,
-                "url": f"{baseUrl}asaas-updates/{filename}"
-            }
-            # Add all required platform tags for Windows
-            data["platforms"]["windows-x86_64"] = details
-            data["platforms"]["windows-x86_64-msi"] = details
-            data["platforms"]["windows-x86_64-nsis"] = details
-            print(f"Dynamically mapped windows-x86_64 (and aliases) to {filename}")
+    if "platforms" not in data:
+        data["platforms"] = {}
 
-        # Write generated JSON
-        latest_json_path = "latest.json"
-        with open(latest_json_path, 'w') as f:
-            json.dump(data, f, indent=2)
-        print(f"Generated {latest_json_path}")
-        all_files.append(latest_json_path)
+    # Process local latest.json if generated by Tauri
+    local_latest_json_path = None
+    for f_path in all_files:
+        if os.path.basename(f_path) == "latest.json":
+            local_latest_json_path = f_path
+            if "/updater/" in f_path:
+                break
+                
+    if local_latest_json_path and os.path.exists(local_latest_json_path):
+        print(f"Merging locally generated {local_latest_json_path}...")
+        try:
+            with open(local_latest_json_path, 'r') as f:
+                local_data = json.load(f)
+            # Merge its platforms
+            for platform, details in local_data.get("platforms", {}).items():
+                if "url" in details:
+                    filename = os.path.basename(details["url"])
+                    details["url"] = f"{baseUrl}asaas-updates/{filename}"
+                    data["platforms"][platform] = details
+                    print(f"Merged local platform rules: {platform}")
+        except Exception as e:
+            print(f"Error reading local latest.json: {e}")
+
+    # Dynamically Map Windows if missing from local latest.json
+    windows_bin = None
+    for f_path in all_files:
+        if f_path.endswith(".msi"):
+            windows_bin = f_path
+            break
+        elif f_path.endswith(".exe") and not windows_bin:
+            windows_bin = f_path
+            
+    if windows_bin and "windows-x86_64" not in data["platforms"]:
+        sig_path = f"{windows_bin}.sig"
+        signature = ""
+        if os.path.exists(sig_path):
+            try:
+                with open(sig_path, 'r') as f: signature = f.read().strip()
+            except: pass
         
-    # Final sanity check: If we have NO desktop binaries and this is a generator run,
-    # we MUST NOT upload an empty latest.json. 
-    # This prevents the Android job from overwriting the Windows job's work.
-    is_desktop_platform = any(f.endswith(".msi") or f.endswith(".exe") for f in all_files)
+        filename = os.path.basename(windows_bin)
+        details = {
+            "signature": signature,
+            "url": f"{baseUrl}asaas-updates/{filename}"
+        }
+        data["platforms"]["windows-x86_64"] = details
+        data["platforms"]["windows-x86_64-msi"] = details
+        data["platforms"]["windows-x86_64-nsis"] = details
+        print(f"Dynamically mapped windows platforms to {filename}")
+
+    # Dynamically Map Android
+    android_apk = None
+    for f_path in all_files:
+        if f_path.endswith("Asaas-Release-Signed.apk"):
+            android_apk = f_path
+            break
+        elif f_path.endswith(".apk") and not android_apk:
+            android_apk = f_path
+            
+    if android_apk:
+        filename = os.path.basename(android_apk)
+        details = {
+            "signature": "",
+            "url": f"{baseUrl}asaas-updates/{filename}"
+        }
+        for plat in ["android-aarch64", "android-armv7", "android-x86_64", "android-i686", "android"]:
+            data["platforms"][plat] = details
+        print(f"Dynamically mapped android platforms to {filename}")
+
+    # Write merged JSON to disk
+    final_latest_json = "latest.json"
+    with open(final_latest_json, 'w') as f:
+        json.dump(data, f, indent=2)
+    print(f"Generated final {final_latest_json} with platforms: {list(data.get('platforms', {}).keys())}")
     
-    # Filter files for upload: if we aren't a desktop build, remove latest.json from targets
+    # Filter files for upload, ensuring we only upload the final latest.json
     files_to_upload = []
+    if len(data.get("platforms", {})) > 0:
+        files_to_upload.append(final_latest_json)
+    else:
+        print("Skipping latest.json upload because no platforms details were found")
+        
     for f in all_files:
-        if os.path.basename(f) == "latest.json" and not is_desktop_platform:
-            print(f"Skipping {f} upload because no desktop binaries were found (Android job protection)")
+        if os.path.basename(f) == "latest.json":
             continue
         files_to_upload.append(f)
 
