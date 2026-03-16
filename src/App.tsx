@@ -115,9 +115,23 @@ function LoadingState() {
     )
 }
 
+function compareVersions(v1: string, v2: string): number {
+    const p1 = v1.replace(/[^0-9.]/g, '').split('.').map(Number)
+    const p2 = v2.replace(/[^0-9.]/g, '').split('.').map(Number)
+    const len = Math.max(p1.length, p2.length)
+    for (let i = 0; i < len; i++) {
+        const n1 = p1[i] || 0
+        const n2 = p2[i] || 0
+        if (n1 > n2) return 1
+        if (n1 < n2) return -1
+    }
+    return 0
+}
+
 function UpdateHandler() {
     const { setPendingUpdate } = useWorkspace()
     const { t } = useTranslation()
+    const [isBlocked, setIsBlocked] = useState(() => sessionStorage.getItem('version_blocked') === 'true')
 
     const checkForUpdates = useCallback(async (isManual = false) => {
         if (!isTauri) return
@@ -131,9 +145,34 @@ function UpdateHandler() {
         const now = Date.now()
         const twentyFourHours = 24 * 60 * 60 * 1000
 
+        // 1. Mandatory Minimum Version Check via latest.json
+        // Always runs on startup (no session caching - security critical)
+        if (!isManual) {
+            try {
+                const { getVersion } = await import('@tauri-apps/api/app')
+                const currentVersion = await getVersion()
+
+                const res = await fetch('https://asaas-r2-proxy.alanepic360.workers.dev/asaas-updates/latest.json', { cache: 'no-store' })
+                if (res.ok) {
+                    const remoteConfig = await res.json()
+
+                    if (remoteConfig.min_version && compareVersions(currentVersion, remoteConfig.min_version) < 0) {
+                        console.error(`[Security] Version blocked. App: ${currentVersion}, Required: ${remoteConfig.min_version}`)
+                        sessionStorage.setItem('version_blocked', 'true')
+                        setIsBlocked(true)
+                    } else {
+                        sessionStorage.removeItem('version_blocked')
+                        setIsBlocked(false)
+                    }
+                }
+            } catch (err) {
+                console.warn('[Updater] Failed to check mandatory version from latest.json:', err)
+            }
+        }
+
         // Skip automatic checks if already checked this session (refresh protection)
         // OR if checked within the last 24 hours (interval protection)
-        if (!isManual) {
+        if (!isManual && !isBlocked) {
             if (checkedThisSession) {
                 console.log('[Tauri] Skipping automatic update check (already checked this session/refresh)')
                 return
@@ -157,7 +196,7 @@ function UpdateHandler() {
                 
                 const currentVersion = await getVersion()
                 
-                const response = await fetch('https://asaas-r2-proxy.alanepic360.workers.dev/asaas-updates/latest.json')
+                const response = await fetch('https://asaas-r2-proxy.alanepic360.workers.dev/asaas-updates/latest.json', { cache: 'no-store' })
                 
                 if (response.ok) {
                     const data = await response.json()
@@ -315,6 +354,30 @@ function UpdateHandler() {
             }
         }
     }, [checkForUpdates])
+
+    if (isBlocked) {
+        return (
+            <div className="fixed inset-0 z-[9999] bg-background/95 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center animate-in fade-in duration-300">
+                <div className="max-w-md w-full p-8 border border-border/50 bg-card rounded-2xl shadow-2xl flex flex-col items-center gap-6">
+                    <div className="w-16 h-16 rounded-full bg-destructive/10 text-destructive flex items-center justify-center mb-2">
+                        <RotateCw className="w-8 h-8 animate-spin-slow" />
+                    </div>
+                    <div className="space-y-3">
+                        <h1 className="text-2xl font-bold tracking-tight text-foreground">Update Required</h1>
+                        <p className="text-muted-foreground text-sm leading-relaxed">
+                            Your application version is critically outdated and no longer supported. You must update to the latest version to continue using Asaas.
+                        </p>
+                    </div>
+                    <button 
+                        onClick={() => checkForUpdates(true)}
+                        className="w-full mt-4 flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 transition-all font-medium shadow-md hover:shadow-lg active:scale-[0.98]"
+                    >
+                        Check for Updates
+                    </button>
+                </div>
+            </div>
+        )
+    }
 
     return null
 }

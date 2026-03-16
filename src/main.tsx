@@ -30,7 +30,7 @@ const init = async () => {
 
     createRoot(document.getElementById('root')!).render(
         <StrictMode>
-            <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme" defaultStyle="primary">
+            <ThemeProvider defaultTheme="light" storageKey="vite-ui-theme" defaultStyle="primary">
                 {/* To set Legacy as default, use: defaultStyle="legacy" */}
                 <App />
             </ThemeProvider>

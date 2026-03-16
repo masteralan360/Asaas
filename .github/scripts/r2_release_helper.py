@@ -116,6 +116,9 @@ def upload_assets():
     except Exception as e:
         print(f"Warning: Could not read version from tauri.conf.json: {e}")
 
+    # Preserve min_version from remote if it exists
+    remote_min_version = remote_data.get("min_version", "0.0.0") if remote_data else "0.0.0"
+
     # Use remote data if it matches our version, else start fresh
     if remote_data and remote_data.get("version") == version:
         data = remote_data
@@ -126,6 +129,9 @@ def upload_assets():
             "pub_date": datetime.utcnow().isoformat() + "Z",
             "platforms": {}
         }
+
+    # Always carry min_version forward
+    data["min_version"] = data.get("min_version", remote_min_version)
         
     if "platforms" not in data:
         data["platforms"] = {}

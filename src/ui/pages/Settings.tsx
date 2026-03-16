@@ -310,7 +310,7 @@ export function Settings() {
                 
                 const currentVersion = await getVersion()
                 
-                const response = await fetch('https://asaas-r2-proxy.alanepic360.workers.dev/asaas-updates/latest.json')
+                const response = await fetch('https://asaas-r2-proxy.alanepic360.workers.dev/asaas-updates/latest.json', { cache: 'no-store' })
                 
                 if (response.ok) {
                     const data = await response.json()
