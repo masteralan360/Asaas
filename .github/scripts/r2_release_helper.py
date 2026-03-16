@@ -69,9 +69,9 @@ def upload_assets():
     
     # Find Android assets
     android_patterns = [
-        "src-tauri/gen/android/app/build/outputs/apk/universal/release/Asaas-Release-Signed.apk",
+        "src-tauri/gen/android/app/build/outputs/apk/universal/release/Asaas_*.apk",
         "src-tauri/gen/android/app/build/outputs/apk/debug/*.apk",
-        "**/outputs/apk/**/Asaas-Release-Signed.apk"
+        "**/outputs/apk/**/Asaas_*.apk"
     ]
     
     all_files = []
@@ -183,7 +183,8 @@ def upload_assets():
     # Dynamically Map Android
     android_apk = None
     for f_path in all_files:
-        if f_path.endswith("Asaas-Release-Signed.apk"):
+        basename = os.path.basename(f_path)
+        if basename.startswith("Asaas_") and basename.endswith(".apk"):
             android_apk = f_path
             break
         elif f_path.endswith(".apk") and not android_apk:

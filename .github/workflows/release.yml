@@ -129,7 +129,7 @@ jobs:
           ${ANDROID_HOME}/build-tools/34.0.0/apksigner sign --ks release.jks \
             --ks-pass pass:${{ secrets.ANDROID_KEY_PASSWORD }} \
             --ks-key-alias ${{ secrets.ANDROID_KEY_ALIAS }} \
-            --out src-tauri/gen/android/app/build/outputs/apk/universal/release/Asaas-Release-Signed.apk \
+            --out src-tauri/gen/android/app/build/outputs/apk/universal/release/Asaas_${{ github.ref_name }}.apk \
             "$unsigned_apk"
 
       - name: List APKs (Debug)
@@ -143,7 +143,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            src-tauri/gen/android/app/build/outputs/apk/universal/release/Asaas-Release-Signed.apk
+            src-tauri/gen/android/app/build/outputs/apk/universal/release/Asaas_${{ github.ref_name }}.apk
             src-tauri/gen/android/app/build/outputs/apk/debug/*.apk
           tag_name: ${{ github.ref_name }}
           name: "Asaas ${{ github.ref_name }}"

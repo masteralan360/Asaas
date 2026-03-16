@@ -303,6 +303,45 @@ export function Settings() {
     const handleCheckForUpdates = async () => {
         setUpdateStatus({ status: 'checking' })
         try {
+            if (isMobile()) {
+                console.log('[Settings] Android custom update check...')
+                const { getVersion } = await import('@tauri-apps/api/app')
+                const { open } = await import('@tauri-apps/plugin-shell')
+                
+                const currentVersion = await getVersion()
+                
+                const response = await fetch('https://asaas-r2-proxy.alanepic360.workers.dev/asaas-updates/latest.json')
+                
+                if (response.ok) {
+                    const data = await response.json()
+                    if (data.version && data.version !== currentVersion) {
+                        setUpdateStatus({ status: 'available', version: data.version });
+                        
+                        let downloadUrl = data.android?.url || data.platforms?.android?.url
+                        if (!downloadUrl && data.platforms) {
+                            const androidKey = Object.keys(data.platforms).find(k => k.startsWith('android'))
+                            if (androidKey) {
+                                downloadUrl = data.platforms[androidKey].url
+                            }
+                        }
+
+                        if (downloadUrl) {
+                            console.log('[Settings] Opening Android APK URL automatically:', downloadUrl)
+                            await open(downloadUrl)
+                            setUpdateStatus({ status: 'downloaded' })
+                        } else {
+                            console.error('[Settings] Android APK URL not found in JSON')
+                            setUpdateStatus({ status: 'error', message: 'APK download URL not found' })
+                        }
+                    } else {
+                        setUpdateStatus({ status: 'not-available' });
+                    }
+                } else {
+                    setUpdateStatus({ status: 'error', message: `Update check failed: ${response.statusText}` })
+                }
+                return
+            }
+
             const update = await check();
             if (update) {
                 setUpdateStatus({ status: 'available', version: update.version });

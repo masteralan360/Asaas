@@ -120,7 +120,7 @@ function UpdateHandler() {
     const { t } = useTranslation()
 
     const checkForUpdates = useCallback(async (isManual = false) => {
-        if (!isTauri || isMobile()) return
+        if (!isTauri) return
 
         // --- DEBUG: Easy to remove check log ---
         console.log(`[DEBUG-UPDATER] Triggered check. Manual: ${isManual}, Last Check: ${localStorage.getItem('last_auto_update_check')}`)
@@ -148,9 +148,58 @@ function UpdateHandler() {
         }
 
         try {
-            const { check } = await import('@tauri-apps/plugin-updater')
             const { ask, message } = await import('@tauri-apps/plugin-dialog')
 
+            if (isMobile()) {
+                console.log('[Tauri] Android custom update check...')
+                const { getVersion } = await import('@tauri-apps/api/app')
+                const { open } = await import('@tauri-apps/plugin-shell')
+                
+                const currentVersion = await getVersion()
+                
+                const response = await fetch('https://asaas-r2-proxy.alanepic360.workers.dev/asaas-updates/latest.json')
+                
+                if (response.ok) {
+                    const data = await response.json()
+                    
+                    // Update timestamps
+                    localStorage.setItem('last_auto_update_check', now.toString())
+                    sessionStorage.setItem('startup_checked', 'true')
+                    
+                    if (data.version && data.version !== currentVersion) {
+                        console.log(`[Tauri] Android Update available: ${data.version}`)
+                        
+                        let downloadUrl = data.android?.url || data.platforms?.android?.url
+                        
+                        // Fallback check if it's strictly under android-*
+                        if (!downloadUrl && data.platforms) {
+                            const androidKey = Object.keys(data.platforms).find(k => k.startsWith('android'))
+                            if (androidKey) {
+                                downloadUrl = data.platforms[androidKey].url
+                            }
+                        }
+
+                        if (downloadUrl) {
+                            console.log('[Tauri] Opening Android APK URL automatically:', downloadUrl)
+                            await open(downloadUrl)
+                            setPendingUpdate(null)
+                        } else {
+                            console.error('[Tauri] Android APK URL not found in JSON')
+                        }
+                    } else {
+                        console.log('[Tauri] No Android updates available')
+                        if (isManual) {
+                            await message(t('settings.messages.noUpdate'), {
+                                title: t('updater.title'),
+                                kind: 'info',
+                            })
+                        }
+                    }
+                }
+                return
+            }
+
+            const { check } = await import('@tauri-apps/plugin-updater')
             console.log('[Tauri] Checking for updates...')
             const update = await check()
 
