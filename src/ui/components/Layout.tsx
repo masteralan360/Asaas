@@ -16,6 +16,9 @@ import { ManualRateModals } from './exchange/ManualRateModals'
 import { GlobalLoanReminders } from './loans/GlobalLoanReminders'
 import { GlobalBudgetReminders } from './budget/GlobalBudgetReminders'
 import { LoanPaymentModalProvider } from './loans/LoanPaymentModalProvider'
+import { UnifiedSnoozeProvider } from '@/context/UnifiedSnoozeContext'
+import { GlobalExchangeRateReminders } from './exchange/GlobalExchangeRateReminders'
+import { UnifiedSnoozedRemindersBell } from './reminders/UnifiedSnoozedRemindersBell'
 
 import {
     LayoutDashboard,
@@ -285,10 +288,12 @@ export function Layout({ children }: LayoutProps) {
     const isPosLikeRoute = location === '/pos' || location === '/instant-pos'
 
     return (
+        <UnifiedSnoozeProvider>
         <LoanPaymentModalProvider>
             <div className="h-screen overflow-hidden bg-transparent">
                 <ResourceSyncOverlay />
                 <ManualRateModals />
+                <GlobalExchangeRateReminders />
                 <GlobalBudgetReminders />
                 <GlobalLoanReminders />
                 {/* Mobile sidebar backdrop */}
@@ -709,8 +714,8 @@ export function Layout({ children }: LayoutProps) {
                             <P2PSyncIndicator />
                             <ExchangeRateIndicator />
                             <div className="w-px h-4 bg-border mx-1" />
-                            {(!isTauri || isFullscreen || isMobile()) && <NotificationCenter />}
-                            <div id="snoozed-bell-portal" className="flex items-center" />
+                            <NotificationCenter />
+                            <UnifiedSnoozedRemindersBell />
                             {!isMobile() && <SyncStatusIndicator />}
 
                             {/* Refresh Button - Only for non-Tauri or Mobile where TitleBar is absent */}
@@ -762,6 +767,7 @@ export function Layout({ children }: LayoutProps) {
                 </Dialog>
             </div>
         </LoanPaymentModalProvider>
+        </UnifiedSnoozeProvider>
     )
 }
 

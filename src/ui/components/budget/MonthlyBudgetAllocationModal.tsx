@@ -108,7 +108,17 @@ export function MonthlyBudgetAllocationModal({
                             <div className="relative">
                                 <Input
                                     value={valueInput}
-                                    onChange={(e) => setValueInput(formatNumberWithCommas(e.target.value))}
+                                    onChange={(e) => {
+                                        const val = e.target.value
+                                        if (type === 'percentage') {
+                                            const numeric = parseFormattedNumber(val) || 0
+                                            if (numeric > 100) {
+                                                setValueInput('100')
+                                                return
+                                            }
+                                        }
+                                        setValueInput(formatNumberWithCommas(val))
+                                    }}
                                     className="h-14 rounded-2xl border-slate-100 bg-slate-50/50 pr-10 text-lg font-bold transition-all hover:bg-slate-50 focus:ring-orange-500/20"
                                 />
                                 {type === 'percentage' && (

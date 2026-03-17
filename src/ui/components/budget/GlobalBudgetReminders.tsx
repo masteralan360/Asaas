@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react'
-import { createPortal } from 'react-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/auth'
@@ -32,7 +31,7 @@ import type { BudgetReminderItem } from './types'
 import { BudgetReminderModal } from './BudgetReminderModal'
 import { BudgetSnoozeModal, type BudgetSnoozeOption } from './BudgetSnoozeModal'
 import { BudgetLockPromptModal } from './BudgetLockPromptModal'
-import { SnoozedBudgetRemindersBell } from './SnoozedBudgetRemindersBell'
+import { useUnifiedSnooze, type SnoozedItem } from '@/context/UnifiedSnoozeContext'
 
 function isCurrentlySnoozed(item: BudgetReminderItem, now: Date) {
     if (item.status !== 'snoozed') return false
@@ -453,43 +452,36 @@ export function GlobalBudgetReminders() {
         return null
     }
 
-    const currentMonthKey = monthKeyFromDate(new Date())
-    const currentMonthSnoozed = snoozedReminderItems.filter(item => item.month === currentMonthKey)
-    const otherMonthSnoozed = snoozedReminderItems.filter(item => item.month !== currentMonthKey)
+    const { registerItems, unregisterItems } = useUnifiedSnooze()
+
+    const unifiedSnoozedItems = useMemo<SnoozedItem[]>(() => {
+        return snoozedReminderItems.map(item => ({
+            id: item.id,
+            type: 'budget',
+            title: item.title,
+            subtitle: item.subtitle || item.month,
+            amount: item.amount,
+            currency: item.currency,
+            priority: item.month === monthKeyFromDate(new Date()) ? 'warning' : 'info',
+            onAction: () => {
+                void handleMarkPaid(item)
+            },
+            onUnsnooze: () => {
+                void handleReminderUnsnooze(item)
+            }
+        }))
+    }, [snoozedReminderItems, handleReminderUnsnooze, handleMarkPaid])
+
+    useEffect(() => {
+        if (unifiedSnoozedItems.length > 0) {
+            registerItems('budget', unifiedSnoozedItems)
+        } else {
+            unregisterItems('budget')
+        }
+    }, [unifiedSnoozedItems, registerItems, unregisterItems])
 
     return (
         <>
-            {(currentMonthSnoozed.length > 0 || otherMonthSnoozed.length > 0) && (() => {
-                const portalTarget = document.getElementById('snoozed-bell-portal')
-                if (!portalTarget) return null
-                return createPortal(
-                    <>
-                        {currentMonthSnoozed.length > 0 && (
-                            <SnoozedBudgetRemindersBell
-                                items={currentMonthSnoozed}
-                                iqdPreference={features.iqd_display_preference}
-                                variant="warning"
-                                isProcessing={isReminderActionLoading}
-                                onMarkPaid={item => { void handleMarkPaid(item) }}
-                                onUnsnooze={item => { void handleReminderUnsnooze(item) }}
-                            />
-                        )}
-                        {otherMonthSnoozed.length > 0 && (
-                            <SnoozedBudgetRemindersBell
-                                items={otherMonthSnoozed}
-                                iqdPreference={features.iqd_display_preference}
-                                variant="info"
-                                title={t('budget.snoozedItemsOtherMonths') || 'Snoozed Reminders (Other Months)'}
-                                description={t('budget.snoozedItemsOtherMonthsDesc') || 'These reminders belong to other months.'}
-                                isProcessing={isReminderActionLoading}
-                                onMarkPaid={item => { void handleMarkPaid(item) }}
-                                onUnsnooze={item => { void handleReminderUnsnooze(item) }}
-                            />
-                        )}
-                    </>,
-                    portalTarget
-                )
-            })()}
 
             <BudgetReminderModal
                 isOpen={!!currentReminder}

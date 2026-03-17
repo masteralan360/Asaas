@@ -698,3 +698,21 @@
   @apply border-white bg-black text-white;
   box-shadow: 2px 2px 0px 0px rgba(255, 255, 255, 1);
 }
+
+@layer utilities {
+  .animate-bell-ring {
+    animation: bell-ring 2.5s ease-in-out infinite;
+    transform-origin: top center;
+  }
+
+  @keyframes bell-ring {
+    0%, 100% { transform: rotate(0); }
+    5%, 15% { transform: rotate(15deg); }
+    10%, 20% { transform: rotate(-15deg); }
+    25% { transform: rotate(0); }
+  }
+
+  .glass-card {
+    @apply bg-background/40 backdrop-blur-xl border border-white/10 shadow-2xl;
+  }
+}

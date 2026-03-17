@@ -43,6 +43,7 @@ interface ExchangeRateContextType {
         allDiscrepancies: Record<string, { pair: string; manual: number; average: number; diff: number }>
     }
     snooze: (minutes: number) => void
+    unsnooze: () => void
     forceAlert: (pair: string | null) => void
 }
 
@@ -329,8 +330,12 @@ export function ExchangeRateProvider({ children }: { children: React.ReactNode }
         localStorage.setItem('exchange_rate_snooze_until', until.toString())
 
         // Update local state immediately to move discrepancy to snoozedPairs
-        // We can just trigger a refresh or manually update alert state
         refresh();
+    }
+
+    const unsnooze = () => {
+        localStorage.removeItem('exchange_rate_snooze_until')
+        refresh()
     }
 
     const forceAlert = (pair: string | null) => {
@@ -346,7 +351,7 @@ export function ExchangeRateProvider({ children }: { children: React.ReactNode }
     }
 
     return (
-        <ExchangeRateContext.Provider value={{ exchangeData, eurRates, tryRates, status: effectiveStatus, currencyStatus, lastUpdated, refresh, allRates, alerts: alert, snooze, forceAlert }}>
+        <ExchangeRateContext.Provider value={{ exchangeData, eurRates, tryRates, status: effectiveStatus, currencyStatus, lastUpdated, refresh, allRates, alerts: alert, snooze, unsnooze, forceAlert }}>
             {children}
         </ExchangeRateContext.Provider>
 

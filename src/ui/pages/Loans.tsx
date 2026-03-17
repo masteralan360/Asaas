@@ -16,7 +16,6 @@ import {
 } from '@/local-db'
 import { useWorkspace } from '@/workspace'
 import { formatCurrency, formatDate, cn, formatLoanDetailsForWhatsApp } from '@/lib/utils'
-import { whatsappManager } from '@/lib/whatsappWebviewManager'
 import { WhatsAppNumberInputModal } from '@/ui/components/modals/WhatsAppNumberInputModal'
 import { isMobile } from '@/lib/platform'
 import { generateTemplatePdf, type PrintFormat } from '@/services/pdfGenerator'
@@ -340,9 +339,9 @@ function LoanListView({
                                             <div className="flex justify-between items-start">
                                                 <div className="space-y-1">
                                                     <div className="flex items-center gap-2">
-                                                        <LoanNoDisplay 
-                                                            loanNo={loan.loanNo} 
-                                                            className="text-sm text-primary" 
+                                                        <LoanNoDisplay
+                                                            loanNo={loan.loanNo}
+                                                            className="text-sm text-primary"
                                                         />
                                                         <span className={cn('px-2 py-0.5 rounded-full text-[10px] font-bold uppercase', sourceClass(loan.source))}>
                                                             {loan.source}

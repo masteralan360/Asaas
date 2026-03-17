@@ -1,7 +1,7 @@
 import { useAuth } from '@/auth'
 import { isBackendConfigurationRequired, supabase } from '@/auth/supabase'
 import { useSyncStatus, clearQueue } from '@/sync'
-import { db, clearDatabase } from '@/local-db'
+import { db } from '@/local-db'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, Button, Label, LanguageSwitcher, Input, CurrencySelector, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Tabs, TabsList, TabsTrigger, TabsContent, Switch, Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, useToast, RegisterWorkspaceContactsModal } from '@/ui/components'
 import { useTranslation } from 'react-i18next'
 import { useWorkspace } from '@/workspace'
@@ -66,6 +66,7 @@ export function Settings() {
     const [isBiometricDeleteModalOpen, setIsBiometricDeleteModalOpen] = useState(false)
 
     // Connection Settings State
+    const [isClearDataDialogOpen, setIsClearDataDialogOpen] = useState(false)
     const [isElectron, setIsElectron] = useState(false)
     const [isConnectionSettingsUnlocked, setIsConnectionSettingsUnlocked] = useState(false)
     const [passkey, setPasskey] = useState('')
@@ -307,16 +308,16 @@ export function Settings() {
                 console.log('[Settings] Android custom update check...')
                 const { getVersion } = await import('@tauri-apps/api/app')
                 const { open } = await import('@tauri-apps/plugin-shell')
-                
+
                 const currentVersion = await getVersion()
-                
+
                 const response = await fetch('https://asaas-r2-proxy.alanepic360.workers.dev/asaas-updates/latest.json', { cache: 'no-store' })
-                
+
                 if (response.ok) {
                     const data = await response.json()
                     if (data.version && data.version !== currentVersion) {
                         setUpdateStatus({ status: 'available', version: data.version });
-                        
+
                         let downloadUrl = data.android?.url || data.platforms?.android?.url
                         if (!downloadUrl && data.platforms) {
                             const androidKey = Object.keys(data.platforms).find(k => k.startsWith('android'))
@@ -497,17 +498,44 @@ export function Settings() {
         }
     }
 
-    const handleClearLocalData = async () => {
-        if (confirm(t('settings.messages.clearDataConfirm'))) {
-            await clearDatabase()
-            window.location.reload()
+    const handleClearLocalData = () => {
+        setIsClearDataDialogOpen(true)
+    }
+
+    const handleConfirmClearAllData = async () => {
+        try {
+            // 1. Clear IndexedDB (Dexie)
+            await db.delete()
+
+            // 2. Clear LocalStorage
+            localStorage.clear()
+
+            // 3. Clear SessionStorage
+            sessionStorage.clear()
+
+            // 4. Clear Service Worker Caches
+            if ('caches' in window) {
+                const cacheNames = await caches.keys()
+                await Promise.all(cacheNames.map(name => caches.delete(name)))
+            }
+
+            // 5. Force complete reload to root
+            window.location.href = '/'
+        } catch (error) {
+            console.error('[Settings] Failed to clear all local data:', error)
+            toast({
+                title: t('common.error') || 'Error',
+                description: t('settings.messages.clearDataError') || 'Failed to clear local data. Please try again.',
+                variant: 'destructive'
+            })
+            setIsClearDataDialogOpen(false)
         }
     }
 
     const handleSubscribeToNotifications = async () => {
         try {
             let permissionGranted = false
-            
+
             if (isElectron) {
                 // Tauri-specific permission check
                 const { isPermissionGranted: tauriIsGranted, requestPermission: tauriRequest } = await import('@tauri-apps/plugin-notification')
@@ -1269,7 +1297,7 @@ export function Settings() {
                             </CardContent>
                         </Card>
                     )}
- 
+
                     {/* Push Notification Service */}
                     <Card>
                         <CardHeader>
@@ -1389,17 +1417,17 @@ export function Settings() {
                                         {t('settings.pos.kdsDesc') || 'Send Instant POS tickets to the kitchen display/printer when preparing.'}
                                     </p>
                                 </div>
-                                    <Switch
-                                        checked={features.kds_enabled}
-                                        onCheckedChange={handleKdsToggle}
-                                        disabled={isKdsSaving || !isDesktop()}
-                                    />
-                                </div>
-                                {!isDesktop() && (
-                                    <p className="mt-2 text-[10px] text-amber-500 font-medium">
-                                        {t('settings.pos.kdsDesktopOnly') || 'KDS Hosting is only available on Desktop app.'}
-                                    </p>
-                                )}
+                                <Switch
+                                    checked={features.kds_enabled}
+                                    onCheckedChange={handleKdsToggle}
+                                    disabled={isKdsSaving || !isDesktop()}
+                                />
+                            </div>
+                            {!isDesktop() && (
+                                <p className="mt-2 text-[10px] text-amber-500 font-medium">
+                                    {t('settings.pos.kdsDesktopOnly') || 'KDS Hosting is only available on Desktop app.'}
+                                </p>
+                            )}
                         </CardContent>
                     </Card>
 
@@ -2573,6 +2601,41 @@ export function Settings() {
                                 onClick={() => setIsThermalDialogOpen(false)}
                             >
                                 {t('common.close', { defaultValue: 'Close' })}
+                            </Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
+
+                {/* Clear Local Data Confirmation Modal */}
+                <Dialog open={isClearDataDialogOpen} onOpenChange={setIsClearDataDialogOpen}>
+                    <DialogContent className="max-w-md">
+                        <DialogHeader>
+                            <DialogTitle className="flex items-center gap-2 text-destructive">
+                                <AlertCircle className="w-5 h-5" />
+                                {t('settings.confirmClearDataTitle') || 'Clear All Local Data?'}
+                            </DialogTitle>
+                            <DialogDescription className="space-y-3 pt-2">
+                                <p className="font-bold text-foreground">
+                                    {t('settings.messages.clearDataConfirm') || 'This will delete ALL local data including products, customers, orders, and invoices. Are you sure?'}
+                                </p>
+                                <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-lg text-xs leading-relaxed">
+                                    <p className="font-bold text-destructive mb-1 uppercase tracking-tight">Warning: This action is irreversible</p>
+                                    <ul className="list-disc pl-4 space-y-1 opacity-80">
+                                        <li>All IndexedDB tables will be wiped</li>
+                                        <li>Local preferences (hotkeys, theme, etc) will be reset</li>
+                                        <li>Browser and application caches will be cleared</li>
+                                        <li>You will be signed out and redirected to login</li>
+                                    </ul>
+                                </div>
+                            </DialogDescription>
+                        </DialogHeader>
+                        <DialogFooter className="gap-2 sm:gap-0">
+                            <Button variant="ghost" onClick={() => setIsClearDataDialogOpen(false)}>
+                                {t('common.cancel') || 'Cancel'}
+                            </Button>
+                            <Button variant="destructive" onClick={handleConfirmClearAllData} className="gap-2">
+                                <Trash2 className="w-4 h-4" />
+                                {t('settings.clearData') || 'Clear Everything'}
                             </Button>
                         </DialogFooter>
                     </DialogContent>

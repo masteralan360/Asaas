@@ -9,8 +9,8 @@ import { useNetworkStatus } from '@/hooks/useNetworkStatus'
 import { useWorkspace } from '@/workspace'
 import { useToast } from '@/ui/components'
 import { LoanOverdueReminderModal } from './LoanOverdueReminderModal'
-import { SnoozedLoanRemindersBell } from './SnoozedLoanRemindersBell'
 import { useLoanPaymentModal } from './LoanPaymentModalProvider'
+import { useUnifiedSnooze, type SnoozedItem } from '@/context/UnifiedSnoozeContext'
 
 export function GlobalLoanReminders() {
     const { user } = useAuth()
@@ -190,36 +190,49 @@ export function GlobalLoanReminders() {
         }
     }
 
+    const unifiedSnoozedItems = useMemo<SnoozedItem[]>(() => {
+        return snoozedReminderItems.map(item => ({
+            id: `loan-${item.loanId}`,
+            type: 'loan',
+            title: item.borrowerName,
+            subtitle: item.loanNo,
+            amount: item.overdueAmount,
+            currency: item.settlementCurrency,
+            priority: 'warning',
+            onAction: () => {
+                void (async () => {
+                    const didUnsnooze = await handleReminderUnsnooze(item, { silent: true })
+                    if (!didUnsnooze) {
+                        return
+                    }
+                    markReminderHandledForSession(item.loanId)
+                    openLoanPayment(item.loanId, {
+                        installmentId: item.installmentId
+                    })
+                })()
+            },
+            onUnsnooze: () => {
+                void handleReminderUnsnooze(item)
+            }
+        }))
+    }, [snoozedReminderItems, handleReminderUnsnooze, openLoanPayment, markReminderHandledForSession])
+
+    const { registerItems, unregisterItems } = useUnifiedSnooze()
+
+    useEffect(() => {
+        if (unifiedSnoozedItems.length > 0) {
+            registerItems('loans', unifiedSnoozedItems)
+        } else {
+            unregisterItems('loans')
+        }
+    }, [unifiedSnoozedItems, registerItems, unregisterItems])
+
     if (!workspaceId || isReadOnly) {
         return null
     }
 
     return (
         <>
-            {snoozedReminderItems.length > 0 && (
-                <div className="fixed bottom-[calc(1rem+var(--safe-area-bottom))] end-4 z-40">
-                    <SnoozedLoanRemindersBell
-                        items={snoozedReminderItems}
-                        iqdPreference={features.iqd_display_preference}
-                        isProcessing={isReminderActionLoading}
-                        onPayNow={(item) => {
-                            void (async () => {
-                                const didUnsnooze = await handleReminderUnsnooze(item, { silent: true })
-                                if (!didUnsnooze) {
-                                    return
-                                }
-                                markReminderHandledForSession(item.loanId)
-                                openLoanPayment(item.loanId, {
-                                    installmentId: item.installmentId
-                                })
-                            })()
-                        }}
-                        onUnsnooze={(item) => {
-                            void handleReminderUnsnooze(item)
-                        }}
-                    />
-                </div>
-            )}
 
             <LoanOverdueReminderModal
                 isOpen={!!currentReminder}
