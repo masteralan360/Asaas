@@ -34,6 +34,7 @@ import { DateRangeFilters } from '@/ui/components/DateRangeFilters'
 import { r2Service } from '@/services/r2Service'
 import { PdfViewer } from '@/ui/components'
 import { open } from '@tauri-apps/plugin-shell'
+import { invoke } from '@tauri-apps/api/core'
 
 
 
@@ -141,23 +142,22 @@ export function InvoicesHistory() {
     const handleDownload = async () => {
         if ((!pdfUrl && !pdfPath) || !selectedInvoice) return
 
+        if (pdfPath) {
+            try {
+                const absPath = await getAbsoluteAppDataPath(pdfPath)
+                await invoke('open_file_path', { path: absPath })
+                return
+            } catch (error) {
+                console.error('[InvoicesHistory] Failed to open file with invoke:', error)
+            }
+        }
+
+        if (!pdfUrl) return
+
         try {
-            if (pdfPath) {
-                await open(await getAbsoluteAppDataPath(pdfPath))
-                return
-            }
-
-            if (!pdfUrl) {
-                return
-            }
-
             await open(pdfUrl)
         } catch (error) {
             console.error('[InvoicesHistory] Failed to open URL with Tauri shell:', error)
-
-            if (!pdfUrl) {
-                return
-            }
 
             const link = document.createElement('a')
             link.href = pdfUrl

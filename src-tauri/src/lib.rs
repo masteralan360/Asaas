@@ -80,6 +80,32 @@ fn broadcast_kds_update(state: tauri::State<'_, KdsState>, event: String, payloa
     Ok(())
 }
 
+#[tauri::command]
+fn open_file_path(path: String) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("cmd")
+            .args(["/c", "start", "", &path])
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg(&path)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    #[cfg(target_os = "linux")]
+    {
+        std::process::Command::new("xdg-open")
+            .arg(&path)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let (tx, _rx) = broadcast::channel(100);
@@ -135,7 +161,8 @@ pub fn run() {
             read_fcm_token,
             start_kds_stream,
             get_kds_stream_url,
-            broadcast_kds_update
+            broadcast_kds_update,
+            open_file_path
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
