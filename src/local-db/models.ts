@@ -151,63 +151,8 @@ export interface DividendStatus extends BaseEntity {
     isLocked?: boolean
 }
 
-export interface Supplier extends BaseEntity {
-    name: string
-    contactName?: string
-    email?: string
-    phone?: string
-    address?: string
-    city?: string
-    country?: string
-    defaultCurrency: CurrencyCode
-    notes?: string
-    totalPurchases: number
-    totalSpent: number
-    creditLimit?: number // New
-}
-
-export interface Customer extends BaseEntity {
-    name: string
-    email?: string
-    phone: string
-    address?: string
-    city?: string
-    country?: string
-    notes?: string
-    defaultCurrency: CurrencyCode
-    totalOrders: number
-    totalSpent: number
-    outstandingBalance: number
-    creditLimit?: number // New
-}
-
 // Order Items (Unified logic for base items, but separated for type safety)
-export interface BaseOrderItem {
-    id: string
-    productId: string
-    productName: string
-    productSku: string
-    quantity: number
-    total: number
-}
 
-export interface PurchaseOrderItem extends BaseOrderItem {
-    unitCost: number             // in order currency
-    originalCurrency: CurrencyCode
-    originalUnitCost: number
-    convertedUnitCost: number
-    receivedQuantity?: number
-}
-
-export interface SalesOrderItem extends BaseOrderItem {
-    unitPrice: number
-    costPrice: number            // for profit calc
-    originalCurrency: CurrencyCode
-    originalUnitPrice: number
-    convertedUnitPrice: number
-    reservedQuantity: number
-    fulfilledQuantity?: number
-}
 
 // Legacy OrderItem for Invoice compatibility (to be refactored or kept for snapshots)
 export interface OrderItem {
@@ -217,66 +162,6 @@ export interface OrderItem {
     unitPrice: number
     total: number
     currency: CurrencyCode
-}
-
-export type PurchaseOrderStatus = 'draft' | 'pending' | 'confirmed' | 'shipped' | 'delivered' | 'cancelled'
-
-export interface PurchaseOrder extends BaseEntity {
-    orderNumber: string
-    supplierId: string
-    supplierName: string
-    items: PurchaseOrderItem[]
-    subtotal: number
-    discount: number
-    total: number
-    currency: CurrencyCode
-
-    // Exchange Rate Snapshot
-    exchangeRate: number
-    exchangeRateSource: string
-    exchangeRateTimestamp: string
-    exchangeRates?: any[]
-
-    status: PurchaseOrderStatus
-    expectedDeliveryDate?: string
-    actualDeliveryDate?: string
-
-    isPaid: boolean
-    paidAt?: string
-    paymentMethod?: string
-    notes?: string
-}
-
-export type SalesOrderStatus = 'pending' | 'confirmed' | 'processing' | 'shipped' | 'delivered' | 'cancelled' | 'returned'
-
-export interface SalesOrder extends BaseEntity {
-    orderNumber: string
-    customerId: string
-    customerName: string
-    items: SalesOrderItem[]
-    subtotal: number
-    discount: number
-    tax: number
-    total: number
-    currency: CurrencyCode
-
-    // Exchange Rate Snapshot
-    exchangeRate: number
-    exchangeRateSource: string
-    exchangeRateTimestamp: string
-    exchangeRates?: any[]
-
-    status: SalesOrderStatus
-    expectedDeliveryDate?: string
-    actualDeliveryDate?: string
-
-    isPaid: boolean
-    paidAt?: string
-    paymentMethod?: 'cash' | 'fib' | 'qicard' | 'zaincash' | 'fastpay' | 'credit'
-
-    reservedAt?: string
-    shippingAddress?: string
-    notes?: string
 }
 
 export type InvoiceStatus = 'sent' | 'paid' | 'overdue' | 'cancelled' | 'draft'
@@ -400,7 +285,7 @@ export interface LoanPayment extends BaseEntity {
 // Sync Queue Item for tracking pending changes
 export interface SyncQueueItem {
     id: string
-    entityType: 'products' | 'customers' | 'suppliers' | 'purchase_orders' | 'sales_orders' | 'invoices' | 'users' | 'sales' | 'categories' | 'storages' | 'employees' | 'workspace_contacts' | 'loans' | 'loan_installments' | 'loan_payments' | 'budget_settings' | 'budget_allocations' | 'expense_series' | 'expense_items' | 'payroll_statuses' | 'dividend_statuses'
+    entityType: 'products' | 'invoices' | 'users' | 'sales' | 'categories' | 'storages' | 'employees' | 'workspace_contacts' | 'loans' | 'loan_installments' | 'loan_payments' | 'budget_settings' | 'budget_allocations' | 'expense_series' | 'expense_items' | 'payroll_statuses' | 'dividend_statuses'
     entityId: string
     operation: 'create' | 'update' | 'delete'
     data: Record<string, unknown>
@@ -422,9 +307,6 @@ export interface Workspace extends BaseEntity {
     try_conversion_enabled?: boolean
     locked_workspace: boolean
     allow_pos: boolean
-    allow_customers: boolean
-    allow_suppliers: boolean
-    allow_orders: boolean
     allow_invoices: boolean
     allow_whatsapp?: boolean
     kds_enabled?: boolean
@@ -452,7 +334,7 @@ export interface WorkspaceContact extends Omit<BaseEntity, 'isDeleted'> {
 export interface OfflineMutation {
     id: string
     workspaceId: string
-    entityType: 'products' | 'customers' | 'suppliers' | 'purchase_orders' | 'sales_orders' | 'invoices' | 'users' | 'sales' | 'categories' | 'workspaces' | 'storages' | 'employees' | 'workspace_contacts' | 'loans' | 'loan_installments' | 'loan_payments' | 'budget_settings' | 'budget_allocations' | 'expense_series' | 'expense_items' | 'payroll_statuses' | 'dividend_statuses'
+    entityType: 'products' | 'invoices' | 'users' | 'sales' | 'categories' | 'workspaces' | 'storages' | 'employees' | 'workspace_contacts' | 'loans' | 'loan_installments' | 'loan_payments' | 'budget_settings' | 'budget_allocations' | 'expense_series' | 'expense_items' | 'payroll_statuses' | 'dividend_statuses'
     entityId: string
     operation: 'create' | 'update' | 'delete'
     payload: Record<string, unknown>
@@ -472,21 +354,6 @@ export function isProduct(entity: BaseEntity): entity is Product {
     return 'sku' in entity && 'price' in entity && 'currency' in entity
 }
 
-export function isCustomer(entity: BaseEntity): entity is Customer {
-    return 'phone' in entity && 'totalOrders' in entity
-}
-
-export function isSupplier(entity: BaseEntity): entity is Supplier {
-    return 'totalPurchases' in entity && 'defaultCurrency' in entity
-}
-
-export function isPurchaseOrder(entity: BaseEntity): entity is PurchaseOrder {
-    return 'supplierId' in entity && 'items' in entity && 'status' in entity
-}
-
-export function isSalesOrder(entity: BaseEntity): entity is SalesOrder {
-    return 'customerId' in entity && 'items' in entity && 'status' in entity
-}
 
 export function isInvoice(entity: BaseEntity): entity is Invoice {
     return 'invoiceid' in entity && 'items' in entity

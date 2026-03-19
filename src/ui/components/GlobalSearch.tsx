@@ -1,4 +1,4 @@
-import { Search, Command, LayoutDashboard, ShoppingCart, Package, ListOrdered, Users, Settings as SettingsIcon, BarChart3, Users2, Globe, MessageSquare, Moon, Sun, LogOut, ChevronRight, Truck, ShoppingBag, ArrowRightLeft, NotebookPen, Wallet, Zap } from 'lucide-react'
+import { Search, Command, LayoutDashboard, ShoppingCart, Package, ListOrdered, Settings as SettingsIcon, BarChart3, Users2, Globe, MessageSquare, Moon, Sun, LogOut, ChevronRight, ArrowRightLeft, NotebookPen, Wallet, Zap } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useState, useEffect, useRef } from 'react'
 import { useHashLocation } from '@/hooks/useHashLocation'
@@ -38,14 +38,11 @@ export function GlobalSearch({ className, placeholder }: GlobalSearchProps) {
         { id: 'nav-instant-pos', title: t('nav.instantPos') || 'Instant POS', category: 'Navigation', icon: Zap, action: () => setLocation('/instant-pos') },
         { id: 'nav-products', title: t('nav.products'), category: 'Navigation', icon: Package, action: () => setLocation('/products') },
         { id: 'nav-sales', title: t('nav.sales'), category: 'Navigation', icon: ListOrdered, action: () => setLocation('/sales') },
-        { id: 'nav-customers', title: t('nav.customers'), category: 'Navigation', icon: Users, action: () => setLocation('/customers') },
         { id: 'nav-settings', title: t('nav.settings'), category: 'Navigation', icon: SettingsIcon, action: () => setLocation('/settings') },
         { id: 'nav-revenue', title: t('nav.revenue'), category: 'Navigation', icon: BarChart3, action: () => setLocation('/revenue') },
         { id: 'nav-budget', title: t('nav.budget'), category: 'Navigation', icon: Wallet, action: () => setLocation('/budget') },
         { id: 'nav-monthly-comparison', title: t('monthlyComparison.title'), category: 'Navigation', icon: ArrowRightLeft, action: () => setLocation('/monthly-comparison') },
         { id: 'nav-performance', title: t('nav.performance'), category: 'Navigation', icon: Users2, action: () => setLocation('/performance') },
-        { id: 'nav-suppliers', title: t('nav.suppliers') || 'Suppliers', category: 'Navigation', icon: Truck, action: () => setLocation('/suppliers') },
-        { id: 'nav-orders', title: t('nav.orders') || 'Orders', category: 'Navigation', icon: ShoppingBag, action: () => setLocation('/orders') },
 
         // Tools
         { id: 'tool-currency', title: t('nav.currencyConverter'), category: 'Tools', icon: Globe, action: () => setLocation('/currency-converter') },
@@ -146,7 +143,7 @@ export function GlobalSearch({ className, placeholder }: GlobalSearchProps) {
                 />
                 <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none hidden sm:flex">
                     <kbd className="pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground opacity-100">
-                        <span className="text-xs">⌘</span>K
+                        <span className="text-xs">âŒ˜</span>K
                     </kbd>
                 </div>
             </div>

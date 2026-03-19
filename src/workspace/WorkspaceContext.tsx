@@ -23,9 +23,6 @@ import { runSupabaseAction } from '@/lib/supabaseRequest'
 export interface WorkspaceFeatures {
     data_mode: WorkspaceDataMode
     allow_pos: boolean
-    allow_customers: boolean
-    allow_suppliers: boolean
-    allow_orders: boolean
     allow_invoices: boolean
     is_configured: boolean
     default_currency: CurrencyCode
@@ -63,7 +60,7 @@ interface WorkspaceContextType {
     isLocked: boolean
     isLocalMode: boolean
     isCloudMode: boolean
-    hasFeature: (feature: 'allow_pos' | 'allow_customers' | 'allow_suppliers' | 'allow_orders' | 'allow_invoices' | 'allow_whatsapp') => boolean
+    hasFeature: (feature: 'allow_pos' | 'allow_invoices' | 'allow_whatsapp') => boolean
     refreshFeatures: () => Promise<void>
     updateSettings: (settings: Partial<Pick<WorkspaceFeatures, 'default_currency' | 'iqd_display_preference' | 'eur_conversion_enabled' | 'try_conversion_enabled' | 'allow_whatsapp' | 'kds_enabled' | 'logo_url' | 'coordination' | 'print_lang' | 'print_qr' | 'receipt_template' | 'a4_template' | 'print_quality' | 'thermal_printing'>> & { name?: string }) => Promise<void>
     activeWorkspace: { id: string } | undefined
@@ -72,9 +69,6 @@ interface WorkspaceContextType {
 const defaultFeatures: WorkspaceFeatures = {
     data_mode: 'cloud',
     allow_pos: true,
-    allow_customers: true,
-    allow_suppliers: true,
-    allow_orders: true,
     allow_invoices: true,
     is_configured: true,
     default_currency: 'usd',
@@ -108,9 +102,6 @@ function getFeaturesFromLocalWorkspace(localWorkspace: Workspace): WorkspaceFeat
     return mergeWorkspaceFeatures({
         data_mode: localWorkspace.data_mode ?? 'cloud',
         allow_pos: localWorkspace.allow_pos ?? true,
-        allow_customers: localWorkspace.allow_customers ?? true,
-        allow_suppliers: localWorkspace.allow_suppliers ?? true,
-        allow_orders: localWorkspace.allow_orders ?? true,
         allow_invoices: localWorkspace.allow_invoices ?? true,
         is_configured: localWorkspace.is_configured,
         default_currency: localWorkspace.default_currency,
@@ -221,9 +212,6 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             try_conversion_enabled: nextFeatures.try_conversion_enabled,
             locked_workspace: nextFeatures.locked_workspace,
             allow_pos: nextFeatures.allow_pos,
-            allow_customers: nextFeatures.allow_customers,
-            allow_suppliers: nextFeatures.allow_suppliers,
-            allow_orders: nextFeatures.allow_orders,
             allow_invoices: nextFeatures.allow_invoices,
             allow_whatsapp: nextFeatures.allow_whatsapp,
             kds_enabled: nextFeatures.kds_enabled,
@@ -339,9 +327,6 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             const fetchedFeatures = mergeWorkspaceFeatures({
                 data_mode: featureData.data_mode === 'local' ? 'local' : 'cloud',
                 allow_pos: featureData.allow_pos ?? true,
-                allow_customers: featureData.allow_customers ?? true,
-                allow_suppliers: featureData.allow_suppliers ?? true,
-                allow_orders: featureData.allow_orders ?? true,
                 allow_invoices: featureData.allow_invoices ?? true,
                 is_configured: featureData.is_configured ?? true,
                 default_currency: featureData.default_currency || 'usd',
@@ -434,9 +419,6 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                             ...currentFeatures,
                             data_mode: data.data_mode === 'local' ? 'local' : currentFeatures.data_mode,
                             allow_pos: data.allow_pos ?? currentFeatures.allow_pos,
-                            allow_customers: data.allow_customers ?? currentFeatures.allow_customers,
-                            allow_suppliers: data.allow_suppliers ?? currentFeatures.allow_suppliers,
-                            allow_orders: data.allow_orders ?? currentFeatures.allow_orders,
                             allow_invoices: data.allow_invoices ?? currentFeatures.allow_invoices,
                             is_configured: data.is_configured ?? currentFeatures.is_configured,
                             default_currency: data.default_currency || currentFeatures.default_currency,
@@ -497,7 +479,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         return unsubscribe
     }, [isAuthenticated, user?.workspaceId])
 
-    const hasFeature = (feature: 'allow_pos' | 'allow_customers' | 'allow_suppliers' | 'allow_orders' | 'allow_invoices' | 'allow_whatsapp'): boolean => {
+    const hasFeature = (feature: 'allow_pos' | 'allow_invoices' | 'allow_whatsapp'): boolean => {
         return features[feature] === true
     }
 
@@ -565,9 +547,6 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                 try_conversion_enabled: newFeatures.try_conversion_enabled,
                 locked_workspace: newFeatures.locked_workspace,
                 allow_pos: newFeatures.allow_pos,
-                allow_customers: newFeatures.allow_customers,
-                allow_suppliers: newFeatures.allow_suppliers,
-                allow_orders: newFeatures.allow_orders,
                 allow_invoices: newFeatures.allow_invoices,
                 allow_whatsapp: newFeatures.allow_whatsapp,
                 kds_enabled: newFeatures.kds_enabled,

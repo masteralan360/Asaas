@@ -21,8 +21,6 @@ import {
 } from '@/ui/components'
 import {
     CreditCard,
-    Users,
-    ShoppingCart,
     FileText,
     Loader2,
     Check,
@@ -38,7 +36,7 @@ import { getRetriableActionToast, isRetriableWebRequestError, normalizeSupabaseA
 import type { WorkspaceDataMode } from '@/local-db/models'
 
 interface FeatureToggle {
-    key: 'allow_pos' | 'allow_customers' | 'allow_orders' | 'allow_invoices'
+    key: 'allow_pos' | 'allow_invoices'
     label: string
     description: string
     icon: React.ElementType
@@ -71,8 +69,6 @@ export function WorkspaceConfiguration() {
 
     const [features, setFeatures] = useState({
         allow_pos: currentFeatures.allow_pos,
-        allow_customers: currentFeatures.allow_customers,
-        allow_orders: currentFeatures.allow_orders,
         allow_invoices: currentFeatures.allow_invoices
     })
 
@@ -82,18 +78,6 @@ export function WorkspaceConfiguration() {
             label: t('workspaceConfig.features.pos') || 'Point of Sale (POS)',
             description: t('workspaceConfig.features.posDesc') || 'Enable quick sales and checkout functionality',
             icon: CreditCard
-        },
-        {
-            key: 'allow_customers',
-            label: t('workspaceConfig.features.customers') || 'Customer Management',
-            description: t('workspaceConfig.features.customersDesc') || 'Track and manage customer information',
-            icon: Users
-        },
-        {
-            key: 'allow_orders',
-            label: t('workspaceConfig.features.orders') || 'Order Management',
-            description: t('workspaceConfig.features.ordersDesc') || 'Create and track customer orders',
-            icon: ShoppingCart
         },
         {
             key: 'allow_invoices',
@@ -197,8 +181,6 @@ export function WorkspaceConfiguration() {
                 supabase.rpc('configure_workspace', {
                     p_data_mode: dataMode,
                     p_allow_pos: features.allow_pos,
-                    p_allow_customers: features.allow_customers,
-                    p_allow_orders: features.allow_orders,
                     p_allow_invoices: features.allow_invoices,
                     p_logo_url: logoUrl || null
                 })

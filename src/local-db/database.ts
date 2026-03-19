@@ -2,10 +2,6 @@ import Dexie, { type EntityTable } from 'dexie'
 import type {
     Product,
     Category,
-    Customer,
-    Supplier,
-    PurchaseOrder,
-    SalesOrder,
     Invoice,
     User,
     SyncQueueItem,
@@ -38,10 +34,6 @@ import {
 export class AsaasDatabase extends Dexie {
     products!: EntityTable<Product, 'id'>
     categories!: EntityTable<Category, 'id'>
-    suppliers!: EntityTable<Supplier, 'id'>
-    customers!: EntityTable<Customer, 'id'>
-    purchaseOrders!: EntityTable<PurchaseOrder, 'id'>
-    salesOrders!: EntityTable<SalesOrder, 'id'>
     invoices!: EntityTable<Invoice, 'id'>
     users!: EntityTable<User, 'id'>
     sales!: EntityTable<Sale, 'id'>
@@ -69,10 +61,6 @@ export class AsaasDatabase extends Dexie {
         this.version(37).stores({
             products: 'id, sku, name, categoryId, storageId, workspaceId, currency, syncStatus, updatedAt, isDeleted, canBeReturned',
             categories: 'id, name, workspaceId, syncStatus, updatedAt, isDeleted',
-            suppliers: 'id, name, workspaceId, syncStatus, updatedAt, isDeleted',
-            customers: 'id, name, phone, workspaceId, syncStatus, updatedAt, isDeleted',
-            purchaseOrders: 'id, orderNumber, supplierId, status, workspaceId, syncStatus, updatedAt, isDeleted',
-            salesOrders: 'id, orderNumber, customerId, status, workspaceId, syncStatus, updatedAt, isDeleted',
             invoices: 'id, invoiceid, orderId, customerId, status, workspaceId, syncStatus, updatedAt, isDeleted, origin, createdBy, cashierName, createdByName, sequenceId, printFormat, r2PathA4, r2PathReceipt',
 
             users: 'id, email, role, workspaceId, syncStatus, updatedAt, isDeleted, monthlyTarget',
@@ -96,10 +84,6 @@ export class AsaasDatabase extends Dexie {
         this.version(38).stores({
             products: 'id, sku, name, categoryId, storageId, workspaceId, currency, syncStatus, updatedAt, isDeleted, canBeReturned',
             categories: 'id, name, workspaceId, syncStatus, updatedAt, isDeleted',
-            suppliers: 'id, name, workspaceId, syncStatus, updatedAt, isDeleted',
-            customers: 'id, name, phone, workspaceId, syncStatus, updatedAt, isDeleted',
-            purchaseOrders: 'id, orderNumber, supplierId, status, workspaceId, syncStatus, updatedAt, isDeleted',
-            salesOrders: 'id, orderNumber, customerId, status, workspaceId, syncStatus, updatedAt, isDeleted',
             invoices: 'id, invoiceid, orderId, customerId, status, workspaceId, syncStatus, updatedAt, isDeleted, origin, createdBy, cashierName, createdByName, sequenceId, printFormat, r2PathA4, r2PathReceipt',
 
             users: 'id, email, role, workspaceId, syncStatus, updatedAt, isDeleted, monthlyTarget',
@@ -149,10 +133,6 @@ export class AsaasDatabase extends Dexie {
         const syncAwareTables = [
             'products',
             'categories',
-            'suppliers',
-            'customers',
-            'purchaseOrders',
-            'salesOrders',
             'invoices',
             'users',
             'sales',
@@ -275,13 +255,9 @@ export const db = new AsaasDatabase()
 
 // Database utility functions
 export async function clearDatabase(): Promise<void> {
-    await db.transaction('rw', [db.products, db.categories, db.suppliers, db.customers, db.purchaseOrders, db.salesOrders, db.invoices, db.syncQueue], async () => {
+    await db.transaction('rw', [db.products, db.categories, db.invoices, db.syncQueue], async () => {
         await db.products.clear()
         await db.categories.clear()
-        await db.suppliers.clear()
-        await db.customers.clear()
-        await db.purchaseOrders.clear()
-        await db.salesOrders.clear()
         await db.invoices.clear()
         await db.syncQueue.clear()
     })
@@ -289,22 +265,14 @@ export async function clearDatabase(): Promise<void> {
 
 export async function exportDatabase(): Promise<{
     products: Product[]
-    suppliers: Supplier[]
-    customers: Customer[]
-    purchaseOrders: PurchaseOrder[]
-    salesOrders: SalesOrder[]
     invoices: Invoice[]
 }> {
-    const [products, consumers, suppliers, purchaseOrders, salesOrders, invoices] = await Promise.all([
+    const [products, invoices] = await Promise.all([
         db.products.where('isDeleted').equals(false as any).toArray(),
-        db.customers.where('isDeleted').equals(false as any).toArray(),
-        db.suppliers.where('isDeleted').equals(false as any).toArray(),
-        db.purchaseOrders.where('isDeleted').equals(false as any).toArray(),
-        db.salesOrders.where('isDeleted').equals(false as any).toArray(),
         db.invoices.where('isDeleted').equals(false as any).toArray(),
     ])
 
-    return { products, suppliers, customers: consumers, purchaseOrders, salesOrders, invoices }
+    return { products, invoices }
 }
 
 // Get pending sync count

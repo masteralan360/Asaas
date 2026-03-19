@@ -1,7 +1,7 @@
 import { useDashboardStats, useSales } from '@/local-db'
 import { Card, CardContent, CardHeader, CardTitle } from '@/ui/components'
 import { formatCurrency, formatDate, formatOriginLabel } from '@/lib/utils'
-import { Package, Users, ShoppingCart, FileText, DollarSign, AlertTriangle, Receipt } from 'lucide-react'
+import { Package, FileText, DollarSign, AlertTriangle, Receipt } from 'lucide-react'
 import { Link } from 'wouter'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/auth'
@@ -27,22 +27,6 @@ export function Dashboard() {
             href: '/products'
         },
         {
-            title: t('dashboard.totalCustomers'),
-            value: stats.customerCount,
-            icon: Users,
-            color: 'text-emerald-500',
-            bgColor: 'bg-emerald-500/10',
-            href: '/customers'
-        },
-        {
-            title: t('dashboard.totalOrders') || 'Total Orders',
-            value: stats.orderCount,
-            icon: ShoppingCart,
-            color: 'text-purple-500',
-            bgColor: 'bg-purple-500/10',
-            href: '/orders'
-        },
-        {
             title: t('revenue.grossRevenue'),
             value: stats.grossRevenueByCurrency,
             icon: DollarSign,
@@ -64,7 +48,7 @@ export function Dashboard() {
             </div>
 
             {/* Stats Grid */}
-            <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-2">
                 {statCards.map((stat) => (
                     <Link key={stat.title} href={stat.href}>
                         <Card className="cursor-pointer card-hover border-border/50 bg-card/50 backdrop-blur-sm rounded-[1.5rem] overflow-hidden">
@@ -245,7 +229,7 @@ export function Dashboard() {
 
                                         <div className="text-right">
                                             <p className="font-black text-primary tabular-nums">
-                                                {formatCurrency(invoice.totalAmount, invoice.settlementCurrency || 'usd')}
+                                                {formatCurrency(invoice.totalAmount, invoice.settlementCurrency || 'usd', features.iqd_display_preference)}
                                             </p>
                                             <p className="text-[10px] font-bold uppercase text-muted-foreground/60 tracking-wider">
                                                 {formatOriginLabel(invoice.origin)}
@@ -270,4 +254,3 @@ export function Dashboard() {
         </div>
     )
 }
-

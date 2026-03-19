@@ -8,10 +8,6 @@ const LOCAL_MODE_SQLITE_PATH = 'sqlite:asaas-local-mode.db'
 export const LOCAL_MODE_SQLITE_TABLES = [
     'products',
     'categories',
-    'suppliers',
-    'customers',
-    'purchaseOrders',
-    'salesOrders',
     'invoices',
     'users',
     'sales',

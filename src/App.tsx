@@ -51,9 +51,6 @@ const CurrencyConverter = lazy(() => import('@/ui/pages/CurrencyConverter').then
 const Notebook = lazy(() => import('@/ui/pages/Notebook').then(m => ({ default: m.Notebook })))
 const ConnectionConfiguration = lazy(() => import('@/ui/pages/ConnectionConfiguration').then(m => ({ default: m.ConnectionConfiguration })))
 const WhatsApp = lazy(() => import('@/ui/pages/WhatsAppWeb').then(m => ({ default: m.default })))
-const Suppliers = lazy(() => import('@/ui/pages/Suppliers').then(m => ({ default: m.default })))
-const Customers = lazy(() => import('@/ui/pages/Customers').then(m => ({ default: m.default })))
-const Orders = lazy(() => import('@/ui/pages/Orders').then(m => ({ default: m.default })))
 const InstantPOS = lazy(() => import('@/ui/pages/InstantPOS').then(m => ({ default: m.InstantPOS })))
 const KDSDashboard = lazy(() => import('@/ui/pages/KDSDashboard').then(m => ({ default: m.KDSDashboard })))
 const Storages = lazy(() => import('@/ui/pages/Storages').then(m => ({ default: m.default })))
@@ -569,27 +566,6 @@ function App() {
                                                 <ProtectedRoute>
                                                     <Layout>
                                                         <Products />
-                                                    </Layout>
-                                                </ProtectedRoute>
-                                            </Route>
-                                            <Route path="/suppliers">
-                                                <ProtectedRoute>
-                                                    <Layout>
-                                                        <Suppliers />
-                                                    </Layout>
-                                                </ProtectedRoute>
-                                            </Route>
-                                            <Route path="/customers">
-                                                <ProtectedRoute>
-                                                    <Layout>
-                                                        <Customers />
-                                                    </Layout>
-                                                </ProtectedRoute>
-                                            </Route>
-                                            <Route path="/orders">
-                                                <ProtectedRoute>
-                                                    <Layout>
-                                                        <Orders />
                                                     </Layout>
                                                 </ProtectedRoute>
                                             </Route>

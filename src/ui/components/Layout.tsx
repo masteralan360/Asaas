@@ -42,9 +42,7 @@ import {
     BarChart3,
     RotateCw,
     MessageSquare,
-    Truck,
     Users,
-    ShoppingBag,
     Warehouse,
     ArrowRightLeft,
     HandCoins,
@@ -84,9 +82,6 @@ const routePrefetchMap: Record<string, () => Promise<unknown>> = {
     '/products': () => import('@/ui/pages/Products'),
     '/storages': () => import('@/ui/pages/Storages'),
     '/inventory-transfer': () => import('@/ui/pages/InventoryTransfer'),
-    '/suppliers': () => import('@/ui/pages/Suppliers'),
-    '/customers': () => import('@/ui/pages/Customers'),
-    '/orders': () => import('@/ui/pages/Orders'),
     '/invoices-history': () => import('@/ui/pages/InvoicesHistory'),
     '/hr': () => import('@/ui/pages/HR'),
     '/members': () => import('@/ui/pages/Members'),
@@ -259,18 +254,6 @@ export function Layout({ children }: LayoutProps) {
         { name: t('nav.storages') || 'Storages', href: '/storages', icon: Warehouse },
         // Inventory Transfer
         { name: t('nav.inventoryTransfer') || 'Transfer', href: '/inventory-transfer', icon: ArrowRightLeft },
-        // Suppliers
-        ...(hasFeature('allow_suppliers') ? [
-            { name: t('nav.suppliers') || 'Suppliers', href: '/suppliers', icon: Truck }
-        ] : []),
-        // Customers
-        ...(hasFeature('allow_customers') ? [
-            { name: t('nav.customers') || 'Customers', href: '/customers', icon: Users }
-        ] : []),
-        // Orders
-        ...(hasFeature('allow_orders') ? [
-            { name: t('nav.orders') || 'Orders', href: '/orders', icon: ShoppingBag }
-        ] : []),
         // Invoices - requires feature flag
         ...(hasFeature('allow_invoices') ? [
             { name: t('nav.invoicesHistory') || 'Invoices History', href: '/invoices-history', icon: FileText }
