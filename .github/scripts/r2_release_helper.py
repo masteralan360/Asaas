@@ -1,61 +1,63 @@
 import os
 import json
-import base64
-import requests
 import glob
+import boto3
+from botocore.config import Config
 from pathlib import Path
 from datetime import datetime
-import re
 
-def r2_request(method, path, data=None, content_type=None):
-    worker_url = os.environ.get("VITE_R2_WORKER_URL")
-    auth_token = os.environ.get("VITE_R2_AUTH_TOKEN")
+def get_s3_client():
+    account_id = os.environ.get("R2_ACCOUNT_ID")
+    access_key = os.environ.get("R2_ACCESS_KEY_ID")
+    secret_key = os.environ.get("R2_SECRET_ACCESS_KEY")
     
-    if not worker_url or not auth_token:
-        print("Error: R2 environment variables missing")
-        exit(1)
-        
-    baseUrl = worker_url if worker_url.endswith('/') else f"{worker_url}/"
-    url = f"{baseUrl}{path}"
+    if not all([account_id, access_key, secret_key]):
+        # Fallback to older worker-based env vars if S3 ones are missing
+        # but print a warning because this will fail for large files
+        print("Warning: R2 S3 credentials (R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY) missing.")
+        print("Large file uploads (>100MB) will likely fail if using the Worker proxy.")
+        return None
+
+    endpoint_url = f"https://{account_id}.r2.cloudflarestorage.com"
     
-    headers = {
-        "Authorization": f"Bearer {auth_token}"
-    }
-    if content_type:
-        headers["Content-Type"] = content_type
-        
-    response = requests.request(method, url, headers=headers, data=data)
-    if not response.ok and method != "DELETE":
-        print(f"R2 Request Failed: {response.status_code} {response.text}")
-        exit(1)
-    return response
+    return boto3.client(
+        service_name='s3',
+        endpoint_url=endpoint_url,
+        aws_access_key_id=access_key,
+        aws_secret_access_key=secret_key,
+        config=Config(signature_version='s3v4'),
+        region_name='auto' # R2 uses 'auto'
+    )
 
 def clear_updates():
     print("Clearing asaas-updates/ in R2...")
-    worker_url = os.environ.get("VITE_R2_WORKER_URL")
-    auth_token = os.environ.get("VITE_R2_AUTH_TOKEN")
+    bucket_name = os.environ.get("R2_BUCKET_NAME", "asaas")
+    s3 = get_s3_client()
     
-    if not worker_url or not auth_token:
-        print("Error: R2 environment variables missing")
-        return
+    if not s3:
+        print("Error: Cannot clear updates without S3 credentials.")
+        exit(1)
 
-    baseUrl = worker_url if worker_url.endswith('/') else f"{worker_url}/"
-    list_url = f"{baseUrl}?list=1&prefix=asaas-updates/"
-    
-    headers = {"Authorization": f"Bearer {auth_token}"}
-    response = requests.get(list_url, headers=headers)
-    
-    if response.ok:
-        data = response.json()
-        keys = data.get("keys", [])
-        for key in keys:
-            print(f"Deleting {key}...")
-            r2_request("DELETE", key)
-    else:
-        print(f"Skip clearing: List failed (maybe empty or check worker)")
+    try:
+        paginator = s3.get_paginator('list_objects_v2')
+        for page in paginator.paginate(Bucket=bucket_name, Prefix='asaas-updates/'):
+            if 'Contents' in page:
+                delete_keys = [{'Key': obj['Key']} for obj in page['Contents']]
+                print(f"Deleting {len(delete_keys)} objects...")
+                s3.delete_objects(Bucket=bucket_name, Delete={'Objects': delete_keys})
+    except Exception as e:
+        print(f"Error clearing updates: {e}")
+        exit(1)
 
 def upload_assets():
     print("Starting asset upload to R2...")
+    bucket_name = os.environ.get("R2_BUCKET_NAME", "asaas")
+    s3 = get_s3_client()
+    
+    if not s3:
+        print("Error: R2 S3 credentials missing. Cannot proceed with robust upload.")
+        exit(1)
+
     # Broaden patterns to find assets wherever they might be in the bundle dir
     windows_patterns = [
         "src-tauri/target/release/bundle/msi/*.msi",
@@ -88,25 +90,15 @@ def upload_assets():
 
     # Fetch existing latest.json from R2 so we can merge
     remote_data = None
-    worker_url = os.environ.get("VITE_R2_WORKER_URL")
-    auth_token = os.environ.get("VITE_R2_AUTH_TOKEN")
-    
-    if worker_url and auth_token:
-        baseUrl = worker_url if worker_url.endswith('/') else f"{worker_url}/"
-        try:
-            r2_url = f"{baseUrl}asaas-updates/latest.json"
-            print(f"Attempting to fetch existing latest.json from {r2_url}")
-            resp = requests.get(r2_url, headers={"Authorization": f"Bearer {auth_token}"})
-            if resp.ok:
-                remote_data = resp.json()
-                print("Successfully fetched existing latest.json from R2")
-            else:
-                print(f"No existing latest.json found on R2 (status {resp.status_code})")
-        except Exception as e:
-            print(f"Error fetching existing latest.json: {e}")
-    else:
-        print("Error: R2 environment variables missing for latest.json processing")
-        return
+    try:
+        print("Attempting to fetch existing latest.json from R2...")
+        response = s3.get_object(Bucket=bucket_name, Key='asaas-updates/latest.json')
+        remote_data = json.loads(response['Body'].read().decode('utf-8'))
+        print("Successfully fetched existing latest.json from R2")
+    except s3.exceptions.NoSuchKey:
+        print("No existing latest.json found on R2")
+    except Exception as e:
+        print(f"Warning: Error fetching existing latest.json: {e}")
 
     # Determine version from tauri conf
     version = "0.0.0"
@@ -144,6 +136,17 @@ def upload_assets():
             if "/updater/" in f_path:
                 break
                 
+    # We'll use this base URL for update links
+    # If the user still uses the worker for downloads, we can keep VITE_R2_WORKER_URL
+    # but direct R2 public bucket URLs are often better. 
+    # For now, let's keep it flexible or use the public URL if account_id is known.
+    base_download_url = os.environ.get("VITE_R2_WORKER_URL") 
+    if base_download_url:
+        if not base_download_url.endswith('/'): base_download_url += '/'
+    else:
+        # Fallback to S3-style public URL if needed, but Worker is probably preferred for downloads
+        base_download_url = f"https://{bucket_name}.{os.environ.get('R2_ACCOUNT_ID')}.r2.cloudflarestorage.com/"
+
     if local_latest_json_path and os.path.exists(local_latest_json_path):
         print(f"Merging locally generated {local_latest_json_path}...")
         try:
@@ -153,13 +156,13 @@ def upload_assets():
             for platform, details in local_data.get("platforms", {}).items():
                 if "url" in details:
                     filename = os.path.basename(details["url"])
-                    details["url"] = f"{baseUrl}asaas-updates/{filename}"
+                    details["url"] = f"{base_download_url}asaas-updates/{filename}"
                     data["platforms"][platform] = details
                     print(f"Merged local platform rules: {platform}")
         except Exception as e:
             print(f"Error reading local latest.json: {e}")
 
-    # Dynamically Map Windows if missing from local latest.json
+    # Dynamically Map Windows if missing
     windows_bin = None
     for f_path in all_files:
         if f_path.endswith(".msi"):
@@ -179,7 +182,7 @@ def upload_assets():
         filename = os.path.basename(windows_bin)
         details = {
             "signature": signature,
-            "url": f"{baseUrl}asaas-updates/{filename}"
+            "url": f"{base_download_url}asaas-updates/{filename}"
         }
         data["platforms"]["windows-x86_64"] = details
         data["platforms"]["windows-x86_64-msi"] = details
@@ -200,7 +203,7 @@ def upload_assets():
         filename = os.path.basename(android_apk)
         details = {
             "signature": "",
-            "url": f"{baseUrl}asaas-updates/{filename}"
+            "url": f"{base_download_url}asaas-updates/{filename}"
         }
         for plat in ["android-aarch64", "android-armv7", "android-x86_64", "android-i686", "android"]:
             data["platforms"][plat] = details
@@ -212,13 +215,11 @@ def upload_assets():
         json.dump(data, f, indent=2)
     print(f"Generated final {final_latest_json} with platforms: {list(data.get('platforms', {}).keys())}")
     
-    # Filter files for upload, ensuring we only upload the final latest.json
+    # Filter files for upload
     files_to_upload = []
     if len(data.get("platforms", {})) > 0:
         files_to_upload.append(final_latest_json)
-    else:
-        print("Skipping latest.json upload because no platforms details were found")
-        
+    
     for f in all_files:
         if os.path.basename(f) == "latest.json":
             continue
@@ -227,16 +228,25 @@ def upload_assets():
     # Upload all
     for file_path in files_to_upload:
         filename = os.path.basename(file_path)
-        r2_path = f"asaas-updates/{filename}"
-        print(f"Uploading {file_path} to {r2_path}...")
+        r2_key = f"asaas-updates/{filename}"
+        print(f"Uploading {file_path} to {r2_key}...")
         
         content_type = "application/json" if filename.endswith(".json") else "application/octet-stream"
         if filename.endswith(".msi"): content_type = "application/x-msi"
         elif filename.endswith(".exe"): content_type = "application/x-msdos-program"
         elif filename.endswith(".apk"): content_type = "application/vnd.android.package-archive"
         
-        with open(file_path, 'rb') as f:
-            r2_request("PUT", r2_path, data=f, content_type=content_type)
+        try:
+            s3.upload_file(
+                Filename=file_path,
+                Bucket=bucket_name,
+                Key=r2_key,
+                ExtraArgs={'ContentType': content_type}
+            )
+            print(f"Successfully uploaded {filename}")
+        except Exception as e:
+            print(f"Error uploading {filename}: {e}")
+            exit(1)
 
 if __name__ == "__main__":
     import sys
@@ -244,3 +254,4 @@ if __name__ == "__main__":
         clear_updates()
     else:
         upload_assets()
+

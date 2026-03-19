@@ -63,7 +63,7 @@ jobs:
           python-version: '3.x'
 
       - name: Install Dependencies
-        run: pip install requests
+        run: pip install requests boto3
 
       - name: Clear R2 Updates (Initial)
         if: matrix.settings.platform == 'windows-latest'
@@ -72,6 +72,10 @@ jobs:
         env:
           VITE_R2_WORKER_URL: ${{ secrets.VITE_R2_WORKER_URL }}
           VITE_R2_AUTH_TOKEN: ${{ secrets.VITE_R2_AUTH_TOKEN }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
 
       - name: Build Windows
         if: matrix.settings.platform == 'windows-latest'
@@ -101,6 +105,10 @@ jobs:
         env:
           VITE_R2_WORKER_URL: ${{ secrets.VITE_R2_WORKER_URL }}
           VITE_R2_AUTH_TOKEN: ${{ secrets.VITE_R2_AUTH_TOKEN }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
 
       - name: Build Android
         if: matrix.settings.platform == 'ubuntu-latest'
@@ -157,3 +165,7 @@ jobs:
         env:
           VITE_R2_WORKER_URL: ${{ secrets.VITE_R2_WORKER_URL }}
           VITE_R2_AUTH_TOKEN: ${{ secrets.VITE_R2_AUTH_TOKEN }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
