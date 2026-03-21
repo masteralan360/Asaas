@@ -1012,6 +1012,13 @@ export function Settings() {
                                     <Label>{t('settings.theme.style')}</Label>
                                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 max-w-2xl">
                                         <Button
+                                            variant={style === 'emerald' ? 'default' : 'outline'}
+                                            className="flex items-center gap-2 justify-center col-span-1 sm:col-span-2 lg:col-span-1 shadow-lg shadow-emerald-500/20"
+                                            onClick={() => setStyle('emerald')}
+                                        >
+                                            {t('settings.theme.emerald', 'Emerald (Teal & Charcoal)')}
+                                        </Button>
+                                        <Button
                                             variant={style === 'primary' ? 'default' : 'outline'}
                                             className="flex items-center gap-2 justify-center"
                                             onClick={() => setStyle('primary')}
@@ -1023,28 +1030,21 @@ export function Settings() {
                                             className="flex items-center gap-2 justify-center"
                                             onClick={() => setStyle('modern')}
                                         >
-                                            {t('settings.theme.modern')}
+                                            {t('settings.theme.modern', 'Modern (Premium)')}
                                         </Button>
                                         <Button
                                             variant={style === 'legacy' ? 'default' : 'outline'}
                                             className="flex items-center gap-2 justify-center"
                                             onClick={() => setStyle('legacy')}
                                         >
-                                            {t('settings.theme.legacy')}
-                                        </Button>
-                                        <Button
-                                            variant={style === 'emerald' ? 'default' : 'outline'}
-                                            className="flex items-center gap-2 justify-center"
-                                            onClick={() => setStyle('emerald')}
-                                        >
-                                            {t('settings.theme.emerald', 'Emerald')}
+                                            {t('settings.theme.legacy', 'Legacy (Classic)')}
                                         </Button>
                                         <Button
                                             variant={style === 'neo-orange' ? 'default' : 'outline'}
                                             className="flex items-center gap-2 justify-center"
                                             onClick={() => setStyle('neo-orange')}
                                         >
-                                            {t('settings.theme.neo-orange', 'Neo-Orange')}
+                                            {t('settings.theme.neo-orange', 'Neo-Orange (Brutalist)')}
                                         </Button>
                                     </div>
                                 </div>
