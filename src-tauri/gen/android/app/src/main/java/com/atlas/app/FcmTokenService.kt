@@ -1,4 +1,4 @@
-package com.asaas.app
+package com.atlas.app
 
 import android.app.NotificationChannel
 import android.app.NotificationManager

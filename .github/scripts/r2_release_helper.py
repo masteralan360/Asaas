@@ -30,8 +30,8 @@ def get_s3_client():
     )
 
 def clear_updates():
-    print("Clearing asaas-updates/ in R2...")
-    bucket_name = os.environ.get("R2_BUCKET_NAME", "asaas")
+    print("Clearing atlas-updates/ in R2...")
+    bucket_name = os.environ.get("R2_BUCKET_NAME", "atlas")
     s3 = get_s3_client()
     
     if not s3:
@@ -40,7 +40,7 @@ def clear_updates():
 
     try:
         paginator = s3.get_paginator('list_objects_v2')
-        for page in paginator.paginate(Bucket=bucket_name, Prefix='asaas-updates/'):
+        for page in paginator.paginate(Bucket=bucket_name, Prefix='atlas-updates/'):
             if 'Contents' in page:
                 delete_keys = [{'Key': obj['Key']} for obj in page['Contents']]
                 print(f"Deleting {len(delete_keys)} objects...")
@@ -51,7 +51,7 @@ def clear_updates():
 
 def upload_assets():
     print("Starting asset upload to R2...")
-    bucket_name = os.environ.get("R2_BUCKET_NAME", "asaas")
+    bucket_name = os.environ.get("R2_BUCKET_NAME", "atlas")
     s3 = get_s3_client()
     
     if not s3:
@@ -71,9 +71,9 @@ def upload_assets():
     
     # Find Android assets
     android_patterns = [
-        "src-tauri/gen/android/app/build/outputs/apk/universal/release/Asaas_*.apk",
+        "src-tauri/gen/android/app/build/outputs/apk/universal/release/Atlas_*.apk",
         "src-tauri/gen/android/app/build/outputs/apk/debug/*.apk",
-        "**/outputs/apk/**/Asaas_*.apk"
+        "**/outputs/apk/**/Atlas_*.apk"
     ]
     
     all_files = []
@@ -92,7 +92,7 @@ def upload_assets():
     remote_data = None
     try:
         print("Attempting to fetch existing latest.json from R2...")
-        response = s3.get_object(Bucket=bucket_name, Key='asaas-updates/latest.json')
+        response = s3.get_object(Bucket=bucket_name, Key='atlas-updates/latest.json')
         remote_data = json.loads(response['Body'].read().decode('utf-8'))
         print("Successfully fetched existing latest.json from R2")
     except s3.exceptions.NoSuchKey:
@@ -156,7 +156,7 @@ def upload_assets():
             for platform, details in local_data.get("platforms", {}).items():
                 if "url" in details:
                     filename = os.path.basename(details["url"])
-                    details["url"] = f"{base_download_url}asaas-updates/{filename}"
+                    details["url"] = f"{base_download_url}atlas-updates/{filename}"
                     data["platforms"][platform] = details
                     print(f"Merged local platform rules: {platform}")
         except Exception as e:
@@ -182,7 +182,7 @@ def upload_assets():
         filename = os.path.basename(windows_bin)
         details = {
             "signature": signature,
-            "url": f"{base_download_url}asaas-updates/{filename}"
+            "url": f"{base_download_url}atlas-updates/{filename}"
         }
         data["platforms"]["windows-x86_64"] = details
         data["platforms"]["windows-x86_64-msi"] = details
@@ -193,7 +193,7 @@ def upload_assets():
     android_apk = None
     for f_path in all_files:
         basename = os.path.basename(f_path)
-        if basename.startswith("Asaas_") and basename.endswith(".apk"):
+        if basename.startswith("Atlas_") and basename.endswith(".apk"):
             android_apk = f_path
             break
         elif f_path.endswith(".apk") and not android_apk:
@@ -203,7 +203,7 @@ def upload_assets():
         filename = os.path.basename(android_apk)
         details = {
             "signature": "",
-            "url": f"{base_download_url}asaas-updates/{filename}"
+            "url": f"{base_download_url}atlas-updates/{filename}"
         }
         for plat in ["android-aarch64", "android-armv7", "android-x86_64", "android-i686", "android"]:
             data["platforms"][plat] = details
@@ -228,7 +228,7 @@ def upload_assets():
     # Upload all
     for file_path in files_to_upload:
         filename = os.path.basename(file_path)
-        r2_key = f"asaas-updates/{filename}"
+        r2_key = f"atlas-updates/{filename}"
         print(f"Uploading {file_path} to {r2_key}...")
         
         content_type = "application/json" if filename.endswith(".json") else "application/octet-stream"
