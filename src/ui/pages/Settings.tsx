@@ -1415,25 +1415,6 @@ export function Settings() {
                                     {t('settings.pos.barcodeHotkeyDesc')}
                                 </p>
                             </div>
-
-                            <div className="flex items-center justify-between gap-4 rounded-xl border border-border/60 bg-muted/20 p-4">
-                                <div className="space-y-1">
-                                    <Label className="text-sm font-medium">{t('settings.pos.kdsTitle') || 'Kitchen Routing (KDS)'}</Label>
-                                    <p className="text-xs text-muted-foreground">
-                                        {t('settings.pos.kdsDesc') || 'Send Instant POS tickets to the kitchen display/printer when preparing.'}
-                                    </p>
-                                </div>
-                                <Switch
-                                    checked={features.kds_enabled}
-                                    onCheckedChange={handleKdsToggle}
-                                    disabled={isKdsSaving || !isDesktop()}
-                                />
-                            </div>
-                            {!isDesktop() && (
-                                <p className="mt-2 text-[10px] text-amber-500 font-medium">
-                                    {t('settings.pos.kdsDesktopOnly') || 'KDS Hosting is only available on Desktop app.'}
-                                </p>
-                            )}
                         </CardContent>
                     </Card>
 
@@ -1676,6 +1657,8 @@ export function Settings() {
 
 
                 <TabsContent value="workspace" className="space-y-6 mt-0">
+
+
                     {/* Printing Settings */}
                     <Card>
                         <CardHeader>
@@ -1823,30 +1806,38 @@ export function Settings() {
                         <CardHeader>
                             <CardTitle className="flex items-center gap-2">
                                 <MonitorPlay className="w-5 h-5" />
-                                {t('settings.kds.title') || 'KDS Local Streaming'}
+                                {t('settings.kds.title') || 'KDS Settings'}
                             </CardTitle>
                             <CardDescription>
-                                {t('settings.kds.desc') || 'Stream the Kitchen Display System to other devices on the same local network.'}
+                                {t('settings.kds.desc') || 'Manage your KDS settings'}
                             </CardDescription>
                         </CardHeader>
                         <CardContent>
                             <div className="flex flex-col gap-6">
-                                <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg border border-border">
-                                    <div className="space-y-0.5 pr-4">
-                                        <Label className="text-sm font-medium">{t('settings.kds.enable') || 'Enable KDS Network Hosting'}</Label>
-                                        <p className="text-xs text-muted-foreground max-w-md">
-                                            {t('settings.kds.enableDesc') || 'Turn this device into a KDS host. Kitchen screens can connect via browser to view orders.'}
-                                        </p>
+                                <div className="space-y-2">
+                                    <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg border border-border">
+                                        <div className="space-y-0.5 pr-4">
+                                            <Label className="text-sm font-medium">{t('settings.kds.enable') || 'Enable KDS'}</Label>
+                                            <p className="text-xs text-muted-foreground max-w-md">
+                                                {t('settings.kds.enableDesc') || 'Enable KDS for your workspace'}
+                                            </p>
+                                        </div>
+                                        <Switch
+                                            checked={features.kds_enabled}
+                                            disabled={isKdsSaving || !isDesktop()}
+                                            onCheckedChange={(val) => {
+                                                updateSettings({ kds_enabled: val })
+                                                if (val && kdsStatus === 'idle') {
+                                                    startStream(4004).catch(console.error)
+                                                }
+                                            }}
+                                        />
                                     </div>
-                                    <Switch
-                                        checked={features.kds_enabled}
-                                        onCheckedChange={(val) => {
-                                            updateSettings({ kds_enabled: val })
-                                            if (val && kdsStatus === 'idle') {
-                                                startStream(4004).catch(console.error)
-                                            }
-                                        }}
-                                    />
+                                    {!isDesktop() && (
+                                        <p className="text-sm font-medium text-amber-500">
+                                            {t('settings.kds.desktopOnly') || 'KDS Hosting is only available on Desktop app.'}
+                                        </p>
+                                    )}
                                 </div>
 
                                 {features.kds_enabled && (

@@ -673,7 +673,8 @@
             "title": "KDS Settings",
             "desc": "Manage your KDS settings",
             "enable": "Enable KDS",
-            "enableDesc": "Enable KDS for your workspace"
+            "enableDesc": "Enable KDS for your workspace",
+            "desktopOnly": "KDS Hosting is only available on Desktop app."
         },
         "printing": {
             "title": "Printing Settings",
@@ -930,6 +931,11 @@
         "digital": "Digital",
         "cash": "Cash",
         "loan": "Loan",
+        "fib": "FIB",
+        "qicard": "Qi Card",
+        "zaincash": "Zain Cash",
+        "fastpay": "FastPay",
+        "loan_adjustment": "Loan Adjustment",
         "currencyConverter": "Currency Converter",
         "netProfit": "Net Profit",
         "projectedSurplus": "Projected Net Surplus",

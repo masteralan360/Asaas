@@ -339,13 +339,14 @@ export function LoanDetailsPrintTemplate({
                     <tr className="bg-slate-100">
                         <th className="border border-slate-300 p-2 text-start">{t('common.date') || 'Date'}</th>
                         <th className="border border-slate-300 p-2 text-start">{t('common.description') || 'Description'}</th>
+                        <th className="border border-slate-300 p-2 text-start">{t('pos.paymentMethod') || 'Payment Method'}</th>
                         <th className="border border-slate-300 p-2 text-start">{t('common.amount') || 'Amount'}</th>
                     </tr>
                 </thead>
                 <tbody>
                     {payments.length === 0 ? (
                         <tr>
-                            <td className="border border-slate-300 p-3 text-center text-slate-500" colSpan={3}>
+                            <td className="border border-slate-300 p-3 text-center text-slate-500" colSpan={4}>
                                 {t('common.noData') || 'No data'}
                             </td>
                         </tr>
@@ -357,6 +358,9 @@ export function LoanDetailsPrintTemplate({
                                 <td className="border border-slate-300 p-2">{formatDate(payment.paidAt)}</td>
                                 <td className="border border-slate-300 p-2">
                                     {t('loans.activities.paymentReceived') || 'Payment Received'}
+                                </td>
+                                <td className="border border-slate-300 p-2">
+                                    {t(`pos.${payment.paymentMethod}`) || payment.paymentMethod}
                                 </td>
                                 <td className="border border-slate-300 p-2 text-start">
                                     {formatCurrency(payment.amount, loan.settlementCurrency, iqdPreference)}
@@ -512,13 +516,14 @@ export function LoanReceiptPrintTemplate({
                     <thead>
                         <tr className="text-gray-400 border-b border-gray-200">
                             <th className="py-1 text-start">{t('common.date') || 'Date'}</th>
+                            <th className="py-1 text-start">{t('pos.paymentMethod') || 'Payment Method'}</th>
                             <th className="py-1 text-start">{t('common.amount') || 'Amount'}</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
                         {payments.length === 0 ? (
                             <tr>
-                                <td className="py-2 text-center text-gray-400" colSpan={2}>
+                                <td className="py-2 text-center text-gray-400" colSpan={3}>
                                     {t('common.noData') || 'No data'}
                                 </td>
                             </tr>
@@ -528,6 +533,7 @@ export function LoanReceiptPrintTemplate({
                             .map(payment => (
                                 <tr key={payment.id}>
                                     <td className="py-1">{formatDate(payment.paidAt)}</td>
+                                    <td className="py-1">{t(`pos.${payment.paymentMethod}`) || payment.paymentMethod}</td>
                                     <td className="py-1">{formatCurrency(payment.amount, loan.settlementCurrency, iqdPreference)}</td>
                                 </tr>
                             ))}

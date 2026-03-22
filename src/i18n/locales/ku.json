@@ -690,8 +690,8 @@
         },
         "tabs": {
             "general": "گشتی",
-            "profile": "ڕێکخستنەکانی پرۆفایل",
-            "workspace": "ڕێکخستنەکانی شوێنی کار",
+            "profile": "ڕێکخستنی پرۆفایل",
+            "workspace": "ڕێکخستنی شوێنی کار",
             "advanced": "پێشکەوتوو"
         },
         "appearance": "ڕووکار",
@@ -926,6 +926,11 @@
         "digital": "دیجیتاڵی",
         "cash": "کاش",
         "loan": "قەرز",
+        "fib": "FIB",
+        "qicard": "کی کارت (Qi Card)",
+        "zaincash": "زەین کاش",
+        "fastpay": "FastPay",
+        "loan_adjustment": "ڕێکخستنی قەرز",
         "currencyConverter": "گۆڕەری دراو",
         "netProfit": "پوختەی قازانج",
         "projectedSurplus": "پوختەی زیادەی پێشبینیکراو",
