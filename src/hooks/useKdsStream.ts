@@ -51,37 +51,44 @@ export function useKdsStream(isMain: boolean = true) {
             // Remote client logic: Connect to the websocket
             const host = window.location.hostname
             const port = window.location.port || '4004' // Default port
-            const wsUrl = `ws://${host}:${port}/ws`
+            const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
+            const wsUrl = `${protocol}://${host}:${port}/ws`
 
             const connect = () => {
                 setStatus('reconnecting')
-                const ws = new WebSocket(wsUrl)
-                socketRef.current = ws
+                try {
+                    const ws = new WebSocket(wsUrl)
+                    socketRef.current = ws
 
-                ws.onopen = () => {
-                    setStatus('connected')
-                }
-
-                ws.onmessage = (event) => {
-                    try {
-                        const data = JSON.parse(event.data)
-                        setLastEvent(data)
-                        // Trigger local storage sync or state update
-                        if (data.event === 'TICKET_UPDATED') {
-                             window.dispatchEvent(new CustomEvent('kds-stream-update', { detail: data.payload }))
-                        }
-                    } catch (err) {
-                        console.error('Failed to parse KDS message:', err)
+                    ws.onopen = () => {
+                        setStatus('connected')
                     }
-                }
 
-                ws.onclose = () => {
-                    setStatus('error')
-                    setTimeout(connect, 3000) // Reconnect after 3s
-                }
+                    ws.onmessage = (event) => {
+                        try {
+                            const data = JSON.parse(event.data)
+                            setLastEvent(data)
+                            // Trigger local storage sync or state update
+                            if (data.event === 'TICKET_UPDATED') {
+                                 window.dispatchEvent(new CustomEvent('kds-stream-update', { detail: data.payload }))
+                            }
+                        } catch (err) {
+                            console.error('Failed to parse KDS message:', err)
+                        }
+                    }
 
-                ws.onerror = () => {
+                    ws.onclose = () => {
+                        setStatus('error')
+                        setTimeout(connect, 3000) // Reconnect after 3s
+                    }
+
+                    ws.onerror = () => {
+                        setStatus('error')
+                    }
+                } catch (err) {
+                    console.error('Failed to instantiate WebSocket:', err)
                     setStatus('error')
+                    setTimeout(connect, 5000)
                 }
             }
 
