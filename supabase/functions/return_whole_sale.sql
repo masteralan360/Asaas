@@ -20,7 +20,7 @@ BEGIN
     -- Get all non-returned quantities
     SELECT 
         array_agg(id),
-        array_agg(quantity - returned_quantity)
+        array_agg(quantity - COALESCE(returned_quantity, 0))
     INTO v_item_ids, v_item_quantities
     FROM public.sale_items
     WHERE sale_id = p_sale_id AND is_returned = FALSE;

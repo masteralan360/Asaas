@@ -2,7 +2,17 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/auth'
 import { supabase } from '@/auth/supabase'
-import { addToOfflineMutations, createLoanFromPosSale, useProducts, useCategories, useStorages, type Product, type Category, type CurrencyCode } from '@/local-db'
+import {
+    addToOfflineMutations,
+    adjustInventoryQuantity,
+    createLoanFromPosSale,
+    useCategories,
+    useInventoryProducts,
+    useStorages,
+    type Category,
+    type CurrencyCode,
+    type InventoryProduct
+} from '@/local-db'
 import { db } from '@/local-db/database'
 import { formatCurrency, generateId, cn } from '@/lib/utils'
 import { CartItem } from '@/types'
@@ -76,19 +86,23 @@ function isLoanRegistrationData(value: unknown): value is LoanRegistrationData {
     )
 }
 
+function buildCartItemKey(productId: string, storageId?: string | null) {
+    return `${productId}:${storageId ?? ''}`
+}
+
 
 export function POS() {
     const { toast } = useToast()
     const { user } = useAuth()
     const { t } = useTranslation()
     const { features, isLocalMode } = useWorkspace()
-    const products = useProducts(user?.workspaceId)
+    const products = useInventoryProducts(user?.workspaceId)
     const storages = useStorages(user?.workspaceId)
     const [selectedStorageId, setSelectedStorageId] = useState<string>(() => {
         return localStorage.getItem('pos_selected_storage') || ''
     })
     const [crossStorageWarning, setCrossStorageWarning] = useState<{
-        product: Product;
+        product: InventoryProduct;
         foundStorageName: string;
     } | null>(null)
     const [search, setSearch] = useState('')
@@ -160,6 +174,33 @@ export function POS() {
         }
     }, [storages, selectedStorageId])
 
+    const handleStorageSelect = useCallback((storageId: string) => {
+        if (cart.length > 0 && storageId !== selectedStorageId) {
+            toast({
+                variant: 'destructive',
+                title: t('messages.error'),
+                description: t('pos.switchStorageBlocked') || 'Finish or clear the current cart before changing storage.'
+            })
+            return
+        }
+
+        setSelectedStorageId(storageId)
+    }, [cart.length, selectedStorageId, t, toast])
+
+    const findStockProduct = useCallback((productId: string, storageId?: string) => {
+        const resolvedStorageId = storageId || selectedStorageId
+        if (resolvedStorageId) {
+            return products.find((product) => product.id === productId && product.storageId === resolvedStorageId)
+        }
+
+        const matches = products.filter((product) => product.id === productId)
+        return matches.length === 1 ? matches[0] : undefined
+    }, [products, selectedStorageId])
+
+    const getCartItemKey = useCallback((item: Pick<CartItem, 'product_id' | 'storageId'>) => {
+        return buildCartItemKey(item.product_id, item.storageId)
+    }, [])
+
     const [mobileView, setMobileView] = useState<'grid' | 'cart'>(() => {
         return (localStorage.getItem('pos_mobile_view') as 'grid' | 'cart') || 'grid'
     })
@@ -203,7 +244,7 @@ export function POS() {
     }
 
     // Negotiated Price Edit State
-    const [editingPriceItemId, setEditingPriceItemId] = useState<string | null>(null)
+    const [editingPriceItemKey, setEditingPriceItemKey] = useState<string | null>(null)
     const [negotiatedPriceInput, setNegotiatedPriceInput] = useState('')
     const isAdmin = user?.role === 'admin'
 
@@ -389,13 +430,13 @@ export function POS() {
 
     // Calculate totals
     const totalAmount = cart.reduce((sum, item) => {
-        const itemCurrency = products.find(p => p.id === item.product_id)?.currency || 'usd'
+        const itemCurrency = findStockProduct(item.product_id, item.storageId)?.currency || 'usd'
         const basePrice = item.negotiated_price ?? item.price
         const converted = convertPrice(basePrice, itemCurrency, settlementCurrency)
         return sum + (converted * item.quantity)
     }, 0)
     const originalSubtotal = cart.reduce((sum, item) => {
-        const itemCurrency = products.find(p => p.id === item.product_id)?.currency || 'usd'
+        const itemCurrency = findStockProduct(item.product_id, item.storageId)?.currency || 'usd'
         const converted = convertPrice(item.price, itemCurrency, settlementCurrency)
         return sum + (converted * item.quantity)
     }, 0)
@@ -411,7 +452,7 @@ export function POS() {
         let loading = false
 
         for (const item of cart) {
-            const itemCurrency = (products.find(p => p.id === item.product_id)?.currency || 'usd') as CurrencyCode
+            const itemCurrency = (findStockProduct(item.product_id, item.storageId)?.currency || 'usd') as CurrencyCode
             if (itemCurrency === settlementCurrency) continue
 
             const checkPair = (rateExists: boolean) => {
@@ -481,7 +522,7 @@ export function POS() {
 
         const handleNavigation = (e: KeyboardEvent) => {
             // Disable if modals are open
-            if (isSkuModalOpen || isBarcodeModalOpen || editingPriceItemId) return
+            if (isSkuModalOpen || isBarcodeModalOpen || editingPriceItemKey) return
 
             // If search is focused, only handle Escape and Enter
             if (document.activeElement === searchInputRef.current) {
@@ -516,19 +557,19 @@ export function POS() {
                     case 'ArrowRight':
                         e.preventDefault()
                         if (focusedCartIndex >= 0 && focusedCartIndex < cart.length) {
-                            updateQuantity(cart[focusedCartIndex].product_id, 1)
+                            updateQuantity(getCartItemKey(cart[focusedCartIndex]), 1)
                         }
                         break
                     case 'ArrowLeft':
                         e.preventDefault()
                         if (focusedCartIndex >= 0 && focusedCartIndex < cart.length) {
-                            updateQuantity(cart[focusedCartIndex].product_id, -1)
+                            updateQuantity(getCartItemKey(cart[focusedCartIndex]), -1)
                         }
                         break
                     case 'Escape':
                         e.preventDefault()
                         if (focusedCartIndex >= 0 && focusedCartIndex < cart.length) {
-                            removeFromCart(cart[focusedCartIndex].product_id)
+                            removeFromCart(getCartItemKey(cart[focusedCartIndex]))
                             // Adjust index if needed
                             if (focusedCartIndex >= cart.length - 1) {
                                 setFocusedCartIndex(Math.max(0, cart.length - 2))
@@ -624,7 +665,7 @@ export function POS() {
 
         window.addEventListener('keydown', handleNavigation)
         return () => window.removeEventListener('keydown', handleNavigation)
-    }, [isElectron, isSkuModalOpen, isBarcodeModalOpen, editingPriceItemId, focusedProductIndex, focusedSection, focusedCartIndex, filteredProducts, cart, search])
+    }, [isElectron, isSkuModalOpen, isBarcodeModalOpen, editingPriceItemKey, focusedProductIndex, focusedSection, focusedCartIndex, filteredProducts, cart, search, getCartItemKey])
 
     // Hotkey listener
     useEffect(() => {
@@ -677,8 +718,8 @@ export function POS() {
         }
     }, [cart.length, isLayoutMobile])
 
-    const addToCart = useCallback((product: Product) => {
-        if (product.quantity <= 0) return // Out of stock
+    const addToCart = useCallback((product: InventoryProduct) => {
+        if (product.inventoryQuantity <= 0) return // Out of stock
 
         // Check EUR support
         if (product.currency === 'eur' && !features.eur_conversion_enabled) {
@@ -700,14 +741,15 @@ export function POS() {
         }
 
         setCart((prev) => {
-            const existing = prev.find((item) => item.product_id === product.id)
+            const itemKey = buildCartItemKey(product.id, product.storageId)
+            const existing = prev.find((item) => buildCartItemKey(item.product_id, item.storageId) === itemKey)
             if (existing) {
                 // Check stock limit
-                if (existing.quantity >= product.quantity) return prev
+                if (existing.quantity >= product.inventoryQuantity) return prev
 
                 return prev.map((item) =>
-                    item.product_id === product.id
-                        ? { ...item, quantity: item.quantity + 1 }
+                    buildCartItemKey(item.product_id, item.storageId) === itemKey
+                        ? { ...item, quantity: item.quantity + 1, max_stock: product.inventoryQuantity }
                         : item
                 )
             }
@@ -715,29 +757,32 @@ export function POS() {
                 ...prev,
                 {
                     product_id: product.id,
+                    storageId: product.storageId,
                     sku: product.sku,
                     name: product.name,
                     price: product.price,
                     quantity: 1,
-                    max_stock: product.quantity,
+                    max_stock: product.inventoryQuantity,
                     imageUrl: product.imageUrl
                 }
             ]
         })
     }, [features, t, toast])
 
-    const removeFromCart = (productId: string) => {
-        setCart((prev) => prev.filter((item) => item.product_id !== productId))
+    const removeFromCart = (itemKey: string) => {
+        setCart((prev) => prev.filter((item) => getCartItemKey(item) !== itemKey))
     }
 
-    const updateQuantity = (productId: string, delta: number) => {
+    const updateQuantity = (itemKey: string, delta: number) => {
         setCart((prev) => {
             const updatedCart = prev.map((item) => {
-                if (item.product_id === productId) {
+                if (getCartItemKey(item) === itemKey) {
                     const newQty = item.quantity + delta
                     if (newQty <= 0) return null // Mark for removal
-                    if (newQty > item.max_stock) return item
-                    return { ...item, quantity: newQty }
+                    const product = findStockProduct(item.product_id, item.storageId)
+                    const maxStock = product?.inventoryQuantity ?? item.max_stock
+                    if (newQty > maxStock) return { ...item, max_stock: maxStock }
+                    return { ...item, quantity: newQty, max_stock: maxStock }
                 }
                 return item
             }).filter((item): item is CartItem => item !== null) // Filter out nulls (removed items)
@@ -745,39 +790,39 @@ export function POS() {
         })
     }
 
-    const setNegotiatedPrice = (productId: string, price: number | undefined) => {
+    const setNegotiatedPrice = (itemKey: string, price: number | undefined) => {
         setCart((prev) =>
             prev.map((item) =>
-                item.product_id === productId
+                getCartItemKey(item) === itemKey
                     ? { ...item, negotiated_price: price }
                     : item
             )
         )
     }
 
-    const openPriceEdit = (productId: string, currentPrice: number) => {
-        setEditingPriceItemId(productId)
-        setNegotiatedPriceInput(currentPrice.toString())
+    const openPriceEdit = (item: CartItem) => {
+        setEditingPriceItemKey(getCartItemKey(item))
+        setNegotiatedPriceInput((item.negotiated_price ?? item.price).toString())
     }
 
     const savePriceEdit = () => {
-        if (editingPriceItemId) {
+        if (editingPriceItemKey) {
             const newPrice = parseFloat(negotiatedPriceInput)
             if (!isNaN(newPrice) && newPrice >= 0) {
-                setNegotiatedPrice(editingPriceItemId, newPrice)
+                setNegotiatedPrice(editingPriceItemKey, newPrice)
             }
-            setEditingPriceItemId(null)
+            setEditingPriceItemKey(null)
             setNegotiatedPriceInput('')
         }
     }
 
     const cancelPriceEdit = () => {
-        setEditingPriceItemId(null)
+        setEditingPriceItemKey(null)
         setNegotiatedPriceInput('')
     }
 
-    const clearNegotiatedPrice = (productId: string) => {
-        setNegotiatedPrice(productId, undefined)
+    const clearNegotiatedPrice = (item: CartItem) => {
+        setNegotiatedPrice(getCartItemKey(item), undefined)
     }
 
     const handleSkuSubmit = (e: React.FormEvent) => {
@@ -977,7 +1022,22 @@ export function POS() {
             }
         }
 
-        setCart(sale.items)
+        const normalizedItems = sale.items.map((item) => {
+            const storageId = item.storageId || selectedStorageId
+            const product = findStockProduct(item.product_id, storageId)
+
+            return {
+                ...item,
+                storageId,
+                max_stock: product?.inventoryQuantity ?? item.max_stock
+            }
+        })
+        const restoredStorageIds = Array.from(new Set(normalizedItems.map((item) => item.storageId).filter(Boolean)))
+        if (restoredStorageIds.length === 1) {
+            setSelectedStorageId(restoredStorageIds[0])
+        }
+
+        setCart(normalizedItems)
         setRestoredSale(sale)
         // Settlement currency is handled by features.default_currency, which we already use.
         // If we needed to force it, we'd need more state, but for now we assume it matches.
@@ -1016,7 +1076,7 @@ export function POS() {
         }
 
         const isMixedCurrency = cart.some(item => {
-            const product = products.find(p => p.id === item.product_id)
+            const product = findStockProduct(item.product_id, item.storageId)
             return product && product.currency !== settlementCurrency
         })
 
@@ -1029,12 +1089,36 @@ export function POS() {
             return
         }
 
+        for (const item of cart) {
+            const product = findStockProduct(item.product_id, item.storageId)
+            const storageId = item.storageId || selectedStorageId
+
+            if (!product || !storageId) {
+                toast({
+                    variant: 'destructive',
+                    title: t('messages.error'),
+                    description: t('pos.stockMismatch') || 'One or more cart items no longer match an inventory row.'
+                })
+                return
+            }
+
+            if (item.quantity > product.inventoryQuantity) {
+                const storageName = storages.find((storage) => storage.id === storageId)?.name || 'Unknown'
+                toast({
+                    variant: 'destructive',
+                    title: t('messages.error'),
+                    description: `${product.name} ${t('pos.insufficientStock') || 'does not have enough stock in'} ${storageName}.`
+                })
+                return
+            }
+        }
+
         setIsLoading(true)
 
         const saleId = generateId()
 
         // Collect actually used exchange rates for this specific checkout
-        const usedCurrencies = new Set(cart.map(item => products.find(p => p.id === item.product_id)?.currency || 'usd'))
+        const usedCurrencies = new Set(cart.map(item => findStockProduct(item.product_id, item.storageId)?.currency || 'usd'))
         const exchangeRatesSnapshot: any[] = []
 
         // If it's a mixed checkout (items currency != settlement currency)
@@ -1147,7 +1231,7 @@ export function POS() {
         const snapshotTimestamp = new Date().toISOString()
 
         const itemsWithMetadata = cart.map((item) => {
-            const product = products.find(p => p.id === item.product_id)
+            const product = findStockProduct(item.product_id, item.storageId)
             const originalCurrency = product?.currency || 'usd'
             const effectivePrice = item.negotiated_price ?? item.price
             const convertedUnitPrice = convertPrice(effectivePrice, originalCurrency, settlementCurrency)
@@ -1156,6 +1240,7 @@ export function POS() {
 
             return {
                 product_id: item.product_id,
+                storage_id: item.storageId || selectedStorageId || null,
                 product_name: product?.name || 'Unknown',
                 product_sku: product?.sku || '',
                 quantity: item.quantity,
@@ -1170,7 +1255,7 @@ export function POS() {
                 negotiated_price: item.negotiated_price, // store if negotiated
                 total: convertedUnitPrice * item.quantity,
                 // Immutable inventory snapshot at checkout time
-                inventory_snapshot: product?.quantity ?? 0
+                inventory_snapshot: product?.inventoryQuantity ?? 0
             }
         })
 
@@ -1230,12 +1315,18 @@ export function POS() {
 
             // 1. Update local inventory
             await Promise.all(cart.map(async (item) => {
-                const product = products.find(p => p.id === item.product_id)
-                if (product) {
-                    await db.products.update(item.product_id, {
-                        quantity: Math.max(0, product.quantity - item.quantity)
-                    })
-                }
+                const storageId = item.storageId || selectedStorageId
+                if (!storageId) return
+
+                await adjustInventoryQuantity({
+                    workspaceId: user.workspaceId,
+                    productId: item.product_id,
+                    storageId,
+                    quantityDelta: -item.quantity,
+                    timestamp: snapshotTimestamp,
+                    syncSource: 'remote',
+                    skipRemoteSync: true
+                })
             }))
 
             const saleData = mapSaleToUniversal({
@@ -1350,6 +1441,7 @@ export function POS() {
                             id: generateId(),
                             saleId: saleId,
                             productId: item.product_id,
+                            storageId: item.storage_id,
                             quantity: item.quantity,
                             unitPrice: item.unit_price,
                             totalPrice: item.total_price,
@@ -1366,12 +1458,16 @@ export function POS() {
 
                     // 3. Update Local Inventory
                     await Promise.all(cart.map(async (item) => {
-                        const product = products.find(p => p.id === item.product_id)
-                        if (product) {
-                            await db.products.update(item.product_id, {
-                                quantity: Math.max(0, product.quantity - item.quantity)
-                            })
-                        }
+                        const storageId = item.storageId || selectedStorageId
+                        if (!storageId) return
+
+                        await adjustInventoryQuantity({
+                            workspaceId: user.workspaceId,
+                            productId: item.product_id,
+                            storageId,
+                            quantityDelta: -item.quantity,
+                            timestamp: snapshotTimestamp
+                        })
                     }))
 
                     const saleDataOffline = mapSaleToUniversal({
@@ -1483,7 +1579,7 @@ export function POS() {
                         totalItems={totalItems}
                         storages={storages}
                         selectedStorageId={selectedStorageId}
-                        setSelectedStorageId={setSelectedStorageId}
+                        setSelectedStorageId={handleStorageSelect}
                         refreshExchangeRate={refreshExchangeRate}
                         exchangeData={exchangeData}
                         heldSalesCount={heldSales.length}
@@ -1572,7 +1668,7 @@ export function POS() {
                             <StorageSelector
                                 storages={storages}
                                 selectedStorageId={selectedStorageId}
-                                onSelect={setSelectedStorageId}
+                                onSelect={handleStorageSelect}
                             />
                             <div className="relative flex-1">
                                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -1615,7 +1711,7 @@ export function POS() {
                         <div className="flex-1 overflow-y-auto pr-2">
                             <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                                 {filteredProducts.map((product, index) => {
-                                    const cartItem = cart.find(i => i.product_id === product.id)
+                                    const cartItem = cart.find((item) => getCartItemKey(item) === buildCartItemKey(product.id, product.storageId))
                                     const inCartQuantity = cartItem?.quantity || 0
                                     const remainingQuantity = product.quantity - inCartQuantity
                                     const minStock = product.minStockLevel || 5
@@ -1736,15 +1832,16 @@ export function POS() {
                                         </div>
                                     ) : (
                                         cart.map((item, index) => {
-                                            const productCurrency = products.find(p => p.id === item.product_id)?.currency || 'usd'
+                                            const productCurrency = findStockProduct(item.product_id, item.storageId)?.currency || 'usd'
                                             const effectivePrice = item.negotiated_price ?? item.price
                                             const convertedPrice = convertPrice(effectivePrice, productCurrency, settlementCurrency)
                                             const isConverted = productCurrency !== settlementCurrency
                                             const hasNegotiated = item.negotiated_price !== undefined
+                                            const itemKey = getCartItemKey(item)
 
                                             return (
                                                 <div
-                                                    key={item.product_id}
+                                                    key={itemKey}
                                                     ref={el => cartItemRefs.current[index] = el}
                                                     className={cn(
                                                         "bg-background border border-border p-3 rounded-lg flex gap-3 group transition-all duration-200 scroll-m-2",
@@ -1767,7 +1864,7 @@ export function POS() {
                                                                     <span>{formatCurrency(item.negotiated_price!, productCurrency, features.iqd_display_preference)} x {item.quantity}</span>
                                                                     {isAdmin && (
                                                                         <button
-                                                                            onClick={() => clearNegotiatedPrice(item.product_id)}
+                                                                            onClick={() => clearNegotiatedPrice(item)}
                                                                             className="text-[10px] text-destructive hover:underline"
                                                                             title={t('pos.clearNegotiatedPrice') || 'Clear'}
                                                                         >
@@ -1789,7 +1886,7 @@ export function POS() {
                                                             {/* Admin-only Pencil icon */}
                                                             {isAdmin && (
                                                                 <button
-                                                                    onClick={() => openPriceEdit(item.product_id, item.negotiated_price ?? item.price)}
+                                                                    onClick={() => openPriceEdit(item)}
                                                                     className="transition-opacity p-1 hover:bg-muted rounded bg-muted/30 border border-border/50"
                                                                     title={t('pos.modifyPrice') || 'Modify Price'}
                                                                 >
@@ -1808,7 +1905,7 @@ export function POS() {
                                                             variant="outline"
                                                             size="icon"
                                                             className="h-6 w-6 rounded-md"
-                                                            onClick={() => updateQuantity(item.product_id, -1)}
+                                                            onClick={() => updateQuantity(itemKey, -1)}
                                                         >
                                                             <Minus className="w-3 h-3" />
                                                         </Button>
@@ -1817,7 +1914,7 @@ export function POS() {
                                                             variant="outline"
                                                             size="icon"
                                                             className="h-6 w-6 rounded-md"
-                                                            onClick={() => updateQuantity(item.product_id, 1)}
+                                                            onClick={() => updateQuantity(itemKey, 1)}
                                                             disabled={item.quantity >= item.max_stock}
                                                         >
                                                             <Plus className="w-3 h-3" />
@@ -1826,7 +1923,7 @@ export function POS() {
                                                             variant="ghost"
                                                             size="icon"
                                                             className="h-7 w-7 rounded-md text-destructive transition-opacity ml-1 bg-destructive/10 border border-destructive/20"
-                                                            onClick={() => removeFromCart(item.product_id)}
+                                                            onClick={() => removeFromCart(itemKey)}
                                                         >
                                                             <Trash2 className="w-3.5 h-3.5" />
                                                         </Button>
@@ -2219,14 +2316,14 @@ export function POS() {
             </Dialog>
 
             {/* Negotiated Price Edit Dialog */}
-            <Dialog open={editingPriceItemId !== null} onOpenChange={() => cancelPriceEdit()}>
+            <Dialog open={editingPriceItemKey !== null} onOpenChange={() => cancelPriceEdit()}>
                 <DialogContent className="max-w-sm">
                     <DialogHeader>
                         <DialogTitle>{t('pos.modifyPrice') || 'Modify Price'}</DialogTitle>
                     </DialogHeader>
                     {(() => {
-                        const editingItem = cart.find(i => i.product_id === editingPriceItemId)
-                        const editingProduct = products.find(p => p.id === editingPriceItemId)
+                        const editingItem = cart.find((item) => getCartItemKey(item) === editingPriceItemKey)
+                        const editingProduct = editingItem ? findStockProduct(editingItem.product_id, editingItem.storageId) : undefined
                         if (!editingItem) return null
 
                         return (
@@ -2628,10 +2725,10 @@ interface MobileGridProps {
     setIsSkuModalOpen: (o: boolean) => void
     setIsBarcodeModalOpen: (o: boolean) => void
     isDeviceScannerAutoEnabled: boolean
-    filteredProducts: Product[]
+    filteredProducts: InventoryProduct[]
     cart: CartItem[]
-    addToCart: (p: Product) => void
-    updateQuantity: (id: string, d: number) => void
+    addToCart: (p: InventoryProduct) => void
+    updateQuantity: (itemKey: string, d: number) => void
     features: WorkspaceFeatures
     getDisplayImageUrl: (url?: string) => string
     categories: Category[]
@@ -2715,7 +2812,7 @@ function MobileGrid({ t, search, setSearch, setIsSkuModalOpen, setIsBarcodeModal
             {/* Products Grid */}
             <div className="grid grid-cols-2 gap-4 p-4 pt-0 pb-10">
                 {filteredProducts.map((product) => {
-                    const cartItem = cart.find(i => i.product_id === product.id)
+                    const cartItem = cart.find((item) => buildCartItemKey(item.product_id, item.storageId) === buildCartItemKey(product.id, product.storageId))
                     const inCartQuantity = cartItem?.quantity || 0
                     const remainingQuantity = product.quantity - inCartQuantity
                     const minStock = product.minStockLevel || 5
@@ -2782,7 +2879,7 @@ function MobileGrid({ t, search, setSearch, setIsSkuModalOpen, setIsBarcodeModal
                                     className="h-8 w-8 rounded-xl hover:bg-background"
                                     onClick={(e) => {
                                         e.stopPropagation();
-                                        updateQuantity(product.id, -1);
+                                        updateQuantity(buildCartItemKey(product.id, product.storageId), -1);
                                     }}
                                     disabled={!cartItem}
                                 >
@@ -2812,8 +2909,8 @@ function MobileGrid({ t, search, setSearch, setIsSkuModalOpen, setIsBarcodeModal
 
 interface MobileCartProps {
     cart: CartItem[]
-    removeFromCart: (id: string) => void
-    updateQuantity: (id: string, d: number) => void
+    removeFromCart: (itemKey: string) => void
+    updateQuantity: (itemKey: string, d: number) => void
     features: WorkspaceFeatures
     totalAmount: number
     settlementCurrency: string
@@ -2825,10 +2922,10 @@ interface MobileCartProps {
     handleHoldSale: () => void
     isLoading: boolean
     getDisplayImageUrl: (url?: string) => string
-    products: Product[]
+    products: InventoryProduct[]
     convertPrice: (amount: number, from: CurrencyCode, to: CurrencyCode) => number
-    openPriceEdit: (productId: string, currentPrice: number) => void
-    clearNegotiatedPrice: (productId: string) => void
+    openPriceEdit: (item: CartItem) => void
+    clearNegotiatedPrice: (item: CartItem) => void
     isAdmin: boolean
     discountValue: string
     setDiscountValue: (val: string) => void
@@ -2952,15 +3049,19 @@ function MobileCart({
                     </div>
                 ) : (
                     cart.map((item) => {
-                        const product = products.find(p => p.id === item.product_id)
+                        const product = products.find((candidate) => (
+                            candidate.id === item.product_id
+                            && (!item.storageId || candidate.storageId === item.storageId)
+                        ))
                         const originalCurrency = (product?.currency || 'usd') as CurrencyCode
                         const settlementCurr = settlementCurrency as CurrencyCode
                         const unitPrice = item.negotiated_price ?? item.price
                         const convertedUnitPrice = convertPrice(unitPrice, originalCurrency, settlementCurr)
                         const isExchanged = originalCurrency !== settlementCurr
+                        const itemKey = buildCartItemKey(item.product_id, item.storageId)
 
                         return (
-                            <div key={item.product_id} className="flex gap-4 bg-card p-4 rounded-[2rem] border border-border shadow-sm group">
+                            <div key={itemKey} className="flex gap-4 bg-card p-4 rounded-[2rem] border border-border shadow-sm group">
                                 <div className="w-20 h-20 bg-muted/30 rounded-2xl overflow-hidden shrink-0">
                                     <ProductImage
                                         url={item.imageUrl}
@@ -2979,7 +3080,7 @@ function MobileCart({
                                                     {formatCurrency(convertedUnitPrice * item.quantity, settlementCurr, features.iqd_display_preference)}
                                                     {isAdmin && (
                                                         <button
-                                                            onClick={() => openPriceEdit(item.product_id, item.negotiated_price ?? item.price)}
+                                                            onClick={() => openPriceEdit(item)}
                                                             className="p-1.5 rounded-lg bg-primary/10 text-primary border border-primary/20 transition-colors"
                                                         >
                                                             <Pencil className="w-3.5 h-3.5" />
@@ -3000,7 +3101,7 @@ function MobileCart({
                                                     <div className="text-emerald-500 font-bold flex items-center gap-1 animate-in slide-in-from-left-2 duration-300">
                                                         {formatCurrency(item.negotiated_price, originalCurrency, features.iqd_display_preference)} x {item.quantity}
                                                         <button
-                                                            onClick={() => clearNegotiatedPrice(item.product_id)}
+                                                            onClick={() => clearNegotiatedPrice(item)}
                                                             className="p-0.5 rounded-full hover:bg-destructive/10 text-destructive transition-colors"
                                                         >
                                                             <X className="w-2.5 h-2.5" />
@@ -3016,7 +3117,7 @@ function MobileCart({
                                             </div>
                                         </div>
                                         <button
-                                            onClick={() => removeFromCart(item.product_id)}
+                                            onClick={() => removeFromCart(itemKey)}
                                             className="p-2 -me-1 bg-destructive/10 text-destructive border border-destructive/20 rounded-xl transition-colors shrink-0"
                                         >
                                             <Trash2 className="w-4 h-4" />
@@ -3025,11 +3126,11 @@ function MobileCart({
 
                                     <div className="flex justify-end mt-2">
                                         <div className="flex items-center gap-3 bg-muted/50 rounded-xl p-0.5 border border-border/50 h-fit">
-                                            <button onClick={() => updateQuantity(item.product_id, -1)} className="p-1.5 hover:bg-background rounded-lg transition-colors">
+                                            <button onClick={() => updateQuantity(itemKey, -1)} className="p-1.5 hover:bg-background rounded-lg transition-colors">
                                                 <Minus className="w-3 h-3" />
                                             </button>
                                             <span className="font-bold text-sm min-w-[0.5rem] text-center">{item.quantity}</span>
-                                            <button onClick={() => updateQuantity(item.product_id, 1)} className="p-1.5 hover:bg-background rounded-lg transition-colors text-primary">
+                                            <button onClick={() => updateQuantity(itemKey, 1)} className="p-1.5 hover:bg-background rounded-lg transition-colors text-primary">
                                                 <Plus className="w-3 h-3" />
                                             </button>
                                         </div>

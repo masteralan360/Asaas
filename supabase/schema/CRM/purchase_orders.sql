@@ -18,6 +18,7 @@ CREATE TABLE crm.purchase_orders (
   is_paid boolean NULL DEFAULT false,
   paid_at timestamp with time zone NULL,
   payment_method text NULL,
+  destination_storage_id uuid NULL,
   notes text NULL,
   items jsonb NULL DEFAULT '[]'::jsonb,
   created_at timestamp with time zone NULL DEFAULT now(),

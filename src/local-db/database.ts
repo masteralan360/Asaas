@@ -11,6 +11,7 @@ import type {
     Workspace,
     AppSetting,
     Storage,
+    Inventory,
     Supplier,
     Customer,
     Employee,
@@ -44,6 +45,7 @@ export class AtlasDatabase extends Dexie {
     sale_items!: EntityTable<SaleItem, 'id'>
     workspaces!: EntityTable<Workspace, 'id'>
     storages!: EntityTable<Storage, 'id'>
+    inventory!: EntityTable<Inventory, 'id'>
     suppliers!: EntityTable<Supplier, 'id'>
     customers!: EntityTable<Customer, 'id'>
     employees!: EntityTable<Employee, 'id'>
@@ -162,6 +164,57 @@ export class AtlasDatabase extends Dexie {
             app_settings: 'key'
         })
 
+        this.version(42).stores({
+            products: 'id, sku, name, categoryId, storageId, workspaceId, currency, syncStatus, updatedAt, isDeleted, canBeReturned',
+            categories: 'id, name, workspaceId, syncStatus, updatedAt, isDeleted',
+            invoices: 'id, invoiceid, orderId, customerId, status, workspaceId, syncStatus, updatedAt, isDeleted, origin, createdBy, cashierName, createdByName, sequenceId, printFormat, r2PathA4, r2PathReceipt',
+            users: 'id, email, role, workspaceId, syncStatus, updatedAt, isDeleted, monthlyTarget',
+            sales: 'id, cashierId, workspaceId, settlementCurrency, syncStatus, createdAt, updatedAt, notes',
+            sale_items: 'id, saleId, productId',
+            workspaces: 'id, name, code, syncStatus, updatedAt, isDeleted, print_lang, print_qr',
+            storages: 'id, name, workspaceId, isSystem, isProtected, syncStatus, updatedAt, isDeleted',
+            inventory: 'id, workspaceId, productId, storageId, quantity, syncStatus, updatedAt, isDeleted, [workspaceId+storageId], [workspaceId+productId], [productId+storageId]',
+            suppliers: 'id, name, workspaceId, phone, email, defaultCurrency, updatedAt, isDeleted, syncStatus',
+            customers: 'id, name, workspaceId, phone, email, defaultCurrency, updatedAt, isDeleted, syncStatus',
+            employees: 'id, name, workspaceId, linkedUserId, syncStatus, updatedAt, isDeleted',
+            budget_settings: 'id, workspaceId',
+            budget_allocations: 'id, workspaceId, month, [workspaceId+month]',
+            expense_series: 'id, workspaceId, recurrence, startMonth, endMonth, isDeleted',
+            expense_items: 'id, workspaceId, seriesId, month, dueDate, status, [seriesId+month], [workspaceId+month]',
+            payroll_statuses: 'id, workspaceId, employeeId, month, status, [employeeId+month], [workspaceId+month]',
+            dividend_statuses: 'id, workspaceId, employeeId, month, status, [employeeId+month], [workspaceId+month]',
+            syncQueue: 'id, entityType, entityId, operation, timestamp',
+            offline_mutations: 'id, workspaceId, entityType, entityId, status, createdAt, [entityType+entityId+status]',
+            workspace_contacts: 'id, workspaceId, type, value, syncStatus, updatedAt',
+            loans: 'id, workspaceId, saleId, status, nextDueDate, borrowerName, loanNo, syncStatus, updatedAt, isDeleted',
+            loan_installments: 'id, loanId, workspaceId, dueDate, status, syncStatus, updatedAt, isDeleted, [loanId+installmentNo]',
+            loan_payments: 'id, loanId, workspaceId, paidAt, syncStatus, updatedAt, isDeleted',
+            sales_orders: 'id, orderNumber, customerId, workspaceId, status, currency, createdAt, updatedAt, isDeleted, syncStatus',
+            purchase_orders: 'id, orderNumber, supplierId, workspaceId, status, currency, createdAt, updatedAt, isDeleted, syncStatus',
+            app_settings: 'key'
+        }).upgrade(async tx => {
+            const products = await tx.table('products').toArray()
+            const inventoryRows = products
+                .filter((product) => typeof product.storageId === 'string' && product.storageId.length > 0)
+                .map((product) => ({
+                    id: `${product.id}:${product.storageId}`,
+                    workspaceId: product.workspaceId,
+                    productId: product.id,
+                    storageId: product.storageId,
+                    quantity: typeof product.quantity === 'number' ? product.quantity : 0,
+                    createdAt: product.createdAt,
+                    updatedAt: product.updatedAt,
+                    syncStatus: product.syncStatus,
+                    lastSyncedAt: product.lastSyncedAt,
+                    version: product.version,
+                    isDeleted: product.isDeleted
+                }))
+
+            if (inventoryRows.length > 0) {
+                await tx.table('inventory').bulkPut(inventoryRows)
+            }
+        })
+
         this.registerLocalModeSyncHooks()
     }
 
@@ -175,6 +228,7 @@ export class AtlasDatabase extends Dexie {
             'sales',
             'workspaces',
             'storages',
+            'inventory',
             'suppliers',
             'customers',
             'employees',
@@ -296,8 +350,9 @@ export const db = new AtlasDatabase()
 
 // Database utility functions
 export async function clearDatabase(): Promise<void> {
-    await db.transaction('rw', [db.products, db.categories, db.invoices, db.syncQueue], async () => {
+    await db.transaction('rw', [db.products, db.inventory, db.categories, db.invoices, db.syncQueue], async () => {
         await db.products.clear()
+        await db.inventory.clear()
         await db.categories.clear()
         await db.invoices.clear()
         await db.syncQueue.clear()

@@ -20,6 +20,7 @@ CREATE TABLE crm.sales_orders (
   paid_at timestamp with time zone NULL,
   payment_method text NULL,
   reserved_at timestamp with time zone NULL,
+  source_storage_id uuid NULL,
   shipping_address text NULL,
   notes text NULL,
   items jsonb NULL DEFAULT '[]'::jsonb,

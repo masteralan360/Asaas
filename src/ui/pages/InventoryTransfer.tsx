@@ -1,51 +1,68 @@
 import { useState, useMemo } from 'react'
-import { useStorages } from '@/local-db'
-import { db } from '@/local-db'
-import { supabase } from '@/auth/supabase'
+import { transferInventoryBetweenStorages, useInventory, useProducts, useStorages } from '@/local-db'
 import { useWorkspace } from '@/workspace'
 import { Button } from '@/ui/components/button'
 import { ArrowRightLeft, Check, Warehouse, Package, ChevronRight } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/ui/components/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/ui/components/select'
 import { Label } from '@/ui/components/label'
+import { Input } from '@/ui/components/input'
 import { useTranslation } from 'react-i18next'
 import { useToast } from '@/ui/components/use-toast'
-import { useLiveQuery } from 'dexie-react-hooks'
-import { isOnline } from '@/lib/network'
 import { Checkbox } from '@/ui/components'
 
 export default function InventoryTransfer() {
     const { t } = useTranslation()
-    const { activeWorkspace, isLocalMode } = useWorkspace()
+    const { activeWorkspace } = useWorkspace()
     const storages = useStorages(activeWorkspace?.id)
+    const inventory = useInventory(activeWorkspace?.id)
+    const products = useProducts(activeWorkspace?.id)
     const { toast } = useToast()
 
     const [sourceStorageId, setSourceStorageId] = useState<string>('')
     const [targetStorageId, setTargetStorageId] = useState<string>('')
     const [selectedProductIds, setSelectedProductIds] = useState<Set<string>>(new Set())
+    const [transferQuantities, setTransferQuantities] = useState<Record<string, string>>({})
     const [isTransferring, setIsTransferring] = useState(false)
 
-    // Get products in source storage
-    const sourceProducts = useLiveQuery(
-        () => sourceStorageId
-            ? db.products.where('storageId').equals(sourceStorageId).and(p => !p.isDeleted).toArray()
-            : [],
-        [sourceStorageId]
-    ) ?? []
+    const sourceProducts = useMemo(() => inventory
+        .filter((row) => row.storageId === sourceStorageId)
+        .map((row) => {
+            const product = products.find((entry) => entry.id === row.productId)
+            if (!product || product.isDeleted) {
+                return null
+            }
+
+            return { row, product }
+        })
+        .filter((entry): entry is { row: (typeof inventory)[number]; product: (typeof products)[number] } => !!entry),
+    [inventory, products, sourceStorageId])
 
     const availableTargetStorages = useMemo(
         () => storages.filter(s => s.id !== sourceStorageId),
         [storages, sourceStorageId]
     )
 
-    const toggleProduct = (productId: string) => {
+    const toggleProduct = (productId: string, availableQuantity: number) => {
         setSelectedProductIds(prev => {
             const next = new Set(prev)
-            if (next.has(productId)) {
+            const isSelected = next.has(productId)
+            if (isSelected) {
                 next.delete(productId)
             } else {
                 next.add(productId)
             }
+
+            setTransferQuantities(current => {
+                const nextQuantities = { ...current }
+                if (isSelected) {
+                    delete nextQuantities[productId]
+                } else if (!nextQuantities[productId]) {
+                    nextQuantities[productId] = String(availableQuantity)
+                }
+                return nextQuantities
+            })
+
             return next
         })
     }
@@ -53,38 +70,58 @@ export default function InventoryTransfer() {
     const selectAllProducts = () => {
         if (selectedProductIds.size === sourceProducts.length) {
             setSelectedProductIds(new Set())
+            setTransferQuantities({})
         } else {
-            setSelectedProductIds(new Set(sourceProducts.map(p => p.id)))
+            setSelectedProductIds(new Set(sourceProducts.map(({ product }) => product.id)))
+            setTransferQuantities(current => {
+                const nextQuantities: Record<string, string> = {}
+                for (const { product, row } of sourceProducts) {
+                    nextQuantities[product.id] = current[product.id] || String(row.quantity)
+                }
+                return nextQuantities
+            })
         }
     }
 
+    const selectedTransferItems = useMemo(() => sourceProducts
+        .filter(({ product }) => selectedProductIds.has(product.id))
+        .map(({ product, row }) => ({
+            productId: product.id,
+            productName: product.name,
+            unit: product.unit,
+            availableQuantity: row.quantity,
+            quantity: Number(transferQuantities[product.id] || 0)
+        })),
+    [selectedProductIds, sourceProducts, transferQuantities])
+
+    const hasInvalidTransferQuantity = selectedTransferItems.some((item) =>
+        !Number.isInteger(item.quantity) || item.quantity <= 0 || item.quantity > item.availableQuantity
+    )
+
     const handleTransfer = async () => {
-        if (!targetStorageId || selectedProductIds.size === 0) return
+        if (!activeWorkspace || !targetStorageId || selectedProductIds.size === 0) return
+
+        if (hasInvalidTransferQuantity) {
+            toast({
+                title: t('common.error', 'Error'),
+                description: t('inventoryTransfer.invalidQuantity', 'Enter a valid quantity for each selected product.'),
+                variant: 'destructive'
+            })
+            return
+        }
 
         setIsTransferring(true)
-        const now = new Date().toISOString()
-        let successCount = 0
 
         try {
-            for (const productId of selectedProductIds) {
-                await db.products.update(productId, {
-                    storageId: targetStorageId,
-                    updatedAt: now,
-                    syncStatus: 'pending'
-                })
-
-                if (!isLocalMode && isOnline(activeWorkspace?.id)) {
-                    const { error } = await supabase
-                        .from('products')
-                        .update({ storage_id: targetStorageId, updated_at: now })
-                        .eq('id', productId)
-
-                    if (!error) {
-                        await db.products.update(productId, { syncStatus: 'synced', lastSyncedAt: now })
-                    }
-                }
-                successCount++
-            }
+            const result = await transferInventoryBetweenStorages(
+                activeWorkspace.id,
+                sourceStorageId,
+                targetStorageId,
+                selectedTransferItems.map((item) => ({
+                    productId: item.productId,
+                    quantity: item.quantity
+                }))
+            )
 
             const targetStorage = storages.find(s => s.id === targetStorageId)
             const storageDisplayName = targetStorage?.isSystem
@@ -94,18 +131,21 @@ export default function InventoryTransfer() {
             toast({
                 title: t('inventoryTransfer.success', 'Transfer Complete'),
                 description: t('inventoryTransfer.successMessage', '{{count}} products moved to {{storage}}', {
-                    count: successCount,
+                    count: result.movedCount,
                     storage: storageDisplayName
                 })
             })
 
             // Reset state
             setSelectedProductIds(new Set())
+            setTransferQuantities({})
             setTargetStorageId('')
         } catch (error) {
             toast({
                 title: t('common.error', 'Error'),
-                description: t('inventoryTransfer.error', 'Failed to transfer products'),
+                description: error instanceof Error
+                    ? error.message
+                    : t('inventoryTransfer.error', 'Failed to transfer products'),
                 variant: 'destructive'
             })
         } finally {
@@ -146,7 +186,12 @@ export default function InventoryTransfer() {
                         <CardDescription>{t('inventoryTransfer.sourceDescription', 'Choose storage to transfer from')}</CardDescription>
                     </CardHeader>
                     <CardContent className="p-4 space-y-4">
-                        <Select value={sourceStorageId} onValueChange={id => { setSourceStorageId(id); setSelectedProductIds(new Set()) }}>
+                        <Select value={sourceStorageId} onValueChange={id => {
+                            setSourceStorageId(id)
+                            setTargetStorageId('')
+                            setSelectedProductIds(new Set())
+                            setTransferQuantities({})
+                        }}>
                             <SelectTrigger className="rounded-xl">
                                 <SelectValue placeholder={t('inventoryTransfer.selectStorage', 'Select storage...')} />
                             </SelectTrigger>
@@ -202,22 +247,43 @@ export default function InventoryTransfer() {
                                         {t('common.selectAll', 'Select All')} ({sourceProducts.length})
                                     </Label>
                                 </div>
-                                {sourceProducts.map(product => (
-                                    <div key={product.id} className="flex items-center gap-2 p-2 hover:bg-muted/30 rounded-lg transition-colors">
+                                {sourceProducts.map(({ row, product }) => (
+                                    <div key={row.id} className="flex items-center gap-3 p-2 hover:bg-muted/30 rounded-lg transition-colors">
                                         <Checkbox
                                             id={product.id}
                                             checked={selectedProductIds.has(product.id)}
-                                            onCheckedChange={() => toggleProduct(product.id)}
+                                            onCheckedChange={() => toggleProduct(product.id, row.quantity)}
                                         />
                                         <Label htmlFor={product.id} className="flex-1 cursor-pointer">
                                             <div className="flex items-center justify-between">
                                                 <span className="text-sm font-medium">{product.name}</span>
                                                 <span className="text-xs text-muted-foreground">
-                                                    {product.quantity} {product.unit}
+                                                    {row.quantity} {product.unit}
                                                 </span>
                                             </div>
                                             <div className="text-xs text-muted-foreground">{product.sku}</div>
                                         </Label>
+                                        <div className="w-24">
+                                            <Input
+                                                type="number"
+                                                min="1"
+                                                max={row.quantity}
+                                                step="1"
+                                                value={transferQuantities[product.id] || ''}
+                                                disabled={!selectedProductIds.has(product.id)}
+                                                onChange={(event) => setTransferQuantities((current) => ({
+                                                    ...current,
+                                                    [product.id]: event.target.value
+                                                }))}
+                                                className="h-9 rounded-lg text-center"
+                                                aria-label={`${product.name} ${t('common.quantity', 'Quantity')}`}
+                                            />
+                                            {selectedProductIds.has(product.id) && (
+                                                <div className="mt-1 text-[11px] text-muted-foreground text-center">
+                                                    {`${t('inventoryTransfer.available', 'Available')}: ${row.quantity} ${product.unit}`}
+                                                </div>
+                                            )}
+                                        </div>
                                     </div>
                                 ))}
                             </div>
@@ -271,7 +337,7 @@ export default function InventoryTransfer() {
             <div className="flex justify-end">
                 <Button
                     onClick={handleTransfer}
-                    disabled={!sourceStorageId || !targetStorageId || selectedProductIds.size === 0 || isTransferring}
+                    disabled={!sourceStorageId || !targetStorageId || selectedProductIds.size === 0 || hasInvalidTransferQuantity || isTransferring}
                     className="rounded-xl shadow-lg px-8 gap-2"
                     size="lg"
                 >

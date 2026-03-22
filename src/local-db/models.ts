@@ -68,6 +68,12 @@ export interface Storage extends BaseEntity {
     isProtected: boolean
 }
 
+export interface Inventory extends BaseEntity {
+    productId: string
+    storageId: string
+    quantity: number
+}
+
 export interface Supplier extends BaseEntity {
     name: string
     contactName?: string
@@ -112,6 +118,7 @@ export interface ExchangeRateSnapshot {
 export interface OrderLineItem {
     id: string
     productId: string
+    storageId?: string | null
     productName: string
     productSku: string
     quantity: number
@@ -137,6 +144,7 @@ export interface SalesOrder extends BaseEntity {
     orderNumber: string
     customerId: string
     customerName: string
+    sourceStorageId?: string | null
     items: SalesOrderItem[]
     subtotal: number
     discount: number
@@ -162,6 +170,7 @@ export interface PurchaseOrder extends BaseEntity {
     orderNumber: string
     supplierId: string
     supplierName: string
+    destinationStorageId?: string | null
     items: PurchaseOrderItem[]
     subtotal: number
     discount: number
@@ -330,6 +339,7 @@ export interface SaleItem {
     id: string
     saleId: string
     productId: string
+    storageId?: string | null
     quantity: number
     unitPrice: number
     totalPrice: number
@@ -397,7 +407,7 @@ export interface LoanPayment extends BaseEntity {
 // Sync Queue Item for tracking pending changes
 export interface SyncQueueItem {
     id: string
-    entityType: 'products' | 'invoices' | 'users' | 'sales' | 'categories' | 'storages' | 'employees' | 'workspace_contacts' | 'loans' | 'loan_installments' | 'loan_payments' | 'budget_settings' | 'budget_allocations' | 'expense_series' | 'expense_items' | 'payroll_statuses' | 'dividend_statuses' | 'customers' | 'suppliers' | 'sales_orders' | 'purchase_orders'
+    entityType: 'products' | 'inventory' | 'invoices' | 'users' | 'sales' | 'categories' | 'storages' | 'employees' | 'workspace_contacts' | 'loans' | 'loan_installments' | 'loan_payments' | 'budget_settings' | 'budget_allocations' | 'expense_series' | 'expense_items' | 'payroll_statuses' | 'dividend_statuses' | 'customers' | 'suppliers' | 'sales_orders' | 'purchase_orders'
     entityId: string
     operation: 'create' | 'update' | 'delete'
     data: Record<string, unknown>
@@ -450,7 +460,7 @@ export interface WorkspaceContact extends Omit<BaseEntity, 'isDeleted'> {
 export interface OfflineMutation {
     id: string
     workspaceId: string
-    entityType: 'products' | 'invoices' | 'users' | 'sales' | 'categories' | 'workspaces' | 'storages' | 'employees' | 'workspace_contacts' | 'loans' | 'loan_installments' | 'loan_payments' | 'budget_settings' | 'budget_allocations' | 'expense_series' | 'expense_items' | 'payroll_statuses' | 'dividend_statuses' | 'customers' | 'suppliers' | 'sales_orders' | 'purchase_orders'
+    entityType: 'products' | 'inventory' | 'invoices' | 'users' | 'sales' | 'categories' | 'workspaces' | 'storages' | 'employees' | 'workspace_contacts' | 'loans' | 'loan_installments' | 'loan_payments' | 'budget_settings' | 'budget_allocations' | 'expense_series' | 'expense_items' | 'payroll_statuses' | 'dividend_statuses' | 'customers' | 'suppliers' | 'sales_orders' | 'purchase_orders'
     entityId: string
     operation: 'create' | 'update' | 'delete'
     payload: Record<string, unknown>

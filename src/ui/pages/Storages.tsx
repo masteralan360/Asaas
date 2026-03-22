@@ -1,4 +1,4 @@
-import { useStorages, createStorage, updateStorage, deleteStorage, getReserveStorageId, useProducts, useCategories, type Storage, type CurrencyCode } from '@/local-db'
+import { useStorages, createStorage, updateStorage, deleteStorage, getReserveStorageId, useInventory, useProducts, useCategories, type Storage, type CurrencyCode } from '@/local-db'
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useExchangeRate } from '@/context/ExchangeRateContext'
 import { useWorkspace } from '@/workspace'
@@ -32,6 +32,7 @@ export default function Storages() {
     )
 
     const products = useProducts(activeWorkspace?.id)
+    const inventory = useInventory(activeWorkspace?.id)
     const categories = useCategories(activeWorkspace?.id)
     const { features } = useWorkspace()
 
@@ -92,12 +93,20 @@ export default function Storages() {
 
     const totalStorageValue = useMemo(() => {
         if (!selectedStorageId) return 0
-        const storageProducts = products.filter(p => p.storageId === selectedStorageId)
-        return storageProducts.reduce((sum, product) => {
+        return inventory.reduce((sum, row) => {
+            if (row.storageId !== selectedStorageId) {
+                return sum
+            }
+
+            const product = products.find((entry) => entry.id === row.productId)
+            if (!product || product.isDeleted) {
+                return sum
+            }
+
             const converted = convertPrice(product.price, product.currency, settlementCurrency)
-            return sum + (converted * product.quantity)
+            return sum + (converted * row.quantity)
         }, 0)
-    }, [products, selectedStorageId, convertPrice, settlementCurrency])
+    }, [inventory, products, selectedStorageId, convertPrice, settlementCurrency])
 
     useEffect(() => {
         if (selectedStorageId) {
@@ -112,13 +121,26 @@ export default function Storages() {
         }
     }, [storages, selectedStorageId])
 
-    const inventoryProducts = products.filter(p => {
-        const matchesStorage = p.storageId === selectedStorageId
-        const matchesCategory = selectedCategoryId === 'all' || p.categoryId === selectedCategoryId
-        const matchesSearch = p.name.toLowerCase().includes(inventorySearch.toLowerCase()) ||
-            p.sku.toLowerCase().includes(inventorySearch.toLowerCase())
-        return matchesStorage && matchesCategory && matchesSearch
-    })
+    const inventoryProducts = useMemo(() => inventory
+        .filter((row) => row.storageId === selectedStorageId)
+        .map((row) => {
+            const product = products.find((entry) => entry.id === row.productId)
+            if (!product || product.isDeleted) {
+                return null
+            }
+
+            const matchesCategory = selectedCategoryId === 'all' || product.categoryId === selectedCategoryId
+            const matchesSearch = product.name.toLowerCase().includes(inventorySearch.toLowerCase())
+                || product.sku.toLowerCase().includes(inventorySearch.toLowerCase())
+
+            if (!matchesCategory || !matchesSearch) {
+                return null
+            }
+
+            return { row, product }
+        })
+        .filter((entry): entry is { row: (typeof inventory)[number]; product: (typeof products)[number] } => !!entry),
+    [inventory, inventorySearch, products, selectedCategoryId, selectedStorageId])
 
     const getDisplayImageUrl = (url?: string) => {
         if (!url) return '';
@@ -373,9 +395,9 @@ export default function Storages() {
                                 </div>
                             ) : (
                                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
-                                    {inventoryProducts.map((product) => (
+                                    {inventoryProducts.map(({ row, product }) => (
                                         <div
-                                            key={product.id}
+                                            key={row.id}
                                             className="group relative bg-card rounded-[1.5rem] border border-border/50 p-4 transition-all duration-300 hover:shadow-2xl hover:shadow-primary/5 hover:-translate-y-1 flex flex-col gap-4 overflow-hidden"
                                         >
                                             {/* Product Image Wrapper */}
@@ -393,9 +415,9 @@ export default function Storages() {
                                                 {/* Status Badge */}
                                                 <div className={cn(
                                                     "absolute top-2 right-2 px-2 py-1 rounded-lg text-[10px] font-black uppercase tracking-tighter shadow-sm",
-                                                    product.quantity <= product.minStockLevel ? "bg-amber-500 text-white" : "bg-emerald-500/10 text-emerald-600 border border-emerald-500/20"
+                                                    row.quantity <= product.minStockLevel ? "bg-amber-500 text-white" : "bg-emerald-500/10 text-emerald-600 border border-emerald-500/20"
                                                 )}>
-                                                    {product.quantity <= product.minStockLevel ? (t('products.lowStock') || 'Low Stock') : (t('products.inStock') || 'In Stock')}
+                                                    {row.quantity <= product.minStockLevel ? (t('products.lowStock') || 'Low Stock') : (t('products.inStock') || 'In Stock')}
                                                 </div>
                                             </div>
 
@@ -419,7 +441,7 @@ export default function Storages() {
                                                         {formatCurrency(product.price, product.currency, features.iqd_display_preference)}
                                                     </div>
                                                     <div className="text-[11px] text-muted-foreground font-medium">
-                                                        {product.quantity} {product.unit}
+                                                        {row.quantity} {product.unit}
                                                     </div>
                                                 </div>
                                                 <div className="w-8 h-8 rounded-lg bg-primary/5 flex items-center justify-center">

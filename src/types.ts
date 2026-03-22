@@ -2,6 +2,7 @@ export interface SaleItem {
     id: string
     sale_id: string
     product_id: string
+    storage_id?: string | null
     quantity: number
     unit_price: number
     total_price: number
@@ -62,6 +63,7 @@ export interface Sale {
 
 export interface CartItem {
     product_id: string
+    storageId?: string
     sku: string
     name: string
     price: number

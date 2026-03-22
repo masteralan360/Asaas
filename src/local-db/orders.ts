@@ -10,6 +10,10 @@ import { generateId } from '@/lib/utils'
 import { isCloudWorkspaceMode } from '@/workspace/workspaceMode'
 
 import { db } from './database'
+import {
+    adjustInventoryQuantity,
+    getInventoryQuantityForProductStorage
+} from './inventory'
 import { addToOfflineMutations, fetchTableFromSupabase } from './hooks'
 import type {
     Customer,
@@ -488,25 +492,48 @@ async function assertSalesCreditLimit(order: SalesOrder, excludeOrderId?: string
     }
 }
 
-async function getReservedQuantityMap(workspaceId: string, excludeOrderId?: string) {
+function buildInventoryReservationKey(productId: string, storageId: string) {
+    return `${productId}:${storageId}`
+}
+
+function resolveSalesOrderItemStorageId(order: SalesOrder, item: SalesOrder['items'][number]) {
+    return item.storageId || order.sourceStorageId || null
+}
+
+function resolvePurchaseOrderItemStorageId(order: PurchaseOrder, item: PurchaseOrder['items'][number]) {
+    return item.storageId || order.destinationStorageId || null
+}
+
+async function getReservedQuantityMaps(workspaceId: string, excludeOrderId?: string) {
     const orders = await db.sales_orders
         .where('workspaceId')
         .equals(workspaceId)
         .and((item) => !item.isDeleted && item.status === 'pending' && item.id !== excludeOrderId)
         .toArray()
 
-    const reserved = new Map<string, number>()
+    const reservedByStorage = new Map<string, number>()
+    const reservedWithoutStorage = new Map<string, number>()
     for (const order of orders) {
         for (const item of order.items) {
-            reserved.set(item.productId, (reserved.get(item.productId) || 0) + item.quantity)
+            const storageId = resolveSalesOrderItemStorageId(order, item)
+            if (storageId) {
+                const key = buildInventoryReservationKey(item.productId, storageId)
+                reservedByStorage.set(key, (reservedByStorage.get(key) || 0) + item.quantity)
+                continue
+            }
+
+            reservedWithoutStorage.set(item.productId, (reservedWithoutStorage.get(item.productId) || 0) + item.quantity)
         }
     }
 
-    return reserved
+    return {
+        reservedByStorage,
+        reservedWithoutStorage
+    }
 }
 
 async function assertSalesStockAvailable(order: SalesOrder, excludeOrderId?: string) {
-    const reserved = await getReservedQuantityMap(order.workspaceId, excludeOrderId)
+    const { reservedByStorage, reservedWithoutStorage } = await getReservedQuantityMaps(order.workspaceId, excludeOrderId)
     const productIds = Array.from(new Set(order.items.map((item) => item.productId)))
     const products = await db.products.where('id').anyOf(productIds).toArray()
     const productMap = new Map(products.map((product) => [product.id, product]))
@@ -517,7 +544,15 @@ async function assertSalesStockAvailable(order: SalesOrder, excludeOrderId?: str
             throw new Error(`Product not found: ${item.productName}`)
         }
 
-        const available = product.quantity - (reserved.get(item.productId) || 0)
+        const storageId = resolveSalesOrderItemStorageId(order, item)
+        if (!storageId) {
+            throw new Error(`Select a source storage for ${item.productName}`)
+        }
+
+        const storageQuantity = await getInventoryQuantityForProductStorage(item.productId, storageId)
+        const storageReserved = reservedByStorage.get(buildInventoryReservationKey(item.productId, storageId)) || 0
+        const globalReserved = reservedWithoutStorage.get(item.productId) || 0
+        const available = storageQuantity - storageReserved - globalReserved
         if (available < item.quantity) {
             throw new Error(`Insufficient stock for ${item.productName}`)
         }
@@ -527,7 +562,6 @@ async function assertSalesStockAvailable(order: SalesOrder, excludeOrderId?: str
 async function deductInventoryForSalesOrder(order: SalesOrder) {
     const now = new Date().toISOString()
     const updatedProducts: ProductLike[] = []
-    const syncMetadata = getSyncMetadata(order.workspaceId, now)
 
     for (const item of order.items) {
         const product = await db.products.get(item.productId)
@@ -535,19 +569,23 @@ async function deductInventoryForSalesOrder(order: SalesOrder) {
             throw new Error(`Product not found: ${item.productName}`)
         }
 
-        if (product.quantity < item.quantity) {
-            throw new Error(`Insufficient stock for ${item.productName}`)
+        const storageId = resolveSalesOrderItemStorageId(order, item)
+        if (!storageId) {
+            throw new Error(`Select a source storage for ${item.productName}`)
         }
 
-        const updatedProduct = {
-            ...product,
-            quantity: product.quantity - item.quantity,
-            updatedAt: now,
-            version: product.version + 1,
-            ...syncMetadata
+        const updatedProduct = await adjustInventoryQuantity({
+            workspaceId: order.workspaceId,
+            productId: item.productId,
+            storageId,
+            quantityDelta: -item.quantity,
+            timestamp: now
+        })
+
+        if (!updatedProduct) {
+            throw new Error(`Product not found: ${item.productName}`)
         }
 
-        await db.products.put(updatedProduct)
         updatedProducts.push(updatedProduct)
     }
 
@@ -567,6 +605,10 @@ async function receiveInventoryForPurchaseOrder(order: PurchaseOrder) {
 
         const receivedQuantity = item.receivedQuantity ?? item.quantity
         const actualUnitCost = item.originalUnitPrice
+        const storageId = resolvePurchaseOrderItemStorageId(order, item)
+        if (!storageId) {
+            throw new Error(`Select a target storage for ${item.productName}`)
+        }
         const nextQuantity = product.quantity + receivedQuantity
         const nextCost = nextQuantity <= 0
             ? actualUnitCost
@@ -575,12 +617,23 @@ async function receiveInventoryForPurchaseOrder(order: PurchaseOrder) {
                 product.currency
             )
 
+        const inventoryUpdatedProduct = await adjustInventoryQuantity({
+            workspaceId: order.workspaceId,
+            productId: item.productId,
+            storageId,
+            quantityDelta: receivedQuantity,
+            timestamp: now
+        })
+
+        if (!inventoryUpdatedProduct) {
+            throw new Error(`Product not found: ${item.productName}`)
+        }
+
         const updatedProduct = {
-            ...product,
-            quantity: nextQuantity,
+            ...inventoryUpdatedProduct,
             costPrice: nextCost,
             updatedAt: now,
-            version: product.version + 1,
+            version: inventoryUpdatedProduct.version + 1,
             ...syncMetadata
         }
 

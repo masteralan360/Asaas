@@ -1,5 +1,7 @@
 import { supabase, isSupabaseConfigured } from '@/auth/supabase'
 import { db } from '@/local-db'
+import { syncProductStockSnapshot } from '@/local-db/inventory'
+import type { Inventory } from '@/local-db/models'
 import { runSupabaseAction } from '@/lib/supabaseRequest'
 import { getSupabaseClientForTable } from '@/lib/supabaseSchema'
 import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
@@ -18,6 +20,9 @@ export interface SyncResult {
 function toSnakeCase(obj: Record<string, unknown>): Record<string, unknown> {
     const result: Record<string, unknown> = {}
     for (const key in obj) {
+        if (obj[key] === undefined) {
+            continue
+        }
         const snakeKey = key.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`)
         result[snakeKey] = obj[key]
     }
@@ -46,7 +51,7 @@ async function withTimeout<T>(promise: Promise<T>, ms: number = 15000): Promise<
 
 
 // Process offline mutation queue
-export async function processMutationQueue(userId: string): Promise<{ success: number; failed: number; error?: string }> {
+export async function processMutationQueue(_userId: string): Promise<{ success: number; failed: number; error?: string }> {
     if (!isSupabaseConfigured) {
         return { success: 0, failed: 1, error: 'Supabase not configured' }
     }
@@ -68,12 +73,15 @@ export async function processMutationQueue(userId: string): Promise<{ success: n
             const { entityType, operation, payload, entityId, workspaceId, id } = mutation
             const tableName = getTableName(entityType)
             const client = getSupabaseClientForTable(tableName)
+            let syncedEntityId = entityId
+            let entityHandledInline = false
 
             // Prepare payload
             const dbPayload = toSnakeCase(payload) as Record<string, unknown>
-            // Ensure IDs and metadata
-            dbPayload.user_id = userId
-            dbPayload.workspace_id = workspaceId
+            // Ensure workspace scope is present for workspace-bound rows.
+            if (entityType !== 'workspaces' && dbPayload.workspace_id === undefined) {
+                dbPayload.workspace_id = workspaceId
+            }
 
             // Remove local metadata
             delete dbPayload.sync_status
@@ -103,6 +111,27 @@ export async function processMutationQueue(userId: string): Promise<{ success: n
                     delete dbPayload.user_id
                     const { error } = await client.from(tableName).update(dbPayload).eq('id', entityId)
                     if (error) throw error
+                } else if (entityType === 'inventory') {
+                    const { data: remoteInventoryRow, error } = await client
+                        .from(tableName)
+                        .upsert(dbPayload, { onConflict: 'workspace_id,product_id,storage_id' })
+                        .select('*')
+                        .single()
+
+                    if (error) throw error
+
+                    const syncedAt = new Date().toISOString()
+                    const localInventoryRow = toCamelCase(remoteInventoryRow as Record<string, unknown>) as unknown as Inventory
+                    localInventoryRow.syncStatus = 'synced'
+                    localInventoryRow.lastSyncedAt = syncedAt
+                    syncedEntityId = localInventoryRow.id
+
+                    if (syncedEntityId !== entityId) {
+                        await db.inventory.delete(entityId)
+                    }
+
+                    await db.inventory.put(localInventoryRow)
+                    entityHandledInline = true
                 } else {
                     // Special handling for invoices to remove legacy fields
                     if (tableName === 'invoices') {
@@ -139,8 +168,8 @@ export async function processMutationQueue(userId: string): Promise<{ success: n
                         await db.loan_installments.where('loanId').equals(entityId).delete()
                         await db.loan_payments.where('loanId').equals(entityId).delete()
                     })
-                } else {
-                    await table.update(entityId, { syncStatus: 'synced', lastSyncedAt: new Date().toISOString() })
+                } else if (!entityHandledInline) {
+                    await table.update(syncedEntityId, { syncStatus: 'synced', lastSyncedAt: new Date().toISOString() })
                 }
             }
 
@@ -183,6 +212,7 @@ export async function pullChanges(workspaceId: string, lastSyncTime: string | nu
 
     const tables = [
         'products',
+        'inventory',
         'categories',
         'customers',
         'suppliers',
@@ -205,6 +235,7 @@ export async function pullChanges(workspaceId: string, lastSyncTime: string | nu
     for (const table of tables) {
         try {
             const client = getSupabaseClientForTable(table)
+            const affectedInventoryProducts = new Set<string>()
             // console.log(`[Sync] pullChanges: Fetching ${table}...`)
             const { data, error } = (await withTimeout(
                 table === 'workspaces'
@@ -254,8 +285,17 @@ export async function pullChanges(workspaceId: string, lastSyncTime: string | nu
                             syncStatus: 'synced',
                             lastSyncedAt: new Date().toISOString()
                         })
+                        if (table === 'inventory' && typeof (remoteData as any).productId === 'string') {
+                            affectedInventoryProducts.add((remoteData as any).productId)
+                        }
                         totalPulled++
                     }
+                }
+
+                if (table === 'inventory' && affectedInventoryProducts.size > 0) {
+                    await Promise.all(Array.from(affectedInventoryProducts).map((productId) =>
+                        syncProductStockSnapshot(productId, new Date().toISOString(), 'remote')
+                    ))
                 }
             }
         } catch (err: any) {

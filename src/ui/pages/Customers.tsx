@@ -318,66 +318,68 @@ export function Customers() {
             </Card>
 
             <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-                <DialogContent className="sm:max-w-2xl">
-                    <DialogHeader>
-                        <DialogTitle>{editingCustomer ? (t('customers.editCustomer') || 'Edit Customer') : (t('customers.addCustomer') || 'Add Customer')}</DialogTitle>
+                <DialogContent className="top-[calc(50%+var(--titlebar-height)/2+var(--safe-area-top)/2)] flex max-h-[calc(100dvh-var(--titlebar-height)-var(--safe-area-top)-var(--safe-area-bottom)-0.75rem)] w-[calc(100vw-0.75rem)] max-w-2xl flex-col overflow-hidden rounded-[1.25rem] border-border/60 p-0 sm:w-full sm:max-h-[min(calc(100dvh-var(--titlebar-height)-var(--safe-area-top)-var(--safe-area-bottom)-2rem),800px)] sm:rounded-[1.75rem]">
+                    <DialogHeader className="border-b bg-muted/30 px-4 py-4 pr-14 text-left sm:px-6 sm:py-5">
+                        <DialogTitle className="text-xl">{editingCustomer ? (t('customers.editCustomer') || 'Edit Customer') : (t('customers.addCustomer') || 'Add Customer')}</DialogTitle>
                     </DialogHeader>
-                    <form onSubmit={handleSubmit} className="space-y-4">
-                        <div className="grid gap-4 md:grid-cols-2">
-                            <div className="space-y-2">
-                                <Label htmlFor="customer-name">{t('customers.form.name') || 'Full Name'}</Label>
-                                <Input id="customer-name" value={formState.name} onChange={(event) => setFormState((current) => ({ ...current, name: event.target.value }))} required />
-                            </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="customer-phone">{t('customers.form.phone') || 'Phone'}</Label>
-                                <Input id="customer-phone" value={formState.phone} onChange={(event) => setFormState((current) => ({ ...current, phone: event.target.value }))} />
-                            </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="customer-email">{t('customers.form.email') || 'Email'}</Label>
-                                <Input id="customer-email" type="email" value={formState.email} onChange={(event) => setFormState((current) => ({ ...current, email: event.target.value }))} />
-                            </div>
-                            <div className="space-y-2">
-                                <Label>{t('customers.form.defaultCurrency') || 'Default Currency'}</Label>
-                                <Select value={formState.defaultCurrency} onValueChange={(value) => setFormState((current) => ({ ...current, defaultCurrency: value as CurrencyCode }))}>
-                                    <SelectTrigger>
-                                        <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {availableCurrencies.map((currency) => (
-                                            <SelectItem key={currency} value={currency}>
-                                                {currency.toUpperCase()}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="customer-city">{t('customers.form.city') || 'City'}</Label>
-                                <Input id="customer-city" value={formState.city} onChange={(event) => setFormState((current) => ({ ...current, city: event.target.value }))} />
-                            </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="customer-country">{t('customers.form.country') || 'Country'}</Label>
-                                <Input id="customer-country" value={formState.country} onChange={(event) => setFormState((current) => ({ ...current, country: event.target.value }))} />
-                            </div>
-                            <div className="space-y-2 md:col-span-2">
-                                <Label htmlFor="customer-address">{t('customers.form.address') || 'Address'}</Label>
-                                <Input id="customer-address" value={formState.address} onChange={(event) => setFormState((current) => ({ ...current, address: event.target.value }))} />
-                            </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="customer-credit">{t('customers.form.creditLimit') || 'Credit Limit'}</Label>
-                                <Input id="customer-credit" type="number" min="0" step="0.01" value={formState.creditLimit} onChange={(event) => setFormState((current) => ({ ...current, creditLimit: event.target.value }))} />
-                            </div>
-                            <div className="space-y-2 md:col-span-2">
-                                <Label htmlFor="customer-notes">{t('customers.form.notes') || 'Notes'}</Label>
-                                <Textarea id="customer-notes" rows={4} value={formState.notes} onChange={(event) => setFormState((current) => ({ ...current, notes: event.target.value }))} />
+                    <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+                        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6 sm:py-6">
+                            <div className="grid gap-4 md:grid-cols-2">
+                                <div className="space-y-2">
+                                    <Label htmlFor="customer-name">{t('customers.form.name') || 'Full Name'}</Label>
+                                    <Input id="customer-name" value={formState.name} onChange={(event) => setFormState((current) => ({ ...current, name: event.target.value }))} required />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="customer-phone">{t('customers.form.phone') || 'Phone'}</Label>
+                                    <Input id="customer-phone" value={formState.phone} onChange={(event) => setFormState((current) => ({ ...current, phone: event.target.value }))} />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="customer-email">{t('customers.form.email') || 'Email'}</Label>
+                                    <Input id="customer-email" type="email" value={formState.email} onChange={(event) => setFormState((current) => ({ ...current, email: event.target.value }))} />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>{t('customers.form.defaultCurrency') || 'Default Currency'}</Label>
+                                    <Select value={formState.defaultCurrency} onValueChange={(value) => setFormState((current) => ({ ...current, defaultCurrency: value as CurrencyCode }))}>
+                                        <SelectTrigger>
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {availableCurrencies.map((currency) => (
+                                                <SelectItem key={currency} value={currency}>
+                                                    {currency.toUpperCase()}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="customer-city">{t('customers.form.city') || 'City'}</Label>
+                                    <Input id="customer-city" value={formState.city} onChange={(event) => setFormState((current) => ({ ...current, city: event.target.value }))} />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="customer-country">{t('customers.form.country') || 'Country'}</Label>
+                                    <Input id="customer-country" value={formState.country} onChange={(event) => setFormState((current) => ({ ...current, country: event.target.value }))} />
+                                </div>
+                                <div className="space-y-2 md:col-span-2">
+                                    <Label htmlFor="customer-address">{t('customers.form.address') || 'Address'}</Label>
+                                    <Input id="customer-address" value={formState.address} onChange={(event) => setFormState((current) => ({ ...current, address: event.target.value }))} />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="customer-credit">{t('customers.form.creditLimit') || 'Credit Limit'}</Label>
+                                    <Input id="customer-credit" type="number" min="0" step="0.01" value={formState.creditLimit} onChange={(event) => setFormState((current) => ({ ...current, creditLimit: event.target.value }))} />
+                                </div>
+                                <div className="space-y-2 md:col-span-2">
+                                    <Label htmlFor="customer-notes">{t('customers.form.notes') || 'Notes'}</Label>
+                                    <Textarea id="customer-notes" rows={4} value={formState.notes} onChange={(event) => setFormState((current) => ({ ...current, notes: event.target.value }))} />
+                                </div>
                             </div>
                         </div>
 
-                        <DialogFooter>
-                            <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
+                        <DialogFooter className="border-t bg-muted/20 px-4 py-4 pb-[calc(1rem+var(--safe-area-bottom))] sm:justify-between sm:px-6">
+                            <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={() => setDialogOpen(false)}>
                                 {t('common.cancel') || 'Cancel'}
                             </Button>
-                            <Button type="submit" disabled={isSaving}>
+                            <Button type="submit" className="w-full sm:w-auto" disabled={isSaving}>
                                 {isSaving ? (t('common.loading') || 'Loading...') : (editingCustomer ? (t('common.save') || 'Save') : (t('common.create') || 'Create'))}
                             </Button>
                         </DialogFooter>

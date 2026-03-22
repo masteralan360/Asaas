@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/auth'
 import { supabase } from '@/auth/supabase'
-import { addToOfflineMutations, useCategories, useProducts } from '@/local-db'
+import { addToOfflineMutations, adjustInventoryQuantity, useCategories, useProducts } from '@/local-db'
 import { db } from '@/local-db/database'
 import type { CurrencyCode } from '@/local-db/models'
 import { useWorkspace } from '@/workspace'
@@ -534,6 +534,7 @@ export function InstantPOS() {
         const term = search.trim().toLowerCase()
         const normalizedSettlement = settlementCurrency?.toLowerCase()
         return products.filter(product => {
+            if (!product.storageId) return false
             const matchesSearch = !term
                 || (product.name || '').toLowerCase().includes(term)
                 || (product.sku || '').toLowerCase().includes(term)
@@ -587,6 +588,22 @@ export function InstantPOS() {
     const addItemToTicket = (productId: string) => {
         const product = products.find(item => item.id === productId)
         if (!product) return
+        if (!product.storageId) {
+            toast({
+                title: t('common.error') || 'Error',
+                description: t('instantPos.storageRequired') || 'This product is stocked in multiple storages. Use the full POS flow to choose a storage.',
+                variant: 'destructive'
+            })
+            return
+        }
+        if (product.quantity <= 0) {
+            toast({
+                title: t('common.error') || 'Error',
+                description: t('instantPos.outOfStock') || 'This product is out of stock.',
+                variant: 'destructive'
+            })
+            return
+        }
 
         if (!activeTicket) {
             const createdAt = new Date()
@@ -613,6 +630,9 @@ export function InstantPOS() {
         updateTicket(activeTicket.id, ticket => {
             const existing = ticket.items.find(item => item.productId === product.id)
             if (existing) {
+                if (existing.quantity >= product.quantity) {
+                    return ticket
+                }
                 const items = ticket.items.map(item =>
                     item.productId === product.id
                         ? { ...item, quantity: item.quantity + 1 }
@@ -637,11 +657,18 @@ export function InstantPOS() {
     const updateItemQuantity = (productId: string, delta: number) => {
         if (!activeTicket) return
         updateTicket(activeTicket.id, ticket => {
+            const product = products.find(item => item.id === productId)
             const items = ticket.items
-                .map(item => item.productId === productId
-                    ? { ...item, quantity: Math.max(1, item.quantity + delta) }
-                    : item
-                )
+                .map(item => {
+                    if (item.productId !== productId) return item
+                    const nextQuantity = Math.max(1, item.quantity + delta)
+                    const maxStock = product?.quantity ?? nextQuantity
+                    const boundedQuantity = maxStock > 0 ? Math.min(nextQuantity, maxStock) : 1
+                    return {
+                        ...item,
+                        quantity: boundedQuantity
+                    }
+                })
             return { ...ticket, items }
         })
     }
@@ -732,12 +759,36 @@ export function InstantPOS() {
         const saleId = generateId()
         const snapshotTimestamp = new Date().toISOString()
 
+        for (const item of activeTicket.items) {
+            const product = products.find(p => p.id === item.productId)
+            if (!product?.storageId) {
+                toast({
+                    title: t('common.error') || 'Error',
+                    description: t('instantPos.storageRequired') || 'This product is stocked in multiple storages. Use the full POS flow to choose a storage.',
+                    variant: 'destructive'
+                })
+                setIsCheckoutLoading(false)
+                return
+            }
+
+            if (item.quantity > product.quantity) {
+                toast({
+                    title: t('common.error') || 'Error',
+                    description: `${product.name} ${t('instantPos.outOfStock') || 'is out of stock.'}`,
+                    variant: 'destructive'
+                })
+                setIsCheckoutLoading(false)
+                return
+            }
+        }
+
         const itemsWithMetadata = activeTicket.items.map(item => {
             const product = products.find(p => p.id === item.productId)
             const costPrice = product?.costPrice || 0
             const inventorySnapshot = product?.quantity ?? 0
             return {
                 product_id: item.productId,
+                storage_id: product?.storageId || null,
                 product_name: item.name,
                 product_sku: item.sku,
                 quantity: item.quantity,
@@ -796,9 +847,15 @@ export function InstantPOS() {
 
             await Promise.all(activeTicket.items.map(async (item) => {
                 const product = products.find(p => p.id === item.productId)
-                if (product) {
-                    await db.products.update(item.productId, {
-                        quantity: Math.max(0, product.quantity - item.quantity)
+                if (product?.storageId) {
+                    await adjustInventoryQuantity({
+                        workspaceId: user.workspaceId,
+                        productId: item.productId,
+                        storageId: product.storageId,
+                        quantityDelta: -item.quantity,
+                        timestamp: snapshotTimestamp,
+                        syncSource: 'remote',
+                        skipRemoteSync: true
                     })
                 }
             }))
@@ -863,6 +920,7 @@ export function InstantPOS() {
                             id: generateId(),
                             saleId: saleId,
                             productId: item.product_id,
+                            storageId: item.storage_id,
                             quantity: item.quantity,
                             unitPrice: item.unit_price,
                             totalPrice: item.total_price,
@@ -879,9 +937,13 @@ export function InstantPOS() {
 
                     await Promise.all(activeTicket.items.map(async (item) => {
                         const product = products.find(p => p.id === item.productId)
-                        if (product) {
-                            await db.products.update(item.productId, {
-                                quantity: Math.max(0, product.quantity - item.quantity)
+                        if (product?.storageId) {
+                            await adjustInventoryQuantity({
+                                workspaceId: user.workspaceId,
+                                productId: item.productId,
+                                storageId: product.storageId,
+                                quantityDelta: -item.quantity,
+                                timestamp: snapshotTimestamp
                             })
                         }
                     }))

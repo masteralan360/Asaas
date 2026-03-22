@@ -2,6 +2,7 @@ CREATE TABLE public.sale_items (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   sale_id uuid NOT NULL,
   product_id uuid NOT NULL,
+  storage_id uuid NULL,
   quantity integer NOT NULL,
   unit_price numeric NOT NULL,
   total_price numeric NOT NULL,

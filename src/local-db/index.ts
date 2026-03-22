@@ -1,4 +1,6 @@
 export * from './database'
 export * from './models'
+export * from './inventory'
+export * from './offlineMutations'
 export * from './hooks'
 export * from './orders'

@@ -2,11 +2,17 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 
 import { db } from './database'
+import { addToOfflineMutations } from './offlineMutations'
+import {
+    deleteInventoryForProduct,
+    getInventoryQuantityForProductStorage,
+    setProductInventoryFromLegacyInput,
+    transferInventoryQuantity
+} from './inventory'
 import type {
     Product,
     Category,
     Invoice,
-    OfflineMutation,
     Sale,
     SaleItem,
     Employee,
@@ -33,7 +39,9 @@ import { useNetworkStatus } from '@/hooks/useNetworkStatus'
 import { isOnline } from '@/lib/network'
 import { isRetriableWebRequestError, normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
 import { getSupabaseClientForTable } from '@/lib/supabaseSchema'
-import { isCloudWorkspaceMode, isLocalWorkspaceMode } from '@/workspace/workspaceMode'
+import { isCloudWorkspaceMode } from '@/workspace/workspaceMode'
+
+export { addToOfflineMutations } from './offlineMutations'
 
 // ===================
 // CATEGORIES HOOKS
@@ -62,6 +70,49 @@ function shouldUseOfflineMutationFallback(error: unknown): boolean {
 
 function shouldUseCloudBusinessData(workspaceId?: string | null): boolean {
     return !!workspaceId && isCloudWorkspaceMode(workspaceId)
+}
+
+async function syncUpdatedProductsBestEffort(products: Product[], workspaceId: string): Promise<void> {
+    const dedupedProducts = Array.from(new Map(products.map((product) => [product.id, product])).values())
+    if (dedupedProducts.length === 0) {
+        return
+    }
+
+    if (isOnline() && shouldUseCloudBusinessData(workspaceId)) {
+        try {
+            const payload = dedupedProducts.map((product) => toSnakeCase({
+                ...product,
+                syncStatus: undefined,
+                lastSyncedAt: undefined,
+                storageName: undefined
+            }))
+
+            const { error } = await runMutation('products.inventorySync', () =>
+                supabase.from('products').upsert(payload)
+            )
+
+            if (error) {
+                throw normalizeSupabaseActionError(error)
+            }
+
+            const syncedAt = new Date().toISOString()
+            await Promise.all(dedupedProducts.map((product) =>
+                db.products.update(product.id, {
+                    syncStatus: 'synced',
+                    lastSyncedAt: syncedAt
+                })
+            ))
+            return
+        } catch (error) {
+            if (!shouldUseOfflineMutationFallback(error)) {
+                throw normalizeSupabaseActionError(error)
+            }
+        }
+    }
+
+    await Promise.all(dedupedProducts.map((product) =>
+        addToOfflineMutations('products', product.id, 'update', product as unknown as Record<string, unknown>, workspaceId)
+    ))
 }
 
 // ===================
@@ -268,6 +319,19 @@ export function useProducts(workspaceId: string | undefined) {
                             await db.products.put(localItem)
                         }
                     })
+
+                    for (const remoteItem of data) {
+                        const localItem = toCamelCase(remoteItem as any) as unknown as Product
+                        await setProductInventoryFromLegacyInput({
+                            workspaceId,
+                            productId: localItem.id,
+                            storageId: localItem.storageId ?? null,
+                            quantity: Number(localItem.quantity) || 0,
+                            timestamp: localItem.updatedAt,
+                            syncSource: 'remote',
+                            skipRemoteSync: true
+                        })
+                    }
                 }
             }
         }
@@ -318,7 +382,15 @@ export async function createProduct(workspaceId: string, data: Omit<Product, 'id
         await addToOfflineMutations('products', id, 'create', product as unknown as Record<string, unknown>, workspaceId)
     }
 
-    return product
+    const normalizedProduct = await setProductInventoryFromLegacyInput({
+        workspaceId,
+        productId: id,
+        storageId: data.storageId ?? null,
+        quantity: Number(data.quantity) || 0,
+        timestamp: now
+    })
+
+    return normalizedProduct || product
 }
 
 export async function updateProduct(id: string, data: Partial<Product>): Promise<void> {
@@ -348,6 +420,14 @@ export async function updateProduct(id: string, data: Partial<Product>): Promise
         await db.products.put(updated)
         await addToOfflineMutations('products', id, 'update', updated as unknown as Record<string, unknown>, existing.workspaceId)
     }
+
+    await setProductInventoryFromLegacyInput({
+        workspaceId: existing.workspaceId,
+        productId: id,
+        storageId: data.storageId ?? existing.storageId ?? null,
+        quantity: typeof data.quantity === 'number' ? data.quantity : updated.quantity,
+        timestamp: now
+    })
 }
 
 export async function deleteProduct(id: string): Promise<void> {
@@ -374,6 +454,8 @@ export async function deleteProduct(id: string): Promise<void> {
         await db.products.put(updated)
         await addToOfflineMutations('products', id, 'delete', { id }, existing.workspaceId)
     }
+
+    await deleteInventoryForProduct(id, now)
 }
 
 
@@ -799,6 +881,7 @@ async function enrichSalesForUiRows(workspaceId: string, sales: Sale[]) {
             id: item.id,
             sale_id: item.saleId,
             product_id: item.productId,
+            storage_id: item.storageId,
             quantity: item.quantity,
             unit_price: item.unitPrice,
             total_price: item.totalPrice,
@@ -1006,65 +1089,6 @@ export function useSyncQueue() {
 export function usePendingSyncCount() {
     const count = useLiveQuery(() => db.offline_mutations.where('status').equals('pending').count(), [])
     return count ?? 0
-}
-
-export async function addToOfflineMutations(
-    entityType: OfflineMutation['entityType'],
-    entityId: string,
-    operation: OfflineMutation['operation'],
-    payload: Record<string, unknown>,
-    workspaceId: string
-): Promise<void> {
-    if (isLocalWorkspaceMode(workspaceId)) {
-        return
-    }
-
-    // 1. Check for existing pending mutation for this entity
-    const existing = await db.offline_mutations
-        .where('[entityType+entityId+status]')
-        .equals([entityType, entityId, 'pending'])
-        .first()
-
-    if (existing) {
-        // 2. Handle redundant/canceling operations
-        if (operation === 'delete') {
-            if (existing.operation === 'create') {
-                // Case: Created then Deleted while offline -> Remove from queue entirely
-                await db.offline_mutations.delete(existing.id)
-                return
-            }
-            // Case: Updated then Deleted while offline -> Change existing update to a delete
-            await db.offline_mutations.update(existing.id, {
-                operation: 'delete',
-                payload: { id: entityId },
-                createdAt: new Date().toISOString()
-            })
-            return
-        }
-
-        if (operation === 'update' || operation === 'create') {
-            // Case: Multiple updates or re-creating a deleted item
-            // Merge payloads to keep the latest state
-            await db.offline_mutations.update(existing.id, {
-                operation: existing.operation === 'delete' ? 'update' : existing.operation,
-                payload: { ...existing.payload, ...payload },
-                createdAt: new Date().toISOString()
-            })
-            return
-        }
-    }
-
-    // 3. Default: Add new mutation if no pending exists or couldn't be merged
-    await db.offline_mutations.add({
-        id: generateId(),
-        workspaceId,
-        entityType,
-        entityId,
-        operation,
-        payload,
-        createdAt: new Date().toISOString(),
-        status: 'pending'
-    })
 }
 
 export async function removeFromSyncQueue(id: string): Promise<void> {
@@ -1343,6 +1367,65 @@ export async function updateStorage(id: string, data: Partial<Pick<Storage, 'nam
     }
 }
 
+export async function transferInventoryBetweenStorages(
+    workspaceId: string,
+    sourceStorageId: string,
+    targetStorageId: string,
+    items: Array<{ productId: string; quantity: number }>
+): Promise<{ movedCount: number }> {
+    const completedTransfers: Array<{ productId: string; quantity: number }> = []
+    const updatedProducts: Product[] = []
+    const now = new Date().toISOString()
+
+    try {
+        for (const item of items) {
+            const quantity = Number(item.quantity)
+            if (!Number.isInteger(quantity) || quantity <= 0) {
+                throw new Error('Transfer quantity must be a whole number greater than zero')
+            }
+
+            const availableQuantity = await getInventoryQuantityForProductStorage(item.productId, sourceStorageId)
+            if (availableQuantity < quantity) {
+                throw new Error('Insufficient inventory in source storage')
+            }
+
+            const updatedProduct = await transferInventoryQuantity({
+                workspaceId,
+                productId: item.productId,
+                sourceStorageId,
+                targetStorageId,
+                quantity,
+                timestamp: now
+            })
+
+            completedTransfers.push({ productId: item.productId, quantity })
+            if (updatedProduct) {
+                updatedProducts.push(updatedProduct)
+            }
+        }
+
+        await syncUpdatedProductsBestEffort(updatedProducts, workspaceId)
+        return { movedCount: completedTransfers.length }
+    } catch (error) {
+        for (const transfer of [...completedTransfers].reverse()) {
+            try {
+                await transferInventoryQuantity({
+                    workspaceId,
+                    productId: transfer.productId,
+                    sourceStorageId: targetStorageId,
+                    targetStorageId: sourceStorageId,
+                    quantity: transfer.quantity,
+                    timestamp: now
+                })
+            } catch (rollbackError) {
+                console.error('[InventoryTransfer] Failed to rollback transfer:', rollbackError)
+            }
+        }
+
+        throw error
+    }
+}
+
 export async function deleteStorage(id: string, moveProductsToStorageId: string): Promise<{ success: boolean, movedCount: number }> {
     const existing = await db.storages.get(id)
     if (!existing) return { success: false, movedCount: 0 }
@@ -1353,44 +1436,30 @@ export async function deleteStorage(id: string, moveProductsToStorageId: string)
         return { success: false, movedCount: 0 }
     }
 
-    // Move all products in this storage to the target storage
-    const productsToMove = await db.products.where('storageId').equals(id).toArray()
     const now = new Date().toISOString()
+    const inventoryToMove = await db.inventory.where('storageId').equals(id).and((row) => !row.isDeleted).toArray()
+    const completedMoves: Array<{ productId: string; quantity: number }> = []
+    const updatedProducts: Product[] = []
 
-    for (const product of productsToMove) {
-        await db.products.update(product.id, { storageId: moveProductsToStorageId, updatedAt: now, syncStatus: 'pending' })
+    try {
+        for (const row of inventoryToMove) {
+            const updatedProduct = await transferInventoryQuantity({
+                workspaceId: existing.workspaceId,
+                productId: row.productId,
+                sourceStorageId: id,
+                targetStorageId: moveProductsToStorageId,
+                quantity: row.quantity,
+                timestamp: now
+            })
 
-        if (isOnline()) {
-            try {
-                const { error } = await runMutation('storages.moveProduct', () =>
-                    supabase
-                        .from('products')
-                        .update({ storage_id: moveProductsToStorageId, updated_at: now })
-                        .eq('id', product.id)
-                )
-
-                if (error) {
-                    throw normalizeSupabaseActionError(error)
-                }
-
-                await db.products.update(product.id, { syncStatus: 'synced', lastSyncedAt: now })
-            } catch (error) {
-                if (shouldUseOfflineMutationFallback(error)) {
-                    await addToOfflineMutations('products', product.id, 'update', { storage_id: moveProductsToStorageId }, existing.workspaceId)
-                } else {
-                    await db.products.update(product.id, {
-                        storageId: product.storageId,
-                        updatedAt: product.updatedAt,
-                        syncStatus: product.syncStatus,
-                        lastSyncedAt: product.lastSyncedAt,
-                        version: product.version
-                    })
-                    throw normalizeSupabaseActionError(error)
-                }
+            completedMoves.push({ productId: row.productId, quantity: row.quantity })
+            if (updatedProduct) {
+                updatedProducts.push(updatedProduct)
             }
-        } else {
-            await addToOfflineMutations('products', product.id, 'update', { storage_id: moveProductsToStorageId }, existing.workspaceId)
         }
+    } catch (error) {
+        console.error('[Storage] Failed to move inventory while deleting storage:', error)
+        throw normalizeSupabaseActionError(error)
     }
 
     // Soft delete the storage
@@ -1415,13 +1484,14 @@ export async function deleteStorage(id: string, moveProductsToStorageId: string)
                 await addToOfflineMutations('storages', id, 'update', { is_deleted: true } as any, existing.workspaceId)
             } else {
                 await db.storages.put(existing)
-                for (const product of productsToMove) {
-                    await db.products.update(product.id, {
-                        storageId: product.storageId,
-                        updatedAt: product.updatedAt,
-                        syncStatus: product.syncStatus,
-                        lastSyncedAt: product.lastSyncedAt,
-                        version: product.version
+                for (const move of [...completedMoves].reverse()) {
+                    await transferInventoryQuantity({
+                        workspaceId: existing.workspaceId,
+                        productId: move.productId,
+                        sourceStorageId: moveProductsToStorageId,
+                        targetStorageId: id,
+                        quantity: move.quantity,
+                        timestamp: now
                     })
                 }
                 throw normalizeSupabaseActionError(error)
@@ -1431,7 +1501,13 @@ export async function deleteStorage(id: string, moveProductsToStorageId: string)
         await addToOfflineMutations('storages', id, 'update', { is_deleted: true } as any, existing.workspaceId)
     }
 
-    return { success: true, movedCount: productsToMove.length }
+    try {
+        await syncUpdatedProductsBestEffort(updatedProducts, existing.workspaceId)
+    } catch (error) {
+        console.error('[Storage] Failed to sync product snapshots after storage delete:', error)
+    }
+
+    return { success: true, movedCount: inventoryToMove.length }
 }
 
 export async function getReserveStorageId(workspaceId: string): Promise<string | null> {

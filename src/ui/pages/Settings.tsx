@@ -58,7 +58,7 @@ export function Settings() {
     const [exchangeRateThreshold, setExchangeRateThreshold] = useState(localStorage.getItem('exchange_rate_threshold') || '2500')
     const [whatsappAutoLaunch, setWhatsappAutoLaunch] = useState(localStorage.getItem('whatsapp_auto_launch') === 'true')
     const [monthDisplayPreference, setMonthDisplayPreferenceState] = useState<MonthDisplayPreference>(getMonthDisplayPreference())
-    const [isKdsSaving, setIsKdsSaving] = useState(false)
+    const isKdsSaving = false
 
     // Biometric State
     const [biometricEnabled, setBiometricEnabled] = useState(localStorage.getItem('biometric_enabled') === 'true')
@@ -444,24 +444,6 @@ export function Settings() {
     const handleThresholdChange = (val: string) => {
         setExchangeRateThreshold(val)
         localStorage.setItem('exchange_rate_threshold', val)
-    }
-
-    const handleKdsToggle = async (nextValue: boolean) => {
-        if (isKdsSaving) return
-        setIsKdsSaving(true)
-        try {
-            await updateSettings({ kds_enabled: nextValue })
-            toast({
-                title: t('common.success') || 'Success',
-                description: nextValue
-                    ? (t('settings.pos.kdsEnabledDesc') || 'Kitchen routing enabled for Instant POS.')
-                    : (t('settings.pos.kdsDisabledDesc') || 'Kitchen routing disabled. Cashier handles preparation.')
-            })
-        } catch (error) {
-            showActionError(error, t('settings.pos.kdsToggleError') || 'Failed to update kitchen routing setting.')
-        } finally {
-            setIsKdsSaving(false)
-        }
     }
 
     const handleCurrencySelect = (val: CurrencyCode) => {
