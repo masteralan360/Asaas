@@ -509,10 +509,21 @@
     "orders": {
         "title": "Orders",
         "subtitle": "orders total",
+        "view": {
+            "table": "Orders Details",
+            "grid": "Orders Grid"
+        },
         "newOrder": "New Order",
         "searchPlaceholder": "Search orders...",
         "noCustomers": "Add customers before creating orders.",
         "listTitle": "Order List",
+        "actions": {
+            "order": "Order",
+            "reserve": "Reserve",
+            "receive": "Receive",
+            "complete": "Complete",
+            "cancel": "Cancel"
+        },
         "table": {
             "orderNumber": "Order #",
             "customer": "Customer",
@@ -528,7 +539,9 @@
             "delivered": "Delivered",
             "cancelled": "Cancelled",
             "completed": "Completed",
-            "draft": "Draft"
+            "draft": "Draft",
+            "ordered": "Ordered",
+            "received": "Received"
         },
         "tabs": {
             "sales": "Sales Orders",
@@ -1682,6 +1695,7 @@
         },
         "status": {
             "paid": "Paid",
+            "unpaid": "Unpaid",
             "pending": "Pending",
             "snoozed": "Snoozed"
         },

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
-import { CalendarDays, CreditCard, PackagePlus, Pencil, Plus, Search, ShoppingCart, Trash2, Truck, UsersRound, Wallet, Warehouse } from 'lucide-react'
+import { CalendarDays, CreditCard, Eye, LayoutGrid, List, PackagePlus, Pencil, Plus, Search, ShoppingCart, Trash2, Truck, UsersRound, Wallet, Warehouse } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { useLocation, useRoute } from 'wouter'
 
 import { useAuth } from '@/auth'
 import { useExchangeRate } from '@/context/ExchangeRateContext'
@@ -33,6 +34,8 @@ import {
     type SalesOrderStatus
 } from '@/local-db'
 import { useWorkspace } from '@/workspace'
+import { isMobile } from '@/lib/platform'
+import { cn } from '@/lib/utils'
 import {
     Button,
     Card,
@@ -66,6 +69,7 @@ import {
     useToast
 } from '@/ui/components'
 import { DeleteConfirmationModal } from '@/ui/components/DeleteConfirmationModal'
+import { OrderDetailsView } from '@/ui/components/orders/OrderDetailsView'
 import { OrderStatusBadge } from '@/ui/components/orders/OrderStatusBadge'
 
 type OrderTab = 'sales' | 'purchase'
@@ -140,23 +144,31 @@ function getCommonStorageId(items: Array<{ storageId?: string | null }>, fallbac
     return storageIds.length === 1 ? storageIds[0] : null
 }
 
-export function Orders() {
+function OrdersListView({ workspaceId }: { workspaceId: string }) {
     const { t } = useTranslation()
     const { user } = useAuth()
     const { features } = useWorkspace()
     const { exchangeData, eurRates, tryRates } = useExchangeRate()
     const { toast } = useToast()
-    const products = useProducts(user?.workspaceId)
-    const inventory = useInventory(user?.workspaceId)
-    const storages = useStorages(user?.workspaceId)
-    const customers = useCustomers(user?.workspaceId)
-    const suppliers = useSuppliers(user?.workspaceId)
-    const salesOrders = useSalesOrders(user?.workspaceId)
-    const purchaseOrders = usePurchaseOrders(user?.workspaceId)
+    const [, navigate] = useLocation()
+    const products = useProducts(workspaceId)
+    const inventory = useInventory(workspaceId)
+    const storages = useStorages(workspaceId)
+    const customers = useCustomers(workspaceId)
+    const suppliers = useSuppliers(workspaceId)
+    const salesOrders = useSalesOrders(workspaceId)
+    const purchaseOrders = usePurchaseOrders(workspaceId)
     const defaultStorageId = (storages.find((storage) => storage.name === 'Main' && storage.isSystem) || storages[0])?.id || ''
 
     const [activeTab, setActiveTab] = useState<OrderTab>('sales')
+    const [viewMode, setViewMode] = useState<'table' | 'grid'>(() => (localStorage.getItem('orders_view_mode') as 'table' | 'grid') || 'table')
     const [search, setSearch] = useState('')
+    const [statusFilter, setStatusFilter] = useState<'all' | 'draft' | 'ordered' | 'received' | 'completed'>('all')
+    const [paymentFilter, setPaymentFilter] = useState<'all' | 'paid' | 'unpaid'>('all')
+
+    useEffect(() => {
+        localStorage.setItem('orders_view_mode', viewMode)
+    }, [viewMode])
     const [dialogOpen, setDialogOpen] = useState(false)
     const [editingSalesOrder, setEditingSalesOrder] = useState<SalesOrder | null>(null)
     const [editingPurchaseOrder, setEditingPurchaseOrder] = useState<PurchaseOrder | null>(null)
@@ -231,23 +243,52 @@ export function Orders() {
 
     const filteredSalesOrders = useMemo(() => {
         const query = search.trim().toLowerCase()
-        if (!query) return salesOrders
-        return salesOrders.filter((order) =>
+        let items = [...salesOrders].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+
+        // Status Filter
+        if (statusFilter !== 'all') {
+            const mappedStatus = statusFilter === 'ordered' ? 'pending' : statusFilter
+            if (mappedStatus === 'received') {
+                items = []
+            } else {
+                items = items.filter(order => order.status === mappedStatus)
+            }
+        }
+
+        // Payment Filter
+        if (paymentFilter !== 'all') {
+            items = items.filter(order => paymentFilter === 'paid' ? order.isPaid : !order.isPaid)
+        }
+
+        if (!query) return items
+        return items.filter((order) =>
             order.orderNumber.toLowerCase().includes(query)
             || order.customerName.toLowerCase().includes(query)
             || order.items.some((item) => item.productName.toLowerCase().includes(query))
         )
-    }, [salesOrders, search])
+    }, [salesOrders, search, statusFilter, paymentFilter])
 
     const filteredPurchaseOrders = useMemo(() => {
         const query = search.trim().toLowerCase()
-        if (!query) return purchaseOrders
-        return purchaseOrders.filter((order) =>
+        let items = [...purchaseOrders].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+
+        // Status Filter
+        if (statusFilter !== 'all') {
+            items = items.filter(order => order.status === statusFilter)
+        }
+
+        // Payment Filter
+        if (paymentFilter !== 'all') {
+            items = items.filter(order => paymentFilter === 'paid' ? order.isPaid : !order.isPaid)
+        }
+
+        if (!query) return items
+        return items.filter((order) =>
             order.orderNumber.toLowerCase().includes(query)
             || order.supplierName.toLowerCase().includes(query)
             || order.items.some((item) => item.productName.toLowerCase().includes(query))
         )
-    }, [purchaseOrders, search])
+    }, [purchaseOrders, search, statusFilter, paymentFilter])
 
     const salesPreview = useMemo(() => {
         const subtotal = salesForm.items.reduce((sum, item) => sum + ((Number(item.quantity) || 0) * (Number(item.unitPrice) || 0)), 0)
@@ -693,20 +734,22 @@ export function Orders() {
                                         <div className="flex flex-wrap justify-end gap-2">
                                             {activeTab === 'sales' ? (
                                                 <>
+                                                    <Button variant="outline" size="sm" onClick={() => navigate(`/orders/${row.id}`)}><Eye className="mr-1 h-3.5 w-3.5" />{t('common.view') || 'View'}</Button>
                                                     {canEdit && <Button variant="outline" size="sm" onClick={() => openSalesEdit(row as SalesOrder)}><Pencil className="mr-1 h-3.5 w-3.5" />{t('common.edit') || 'Edit'}</Button>}
-                                                    {canManageOrders && row.status === 'draft' && <Button size="sm" onClick={() => runAction(() => updateSalesOrderStatus(row.id, 'pending'), 'Sales order reserved')}>Reserve</Button>}
-                                                    {canManageOrders && row.status === 'pending' && <Button size="sm" onClick={() => runAction(() => updateSalesOrderStatus(row.id, 'completed'), 'Sales order completed')}>Complete</Button>}
-                                                    {canManageOrders && row.status === 'pending' && <Button variant="outline" size="sm" onClick={() => runAction(() => updateSalesOrderStatus(row.id, 'cancelled'), 'Sales order cancelled')}>Cancel</Button>}
+                                                    {canManageOrders && row.status === 'draft' && <Button size="sm" onClick={() => runAction(() => updateSalesOrderStatus(row.id, 'pending'), 'Sales order reserved')}>{t('orders.actions.reserve') || 'Reserve'}</Button>}
+                                                    {canManageOrders && row.status === 'pending' && <Button size="sm" onClick={() => runAction(() => updateSalesOrderStatus(row.id, 'completed'), 'Sales order completed')}>{t('orders.actions.complete') || 'Complete'}</Button>}
+                                                    {canManageOrders && (row.status === 'draft' || row.status === 'pending') && <Button variant="outline" size="sm" onClick={() => runAction(() => updateSalesOrderStatus(row.id, 'cancelled'), 'Sales order cancelled')}>{t('orders.actions.cancel') || 'Cancel'}</Button>}
                                                     {canManageOrders && <Button variant="outline" size="sm" onClick={() => runAction(() => setSalesOrderPaymentStatus(row.id, { isPaid: !row.isPaid, paymentMethod: (row.paymentMethod || 'cash') as SalesOrder['paymentMethod'] }), row.isPaid ? 'Marked unpaid' : 'Marked paid')}>{row.isPaid ? 'Unpay' : 'Pay'}</Button>}
                                                     {canDelete && <Button variant="ghost" size="icon" className="text-destructive" onClick={() => setDeleteTarget({ type: 'sales', order: row as SalesOrder })}><Trash2 className="h-4 w-4" /></Button>}
                                                 </>
                                             ) : (
                                                 <>
+                                                    <Button variant="outline" size="sm" onClick={() => navigate(`/orders/${row.id}`)}><Eye className="mr-1 h-3.5 w-3.5" />{t('common.view') || 'View'}</Button>
                                                     {canEdit && <Button variant="outline" size="sm" onClick={() => openPurchaseEdit(row as PurchaseOrder)}><Pencil className="mr-1 h-3.5 w-3.5" />{t('common.edit') || 'Edit'}</Button>}
-                                                    {canManageOrders && row.status === 'draft' && <Button size="sm" onClick={() => runAction(() => updatePurchaseOrderStatus(row.id, 'ordered'), 'Purchase order sent')}>Order</Button>}
-                                                    {canManageOrders && row.status === 'ordered' && <Button size="sm" onClick={() => runAction(() => updatePurchaseOrderStatus(row.id, 'received'), 'Purchase order received')}>Receive</Button>}
-                                                    {canManageOrders && row.status === 'received' && <Button size="sm" onClick={() => runAction(() => updatePurchaseOrderStatus(row.id, 'completed'), 'Purchase order completed')}>Complete</Button>}
-                                                    {canManageOrders && (row.status === 'draft' || row.status === 'ordered') && <Button variant="outline" size="sm" onClick={() => runAction(() => updatePurchaseOrderStatus(row.id, 'cancelled'), 'Purchase order cancelled')}>Cancel</Button>}
+                                                    {canManageOrders && row.status === 'draft' && <Button size="sm" onClick={() => runAction(() => updatePurchaseOrderStatus(row.id, 'ordered'), 'Purchase order sent')}>{t('orders.actions.order') || 'Order'}</Button>}
+                                                    {canManageOrders && row.status === 'ordered' && <Button size="sm" onClick={() => runAction(() => updatePurchaseOrderStatus(row.id, 'received'), 'Purchase order received')}>{t('orders.actions.receive') || 'Receive'}</Button>}
+                                                    {canManageOrders && row.status === 'received' && <Button size="sm" onClick={() => runAction(() => updatePurchaseOrderStatus(row.id, 'completed'), 'Purchase order completed')}>{t('orders.actions.complete') || 'Complete'}</Button>}
+                                                    {canManageOrders && (row.status === 'draft' || row.status === 'ordered') && <Button variant="outline" size="sm" onClick={() => runAction(() => updatePurchaseOrderStatus(row.id, 'cancelled'), 'Purchase order cancelled')}>{t('orders.actions.cancel') || 'Cancel'}</Button>}
                                                     {canManageOrders && <Button variant="outline" size="sm" onClick={() => runAction(() => setPurchaseOrderPaymentStatus(row.id, { isPaid: !row.isPaid, paymentMethod: (row.paymentMethod || 'cash') as PurchaseOrder['paymentMethod'] }), row.isPaid ? 'Marked unpaid' : 'Marked paid')}>{row.isPaid ? 'Unpay' : 'Pay'}</Button>}
                                                     {canDelete && <Button variant="ghost" size="icon" className="text-destructive" onClick={() => setDeleteTarget({ type: 'purchase', order: row as PurchaseOrder })}><Trash2 className="h-4 w-4" /></Button>}
                                                 </>
@@ -718,6 +761,105 @@ export function Orders() {
                         })}
                     </TableBody>
                 </Table>
+            </div>
+        )
+    }
+
+    function renderOrderGrid() {
+        const rows = activeTab === 'sales' ? filteredSalesOrders : filteredPurchaseOrders
+
+        return (
+            <div className={cn(
+                "grid gap-4 p-4 bg-muted/5",
+                viewMode === 'grid' && !isMobile() ? "md:grid-cols-2 xl:grid-cols-3" : "grid-cols-1"
+            )}>
+                {rows.length === 0 ? (
+                    <div className="text-center text-muted-foreground py-12 bg-background rounded-lg border">
+                        {t('common.noData') || 'No data available'}
+                    </div>
+                ) : rows.map((row) => {
+                    const summary = getOrderSummary(row.items)
+                    const isDraft = row.status === 'draft'
+                    const canEdit = canManageOrders && isDraft
+                    const canDelete = canDeleteOrders && isDraft
+
+                    return (
+                        <div
+                            key={row.id}
+                            className="p-4 border shadow-sm space-y-4 transition-all active:scale-[0.98] bg-background rounded-2xl"
+                        >
+                            <div className="flex justify-between items-start">
+                                <div className="space-y-1">
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-sm font-bold text-primary">{row.orderNumber}</span>
+                                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-primary/10 text-primary">
+                                            {activeTab === 'sales' ? t('orders.tabs.sales') : t('orders.tabs.purchase')}
+                                        </span>
+                                    </div>
+                                    <div className="text-base font-bold text-foreground">
+                                        {activeTab === 'sales' ? (row as SalesOrder).customerName : (row as PurchaseOrder).supplierName}
+                                    </div>
+                                    <div className="text-xs text-muted-foreground truncate max-w-[200px]">
+                                        {summary}
+                                    </div>
+                                </div>
+                                <div className="text-right">
+                                    <OrderStatusBadge status={row.status} label={formatStatusLabel(t, row.status)} />
+                                    <div className="text-xs text-muted-foreground mt-2 font-medium">
+                                        {new Date(row.updatedAt).toLocaleDateString()}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-3 gap-2 py-3 border-y border-border/50">
+                                <div className="text-center">
+                                    <div className="text-[10px] text-muted-foreground font-bold uppercase tracking-tight">{t('orders.table.items') || 'Items'}</div>
+                                    <div className="text-[11px] font-bold">{row.items.length}</div>
+                                </div>
+                                <div className="text-center border-l border-border/50">
+                                    <div className="text-[10px] text-muted-foreground font-bold uppercase tracking-tight">{t('common.total') || 'Total'}</div>
+                                    <div className="text-[11px] font-bold text-primary">{formatCurrency(row.total, row.currency, features.iqd_display_preference)}</div>
+                                </div>
+                                <div className="text-center border-l border-border/50">
+                                    <div className="text-[10px] text-muted-foreground font-bold uppercase tracking-tight">{t('pos.paymentMethod') || 'Payment'}</div>
+                                    <div className={cn(
+                                        "text-[11px] font-bold",
+                                        row.isPaid ? "text-emerald-600" : "text-amber-600"
+                                    )}>
+                                        {row.isPaid ? (t('budget.status.paid') || 'Paid') : (t('budget.status.pending') || 'Pending')}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="flex flex-wrap items-center justify-end gap-2 pt-1">
+                                <Button variant="outline" size="sm" className="flex-1 h-9 rounded-xl font-bold gap-2 text-xs" onClick={() => navigate(`/orders/${row.id}`)}>
+                                    <Eye className="w-3.5 h-3.5" />
+                                    {t('common.view') || 'View'}
+                                </Button>
+                                {activeTab === 'sales' ? (
+                                    <>
+                                        {canManageOrders && row.status === 'draft' && <Button size="sm" className="h-9 rounded-xl px-3 text-[10px] font-bold uppercase shadow-sm ring-1 ring-primary/20" onClick={() => runAction(() => updateSalesOrderStatus(row.id, 'pending'), 'Sales order reserved')}>{t('orders.actions.reserve') || 'Reserve'}</Button>}
+                                        {canManageOrders && row.status === 'pending' && <Button size="sm" className="h-9 rounded-xl px-3 text-[10px] font-bold uppercase shadow-sm ring-1 ring-primary/20" onClick={() => runAction(() => updateSalesOrderStatus(row.id, 'completed'), 'Sales order completed')}>{t('orders.actions.complete') || 'Complete'}</Button>}
+                                        {canManageOrders && (row.status === 'draft' || row.status === 'pending') && <Button variant="outline" size="sm" className="h-9 rounded-xl px-3 text-[10px] font-bold uppercase" onClick={() => runAction(() => updateSalesOrderStatus(row.id, 'cancelled'), 'Sales order cancelled')}>{t('orders.actions.cancel') || 'Cancel'}</Button>}
+                                        {canEdit && <Button variant="outline" size="sm" className="h-9 rounded-xl px-3" onClick={() => openSalesEdit(row as SalesOrder)}><Pencil className="h-3.5 w-3.5" /></Button>}
+                                        {canManageOrders && <Button variant="outline" size="sm" className="h-9 rounded-xl px-3 text-[10px] font-bold uppercase" onClick={() => runAction(() => setSalesOrderPaymentStatus(row.id, { isPaid: !row.isPaid, paymentMethod: (row.paymentMethod || 'cash') as SalesOrder['paymentMethod'] }), row.isPaid ? 'Marked unpaid' : 'Marked paid')}>{row.isPaid ? 'Unpay' : 'Pay'}</Button>}
+                                        {canDelete && <Button variant="ghost" size="icon" className="h-9 w-9 rounded-xl text-destructive" onClick={() => setDeleteTarget({ type: 'sales', order: row as SalesOrder })}><Trash2 className="h-4 w-4" /></Button>}
+                                    </>
+                                ) : (
+                                    <>
+                                        {canManageOrders && row.status === 'draft' && <Button size="sm" className="h-9 rounded-xl px-3 text-[10px] font-bold uppercase shadow-sm ring-1 ring-primary/20" onClick={() => runAction(() => updatePurchaseOrderStatus(row.id, 'ordered'), 'Purchase order placed')}>{t('orders.actions.order') || 'Order'}</Button>}
+                                        {canManageOrders && row.status === 'ordered' && <Button size="sm" className="h-9 rounded-xl px-3 text-[10px] font-bold uppercase shadow-sm ring-1 ring-primary/20" onClick={() => runAction(() => updatePurchaseOrderStatus(row.id, 'received'), 'Purchase order received')}>{t('orders.actions.receive') || 'Receive'}</Button>}
+                                        {canManageOrders && row.status === 'received' && <Button size="sm" className="h-9 rounded-xl px-3 text-[10px] font-bold uppercase shadow-sm ring-1 ring-primary/20" onClick={() => runAction(() => updatePurchaseOrderStatus(row.id, 'completed'), 'Purchase order completed')}>{t('orders.actions.complete') || 'Complete'}</Button>}
+                                        {canManageOrders && (row.status === 'draft' || row.status === 'ordered') && <Button variant="outline" size="sm" className="h-9 rounded-xl px-3 text-[10px] font-bold uppercase" onClick={() => runAction(() => updatePurchaseOrderStatus(row.id, 'cancelled'), 'Purchase order cancelled')}>{t('orders.actions.cancel') || 'Cancel'}</Button>}
+                                        {canEdit && <Button variant="outline" size="sm" className="h-9 rounded-xl px-3" onClick={() => openPurchaseEdit(row as PurchaseOrder)}><Pencil className="h-3.5 w-3.5" /></Button>}
+                                        {canManageOrders && <Button variant="outline" size="sm" className="h-9 rounded-xl px-3 text-[10px] font-bold uppercase" onClick={() => runAction(() => setPurchaseOrderPaymentStatus(row.id, { isPaid: !row.isPaid, paymentMethod: (row.paymentMethod || 'cash') as PurchaseOrder['paymentMethod'] }), row.isPaid ? 'Marked unpaid' : 'Marked paid')}>{row.isPaid ? 'Unpay' : 'Pay'}</Button>}
+                                        {canDelete && <Button variant="ghost" size="icon" className="h-9 w-9 rounded-xl text-destructive" onClick={() => setDeleteTarget({ type: 'purchase', order: row as PurchaseOrder })}><Trash2 className="h-4 w-4" /></Button>}
+                                    </>
+                                )}
+                            </div>
+                        </div>
+                    )
+                })}
             </div>
         )
     }
@@ -780,37 +922,112 @@ export function Orders() {
                 <CardHeader className="gap-4 lg:flex-row lg:items-center lg:justify-between">
                     <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as OrderTab)} className="w-full">
                         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                            <TabsList>
-                                <TabsTrigger value="sales">{t('orders.tabs.sales') || 'Sales Orders'}</TabsTrigger>
-                                <TabsTrigger value="purchase">{t('orders.tabs.purchase') || 'Purchase Orders'}</TabsTrigger>
-                            </TabsList>
-                            <div className="relative w-full max-w-sm">
-                                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                                <Input
-                                    value={search}
-                                    onChange={(event) => setSearch(event.target.value)}
-                                    placeholder={activeTab === 'sales'
-                                        ? (t('orders.placeholder.searchSales') || 'Search sales orders...')
-                                        : (t('orders.placeholder.searchPurchase') || 'Search purchase orders...')}
-                                    className="pl-9"
-                                />
+                            <div className="flex flex-col sm:flex-row gap-4 w-full lg:w-auto">
+                                <TabsList className="w-full sm:w-auto">
+                                    <TabsTrigger value="sales" className="flex-1 sm:flex-none">{t('orders.tabs.sales') || 'Sales Orders'}</TabsTrigger>
+                                    <TabsTrigger value="purchase" className="flex-1 sm:flex-none">{t('orders.tabs.purchase') || 'Purchase Orders'}</TabsTrigger>
+                                </TabsList>
+
+                                <div className="flex flex-wrap items-center gap-2">
+                                    {/* Status Filter */}
+                                    <div className="flex items-center gap-1 bg-muted/50 p-1 rounded-lg border border-border/40">
+                                        {(['all', 'draft', 'ordered', 'received', 'completed'] as const).map((value) => (
+                                            <button
+                                                key={value}
+                                                onClick={() => setStatusFilter(value)}
+                                                className={cn(
+                                                    'px-2.5 py-1 text-[10px] sm:text-xs rounded-md font-bold uppercase transition-all whitespace-nowrap',
+                                                    statusFilter === value
+                                                        ? 'bg-primary text-primary-foreground shadow-sm'
+                                                        : 'text-muted-foreground hover:bg-background/80'
+                                                )}
+                                            >
+                                                {value === 'all' ? (t('common.all') || 'All') : t(`orders.status.${value}`) || value}
+                                            </button>
+                                        ))}
+                                    </div>
+
+                                    {/* Payment Filter */}
+                                    <div className="flex items-center gap-1 bg-muted/50 p-1 rounded-lg border border-border/40">
+                                        {(['all', 'paid', 'unpaid'] as const).map((value) => (
+                                            <button
+                                                key={value}
+                                                onClick={() => setPaymentFilter(value)}
+                                                className={cn(
+                                                    'px-2.5 py-1 text-[10px] sm:text-xs rounded-md font-bold uppercase transition-all whitespace-nowrap',
+                                                    paymentFilter === value
+                                                        ? 'bg-primary text-primary-foreground shadow-sm'
+                                                        : 'text-muted-foreground hover:bg-background/80'
+                                                )}
+                                            >
+                                                {value === 'all' ? (t('common.all') || 'All') : t(`budget.status.${value}`) || value}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="flex flex-col lg:flex-row gap-4 items-center w-full lg:w-auto">
+                                <div className="relative w-full max-w-sm">
+                                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                                    <Input
+                                        value={search}
+                                        onChange={(event) => setSearch(event.target.value)}
+                                        placeholder={activeTab === 'sales'
+                                            ? (t('orders.placeholder.searchSales') || 'Search sales orders...')
+                                            : (t('orders.placeholder.searchPurchase') || 'Search purchase orders...')}
+                                        className="pl-9"
+                                    />
+                                </div>
+                                {!isMobile() && (
+                                    <div className="flex items-center bg-muted/30 p-1 rounded-lg border border-border/40 ml-auto">
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() => setViewMode('table')}
+                                            className={cn(
+                                                "h-7 px-3 font-bold uppercase text-[9px] flex items-center gap-1.5 transition-all text-primary",
+                                                viewMode === 'table'
+                                                    ? "bg-primary text-primary-foreground shadow-sm"
+                                                    : "text-muted-foreground hover:bg-background/50"
+                                            )}
+                                        >
+                                            <List className="w-3" />
+                                            {t('orders.view.table')}
+                                        </Button>
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() => setViewMode('grid')}
+                                            className={cn(
+                                                "h-7 px-3 font-bold uppercase text-[9px] flex items-center gap-1.5 transition-all text-primary",
+                                                viewMode === 'grid'
+                                                    ? "bg-primary text-primary-foreground shadow-sm"
+                                                    : "text-muted-foreground hover:bg-background/50"
+                                            )}
+                                        >
+                                            <LayoutGrid className="w-3" />
+                                            {t('orders.view.grid')}
+                                        </Button>
+                                    </div>
+                                )}
                             </div>
                         </div>
-                        <TabsContent value="sales" className="mt-6">
+                        <TabsContent value="sales" className="mt-0">
                             {salesDisabled && (
                                 <div className="mb-4 rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
                                     {customers.length === 0 ? (t('orders.noCustomers') || 'Add customers before creating orders.') : 'Add products before creating orders.'}
                                 </div>
                             )}
-                            {renderOrderTable()}
+                            {isMobile() || viewMode === 'grid' ? renderOrderGrid() : renderOrderTable()}
                         </TabsContent>
-                        <TabsContent value="purchase" className="mt-6">
+                        <TabsContent value="purchase" className="mt-0">
                             {purchaseDisabled && (
                                 <div className="mb-4 rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
                                     {suppliers.length === 0 ? 'Add suppliers before creating purchase orders.' : 'Add products before creating purchase orders.'}
                                 </div>
                             )}
-                            {renderOrderTable()}
+                            {isMobile() || viewMode === 'grid' ? renderOrderGrid() : renderOrderTable()}
                         </TabsContent>
                     </Tabs>
                 </CardHeader>
@@ -1310,4 +1527,20 @@ export function Orders() {
             />
         </div>
     )
+}
+
+export function Orders() {
+    const { user } = useAuth()
+    const [detailMatch, params] = useRoute('/orders/:orderId')
+    const workspaceId = user?.workspaceId
+
+    if (!workspaceId) {
+        return null
+    }
+
+    if (detailMatch && params?.orderId) {
+        return <OrderDetailsView workspaceId={workspaceId} orderId={params.orderId} />
+    }
+
+    return <OrdersListView workspaceId={workspaceId} />
 }

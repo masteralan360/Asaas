@@ -551,6 +551,13 @@ function App() {
                                                     </Layout>
                                                 </ProtectedRoute>
                                             </Route>
+                                            <Route path="/orders/:orderId">
+                                                <ProtectedRoute allowedRoles={['admin', 'staff']} requiredFeature="allow_crm">
+                                                    <Layout>
+                                                        <Orders />
+                                                    </Layout>
+                                                </ProtectedRoute>
+                                            </Route>
                                             <Route path="/revenue">
                                                 <ProtectedRoute allowedRoles={['admin']}>
                                                     <Layout>

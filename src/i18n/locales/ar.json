@@ -505,10 +505,21 @@
     "orders": {
         "title": "الطلبات",
         "subtitle": "إجمالي الطلبات",
+        "view": {
+            "table": "تفاصيل الطلبات",
+            "grid": "شبكة الطلبات"
+        },
         "newOrder": "طلب جديد",
         "searchPlaceholder": "البحث في الطلبات...",
         "noCustomers": "قم بإضافة عملاء قبل إنشاء الطلبات.",
         "listTitle": "قائمة الطلبات",
+        "actions": {
+            "order": "طلب",
+            "reserve": "حجز",
+            "receive": "استلام",
+            "complete": "إكمال",
+            "cancel": "إلغاء"
+        },
         "table": {
             "orderNumber": "رقم الطلب",
             "customer": "العميل",
@@ -524,7 +535,9 @@
             "delivered": "تم التوصيل",
             "cancelled": "ملغى",
             "completed": "مكتمل",
-            "draft": "مسودة"
+            "draft": "مسودة",
+            "ordered": "تم الطلب",
+            "received": "تم الاستلام"
         },
         "tabs": {
             "sales": "طلبات المبيعات",
@@ -1667,6 +1680,7 @@
         },
         "status": {
             "paid": "مدفوع",
+            "unpaid": "غير مدفوع",
             "pending": "قيد الانتظار",
             "snoozed": "مؤجل"
         },
