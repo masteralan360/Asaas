@@ -445,8 +445,9 @@ export function Layout({ children }: LayoutProps) {
 
                                         {isInstantPosGroup && showChildren && (
                                             <div className={cn(
-                                                "space-y-1 ps-3",
-                                                (isMini && !mobileSidebarOpen) && "ps-0"
+                                                "relative flex flex-col space-y-1 mt-1.5",
+                                                !(isMini && !mobileSidebarOpen) && "before:absolute before:inset-y-0 before:left-[22px] rtl:before:right-[22px] rtl:before:left-auto before:w-px before:bg-border/60",
+                                                (isMini && !mobileSidebarOpen) ? "ps-0" : "ps-10"
                                             )}>
                                                 {item.children!.map(child => {
                                                     const isChildSelected = location === child.href || (child.href !== '/' && location.startsWith(child.href))
@@ -459,19 +460,34 @@ export function Layout({ children }: LayoutProps) {
                                                                 triggerHaptic('selection')
                                                             }}
                                                             onMouseEnter={() => !isMobile() && prefetchRoute(child.href)}
+                                                            className="relative block"
                                                         >
+                                                            {/* Horizontal hierarchy line */}
+                                                            {!(isMini && !mobileSidebarOpen) && (
+                                                                <div className={cn(
+                                                                    "absolute top-1/2 -translate-y-1/2 w-[18px] h-px",
+                                                                    "left-[-18px] rtl:right-[-18px] rtl:left-auto",
+                                                                    isChildSelected ? "bg-primary" : "bg-border/60"
+                                                                )} />
+                                                            )}
                                                             <span
                                                                 className={cn(
                                                                     'flex items-center gap-3 px-3 py-2 rounded-lg text-[13px] font-medium transition-all duration-300',
                                                                     isChildSelected
-                                                                        ? 'bg-primary/10 text-primary shadow-sm'
+                                                                        ? 'bg-gradient-to-r from-primary/15 to-primary/5 text-primary shadow-sm border border-primary/20 dark:from-primary/20 dark:to-primary/10'
                                                                         : 'text-muted-foreground hover:bg-primary/5 hover:text-primary'
                                                                 )}
                                                             >
                                                                 {child.icon ? (
-                                                                    <child.icon className="w-4 h-4 flex-shrink-0" />
+                                                                    <child.icon className={cn(
+                                                                        "w-4 h-4 flex-shrink-0 transition-colors",
+                                                                        isChildSelected ? "text-primary" : "text-muted-foreground"
+                                                                    )} />
                                                                 ) : (
-                                                                    <span className="w-4 h-4 rounded-full bg-muted-foreground/30" />
+                                                                    <span className={cn(
+                                                                        "w-1.5 h-1.5 rounded-full transition-colors",
+                                                                        isChildSelected ? "bg-primary" : "bg-muted-foreground/30"
+                                                                    )} />
                                                                 )}
                                                                 <span>{child.name}</span>
                                                             </span>
