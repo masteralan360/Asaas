@@ -1,8 +1,8 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/auth'
-import { Sale, SaleItem } from '@/types'
-import { useSales, toUISale } from '@/local-db'
+import { Sale } from '@/types'
+import { useSales, useSalesOrders, toUISale } from '@/local-db'
 import { formatCurrency, formatDateTime, formatDate, formatOriginLabel } from '@/lib/utils'
 import { cn } from '@/lib/utils'
 import { formatLocalizedMonthYear } from '@/lib/monthDisplay'
@@ -59,12 +59,22 @@ import {
 import { useTheme } from '@/ui/components/theme-provider'
 import { Button, ExportPreviewModal, Progress } from '@/ui/components'
 import { Area, AreaChart, Bar, BarChart, ResponsiveContainer, Tooltip as RechartsTooltip, XAxis } from 'recharts'
+import {
+    buildRevenueAnalysisRecords,
+    filterRevenueAnalysisRecords,
+    filterSalesByDateRange,
+    getRevenueAnalysisTotals,
+    getRevenueRecordReturnSummary,
+    toRevenueRecordFromSale,
+    type RevenueAnalysisRecord
+} from '@/lib/revenueAnalysis'
 
 export function Revenue() {
     const { user } = useAuth()
     const { t, i18n } = useTranslation()
     const { features } = useWorkspace()
     const rawSales = useSales(user?.workspaceId)
+    const salesOrders = useSalesOrders(user?.workspaceId)
     const allSales = useMemo<Sale[]>(() => rawSales.map(toUISale), [rawSales])
     const [selectedSale, setSelectedSale] = useState<Sale | null>(null)
     const [selectedMetric, setSelectedMetric] = useState<MetricType | null>(null)
@@ -76,7 +86,7 @@ export function Revenue() {
     const { dateRange, customDates } = useDateRange()
     const { style } = useTheme()
     const [showPrintPreview, setShowPrintPreview] = useState(false)
-    const [selectedSaleIds, setSelectedSaleIds] = useState<Set<string>>(new Set())
+    const [selectedRecordKeys, setSelectedRecordKeys] = useState<Set<string>>(new Set())
     const [showPeakHeatmap, setShowPeakHeatmap] = useState(false)
 
     const [viewMode, setViewMode] = useState<'table' | 'grid'>(() => {
@@ -92,33 +102,22 @@ export function Revenue() {
     const itemsPerPage = 25
     const listRef = useRef<HTMLDivElement>(null)
 
-    const sales = useMemo(() => {
-        let result = allSales
-        const now = new Date()
-
-        if (dateRange === 'today') {
-            const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0)
-            result = result.filter(s => new Date(s.created_at) >= startOfDay)
-        } else if (dateRange === 'month') {
-            const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
-            result = result.filter(s => new Date(s.created_at) >= startOfMonth)
-        } else if (dateRange === 'custom' && customDates.start && customDates.end) {
-            const start = new Date(customDates.start)
-            start.setHours(0, 0, 0, 0)
-            const end = new Date(customDates.end)
-            end.setHours(23, 59, 59, 999)
-            result = result.filter(s => {
-                const d = new Date(s.created_at)
-                return d >= start && d <= end
-            })
-        }
-
-        return [...result].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-    }, [allSales, dateRange, customDates])
+    const revenueRecords = useMemo(
+        () => buildRevenueAnalysisRecords(allSales, salesOrders),
+        [allSales, salesOrders]
+    )
+    const filteredSales = useMemo(
+        () => filterSalesByDateRange(allSales, dateRange, customDates),
+        [allSales, dateRange, customDates]
+    )
+    const filteredRevenueRecords = useMemo(
+        () => filterRevenueAnalysisRecords(revenueRecords, dateRange, customDates),
+        [revenueRecords, dateRange, customDates]
+    )
 
     // Clear selection when date filters change
     useEffect(() => {
-        setSelectedSaleIds(new Set())
+        setSelectedRecordKeys(new Set())
         setCurrentPage(1)
     }, [dateRange, customDates])
 
@@ -132,9 +131,8 @@ export function Revenue() {
             return formatLocalizedMonthYear(now, i18n.language)
         }
         if (dateRange === 'custom') {
-            if (sales && sales.length > 0) {
-                // Find oldest and newest sale strictly from the current dataset
-                const dates = sales.map(s => new Date(s.created_at).getTime())
+            if (filteredRevenueRecords.length > 0) {
+                const dates = filteredRevenueRecords.map((record) => new Date(record.date).getTime())
                 const minDate = new Date(Math.min(...dates))
                 const maxDate = new Date(Math.max(...dates))
                 return `${t('performance.filters.from')} ${formatDate(minDate)} ${t('performance.filters.to')} ${formatDate(maxDate)}`
@@ -144,8 +142,8 @@ export function Revenue() {
             }
         }
         if (dateRange === 'allTime') {
-            if (sales && sales.length > 0) {
-                const dates = sales.map(s => new Date(s.created_at).getTime())
+            if (filteredRevenueRecords.length > 0) {
+                const dates = filteredRevenueRecords.map((record) => new Date(record.date).getTime())
                 const minDate = new Date(Math.min(...dates))
                 const maxDate = new Date(Math.max(...dates))
                 return `${t('performance.filters.allTime')}, ${t('performance.filters.from')} ${formatDate(minDate)} ${t('performance.filters.to')} ${formatDate(maxDate)}`
@@ -181,26 +179,18 @@ export function Revenue() {
         let previousRevenue = 0
         let previousCost = 0
 
-        allSales.forEach((sale) => {
-            if (sale.is_returned) return
-            const saleDate = new Date(sale.created_at)
-            if (saleDate < previousStart || saleDate > now) return
+        revenueRecords.forEach((record) => {
+            if (record.isReturned) return
+            const recordDate = new Date(record.date)
+            if (recordDate < previousStart || recordDate > now) return
 
-            let saleRevenue = 0
-            let saleCost = 0
-            sale.items?.forEach((item: SaleItem) => {
-                const netQty = item.quantity - (item.returned_quantity || 0)
-                if (netQty <= 0) return
-                saleRevenue += item.converted_unit_price * netQty
-                saleCost += (item.converted_cost_price || 0) * netQty
-            })
-
-            if (saleDate >= currentStart) {
-                currentRevenue += saleRevenue
-                currentCost += saleCost
+            const totals = getRevenueAnalysisTotals(record)
+            if (recordDate >= currentStart) {
+                currentRevenue += totals.revenue
+                currentCost += totals.cost
             } else {
-                previousRevenue += saleRevenue
-                previousCost += saleCost
+                previousRevenue += totals.revenue
+                previousCost += totals.cost
             }
         })
 
@@ -210,9 +200,9 @@ export function Revenue() {
             profit: calcTrend(currentRevenue - currentCost, previousRevenue - previousCost),
             margin: 0
         }
-    }, [allSales])
+    }, [revenueRecords])
 
-    const calculateStats = (salesData: Sale[], defaultCurrency: string) => {
+    const calculateStats = (records: RevenueAnalysisRecord[], defaultCurrency: string) => {
         const statsByCurrency: Record<string, {
             revenue: number,
             cost: number,
@@ -223,7 +213,10 @@ export function Revenue() {
             hourlySales: Record<number, number>
         }> = {}
         const saleStats: {
+            key: string,
             id: string,
+            source: 'sale' | 'sales_order',
+            referenceCode: string,
             date: string,
             revenue: number,
             cost: number,
@@ -232,14 +225,15 @@ export function Revenue() {
             currency: string,
             origin: string,
             cashier: string,
+            partyName?: string,
             sequenceId?: number,
             hasPartialReturn?: boolean
         }[] = []
 
-        salesData.forEach(sale => {
-            if (sale.is_returned) return
+        records.forEach((record) => {
+            if (record.isReturned) return
 
-            const currency = sale.settlement_currency || defaultCurrency
+            const currency = record.currency || defaultCurrency
             if (!statsByCurrency[currency]) {
                 statsByCurrency[currency] = {
                     revenue: 0,
@@ -253,33 +247,29 @@ export function Revenue() {
             }
             statsByCurrency[currency].salesCount++
 
-            let saleRevenue = 0
-            let saleCost = 0
-            const date = new Date(sale.created_at).toISOString().split('T')[0]
+            const totals = getRevenueAnalysisTotals(record)
+            const date = new Date(record.date).toISOString().split('T')[0]
 
             if (!statsByCurrency[currency].dailyTrend[date]) {
                 statsByCurrency[currency].dailyTrend[date] = { revenue: 0, cost: 0, profit: 0 }
             }
 
-            sale.items?.forEach((item: SaleItem) => {
-                const netQuantity = item.quantity - (item.returned_quantity || 0)
+            record.items.forEach((item) => {
+                const netQuantity = item.quantity - item.returnedQuantity
                 if (netQuantity <= 0) return
 
-                const itemRevenue = item.converted_unit_price * netQuantity
-                const itemCost = (item.converted_cost_price || 0) * netQuantity
-
-                saleRevenue += itemRevenue
-                saleCost += itemCost
+                const itemRevenue = item.unitPrice * netQuantity
+                const itemCost = item.costPrice * netQuantity
 
                 // Category tracking
-                const cat = item.product_category || 'Uncategorized'
+                const cat = item.productCategory || 'Uncategorized'
                 statsByCurrency[currency].categoryRevenue[cat] = (statsByCurrency[currency].categoryRevenue[cat] || 0) + itemRevenue
 
                 // Product performance tracking
-                const prodId = item.product_id
+                const prodId = item.productId
                 if (!statsByCurrency[currency].productPerformance[prodId]) {
                     statsByCurrency[currency].productPerformance[prodId] = {
-                        name: item.product_name || 'Unknown Product',
+                        name: item.productName || 'Unknown Product',
                         revenue: 0,
                         cost: 0,
                         quantity: 0
@@ -291,27 +281,31 @@ export function Revenue() {
             })
 
             // Hourly tracking
-            const hour = new Date(sale.created_at).getHours()
-            statsByCurrency[currency].hourlySales[hour] = (statsByCurrency[currency].hourlySales[hour] || 0) + saleRevenue
+            const hour = new Date(record.date).getHours()
+            statsByCurrency[currency].hourlySales[hour] = (statsByCurrency[currency].hourlySales[hour] || 0) + totals.revenue
 
-            statsByCurrency[currency].revenue += saleRevenue
-            statsByCurrency[currency].cost += saleCost
-            statsByCurrency[currency].dailyTrend[date].revenue += saleRevenue
-            statsByCurrency[currency].dailyTrend[date].cost += saleCost
-            statsByCurrency[currency].dailyTrend[date].profit += (saleRevenue - saleCost)
+            statsByCurrency[currency].revenue += totals.revenue
+            statsByCurrency[currency].cost += totals.cost
+            statsByCurrency[currency].dailyTrend[date].revenue += totals.revenue
+            statsByCurrency[currency].dailyTrend[date].cost += totals.cost
+            statsByCurrency[currency].dailyTrend[date].profit += totals.profit
 
             saleStats.push({
-                id: sale.id,
-                date: sale.created_at,
-                revenue: saleRevenue,
-                cost: saleCost,
-                profit: saleRevenue - saleCost,
-                margin: saleRevenue > 0 ? ((saleRevenue - saleCost) / saleRevenue) * 100 : 0,
+                key: record.key,
+                id: record.id,
+                source: record.source,
+                referenceCode: record.referenceCode,
+                date: record.date,
+                revenue: totals.revenue,
+                cost: totals.cost,
+                profit: totals.profit,
+                margin: totals.margin,
                 currency: currency,
-                origin: sale.origin,
-                cashier: sale.cashier_name || 'Staff',
-                sequenceId: sale.sequenceId,
-                hasPartialReturn: sale.has_partial_return
+                origin: record.origin,
+                cashier: record.cashier,
+                partyName: record.partyName,
+                sequenceId: record.sequenceId,
+                hasPartialReturn: record.hasPartialReturn
             })
         })
 
@@ -322,10 +316,9 @@ export function Revenue() {
     }
 
     const stats = useMemo(() => {
-        if (!sales) return { statsByCurrency: {}, saleStats: [] }
-        const { statsByCurrency, saleStats } = calculateStats(sales, features.default_currency || 'usd')
+        const { statsByCurrency, saleStats } = calculateStats(filteredRevenueRecords, features.default_currency || 'usd')
         return { statsByCurrency, saleStats }
-    }, [sales, features.default_currency])
+    }, [filteredRevenueRecords, features.default_currency])
 
     const currencySettings = useMemo(() => ({
         currency: Object.keys(stats.statsByCurrency)[0] || features.default_currency || 'usd',
@@ -410,14 +403,24 @@ export function Revenue() {
         </div>
     )
 
-    // Calculate aggregated stats for selected sales (grouped by currency)
+    const timingEntries = useMemo(
+        () => filteredRevenueRecords.map((record) => ({
+            id: record.key,
+            created_at: record.date,
+            is_returned: record.isReturned
+        })),
+        [filteredRevenueRecords]
+    )
+    const salesById = useMemo(() => new Map(filteredSales.map((sale) => [sale.id, sale])), [filteredSales])
+
+    // Calculate aggregated stats for selected records (grouped by currency)
     const selectionSummary = useMemo(() => {
-        if (selectedSaleIds.size === 0) return null
+        if (selectedRecordKeys.size === 0) return null
 
         const summaryByCurrency: Record<string, { revenue: number; cost: number; profit: number }> = {}
 
-        stats.saleStats.forEach(sale => {
-            if (selectedSaleIds.has(sale.id)) {
+        stats.saleStats.forEach((sale) => {
+            if (selectedRecordKeys.has(sale.key)) {
                 const currency = sale.currency || 'usd'
                 if (!summaryByCurrency[currency]) {
                     summaryByCurrency[currency] = { revenue: 0, cost: 0, profit: 0 }
@@ -429,41 +432,40 @@ export function Revenue() {
         })
 
         return {
-            count: selectedSaleIds.size,
+            count: selectedRecordKeys.size,
             byCurrency: summaryByCurrency
         }
-    }, [selectedSaleIds, stats.saleStats])
+    }, [selectedRecordKeys, stats.saleStats])
 
     // Selection toggle handlers
-    const toggleSaleSelection = (saleId: string) => {
-        setSelectedSaleIds(prev => {
+    const toggleRecordSelection = (recordKey: string) => {
+        setSelectedRecordKeys((prev) => {
             const newSet = new Set(prev)
-            if (newSet.has(saleId)) {
-                newSet.delete(saleId)
+            if (newSet.has(recordKey)) {
+                newSet.delete(recordKey)
             } else {
-                newSet.add(saleId)
+                newSet.add(recordKey)
             }
             return newSet
         })
     }
 
     const toggleSelectAll = () => {
-        if (selectedSaleIds.size === stats.saleStats.length) {
-            setSelectedSaleIds(new Set())
+        if (selectedRecordKeys.size === stats.saleStats.length) {
+            setSelectedRecordKeys(new Set())
         } else {
-            setSelectedSaleIds(new Set(stats.saleStats.map(s => s.id)))
+            setSelectedRecordKeys(new Set(stats.saleStats.map((sale) => sale.key)))
         }
     }
 
     const clearSelection = () => {
-        setSelectedSaleIds(new Set())
+        setSelectedRecordKeys(new Set())
     }
 
     const paginatedSales = useMemo(() => {
         const startIndex = (currentPage - 1) * itemsPerPage
         return stats.saleStats.slice(startIndex, startIndex + itemsPerPage)
     }, [stats.saleStats, currentPage])
-    const salesById = useMemo(() => new Map(sales.map(s => [s.id, s])), [sales])
 
     return (
         <TooltipProvider>
@@ -818,7 +820,7 @@ export function Revenue() {
                             </CardHeader>
                             <CardContent className="space-y-6 pt-2">
                                 {showPeakHeatmap ? (
-                                    <MiniHeatmap sales={sales} />
+                                    <MiniHeatmap sales={timingEntries} />
                                 ) : (
                                     <>
                                         {peakTradingData.map((peak, i) => (
@@ -971,9 +973,12 @@ export function Revenue() {
                                 </CardTitle>
                                 {stats.saleStats.length > 0 && (
                                     <p className="text-[10px] text-muted-foreground font-black uppercase tracking-[0.2em] opacity-70">
-                                        {t('sales.pagination.total', { count: stats.saleStats.length }) || `${stats.saleStats.length} Sales Found`}
+                                        {`${stats.saleStats.length} records found`}
                                     </p>
                                 )}
+                                <p className="text-xs text-muted-foreground">
+                                    {t('revenue.includesCompletedSalesOrders', { defaultValue: 'Includes completed sales orders. Loan repayments remain excluded to avoid double counting.' })}
+                                </p>
                                 {selectionSummary && (
                                     <div className="flex items-center gap-2 mt-2 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 transition-all animate-in fade-in slide-in-from-left-2 duration-200 w-fit">
                                         <Check className="w-4 h-4" />
@@ -1006,7 +1011,7 @@ export function Revenue() {
                                 <div className="flex items-center gap-2">
                                     <Button
                                         onClick={() => setIsExportModalOpen(true)}
-                                        disabled={sales.length === 0}
+                                        disabled={stats.saleStats.length === 0}
                                         className={cn(
                                             "h-10 px-6 rounded-full font-black transition-all flex gap-3 items-center group relative overflow-hidden",
                                             "bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-100 dark:border-emerald-500/20 text-emerald-700 dark:text-emerald-400",
@@ -1039,28 +1044,21 @@ export function Revenue() {
                                     "grid gap-4",
                                     viewMode === 'grid' && !isMobile() ? "grid-cols-1 lg:grid-cols-2 xl:grid-cols-3" : "grid-cols-1"
                                 )}>
-                                    {paginatedSales.map((sale, idx) => {
-                                        const originalSale = salesById.get(sale.id)
-                                        const isFullyReturned = originalSale ? (originalSale.is_returned || (originalSale.items && originalSale.items.length > 0 && originalSale.items.every((item: any) =>
-                                            item.is_returned || (item.returned_quantity || 0) >= item.quantity
-                                        ))) : false
-
-                                        const returnedItemsCount = originalSale?.items?.filter((item: any) => item.is_returned).length || 0
-                                        const partialReturnedItemsCount = originalSale?.items?.filter((item: any) => (item.returned_quantity || 0) > 0 && !item.is_returned).length || 0
-                                        const hasAnyReturn = returnedItemsCount > 0 || partialReturnedItemsCount > 0
-                                        const totalReturnedQuantity = originalSale?.items?.reduce((sum: number, item: any) => {
-                                            if (item.is_returned) return sum + (item.quantity || 0)
-                                            if ((item.returned_quantity || 0) > 0) return sum + (item.returned_quantity || 0)
-                                            return sum
-                                        }, 0) || 0
+                                    {paginatedSales.map((sale) => {
+                                        const originalSale = sale.source === 'sale' ? salesById.get(sale.id) : undefined
+                                        const { isFullyReturned, hasAnyReturn, totalReturnedQuantity } = originalSale
+                                            ? getRevenueRecordReturnSummary(toRevenueRecordFromSale(originalSale))
+                                            : { isFullyReturned: false, hasAnyReturn: false, totalReturnedQuantity: 0 }
+                                        const canOpenSaleDetails = !!originalSale
 
                                         return (
                                             <div
-                                                key={sale.id || idx}
+                                                key={sale.key}
                                                 className={cn(
                                                     "p-4 border shadow-sm space-y-4 transition-all active:scale-[0.98]",
                                                     style === 'neo-orange' ? "rounded-[var(--radius)] border-2 border-black dark:border-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]" : "rounded-[2rem] md:rounded-2xl border-border",
-                                                    isFullyReturned ? 'bg-destructive/5 border-destructive/20' : hasAnyReturn ? 'bg-orange-500/5 border-orange-500/20 dark:bg-orange-500/5 dark:border-orange-500/10' : 'bg-card'
+                                                    isFullyReturned ? 'bg-destructive/5 border-destructive/20' : hasAnyReturn ? 'bg-orange-500/5 border-orange-500/20 dark:bg-orange-500/5 dark:border-orange-500/10' : 'bg-card',
+                                                    canOpenSaleDetails && 'cursor-pointer'
                                                 )}
                                                 onClick={() => {
                                                     if (originalSale) setSelectedSale(originalSale)
@@ -1073,16 +1071,18 @@ export function Revenue() {
                                                         </div>
                                                         <div className="flex items-center gap-2 flex-wrap">
                                                             <span className="text-xs font-mono font-black text-primary">
-                                                                #{sale.sequenceId ? String(sale.sequenceId).padStart(5, '0') : sale.id.split('-')[0]}
+                                                                {sale.referenceCode}
                                                             </span>
-                                                            <Tooltip>
-                                                                <TooltipTrigger asChild>
-                                                                    <Info className="w-3.5 h-3.5 text-muted-foreground hover:text-primary transition-colors cursor-pointer" />
-                                                                </TooltipTrigger>
-                                                                <TooltipContent>
-                                                                    {t('revenue.viewDetails') || 'View Sale Details'}
-                                                                </TooltipContent>
-                                                            </Tooltip>
+                                                            {canOpenSaleDetails && (
+                                                                <Tooltip>
+                                                                    <TooltipTrigger asChild>
+                                                                        <Info className="w-3.5 h-3.5 text-muted-foreground hover:text-primary transition-colors cursor-pointer" />
+                                                                    </TooltipTrigger>
+                                                                    <TooltipContent>
+                                                                        {t('revenue.viewDetails') || 'View Sale Details'}
+                                                                    </TooltipContent>
+                                                                </Tooltip>
+                                                            )}
 
                                                             {isFullyReturned && (
                                                                 <span className="px-1.5 py-0.5 text-[8px] font-bold bg-destructive/20 text-destructive dark:bg-destructive/30 dark:text-destructive-foreground rounded-full border border-destructive/30 uppercase">
@@ -1100,6 +1100,11 @@ export function Revenue() {
                                                                 {formatOriginLabel(sale.origin)}
                                                             </span>
                                                         </div>
+                                                        {sale.partyName && (
+                                                            <div className="text-[10px] font-semibold text-muted-foreground">
+                                                                {sale.partyName}
+                                                            </div>
+                                                        )}
                                                     </div>
                                                     <div className="text-right">
                                                         <span className={cn(
@@ -1146,11 +1151,11 @@ export function Revenue() {
                                                 <button
                                                     onClick={toggleSelectAll}
                                                     className="p-1.5 rounded hover:bg-secondary transition-colors"
-                                                    title={selectedSaleIds.size === stats.saleStats.length ? 'Deselect all' : 'Select all'}
+                                                    title={selectedRecordKeys.size === stats.saleStats.length ? 'Deselect all' : 'Select all'}
                                                 >
-                                                    {selectedSaleIds.size === stats.saleStats.length && stats.saleStats.length > 0 ? (
+                                                    {selectedRecordKeys.size === stats.saleStats.length && stats.saleStats.length > 0 ? (
                                                         <Check className="w-4 h-4 text-emerald-500" />
-                                                    ) : selectedSaleIds.size > 0 ? (
+                                                    ) : selectedRecordKeys.size > 0 ? (
                                                         <div className="w-4 h-4 border-2 border-emerald-500 rounded flex items-center justify-center">
                                                             <div className="w-2 h-1 bg-emerald-500" />
                                                         </div>
@@ -1169,29 +1174,21 @@ export function Revenue() {
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
-                                        {paginatedSales.map((sale, idx) => {
-                                            const originalSale = salesById.get(sale.id)
-                                            const isFullyReturned = originalSale ? (originalSale.is_returned || (originalSale.items && originalSale.items.length > 0 && originalSale.items.every((item: any) =>
-                                                item.is_returned || (item.returned_quantity || 0) >= item.quantity
-                                            ))) : false
-
-                                            const returnedItemsCount = originalSale?.items?.filter((item: any) => item.is_returned).length || 0
-                                            const partialReturnedItemsCount = originalSale?.items?.filter((item: any) => (item.returned_quantity || 0) > 0 && !item.is_returned).length || 0
-                                            const hasAnyReturn = returnedItemsCount > 0 || partialReturnedItemsCount > 0
-                                            const totalReturnedQuantity = originalSale?.items?.reduce((sum: number, item: any) => {
-                                                if (item.is_returned) return sum + (item.quantity || 0)
-                                                if ((item.returned_quantity || 0) > 0) return sum + (item.returned_quantity || 0)
-                                                return sum
-                                            }, 0) || 0
+                                        {paginatedSales.map((sale) => {
+                                            const originalSale = sale.source === 'sale' ? salesById.get(sale.id) : undefined
+                                            const { isFullyReturned, hasAnyReturn, totalReturnedQuantity } = originalSale
+                                                ? getRevenueRecordReturnSummary(toRevenueRecordFromSale(originalSale))
+                                                : { isFullyReturned: false, hasAnyReturn: false, totalReturnedQuantity: 0 }
+                                            const canOpenSaleDetails = !!originalSale
 
                                             return (
                                                 <TableRow
-                                                    key={sale.id || idx}
+                                                    key={sale.key}
                                                     className={cn(
                                                         "group",
                                                         isFullyReturned ? 'bg-red-500/10 dark:bg-red-500/20 border-red-500/20' :
                                                             hasAnyReturn ? 'bg-orange-500/10 border-orange-500/20 dark:bg-orange-500/5 dark:border-orange-500/10' : '',
-                                                        selectedSaleIds.has(sale.id) && 'bg-emerald-500/5 hover:bg-emerald-500/10',
+                                                        selectedRecordKeys.has(sale.key) && 'bg-emerald-500/5 hover:bg-emerald-500/10',
                                                         "print:bg-opacity-100"
                                                     )}
                                                 >
@@ -1200,17 +1197,17 @@ export function Revenue() {
                                                         <button
                                                             onClick={(e) => {
                                                                 e.stopPropagation()
-                                                                toggleSaleSelection(sale.id)
+                                                                toggleRecordSelection(sale.key)
                                                             }}
                                                             className={cn(
                                                                 "p-1.5 rounded transition-all",
-                                                                selectedSaleIds.has(sale.id)
+                                                                selectedRecordKeys.has(sale.key)
                                                                     ? "opacity-100"
                                                                     : "opacity-0 group-hover:opacity-100",
                                                                 "hover:bg-secondary"
                                                             )}
                                                         >
-                                                            {selectedSaleIds.has(sale.id) ? (
+                                                            {selectedRecordKeys.has(sale.key) ? (
                                                                 <Check className="w-4 h-4 text-emerald-500" />
                                                             ) : (
                                                                 <Square className="w-4 h-4 text-muted-foreground" />
@@ -1226,23 +1223,28 @@ export function Revenue() {
                                                                 onClick={() => {
                                                                     if (originalSale) setSelectedSale(originalSale)
                                                                 }}
-                                                                className="font-mono text-[10px] text-primary hover:underline"
+                                                                className={cn(
+                                                                    "font-mono text-[10px]",
+                                                                    canOpenSaleDetails ? "text-primary hover:underline" : "text-foreground"
+                                                                )}
                                                             >
-                                                                #{sale.sequenceId ? String(sale.sequenceId).padStart(5, '0') : sale.id.split('-')[0]}
+                                                                {sale.referenceCode}
                                                             </button>
-                                                            <Tooltip>
-                                                                <TooltipTrigger asChild>
-                                                                    <Info
-                                                                        className="w-3.5 h-3.5 text-muted-foreground hover:text-primary transition-colors cursor-pointer"
-                                                                        onClick={() => {
-                                                                            if (originalSale) setSelectedSale(originalSale)
-                                                                        }}
-                                                                    />
-                                                                </TooltipTrigger>
-                                                                <TooltipContent>
-                                                                    {t('revenue.viewDetails') || 'View Sale Details'}
-                                                                </TooltipContent>
-                                                            </Tooltip>
+                                                            {canOpenSaleDetails && (
+                                                                <Tooltip>
+                                                                    <TooltipTrigger asChild>
+                                                                        <Info
+                                                                            className="w-3.5 h-3.5 text-muted-foreground hover:text-primary transition-colors cursor-pointer"
+                                                                            onClick={() => {
+                                                                                if (originalSale) setSelectedSale(originalSale)
+                                                                            }}
+                                                                        />
+                                                                    </TooltipTrigger>
+                                                                    <TooltipContent>
+                                                                        {t('revenue.viewDetails') || 'View Sale Details'}
+                                                                    </TooltipContent>
+                                                                </Tooltip>
+                                                            )}
 
                                                             {isFullyReturned && (
                                                                 <span className="px-1.5 py-0.5 text-[8px] font-bold bg-destructive/20 text-destructive dark:bg-destructive/30 dark:text-destructive-foreground rounded-full border border-destructive/30 uppercase">
@@ -1256,6 +1258,11 @@ export function Revenue() {
                                                                 </span>
                                                             )}
                                                         </div>
+                                                        {sale.partyName && (
+                                                            <div className="mt-1 text-[10px] font-semibold text-muted-foreground">
+                                                                {sale.partyName}
+                                                            </div>
+                                                        )}
                                                     </TableCell>
                                                     <TableCell className="text-start">
                                                         <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-secondary uppercase">
@@ -1327,14 +1334,14 @@ export function Revenue() {
                     <PeakTradingModal
                         isOpen={isPeakTradingOpen}
                         onClose={() => setIsPeakTradingOpen(false)}
-                        sales={sales}
+                        sales={timingEntries}
                     />
 
                     {/* Returns Analysis Modal */}
                     <ReturnsAnalysisModal
                         isOpen={isReturnsOpen}
                         onClose={() => setIsReturnsOpen(false)}
-                        sales={sales}
+                        sales={filteredSales}
                         iqdPreference={features.iqd_display_preference}
                         defaultCurrency={features.default_currency || 'usd'}
                     />
@@ -1360,13 +1367,13 @@ export function Revenue() {
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                    {stats.saleStats.map((sale, idx) => (
-                                        <TableRow key={sale.id || idx}>
+                                    {stats.saleStats.map((sale) => (
+                                        <TableRow key={sale.key}>
                                             <TableCell className="font-mono text-xs">
                                                 {formatDateTime(sale.date)}
                                             </TableCell>
                                             <TableCell className="font-mono text-xs">
-                                                #{sale.sequenceId ? sale.sequenceId.toString().padStart(5, '0') : sale.id.split('-')[0]}
+                                                {sale.referenceCode}
                                             </TableCell>
                                             <TableCell className="text-end">
                                                 {formatCurrency(sale.revenue, sale.currency, features.iqd_display_preference)}
@@ -1405,6 +1412,7 @@ export function Revenue() {
                     customDates,
                     selectedCashier: 'all'
                 }}
+                records={stats.saleStats}
             />
         </TooltipProvider >
     )

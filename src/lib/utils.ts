@@ -219,6 +219,7 @@ export function formatOriginLabel(origin?: string | null): string {
     const normalized = origin.trim().toLowerCase()
     if (normalized === 'pos') return 'POS'
     if (normalized === 'instant_pos' || normalized === 'instant-pos' || normalized === 'instant pos') return 'Instant POS'
+    if (normalized === 'sales_order' || normalized === 'sales-order' || normalized === 'sales order') return 'Sales Order'
     if (normalized === 'manual') return 'Manual'
     if (normalized === 'loans' || normalized === 'loan') return 'Loans'
     return origin

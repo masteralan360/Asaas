@@ -60,9 +60,9 @@ export const mapSalesForExport = (sales: any[], t: any) => {
 export const mapRevenueForExport = (saleStats: any[], t: any) => {
     return saleStats.map(sale => ({
         [t('common.date') || 'Date']: new Date(sale.date).toLocaleString(),
-        [t('sales.id') || 'Sale ID']: sale.sequenceId ? `#${String(sale.sequenceId).padStart(5, '0')}` : sale.id.slice(0, 8),
+        [t('sales.id') || 'Sale ID']: sale.referenceCode || (sale.sequenceId ? `#${String(sale.sequenceId).padStart(5, '0')}` : sale.id.slice(0, 8)),
         [t('sales.origin') || 'Origin']: formatOriginLabel(sale.origin),
-        [t('sales.cashier') || 'Cashier']: sale.cashier || 'Staff',
+        [t('sales.cashier') || 'Cashier']: sale.cashier || sale.partyName || 'Staff',
         [t('common.currency') || 'Currency']: sale.currency?.toUpperCase() || 'USD',
         [t('revenue.table.revenue') || 'Revenue']: sale.revenue,
         [t('revenue.table.cost') || 'Cost']: sale.cost,

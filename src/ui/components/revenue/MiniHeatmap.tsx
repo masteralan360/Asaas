@@ -1,11 +1,16 @@
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Sale } from '@/types'
 import { cn } from '@/lib/utils'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/ui/components'
 
+type HeatmapEntry = {
+    id: string
+    created_at: string
+    is_returned?: boolean
+}
+
 interface MiniHeatmapProps {
-    sales: Sale[]
+    sales: HeatmapEntry[]
 }
 
 export function MiniHeatmap({ sales }: MiniHeatmapProps) {

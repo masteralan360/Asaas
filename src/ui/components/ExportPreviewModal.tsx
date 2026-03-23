@@ -25,13 +25,15 @@ interface ExportPreviewModalProps {
         selectedCashier: string
     }
     type?: 'sales' | 'revenue'
+    records?: any[]
 }
 
 export function ExportPreviewModal({
     isOpen,
     onClose,
     filters,
-    type = 'sales'
+    type = 'sales',
+    records
 }: ExportPreviewModalProps) {
     const { t } = useTranslation()
     const { activeWorkspace, isLocalMode } = useWorkspace()
@@ -40,12 +42,15 @@ export function ExportPreviewModal({
     const [data, setData] = useState<any[]>([])
 
     useEffect(() => {
-        if (isOpen && filters) {
+        if (isOpen && type === 'revenue' && records) {
+            setData(records)
+            setIsLoading(false)
+        } else if (isOpen && filters) {
             fetchExportData()
         } else if (!isOpen) {
             setData([]) // Clear data on close
         }
-    }, [activeWorkspace?.id, filters, isLocalMode, isOpen])
+    }, [activeWorkspace?.id, filters, isLocalMode, isOpen, records, type])
 
     const fetchExportData = async () => {
         setIsLoading(true)

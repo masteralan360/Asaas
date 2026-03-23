@@ -26,13 +26,18 @@ import {
     Cell
 } from 'recharts'
 import { Clock, Activity, CalendarDays, Grid3X3 } from 'lucide-react'
-import { Sale } from '@/types'
 import { cn } from '@/lib/utils'
+
+type PeakTradingEntry = {
+    id: string
+    created_at: string
+    is_returned?: boolean
+}
 
 interface PeakTradingModalProps {
     isOpen: boolean
     onClose: () => void
-    sales: Sale[]
+    sales: PeakTradingEntry[]
 }
 
 export function PeakTradingModal({ isOpen, onClose, sales }: PeakTradingModalProps) {
