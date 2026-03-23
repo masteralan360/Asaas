@@ -1,6 +1,7 @@
 import { useMemo, useState, type FormEvent } from 'react'
-import { Plus, Pencil, Search, Trash2, Truck } from 'lucide-react'
+import { Plus, Pencil, Search, Trash2, Truck, Eye } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { useLocation } from 'wouter'
 
 import { useAuth } from '@/auth'
 import { useWorkspace } from '@/workspace'
@@ -73,6 +74,7 @@ export function Suppliers() {
     const { user } = useAuth()
     const { features } = useWorkspace()
     const { toast } = useToast()
+    const [, navigate] = useLocation()
     const suppliers = useSuppliers(user?.workspaceId)
     const [search, setSearch] = useState('')
     const [dialogOpen, setDialogOpen] = useState(false)
@@ -282,6 +284,9 @@ export function Suppliers() {
                                             <TableCell>{formatCurrency(supplier.totalSpent, supplier.defaultCurrency, features.iqd_display_preference)}</TableCell>
                                             <TableCell className="text-right">
                                                 <div className="flex justify-end gap-1">
+                                                    <Button variant="ghost" size="icon" onClick={() => navigate(`/suppliers/${supplier.id}`)}>
+                                                        <Eye className="h-4 w-4" />
+                                                    </Button>
                                                     {canEdit && (
                                                         <Button variant="ghost" size="icon" onClick={() => openEditDialog(supplier)}>
                                                             <Pencil className="h-4 w-4" />

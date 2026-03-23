@@ -58,7 +58,9 @@ const InventoryTransfer = lazy(() => import('@/ui/pages/InventoryTransfer').then
 const HR = lazy(() => import('@/ui/pages/HR').then(m => ({ default: m.default })))
 const Loans = lazy(() => import('@/ui/pages/Loans').then(m => ({ default: m.Loans })))
 const Customers = lazy(() => import('@/ui/pages/Customers').then(m => ({ default: m.Customers })))
+const CustomerDetails = lazy(() => import('@/ui/pages/CustomerDetails').then(m => ({ default: m.CustomerDetails })))
 const Suppliers = lazy(() => import('@/ui/pages/Suppliers').then(m => ({ default: m.Suppliers })))
+const SupplierDetails = lazy(() => import('@/ui/pages/SupplierDetails').then(m => ({ default: m.SupplierDetails })))
 const Orders = lazy(() => import('@/ui/pages/Orders').then(m => ({ default: m.Orders })))
 
 function LoadingState() {
@@ -537,10 +539,24 @@ function App() {
                                                     </Layout>
                                                 </ProtectedRoute>
                                             </Route>
+                                            <Route path="/customers/:customerId">
+                                                <ProtectedRoute allowedRoles={['admin', 'staff']} requiredFeature="allow_crm">
+                                                    <Layout>
+                                                        <CustomerDetails />
+                                                    </Layout>
+                                                </ProtectedRoute>
+                                            </Route>
                                             <Route path="/suppliers">
                                                 <ProtectedRoute allowedRoles={['admin', 'staff']} requiredFeature="allow_crm">
                                                     <Layout>
                                                         <Suppliers />
+                                                    </Layout>
+                                                </ProtectedRoute>
+                                            </Route>
+                                            <Route path="/suppliers/:supplierId">
+                                                <ProtectedRoute allowedRoles={['admin', 'staff']} requiredFeature="allow_crm">
+                                                    <Layout>
+                                                        <SupplierDetails />
                                                     </Layout>
                                                 </ProtectedRoute>
                                             </Route>

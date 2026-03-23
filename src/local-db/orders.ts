@@ -324,6 +324,27 @@ export function useCustomer(customerId: string | undefined) {
     return useLiveQuery(() => customerId ? db.customers.get(customerId) : undefined, [customerId])
 }
 
+export function useCustomerSalesOrders(customerId: string | undefined, workspaceId: string | undefined) {
+    const online = useNetworkStatus()
+
+    const orders = useLiveQuery(
+        async () => {
+            if (!customerId) return []
+            const rows = await db.sales_orders.where('customerId').equals(customerId).and((item) => !item.isDeleted).toArray()
+            return rows.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+        },
+        [customerId]
+    )
+
+    useEffect(() => {
+        if (online && workspaceId && shouldUseCloudBusinessData(workspaceId)) {
+            fetchTableFromSupabase('sales_orders', db.sales_orders, workspaceId)
+        }
+    }, [online, workspaceId])
+
+    return orders ?? []
+}
+
 export async function createCustomer(
     workspaceId: string,
     data: Omit<Customer, 'id' | 'workspaceId' | 'createdAt' | 'updatedAt' | 'syncStatus' | 'lastSyncedAt' | 'version' | 'isDeleted' | 'totalOrders' | 'totalSpent' | 'outstandingBalance'>
@@ -400,6 +421,27 @@ export function useSuppliers(workspaceId: string | undefined) {
 
 export function useSupplier(supplierId: string | undefined) {
     return useLiveQuery(() => supplierId ? db.suppliers.get(supplierId) : undefined, [supplierId])
+}
+
+export function useSupplierPurchaseOrders(supplierId: string | undefined, workspaceId: string | undefined) {
+    const online = useNetworkStatus()
+
+    const orders = useLiveQuery(
+        async () => {
+            if (!supplierId) return []
+            const rows = await db.purchase_orders.where('supplierId').equals(supplierId).and((item) => !item.isDeleted).toArray()
+            return rows.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+        },
+        [supplierId]
+    )
+
+    useEffect(() => {
+        if (online && workspaceId && shouldUseCloudBusinessData(workspaceId)) {
+            fetchTableFromSupabase('purchase_orders', db.purchase_orders, workspaceId)
+        }
+    }, [online, workspaceId])
+
+    return orders ?? []
 }
 
 export async function createSupplier(

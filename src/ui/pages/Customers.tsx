@@ -1,6 +1,7 @@
 import { useMemo, useState, type FormEvent } from 'react'
-import { Users, Plus, Pencil, Trash2, Search } from 'lucide-react'
+import { Users, Plus, Pencil, Trash2, Search, Eye } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { useLocation } from 'wouter'
 
 import { useAuth } from '@/auth'
 import { useWorkspace } from '@/workspace'
@@ -71,6 +72,7 @@ export function Customers() {
     const { user } = useAuth()
     const { features } = useWorkspace()
     const { toast } = useToast()
+    const [, navigate] = useLocation()
     const customers = useCustomers(user?.workspaceId)
     const [search, setSearch] = useState('')
     const [dialogOpen, setDialogOpen] = useState(false)
@@ -295,6 +297,9 @@ export function Customers() {
                                                 </TableCell>
                                                 <TableCell className="text-right">
                                                     <div className="flex justify-end gap-1">
+                                                        <Button variant="ghost" size="icon" onClick={() => navigate(`/customers/${customer.id}`)}>
+                                                            <Eye className="h-4 w-4" />
+                                                        </Button>
                                                         {canEdit && (
                                                             <Button variant="ghost" size="icon" onClick={() => openEditDialog(customer)}>
                                                                 <Pencil className="h-4 w-4" />
