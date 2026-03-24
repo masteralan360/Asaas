@@ -28,7 +28,8 @@ import type {
     PayrollStatus,
     DividendStatus,
     SalesOrder,
-    PurchaseOrder
+    PurchaseOrder,
+    TravelAgencySale
 } from './models'
 import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
 import {
@@ -68,6 +69,7 @@ export class AtlasDatabase extends Dexie {
     loan_payments!: EntityTable<LoanPayment, 'id'>
     sales_orders!: EntityTable<SalesOrder, 'id'>
     purchase_orders!: EntityTable<PurchaseOrder, 'id'>
+    travel_agency_sales!: EntityTable<TravelAgencySale, 'id'>
 
     constructor() {
         super('AtlasDatabase')
@@ -351,6 +353,39 @@ export class AtlasDatabase extends Dexie {
             app_settings: 'key'
         })
 
+        this.version(47).stores({
+            products: 'id, sku, name, categoryId, storageId, workspaceId, currency, syncStatus, updatedAt, isDeleted, canBeReturned',
+            categories: 'id, name, workspaceId, syncStatus, updatedAt, isDeleted',
+            invoices: 'id, invoiceid, orderId, customerId, status, workspaceId, syncStatus, updatedAt, isDeleted, origin, createdBy, cashierName, createdByName, sequenceId, printFormat, r2PathA4, r2PathReceipt',
+            users: 'id, email, role, workspaceId, syncStatus, updatedAt, isDeleted, monthlyTarget',
+            sales: 'id, cashierId, workspaceId, settlementCurrency, syncStatus, createdAt, updatedAt, notes',
+            sale_items: 'id, saleId, productId',
+            workspaces: 'id, name, code, syncStatus, updatedAt, isDeleted, print_lang, print_qr',
+            storages: 'id, name, workspaceId, isSystem, isProtected, syncStatus, updatedAt, isDeleted',
+            inventory: 'id, workspaceId, productId, storageId, quantity, syncStatus, updatedAt, isDeleted, [workspaceId+storageId], [workspaceId+productId], [productId+storageId]',
+            inventory_transfer_transactions: 'id, workspaceId, productId, sourceStorageId, destinationStorageId, transferType, createdAt, isDeleted, [workspaceId+createdAt], [workspaceId+productId], [workspaceId+transferType]',
+            reorder_transfer_rules: 'id, workspaceId, productId, sourceStorageId, destinationStorageId, isIndefinite, expiresOn, updatedAt, isDeleted, [workspaceId+productId], [workspaceId+destinationStorageId], [workspaceId+expiresOn]',
+            suppliers: 'id, name, workspaceId, phone, email, defaultCurrency, updatedAt, isDeleted, syncStatus',
+            customers: 'id, name, workspaceId, phone, email, defaultCurrency, updatedAt, isDeleted, syncStatus',
+            employees: 'id, name, workspaceId, linkedUserId, syncStatus, updatedAt, isDeleted',
+            budget_settings: 'id, workspaceId',
+            budget_allocations: 'id, workspaceId, month, [workspaceId+month]',
+            expense_series: 'id, workspaceId, recurrence, startMonth, endMonth, isDeleted',
+            expense_items: 'id, workspaceId, seriesId, month, dueDate, status, [seriesId+month], [workspaceId+month]',
+            payroll_statuses: 'id, workspaceId, employeeId, month, status, [employeeId+month], [workspaceId+month]',
+            dividend_statuses: 'id, workspaceId, employeeId, month, status, [employeeId+month], [workspaceId+month]',
+            syncQueue: 'id, entityType, entityId, operation, timestamp',
+            offline_mutations: 'id, workspaceId, entityType, entityId, status, createdAt, [entityType+entityId+status]',
+            workspace_contacts: 'id, workspaceId, type, value, syncStatus, updatedAt',
+            loans: 'id, workspaceId, saleId, status, nextDueDate, borrowerName, loanNo, linkedPartyType, linkedPartyId, syncStatus, updatedAt, isDeleted',
+            loan_installments: 'id, loanId, workspaceId, dueDate, status, syncStatus, updatedAt, isDeleted, [loanId+installmentNo]',
+            loan_payments: 'id, loanId, workspaceId, paidAt, syncStatus, updatedAt, isDeleted',
+            sales_orders: 'id, orderNumber, customerId, workspaceId, status, currency, createdAt, updatedAt, isDeleted, syncStatus',
+            purchase_orders: 'id, orderNumber, supplierId, workspaceId, status, currency, createdAt, updatedAt, isDeleted, syncStatus',
+            travel_agency_sales: 'id, saleNumber, workspaceId, saleDate, supplierId, isPaid, updatedAt, isDeleted, syncStatus, [workspaceId+saleDate], [workspaceId+isPaid]',
+            app_settings: 'key'
+        })
+
         this.registerLocalModeSyncHooks()
     }
 
@@ -376,6 +411,7 @@ export class AtlasDatabase extends Dexie {
             'loan_payments',
             'sales_orders',
             'purchase_orders',
+            'travel_agency_sales',
             'budget_settings',
             'budget_allocations',
             'expense_series',
@@ -488,13 +524,14 @@ export const db = new AtlasDatabase()
 
 // Database utility functions
 export async function clearDatabase(): Promise<void> {
-    await db.transaction('rw', [db.products, db.inventory, db.inventory_transfer_transactions, db.reorder_transfer_rules, db.categories, db.invoices, db.syncQueue], async () => {
+    await db.transaction('rw', [db.products, db.inventory, db.inventory_transfer_transactions, db.reorder_transfer_rules, db.categories, db.invoices, db.travel_agency_sales, db.syncQueue], async () => {
         await db.products.clear()
         await db.inventory.clear()
         await db.inventory_transfer_transactions.clear()
         await db.reorder_transfer_rules.clear()
         await db.categories.clear()
         await db.invoices.clear()
+        await db.travel_agency_sales.clear()
         await db.syncQueue.clear()
     })
 }

@@ -13,7 +13,8 @@ const crmTables = new Set([
     'customers',
     'suppliers',
     'sales_orders',
-    'purchase_orders'
+    'purchase_orders',
+    'travel_agency_sales'
 ])
 
 const budgetClient = supabase.schema('budget')

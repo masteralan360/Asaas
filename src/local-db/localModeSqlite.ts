@@ -31,7 +31,8 @@ export const LOCAL_MODE_SQLITE_TABLES = [
     'loan_installments',
     'loan_payments',
     'sales_orders',
-    'purchase_orders'
+    'purchase_orders',
+    'travel_agency_sales'
 ] as const
 
 export type LocalModeSqliteTableName = (typeof LOCAL_MODE_SQLITE_TABLES)[number]

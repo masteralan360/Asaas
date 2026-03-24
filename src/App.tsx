@@ -62,6 +62,9 @@ const CustomerDetails = lazy(() => import('@/ui/pages/CustomerDetails').then(m =
 const Suppliers = lazy(() => import('@/ui/pages/Suppliers').then(m => ({ default: m.Suppliers })))
 const SupplierDetails = lazy(() => import('@/ui/pages/SupplierDetails').then(m => ({ default: m.SupplierDetails })))
 const Orders = lazy(() => import('@/ui/pages/Orders').then(m => ({ default: m.Orders })))
+const TravelAgency = lazy(() => import('@/ui/pages/TravelAgency').then(m => ({ default: m.TravelAgency })))
+const TravelAgencySaleCreate = lazy(() => import('@/ui/pages/TravelAgencySaleForm').then(m => ({ default: m.TravelAgencySaleCreate })))
+const TravelAgencySaleEdit = lazy(() => import('@/ui/pages/TravelAgencySaleForm').then(m => ({ default: m.TravelAgencySaleEdit })))
 
 function LoadingState() {
     const [isSlow, setIsSlow] = useState(false)
@@ -571,6 +574,27 @@ function App() {
                                                 <ProtectedRoute allowedRoles={['admin', 'staff']} requiredFeature="allow_crm">
                                                     <Layout>
                                                         <Orders />
+                                                    </Layout>
+                                                </ProtectedRoute>
+                                            </Route>
+                                            <Route path="/travel-agency">
+                                                <ProtectedRoute allowedRoles={['admin', 'staff']}>
+                                                    <Layout>
+                                                        <TravelAgency />
+                                                    </Layout>
+                                                </ProtectedRoute>
+                                            </Route>
+                                            <Route path="/travel-agency/new">
+                                                <ProtectedRoute allowedRoles={['admin', 'staff']}>
+                                                    <Layout>
+                                                        <TravelAgencySaleCreate />
+                                                    </Layout>
+                                                </ProtectedRoute>
+                                            </Route>
+                                            <Route path="/travel-agency/:saleId">
+                                                <ProtectedRoute allowedRoles={['admin', 'staff']}>
+                                                    <Layout>
+                                                        <TravelAgencySaleEdit />
                                                     </Layout>
                                                 </ProtectedRoute>
                                             </Route>

@@ -223,6 +223,7 @@ export async function pullChanges(workspaceId: string, lastSyncTime: string | nu
         'sales',
         'sales_orders',
         'purchase_orders',
+        'travel_agency_sales',
         'budget_settings',
         'budget_allocations',
         'expense_series',

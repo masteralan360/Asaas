@@ -55,7 +55,8 @@ import {
     PanelRightOpen,
     PanelRightClose,
     Monitor,
-    Truck
+    Truck,
+    Plane
 } from 'lucide-react'
 import { useState } from 'react'
 import { Button } from './button'
@@ -81,6 +82,7 @@ const routePrefetchMap: Record<string, () => Promise<unknown>> = {
     '/customers': () => import('@/ui/pages/Customers'),
     '/suppliers': () => import('@/ui/pages/Suppliers'),
     '/orders': () => import('@/ui/pages/Orders'),
+    '/travel-agency': () => import('@/ui/pages/TravelAgency'),
     '/loans': () => import('@/ui/pages/Loans'),
     '/revenue': () => import('@/ui/pages/Revenue'),
     '/budget': () => import('@/ui/pages/Budget'),
@@ -249,6 +251,9 @@ export function Layout({ children }: LayoutProps) {
             { name: t('nav.customers') || 'Customers', href: '/customers', icon: Users },
             { name: t('nav.suppliers') || 'Suppliers', href: '/suppliers', icon: Truck },
             { name: t('nav.orders') || 'Orders', href: '/orders', icon: ShoppingCart }
+        ] : []),
+        ...((user?.role === 'admin' || user?.role === 'staff') ? [
+            { name: t('nav.travelAgency', { defaultValue: 'Travel Agency' }), href: '/travel-agency', icon: Plane }
         ] : []),
         { name: t('nav.loans') || 'Loans', href: '/loans', icon: HandCoins },
         // Revenue - admin only

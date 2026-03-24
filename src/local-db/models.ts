@@ -213,6 +213,49 @@ export interface PurchaseOrder extends BaseEntity {
     isLocked?: boolean
 }
 
+export type TravelAgencyTravelMethod = 'bus' | 'plane' | 'train' | 'car' | 'ship' | 'other'
+export type TravelAgencyTripType = 'one_way' | 'round_trip'
+export type TravelAgencyPaymentMethod = 'cash' | 'fib' | 'qicard' | 'hawala' | 'fastpay'
+export type TravelAgencyReceiver = 'office' | 'erbil'
+
+export interface TravelAgencyTravelPlan {
+    method: TravelAgencyTravelMethod
+    departure?: string
+    arrival?: string
+    tripType?: TravelAgencyTripType
+}
+
+export interface TravelAgencyTourist {
+    id: string
+    fullName: string
+    surname: string
+    dateOfBirth?: string
+    nationality?: string
+    passportNumber?: string
+    travelPlan?: TravelAgencyTravelPlan | null
+    revenue: number
+    notes?: string
+}
+
+export interface TravelAgencySale extends BaseEntity {
+    saleNumber: string
+    saleDate: string
+    touristCount: number
+    tourists: TravelAgencyTourist[]
+    groupTravelPlan?: TravelAgencyTravelPlan | null
+    groupRevenue: number
+    supplierId?: string | null
+    supplierName?: string | null
+    supplierCost: number
+    currency: CurrencyCode
+    travelPackages: string[]
+    paymentMethod: TravelAgencyPaymentMethod
+    receiver: TravelAgencyReceiver
+    notes?: string
+    isPaid: boolean
+    paidAt?: string | null
+}
+
 
 export interface Employee extends BaseEntity {
     name: string
@@ -435,7 +478,7 @@ export interface LoanPayment extends BaseEntity {
 // Sync Queue Item for tracking pending changes
 export interface SyncQueueItem {
     id: string
-    entityType: 'products' | 'inventory' | 'reorder_transfer_rules' | 'inventory_transfer_transactions' | 'invoices' | 'users' | 'sales' | 'categories' | 'storages' | 'employees' | 'workspace_contacts' | 'loans' | 'loan_installments' | 'loan_payments' | 'budget_settings' | 'budget_allocations' | 'expense_series' | 'expense_items' | 'payroll_statuses' | 'dividend_statuses' | 'customers' | 'suppliers' | 'sales_orders' | 'purchase_orders'
+    entityType: 'products' | 'inventory' | 'reorder_transfer_rules' | 'inventory_transfer_transactions' | 'invoices' | 'users' | 'sales' | 'categories' | 'storages' | 'employees' | 'workspace_contacts' | 'loans' | 'loan_installments' | 'loan_payments' | 'budget_settings' | 'budget_allocations' | 'expense_series' | 'expense_items' | 'payroll_statuses' | 'dividend_statuses' | 'customers' | 'suppliers' | 'sales_orders' | 'purchase_orders' | 'travel_agency_sales'
     entityId: string
     operation: 'create' | 'update' | 'delete'
     data: Record<string, unknown>
@@ -488,7 +531,7 @@ export interface WorkspaceContact extends Omit<BaseEntity, 'isDeleted'> {
 export interface OfflineMutation {
     id: string
     workspaceId: string
-    entityType: 'products' | 'inventory' | 'reorder_transfer_rules' | 'inventory_transfer_transactions' | 'invoices' | 'users' | 'sales' | 'categories' | 'workspaces' | 'storages' | 'employees' | 'workspace_contacts' | 'loans' | 'loan_installments' | 'loan_payments' | 'budget_settings' | 'budget_allocations' | 'expense_series' | 'expense_items' | 'payroll_statuses' | 'dividend_statuses' | 'customers' | 'suppliers' | 'sales_orders' | 'purchase_orders'
+    entityType: 'products' | 'inventory' | 'reorder_transfer_rules' | 'inventory_transfer_transactions' | 'invoices' | 'users' | 'sales' | 'categories' | 'workspaces' | 'storages' | 'employees' | 'workspace_contacts' | 'loans' | 'loan_installments' | 'loan_payments' | 'budget_settings' | 'budget_allocations' | 'expense_series' | 'expense_items' | 'payroll_statuses' | 'dividend_statuses' | 'customers' | 'suppliers' | 'sales_orders' | 'purchase_orders' | 'travel_agency_sales'
     entityId: string
     operation: 'create' | 'update' | 'delete'
     payload: Record<string, unknown>
