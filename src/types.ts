@@ -42,7 +42,7 @@ export interface Sale {
     exchange_rate_timestamp: string
     exchange_rates?: any[]
     created_at: string
-    origin: 'pos' | 'manual' | 'instant_pos'
+    origin: 'pos' | 'manual' | 'instant_pos' | 'sales_order'
     payment_method?: 'cash' | 'fib' | 'qicard' | 'zaincash' | 'fastpay' | 'loan'
     cashier_name?: string
     items?: SaleItem[]
@@ -59,6 +59,8 @@ export interface Sale {
     has_partial_return?: boolean
     notes?: string
     updated_at?: string
+    _orderNumber?: string
+    _isOrder?: boolean
 }
 
 export interface CartItem {

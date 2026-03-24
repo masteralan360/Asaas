@@ -180,7 +180,7 @@ export function SaleDetailsModal({ sale, isOpen, onClose, onReturnItem, onReturn
                         </div>
                         <div className="font-bold text-sm mt-0.5 font-mono">
                             {sale.sequenceId
-                                ? `#SALE-${sale.sequenceId}`
+                                ? (sale._orderNumber || `#SALE-${sale.sequenceId}`)
                                 : `#${sale.id.slice(0, 8)}`}
                         </div>
                     </div>

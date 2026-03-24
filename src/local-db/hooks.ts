@@ -1,4 +1,4 @@
-﻿import { useEffect } from 'react'
+import { useEffect } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useState } from 'react'
 
@@ -2959,3 +2959,55 @@ export async function recordLoanPayment(workspaceId: string, input: LoanPaymentI
     }
 }
 
+
+/**
+ * Maps a SalesOrder (camelCase) to the UI Sale type (snake_case).
+ */
+export function toUISaleFromOrder(order: any): any {
+    const items = (order.items || []).map((item: any) => ({
+        id: item.id || Math.random().toString(36).substr(2, 9),
+        sale_id: order.id,
+        product_id: item.productId,
+        product_name: item.productName || 'Unknown Product',
+        product_sku: item.productSku || '',
+        quantity: item.quantity || 0,
+        unit_price: item.convertedUnitPrice || item.unitPrice || 0,
+        total_price: item.lineTotal || (item.quantity * (item.convertedUnitPrice || 0)),
+        cost_price: item.costPrice || 0,
+        converted_cost_price: item.convertedCostPrice || 0,
+        original_currency: item.originalCurrency || order.currency,
+        original_unit_price: item.originalUnitPrice || item.original_unit_price || item.unitPrice || item.unit_price || 0,
+        converted_unit_price: item.convertedUnitPrice || item.converted_unit_price || item.unitPrice || item.unit_price || 0,
+        settlement_currency: order.currency || order.settlement_currency,
+        returned_quantity: 0,
+        is_returned: false,
+        product: {
+            name: item.productName || 'Unknown Product',
+            sku: item.productSku || '',
+            can_be_returned: false
+        }
+    }))
+
+    return {
+        id: order.id,
+        workspace_id: order.workspaceId,
+        cashier_id: order.createdBy || '',
+        total_amount: order.total,
+        settlement_currency: order.currency || 'usd',
+        exchange_source: order.exchangeRateSource,
+        exchange_rate: order.exchangeRate,
+        exchange_rate_timestamp: order.exchangeRateTimestamp,
+        exchange_rates: order.exchangeRates,
+        created_at: order.actualDeliveryDate || order.updatedAt || order.createdAt,
+        updated_at: order.updatedAt,
+        origin: 'sales_order',
+        payment_method: order.paymentMethod || 'cash',
+        cashier_name: order.customerName || 'Order',
+        items,
+        is_returned: false,
+        sequenceId: order.orderNumber || order.order_number,
+        notes: order.notes,
+        _isOrder: true,
+        _orderNumber: order.orderNumber || order.order_number
+    }
+}

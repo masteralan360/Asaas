@@ -10,7 +10,7 @@ import { formatCurrency, formatDateTime, formatCompactDateTime, formatDate, form
 import { formatLocalizedMonthYear } from '@/lib/monthDisplay'
 import { getRetriableActionToast, isRetriableWebRequestError, normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
 
-import { db, useLoanBySaleId, useLoanInstallments, useLoanPayments, useLoans, useSales, toUISale, type Loan } from '@/local-db'
+import { db, useLoanBySaleId, useLoanInstallments, useLoanPayments, useLoans, useSales, useSalesOrders, toUISale, toUISaleFromOrder, type Loan } from '@/local-db'
 import { useWorkspace } from '@/workspace'
 import { isMobile } from '@/lib/platform'
 import { useDateRange } from '@/context/DateRangeContext'
@@ -111,9 +111,19 @@ export function Sales() {
     const { style } = useTheme()
     const { toast } = useToast()
     const rawSales = useSales(user?.workspaceId)
+    const rawOrders = useSalesOrders(user?.workspaceId)
+
     const loans = useLoans(user?.workspaceId)
-    const allSales = useMemo(() => rawSales.map(toUISale), [rawSales])
-    const isLoading = rawSales === undefined
+    const allSales = useMemo(() => {
+        const sales = (rawSales || []).map(toUISale)
+        const orders = (rawOrders || [])
+            .filter(order => !order.isDeleted && order.status === 'completed')
+            .map(toUISaleFromOrder)
+        return [...sales, ...orders]
+    }, [rawSales, rawOrders])
+
+    const isLoading = rawSales === undefined || rawOrders === undefined
+
     const [selectedSale, setSelectedSale] = useState<Sale | null>(null)
     const [printingSale, setPrintingSale] = useState<Sale | null>(null)
     const [returnModalOpen, setReturnModalOpen] = useState(false)
@@ -1108,7 +1118,7 @@ export function Sales() {
                                                             </span>
                                                             {sale.sequenceId ? (
                                                                 <span className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-primary/10 text-primary rounded border border-primary/20">
-                                                                    #{String(sale.sequenceId).padStart(5, '0')}
+                                                                    {sale.origin === 'sales_order' ? ((sale as any).orderNumber || sale._orderNumber || `#${sale.id.slice(0, 8)}`) : `#${String(sale.sequenceId).padStart(5, '0')}`}
                                                                 </span>
                                                             ) : (
                                                                 <span className="text-[10px] text-muted-foreground/50 font-mono">
@@ -1205,40 +1215,50 @@ export function Sales() {
                                                             "h-10 px-4 font-bold flex gap-2",
                                                             style === 'neo-orange' ? "rounded-[var(--radius)] neo-border shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]" : "rounded-xl"
                                                         )}
-                                                        onClick={() => setSelectedSale(sale)}
+                                                        onClick={() => {
+                                                            if (sale.origin === 'sales_order') {
+                                                                setLocation(`/orders/${sale.id}`)
+                                                            } else {
+                                                                setSelectedSale(sale)
+                                                            }
+                                                        }}
                                                     >
                                                         <Eye className="w-4 h-4" />
                                                         {t('common.view')}
                                                     </Button>
-                                                    <Button
-                                                        variant="outline"
-                                                        size="icon"
-                                                        className={cn(
-                                                            "h-10 w-10",
-                                                            style === 'neo-orange' ? "rounded-[var(--radius)] neo-border shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]" : "rounded-xl"
-                                                        )}
-                                                        onClick={() => onPrintClick(sale)}
-                                                    >
-                                                        <Printer className="w-4 h-4" />
-                                                    </Button>
-                                                    <Button
-                                                        variant="outline"
-                                                        size="icon"
-                                                        className={cn(
-                                                            "h-10 w-10",
-                                                            style === 'neo-orange' ? "rounded-[var(--radius)] neo-border shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]" : "rounded-xl",
-                                                            sale.notes && "text-primary bg-primary/5 border-primary/20"
-                                                        )}
-                                                        onClick={() => {
-                                                            setSelectedSaleForNote(sale)
-                                                            setIsNoteModalOpen(true)
-                                                        }}
-                                                    >
-                                                        <StickyNote className={cn("w-4 h-4", sale.notes && "fill-primary/20")} />
-                                                    </Button>
+                                                    {sale.origin !== 'sales_order' && (
+                                                        <Button
+                                                            variant="outline"
+                                                            size="icon"
+                                                            className={cn(
+                                                                "h-10 w-10",
+                                                                style === 'neo-orange' ? "rounded-[var(--radius)] neo-border shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]" : "rounded-xl"
+                                                            )}
+                                                            onClick={() => onPrintClick(sale)}
+                                                        >
+                                                            <Printer className="w-4 h-4" />
+                                                        </Button>
+                                                    )}
+                                                    {sale.origin !== 'sales_order' && (
+                                                        <Button
+                                                            variant="outline"
+                                                            size="icon"
+                                                            className={cn(
+                                                                "h-10 w-10",
+                                                                style === 'neo-orange' ? "rounded-[var(--radius)] neo-border shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]" : "rounded-xl",
+                                                                sale.notes && "text-primary bg-primary/5 border-primary/20"
+                                                            )}
+                                                            onClick={() => {
+                                                                setSelectedSaleForNote(sale)
+                                                                setIsNoteModalOpen(true)
+                                                            }}
+                                                        >
+                                                            <StickyNote className={cn("w-4 h-4", sale.notes && "fill-primary/20")} />
+                                                        </Button>
+                                                    )}
                                                 </div>
                                                 <div className="flex gap-1">
-                                                    {!isFullyReturned && (user?.role === 'admin' || user?.role === 'staff') && (
+                                                    {!isFullyReturned && sale.origin !== 'sales_order' && (user?.role === 'admin' || user?.role === 'staff') && (
                                                         <Button
                                                             variant="ghost"
                                                             size="icon"
@@ -1251,7 +1271,7 @@ export function Sales() {
                                                             <RotateCcw className="w-4 h-4" />
                                                         </Button>
                                                     )}
-                                                    {user?.role === 'admin' && (
+                                                    {user?.role === 'admin' && sale.origin !== 'sales_order' && (
                                                         <Button
                                                             variant="ghost"
                                                             size="icon"
@@ -1305,7 +1325,7 @@ export function Sales() {
                                             >
                                                 <TableCell className="font-mono text-sm font-bold text-primary">
                                                     {sale.sequenceId ? (
-                                                        <span>#{String(sale.sequenceId).padStart(5, '0')}</span>
+                                                        <span>{sale.origin === 'sales_order' ? ((sale as any).orderNumber || sale._orderNumber || `#${sale.id.slice(0, 8)}`) : `#${String(sale.sequenceId).padStart(5, '0')}`}</span>
                                                     ) : (
                                                         <span className="text-muted-foreground/40 text-xs">#{sale.id.slice(0, 4)}...</span>
                                                     )}
@@ -1388,23 +1408,25 @@ export function Sales() {
                                                     </span>
                                                 </TableCell>
                                                 <TableCell className="text-start">
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="sm"
-                                                        onClick={() => {
-                                                            setSelectedSaleForNote(sale)
-                                                            setIsNoteModalOpen(true)
-                                                        }}
-                                                        className={cn(
-                                                            "text-xs font-medium h-8 px-3 rounded-lg flex items-center gap-2 transition-all",
-                                                            sale.notes
-                                                                ? "bg-primary/5 text-primary hover:bg-primary/10 border border-primary/20"
-                                                                : "text-muted-foreground hover:bg-muted"
-                                                        )}
-                                                    >
-                                                        <StickyNote className={cn("w-3.5 h-3.5", sale.notes ? "fill-primary/20" : "")} />
-                                                        {sale.notes ? (t('sales.notes.viewNote') || 'View Notes..') : (t('sales.notes.addNote') || 'Add Note')}
-                                                    </Button>
+                                                    {sale.origin !== 'sales_order' && (
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            onClick={() => {
+                                                                setSelectedSaleForNote(sale)
+                                                                setIsNoteModalOpen(true)
+                                                            }}
+                                                            className={cn(
+                                                                "text-xs font-medium h-8 px-3 rounded-lg flex items-center gap-2 transition-all",
+                                                                sale.notes
+                                                                    ? "bg-primary/5 text-primary hover:bg-primary/10 border border-primary/20"
+                                                                    : "text-muted-foreground hover:bg-muted"
+                                                            )}
+                                                        >
+                                                            <StickyNote className={cn("w-3.5 h-3.5", sale.notes ? "fill-primary/20" : "")} />
+                                                            {sale.notes ? (t('sales.notes.viewNote') || 'View Notes..') : (t('sales.notes.addNote') || 'Add Note')}
+                                                        </Button>
+                                                    )}
                                                 </TableCell>
 
                                                 <TableCell className="text-end font-bold">
@@ -1414,39 +1436,49 @@ export function Sales() {
                                                     <Button
                                                         variant="ghost"
                                                         size="icon"
-                                                        onClick={() => setSelectedSale(sale)}
+                                                        onClick={() => {
+                                                            if (sale.origin === 'sales_order') {
+                                                                setLocation(`/orders/${sale.id}`)
+                                                            } else {
+                                                                setSelectedSale(sale)
+                                                            }
+                                                        }}
                                                         title={t('sales.details') || "View Details"}
                                                     >
                                                         <Eye className="w-4 h-4" />
                                                     </Button>
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="icon"
-                                                        onClick={() => onPrintClick(sale)}
-                                                        title={t('common.print') || "Print Receipt"}
-                                                    >
-                                                        <Printer className="w-4 h-4" />
-                                                    </Button>
-                                                    {!sale.is_returned && (user?.role === 'admin' || user?.role === 'staff') && (
-                                                        <Button
-                                                            variant="ghost"
-                                                            size="icon"
-                                                            onClick={() => handleReturnSale(sale)}
-                                                            title={t('sales.return') || "Return Sale"}
-                                                            className="text-orange-600 hover:text-orange-700 hover:bg-orange-50"
-                                                        >
-                                                            <RotateCcw className="w-4 h-4" />
-                                                        </Button>
-                                                    )}
-                                                    {user?.role === 'admin' && (
-                                                        <Button
-                                                            variant="ghost"
-                                                            size="icon"
-                                                            className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                                                            onClick={() => handleDeleteSale(sale)}
-                                                        >
-                                                            <Trash2 className="w-4 h-4" />
-                                                        </Button>
+                                                    {sale.origin !== 'sales_order' && (
+                                                        <>
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="icon"
+                                                                onClick={() => { if (sale.origin === "sales_order") { console.log("order print blocked"); } else { onPrintClick(sale); } }}
+                                                                title={t('common.print') || "Print Receipt"}
+                                                            >
+                                                                <Printer className="w-4 h-4" />
+                                                            </Button>
+                                                            {!sale.is_returned && (user?.role === 'admin' || user?.role === 'staff') && (
+                                                                <Button
+                                                                    variant="ghost"
+                                                                    size="icon"
+                                                                    onClick={() => handleReturnSale(sale)}
+                                                                    title={t('sales.return') || "Return Sale"}
+                                                                    className="text-orange-600 hover:text-orange-700 hover:bg-orange-50"
+                                                                >
+                                                                    <RotateCcw className="w-4 h-4" />
+                                                                </Button>
+                                                            )}
+                                                            {user?.role === 'admin' && (
+                                                                <Button
+                                                                    variant="ghost"
+                                                                    size="icon"
+                                                                    className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                                                                    onClick={() => handleDeleteSale(sale)}
+                                                                >
+                                                                    <Trash2 className="w-4 h-4" />
+                                                                </Button>
+                                                            )}
+                                                        </>
                                                     )}
                                                     {/* Return badge moved to date cell */}
                                                 </TableCell>
@@ -1595,3 +1627,8 @@ export function Sales() {
         </TooltipProvider>
     )
 }
+
+
+
+
+
