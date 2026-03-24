@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
-import { ArrowLeft, CalendarDays, CircleDollarSign, Plane, Plus, Trash2, UserRound, UsersRound } from 'lucide-react'
+import { ArrowLeft, CalendarDays, Camera, CircleDollarSign, Plane, Plus, Trash2, Upload, UserRound, UsersRound } from 'lucide-react'
 import { useLocation, useRoute } from 'wouter'
 
 import { useAuth } from '@/auth'
@@ -20,6 +20,7 @@ import {
 } from '@/local-db'
 import { travelMethodOptions, travelPaymentMethodOptions, travelReceiverOptions } from '@/lib/travelAgency'
 import { cn, formatCurrency, generateId } from '@/lib/utils'
+import { TouristMrzScanDialog, type TouristMrzScanMode, type TouristMrzScanResult } from '@/ui/components/travel/TouristMrzScanDialog'
 import { useWorkspace } from '@/workspace'
 import {
     Button,
@@ -458,6 +459,13 @@ function TravelAgencySaleEditor({ saleId }: { saleId?: string }) {
     const [packageDraft, setPackageDraft] = useState('')
     const [isSaving, setIsSaving] = useState(false)
     const [supplierDialogOpen, setSupplierDialogOpen] = useState(false)
+    const [mrzDialogState, setMrzDialogState] = useState<{
+        touristIndex: number | null
+        mode: TouristMrzScanMode
+    }>({
+        touristIndex: null,
+        mode: 'upload'
+    })
     const [formState, setFormState] = useState<TravelAgencyFormState>(() => createInitialForm(features.default_currency))
 
     const availableCurrencies = useMemo(() => {
@@ -532,6 +540,37 @@ function TravelAgencySaleEditor({ saleId }: { saleId?: string }) {
                 : [...current.travelPackages, normalized]
         }))
         setPackageDraft('')
+    }
+
+    function openMrzDialog(touristIndex: number, mode: TouristMrzScanMode) {
+        setMrzDialogState({
+            touristIndex,
+            mode
+        })
+    }
+
+    function closeMrzDialog() {
+        setMrzDialogState({
+            touristIndex: null,
+            mode: 'upload'
+        })
+    }
+
+    function applyMrzResult(result: TouristMrzScanResult) {
+        if (mrzDialogState.touristIndex === null) {
+            return
+        }
+
+        updateTourist(mrzDialogState.touristIndex, (current) => ({
+            ...current,
+            fullName: result.fullName || current.fullName,
+            surname: result.surname || current.surname,
+            dateOfBirth: result.dateOfBirth || current.dateOfBirth,
+            nationality: result.nationality || current.nationality,
+            passportNumber: result.passportNumber || current.passportNumber
+        }))
+
+        closeMrzDialog()
     }
 
     function removeTravelPackage(travelPackage: string) {
@@ -687,7 +726,7 @@ function TravelAgencySaleEditor({ saleId }: { saleId?: string }) {
 
                             {formState.tourists.map((tourist, index) => (
                                 <div key={tourist.id} className="space-y-4 rounded-3xl border border-border/60 bg-card p-5 shadow-sm">
-                                    <div className="flex items-center justify-between gap-4">
+                                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                                         <div>
                                             <div className="flex items-center gap-2 text-lg font-semibold">
                                                 <UserRound className="h-5 w-5 text-primary" />
@@ -695,8 +734,30 @@ function TravelAgencySaleEditor({ saleId }: { saleId?: string }) {
                                             </div>
                                             <p className="text-sm text-muted-foreground">Fields can stay empty. You can add tourists now and complete their details later.</p>
                                         </div>
-                                        <div className="rounded-2xl bg-muted px-3 py-2 text-sm font-medium">
-                                            Revenue {formatCurrency(Number(tourist.revenue) || 0, formState.currency, features.iqd_display_preference)}
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                size="sm"
+                                                className="gap-2"
+                                                onClick={() => openMrzDialog(index, 'upload')}
+                                            >
+                                                <Upload className="h-4 w-4" />
+                                                Upload
+                                            </Button>
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                size="sm"
+                                                className="gap-2"
+                                                onClick={() => openMrzDialog(index, 'camera')}
+                                            >
+                                                <Camera className="h-4 w-4" />
+                                                Camera
+                                            </Button>
+                                            <div className="rounded-2xl bg-muted px-3 py-2 text-sm font-medium">
+                                                Revenue {formatCurrency(Number(tourist.revenue) || 0, formState.currency, features.iqd_display_preference)}
+                                            </div>
                                         </div>
                                     </div>
 
@@ -898,6 +959,18 @@ function TravelAgencySaleEditor({ saleId }: { saleId?: string }) {
                 availableCurrencies={availableCurrencies}
                 workspaceId={user?.workspaceId}
                 onCreated={(supplier) => setFormState((current) => ({ ...current, supplierId: supplier.id }))}
+            />
+
+            <TouristMrzScanDialog
+                open={mrzDialogState.touristIndex !== null}
+                onOpenChange={(open) => {
+                    if (!open) {
+                        closeMrzDialog()
+                    }
+                }}
+                touristLabel={mrzDialogState.touristIndex !== null ? `Tourist ${mrzDialogState.touristIndex + 1}` : 'Tourist'}
+                initialMode={mrzDialogState.mode}
+                onScanned={applyMrzResult}
             />
         </div>
     )
