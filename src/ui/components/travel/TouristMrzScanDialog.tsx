@@ -71,6 +71,30 @@ type OcrSource =
         canvases: HTMLCanvasElement[]
     }
 
+function getLocalMrzLangPath() {
+    if (typeof window === 'undefined') {
+        return ''
+    }
+
+    return `${window.location.origin.replace(/\/$/, '')}/tessdata`
+}
+
+async function createMrzWorker(logger: (message: string, progress: number) => void) {
+    const localLangPath = getLocalMrzLangPath()
+
+    try {
+        return await Tesseract.createWorker('ocrb_int', 1, {
+            logger: (message) => logger(message.status, message.progress),
+            langPath: localLangPath,
+            gzip: false
+        })
+    } catch {
+        return Tesseract.createWorker('eng', 1, {
+            logger: (message) => logger(message.status, message.progress)
+        })
+    }
+}
+
 function normalizeBirthDate(value: string | null | undefined) {
     if (!value || !/^\d{6}$/.test(value)) {
         return ''
@@ -609,9 +633,7 @@ async function recognizeMrzFromImage(
 ) {
     const image = await loadImage(blob)
     const variants = buildOcrVariants(image)
-    const worker = await Tesseract.createWorker('eng', 1, {
-        logger: (message) => onProgress(message.status, message.progress)
-    })
+    const worker = await createMrzWorker(onProgress)
 
     onWorkerReady(worker)
 
