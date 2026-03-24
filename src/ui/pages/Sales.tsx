@@ -10,7 +10,7 @@ import { formatCurrency, formatDateTime, formatCompactDateTime, formatDate, form
 import { formatLocalizedMonthYear } from '@/lib/monthDisplay'
 import { getRetriableActionToast, isRetriableWebRequestError, normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
 
-import { db, useLoanBySaleId, useLoanInstallments, useLoanPayments, useLoans, useSales, useSalesOrders, toUISale, toUISaleFromOrder, type Loan } from '@/local-db'
+import { db, useLoanBySaleId, useLoanInstallments, useLoanPayments, useLoans, useSales, useSalesOrders, useTravelAgencySales, toUISale, toUISaleFromOrder, toUISaleFromTravelAgency, type Loan } from '@/local-db'
 import { useWorkspace } from '@/workspace'
 import { isMobile } from '@/lib/platform'
 import { useDateRange } from '@/context/DateRangeContext'
@@ -112,6 +112,7 @@ export function Sales() {
     const { toast } = useToast()
     const rawSales = useSales(user?.workspaceId)
     const rawOrders = useSalesOrders(user?.workspaceId)
+    const rawTravelSales = useTravelAgencySales(user?.workspaceId)
 
     const loans = useLoans(user?.workspaceId)
     const allSales = useMemo(() => {
@@ -119,10 +120,13 @@ export function Sales() {
         const orders = (rawOrders || [])
             .filter(order => !order.isDeleted && order.status === 'completed')
             .map(toUISaleFromOrder)
-        return [...sales, ...orders]
-    }, [rawSales, rawOrders])
+        const travelSales = (rawTravelSales || [])
+            .filter(sale => !sale.isDeleted && sale.isPaid)
+            .map(toUISaleFromTravelAgency)
+        return [...sales, ...orders, ...travelSales]
+    }, [rawSales, rawOrders, rawTravelSales])
 
-    const isLoading = rawSales === undefined || rawOrders === undefined
+    const isLoading = rawSales === undefined || rawOrders === undefined || rawTravelSales === undefined
 
     const [selectedSale, setSelectedSale] = useState<Sale | null>(null)
     const [printingSale, setPrintingSale] = useState<Sale | null>(null)
@@ -247,6 +251,11 @@ export function Sales() {
         // If the sale itself is marked returned
         if (sale.is_returned) return 0
 
+        // For travel agency sales, we use the total_amount directly as it's pre-calculated from group_revenue or sum of tourists
+        if (sale.origin === 'travel_agency') {
+            return sale.total_amount
+        }
+
         // If items are present, calculate sum of remaining (non-returned) value
         if (sale.items && sale.items.length > 0) {
             // Check if all items are fully returned (fail-safe)
@@ -263,7 +272,6 @@ export function Sales() {
                 if (remainingQty <= 0) return sum
 
                 // Use converted_unit_price as it's already in the settlement currency
-                // Revenue.tsx uses: itemRevenue = item.converted_unit_price * netQuantity
                 const unitPrice = item.converted_unit_price || item.unit_price || 0
 
                 return sum + (unitPrice * remainingQty)
@@ -611,9 +619,9 @@ export function Sales() {
                     const existingLocal = await db.sales.get(saleToReturn.id)
                     if (existingLocal) {
                         const updatedSale = updateSale({ ...existingLocal, items: (existingLocal as any)._enrichedItems } as any)
-                        ; (existingLocal as any)._enrichedItems = updatedSale.items
-                        ; (existingLocal as any).totalAmount = updatedSale.total_amount
-                        ; (existingLocal as any).isReturned = updatedSale.is_returned
+                            ; (existingLocal as any)._enrichedItems = updatedSale.items
+                            ; (existingLocal as any).totalAmount = updatedSale.total_amount
+                            ; (existingLocal as any).isReturned = updatedSale.is_returned
                         await db.sales.put(existingLocal)
                     }
                     await Promise.all(itemsToReturn.map((item, index) => {
@@ -647,9 +655,9 @@ export function Sales() {
                     const existingLocal = await db.sales.get(saleToReturn.id)
                     if (existingLocal) {
                         ; (existingLocal as any).isReturned = true
-                        ; (existingLocal as any).totalAmount = 0
-                        ; (existingLocal as any).returnReason = reason
-                        ; (existingLocal as any).returnedAt = new Date().toISOString()
+                            ; (existingLocal as any).totalAmount = 0
+                            ; (existingLocal as any).returnReason = reason
+                            ; (existingLocal as any).returnedAt = new Date().toISOString()
                         const updatedItems = ((existingLocal as any)._enrichedItems || []).map((i: any) => ({
                             ...i,
                             is_returned: true,
@@ -657,7 +665,7 @@ export function Sales() {
                             return_reason: reason,
                             returned_at: new Date().toISOString()
                         }))
-                        ; (existingLocal as any)._enrichedItems = updatedItems
+                            ; (existingLocal as any)._enrichedItems = updatedItems
                         await db.sales.put(existingLocal)
                     }
                     if (selectedSale?.id === saleToReturn.id) {
@@ -1218,6 +1226,8 @@ export function Sales() {
                                                         onClick={() => {
                                                             if (sale.origin === 'sales_order') {
                                                                 setLocation(`/orders/${sale.id}`)
+                                                            } else if (sale.origin === 'travel_agency') {
+                                                                setLocation(`/travel-agency/${sale.id}/view`)
                                                             } else {
                                                                 setSelectedSale(sale)
                                                             }
@@ -1226,7 +1236,7 @@ export function Sales() {
                                                         <Eye className="w-4 h-4" />
                                                         {t('common.view')}
                                                     </Button>
-                                                    {sale.origin !== 'sales_order' && (
+                                                    {sale.origin !== 'sales_order' && sale.origin !== 'travel_agency' && (
                                                         <Button
                                                             variant="outline"
                                                             size="icon"
@@ -1239,7 +1249,7 @@ export function Sales() {
                                                             <Printer className="w-4 h-4" />
                                                         </Button>
                                                     )}
-                                                    {sale.origin !== 'sales_order' && (
+                                                    {sale.origin !== 'sales_order' && sale.origin !== 'travel_agency' && (
                                                         <Button
                                                             variant="outline"
                                                             size="icon"
@@ -1258,7 +1268,7 @@ export function Sales() {
                                                     )}
                                                 </div>
                                                 <div className="flex gap-1">
-                                                    {!isFullyReturned && sale.origin !== 'sales_order' && (user?.role === 'admin' || user?.role === 'staff') && (
+                                                    {!isFullyReturned && sale.origin !== 'sales_order' && sale.origin !== 'travel_agency' && (user?.role === 'admin' || user?.role === 'staff') && (
                                                         <Button
                                                             variant="ghost"
                                                             size="icon"
@@ -1271,7 +1281,7 @@ export function Sales() {
                                                             <RotateCcw className="w-4 h-4" />
                                                         </Button>
                                                     )}
-                                                    {user?.role === 'admin' && sale.origin !== 'sales_order' && (
+                                                    {user?.role === 'admin' && sale.origin !== 'sales_order' && sale.origin !== 'travel_agency' && (
                                                         <Button
                                                             variant="ghost"
                                                             size="icon"
@@ -1408,7 +1418,7 @@ export function Sales() {
                                                     </span>
                                                 </TableCell>
                                                 <TableCell className="text-start">
-                                                    {sale.origin !== 'sales_order' && (
+                                                    {sale.origin !== 'sales_order' && sale.origin !== 'travel_agency' && (
                                                         <Button
                                                             variant="ghost"
                                                             size="sm"
@@ -1439,6 +1449,8 @@ export function Sales() {
                                                         onClick={() => {
                                                             if (sale.origin === 'sales_order') {
                                                                 setLocation(`/orders/${sale.id}`)
+                                                            } else if (sale.origin === 'travel_agency') {
+                                                                setLocation(`/travel-agency/${sale.id}/view`)
                                                             } else {
                                                                 setSelectedSale(sale)
                                                             }
@@ -1447,7 +1459,7 @@ export function Sales() {
                                                     >
                                                         <Eye className="w-4 h-4" />
                                                     </Button>
-                                                    {sale.origin !== 'sales_order' && (
+                                                    {sale.origin !== 'sales_order' && sale.origin !== 'travel_agency' && (
                                                         <>
                                                             <Button
                                                                 variant="ghost"

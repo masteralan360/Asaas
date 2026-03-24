@@ -14,7 +14,7 @@ export interface RevenueAnalysisItem {
 export interface RevenueAnalysisRecord {
     key: string
     id: string
-    source: 'sale' | 'sales_order'
+    source: 'sale' | 'sales_order' | 'travel_agency'
     referenceCode: string
     date: string
     currency: string
@@ -55,7 +55,7 @@ export function toRevenueRecordFromSale(sale: Sale): RevenueAnalysisRecord {
     return {
         key: `sale:${sale.id}`,
         id: sale.id,
-        source: 'sale',
+        source: sale.origin === 'travel_agency' ? 'travel_agency' : 'sale',
         referenceCode: sale.sequenceId ? `#${String(sale.sequenceId).padStart(5, '0')}` : `#${sale.id.split('-')[0]}`,
         date: sale.created_at,
         currency: sale.settlement_currency || 'usd',
@@ -101,12 +101,13 @@ export function toRevenueRecordFromSalesOrder(order: SalesOrder): RevenueAnalysi
     }
 }
 
-export function buildRevenueAnalysisRecords(sales: Sale[], salesOrders: SalesOrder[]): RevenueAnalysisRecord[] {
+export function buildRevenueAnalysisRecords(sales: Sale[], salesOrders: SalesOrder[], travelAgencySales: Sale[] = []): RevenueAnalysisRecord[] {
     return [
         ...sales.map(toRevenueRecordFromSale),
         ...salesOrders
             .filter((order) => !order.isDeleted && order.status === 'completed')
-            .map(toRevenueRecordFromSalesOrder)
+            .map(toRevenueRecordFromSalesOrder),
+        ...travelAgencySales.map(toRevenueRecordFromSale)
     ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
 }
 

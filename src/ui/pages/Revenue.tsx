@@ -1,8 +1,9 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useLocation } from 'wouter'
 import { useAuth } from '@/auth'
 import { Sale } from '@/types'
-import { useSales, useSalesOrders, toUISale } from '@/local-db'
+import { useSales, useSalesOrders, useTravelAgencySales, toUISale, toUISaleFromTravelAgency } from '@/local-db'
 import { formatCurrency, formatDateTime, formatDate, formatOriginLabel } from '@/lib/utils'
 import { cn } from '@/lib/utils'
 import { formatLocalizedMonthYear } from '@/lib/monthDisplay'
@@ -72,10 +73,19 @@ import {
 export function Revenue() {
     const { user } = useAuth()
     const { t, i18n } = useTranslation()
+    const [, setLocation] = useLocation()
     const { features } = useWorkspace()
     const rawSales = useSales(user?.workspaceId)
     const salesOrders = useSalesOrders(user?.workspaceId)
-    const allSales = useMemo<Sale[]>(() => rawSales.map(toUISale), [rawSales])
+    const rawTravelSales = useTravelAgencySales(user?.workspaceId)
+    
+    const allSales = useMemo<Sale[]>(() => (rawSales || []).map(toUISale), [rawSales])
+    const travelSales = useMemo<Sale[]>(() =>
+        (rawTravelSales || [])
+            .filter(s => s.isPaid && !s.isDeleted)
+            .map(toUISaleFromTravelAgency),
+        [rawTravelSales]
+    )
     const [selectedSale, setSelectedSale] = useState<Sale | null>(null)
     const [selectedMetric, setSelectedMetric] = useState<MetricType | null>(null)
     const [isMetricModalOpen, setIsMetricModalOpen] = useState(false)
@@ -103,8 +113,8 @@ export function Revenue() {
     const listRef = useRef<HTMLDivElement>(null)
 
     const revenueRecords = useMemo(
-        () => buildRevenueAnalysisRecords(allSales, salesOrders),
-        [allSales, salesOrders]
+        () => buildRevenueAnalysisRecords(allSales, salesOrders, travelSales),
+        [allSales, salesOrders, travelSales]
     )
     const filteredSales = useMemo(
         () => filterSalesByDateRange(allSales, dateRange, customDates),
@@ -215,7 +225,7 @@ export function Revenue() {
         const saleStats: {
             key: string,
             id: string,
-            source: 'sale' | 'sales_order',
+            source: 'sale' | 'sales_order' | 'travel_agency',
             referenceCode: string,
             date: string,
             revenue: number,
@@ -293,7 +303,7 @@ export function Revenue() {
             saleStats.push({
                 key: record.key,
                 id: record.id,
-                source: record.source,
+                source: record.source as any,
                 referenceCode: record.referenceCode,
                 date: record.date,
                 revenue: totals.revenue,
@@ -1049,7 +1059,17 @@ export function Revenue() {
                                         const { isFullyReturned, hasAnyReturn, totalReturnedQuantity } = originalSale
                                             ? getRevenueRecordReturnSummary(toRevenueRecordFromSale(originalSale))
                                             : { isFullyReturned: false, hasAnyReturn: false, totalReturnedQuantity: 0 }
-                                        const canOpenSaleDetails = !!originalSale
+                                        const canOpenSaleDetails = !!originalSale || sale.source === 'sales_order' || sale.source === 'travel_agency'
+
+                                        const handleRecordClick = () => {
+                                            if (sale.source === 'travel_agency') {
+                                                setLocation(`/travel-agency/${sale.id}/view`)
+                                            } else if (sale.source === 'sales_order') {
+                                                setLocation(`/orders/${sale.id}`)
+                                            } else if (originalSale) {
+                                                setSelectedSale(originalSale)
+                                            }
+                                        }
 
                                         return (
                                             <div
@@ -1060,9 +1080,7 @@ export function Revenue() {
                                                     isFullyReturned ? 'bg-destructive/5 border-destructive/20' : hasAnyReturn ? 'bg-orange-500/5 border-orange-500/20 dark:bg-orange-500/5 dark:border-orange-500/10' : 'bg-card',
                                                     canOpenSaleDetails && 'cursor-pointer'
                                                 )}
-                                                onClick={() => {
-                                                    if (originalSale) setSelectedSale(originalSale)
-                                                }}
+                                                onClick={handleRecordClick}
                                             >
                                                 <div className="flex justify-between items-start">
                                                     <div className="space-y-1">
@@ -1076,7 +1094,13 @@ export function Revenue() {
                                                             {canOpenSaleDetails && (
                                                                 <Tooltip>
                                                                     <TooltipTrigger asChild>
-                                                                        <Info className="w-3.5 h-3.5 text-muted-foreground hover:text-primary transition-colors cursor-pointer" />
+                                                                        <Info
+                                                                            className="w-3.5 h-3.5 text-muted-foreground hover:text-primary transition-colors cursor-pointer"
+                                                                            onClick={(e) => {
+                                                                                e.stopPropagation()
+                                                                                handleRecordClick()
+                                                                            }}
+                                                                        />
                                                                     </TooltipTrigger>
                                                                     <TooltipContent>
                                                                         {t('revenue.viewDetails') || 'View Sale Details'}
@@ -1179,7 +1203,17 @@ export function Revenue() {
                                             const { isFullyReturned, hasAnyReturn, totalReturnedQuantity } = originalSale
                                                 ? getRevenueRecordReturnSummary(toRevenueRecordFromSale(originalSale))
                                                 : { isFullyReturned: false, hasAnyReturn: false, totalReturnedQuantity: 0 }
-                                            const canOpenSaleDetails = !!originalSale
+                                            const canOpenSaleDetails = !!originalSale || sale.source === 'sales_order' || sale.source === 'travel_agency'
+
+                                            const handleRecordClick = () => {
+                                                if (sale.source === 'travel_agency') {
+                                                    setLocation(`/travel-agency/${sale.id}/view`)
+                                                } else if (sale.source === 'sales_order') {
+                                                    setLocation(`/orders/${sale.id}`)
+                                                } else if (originalSale) {
+                                                    setSelectedSale(originalSale)
+                                                }
+                                            }
 
                                             return (
                                                 <TableRow
@@ -1220,9 +1254,7 @@ export function Revenue() {
                                                     <TableCell className="text-start">
                                                         <div className="flex items-center gap-2">
                                                             <button
-                                                                onClick={() => {
-                                                                    if (originalSale) setSelectedSale(originalSale)
-                                                                }}
+                                                                onClick={handleRecordClick}
                                                                 className={cn(
                                                                     "font-mono text-[10px]",
                                                                     canOpenSaleDetails ? "text-primary hover:underline" : "text-foreground"
@@ -1235,8 +1267,9 @@ export function Revenue() {
                                                                     <TooltipTrigger asChild>
                                                                         <Info
                                                                             className="w-3.5 h-3.5 text-muted-foreground hover:text-primary transition-colors cursor-pointer"
-                                                                            onClick={() => {
-                                                                                if (originalSale) setSelectedSale(originalSale)
+                                                                            onClick={(e) => {
+                                                                                e.stopPropagation()
+                                                                                handleRecordClick()
                                                                             }}
                                                                         />
                                                                     </TooltipTrigger>

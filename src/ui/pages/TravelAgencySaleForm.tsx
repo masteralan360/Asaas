@@ -21,7 +21,7 @@ import {
     type TravelAgencyTripType
 } from '@/local-db'
 import { travelMethodOptions, travelPaymentMethodOptions, travelReceiverOptions, travelStatusOptions } from '@/lib/travelAgency'
-import { cn, formatCurrency, generateId } from '@/lib/utils'
+import { cn, formatCurrency, formatNumberWithCommas, generateId, parseFormattedNumber } from '@/lib/utils'
 import { TouristMrzScanDialog, type TouristMrzScanMode, type TouristMrzScanResult } from '@/ui/components/travel/TouristMrzScanDialog'
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard'
 import { useWorkspace } from '@/workspace'
@@ -170,7 +170,7 @@ function mapSaleToForm(sale: TravelAgencySale): TravelAgencyFormState {
     return {
         saleDate: sale.saleDate,
         groupName: sale.groupName || '',
-        groupRevenue: String(sale.groupRevenue),
+        groupRevenue: formatNumberWithCommas(sale.groupRevenue),
         groupTravelPlans: sale.groupTravelPlans?.length > 0
             ? sale.groupTravelPlans.map(plan => ({
                 method: plan.method || '',
@@ -187,7 +187,7 @@ function mapSaleToForm(sale: TravelAgencySale): TravelAgencyFormState {
                 fullName: tourist.fullName,
                 surname: tourist.surname,
                 dateOfBirth: tourist.dateOfBirth || '',
-                revenue: tourist.revenue ? String(tourist.revenue) : '',
+                revenue: tourist.revenue ? formatNumberWithCommas(tourist.revenue) : '',
                 notes: tourist.notes || '',
                 travelPlans: tourist.travelPlans?.length > 0
                     ? tourist.travelPlans.map(plan => ({
@@ -201,11 +201,11 @@ function mapSaleToForm(sale: TravelAgencySale): TravelAgencyFormState {
             }))
         ),
         supplierId: sale.supplierId || '',
-        supplierCost: String(sale.supplierCost),
+        supplierCost: formatNumberWithCommas(sale.supplierCost),
         currency: sale.currency,
         travelPackages: sale.travelPackages || [],
         paymentMethod: sale.paymentMethod,
-        paidAmount: String(sale.paidAmount),
+        paidAmount: formatNumberWithCommas(sale.paidAmount),
         receiver: sale.receiver,
         notes: sale.notes || '',
         isPaid: sale.isPaid,
@@ -555,10 +555,10 @@ function TravelAgencySaleEditor({ saleId, readOnly = false }: { saleId?: string;
     }, [formState.supplierId, sale?.supplierName, suppliers])
 
     const computedTotals = useMemo(() => {
-        const touristRevenue = formState.tourists.reduce((sum, tourist) => sum + (Number(tourist.revenue) || 0), 0)
-        const groupRevenue = Number(formState.groupRevenue) || 0
-        const supplierCost = Number(formState.supplierCost) || 0
-        const paidAmount = Number(formState.paidAmount) || 0
+        const touristRevenue = formState.tourists.reduce((sum, tourist) => sum + (parseFormattedNumber(tourist.revenue) || 0), 0)
+        const groupRevenue = parseFormattedNumber(formState.groupRevenue) || 0
+        const supplierCost = parseFormattedNumber(formState.supplierCost) || 0
+        const paidAmount = parseFormattedNumber(formState.paidAmount) || 0
 
         return {
             touristRevenue,
@@ -754,7 +754,7 @@ function TravelAgencySaleEditor({ saleId, readOnly = false }: { saleId?: string;
                 surname: tourist.surname.trim(),
                 dateOfBirth: tourist.dateOfBirth || undefined,
                 travelPlans: buildTravelPlans(tourist.travelPlans),
-                revenue: Number(tourist.revenue) || 0,
+                revenue: parseFormattedNumber(tourist.revenue) || 0,
                 notes: tourist.notes.trim() || undefined
             })) satisfies TravelAgencyTourist[]
 
@@ -765,14 +765,14 @@ function TravelAgencySaleEditor({ saleId, readOnly = false }: { saleId?: string;
                 tourists: normalizedTourists,
                 groupTravelPlans: buildTravelPlans(formState.groupTravelPlans),
                 groupName: formState.groupName.trim() || null,
-                groupRevenue: Number(formState.groupRevenue) || 0,
+                groupRevenue: parseFormattedNumber(formState.groupRevenue) || 0,
                 supplierId: formState.supplierId || null,
                 supplierName: selectedSupplier?.name || sale?.supplierName || null,
-                supplierCost: Number(formState.supplierCost) || 0,
+                supplierCost: parseFormattedNumber(formState.supplierCost) || 0,
                 currency: formState.currency,
                 travelPackages: formState.travelPackages,
                 paymentMethod: formState.paymentMethod,
-                paidAmount: Number(formState.paidAmount) || 0,
+                paidAmount: parseFormattedNumber(formState.paidAmount) || 0,
                 receiver: formState.receiver,
                 notes: formState.notes.trim() || undefined,
                 isPaid: formState.isPaid,
@@ -934,7 +934,7 @@ function TravelAgencySaleEditor({ saleId, readOnly = false }: { saleId?: string;
                                                 Camera
                                             </Button>
                                             <div className="rounded-2xl bg-muted px-3 py-2 text-sm font-medium">
-                                                Revenue {formatCurrency(Number(tourist.revenue) || 0, formState.currency, features.iqd_display_preference)}
+                                                Revenue {formatCurrency(parseFormattedNumber(tourist.revenue) || 0, formState.currency, features.iqd_display_preference)}
                                             </div>
                                         </div>
                                     </div>
@@ -954,7 +954,7 @@ function TravelAgencySaleEditor({ saleId, readOnly = false }: { saleId?: string;
                                         </div>
                                         <div className="space-y-2">
                                             <Label>Revenue</Label>
-                                            <Input type="number" min="0" step="0.01" value={tourist.revenue} onChange={(event) => updateTourist(index, (current) => ({ ...current, revenue: event.target.value }))} placeholder="0.00" />
+                                            <Input value={tourist.revenue} onChange={(event) => updateTourist(index, (current) => ({ ...current, revenue: formatNumberWithCommas(event.target.value) }))} placeholder="0" />
                                         </div>
                                         <div className="space-y-2 md:col-span-2">
                                             <Label>Notes</Label>
@@ -1012,11 +1012,11 @@ function TravelAgencySaleEditor({ saleId, readOnly = false }: { saleId?: string;
                                     </div>
                                     <div className="space-y-2">
                                         <Label>Group Revenue</Label>
-                                        <Input type="number" min="0" step="0.01" value={formState.groupRevenue} onChange={(event) => setFormState((current) => ({ ...current, groupRevenue: event.target.value }))} placeholder="0.00" />
+                                        <Input value={formState.groupRevenue} onChange={(event) => setFormState((current) => ({ ...current, groupRevenue: formatNumberWithCommas(event.target.value) }))} placeholder="0" />
                                     </div>
                                     <div className="space-y-2">
                                         <Label>Supplier Cost</Label>
-                                        <Input type="number" min="0" step="0.01" value={formState.supplierCost} onChange={(event) => setFormState((current) => ({ ...current, supplierCost: event.target.value }))} placeholder="Supplier cut / cost" />
+                                        <Input value={formState.supplierCost} onChange={(event) => setFormState((current) => ({ ...current, supplierCost: formatNumberWithCommas(event.target.value) }))} placeholder="0" />
                                     </div>
                                 </div>
 

@@ -42,7 +42,7 @@ export interface Sale {
     exchange_rate_timestamp: string
     exchange_rates?: any[]
     created_at: string
-    origin: 'pos' | 'manual' | 'instant_pos' | 'sales_order'
+    origin: 'pos' | 'manual' | 'instant_pos' | 'sales_order' | 'travel_agency'
     payment_method?: 'cash' | 'fib' | 'qicard' | 'zaincash' | 'fastpay' | 'loan'
     cashier_name?: string
     items?: SaleItem[]

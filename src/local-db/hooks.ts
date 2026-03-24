@@ -2992,7 +2992,7 @@ export function toUISaleFromOrder(order: any): any {
         id: order.id,
         workspace_id: order.workspaceId,
         cashier_id: order.createdBy || '',
-        total_amount: order.total,
+        total_amount: Number(order.total || (order as any).total_amount || 0),
         settlement_currency: order.currency || 'usd',
         exchange_source: order.exchangeRateSource,
         exchange_rate: order.exchangeRate,
@@ -3009,5 +3009,135 @@ export function toUISaleFromOrder(order: any): any {
         notes: order.notes,
         _isOrder: true,
         _orderNumber: order.orderNumber || order.order_number
+    }
+}
+
+/**
+ * Maps a TravelAgencySale (camelCase) to the UI Sale type (snake_case).
+ */
+export function toUISaleFromTravelAgency(sale: any): any {
+    const tourists = sale.tourists || sale.tourist_list || []
+    const groupRev = Number(sale.groupRevenue || sale.group_revenue || 0)
+    const supplierCost = Number(sale.supplierCost || sale.supplier_cost || 0)
+    const currency = sale.currency || (sale as any).currency || 'usd'
+
+    let items: any[] = []
+
+    // 1. Add individual tourists as items
+    tourists.forEach((tourist: any) => {
+        const fullName = tourist.fullName || tourist.full_name || tourist.name || ''
+        const surname = tourist.surname || ''
+        const revenue = Number(tourist.revenue || tourist.tourist_revenue || 0)
+        
+        items.push({
+            id: tourist.id || generateId(),
+            sale_id: sale.id,
+            product_id: 'travel_agency_tourist',
+            product_name: `${fullName} ${surname}`.trim() || 'Tourist',
+            product_sku: 'TA-TOURIST',
+            quantity: 1,
+            unit_price: revenue,
+            total_price: revenue,
+            cost_price: 0, // Will be distributed below
+            converted_cost_price: 0,
+            original_currency: currency,
+            original_unit_price: revenue,
+            converted_unit_price: revenue,
+            settlement_currency: currency,
+            returned_quantity: 0,
+            is_returned: false,
+            product: {
+                name: `${fullName} ${surname}`.trim() || 'Tourist',
+                sku: 'TA-TOURIST',
+                can_be_returned: false
+            }
+        })
+    })
+
+    // 2. Add group revenue as an item if > 0
+    if (groupRev > 0) {
+        items.push({
+            id: generateId(),
+            sale_id: sale.id,
+            product_id: 'travel_agency_group',
+            product_name: sale.groupName || sale.group_name || 'Group Revenue',
+            product_sku: 'TA-GROUP',
+            quantity: 1,
+            unit_price: groupRev,
+            total_price: groupRev,
+            cost_price: 0, // Will be distributed below
+            converted_cost_price: 0,
+            original_currency: currency,
+            original_unit_price: groupRev,
+            converted_unit_price: groupRev,
+            settlement_currency: currency,
+            returned_quantity: 0,
+            is_returned: false,
+            product: {
+                name: sale.groupName || sale.group_name || 'Group Revenue',
+                sku: 'TA-GROUP',
+                can_be_returned: false
+            }
+        })
+    }
+
+    // 3. Ensure at least one item exists
+    if (items.length === 0) {
+        items.push({
+            id: generateId(),
+            sale_id: sale.id,
+            product_id: 'travel_agency_service',
+            product_name: 'Travel Service',
+            product_sku: 'TA-SERVICE',
+            quantity: 1,
+            unit_price: 0,
+            total_price: 0,
+            cost_price: 0,
+            converted_cost_price: 0,
+            original_currency: currency,
+            original_unit_price: 0,
+            converted_unit_price: 0,
+            settlement_currency: currency,
+            returned_quantity: 0,
+            is_returned: false,
+            product: {
+                name: 'Travel Service',
+                sku: 'TA-SERVICE',
+                can_be_returned: false
+            }
+        })
+    }
+
+    // 4. Distribute supplier cost across all items
+    const costPerItem = supplierCost / items.length
+    items.forEach(item => {
+        item.cost_price = costPerItem
+        item.converted_cost_price = costPerItem
+    })
+
+    // 5. Final total amount is the sum of all items
+    const totalAmount = items.reduce((sum, item) => sum + item.total_price, 0)
+
+    return {
+        id: sale.id,
+        workspace_id: sale.workspaceId || sale.workspace_id,
+        cashier_id: sale.createdBy || sale.created_by || '',
+        total_amount: totalAmount,
+        settlement_currency: currency,
+        exchange_source: 'Manual (Travel Agency)',
+        exchange_rate: 1,
+        exchange_rate_timestamp: sale.createdAt || sale.created_at || new Date().toISOString(),
+        exchange_rates: [],
+        created_at: sale.paidAt || sale.paid_at || sale.saleDate || sale.sale_date || sale.createdAt || sale.created_at,
+        updated_at: sale.updatedAt || sale.updated_at,
+        origin: 'travel_agency',
+        payment_method: sale.paymentMethod || sale.payment_method || 'cash',
+        cashier_name: sale.groupName || sale.group_name || 'Travel Sale',
+        items,
+        is_returned: false,
+        sequenceId: sale.saleNumber || sale.sale_number,
+        notes: sale.notes,
+        _isTravelAgency: true,
+        _saleNumber: sale.saleNumber || sale.sale_number
     }
 }

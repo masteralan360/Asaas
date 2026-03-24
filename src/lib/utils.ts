@@ -220,6 +220,7 @@ export function formatOriginLabel(origin?: string | null): string {
     if (normalized === 'pos') return 'POS'
     if (normalized === 'instant_pos' || normalized === 'instant-pos' || normalized === 'instant pos') return 'Instant POS'
     if (normalized === 'sales_order' || normalized === 'sales-order' || normalized === 'sales order') return 'Sales Order'
+    if (normalized === 'travel_agency' || normalized === 'travel-agency' || normalized === 'travel agency') return 'Travel Agency'
     if (normalized === 'manual') return 'Manual'
     if (normalized === 'loans' || normalized === 'loan') return 'Loans'
     return origin
