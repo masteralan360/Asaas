@@ -97,6 +97,10 @@ function sanitizeSyncPayload(tableName: SyncableTableName, entity: Record<string
         delete snakePayload.storage_name
     }
 
+    if (tableName === 'customers' || tableName === 'suppliers') {
+        delete snakePayload.is_locked
+    }
+
     return snakePayload
 }
 

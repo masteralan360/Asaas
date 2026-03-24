@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ChangeEvent, type DragEvent } from 'react'
 import { Camera, Loader2, RefreshCw, Upload } from 'lucide-react'
-import { parse, states, type ParseResult } from 'mrz'
+import { parse, type ParseResult } from 'mrz'
 import Tesseract from 'tesseract.js'
 
 import { cn } from '@/lib/utils'
@@ -21,8 +21,6 @@ export type TouristMrzScanResult = {
     fullName?: string
     surname?: string
     dateOfBirth?: string
-    nationality?: string
-    passportNumber?: string
     rawMrz: string
 }
 
@@ -278,7 +276,6 @@ function countCriticalFields(parsed: ParseResult) {
 }
 
 function scoreParsedCandidate(parsed: ParseResult, rawMrz: string) {
-    const { fields } = parsed
     const validFields = new Set(parsed.details.filter((detail) => detail.valid && detail.field).map((detail) => detail.field))
     const lines = rawMrz.split('\n')
 
@@ -289,15 +286,7 @@ function scoreParsedCandidate(parsed: ParseResult, rawMrz: string) {
         validFields.has('documentNumber') || parsed.documentNumber ? 3 : 0,
         validFields.has('birthDate') ? 3 : 0,
         validFields.has('expirationDate') ? 2 : 0,
-        validFields.has('nationality') ? 2 : 0,
-        validFields.has('documentNumberCheckDigit') ? 2 : 0,
-        validFields.has('birthDateCheckDigit') ? 2 : 0,
-        validFields.has('expirationDateCheckDigit') ? 2 : 0,
-        validFields.has('compositeCheckDigit') ? 2 : 0,
-        lines.every((line) => MRZ_LINE_LENGTHS.includes(line.length as typeof MRZ_LINE_LENGTHS[number])) ? 2 : 0,
-        /^[PIVAC]</.test(lines[0] || '') ? 2 : 0,
-        (lines[0] || '').includes('<<') ? 1 : 0,
-        fields.nationality && fields.nationality.length === 3 ? 1 : 0
+        (lines[0] || '').includes('<<') ? 1 : 0
     ].reduce((sum, value) => sum + value, 0)
     /*
 
@@ -356,17 +345,10 @@ function parseMrzText(text: string): ParsedCandidate | null {
 
 function mapParsedMrz(parsedCandidate: ParsedCandidate): TouristMrzScanResult {
     const { parsed, rawMrz } = parsedCandidate
-    const nationalityCode = parsed.fields.nationality || ''
-    const mappedNationality = nationalityCode
-        ? (states as Record<string, string>)[nationalityCode] || nationalityCode
-        : ''
-
     return {
         fullName: parsed.fields.firstName || '',
         surname: parsed.fields.lastName || '',
         dateOfBirth: normalizeBirthDate(parsed.fields.birthDate),
-        nationality: mappedNationality,
-        passportNumber: parsed.documentNumber || parsed.fields.documentNumber || parsed.fields.personalNumber || '',
         rawMrz
     }
 }

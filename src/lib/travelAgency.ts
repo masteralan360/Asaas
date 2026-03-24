@@ -2,12 +2,14 @@ import type {
     TravelAgencyPaymentMethod,
     TravelAgencyReceiver,
     TravelAgencySale,
+    TravelAgencySaleStatus,
     TravelAgencyTravelMethod
 } from '@/local-db/models'
 
 export const travelMethodOptions: Array<{ value: TravelAgencyTravelMethod; label: string }> = [
-    { value: 'bus', label: 'Bus' },
     { value: 'plane', label: 'Plane' },
+    { value: 'bus', label: 'Bus' },
+    { value: 'hotel', label: 'Hotel' },
     { value: 'train', label: 'Train' },
     { value: 'car', label: 'Car' },
     { value: 'ship', label: 'Ship' },
@@ -27,6 +29,11 @@ export const travelReceiverOptions: Array<{ value: TravelAgencyReceiver; label: 
     { value: 'erbil', label: 'Received By Erbil' }
 ]
 
+export const travelStatusOptions: Array<{ value: TravelAgencySaleStatus; label: string }> = [
+    { value: 'completed', label: 'Completed' },
+    { value: 'draft', label: 'Draft (On-hold)' }
+]
+
 export function getTravelMethodLabel(method?: TravelAgencyTravelMethod | null) {
     return travelMethodOptions.find((option) => option.value === method)?.label || 'Not set'
 }
@@ -37,6 +44,10 @@ export function getTravelPaymentMethodLabel(method: TravelAgencyPaymentMethod) {
 
 export function getTravelReceiverLabel(receiver: TravelAgencyReceiver) {
     return travelReceiverOptions.find((option) => option.value === receiver)?.label || receiver
+}
+
+export function getTravelStatusLabel(status: TravelAgencySaleStatus) {
+    return travelStatusOptions.find((option) => option.value === status)?.label || status
 }
 
 export function getTravelSaleRevenue(sale: TravelAgencySale) {

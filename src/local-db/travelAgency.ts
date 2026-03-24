@@ -172,7 +172,8 @@ export function useTravelAgencySales(workspaceId: string | undefined) {
                     return dateDiff
                 }
 
-                return new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime()
+                // Use saleNumber as a stable tie-breaker to prevent rows from moving on update
+                return right.saleNumber.localeCompare(left.saleNumber)
             })
         },
         [workspaceId]
@@ -257,6 +258,29 @@ export async function setTravelAgencySalePaymentStatus(
     return updated
 }
 
+export async function setTravelAgencySaleStatus(
+    id: string,
+    status: TravelAgencySale['status']
+) {
+    const existing = await db.travel_agency_sales.get(id)
+    if (!existing || existing.isDeleted) {
+        throw new Error('Travel agency sale not found')
+    }
+
+    const now = new Date().toISOString()
+    const updated: TravelAgencySale = {
+        ...existing,
+        status,
+        updatedAt: now,
+        version: existing.version + 1,
+        ...getSyncMetadata(existing.workspaceId, now)
+    }
+
+    await db.travel_agency_sales.put(updated)
+    await syncUpsertEntities([updated as unknown as Record<string, unknown> & { id: string; version: number }], existing.workspaceId)
+    return updated
+}
+
 export async function deleteTravelAgencySale(id: string) {
     const existing = await db.travel_agency_sales.get(id)
     if (!existing || existing.isDeleted) {
@@ -272,4 +296,30 @@ export async function deleteTravelAgencySale(id: string) {
         ...getSyncMetadata(existing.workspaceId, now)
     })
     await syncSoftDelete(id, existing.workspaceId)
+}
+
+export async function lockTravelSale(id: string) {
+    const existing = await db.travel_agency_sales.get(id)
+    if (!existing || existing.isDeleted) {
+        throw new Error('Sale not found')
+    }
+    if (existing.isLocked) {
+        throw new Error('Sale is already locked')
+    }
+    if (existing.status !== 'completed' || !existing.isPaid) {
+        throw new Error('Sale must be completed and paid to be locked')
+    }
+
+    const now = new Date().toISOString()
+    const updated: TravelAgencySale = {
+        ...existing,
+        isLocked: true,
+        updatedAt: now,
+        version: existing.version + 1,
+        ...getSyncMetadata(existing.workspaceId, now)
+    }
+
+    await db.travel_agency_sales.put(updated)
+    await syncUpsertEntities([updated as unknown as Record<string, unknown> & { id: string; version: number }], existing.workspaceId)
+    return updated
 }

@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS crm.travel_agency_sales (
   tourist_count integer NOT NULL DEFAULT 1,
   tourists jsonb NOT NULL DEFAULT '[]'::jsonb,
   group_travel_plan jsonb NULL,
+  group_name text NULL,
   group_revenue numeric NULL DEFAULT 0,
   supplier_id uuid NULL,
   supplier_name text NULL,
@@ -39,6 +40,21 @@ CREATE INDEX IF NOT EXISTS idx_crm_travel_agency_sales_workspace_paid
 
 CREATE INDEX IF NOT EXISTS idx_crm_travel_agency_sales_workspace_date
   ON crm.travel_agency_sales (workspace_id, sale_date DESC);
+
+CREATE OR REPLACE FUNCTION public.current_workspace_id()
+RETURNS uuid
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $function$
+    SELECT workspace_id
+    FROM public.profiles
+    WHERE id = auth.uid();
+$function$;
+
+REVOKE ALL ON FUNCTION public.current_workspace_id() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.current_workspace_id() TO authenticated, service_role;
 
 ALTER TABLE crm.travel_agency_sales ENABLE ROW LEVEL SECURITY;
 

@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react'
-import { ArrowLeft, CalendarDays, Camera, CircleDollarSign, Plane, Plus, Trash2, Upload, UserRound, UsersRound } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
+import { ArrowLeft, CalendarDays, Camera, CircleDollarSign, Eye, Plane, Plus, Trash2, TriangleAlert, Upload, UserRound, UsersRound, Lock } from 'lucide-react'
 import { useLocation, useRoute } from 'wouter'
 
 import { useAuth } from '@/auth'
@@ -14,13 +14,16 @@ import {
     type TravelAgencyPaymentMethod,
     type TravelAgencyReceiver,
     type TravelAgencySale,
+    type TravelAgencySaleStatus,
     type TravelAgencyTourist,
     type TravelAgencyTravelMethod,
+    type TravelAgencyTravelPlan,
     type TravelAgencyTripType
 } from '@/local-db'
-import { travelMethodOptions, travelPaymentMethodOptions, travelReceiverOptions } from '@/lib/travelAgency'
+import { travelMethodOptions, travelPaymentMethodOptions, travelReceiverOptions, travelStatusOptions } from '@/lib/travelAgency'
 import { cn, formatCurrency, generateId } from '@/lib/utils'
 import { TouristMrzScanDialog, type TouristMrzScanMode, type TouristMrzScanResult } from '@/ui/components/travel/TouristMrzScanDialog'
+import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard'
 import { useWorkspace } from '@/workspace'
 import {
     Button,
@@ -41,6 +44,9 @@ import {
     SelectTrigger,
     SelectValue,
     Switch,
+    Tabs,
+    TabsList,
+    TabsTrigger,
     Textarea,
     useToast
 } from '@/ui/components'
@@ -50,6 +56,7 @@ type TravelPlanFormState = {
     departure: string
     arrival: string
     tripType: TravelAgencyTripType
+    details: string
 }
 
 type TouristFormState = {
@@ -57,27 +64,27 @@ type TouristFormState = {
     fullName: string
     surname: string
     dateOfBirth: string
-    nationality: string
-    passportNumber: string
     revenue: string
     notes: string
-    travelPlan: TravelPlanFormState
+    travelPlans: TravelPlanFormState[]
 }
 
 type TravelAgencyFormState = {
     saleDate: string
-    touristCount: string
-    tourists: TouristFormState[]
-    groupTravelPlan: TravelPlanFormState
+    groupName: string
     groupRevenue: string
+    groupTravelPlans: TravelPlanFormState[]
+    tourists: TouristFormState[]
     supplierId: string
     supplierCost: string
     currency: CurrencyCode
     travelPackages: string[]
     paymentMethod: TravelAgencyPaymentMethod
+    paidAmount: string
     receiver: TravelAgencyReceiver
     notes: string
     isPaid: boolean
+    status: TravelAgencySaleStatus
 }
 
 type SupplierQuickCreateState = {
@@ -97,7 +104,8 @@ function createEmptyTravelPlan(): TravelPlanFormState {
         method: '',
         departure: '',
         arrival: '',
-        tripType: 'one_way'
+        tripType: 'one_way',
+        details: ''
     }
 }
 
@@ -107,11 +115,9 @@ function createEmptyTourist(): TouristFormState {
         fullName: '',
         surname: '',
         dateOfBirth: '',
-        nationality: '',
-        passportNumber: '',
         revenue: '',
         notes: '',
-        travelPlan: createEmptyTravelPlan()
+        travelPlans: [createEmptyTravelPlan()]
     }
 }
 
@@ -126,21 +132,23 @@ function normalizeTourists(count: number, tourists: TouristFormState[]) {
     return nextTourists
 }
 
-function createInitialForm(defaultCurrency: CurrencyCode): TravelAgencyFormState {
+function createEmptyTravelAgencyForm(defaultCurrency: CurrencyCode): TravelAgencyFormState {
     return {
-        saleDate: new Date().toISOString().slice(0, 10),
-        touristCount: '1',
-        tourists: [createEmptyTourist()],
-        groupTravelPlan: createEmptyTravelPlan(),
+        saleDate: new Date().toISOString().split('T')[0],
+        groupName: '',
         groupRevenue: '',
+        groupTravelPlans: [createEmptyTravelPlan()],
+        tourists: [createEmptyTourist()],
         supplierId: '',
         supplierCost: '',
         currency: defaultCurrency,
         travelPackages: [],
         paymentMethod: 'cash',
+        paidAmount: '',
         receiver: 'office',
         notes: '',
-        isPaid: false
+        isPaid: false,
+        status: 'completed'
     }
 }
 
@@ -153,14 +161,25 @@ function buildTravelPlan(plan: TravelPlanFormState) {
         method: plan.method,
         departure: plan.method === 'plane' ? plan.departure.trim() || undefined : undefined,
         arrival: plan.method === 'plane' ? plan.arrival.trim() || undefined : undefined,
-        tripType: plan.method === 'plane' ? plan.tripType : undefined
+        tripType: plan.method === 'plane' ? plan.tripType : undefined,
+        details: plan.details.trim() || undefined
     }
 }
 
 function mapSaleToForm(sale: TravelAgencySale): TravelAgencyFormState {
     return {
         saleDate: sale.saleDate,
-        touristCount: String(sale.touristCount),
+        groupName: sale.groupName || '',
+        groupRevenue: String(sale.groupRevenue),
+        groupTravelPlans: sale.groupTravelPlans?.length > 0
+            ? sale.groupTravelPlans.map(plan => ({
+                method: plan.method || '',
+                departure: plan.departure || '',
+                arrival: plan.arrival || '',
+                tripType: plan.tripType || 'one_way',
+                details: plan.details || ''
+            }))
+            : [createEmptyTravelPlan()],
         tourists: normalizeTourists(
             sale.touristCount,
             sale.tourists.map((tourist) => ({
@@ -168,33 +187,29 @@ function mapSaleToForm(sale: TravelAgencySale): TravelAgencyFormState {
                 fullName: tourist.fullName,
                 surname: tourist.surname,
                 dateOfBirth: tourist.dateOfBirth || '',
-                nationality: tourist.nationality || '',
-                passportNumber: tourist.passportNumber || '',
                 revenue: tourist.revenue ? String(tourist.revenue) : '',
                 notes: tourist.notes || '',
-                travelPlan: {
-                    method: tourist.travelPlan?.method || '',
-                    departure: tourist.travelPlan?.departure || '',
-                    arrival: tourist.travelPlan?.arrival || '',
-                    tripType: tourist.travelPlan?.tripType || 'one_way'
-                }
+                travelPlans: tourist.travelPlans?.length > 0
+                    ? tourist.travelPlans.map(plan => ({
+                        method: plan.method || '',
+                        departure: plan.departure || '',
+                        arrival: plan.arrival || '',
+                        tripType: plan.tripType || 'one_way',
+                        details: plan.details || ''
+                    }))
+                    : [createEmptyTravelPlan()]
             }))
         ),
-        groupTravelPlan: {
-            method: sale.groupTravelPlan?.method || '',
-            departure: sale.groupTravelPlan?.departure || '',
-            arrival: sale.groupTravelPlan?.arrival || '',
-            tripType: sale.groupTravelPlan?.tripType || 'one_way'
-        },
-        groupRevenue: sale.groupRevenue ? String(sale.groupRevenue) : '',
         supplierId: sale.supplierId || '',
-        supplierCost: sale.supplierCost ? String(sale.supplierCost) : '',
+        supplierCost: String(sale.supplierCost),
         currency: sale.currency,
         travelPackages: sale.travelPackages || [],
         paymentMethod: sale.paymentMethod,
+        paidAmount: String(sale.paidAmount),
         receiver: sale.receiver,
         notes: sale.notes || '',
-        isPaid: sale.isPaid
+        isPaid: sale.isPaid,
+        status: sale.status || 'completed'
     }
 }
 
@@ -202,89 +217,130 @@ function TravelPlanEditor({
     title,
     description,
     value,
-    onChange
+    onChange,
+    action
 }: {
     title: string
     description?: string
-    value: TravelPlanFormState
-    onChange: (nextValue: TravelPlanFormState) => void
+    value: TravelPlanFormState[]
+    onChange: (nextValue: TravelPlanFormState[]) => void
+    action?: React.ReactNode
 }) {
+    const addPlan = () => {
+        onChange([...value, createEmptyTravelPlan()])
+    }
+
+    const removePlan = (index: number) => {
+        onChange(value.filter((_, i) => i !== index))
+    }
+
+    const updatePlan = (index: number, nextPlan: TravelPlanFormState) => {
+        onChange(value.map((p, i) => i === index ? nextPlan : p))
+    }
+
     return (
-        <div className="space-y-4 rounded-2xl border border-border/60 bg-background p-4">
-            <div className="space-y-1">
-                <div className="text-sm font-semibold">{title}</div>
-                {description && <p className="text-xs text-muted-foreground">{description}</p>}
-            </div>
-
-            <div className="space-y-2">
-                <Label>Travel Method</Label>
-                <Select
-                    value={value.method || NO_VALUE}
-                    onValueChange={(nextMethod) => onChange({
-                        ...value,
-                        method: nextMethod === NO_VALUE ? '' : nextMethod as TravelAgencyTravelMethod,
-                        departure: nextMethod === 'plane' ? value.departure : '',
-                        arrival: nextMethod === 'plane' ? value.arrival : '',
-                        tripType: nextMethod === 'plane' ? value.tripType : 'one_way'
-                    })}
-                >
-                    <SelectTrigger>
-                        <SelectValue placeholder="Select method" />
-                    </SelectTrigger>
-                    <SelectContent>
-                        <SelectItem value={NO_VALUE}>Not set</SelectItem>
-                        {travelMethodOptions.map((option) => (
-                            <SelectItem key={option.value} value={option.value}>
-                                {option.label}
-                            </SelectItem>
-                        ))}
-                    </SelectContent>
-                </Select>
-            </div>
-
-            {value.method === 'plane' && (
-                <div className="space-y-4 rounded-2xl bg-muted/30 p-4">
-                    <div className="grid gap-4 sm:grid-cols-2">
-                        <div className="space-y-2">
-                            <Label>Departure</Label>
-                            <Input
-                                value={value.departure}
-                                onChange={(event) => onChange({ ...value, departure: event.target.value })}
-                                placeholder="Departure airport or city"
-                            />
-                        </div>
-                        <div className="space-y-2">
-                            <Label>Arrival</Label>
-                            <Input
-                                value={value.arrival}
-                                onChange={(event) => onChange({ ...value, arrival: event.target.value })}
-                                placeholder="Arrival airport or city"
-                            />
-                        </div>
-                    </div>
-                    <div className="space-y-2">
-                        <Label>Trip Type</Label>
-                        <div className="grid gap-2 sm:grid-cols-2">
-                            <Button
-                                type="button"
-                                variant={value.tripType === 'one_way' ? 'default' : 'outline'}
-                                onClick={() => onChange({ ...value, tripType: 'one_way' })}
-                                className="justify-start"
-                            >
-                                One-Way
-                            </Button>
-                            <Button
-                                type="button"
-                                variant={value.tripType === 'round_trip' ? 'default' : 'outline'}
-                                onClick={() => onChange({ ...value, tripType: 'round_trip' })}
-                                className="justify-start"
-                            >
-                                Round-Trip
-                            </Button>
-                        </div>
-                    </div>
+        <div className="space-y-4 rounded-2xl border border-border/80 bg-muted/30 p-4">
+            <div className="flex items-start justify-between gap-4">
+                <div className="space-y-1">
+                    <h3 className="font-semibold">{title}</h3>
+                    {description && <p className="text-sm text-muted-foreground">{description}</p>}
                 </div>
-            )}
+                <div className="flex items-center gap-2">
+                    {action}
+                    <Button type="button" variant="outline" size="sm" onClick={addPlan}>
+                        <Plus className="mr-2 h-4 w-4" />
+                        Add Item
+                    </Button>
+                </div>
+            </div>
+
+            <div className="grid gap-6">
+                {value.map((plan, index) => (
+                    <div key={index} className="relative space-y-4 rounded-xl border border-border/50 p-4">
+                        {value.length > 1 && (
+                            <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="absolute -right-2 -top-2 h-8 w-8 rounded-full bg-background border shadow-sm hover:text-destructive"
+                                onClick={() => removePlan(index)}
+                            >
+                                <Trash2 className="h-4 w-4" />
+                            </Button>
+                        )}
+                        <div className="space-y-2">
+                            <Label>Travel Method</Label>
+                            <Select
+                                value={plan.method || NO_VALUE}
+                                onValueChange={(nextMethod) => updatePlan(index, {
+                                    ...plan,
+                                    method: nextMethod === NO_VALUE ? '' : nextMethod as TravelAgencyTravelMethod,
+                                    departure: nextMethod === 'plane' ? plan.departure : '',
+                                    arrival: nextMethod === 'plane' ? plan.arrival : '',
+                                    tripType: nextMethod === 'plane' ? plan.tripType : 'one_way'
+                                })}
+                            >
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Select method" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value={NO_VALUE}>Not set</SelectItem>
+                                    {travelMethodOptions.map((option) => (
+                                        <SelectItem key={option.value} value={option.value}>
+                                            {option.label}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        {plan.method === 'plane' && (
+                            <div className="space-y-4 rounded-xl bg-primary/5 p-4">
+                                <div className="grid gap-4 sm:grid-cols-2">
+                                    <div className="space-y-2">
+                                        <Label>Departure Airport</Label>
+                                        <Input
+                                            value={plan.departure}
+                                            onChange={(event) => updatePlan(index, { ...plan, departure: event.target.value })}
+                                            placeholder="Code or Name"
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label>Arrival Airport</Label>
+                                        <Input
+                                            value={plan.arrival}
+                                            onChange={(event) => updatePlan(index, { ...plan, arrival: event.target.value })}
+                                            placeholder="Code or Name"
+                                        />
+                                    </div>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Trip Type</Label>
+                                    <Tabs
+                                        value={plan.tripType}
+                                        onValueChange={(v) => updatePlan(index, { ...plan, tripType: v as TravelAgencyTripType })}
+                                        className="w-full"
+                                    >
+                                        <TabsList className="grid w-full grid-cols-2">
+                                            <TabsTrigger value="one_way">One Way</TabsTrigger>
+                                            <TabsTrigger value="round_trip">Round Trip</TabsTrigger>
+                                        </TabsList>
+                                    </Tabs>
+                                </div>
+                            </div>
+                        )}
+
+                        <div className="space-y-2">
+                            <Label>Extra Details</Label>
+                            <Input
+                                value={plan.details}
+                                onChange={(event) => updatePlan(index, { ...plan, details: event.target.value })}
+                                placeholder="Additional info..."
+                            />
+                        </div>
+                    </div>
+                ))}
+            </div>
         </div>
     )
 }
@@ -448,7 +504,7 @@ function SupplierQuickCreateDialog({
     )
 }
 
-function TravelAgencySaleEditor({ saleId }: { saleId?: string }) {
+function TravelAgencySaleEditor({ saleId, readOnly = false }: { saleId?: string; readOnly?: boolean }) {
     const { user } = useAuth()
     const { features } = useWorkspace()
     const { toast } = useToast()
@@ -466,7 +522,16 @@ function TravelAgencySaleEditor({ saleId }: { saleId?: string }) {
         touristIndex: null,
         mode: 'upload'
     })
-    const [formState, setFormState] = useState<TravelAgencyFormState>(() => createInitialForm(features.default_currency))
+    const [formState, setFormState] = useState<TravelAgencyFormState>(() => createEmptyTravelAgencyForm(features.default_currency))
+    const initialFormSnapshot = useRef<string | null>(null)
+
+    const isDirty = useMemo(() => {
+        if (sale?.isLocked) return false
+        if (!initialFormSnapshot.current) return false
+        return JSON.stringify(formState) !== initialFormSnapshot.current
+    }, [formState, sale?.isLocked])
+
+    const { showGuard, confirmNavigation, cancelNavigation, requestNavigation } = useUnsavedChangesGuard(isDirty)
 
     const availableCurrencies = useMemo(() => {
         const currencies: CurrencyCode[] = ['usd', 'iqd']
@@ -493,36 +558,117 @@ function TravelAgencySaleEditor({ saleId }: { saleId?: string }) {
         const touristRevenue = formState.tourists.reduce((sum, tourist) => sum + (Number(tourist.revenue) || 0), 0)
         const groupRevenue = Number(formState.groupRevenue) || 0
         const supplierCost = Number(formState.supplierCost) || 0
+        const paidAmount = Number(formState.paidAmount) || 0
 
         return {
             touristRevenue,
             groupRevenue,
             supplierCost,
+            paidAmount,
             totalRevenue: touristRevenue + groupRevenue,
             net: touristRevenue + groupRevenue - supplierCost
         }
-    }, [formState.groupRevenue, formState.supplierCost, formState.tourists])
+    }, [formState.groupRevenue, formState.supplierCost, formState.tourists, formState.paidAmount])
 
     useEffect(() => {
         if (sale) {
-            setFormState(mapSaleToForm(sale))
+            const mapped = mapSaleToForm(sale)
+            setFormState(mapped)
+            initialFormSnapshot.current = JSON.stringify(mapped)
         }
     }, [sale])
 
+    // Set initial snapshot for new sales once the component mounts
+    useEffect(() => {
+        if (!isEditing && !initialFormSnapshot.current) {
+            initialFormSnapshot.current = JSON.stringify(formState)
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [])
+
+    const [sidebarWidth, setSidebarWidth] = useState(() => {
+        const saved = localStorage.getItem('travel-sale-sidebar-width')
+        return saved ? Number(saved) : 380
+    })
+    const [isResizing, setIsResizing] = useState(false)
+
+    useEffect(() => {
+        if (!isResizing) return
+
+        const handleMouseMove = (e: MouseEvent) => {
+            const container = document.getElementById('travel-sale-form-container')
+            if (!container) return
+
+            const containerRect = container.getBoundingClientRect()
+            const newWidth = containerRect.right - e.clientX
+
+            if (newWidth >= 250 && newWidth <= 800) {
+                setSidebarWidth(newWidth)
+            }
+        }
+
+        const handleMouseUp = () => {
+            setIsResizing(false)
+            document.body.style.cursor = 'default'
+        }
+
+        document.addEventListener('mousemove', handleMouseMove)
+        document.addEventListener('mouseup', handleMouseUp)
+        document.body.style.cursor = 'col-resize'
+
+        return () => {
+            document.removeEventListener('mousemove', handleMouseMove)
+            document.removeEventListener('mouseup', handleMouseUp)
+            document.body.style.cursor = 'default'
+        }
+    }, [isResizing])
+
+    useEffect(() => {
+        localStorage.setItem('travel-sale-sidebar-width', String(sidebarWidth))
+    }, [sidebarWidth])
+
     function updateTourist(index: number, updater: (tourist: TouristFormState) => TouristFormState) {
-        setFormState((current) => ({
-            ...current,
-            tourists: current.tourists.map((tourist, touristIndex) => (
+        setFormState((current) => {
+            const nextTourists = current.tourists.map((tourist, touristIndex) => (
                 touristIndex === index ? updater(tourist) : tourist
             ))
+
+            let nextGroupName = current.groupName
+            if (index === 0) {
+                const oldTourist = current.tourists[0]
+                const newTourist = nextTourists[0]
+
+                const oldName = [oldTourist.fullName, oldTourist.surname].filter(Boolean).join(' ').trim()
+                const newName = [newTourist.fullName, newTourist.surname].filter(Boolean).join(' ').trim()
+
+                if (!current.groupName || current.groupName === oldName) {
+                    nextGroupName = newName
+                }
+            }
+
+            return {
+                ...current,
+                tourists: nextTourists,
+                groupName: nextGroupName
+            }
+        })
+    }
+
+    function syncGroupTravelPlanToTourists() {
+        setFormState((current) => ({
+            ...current,
+            tourists: current.tourists.map((tourist) => ({
+                ...tourist,
+                travelPlans: [...current.groupTravelPlans]
+            }))
         }))
+        toast({ title: 'Synced travel plan to all tourists' })
     }
 
     function handleTouristCountChange(rawValue: string) {
         const nextCount = Math.max(1, Number(rawValue || 1))
         setFormState((current) => ({
             ...current,
-            touristCount: String(nextCount),
             tourists: normalizeTourists(nextCount, current.tourists)
         }))
     }
@@ -565,9 +711,7 @@ function TravelAgencySaleEditor({ saleId }: { saleId?: string }) {
             ...current,
             fullName: result.fullName || current.fullName,
             surname: result.surname || current.surname,
-            dateOfBirth: result.dateOfBirth || current.dateOfBirth,
-            nationality: result.nationality || current.nationality,
-            passportNumber: result.passportNumber || current.passportNumber
+            dateOfBirth: result.dateOfBirth || current.dateOfBirth
         }))
 
         closeMrzDialog()
@@ -580,7 +724,13 @@ function TravelAgencySaleEditor({ saleId }: { saleId?: string }) {
         }))
     }
 
-    async function handleSubmit(event: FormEvent) {
+    function buildTravelPlans(plans: TravelPlanFormState[]): TravelAgencyTravelPlan[] {
+        return plans
+            .map((p) => buildTravelPlan(p))
+            .filter(Boolean) as TravelAgencyTravelPlan[]
+    }
+
+    async function handleSubmit(event: FormEvent, explicitStatus?: TravelAgencySaleStatus) {
         event.preventDefault()
         if (!user?.workspaceId) {
             return
@@ -596,15 +746,14 @@ function TravelAgencySaleEditor({ saleId }: { saleId?: string }) {
 
         setIsSaving(true)
         try {
-            const touristCount = Math.max(1, Number(formState.touristCount || 1))
-            const normalizedTourists = normalizeTourists(touristCount, formState.tourists).map((tourist) => ({
+            const statusToSave = explicitStatus || formState.status
+            const touristCount = formState.tourists.length
+            const normalizedTourists = formState.tourists.map((tourist) => ({
                 id: tourist.id,
                 fullName: tourist.fullName.trim(),
                 surname: tourist.surname.trim(),
                 dateOfBirth: tourist.dateOfBirth || undefined,
-                nationality: tourist.nationality.trim() || undefined,
-                passportNumber: tourist.passportNumber.trim() || undefined,
-                travelPlan: buildTravelPlan(tourist.travelPlan),
+                travelPlans: buildTravelPlans(tourist.travelPlans),
                 revenue: Number(tourist.revenue) || 0,
                 notes: tourist.notes.trim() || undefined
             })) satisfies TravelAgencyTourist[]
@@ -614,7 +763,8 @@ function TravelAgencySaleEditor({ saleId }: { saleId?: string }) {
                 saleDate: formState.saleDate,
                 touristCount,
                 tourists: normalizedTourists,
-                groupTravelPlan: touristCount > 1 ? buildTravelPlan(formState.groupTravelPlan) : null,
+                groupTravelPlans: buildTravelPlans(formState.groupTravelPlans),
+                groupName: formState.groupName.trim() || null,
                 groupRevenue: Number(formState.groupRevenue) || 0,
                 supplierId: formState.supplierId || null,
                 supplierName: selectedSupplier?.name || sale?.supplierName || null,
@@ -622,9 +772,11 @@ function TravelAgencySaleEditor({ saleId }: { saleId?: string }) {
                 currency: formState.currency,
                 travelPackages: formState.travelPackages,
                 paymentMethod: formState.paymentMethod,
+                paidAmount: Number(formState.paidAmount) || 0,
                 receiver: formState.receiver,
                 notes: formState.notes.trim() || undefined,
                 isPaid: formState.isPaid,
+                status: statusToSave,
                 paidAt: formState.isPaid ? (sale?.paidAt || new Date().toISOString()) : null
             }
 
@@ -660,25 +812,45 @@ function TravelAgencySaleEditor({ saleId }: { saleId?: string }) {
         <div className="space-y-6">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                 <div className="space-y-2">
-                    <Button variant="ghost" className="w-fit gap-2 px-0" onClick={() => navigate('/travel-agency')}>
+                    <Button variant="ghost" className="w-fit gap-2 px-0" onClick={() => {
+                        if (readOnly) { navigate('/travel-agency'); return }
+                        if (!requestNavigation('/travel-agency')) navigate('/travel-agency')
+                    }}>
                         <ArrowLeft className="h-4 w-4" />
                         Back to Travel Agency
                     </Button>
                     <div>
                         <h1 className="flex items-center gap-2 text-2xl font-bold">
                             <Plane className="h-6 w-6 text-primary" />
-                            {isEditing ? (sale?.saleNumber || 'Edit Travel Sale') : 'New Travel Sale'}
+                            {readOnly ? (sale?.saleNumber || 'View Travel Sale') : isEditing ? (sale?.saleNumber || 'Edit Travel Sale') : 'New Travel Sale'}
                         </h1>
-                        <p className="text-muted-foreground">Date, tourists, packages, supplier cut, and payment details are all saved on this sale.</p>
+                        <p className="text-muted-foreground">{readOnly ? 'Viewing sale details in read-only mode.' : 'Date, tourists, packages, supplier cut, and payment details are all saved on this sale.'}</p>
                     </div>
                 </div>
-                <div className="rounded-2xl bg-primary/10 px-4 py-3 text-sm font-semibold text-primary">
-                    Date is user-controlled and never auto-overwritten.
-                </div>
+                {!readOnly && (
+                    <div className="rounded-2xl bg-primary/10 px-4 py-3 text-sm font-semibold text-primary">
+                        Date is user-controlled and never auto-overwritten.
+                    </div>
+                )}
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-6">
-                <div className="grid gap-6 xl:grid-cols-[minmax(0,1.7fr)_380px]">
+            {readOnly && (
+                <div className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-medium text-blue-800 flex items-center gap-2">
+                    <Eye className="h-5 w-5" />
+                    You are viewing this sale in read-only mode.
+                </div>
+            )}
+
+            {!readOnly && sale?.isLocked && (
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800 flex items-center gap-2">
+                    <Lock className="h-5 w-5" />
+                    This sale is locked. It can be viewed but changes cannot be saved.
+                </div>
+            )}
+
+            <form onSubmit={readOnly ? (e) => e.preventDefault() : handleSubmit} className={cn('space-y-6', readOnly && 'pointer-events-none')} id="travel-sale-form-container">
+                <div className="flex flex-col gap-6 xl:flex-row">
+                    <div className="min-w-0 flex-1">
                     <Card className="border-border/60 shadow-sm">
                         <CardHeader className="space-y-1">
                             <CardTitle className="flex items-center gap-2">
@@ -709,23 +881,29 @@ function TravelAgencySaleEditor({ saleId }: { saleId?: string }) {
                                         type="number"
                                         min="1"
                                         step="1"
-                                        value={formState.touristCount}
+                                        value={formState.tourists.length}
                                         onChange={(event) => handleTouristCountChange(event.target.value)}
                                     />
                                 </div>
                             </div>
 
-                            {Number(formState.touristCount) > 1 && (
+                            {formState.tourists.length > 1 && (
                                 <TravelPlanEditor
                                     title="Group Travel Plan"
-                                    description="This group method stays separate from each tourist's own travel method."
-                                    value={formState.groupTravelPlan}
-                                    onChange={(nextValue) => setFormState((current) => ({ ...current, groupTravelPlan: nextValue }))}
+                                    description="Apply a common plan to all tourists in this group"
+                                    value={formState.groupTravelPlans}
+                                    onChange={(nextPlans) => setFormState((current) => ({ ...current, groupTravelPlans: nextPlans }))}
+                                    action={
+                                        <Button type="button" variant="outline" size="sm" onClick={syncGroupTravelPlanToTourists}>
+                                            <UsersRound className="mr-2 h-4 w-4" />
+                                            Apply to all
+                                        </Button>
+                                    }
                                 />
                             )}
 
                             {formState.tourists.map((tourist, index) => (
-                                <div key={tourist.id} className="space-y-4 rounded-3xl border border-border/60 bg-card p-5 shadow-sm">
+                                <div key={tourist.id} className="space-y-4 rounded-3xl border border-primary/20 bg-background p-6 shadow-sm transition-shadow hover:shadow-md">
                                     <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                                         <div>
                                             <div className="flex items-center gap-2 text-lg font-semibold">
@@ -775,14 +953,6 @@ function TravelAgencySaleEditor({ saleId }: { saleId?: string }) {
                                             <Input type="date" value={tourist.dateOfBirth} onChange={(event) => updateTourist(index, (current) => ({ ...current, dateOfBirth: event.target.value }))} />
                                         </div>
                                         <div className="space-y-2">
-                                            <Label>Nationality</Label>
-                                            <Input value={tourist.nationality} onChange={(event) => updateTourist(index, (current) => ({ ...current, nationality: event.target.value }))} placeholder="Nationality" />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <Label>Passport / ID</Label>
-                                            <Input value={tourist.passportNumber} onChange={(event) => updateTourist(index, (current) => ({ ...current, passportNumber: event.target.value }))} placeholder="Document number" />
-                                        </div>
-                                        <div className="space-y-2">
                                             <Label>Revenue</Label>
                                             <Input type="number" min="0" step="0.01" value={tourist.revenue} onChange={(event) => updateTourist(index, (current) => ({ ...current, revenue: event.target.value }))} placeholder="0.00" />
                                         </div>
@@ -793,17 +963,32 @@ function TravelAgencySaleEditor({ saleId }: { saleId?: string }) {
                                     </div>
 
                                     <TravelPlanEditor
-                                        title={`Tourist ${index + 1} Travel Plan`}
-                                        description="This does not get overridden by the group travel method."
-                                        value={tourist.travelPlan}
-                                        onChange={(nextValue) => updateTourist(index, (current) => ({ ...current, travelPlan: nextValue }))}
+                                        title="Individual Travel Plan"
+                                        description="Custom plan for this tourist"
+                                        value={tourist.travelPlans}
+                                        onChange={(nextPlans) => updateTourist(index, (current) => ({ ...current, travelPlans: nextPlans }))}
                                     />
                                 </div>
                             ))}
                         </CardContent>
                     </Card>
+                </div>
 
-                    <div className="space-y-6">
+                    <div
+                        className={cn(
+                            "hidden xl:flex w-2 cursor-col-resize items-center justify-center transition-colors hover:bg-primary/30",
+                            isResizing && "bg-primary/50"
+                        )}
+                        onMouseDown={(e) => {
+                            e.preventDefault()
+                            setIsResizing(true)
+                        }}
+                    >
+                        <div className="h-10 w-[3px] rounded-full bg-border" />
+                    </div>
+
+                    <div className="space-y-6" style={{ width: `var(--sidebar-width, ${sidebarWidth}px)` }}>
+                        <style dangerouslySetInnerHTML={{ __html: `@media (min-width: 1280px) { :root { --sidebar-width: ${sidebarWidth}px; } }` }} />
                         <Card className="border-border/60 shadow-sm">
                             <CardHeader className="space-y-1">
                                 <CardTitle>Sale Setup</CardTitle>
@@ -822,9 +1007,40 @@ function TravelAgencySaleEditor({ saleId }: { saleId?: string }) {
                                         </Select>
                                     </div>
                                     <div className="space-y-2">
+                                        <Label>Group Name</Label>
+                                        <Input value={formState.groupName} onChange={(event) => setFormState((current) => ({ ...current, groupName: event.target.value }))} placeholder="Optional group name" />
+                                    </div>
+                                    <div className="space-y-2">
                                         <Label>Group Revenue</Label>
                                         <Input type="number" min="0" step="0.01" value={formState.groupRevenue} onChange={(event) => setFormState((current) => ({ ...current, groupRevenue: event.target.value }))} placeholder="0.00" />
                                     </div>
+                                    <div className="space-y-2">
+                                        <Label>Supplier Cost</Label>
+                                        <Input type="number" min="0" step="0.01" value={formState.supplierCost} onChange={(event) => setFormState((current) => ({ ...current, supplierCost: event.target.value }))} placeholder="Supplier cut / cost" />
+                                    </div>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <Label>Supplier</Label>
+                                    <Select
+                                        value={formState.supplierId || NO_VALUE}
+                                        onValueChange={(value) => {
+                                            if (value === ADD_SUPPLIER_VALUE) {
+                                                setSupplierDialogOpen(true)
+                                                return
+                                            }
+                                            setFormState((current) => ({ ...current, supplierId: value === NO_VALUE ? '' : value }))
+                                        }}
+                                    >
+                                        <SelectTrigger><SelectValue placeholder="Select supplier" /></SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value={NO_VALUE}>No supplier</SelectItem>
+                                            {supplierOptions.map((supplier) => (
+                                                <SelectItem key={supplier.id} value={supplier.id}>{supplier.name}</SelectItem>
+                                            ))}
+                                            <SelectItem value={ADD_SUPPLIER_VALUE}>Add Supplier...</SelectItem>
+                                        </SelectContent>
+                                    </Select>
                                 </div>
 
                                 <div className="space-y-2">
@@ -856,34 +1072,6 @@ function TravelAgencySaleEditor({ saleId }: { saleId?: string }) {
                                         ))}
                                     </div>
                                 </div>
-
-                                <div className="space-y-2">
-                                    <Label>Supplier</Label>
-                                    <Select
-                                        value={formState.supplierId || NO_VALUE}
-                                        onValueChange={(value) => {
-                                            if (value === ADD_SUPPLIER_VALUE) {
-                                                setSupplierDialogOpen(true)
-                                                return
-                                            }
-                                            setFormState((current) => ({ ...current, supplierId: value === NO_VALUE ? '' : value }))
-                                        }}
-                                    >
-                                        <SelectTrigger><SelectValue placeholder="Select supplier" /></SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value={NO_VALUE}>No supplier</SelectItem>
-                                            {supplierOptions.map((supplier) => (
-                                                <SelectItem key={supplier.id} value={supplier.id}>{supplier.name}</SelectItem>
-                                            ))}
-                                            <SelectItem value={ADD_SUPPLIER_VALUE}>Add Supplier...</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-
-                                <div className="space-y-2">
-                                    <Label>Supplier Cost</Label>
-                                    <Input type="number" min="0" step="0.01" value={formState.supplierCost} onChange={(event) => setFormState((current) => ({ ...current, supplierCost: event.target.value }))} placeholder="Supplier cut / cost" />
-                                </div>
                                 <div className="space-y-2">
                                     <Label>Payment Method</Label>
                                     <Select value={formState.paymentMethod} onValueChange={(value) => setFormState((current) => ({ ...current, paymentMethod: value as TravelAgencyPaymentMethod }))}>
@@ -901,6 +1089,18 @@ function TravelAgencySaleEditor({ saleId }: { saleId?: string }) {
                                         <SelectTrigger><SelectValue /></SelectTrigger>
                                         <SelectContent>
                                             {travelReceiverOptions.map((option) => (
+                                                <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <Label>Sale Status</Label>
+                                    <Select value={formState.status} onValueChange={(value) => setFormState((current) => ({ ...current, status: value as TravelAgencySaleStatus }))}>
+                                        <SelectTrigger><SelectValue /></SelectTrigger>
+                                        <SelectContent>
+                                            {travelStatusOptions.map((option) => (
                                                 <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
                                             ))}
                                         </SelectContent>
@@ -935,7 +1135,7 @@ function TravelAgencySaleEditor({ saleId }: { saleId?: string }) {
                                 <div className="flex items-center justify-between text-sm"><span>Supplier Cost</span><span className="font-semibold">{formatCurrency(computedTotals.supplierCost, formState.currency, features.iqd_display_preference)}</span></div>
                                 <div className="border-t pt-3">
                                     <div className="flex items-center justify-between">
-                                        <span className="text-sm font-medium">Net</span>
+                                        <span className="text-sm font-medium">Commission</span>
                                         <span className={cn('text-xl font-black', computedTotals.net >= 0 ? 'text-emerald-600' : 'text-destructive')}>
                                             {formatCurrency(computedTotals.net, formState.currency, features.iqd_display_preference)}
                                         </span>
@@ -946,32 +1146,103 @@ function TravelAgencySaleEditor({ saleId }: { saleId?: string }) {
                     </div>
                 </div>
 
-                <div className="flex flex-col gap-3 border-t pt-6 sm:flex-row sm:justify-between">
-                    <Button type="button" variant="outline" onClick={() => navigate('/travel-agency')}>Cancel</Button>
-                    <Button type="submit" disabled={isSaving}>{isSaving ? 'Saving...' : isEditing ? 'Save Sale' : 'Create Sale'}</Button>
-                </div>
+                {readOnly ? (
+                    <div className="flex border-t pt-6 pointer-events-auto">
+                        <Button type="button" variant="outline" onClick={() => navigate('/travel-agency')}>Back to Travel Agency</Button>
+                    </div>
+                ) : (
+                    <div className="flex flex-col gap-3 border-t pt-6 sm:flex-row sm:justify-between">
+                        <Button type="button" variant="outline" onClick={() => {
+                            if (!requestNavigation('/travel-agency')) navigate('/travel-agency')
+                        }}>Cancel</Button>
+                        <div className="flex flex-col gap-3 sm:flex-row">
+                            <Button
+                                type="button"
+                                variant="secondary"
+                                className="bg-slate-200 text-slate-700 hover:bg-slate-300"
+                                disabled={isSaving || sale?.isLocked}
+                                onClick={(e) => handleSubmit(e, 'draft')}
+                            >
+                                {isSaving ? 'Saving...' : 'Save as Draft'}
+                            </Button>
+                            <Button
+                                type="submit"
+                                disabled={isSaving || sale?.isLocked}
+                                onClick={() => setFormState(prev => ({ ...prev, status: 'completed' }))}
+                            >
+                                {isSaving ? 'Saving...' : isEditing ? 'Save Sale' : 'Create Sale'}
+                            </Button>
+                        </div>
+                    </div>
+                )}
             </form>
 
-            <SupplierQuickCreateDialog
-                isOpen={supplierDialogOpen}
-                onClose={() => setSupplierDialogOpen(false)}
-                defaultCurrency={formState.currency}
-                availableCurrencies={availableCurrencies}
-                workspaceId={user?.workspaceId}
-                onCreated={(supplier) => setFormState((current) => ({ ...current, supplierId: supplier.id }))}
-            />
+            {!readOnly && (
+                <>
+                    <SupplierQuickCreateDialog
+                        isOpen={supplierDialogOpen}
+                        onClose={() => setSupplierDialogOpen(false)}
+                        defaultCurrency={formState.currency}
+                        availableCurrencies={availableCurrencies}
+                        workspaceId={user?.workspaceId}
+                        onCreated={(supplier) => setFormState((current) => ({ ...current, supplierId: supplier.id }))}
+                    />
 
-            <TouristMrzScanDialog
-                open={mrzDialogState.touristIndex !== null}
-                onOpenChange={(open) => {
-                    if (!open) {
-                        closeMrzDialog()
-                    }
-                }}
-                touristLabel={mrzDialogState.touristIndex !== null ? `Tourist ${mrzDialogState.touristIndex + 1}` : 'Tourist'}
-                initialMode={mrzDialogState.mode}
-                onScanned={applyMrzResult}
-            />
+                    <TouristMrzScanDialog
+                        open={mrzDialogState.touristIndex !== null}
+                        onOpenChange={(open) => {
+                            if (!open) {
+                                closeMrzDialog()
+                            }
+                        }}
+                        touristLabel={mrzDialogState.touristIndex !== null ? `Tourist ${mrzDialogState.touristIndex + 1}` : 'Tourist'}
+                        initialMode={mrzDialogState.mode}
+                        onScanned={applyMrzResult}
+                    />
+
+                    {/* Unsaved Changes Guard Dialog */}
+                    <Dialog open={showGuard} onOpenChange={(open) => { if (!open) cancelNavigation() }}>
+                        <DialogContent className="max-w-md rounded-3xl">
+                            <DialogHeader>
+                                <DialogTitle className="flex items-center gap-2">
+                                    <TriangleAlert className="h-5 w-5 text-amber-500" />
+                                    Unsaved Changes
+                                </DialogTitle>
+                            </DialogHeader>
+                            <p className="text-sm text-muted-foreground">
+                                You have unsaved changes. Would you like to save your work before leaving?
+                            </p>
+                            <DialogFooter className="flex flex-col gap-2 sm:flex-row sm:justify-between">
+                                <Button variant="ghost" className="text-destructive hover:text-destructive" onClick={() => confirmNavigation()}>
+                                    Discard
+                                </Button>
+                                <div className="flex gap-2">
+                                    <Button
+                                        variant="secondary"
+                                        className="bg-slate-200 text-slate-700 hover:bg-slate-300"
+                                        disabled={isSaving}
+                                        onClick={async (e) => {
+                                            await handleSubmit(e, 'draft')
+                                            confirmNavigation()
+                                        }}
+                                    >
+                                        {isSaving ? 'Saving...' : 'Save as Draft'}
+                                    </Button>
+                                    <Button
+                                        disabled={isSaving}
+                                        onClick={async (e) => {
+                                            await handleSubmit(e, 'completed')
+                                            confirmNavigation()
+                                        }}
+                                    >
+                                        {isSaving ? 'Saving...' : 'Save & Complete'}
+                                    </Button>
+                                </div>
+                            </DialogFooter>
+                        </DialogContent>
+                    </Dialog>
+                </>
+            )}
         </div>
     )
 }
@@ -983,4 +1254,9 @@ export function TravelAgencySaleCreate() {
 export function TravelAgencySaleEdit() {
     const [, params] = useRoute('/travel-agency/:saleId')
     return <TravelAgencySaleEditor saleId={params?.saleId} />
+}
+
+export function TravelAgencySaleView() {
+    const [, params] = useRoute('/travel-agency/:saleId/view')
+    return <TravelAgencySaleEditor saleId={params?.saleId} readOnly />
 }

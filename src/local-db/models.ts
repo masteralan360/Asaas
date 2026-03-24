@@ -213,16 +213,18 @@ export interface PurchaseOrder extends BaseEntity {
     isLocked?: boolean
 }
 
-export type TravelAgencyTravelMethod = 'bus' | 'plane' | 'train' | 'car' | 'ship' | 'other'
+export type TravelAgencyTravelMethod = 'bus' | 'plane' | 'train' | 'car' | 'ship' | 'hotel' | 'other'
 export type TravelAgencyTripType = 'one_way' | 'round_trip'
 export type TravelAgencyPaymentMethod = 'cash' | 'fib' | 'qicard' | 'hawala' | 'fastpay'
 export type TravelAgencyReceiver = 'office' | 'erbil'
+export type TravelAgencySaleStatus = 'completed' | 'draft'
 
 export interface TravelAgencyTravelPlan {
     method: TravelAgencyTravelMethod
     departure?: string
     arrival?: string
     tripType?: TravelAgencyTripType
+    details?: string
 }
 
 export interface TravelAgencyTourist {
@@ -230,9 +232,7 @@ export interface TravelAgencyTourist {
     fullName: string
     surname: string
     dateOfBirth?: string
-    nationality?: string
-    passportNumber?: string
-    travelPlan?: TravelAgencyTravelPlan | null
+    travelPlans: TravelAgencyTravelPlan[]
     revenue: number
     notes?: string
 }
@@ -240,9 +240,11 @@ export interface TravelAgencyTourist {
 export interface TravelAgencySale extends BaseEntity {
     saleNumber: string
     saleDate: string
+    status: TravelAgencySaleStatus
     touristCount: number
     tourists: TravelAgencyTourist[]
-    groupTravelPlan?: TravelAgencyTravelPlan | null
+    groupTravelPlans: TravelAgencyTravelPlan[]
+    groupName?: string | null
     groupRevenue: number
     supplierId?: string | null
     supplierName?: string | null
@@ -250,10 +252,12 @@ export interface TravelAgencySale extends BaseEntity {
     currency: CurrencyCode
     travelPackages: string[]
     paymentMethod: TravelAgencyPaymentMethod
+    paidAmount: number
     receiver: TravelAgencyReceiver
     notes?: string
     isPaid: boolean
     paidAt?: string | null
+    isLocked?: boolean
 }
 
 

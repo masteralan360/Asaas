@@ -65,6 +65,7 @@ const Orders = lazy(() => import('@/ui/pages/Orders').then(m => ({ default: m.Or
 const TravelAgency = lazy(() => import('@/ui/pages/TravelAgency').then(m => ({ default: m.TravelAgency })))
 const TravelAgencySaleCreate = lazy(() => import('@/ui/pages/TravelAgencySaleForm').then(m => ({ default: m.TravelAgencySaleCreate })))
 const TravelAgencySaleEdit = lazy(() => import('@/ui/pages/TravelAgencySaleForm').then(m => ({ default: m.TravelAgencySaleEdit })))
+const TravelAgencySaleView = lazy(() => import('@/ui/pages/TravelAgencySaleForm').then(m => ({ default: m.TravelAgencySaleView })))
 
 function LoadingState() {
     const [isSlow, setIsSlow] = useState(false)
@@ -588,6 +589,13 @@ function App() {
                                                 <ProtectedRoute allowedRoles={['admin', 'staff']}>
                                                     <Layout>
                                                         <TravelAgencySaleCreate />
+                                                    </Layout>
+                                                </ProtectedRoute>
+                                            </Route>
+                                            <Route path="/travel-agency/:saleId/view">
+                                                <ProtectedRoute allowedRoles={['admin', 'staff']}>
+                                                    <Layout>
+                                                        <TravelAgencySaleView />
                                                     </Layout>
                                                 </ProtectedRoute>
                                             </Route>
