@@ -29,7 +29,7 @@ export async function addToOfflineMutations(
 
             await db.offline_mutations.update(existing.id, {
                 operation: 'delete',
-                payload: { id: entityId },
+                payload: { ...payload, id: entityId },
                 createdAt: new Date().toISOString()
             })
             return

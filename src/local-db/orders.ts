@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 
 import { useNetworkStatus } from '@/hooks/useNetworkStatus'
+import { getTravelSaleNet } from '@/lib/travelAgency'
 import { convertCurrencyAmountWithSnapshot } from '@/lib/orderCurrency'
 import { isOnline } from '@/lib/network'
 import { getSupabaseClientForTable } from '@/lib/supabaseSchema'
@@ -22,7 +23,8 @@ import type {
     PurchaseOrderStatus,
     SalesOrder,
     SalesOrderStatus,
-    Supplier
+    Supplier,
+    TravelAgencySale
 } from './models'
 
 type SimpleEntityTableName = 'customers' | 'suppliers'
@@ -244,27 +246,49 @@ async function recalculateCustomerSummary(workspaceId: string, customerId: strin
     return updated
 }
 
-async function recalculateSupplierSummary(workspaceId: string, supplierId: string) {
+function convertTravelSupplierNetForSupplier(sale: TravelAgencySale, supplierCurrency: CurrencyCode) {
+    return convertCurrencyAmountWithSnapshot(
+        getTravelSaleNet(sale),
+        sale.currency,
+        supplierCurrency,
+        sale.exchangeRateSnapshot ? [sale.exchangeRateSnapshot] as any : undefined
+    )
+}
+
+export async function recalculateSupplierSummary(workspaceId: string, supplierId: string) {
     const supplier = await db.suppliers.get(supplierId)
     if (!supplier || supplier.isDeleted) {
         return supplier
     }
 
-    const orders = await db.purchase_orders
-        .where('supplierId')
-        .equals(supplierId)
-        .and((item) => !item.isDeleted)
-        .toArray()
+    const [orders, travelSales] = await Promise.all([
+        db.purchase_orders
+            .where('supplierId')
+            .equals(supplierId)
+            .and((item) => !item.isDeleted)
+            .toArray(),
+        db.travel_agency_sales
+            .where('supplierId')
+            .equals(supplierId)
+            .and((item) => !item.isDeleted)
+            .toArray()
+    ])
 
     const activeOrders = orders.filter((order) => order.status !== 'cancelled')
-    const totalPurchases = activeOrders.length
+    const activeTravelSales = travelSales.filter((sale) => sale.status !== 'draft')
+    const purchaseOrderSpent = activeOrders
+        .filter((order) => order.status === 'received' || order.status === 'completed')
+        .reduce(
+            (sum, order) => sum + convertCurrencyAmountWithSnapshot(order.total, order.currency, supplier.defaultCurrency, order.exchangeRates),
+            0
+        )
+    const travelSalesSpent = activeTravelSales.reduce(
+        (sum, sale) => sum + convertTravelSupplierNetForSupplier(sale, supplier.defaultCurrency),
+        0
+    )
+    const totalPurchases = activeOrders.length + activeTravelSales.length
     const totalSpent = roundAmount(
-        activeOrders
-            .filter((order) => order.status === 'received' || order.status === 'completed')
-            .reduce(
-                (sum, order) => sum + convertCurrencyAmountWithSnapshot(order.total, order.currency, supplier.defaultCurrency, order.exchangeRates),
-                0
-            ),
+        purchaseOrderSpent + travelSalesSpent,
         supplier.defaultCurrency
     )
 
@@ -285,6 +309,16 @@ async function recalculateSupplierSummary(workspaceId: string, supplierId: strin
     await db.suppliers.put(updated)
     await syncUpsertEntities('suppliers', [updated as unknown as Record<string, unknown> & { id: string; version: number }], workspaceId)
     return updated
+}
+
+export async function recalculateAllSupplierSummaries(workspaceId: string) {
+    const suppliers = await db.suppliers
+        .where('workspaceId')
+        .equals(workspaceId)
+        .and((item) => !item.isDeleted)
+        .toArray()
+
+    await Promise.all(suppliers.map((supplier) => recalculateSupplierSummary(workspaceId, supplier.id)))
 }
 
 function buildBaseEntity<T extends Record<string, unknown>>(workspaceId: string, data: T): T & BaseEntityPayload {
@@ -415,9 +449,25 @@ export function useSuppliers(workspaceId: string | undefined) {
     )
 
     useEffect(() => {
-        if (online && workspaceId && shouldUseCloudBusinessData(workspaceId)) {
-            fetchTableFromSupabase('suppliers', db.suppliers, workspaceId)
+        if (!workspaceId) {
+            return
         }
+
+        const hydrate = async () => {
+            if (online && shouldUseCloudBusinessData(workspaceId)) {
+                await Promise.all([
+                    fetchTableFromSupabase('suppliers', db.suppliers, workspaceId),
+                    fetchTableFromSupabase('purchase_orders', db.purchase_orders, workspaceId),
+                    fetchTableFromSupabase('travel_agency_sales', db.travel_agency_sales, workspaceId)
+                ])
+            }
+
+            await recalculateAllSupplierSummaries(workspaceId)
+        }
+
+        void hydrate().catch((error) => {
+            console.error('[Suppliers] Failed to hydrate supplier summaries:', error)
+        })
     }, [online, workspaceId])
 
     return suppliers ?? []

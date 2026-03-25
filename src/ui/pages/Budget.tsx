@@ -28,6 +28,7 @@ import {
     updateExpenseSeries,
     updateExpenseItem,
     deleteExpenseItem,
+    hardDeleteExpenseSeries,
     ensureExpenseItemsForMonth,
     useEmployees,
     usePayrollStatuses,
@@ -35,14 +36,15 @@ import {
     upsertPayrollStatus,
     upsertDividendStatus,
     useSales,
+    useSalesOrders,
+    useTravelAgencySales,
     toUISale,
-    hardDeleteExpenseItem
+    toUISaleFromTravelAgency
 } from '@/local-db'
 import { db } from '@/local-db/database'
 import type { BudgetStatus, CurrencyCode, ExpenseItem, ExpenseRecurrence, ExpenseSeries, IQDDisplayPreference } from '@/local-db/models'
 import {
     buildConversionRates,
-    calculateNetProfitForMonth,
     buildPayrollItems,
     buildDividendItems,
     monthKeyFromDate,
@@ -50,6 +52,7 @@ import {
     formatMonthLabel,
     buildDueDate
 } from '@/lib/budget'
+import { buildRevenueAnalysisRecords, calculateRevenueAnalysisNetProfitBase } from '@/lib/revenueAnalysis'
 import { convertToStoreBase } from '@/lib/currency'
 import { formatCurrency, formatDate, formatNumberWithCommas, parseFormattedNumber, cn } from '@/lib/utils'
 import {
@@ -275,7 +278,7 @@ function BudgetItemRow({
                                 : "border-slate-200 text-slate-200 hover:border-emerald-400 hover:text-emerald-400"
                         )}
                         onClick={isPaid ? onUnpay : onPay}
-                        disabled={(isLocked && !isPaid) || !canEdit}
+                        disabled={isLocked || !canEdit}
                     >
                         {isPaid ? <CheckCircle2 className="h-5 w-5" /> : <div className="h-5 w-5 rounded-full" />}
                     </Button>
@@ -387,7 +390,19 @@ export function Budget() {
     const payrollStatuses = usePayrollStatuses(workspaceId)
     const dividendStatuses = useDividendStatuses(workspaceId)
     const rawSales = useSales(workspaceId)
+    const salesOrders = useSalesOrders(workspaceId)
+    const rawTravelSales = useTravelAgencySales(workspaceId)
     const sales = useMemo(() => rawSales.map(toUISale), [rawSales])
+    const travelSales = useMemo(
+        () => (rawTravelSales || [])
+            .filter(sale => sale.isPaid && !sale.isDeleted)
+            .map(toUISaleFromTravelAgency),
+        [rawTravelSales]
+    )
+    const revenueRecords = useMemo(
+        () => buildRevenueAnalysisRecords(sales, salesOrders, travelSales),
+        [sales, salesOrders, travelSales]
+    )
 
     const rates = useMemo(() => buildConversionRates(exchangeData, eurRates, tryRates), [exchangeData, eurRates, tryRates])
 
@@ -411,7 +426,7 @@ export function Budget() {
     const [expenseSubcategory, setExpenseSubcategory] = useState('')
 
     const [deleteTarget, setDeleteTarget] = useState<{
-        type: 'series' | 'occurrence' | 'hard_delete_occurrence';
+        type: 'series' | 'occurrence';
         series?: ExpenseSeries | null;
         item?: ExpenseItem | null
     } | null>(null)
@@ -531,9 +546,14 @@ export function Budget() {
         return { totalBase, paidBase }
     }, [payrollItems, baseCurrency, rates])
 
+    const monthRevenueRecords = useMemo(
+        () => revenueRecords.filter(record => monthKeyFromDate(record.date) === selectedMonth),
+        [revenueRecords, selectedMonth]
+    )
+
     const netProfitBase = useMemo(
-        () => calculateNetProfitForMonth(sales, selectedMonth as any, baseCurrency, rates),
-        [sales, selectedMonth, baseCurrency, rates]
+        () => calculateRevenueAnalysisNetProfitBase(monthRevenueRecords, baseCurrency, rates),
+        [monthRevenueRecords, baseCurrency, rates]
     )
 
     const surplusPoolBase = netProfitBase - operationalTotals.totalBase - payrollTotals.totalBase
@@ -719,6 +739,9 @@ export function Budget() {
     const handleMarkUnpaid = async (target: LockTarget) => {
         try {
             if (!workspaceId) return
+            if (Boolean((target.item as { isLocked?: boolean }).isLocked)) {
+                return
+            }
             if (target.type === 'expense') {
                 await updateExpenseItem((target.item as ExpenseItem).id, {
                     status: 'pending',
@@ -826,6 +849,15 @@ export function Budget() {
 
     const handleDeleteSeries = async (series: ExpenseSeries) => {
         try {
+            if (series.recurrence === 'one_time') {
+                await hardDeleteExpenseSeries(series.id)
+                toast({
+                    title: t('common.success') || 'Success',
+                    description: t('budget.expenseDeleted') || 'Expense deleted.'
+                })
+                return
+            }
+
             await updateExpenseSeries(series.id, { isDeleted: true })
             const relatedItems = await db.expense_items.where('seriesId').equals(series.id).toArray()
             for (const item of relatedItems) {
@@ -1017,7 +1049,11 @@ export function Budget() {
                                         setIsExpenseModalOpen(true)
                                     } : undefined}
                                     onDelete={item.status === 'pending' ? () => {
-                                        setDeleteTarget({ type: 'hard_delete_occurrence', item, series })
+                                        setDeleteTarget({
+                                            type: series?.recurrence === 'one_time' ? 'series' : 'occurrence',
+                                            item,
+                                            series
+                                        })
                                     } : undefined}
                                 />
                             ))}
@@ -1170,20 +1206,6 @@ export function Budget() {
                     }
                     if (deleteTarget.type === 'occurrence' && deleteTarget.item) {
                         void handleDeleteOccurrence(deleteTarget.item)
-                    }
-                    if (deleteTarget.type === 'hard_delete_occurrence' && deleteTarget.item) {
-                        void (async () => {
-                            try {
-                                await hardDeleteExpenseItem(deleteTarget.item!.id)
-                                toast({ title: t('common.success') || 'Success', description: t('budget.expenseDeleted') || 'Expense deleted.' })
-                            } catch (error: any) {
-                                toast({
-                                    title: t('common.error') || 'Error',
-                                    description: error?.message || 'Failed to delete expense.',
-                                    variant: 'destructive'
-                                })
-                            }
-                        })()
                     }
                     setDeleteTarget(null)
                 }}

@@ -10,6 +10,7 @@ import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
 
 import { db } from './database'
 import { addToOfflineMutations, fetchTableFromSupabase } from './hooks'
+import { recalculateSupplierSummary } from './orders'
 import type { TravelAgencySale } from './models'
 
 const TABLE_NAME = 'travel_agency_sales'
@@ -188,6 +189,27 @@ export function useTravelAgencySales(workspaceId: string | undefined) {
     return sales ?? []
 }
 
+export function useSupplierTravelAgencySales(supplierId: string | undefined, workspaceId: string | undefined) {
+    const online = useNetworkStatus()
+
+    const sales = useLiveQuery(
+        async () => {
+            if (!supplierId) return []
+            const rows = await db.travel_agency_sales.where('supplierId').equals(supplierId).and((item) => !item.isDeleted).toArray()
+            return rows.sort((left, right) => new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime())
+        },
+        [supplierId]
+    )
+
+    useEffect(() => {
+        if (online && workspaceId && shouldUseCloudBusinessData(workspaceId)) {
+            fetchTableFromSupabase(TABLE_NAME, db.travel_agency_sales, workspaceId)
+        }
+    }, [online, workspaceId])
+
+    return sales ?? []
+}
+
 export function useTravelAgencySale(saleId: string | undefined) {
     return useLiveQuery(() => saleId ? db.travel_agency_sales.get(saleId) : undefined, [saleId])
 }
@@ -212,6 +234,9 @@ export async function createTravelAgencySale(
 
     await db.travel_agency_sales.put(sale)
     await syncUpsertEntities([sale as unknown as Record<string, unknown> & { id: string; version: number }], workspaceId)
+    if (sale.supplierId) {
+        await recalculateSupplierSummary(workspaceId, sale.supplierId)
+    }
     return sale
 }
 
@@ -242,6 +267,8 @@ export async function updateTravelAgencySale(id: string, data: Partial<TravelAge
 
     await db.travel_agency_sales.put(updated)
     await syncUpsertEntities([updated as unknown as Record<string, unknown> & { id: string; version: number }], existing.workspaceId)
+    const supplierIds = Array.from(new Set([existing.supplierId, updated.supplierId].filter((value): value is string => Boolean(value))))
+    await Promise.all(supplierIds.map((supplierId) => recalculateSupplierSummary(existing.workspaceId, supplierId)))
     return updated
 }
 
@@ -269,6 +296,9 @@ export async function setTravelAgencySalePaymentStatus(
 
     await db.travel_agency_sales.put(updated)
     await syncUpsertEntities([updated as unknown as Record<string, unknown> & { id: string; version: number }], existing.workspaceId)
+    if (updated.supplierId) {
+        await recalculateSupplierSummary(existing.workspaceId, updated.supplierId)
+    }
     return updated
 }
 
@@ -292,6 +322,9 @@ export async function setTravelAgencySaleStatus(
 
     await db.travel_agency_sales.put(updated)
     await syncUpsertEntities([updated as unknown as Record<string, unknown> & { id: string; version: number }], existing.workspaceId)
+    if (updated.supplierId) {
+        await recalculateSupplierSummary(existing.workspaceId, updated.supplierId)
+    }
     return updated
 }
 
@@ -310,6 +343,9 @@ export async function deleteTravelAgencySale(id: string) {
         ...getSyncMetadata(existing.workspaceId, now)
     })
     await syncSoftDelete(id, existing.workspaceId)
+    if (existing.supplierId) {
+        await recalculateSupplierSummary(existing.workspaceId, existing.supplierId)
+    }
 }
 
 export async function lockTravelSale(id: string) {

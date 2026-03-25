@@ -469,11 +469,17 @@ export async function deleteProduct(id: string): Promise<void> {
 // ===================
 
 // Helpers for repetitive logic
-export async function fetchTableFromSupabase<T extends { id: string, syncStatus: any, lastSyncedAt: any }>(tableName: string, table: any, workspaceId: string) {
+export async function fetchTableFromSupabase<T extends { id: string, syncStatus: any, lastSyncedAt: any }>(
+    tableName: string,
+    table: any,
+    workspaceId: string,
+    options?: { includeDeleted?: boolean }
+) {
     if (!shouldUseCloudBusinessData(workspaceId)) {
         return
     }
 
+    const includeDeleted = options?.includeDeleted ?? false
     const client = getSupabaseClientForTable(tableName)
     let query = client
         .from(tableName)
@@ -481,7 +487,7 @@ export async function fetchTableFromSupabase<T extends { id: string, syncStatus:
         .eq('workspace_id', workspaceId)
 
     // Only filter by is_deleted for tables that still have that column
-    if (tableName !== 'workspace_contacts') {
+    if (tableName !== 'workspace_contacts' && !includeDeleted) {
         query = query.eq('is_deleted', false)
     }
 
@@ -1830,10 +1836,94 @@ export async function setExpenseSeriesEndMonth(id: string, endMonth: string | nu
     await updateEntity('expense_series', db.expense_series, id, { endMonth })
 }
 
+async function clearPendingOfflineMutations(
+    workspaceId: string,
+    targets: Array<{ entityType: 'expense_series' | 'expense_items'; entityId: string }>
+): Promise<void> {
+    const targetKeys = new Set(targets.map(target => `${target.entityType}:${target.entityId}`))
+    const pendingMutations = await db.offline_mutations.where('workspaceId').equals(workspaceId).toArray()
+    const mutationIds = pendingMutations
+        .filter(mutation =>
+            mutation.status !== 'synced' &&
+            targetKeys.has(`${mutation.entityType}:${mutation.entityId}`)
+        )
+        .map(mutation => mutation.id)
+
+    if (mutationIds.length > 0) {
+        await db.offline_mutations.bulkDelete(mutationIds)
+    }
+}
+
+export async function hardDeleteExpenseSeries(id: string): Promise<void> {
+    const [series, relatedItems] = await Promise.all([
+        db.expense_series.get(id),
+        db.expense_items.where('seriesId').equals(id).toArray()
+    ])
+
+    if (!series && relatedItems.length === 0) {
+        return
+    }
+
+    const workspaceId = series?.workspaceId || relatedItems[0]?.workspaceId
+    if (!workspaceId) {
+        return
+    }
+
+    const relatedItemIds = relatedItems.map(item => item.id)
+
+    if (isOnline()) {
+        const expenseItemsClient = getSupabaseClientForTable('expense_items')
+        const expenseSeriesClient = getSupabaseClientForTable('expense_series')
+
+        if (relatedItemIds.length > 0) {
+            const { error: itemsError } = await runMutation('expense_items.deleteBySeries', () =>
+                expenseItemsClient.from('expense_items').delete().eq('series_id', id)
+            )
+            if (itemsError) throw normalizeSupabaseActionError(itemsError)
+        }
+
+        const { error: seriesError } = await runMutation('expense_series.hardDelete', () =>
+            expenseSeriesClient.from('expense_series').delete().eq('id', id)
+        )
+        if (seriesError) throw normalizeSupabaseActionError(seriesError)
+
+        await db.transaction('rw', [db.expense_series, db.expense_items], async () => {
+            await db.expense_series.delete(id)
+            if (relatedItemIds.length > 0) {
+                await db.expense_items.bulkDelete(relatedItemIds)
+            }
+        })
+
+        await clearPendingOfflineMutations(workspaceId, [
+            { entityType: 'expense_series', entityId: id },
+            ...relatedItemIds.map(entityId => ({ entityType: 'expense_items' as const, entityId }))
+        ])
+        return
+    }
+
+    await db.transaction('rw', [db.expense_series, db.expense_items], async () => {
+        await db.expense_series.delete(id)
+        if (relatedItemIds.length > 0) {
+            await db.expense_items.bulkDelete(relatedItemIds)
+        }
+    })
+
+    for (const itemId of relatedItemIds) {
+        await addToOfflineMutations('expense_items', itemId, 'delete', { id: itemId, hardDelete: true }, workspaceId)
+    }
+    await addToOfflineMutations('expense_series', id, 'delete', { id, hardDelete: true }, workspaceId)
+}
+
 export async function deleteExpenseItem(id: string): Promise<void> {
     const now = new Date().toISOString()
     const existing = await db.expense_items.get(id)
     if (!existing) return
+
+    const series = await db.expense_series.get(existing.seriesId)
+    if (series?.recurrence === 'one_time') {
+        await hardDeleteExpenseSeries(series.id)
+        return
+    }
 
     const updated = {
         ...existing,
@@ -1860,6 +1950,12 @@ export async function hardDeleteExpenseItem(id: string): Promise<void> {
     const existing = await db.expense_items.get(id)
     if (!existing) return
 
+    const series = await db.expense_series.get(existing.seriesId)
+    if (series?.recurrence === 'one_time') {
+        await hardDeleteExpenseSeries(series.id)
+        return
+    }
+
     if (isOnline()) {
         const client = getSupabaseClientForTable('expense_items')
         const { error } = await runMutation('expense_items.hardDelete', () =>
@@ -1867,9 +1963,12 @@ export async function hardDeleteExpenseItem(id: string): Promise<void> {
         )
         if (error) throw normalizeSupabaseActionError(error)
         await db.expense_items.delete(id)
+        await clearPendingOfflineMutations(existing.workspaceId, [
+            { entityType: 'expense_items', entityId: id }
+        ])
     } else {
         await db.expense_items.delete(id)
-        await addToOfflineMutations('expense_items', id, 'delete', { id }, existing.workspaceId)
+        await addToOfflineMutations('expense_items', id, 'delete', { id, hardDelete: true }, existing.workspaceId)
     }
 }
 
@@ -1884,7 +1983,7 @@ export function useExpenseItems(workspaceId: string | undefined, month: string |
 
     useEffect(() => {
         if (isOnline && workspaceId && shouldUseCloudBusinessData(workspaceId)) {
-            fetchTableFromSupabase('expense_items', db.expense_items, workspaceId)
+            fetchTableFromSupabase('expense_items', db.expense_items, workspaceId, { includeDeleted: true })
         }
     }, [isOnline, workspaceId])
 
@@ -1927,7 +2026,7 @@ export async function ensureExpenseItemsForMonth(workspaceId: string, month: str
     const series = await db.expense_series.where('workspaceId').equals(workspaceId).and(s => !s.isDeleted).toArray()
     if (series.length === 0) return
 
-    const existingItems = await db.expense_items.where('workspaceId').equals(workspaceId).and(i => !i.isDeleted && i.month === month).toArray()
+    const existingItems = await db.expense_items.where('workspaceId').equals(workspaceId).and(i => i.month === month).toArray()
     const existingKey = new Set(existingItems.map(item => `${item.seriesId}:${item.month}`))
 
     const toCreate: ExpenseItem[] = []

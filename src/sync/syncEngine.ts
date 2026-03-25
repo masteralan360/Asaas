@@ -75,6 +75,7 @@ export async function processMutationQueue(_userId: string): Promise<{ success: 
             const client = getSupabaseClientForTable(tableName)
             let syncedEntityId = entityId
             let entityHandledInline = false
+            const shouldHardDelete = operation === 'delete' && (entityType === 'loans' || payload.hardDelete === true)
 
             // Prepare payload
             const dbPayload = toSnakeCase(payload) as Record<string, unknown>
@@ -147,7 +148,7 @@ export async function processMutationQueue(_userId: string): Promise<{ success: 
                     if (error) throw error
                 }
             } else if (operation === 'delete') {
-                if (tableName === 'loans') {
+                if (shouldHardDelete) {
                     const { error } = await client.from(tableName).delete().eq('id', entityId)
                     if (error) throw error
                 } else {
@@ -162,12 +163,14 @@ export async function processMutationQueue(_userId: string): Promise<{ success: 
             // Also update the actual entity sync status to 'synced'
             const table = (db as any)[entityType]
             if (table) {
-                if (operation === 'delete' && entityType === 'loans') {
+                if (shouldHardDelete && entityType === 'loans') {
                     await db.transaction('rw', [db.loans, db.loan_installments, db.loan_payments], async () => {
                         await db.loans.delete(entityId)
                         await db.loan_installments.where('loanId').equals(entityId).delete()
                         await db.loan_payments.where('loanId').equals(entityId).delete()
                     })
+                } else if (shouldHardDelete) {
+                    await table.delete(syncedEntityId)
                 } else if (!entityHandledInline) {
                     await table.update(syncedEntityId, { syncStatus: 'synced', lastSyncedAt: new Date().toISOString() })
                 }

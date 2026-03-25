@@ -4,14 +4,17 @@ import { useTranslation } from 'react-i18next'
 import { Link, useLocation } from 'wouter'
 
 import { convertCurrencyAmountWithSnapshot } from '@/lib/orderCurrency'
+import { getTravelSaleNet, getTravelStatusLabel } from '@/lib/travelAgency'
 import { cn, formatCurrency, formatDate, formatDateTime } from '@/lib/utils'
 import {
     useCustomer,
     useCustomerSalesOrders,
     useSupplier,
     useSupplierPurchaseOrders,
+    useSupplierTravelAgencySales,
     type PurchaseOrder,
-    type SalesOrder
+    type SalesOrder,
+    type TravelAgencySale
 } from '@/local-db'
 import {
     Button,
@@ -30,9 +33,29 @@ import { OrderStatusBadge } from '@/ui/components/orders/OrderStatusBadge'
 import { useWorkspace } from '@/workspace'
 
 type PartnerKind = 'customer' | 'supplier'
-type RelatedOrder = SalesOrder | PurchaseOrder
+type RelatedProductOrder = SalesOrder | PurchaseOrder
+type RelatedTransaction = {
+    id: string
+    reference: string
+    displayDate: string
+    sortDate: string
+    activityDate: string
+    status: string
+    statusLabel: string
+    isPaid: boolean
+    summary: string
+    total: number
+    currency: SalesOrder['currency']
+    totalInPartnerCurrency: number
+    units: number
+    viewHref: string
+    isActive: boolean
+    isCompleted: boolean
+    isOutstanding: boolean
+}
+type TranslationFn = (key: string, options?: Record<string, unknown>) => string
 
-function statusLabel(t: (key: string, options?: Record<string, unknown>) => string, status: string) {
+function statusLabel(t: TranslationFn, status: string) {
     return t(`orders.status.${status}`, { defaultValue: status })
 }
 
@@ -46,8 +69,91 @@ function getOrderSummary(items: Array<{ productName: string }>) {
     return `${firstItems.join(', ')} +${items.length - 2}`
 }
 
-function toPartnerCurrency(order: RelatedOrder, currency: SalesOrder['currency']) {
+function getTravelSaleSummary(sale: TravelAgencySale) {
+    if (sale.travelPackages.length > 0) {
+        return sale.travelPackages.join(', ')
+    }
+
+    return sale.touristCount === 1 ? '1 traveller' : `${sale.touristCount} travellers`
+}
+
+function toPartnerCurrency(order: RelatedProductOrder, currency: SalesOrder['currency']) {
     return convertCurrencyAmountWithSnapshot(order.total, order.currency, currency, order.exchangeRates)
+}
+
+function toPartnerCurrencyFromTravelSale(sale: TravelAgencySale, currency: SalesOrder['currency']) {
+    return convertCurrencyAmountWithSnapshot(
+        getTravelSaleNet(sale),
+        sale.currency,
+        currency,
+        sale.exchangeRateSnapshot ? [sale.exchangeRateSnapshot] as any : undefined
+    )
+}
+
+function normalizeSalesOrder(order: SalesOrder, currency: SalesOrder['currency'], t: TranslationFn): RelatedTransaction {
+    return {
+        id: order.id,
+        reference: order.orderNumber,
+        displayDate: order.createdAt,
+        sortDate: order.updatedAt || order.createdAt,
+        activityDate: order.actualDeliveryDate || order.paidAt || order.updatedAt || order.createdAt,
+        status: order.status,
+        statusLabel: statusLabel(t, order.status),
+        isPaid: order.isPaid,
+        summary: getOrderSummary(order.items),
+        total: order.total,
+        currency: order.currency,
+        totalInPartnerCurrency: toPartnerCurrency(order, currency),
+        units: order.items.reduce((sum, item) => sum + item.quantity, 0),
+        viewHref: `/orders/${order.id}`,
+        isActive: order.status !== 'cancelled',
+        isCompleted: order.status === 'completed',
+        isOutstanding: !order.isPaid && (order.status === 'pending' || order.status === 'completed')
+    }
+}
+
+function normalizePurchaseOrder(order: PurchaseOrder, currency: SalesOrder['currency'], t: TranslationFn): RelatedTransaction {
+    return {
+        id: order.id,
+        reference: order.orderNumber,
+        displayDate: order.createdAt,
+        sortDate: order.updatedAt || order.createdAt,
+        activityDate: order.actualDeliveryDate || order.paidAt || order.updatedAt || order.createdAt,
+        status: order.status,
+        statusLabel: statusLabel(t, order.status),
+        isPaid: order.isPaid,
+        summary: getOrderSummary(order.items),
+        total: order.total,
+        currency: order.currency,
+        totalInPartnerCurrency: toPartnerCurrency(order, currency),
+        units: order.items.reduce((sum, item) => sum + item.quantity, 0),
+        viewHref: `/orders/${order.id}`,
+        isActive: order.status !== 'cancelled',
+        isCompleted: order.status === 'received' || order.status === 'completed',
+        isOutstanding: !order.isPaid && (order.status === 'ordered' || order.status === 'received' || order.status === 'completed')
+    }
+}
+
+function normalizeTravelSale(sale: TravelAgencySale, currency: SalesOrder['currency']): RelatedTransaction {
+    return {
+        id: sale.id,
+        reference: sale.saleNumber,
+        displayDate: sale.saleDate,
+        sortDate: sale.updatedAt || sale.saleDate || sale.createdAt,
+        activityDate: sale.paidAt || sale.updatedAt || sale.saleDate || sale.createdAt,
+        status: sale.status,
+        statusLabel: getTravelStatusLabel(sale.status),
+        isPaid: sale.isPaid,
+        summary: getTravelSaleSummary(sale),
+        total: getTravelSaleNet(sale),
+        currency: sale.currency,
+        totalInPartnerCurrency: toPartnerCurrencyFromTravelSale(sale, currency),
+        units: 0,
+        viewHref: `/travel-agency/${sale.id}/view`,
+        isActive: sale.status !== 'draft',
+        isCompleted: sale.status === 'completed',
+        isOutstanding: !sale.isPaid && sale.status === 'completed'
+    }
 }
 
 function paymentBadgeClass(isPaid: boolean) {
@@ -72,8 +178,8 @@ export function PartnerDetailsView({
     const supplier = useSupplier(kind === 'supplier' ? partnerId : undefined)
     const customerOrders = useCustomerSalesOrders(kind === 'customer' ? partnerId : undefined, kind === 'customer' ? workspaceId : undefined)
     const supplierOrders = useSupplierPurchaseOrders(kind === 'supplier' ? partnerId : undefined, kind === 'supplier' ? workspaceId : undefined)
+    const supplierTravelSales = useSupplierTravelAgencySales(kind === 'supplier' ? partnerId : undefined, kind === 'supplier' ? workspaceId : undefined)
     const partner = kind === 'customer' ? customer : supplier
-    const relatedOrders = kind === 'customer' ? customerOrders : supplierOrders
     const [viewMode, setViewMode] = useState<'table' | 'grid'>(() => readViewMode(kind))
 
     useEffect(() => {
@@ -91,70 +197,110 @@ export function PartnerDetailsView({
         ? t('orders.details.customer', { defaultValue: 'Customer' })
         : t('orders.details.supplier', { defaultValue: 'Supplier' })
     const contactName = isCustomer ? undefined : supplier?.contactName
+    const emptyRelatedLabel = isCustomer
+        ? t('customers.details.noOrders', { defaultValue: 'No related orders yet.' })
+        : t('suppliers.details.noOrders', { defaultValue: 'No related transactions yet.' })
+    const totalValueLabel = isCustomer
+        ? t('customers.details.totalSales', { defaultValue: 'Total Sales' })
+        : t('suppliers.details.totalTransactions', { defaultValue: 'Total Transactions' })
+    const completedLabel = isCustomer
+        ? t('customers.details.completedOrders', { defaultValue: 'Completed Orders' })
+        : t('suppliers.details.completedTransactions', { defaultValue: 'Completed Transactions' })
+    const paidLabel = isCustomer
+        ? t('customers.details.paidOrders', { defaultValue: 'Paid Orders' })
+        : t('suppliers.details.paidTransactions', { defaultValue: 'Paid Transactions' })
+    const activeLabel = isCustomer
+        ? t('customers.details.activeOrders', { defaultValue: 'Active Orders' })
+        : t('suppliers.details.activeTransactions', { defaultValue: 'Active Transactions' })
+    const listTitle = isCustomer
+        ? t('orders.tabs.sales', { defaultValue: 'Sales Orders' })
+        : t('suppliers.details.transactions', { defaultValue: 'Transactions' })
+    const overviewTitle = isCustomer
+        ? t('customers.details.overview', { defaultValue: 'Sales Overview' })
+        : t('suppliers.details.transactionOverview', { defaultValue: 'Supplier Overview' })
+    const lastActivityLabel = isCustomer
+        ? t('customers.details.lastOrder', { defaultValue: 'Last order' })
+        : t('suppliers.details.lastTransaction', { defaultValue: 'Last transaction' })
+    const firstActivityLabel = isCustomer
+        ? t('customers.details.firstOrder', { defaultValue: 'First Order' })
+        : t('suppliers.details.firstTransaction', { defaultValue: 'First transaction' })
+    const detailsColumnLabel = isCustomer
+        ? t('common.items', { defaultValue: 'Items' })
+        : t('common.details', { defaultValue: 'Details' })
+    const referenceColumnLabel = isCustomer
+        ? t('orders.table.orderNumber', { defaultValue: 'Order #' })
+        : t('common.reference', { defaultValue: 'Reference' })
+    const productOrders = isCustomer ? customerOrders : supplierOrders
 
-    const activeOrders = useMemo(
-        () => relatedOrders.filter((order) => order.status !== 'cancelled'),
-        [relatedOrders]
+    const relatedTransactions = useMemo(
+        () => (
+            isCustomer
+                ? customerOrders.map((order) => normalizeSalesOrder(order, defaultCurrency, t))
+                : [
+                    ...supplierOrders.map((order) => normalizePurchaseOrder(order, defaultCurrency, t)),
+                    ...supplierTravelSales.map((sale) => normalizeTravelSale(sale, defaultCurrency))
+                ]
+        ),
+        [customerOrders, defaultCurrency, isCustomer, supplierOrders, supplierTravelSales, t]
     )
-    const settledOrders = useMemo(
-        () => activeOrders.filter((order) => order.isPaid),
-        [activeOrders]
+    const activeTransactions = useMemo(
+        () => relatedTransactions.filter((transaction) => transaction.isActive),
+        [relatedTransactions]
     )
-    const completedOrders = useMemo(
-        () => activeOrders.filter((order) => isCustomer ? order.status === 'completed' : order.status === 'received' || order.status === 'completed'),
-        [activeOrders, isCustomer]
+    const settledTransactions = useMemo(
+        () => activeTransactions.filter((transaction) => transaction.isPaid),
+        [activeTransactions]
     )
-    const outstandingOrders = useMemo(
-        () => activeOrders.filter((order) => {
-            if (order.isPaid) return false
-            if (isCustomer) {
-                return order.status === 'pending' || order.status === 'completed'
-            }
-
-            return order.status === 'ordered' || order.status === 'received' || order.status === 'completed'
-        }),
-        [activeOrders, isCustomer]
+    const completedTransactions = useMemo(
+        () => activeTransactions.filter((transaction) => transaction.isCompleted),
+        [activeTransactions]
     )
-    const sortedOrders = useMemo(
-        () => [...relatedOrders].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()),
-        [relatedOrders]
+    const outstandingTransactions = useMemo(
+        () => activeTransactions.filter((transaction) => transaction.isOutstanding),
+        [activeTransactions]
+    )
+    const sortedTransactions = useMemo(
+        () => [...relatedTransactions].sort((a, b) => new Date(b.sortDate).getTime() - new Date(a.sortDate).getTime()),
+        [relatedTransactions]
     )
     const totalValue = useMemo(
-        () => activeOrders.reduce((sum, order) => sum + toPartnerCurrency(order, defaultCurrency), 0),
-        [activeOrders, defaultCurrency]
+        () => activeTransactions.reduce((sum, transaction) => sum + transaction.totalInPartnerCurrency, 0),
+        [activeTransactions]
     )
     const settledValue = useMemo(
-        () => settledOrders.reduce((sum, order) => sum + toPartnerCurrency(order, defaultCurrency), 0),
-        [defaultCurrency, settledOrders]
+        () => settledTransactions.reduce((sum, transaction) => sum + transaction.totalInPartnerCurrency, 0),
+        [settledTransactions]
     )
     const outstandingValue = useMemo(
-        () => outstandingOrders.reduce((sum, order) => sum + toPartnerCurrency(order, defaultCurrency), 0),
-        [defaultCurrency, outstandingOrders]
+        () => outstandingTransactions.reduce((sum, transaction) => sum + transaction.totalInPartnerCurrency, 0),
+        [outstandingTransactions]
     )
-    const averageOrderValue = activeOrders.length > 0 ? totalValue / activeOrders.length : 0
+    const averageOrderValue = activeTransactions.length > 0 ? totalValue / activeTransactions.length : 0
     const totalUnits = useMemo(
-        () => activeOrders.reduce((sum, order) => sum + order.items.reduce((lineSum, item) => lineSum + item.quantity, 0), 0),
-        [activeOrders]
+        () => productOrders
+            .filter((order) => order.status !== 'cancelled')
+            .reduce((sum, order) => sum + order.items.reduce((lineSum, item) => lineSum + item.quantity, 0), 0),
+        [productOrders]
     )
     const settledPercent = totalValue > 0 ? Math.min(100, (settledValue / totalValue) * 100) : 0
     const creditUsagePercent = partner?.creditLimit && partner.creditLimit > 0 ? Math.min(100, (outstandingValue / partner.creditLimit) * 100) : 0
-    const latestOrder = sortedOrders[0]
-    const earliestOrder = sortedOrders[sortedOrders.length - 1]
+    const latestTransaction = sortedTransactions[0]
+    const earliestTransaction = sortedTransactions[sortedTransactions.length - 1]
     const locationLabel = partner ? [partner.city, partner.country].filter(Boolean).join(', ') || 'N/A' : 'N/A'
     const activityRows = useMemo(
-        () => sortedOrders.slice(0, 8).map((order) => ({
-            id: order.id,
-            date: order.actualDeliveryDate || order.paidAt || order.updatedAt || order.createdAt,
-            title: `${order.orderNumber}`,
-            status: order.status,
-            total: order.total,
-            currency: order.currency
+        () => sortedTransactions.slice(0, 8).map((transaction) => ({
+            id: transaction.id,
+            date: transaction.activityDate,
+            title: transaction.reference,
+            statusLabel: transaction.statusLabel,
+            total: transaction.total,
+            currency: transaction.currency
         })),
-        [sortedOrders]
+        [sortedTransactions]
     )
     const topProducts = useMemo(() => {
         const rows = new Map<string, { id: string; name: string; quantity: number; amount: number }>()
-        for (const order of activeOrders) {
+        for (const order of productOrders.filter((row) => row.status !== 'cancelled')) {
             for (const item of order.items) {
                 const current = rows.get(item.productId) ?? {
                     id: item.productId,
@@ -175,7 +321,7 @@ export function PartnerDetailsView({
 
             return b.quantity - a.quantity
         }).slice(0, 5)
-    }, [activeOrders, defaultCurrency])
+    }, [defaultCurrency, productOrders])
 
     if (!partner) {
         return (
@@ -330,9 +476,7 @@ export function PartnerDetailsView({
                         <CardContent className="space-y-4">
                             <div className="rounded-2xl border border-border/40 bg-muted/30 p-6 text-center">
                                 <div className="text-sm font-medium text-muted-foreground">
-                                    {isCustomer
-                                        ? t('customers.details.totalSales', { defaultValue: 'Total Sales' })
-                                        : t('suppliers.details.totalPurchases', { defaultValue: 'Total Purchases' })}
+                                    {totalValueLabel}
                                 </div>
                                 <div className="mt-1 text-4xl font-black tracking-tight">
                                     {formatCurrency(totalValue, defaultCurrency, iqdPreference)}
@@ -347,17 +491,15 @@ export function PartnerDetailsView({
                             <div className="grid grid-cols-2 gap-4 text-center">
                                 <div className="rounded-2xl border border-border/40 bg-muted/20 p-5">
                                     <div className="mb-2 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-                                        {isCustomer
-                                            ? t('customers.details.completedOrders', { defaultValue: 'Completed Orders' })
-                                            : t('suppliers.details.receivedOrders', { defaultValue: 'Received Orders' })}
+                                        {completedLabel}
                                     </div>
-                                    <div className="text-2xl font-bold text-emerald-500">{completedOrders.length}</div>
+                                    <div className="text-2xl font-bold text-emerald-500">{completedTransactions.length}</div>
                                 </div>
                                 <div className="rounded-2xl border border-border/40 bg-muted/20 p-5">
                                     <div className="mb-2 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-                                        {t('customers.details.paidOrders', { defaultValue: 'Paid Orders' })}
+                                        {paidLabel}
                                     </div>
-                                    <div className="text-2xl font-bold text-blue-500">{settledOrders.length}</div>
+                                    <div className="text-2xl font-bold text-blue-500">{settledTransactions.length}</div>
                                 </div>
                             </div>
 
@@ -387,9 +529,7 @@ export function PartnerDetailsView({
                         <CardContent>
                             {activityRows.length === 0 ? (
                                 <div className="py-6 text-sm text-muted-foreground">
-                                    {isCustomer
-                                        ? t('customers.details.activityEmpty', { defaultValue: 'No related orders yet.' })
-                                        : t('suppliers.details.activityEmpty', { defaultValue: 'No related orders yet.' })}
+                                    {emptyRelatedLabel}
                                 </div>
                             ) : (
                                 <div className="relative space-y-6 ps-4 before:absolute before:bottom-2 before:start-0 before:top-2 before:w-0.5 before:bg-border/60">
@@ -399,7 +539,7 @@ export function PartnerDetailsView({
                                             <div className="space-y-0.5">
                                                 <div className="font-bold leading-none transition-colors group-hover:text-primary">{row.title}</div>
                                                 <div className="pt-1 text-xs font-medium text-muted-foreground">
-                                                    {statusLabel(t, row.status)}
+                                                    {row.statusLabel}
                                                 </div>
                                                 <div className="flex items-center gap-1.5 pt-1 text-xs font-medium text-muted-foreground">
                                                     <span>{formatDateTime(row.date)}</span>
@@ -420,11 +560,7 @@ export function PartnerDetailsView({
                 <div className="space-y-4 lg:col-span-2">
                     <Card>
                         <CardHeader>
-                            <CardTitle>
-                                {isCustomer
-                                    ? t('customers.details.overview', { defaultValue: 'Sales Overview' })
-                                    : t('suppliers.details.overview', { defaultValue: 'Purchasing Overview' })}
-                            </CardTitle>
+                            <CardTitle>{overviewTitle}</CardTitle>
                         </CardHeader>
                         <CardContent>
                             <div className="grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(0,0.95fr)]">
@@ -446,9 +582,9 @@ export function PartnerDetailsView({
                                         {formatCurrency(totalValue, defaultCurrency, iqdPreference)}
                                     </div>
                                     <div className="mt-2 text-sm text-muted-foreground">
-                                        {latestOrder
-                                            ? `${t('customers.details.lastOrder', { defaultValue: 'Last order' })}: ${formatDate(latestOrder.createdAt)}`
-                                            : t('customers.details.noOrders', { defaultValue: 'No related orders yet.' })}
+                                        {latestTransaction
+                                            ? `${lastActivityLabel}: ${formatDate(latestTransaction.displayDate)}`
+                                            : emptyRelatedLabel}
                                     </div>
                                     <div className="mt-6 space-y-2">
                                         <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
@@ -493,7 +629,9 @@ export function PartnerDetailsView({
                                     <div className="rounded-2xl border bg-muted/20 p-4">
                                         <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">
                                             <ShoppingCart className="h-4 w-4" />
-                                            {t('customers.details.averageOrder', { defaultValue: 'Average Order' })}
+                                            {isCustomer
+                                                ? t('customers.details.averageOrder', { defaultValue: 'Average Order' })
+                                                : t('suppliers.details.averageTransaction', { defaultValue: 'Average Transaction' })}
                                         </div>
                                         <div className="mt-2 text-xl font-black">
                                             {formatCurrency(averageOrderValue, defaultCurrency, iqdPreference)}
@@ -502,10 +640,10 @@ export function PartnerDetailsView({
                                     <div className="rounded-2xl border bg-muted/20 p-4">
                                         <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">
                                             <CalendarDays className="h-4 w-4" />
-                                            {t('customers.details.firstOrder', { defaultValue: 'First Order' })}
+                                            {firstActivityLabel}
                                         </div>
                                         <div className="mt-2 text-xl font-black">
-                                            {earliestOrder ? formatDate(earliestOrder.createdAt) : 'N/A'}
+                                            {earliestTransaction ? formatDate(earliestTransaction.displayDate) : 'N/A'}
                                         </div>
                                     </div>
                                 </div>
@@ -514,23 +652,21 @@ export function PartnerDetailsView({
                             <div className="mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                                 <div className="rounded-2xl border bg-background/70 p-4">
                                     <div className="text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">
-                                        {t('customers.details.activeOrders', { defaultValue: 'Active Orders' })}
+                                        {activeLabel}
                                     </div>
-                                    <div className="mt-2 text-2xl font-black">{activeOrders.length}</div>
+                                    <div className="mt-2 text-2xl font-black">{activeTransactions.length}</div>
                                 </div>
                                 <div className="rounded-2xl border bg-background/70 p-4">
                                     <div className="text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">
-                                        {isCustomer
-                                            ? t('customers.details.completedOrders', { defaultValue: 'Completed Orders' })
-                                            : t('suppliers.details.receivedOrders', { defaultValue: 'Received Orders' })}
+                                        {completedLabel}
                                     </div>
-                                    <div className="mt-2 text-2xl font-black">{completedOrders.length}</div>
+                                    <div className="mt-2 text-2xl font-black">{completedTransactions.length}</div>
                                 </div>
                                 <div className="rounded-2xl border bg-background/70 p-4">
                                     <div className="text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">
-                                        {t('customers.details.paidOrders', { defaultValue: 'Paid Orders' })}
+                                        {paidLabel}
                                     </div>
-                                    <div className="mt-2 text-2xl font-black">{settledOrders.length}</div>
+                                    <div className="mt-2 text-2xl font-black">{settledTransactions.length}</div>
                                 </div>
                                 <div className="rounded-2xl border bg-background/70 p-4">
                                     <div className="text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">
@@ -581,11 +717,7 @@ export function PartnerDetailsView({
 
                     <Card>
                         <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                            <CardTitle>
-                                {isCustomer
-                                    ? t('orders.tabs.sales', { defaultValue: 'Sales Orders' })
-                                    : t('orders.tabs.purchase', { defaultValue: 'Purchase Orders' })}
-                            </CardTitle>
+                            <CardTitle>{listTitle}</CardTitle>
                             <div className="hidden items-center rounded-lg border bg-muted/30 p-1 md:flex">
                                 <Button
                                     variant="ghost"
@@ -614,29 +746,27 @@ export function PartnerDetailsView({
                             </div>
                         </CardHeader>
                         <CardContent>
-                            {relatedOrders.length === 0 ? (
+                            {relatedTransactions.length === 0 ? (
                                 <div className="rounded-2xl border py-12 text-center text-muted-foreground">
-                                    {isCustomer
-                                        ? t('customers.details.noOrders', { defaultValue: 'No related orders yet.' })
-                                        : t('suppliers.details.noOrders', { defaultValue: 'No related orders yet.' })}
+                                    {emptyRelatedLabel}
                                 </div>
                             ) : viewMode === 'grid' ? (
                                 <div className="grid gap-4 md:grid-cols-2">
-                                    {sortedOrders.map((order) => (
-                                        <div key={order.id} className="rounded-3xl border bg-background/80 p-4 shadow-sm">
+                                    {sortedTransactions.map((transaction) => (
+                                        <div key={transaction.id} className="rounded-3xl border bg-background/80 p-4 shadow-sm">
                                             <div className="flex items-start justify-between gap-3">
                                                 <div>
-                                                    <div className="text-lg font-semibold">{order.orderNumber}</div>
-                                                    <div className="text-xs text-muted-foreground">{formatDateTime(order.createdAt)}</div>
+                                                    <div className="text-lg font-semibold">{transaction.reference}</div>
+                                                    <div className="text-xs text-muted-foreground">{formatDate(transaction.displayDate)}</div>
                                                 </div>
-                                                <OrderStatusBadge status={order.status} label={statusLabel(t, order.status)} />
+                                                <OrderStatusBadge status={transaction.status} label={transaction.statusLabel} />
                                             </div>
 
                                             <div className="mt-4 rounded-2xl border bg-muted/20 p-3">
                                                 <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">
-                                                    {t('common.items', { defaultValue: 'Items' })}
+                                                    {detailsColumnLabel}
                                                 </div>
-                                                <div className="mt-1 text-sm font-medium">{getOrderSummary(order.items)}</div>
+                                                <div className="mt-1 text-sm font-medium">{transaction.summary}</div>
                                             </div>
 
                                             <div className="mt-4 grid gap-3 sm:grid-cols-2">
@@ -645,8 +775,8 @@ export function PartnerDetailsView({
                                                         {t('common.status', { defaultValue: 'Status' })}
                                                     </div>
                                                     <div className="mt-1">
-                                                        <span className={cn('inline-flex rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide', paymentBadgeClass(order.isPaid))}>
-                                                            {order.isPaid
+                                                        <span className={cn('inline-flex rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide', paymentBadgeClass(transaction.isPaid))}>
+                                                            {transaction.isPaid
                                                                 ? t('customers.details.paid', { defaultValue: 'Paid' })
                                                                 : t('customers.details.unpaid', { defaultValue: 'Unpaid' })}
                                                         </span>
@@ -656,12 +786,12 @@ export function PartnerDetailsView({
                                                     <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">
                                                         {t('common.total', { defaultValue: 'Total' })}
                                                     </div>
-                                                    <div className="mt-1 font-medium">{formatCurrency(order.total, order.currency, iqdPreference)}</div>
+                                                    <div className="mt-1 font-medium">{formatCurrency(transaction.total, transaction.currency, iqdPreference)}</div>
                                                 </div>
                                             </div>
 
                                             <div className="mt-4">
-                                                <Button variant="outline" className="w-full gap-2" onClick={() => navigate(`/orders/${order.id}`)}>
+                                                <Button variant="outline" className="w-full gap-2" onClick={() => navigate(transaction.viewHref)}>
                                                     <Eye className="h-4 w-4" />
                                                     {t('common.view', { defaultValue: 'View' })}
                                                 </Button>
@@ -674,36 +804,36 @@ export function PartnerDetailsView({
                                     <Table>
                                         <TableHeader>
                                             <TableRow>
-                                                <TableHead>{t('orders.table.orderNumber', { defaultValue: 'Order #' })}</TableHead>
+                                                <TableHead>{referenceColumnLabel}</TableHead>
                                                 <TableHead>{t('common.date', { defaultValue: 'Date' })}</TableHead>
                                                 <TableHead>{t('common.status', { defaultValue: 'Status' })}</TableHead>
-                                                <TableHead>{t('common.items', { defaultValue: 'Items' })}</TableHead>
+                                                <TableHead>{detailsColumnLabel}</TableHead>
                                                 <TableHead>{t('pos.paymentMethod', { defaultValue: 'Payment' })}</TableHead>
                                                 <TableHead className="text-end">{t('common.total', { defaultValue: 'Total' })}</TableHead>
                                                 <TableHead className="text-end">{t('common.actions', { defaultValue: 'Actions' })}</TableHead>
                                             </TableRow>
                                         </TableHeader>
                                         <TableBody>
-                                            {sortedOrders.map((order) => (
-                                                <TableRow key={order.id}>
-                                                    <TableCell className="font-semibold">{order.orderNumber}</TableCell>
-                                                    <TableCell>{formatDate(order.createdAt)}</TableCell>
+                                            {sortedTransactions.map((transaction) => (
+                                                <TableRow key={transaction.id}>
+                                                    <TableCell className="font-semibold">{transaction.reference}</TableCell>
+                                                    <TableCell>{formatDate(transaction.displayDate)}</TableCell>
                                                     <TableCell>
-                                                        <OrderStatusBadge status={order.status} label={statusLabel(t, order.status)} />
+                                                        <OrderStatusBadge status={transaction.status} label={transaction.statusLabel} />
                                                     </TableCell>
-                                                    <TableCell>{getOrderSummary(order.items)}</TableCell>
+                                                    <TableCell>{transaction.summary}</TableCell>
                                                     <TableCell>
-                                                        <span className={cn('inline-flex rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide', paymentBadgeClass(order.isPaid))}>
-                                                            {order.isPaid
+                                                        <span className={cn('inline-flex rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide', paymentBadgeClass(transaction.isPaid))}>
+                                                            {transaction.isPaid
                                                                 ? t('customers.details.paid', { defaultValue: 'Paid' })
                                                                 : t('customers.details.unpaid', { defaultValue: 'Unpaid' })}
                                                         </span>
                                                     </TableCell>
                                                     <TableCell className="text-end font-semibold">
-                                                        {formatCurrency(order.total, order.currency, iqdPreference)}
+                                                        {formatCurrency(transaction.total, transaction.currency, iqdPreference)}
                                                     </TableCell>
                                                     <TableCell className="text-end">
-                                                        <Button variant="ghost" size="sm" className="gap-1.5" onClick={() => navigate(`/orders/${order.id}`)}>
+                                                        <Button variant="ghost" size="sm" className="gap-1.5" onClick={() => navigate(transaction.viewHref)}>
                                                             <Eye className="h-4 w-4" />
                                                             {t('common.view', { defaultValue: 'View' })}
                                                         </Button>

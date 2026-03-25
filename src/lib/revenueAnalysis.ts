@@ -1,5 +1,6 @@
 import type { SalesOrder } from '@/local-db'
 import type { Sale } from '@/types'
+import { convertToStoreBase } from '@/lib/currency'
 
 export interface RevenueAnalysisItem {
     productId: string
@@ -185,6 +186,21 @@ export function getRevenueAnalysisTotals(record: RevenueAnalysisRecord): Revenue
         profit,
         margin: revenue > 0 ? (profit / revenue) * 100 : 0
     }
+}
+
+export function calculateRevenueAnalysisNetProfitBase(
+    records: RevenueAnalysisRecord[],
+    baseCurrency: string,
+    rates: {
+        usd_iqd: number
+        eur_iqd: number
+        try_iqd: number
+    }
+) {
+    return records.reduce((sum, record) => {
+        const totals = getRevenueAnalysisTotals(record)
+        return sum + convertToStoreBase(totals.profit, record.currency || baseCurrency, baseCurrency, rates)
+    }, 0)
 }
 
 export function getRevenueRecordReturnSummary(record: RevenueAnalysisRecord) {

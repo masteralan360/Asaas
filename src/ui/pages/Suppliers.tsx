@@ -221,7 +221,7 @@ export function Suppliers() {
                 </Card>
                 <Card>
                     <CardHeader className="pb-2">
-                        <CardTitle className="text-sm text-muted-foreground">{t('orders.tabs.purchase') || 'Purchase Orders'}</CardTitle>
+                        <CardTitle className="text-sm text-muted-foreground">Transactions</CardTitle>
                     </CardHeader>
                     <CardContent>
                         <div className="text-3xl font-black">{suppliers.reduce((sum, supplier) => sum + supplier.totalPurchases, 0)}</div>
@@ -261,7 +261,7 @@ export function Suppliers() {
                                     <TableHead>{t('suppliers.table.email') || 'Email'}</TableHead>
                                     <TableHead>{t('suppliers.table.phone') || 'Phone'}</TableHead>
                                     <TableHead>{t('suppliers.table.currency') || 'Currency'}</TableHead>
-                                    <TableHead>{t('orders.tabs.purchase') || 'Purchases'}</TableHead>
+                                    <TableHead>Transactions</TableHead>
                                     <TableHead>{t('common.total') || 'Total Spent'}</TableHead>
                                     <TableHead className="text-right">{t('common.actions') || 'Actions'}</TableHead>
                                 </TableRow>

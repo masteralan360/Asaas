@@ -93,7 +93,7 @@ export function GlobalBudgetReminders() {
             try {
                 await Promise.all([
                     fetchTableFromSupabase('expense_series', db.expense_series, workspaceId),
-                    fetchTableFromSupabase('expense_items', db.expense_items, workspaceId),
+                    fetchTableFromSupabase('expense_items', db.expense_items, workspaceId, { includeDeleted: true }),
                     fetchTableFromSupabase('payroll_statuses', db.payroll_statuses, workspaceId),
                     fetchTableFromSupabase('dividend_statuses', db.dividend_statuses, workspaceId),
                     fetchTableFromSupabase('employees', db.employees, workspaceId)
