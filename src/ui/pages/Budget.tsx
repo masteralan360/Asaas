@@ -117,6 +117,7 @@ interface BudgetItemRowProps {
     onLock: () => void
     onEdit?: () => void
     onDelete?: () => void
+    canEdit?: boolean
 }
 
 function BudgetItemRow({
@@ -134,7 +135,8 @@ function BudgetItemRow({
     onSnooze,
     onLock,
     onEdit,
-    onDelete
+    onDelete,
+    canEdit = true
 }: BudgetItemRowProps) {
     const isPaid = status === 'paid'
     const isSnoozed = status === 'snoozed'
@@ -212,7 +214,7 @@ function BudgetItemRow({
                 </div>
 
                 <div className="flex items-center justify-end w-full sm:w-auto gap-1.5">
-                    {onEdit && !isLocked && !isPaid && (
+                    {onEdit && canEdit && !isLocked && !isPaid && (
                         <Button
                             variant="ghost"
                             size="icon"
@@ -223,7 +225,7 @@ function BudgetItemRow({
                         </Button>
                     )}
 
-                    {!isPaid && (
+                    {!isPaid && canEdit && (
                         <Button
                             variant="ghost"
                             size="icon"
@@ -238,7 +240,7 @@ function BudgetItemRow({
                         </Button>
                     )}
 
-                    {isPaid && (
+                    {isPaid && canEdit && (
                         <Button
                             variant="ghost"
                             size="icon"
@@ -252,7 +254,7 @@ function BudgetItemRow({
                         </Button>
                     )}
 
-                    {onDelete && (
+                    {onDelete && canEdit && (
                         <Button
                             variant="ghost"
                             size="icon"
@@ -273,7 +275,7 @@ function BudgetItemRow({
                                 : "border-slate-200 text-slate-200 hover:border-emerald-400 hover:text-emerald-400"
                         )}
                         onClick={isPaid ? onUnpay : onPay}
-                        disabled={isLocked && !isPaid}
+                        disabled={(isLocked && !isPaid) || !canEdit}
                     >
                         {isPaid ? <CheckCircle2 className="h-5 w-5" /> : <div className="h-5 w-5 rounded-full" />}
                     </Button>
@@ -365,6 +367,7 @@ function SummaryCard({
 
 export function Budget() {
     const { user } = useAuth()
+    const canEdit = user?.role === 'admin' || user?.role === 'staff'
     const { features } = useWorkspace()
     const { t, i18n } = useTranslation()
     const { toast } = useToast()
@@ -872,7 +875,7 @@ export function Budget() {
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                     <Select value={selectedMonth} onValueChange={setSelectedMonth}>
-                        <SelectTrigger className="min-w-[180px]">
+                        <SelectTrigger className="min-w-[180px]" allowViewer={true}>
                             <SelectValue placeholder={t('budget.startPoint') || 'Select month'} />
                         </SelectTrigger>
                         <SelectContent>
@@ -881,11 +884,21 @@ export function Budget() {
                             ))}
                         </SelectContent>
                     </Select>
-                    <Button variant="outline" onClick={() => setIsAllocationModalOpen(true)} className="h-10 rounded-xl border-slate-200 px-4 font-semibold text-slate-600 hover:bg-slate-50">
+                    <Button 
+                        variant="outline" 
+                        onClick={() => setIsAllocationModalOpen(true)} 
+                        className="h-10 rounded-xl border-slate-200 px-4 font-semibold text-slate-600 hover:bg-slate-50"
+                        disabled={!canEdit}
+                    >
                         <CalendarDays className="mr-2 h-4 w-4" />
                         {t('budget.setBudget') || 'Set Budget'}
                     </Button>
-                    <Button variant="outline" onClick={() => setIsStartMonthModalOpen(true)} className="h-10 rounded-xl">
+                    <Button 
+                        variant="outline" 
+                        onClick={() => setIsStartMonthModalOpen(true)} 
+                        className="h-10 rounded-xl"
+                        disabled={!canEdit}
+                    >
                         <CalendarDays className="mr-2 h-4 w-4 text-muted-foreground" />
                         {t('budget.startPoint') || 'Start'}
                     </Button>
@@ -970,10 +983,12 @@ export function Budget() {
                                 <CardTitle className="text-xl">{t('budget.expenseList') || 'Monthly Expenses'}</CardTitle>
                                 <p className="text-sm font-medium text-muted-foreground">{t('budget.addExpenseSubtitle') || 'Add a manual cost to your monthly tracks'}</p>
                             </div>
-                            <Button onClick={() => { resetExpenseForm(); setIsExpenseModalOpen(true) }}>
-                                <Plus className="mr-2 h-4 w-4" />
-                                {t('budget.addExpense') || 'New Expense'}
-                            </Button>
+                            {canEdit && (
+                                <Button onClick={() => { resetExpenseForm(); setIsExpenseModalOpen(true) }}>
+                                    <Plus className="mr-2 h-4 w-4" />
+                                    {t('budget.addExpense') || 'New Expense'}
+                                </Button>
+                            )}
                         </CardHeader>
                         <CardContent className="space-y-3">
                             {expenseRows.length === 0 && (
@@ -991,6 +1006,7 @@ export function Budget() {
                                     type="expense"
                                     isLocked={!!item.isLocked}
                                     iqdPreference={iqdPreference}
+                                    canEdit={canEdit}
                                     onPay={() => handleMarkPaid({ type: 'expense', item })}
                                     onUnpay={() => handleMarkUnpaid({ type: 'expense', item })}
                                     onSnooze={() => setSnoozeTarget({ type: 'expense', item })}

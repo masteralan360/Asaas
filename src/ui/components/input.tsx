@@ -1,8 +1,13 @@
 import * as React from "react"
 import { cn } from "@/lib/utils"
+import { useAuth } from "@/auth"
 
-const Input = React.forwardRef<HTMLInputElement, React.ComponentProps<"input">>(
-    ({ className, type, ...props }, ref) => {
+const Input = React.forwardRef<HTMLInputElement, React.ComponentProps<"input"> & { allowViewer?: boolean }>(
+    ({ className, type, allowViewer = false, disabled, ...props }, ref) => {
+        const { user } = useAuth()
+        const isViewer = user?.role === 'viewer'
+        const effectiveDisabled = disabled || (isViewer && !allowViewer)
+
         return (
             <input
                 type={type}
@@ -11,6 +16,7 @@ const Input = React.forwardRef<HTMLInputElement, React.ComponentProps<"input">>(
                     className
                 )}
                 ref={ref}
+                disabled={effectiveDisabled}
                 {...props}
             />
         )

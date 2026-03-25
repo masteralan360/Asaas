@@ -18,6 +18,7 @@ export function DateRangeFilters({ className }: DateRangeFiltersProps) {
                 <Button
                     variant={dateRange === 'today' ? 'default' : 'ghost'}
                     size="sm"
+                    allowViewer={true}
                     onClick={() => setDateRange('today')}
                     className={cn("text-xs h-8 px-4 transition-all duration-200", dateRange === 'today' && "shadow-sm")}
                     type="button"
@@ -27,6 +28,7 @@ export function DateRangeFilters({ className }: DateRangeFiltersProps) {
                 <Button
                     variant={dateRange === 'month' ? 'default' : 'ghost'}
                     size="sm"
+                    allowViewer={true}
                     onClick={() => setDateRange('month')}
                     className={cn("text-xs h-8 px-4 transition-all duration-200", dateRange === 'month' && "shadow-sm")}
                     type="button"
@@ -36,6 +38,7 @@ export function DateRangeFilters({ className }: DateRangeFiltersProps) {
                 <Button
                     variant={dateRange === 'allTime' ? 'default' : 'ghost'}
                     size="sm"
+                    allowViewer={true}
                     onClick={() => setDateRange('allTime')}
                     className={cn("text-xs h-8 px-4 transition-all duration-200", dateRange === 'allTime' && "shadow-sm")}
                     type="button"
@@ -45,6 +48,7 @@ export function DateRangeFilters({ className }: DateRangeFiltersProps) {
                 <Button
                     variant={dateRange === 'custom' ? 'default' : 'ghost'}
                     size="sm"
+                    allowViewer={true}
                     onClick={() => setDateRange('custom')}
                     className={cn("text-xs h-8 px-2.5 transition-all duration-200", dateRange === 'custom' && "shadow-sm")}
                     type="button"
@@ -61,6 +65,7 @@ export function DateRangeFilters({ className }: DateRangeFiltersProps) {
                         <Input
                             type="date"
                             value={customDates.start}
+                            allowViewer={true}
                             onChange={(e) => setCustomDates(prev => ({ ...prev, start: e.target.value }))}
                             className="h-8 text-xs w-36 bg-background/50 border-none focus-visible:ring-1 focus-visible:ring-primary/50 transition-all font-mono"
                         />
@@ -71,6 +76,7 @@ export function DateRangeFilters({ className }: DateRangeFiltersProps) {
                         <Input
                             type="date"
                             value={customDates.end}
+                            allowViewer={true}
                             onChange={(e) => setCustomDates(prev => ({ ...prev, end: e.target.value }))}
                             className="h-8 text-xs w-36 bg-background/50 border-none focus-visible:ring-1 focus-visible:ring-primary/50 transition-all font-mono"
                         />

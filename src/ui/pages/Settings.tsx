@@ -966,6 +966,7 @@ export function Settings() {
                                         <Button
                                             variant={theme === 'light' ? 'default' : 'outline'}
                                             className="flex items-center gap-2 justify-center"
+                                            allowViewer={true}
                                             onClick={() => setTheme('light')}
                                         >
                                             <Sun className="w-4 h-4" />
@@ -974,6 +975,7 @@ export function Settings() {
                                         <Button
                                             variant={theme === 'dark' ? 'default' : 'outline'}
                                             className="flex items-center gap-2 justify-center"
+                                            allowViewer={true}
                                             onClick={() => setTheme('dark')}
                                         >
                                             <Moon className="w-4 h-4" />
@@ -982,6 +984,7 @@ export function Settings() {
                                         <Button
                                             variant={theme === 'system' ? 'default' : 'outline'}
                                             className="flex items-center gap-2 justify-center"
+                                            allowViewer={true}
                                             onClick={() => setTheme('system')}
                                         >
                                             <Monitor className="w-4 h-4" />
@@ -996,6 +999,7 @@ export function Settings() {
                                         <Button
                                             variant={style === 'emerald' ? 'default' : 'outline'}
                                             className="flex items-center gap-2 justify-center col-span-1 sm:col-span-2 lg:col-span-1 shadow-lg shadow-emerald-500/20"
+                                            allowViewer={true}
                                             onClick={() => setStyle('emerald')}
                                         >
                                             {t('settings.theme.emerald', 'Emerald (Teal & Charcoal)')}
@@ -1003,6 +1007,7 @@ export function Settings() {
                                         <Button
                                             variant={style === 'primary' ? 'default' : 'outline'}
                                             className="flex items-center gap-2 justify-center"
+                                            allowViewer={true}
                                             onClick={() => setStyle('primary')}
                                         >
                                             {t('settings.theme.primary', 'Primary')}
@@ -1010,6 +1015,7 @@ export function Settings() {
                                         <Button
                                             variant={style === 'modern' ? 'default' : 'outline'}
                                             className="flex items-center gap-2 justify-center"
+                                            allowViewer={true}
                                             onClick={() => setStyle('modern')}
                                         >
                                             {t('settings.theme.modern', 'Modern (Premium)')}
@@ -1017,6 +1023,7 @@ export function Settings() {
                                         <Button
                                             variant={style === 'legacy' ? 'default' : 'outline'}
                                             className="flex items-center gap-2 justify-center"
+                                            allowViewer={true}
                                             onClick={() => setStyle('legacy')}
                                         >
                                             {t('settings.theme.legacy', 'Legacy (Classic)')}
@@ -1024,6 +1031,7 @@ export function Settings() {
                                         <Button
                                             variant={style === 'neo-orange' ? 'default' : 'outline'}
                                             className="flex items-center gap-2 justify-center"
+                                            allowViewer={true}
                                             onClick={() => setStyle('neo-orange')}
                                         >
                                             {t('settings.theme.neo-orange', 'Neo-Orange (Brutalist)')}
@@ -1052,7 +1060,7 @@ export function Settings() {
                                                 setMonthDisplayPreference(nextValue)
                                             }}
                                         >
-                                            <SelectTrigger className="w-[180px]">
+                                            <SelectTrigger className="w-[180px]" allowViewer={true}>
                                                 <SelectValue />
                                             </SelectTrigger>
                                             <SelectContent>
@@ -1101,6 +1109,7 @@ export function Settings() {
                                         </p>
                                     </div>
                                     <Button
+                                        allowViewer={true}
                                         onClick={handleCheckForUpdates}
                                         disabled={updateStatus?.status === 'checking' || updateStatus?.status === 'progress'}
                                         variant="outline"

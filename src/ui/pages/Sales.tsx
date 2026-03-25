@@ -823,6 +823,16 @@ export function Sales() {
 
     const handleSaveNote = async (note: string) => {
         if (!selectedSaleForNote) return
+        
+        // Viewer role cannot save notes
+        if (user?.role === 'viewer') {
+            toast({
+                title: t('common.error') || 'Error',
+                description: 'Viewers cannot save notes.',
+                variant: 'destructive'
+            })
+            return
+        }
 
         const now = new Date().toISOString()
         const isCurrentlyOnline = navigator.onLine && !isLocalMode
@@ -979,6 +989,7 @@ export function Sales() {
                         <Button
                             variant="ghost"
                             size="sm"
+                            allowViewer={true}
                             onClick={() => setViewMode('table')}
                             className={cn(
                                 "h-8 px-4 font-black uppercase tracking-widest text-[10px] flex items-center gap-2 transition-all",
@@ -993,6 +1004,7 @@ export function Sales() {
                         <Button
                             variant="ghost"
                             size="sm"
+                            allowViewer={true}
                             onClick={() => setViewMode('grid')}
                             className={cn(
                                 "h-8 px-4 font-black uppercase tracking-widest text-[10px] flex items-center gap-2 transition-all",
@@ -1063,6 +1075,7 @@ export function Sales() {
                             />
                             <Button
                                 onClick={() => setIsExportModalOpen(true)}
+                                allowViewer={true}
                                 disabled={sales.length === 0}
                                 className={cn(
                                     "h-10 px-6 font-black transition-all flex gap-3 items-center group relative overflow-hidden",
@@ -1219,6 +1232,7 @@ export function Sales() {
                                                     <Button
                                                         variant="secondary"
                                                         size="sm"
+                                                        allowViewer={true}
                                                         className={cn(
                                                             "h-10 px-4 font-bold flex gap-2",
                                                             style === 'neo-orange' ? "rounded-[var(--radius)] neo-border shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]" : "rounded-xl"
@@ -1249,7 +1263,7 @@ export function Sales() {
                                                             <Printer className="w-4 h-4" />
                                                         </Button>
                                                     )}
-                                                    {sale.origin !== 'sales_order' && sale.origin !== 'travel_agency' && (
+                                                    {sale.origin !== 'sales_order' && sale.origin !== 'travel_agency' && (sale.notes || user?.role !== 'viewer') && (
                                                         <Button
                                                             variant="outline"
                                                             size="icon"
@@ -1434,7 +1448,7 @@ export function Sales() {
                                                             )}
                                                         >
                                                             <StickyNote className={cn("w-3.5 h-3.5", sale.notes ? "fill-primary/20" : "")} />
-                                                            {sale.notes ? (t('sales.notes.viewNote') || 'View Notes..') : (t('sales.notes.addNote') || 'Add Note')}
+                                                            {sale.notes ? (t('sales.notes.viewNote') || 'View Notes..') : (user?.role !== 'viewer' && (t('sales.notes.addNote') || 'Add Note'))}
                                                         </Button>
                                                     )}
                                                 </TableCell>
@@ -1446,6 +1460,7 @@ export function Sales() {
                                                     <Button
                                                         variant="ghost"
                                                         size="icon"
+                                                        allowViewer={true}
                                                         onClick={() => {
                                                             if (sale.origin === 'sales_order') {
                                                                 setLocation(`/orders/${sale.id}`)

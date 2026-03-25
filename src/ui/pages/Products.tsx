@@ -516,6 +516,7 @@ export function Products() {
                             <Button
                                 variant={viewMode === 'table' ? 'secondary' : 'ghost'}
                                 size="sm"
+                                allowViewer={true}
                                 className={cn(
                                     "rounded-lg h-8 px-3 font-bold flex gap-2 transition-all",
                                     viewMode === 'table' && "shadow-sm bg-background"
@@ -528,6 +529,7 @@ export function Products() {
                             <Button
                                 variant={viewMode === 'grid' ? 'secondary' : 'ghost'}
                                 size="sm"
+                                allowViewer={true}
                                 className={cn(
                                     "rounded-lg h-8 px-3 font-bold flex gap-2 transition-all",
                                     viewMode === 'grid' && "shadow-sm bg-background"
@@ -561,6 +563,7 @@ export function Products() {
                     placeholder={t('products.searchPlaceholder') || "Search products..."}
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
+                    allowViewer={true}
                     className="pl-10"
                 />
             </div>
@@ -625,7 +628,7 @@ export function Products() {
                                                     </div>
                                                 </div>
                                                 <div className="flex justify-end gap-2 pt-3 border-t border-border/50">
-                                                    {canEdit && (
+                                                    {canEdit ? (
                                                         <Button
                                                             variant="secondary"
                                                             size="sm"
@@ -634,6 +637,17 @@ export function Products() {
                                                         >
                                                             <Pencil className="w-4 h-4" />
                                                             {t('common.edit')}
+                                                        </Button>
+                                                    ) : (
+                                                        <Button
+                                                            variant="secondary"
+                                                            size="sm"
+                                                            allowViewer={true}
+                                                            className="rounded-xl h-10 px-6 font-bold flex gap-2"
+                                                            onClick={() => handleOpenDialog(product)}
+                                                        >
+                                                            <Info className="w-4 h-4" />
+                                                            {t('common.view') || 'View'}
                                                         </Button>
                                                     )}
                                                     {canDelete && (
@@ -711,7 +725,7 @@ export function Products() {
                                                             </div>
 
                                                             <div className="flex gap-1">
-                                                                {canEdit && (
+                                                                {canEdit ? (
                                                                     <Button
                                                                         variant="ghost"
                                                                         size="icon"
@@ -719,6 +733,16 @@ export function Products() {
                                                                         onClick={() => handleOpenDialog(product)}
                                                                     >
                                                                         <Pencil className="w-3.5 h-3.5" />
+                                                                    </Button>
+                                                                ) : (
+                                                                    <Button
+                                                                        variant="ghost"
+                                                                        size="icon"
+                                                                        allowViewer={true}
+                                                                        className="w-8 h-8 rounded-lg hover:bg-primary/10 hover:text-primary transition-colors"
+                                                                        onClick={() => handleOpenDialog(product)}
+                                                                    >
+                                                                        <Info className="w-3.5 h-3.5" />
                                                                     </Button>
                                                                 )}
                                                                 {canDelete && (
@@ -778,12 +802,16 @@ export function Products() {
                                                                     {product.quantity} {t(`products.units.${product.unit}`, product.unit)}
                                                                 </span>
                                                             </TableCell>
-                                                            {(canEdit || canDelete) && (
+                                                            {(canEdit || canDelete || user?.role === 'viewer') && (
                                                                 <TableCell className="text-right">
                                                                     <div className="flex justify-end gap-2">
-                                                                        {canEdit && (
+                                                                        {canEdit ? (
                                                                             <Button variant="ghost" size="icon" onClick={() => handleOpenDialog(product)}>
                                                                                 <Pencil className="w-4 h-4" />
+                                                                            </Button>
+                                                                        ) : (
+                                                                            <Button variant="ghost" size="icon" allowViewer={true} onClick={() => handleOpenDialog(product)}>
+                                                                                <Info className="w-4 h-4 text-primary" />
                                                                             </Button>
                                                                         )}
                                                                         {canDelete && (
@@ -819,7 +847,9 @@ export function Products() {
                                 {editingProduct ? <Pencil className="w-5 h-5" /> : <Plus className="w-5 h-5" />}
                             </div>
                             <div className="flex flex-col min-w-0">
-                                <span className="leading-tight truncate">{editingProduct ? t('common.edit') : t('products.addProduct')}</span>
+                                <span className="leading-tight truncate">
+                                    {editingProduct ? (canEdit ? t('common.edit') : t('common.view') || 'View') : t('products.addProduct')}
+                                </span>
                                 <span className="text-xs font-bold text-muted-foreground/60 uppercase tracking-widest mt-0.5 hidden sm:block">
                                     {editingProduct ? `${t('products.table.sku')}: ${formData.sku}` : t('products.subtitle')}
                                 </span>
@@ -846,6 +876,7 @@ export function Products() {
                                             value={formData.sku}
                                             onChange={(e) => setFormData({ ...formData, sku: e.target.value })}
                                             placeholder="PRD-001"
+                                            readOnly={!canEdit}
                                             className="h-12 rounded-lg border-border/40 focus:border-primary/40 focus:ring-primary/10 bg-muted/10 font-mono transition-all"
                                             required
                                         />
@@ -860,6 +891,7 @@ export function Products() {
                                             value={formData.name}
                                             onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                                             placeholder={t('products.form.name') || "Product name"}
+                                            readOnly={!canEdit}
                                             className="h-12 rounded-lg border-border/40 focus:border-primary/40 focus:ring-primary/10 bg-muted/10 font-bold transition-all"
                                             required
                                         />
@@ -877,6 +909,7 @@ export function Products() {
                                         onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                                         placeholder={t('products.form.description') || "Product description..."}
                                         rows={3}
+                                        readOnly={!canEdit}
                                         className="rounded-lg border-border/40 focus:border-primary/40 focus:ring-primary/10 bg-muted/10 min-h-[100px] transition-all"
                                     />
                                 </div>
@@ -894,8 +927,8 @@ export function Products() {
                                             <Tag className="w-4 h-4 text-primary/60" />
                                             {t('products.table.category')}
                                         </Label>
-                                        <Select value={formData.categoryId || 'none'} onValueChange={(value) => setFormData({ ...formData, categoryId: value === 'none' ? undefined : value })}>
-                                            <SelectTrigger className="h-12 rounded-lg border-border/40 bg-muted/10 focus:ring-primary/10">
+                                        <Select value={formData.categoryId || 'none'} onValueChange={(value) => setFormData({ ...formData, categoryId: value === 'none' ? undefined : value })} disabled={!canEdit}>
+                                            <SelectTrigger className="h-12 rounded-lg border-border/40 bg-muted/10 focus:ring-primary/10" allowViewer={true}>
                                                 <SelectValue placeholder={t('categories.noCategory')} />
                                             </SelectTrigger>
                                             <SelectContent className="rounded-xl shadow-xl">
@@ -911,8 +944,8 @@ export function Products() {
                                             <Ruler className="w-4 h-4 text-primary/60" />
                                             {t('products.form.unit')}
                                         </Label>
-                                        <Select value={formData.unit} onValueChange={(value) => setFormData({ ...formData, unit: value })}>
-                                            <SelectTrigger className="h-12 rounded-lg border-border/40 bg-muted/10 focus:ring-primary/10">
+                                        <Select value={formData.unit} onValueChange={(value) => setFormData({ ...formData, unit: value })} disabled={!canEdit}>
+                                            <SelectTrigger className="h-12 rounded-lg border-border/40 bg-muted/10 focus:ring-primary/10" allowViewer={true}>
                                                 <SelectValue />
                                             </SelectTrigger>
                                             <SelectContent className="rounded-xl shadow-xl">
@@ -932,9 +965,9 @@ export function Products() {
                                         <Select
                                             value={formData.storageId}
                                             onValueChange={(value) => setFormData({ ...formData, storageId: value })}
-                                            disabled={!!editingProduct && !isDialogOpen}
+                                            disabled={(!canEdit) || (!!editingProduct && !isDialogOpen)}
                                         >
-                                            <SelectTrigger className="h-12 rounded-lg border-border/40 bg-muted/10 focus:ring-primary/10">
+                                            <SelectTrigger className="h-12 rounded-lg border-border/40 bg-muted/10 focus:ring-primary/10" allowViewer={true}>
                                                 <SelectValue placeholder={t('storages.selectStorage') || 'Select Storage'} />
                                             </SelectTrigger>
                                             <SelectContent className="rounded-xl shadow-xl">
@@ -975,6 +1008,7 @@ export function Products() {
                                             value={formData.price}
                                             onChange={(e) => setFormData({ ...formData, price: e.target.value === '' ? '' : parseFloat(e.target.value) })}
                                             placeholder="0.00"
+                                            readOnly={!canEdit}
                                             className="h-12 rounded-lg border-border/40 focus:border-primary/40 focus:ring-primary/10 bg-background/50 text-lg font-black text-primary transition-all"
                                             required
                                         />
@@ -985,6 +1019,7 @@ export function Products() {
                                             value={formData.currency}
                                             onChange={(val) => setFormData({ ...formData, currency: val })}
                                             iqdDisplayPreference={features.iqd_display_preference}
+                                            disabled={!canEdit}
                                         />
                                     </div>
                                     <div className="space-y-2">
@@ -1000,6 +1035,7 @@ export function Products() {
                                             value={formData.costPrice}
                                             onChange={(e) => setFormData({ ...formData, costPrice: e.target.value === '' ? '' : parseFloat(e.target.value) })}
                                             placeholder="0.00"
+                                            readOnly={!canEdit}
                                             className="h-12 rounded-lg border-border/40 focus:border-primary/40 focus:ring-primary/10 bg-background/50 font-bold transition-all"
                                             required
                                         />
@@ -1026,6 +1062,7 @@ export function Products() {
                                             value={formData.quantity}
                                             onChange={(e) => setFormData({ ...formData, quantity: e.target.value === '' ? '' : parseInt(e.target.value) })}
                                             placeholder="0"
+                                            readOnly={!canEdit}
                                             className="h-12 rounded-lg border-border/40 focus:border-primary/40 focus:ring-primary/10 bg-muted/10 font-black transition-all"
                                             required
                                         />
@@ -1041,6 +1078,7 @@ export function Products() {
                                             min="0"
                                             value={formData.minStockLevel}
                                             onChange={(e) => setFormData({ ...formData, minStockLevel: e.target.value === '' ? '' : parseInt(e.target.value) })}
+                                            readOnly={!canEdit}
                                             className="h-12 rounded-lg border-border/40 focus:border-primary/40 focus:ring-primary/10 bg-muted/10 font-bold transition-all"
                                             required
                                         />
@@ -1082,6 +1120,7 @@ export function Products() {
                                                 id="canBeReturned"
                                                 checked={formData.canBeReturned}
                                                 onCheckedChange={(checked) => setFormData({ ...formData, canBeReturned: checked })}
+                                                disabled={!canEdit}
                                                 className="data-[state=checked]:bg-emerald-500"
                                             />
                                         </div>
@@ -1117,17 +1156,19 @@ export function Products() {
                                                     className="w-full h-full object-cover animate-in fade-in duration-500 group-hover:scale-110"
                                                     onError={() => setImageError(true)}
                                                 />
-                                                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                                                    <Button
-                                                        type="button"
-                                                        variant="ghost"
-                                                        size="icon"
-                                                        onClick={handleRemoveImage}
-                                                        className="h-12 w-12 rounded-full bg-destructive/90 text-white hover:bg-destructive hover:scale-110 transition-all"
-                                                    >
-                                                        <Trash2 className="w-6 h-6" />
-                                                    </Button>
-                                                </div>
+                                                {canEdit && (
+                                                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                                        <Button
+                                                            type="button"
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            onClick={handleRemoveImage}
+                                                            className="h-12 w-12 rounded-full bg-destructive/90 text-white hover:bg-destructive hover:scale-110 transition-all"
+                                                        >
+                                                            <Trash2 className="w-6 h-6" />
+                                                        </Button>
+                                                    </div>
+                                                )}
                                             </>
                                         )}
                                     </div>
@@ -1147,28 +1188,31 @@ export function Products() {
                                                         setImageError(false);
                                                     }}
                                                     placeholder={t('products.form.imageUrlPlaceholder') || "Image URL or local path"}
+                                                    readOnly={!canEdit}
                                                     className="h-12 rounded-lg border-border/40 focus:border-primary/40 focus:ring-primary/10 bg-muted/10 transition-all flex-1"
                                                 />
-                                                <div className="flex gap-2">
-                                                    <Button
-                                                        type="button"
-                                                        variant="outline"
-                                                        onClick={handleImageUpload}
-                                                        className="h-12 px-6 rounded-lg gap-2 font-bold border-primary/20 hover:border-primary/50 hover:bg-primary/5 transition-all"
-                                                    >
-                                                        <ImagePlus className="w-4 h-4" />
-                                                        {t('products.form.upload') || 'Upload'}
-                                                    </Button>
-                                                    <Button
-                                                        type="button"
-                                                        variant="outline"
-                                                        onClick={handleCameraClick}
-                                                        className="h-12 w-12 sm:w-auto sm:px-6 rounded-lg gap-2 font-bold border-primary/20 hover:border-primary/50 hover:bg-primary/5 transition-all text-primary"
-                                                    >
-                                                        <Camera className="w-4 h-4" />
-                                                        <span className="hidden sm:inline">{t('products.form.camera') || 'Camera'}</span>
-                                                    </Button>
-                                                </div>
+                                                {canEdit && (
+                                                    <div className="flex gap-2">
+                                                        <Button
+                                                            type="button"
+                                                            variant="outline"
+                                                            onClick={handleImageUpload}
+                                                            className="h-12 px-6 rounded-lg gap-2 font-bold border-primary/20 hover:border-primary/50 hover:bg-primary/5 transition-all"
+                                                        >
+                                                            <ImagePlus className="w-4 h-4" />
+                                                            {t('products.form.upload') || 'Upload'}
+                                                        </Button>
+                                                        <Button
+                                                            type="button"
+                                                            variant="outline"
+                                                            onClick={handleCameraClick}
+                                                            className="h-12 w-12 sm:w-auto sm:px-6 rounded-lg gap-2 font-bold border-primary/20 hover:border-primary/50 hover:bg-primary/5 transition-all text-primary"
+                                                        >
+                                                            <Camera className="w-4 h-4" />
+                                                            <span className="hidden sm:inline">{t('products.form.camera') || 'Camera'}</span>
+                                                        </Button>
+                                                    </div>
+                                                )}
                                             </div>
                                         </div>
 
@@ -1211,27 +1255,29 @@ export function Products() {
                         >
                             {t('common.cancel')}
                         </Button>
-                        <Button
-                            form="product-form"
-                            type="submit"
-                            disabled={isLoading}
-                            className={cn(
-                                "h-12 px-10 rounded-lg font-black shadow-lg transition-all",
-                                pulseProductSubmit ? "animate-save-pulse bg-emerald-500 scale-105" : "bg-primary shadow-primary/20 hover:shadow-primary/40",
-                                isLoading && "opacity-80"
-                            )}
-                        >
-                            {isLoading ? (
-                                <div className="flex items-center gap-2">
-                                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                                    {t('common.loading')}
-                                </div>
-                            ) : (
-                                <div className="flex items-center gap-2">
-                                    {editingProduct ? <span className="uppercase tracking-widest">{t('common.save')}</span> : <span className="uppercase tracking-widest">{t('common.create')}</span>}
-                                </div>
-                            )}
-                        </Button>
+                        {canEdit && (
+                            <Button
+                                form="product-form"
+                                type="submit"
+                                disabled={isLoading}
+                                className={cn(
+                                    "h-12 px-10 rounded-lg font-black shadow-lg transition-all",
+                                    pulseProductSubmit ? "animate-save-pulse bg-emerald-500 scale-105" : "bg-primary shadow-primary/20 hover:shadow-primary/40",
+                                    isLoading && "opacity-80"
+                                )}
+                            >
+                                {isLoading ? (
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                        {t('common.loading')}
+                                    </div>
+                                ) : (
+                                    <div className="flex items-center gap-2">
+                                        {editingProduct ? <span className="uppercase tracking-widest">{t('common.save')}</span> : <span className="uppercase tracking-widest">{t('common.create')}</span>}
+                                    </div>
+                                )}
+                            </Button>
+                        )}
                     </DialogFooter>
                 </DialogContent>
             </Dialog>

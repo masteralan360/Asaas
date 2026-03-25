@@ -259,6 +259,7 @@ export function SaleDetailsModal({ sale, isOpen, onClose, onReturnItem, onReturn
                                     <Button
                                         variant="outline"
                                         size="sm"
+                                        allowViewer={true}
                                         className="h-7 px-2 text-[10px] font-semibold"
                                         onClick={() => {
                                             onClose()

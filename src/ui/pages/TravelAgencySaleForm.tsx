@@ -142,7 +142,7 @@ function getDefaultExchangePair(currency: CurrencyCode) {
 
 function createEmptyTravelAgencyForm(defaultCurrency: CurrencyCode): TravelAgencyFormState {
     return {
-        saleDate: new Date().toISOString().split('T')[0],
+        saleDate: '',
         groupName: '',
         groupRevenue: '',
         groupTravelPlans: [createEmptyTravelPlan()],
@@ -856,7 +856,7 @@ function TravelAgencySaleEditor({ saleId, readOnly = false }: { saleId?: string;
         <div className="space-y-6">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                 <div className="space-y-2">
-                    <Button variant="ghost" className="w-fit gap-2 px-0" onClick={() => {
+                    <Button variant="ghost" className="w-fit gap-2 px-0" allowViewer={true} onClick={() => {
                         if (readOnly) { navigate('/travel-agency'); return }
                         if (!requestNavigation('/travel-agency')) navigate('/travel-agency')
                     }}>
@@ -892,7 +892,7 @@ function TravelAgencySaleEditor({ saleId, readOnly = false }: { saleId?: string;
                 </div>
             )}
 
-            <form onSubmit={readOnly ? (e) => e.preventDefault() : handleSubmit} className={cn('space-y-6', readOnly && 'pointer-events-none')} id="travel-sale-form-container">
+            <form onSubmit={readOnly ? (e) => e.preventDefault() : handleSubmit} className="space-y-6" id="travel-sale-form-container">
                 <div className="flex flex-col gap-6 xl:flex-row">
                     <div className="min-w-0 flex-1">
                     <Card className="border-border/60 shadow-sm">
@@ -1020,7 +1020,7 @@ function TravelAgencySaleEditor({ saleId, readOnly = false }: { saleId?: string;
 
                     <div
                         className={cn(
-                            "hidden xl:flex w-2 cursor-col-resize items-center justify-center transition-colors hover:bg-primary/30",
+                            "hidden xl:flex w-2 cursor-col-resize items-center justify-center transition-colors hover:bg-primary/30 pointer-events-auto",
                             isResizing && "bg-primary/50"
                         )}
                         onMouseDown={(e) => {
@@ -1241,11 +1241,11 @@ function TravelAgencySaleEditor({ saleId, readOnly = false }: { saleId?: string;
 
                 {readOnly ? (
                     <div className="flex border-t pt-6 pointer-events-auto">
-                        <Button type="button" variant="outline" onClick={() => navigate('/travel-agency')}>Back to Travel Agency</Button>
+                        <Button type="button" variant="outline" allowViewer={true} onClick={() => navigate('/travel-agency')}>Back to Travel Agency</Button>
                     </div>
                 ) : (
                     <div className="flex flex-col gap-3 border-t pt-6 sm:flex-row sm:justify-between">
-                        <Button type="button" variant="outline" onClick={() => {
+                        <Button type="button" variant="outline" allowViewer={true} onClick={() => {
                             if (!requestNavigation('/travel-agency')) navigate('/travel-agency')
                         }}>Cancel</Button>
                         <div className="flex flex-col gap-3 sm:flex-row">

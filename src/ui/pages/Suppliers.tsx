@@ -245,6 +245,7 @@ export function Suppliers() {
                         <Input
                             value={search}
                             onChange={(event) => setSearch(event.target.value)}
+                            allowViewer={true}
                             placeholder={t('suppliers.searchPlaceholder') || 'Search suppliers...'}
                             className="pl-9"
                         />
@@ -284,7 +285,7 @@ export function Suppliers() {
                                             <TableCell>{formatCurrency(supplier.totalSpent, supplier.defaultCurrency, features.iqd_display_preference)}</TableCell>
                                             <TableCell className="text-right">
                                                 <div className="flex justify-end gap-1">
-                                                    <Button variant="ghost" size="icon" onClick={() => navigate(`/suppliers/${supplier.id}`)}>
+                                                    <Button variant="ghost" size="icon" allowViewer={true} onClick={() => navigate(`/suppliers/${supplier.id}`)}>
                                                         <Eye className="h-4 w-4" />
                                                     </Button>
                                                     {canEdit && (

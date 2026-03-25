@@ -258,6 +258,7 @@ function LoanListView({
                                     setCurrentPage(1)
                                     setSearch(e.target.value)
                                 }}
+                                allowViewer={true}
                                 placeholder={t('loans.searchPlaceholder') || 'Search by borrower name or loan number'}
                             />
                         </div>
@@ -265,6 +266,7 @@ function LoanListView({
                             <Button
                                 variant="ghost"
                                 size="sm"
+                                allowViewer={true}
                                 onClick={() => setViewMode('table')}
                                 className={cn(
                                     "h-7 px-3 font-bold uppercase text-[9px] flex items-center gap-1.5 transition-all",
@@ -279,6 +281,7 @@ function LoanListView({
                             <Button
                                 variant="ghost"
                                 size="sm"
+                                allowViewer={true}
                                 onClick={() => setViewMode('grid')}
                                 className={cn(
                                     "h-7 px-3 font-bold uppercase text-[9px] flex items-center gap-1.5 transition-all",
@@ -308,7 +311,7 @@ function LoanListView({
                                 </button>
                             ))}
                         </div>
-                        <Button variant="outline" onClick={() => setShowPrintPreview(true)} className="gap-2 print:hidden">
+                        <Button variant="outline" allowViewer={true} onClick={() => setShowPrintPreview(true)} className="gap-2 print:hidden">
                             <Printer className="w-4 h-4" />
                             {t('common.print') || 'Print'}
                         </Button>
@@ -392,6 +395,7 @@ function LoanListView({
                                             <div className="flex items-center justify-between gap-2 pt-1">
                                                 <Button
                                                     variant="secondary"
+                                                    allowViewer={true}
                                                     className="flex-1 h-9 rounded-xl font-bold gap-2 text-xs"
                                                     onClick={() => navigate(`/loans/${loan.id}`)}
                                                 >
@@ -463,7 +467,7 @@ function LoanListView({
                                             </TableCell>
                                             <TableCell className="text-end print:hidden">
                                                 <div className="flex items-center justify-end gap-1">
-                                                    <Button variant="ghost" size="sm" onClick={() => navigate(`/loans/${loan.id}`)}>
+                                                    <Button variant="ghost" size="sm" allowViewer={true} onClick={() => navigate(`/loans/${loan.id}`)}>
                                                         {t('common.view') || 'View'}
                                                     </Button>
                                                     {!isReadOnly && canDeleteLoanRecord(loan) && (
@@ -721,15 +725,15 @@ function LoanDetailsView({
                 </div>
                 <div className="flex items-center gap-2">
                     {canOpenLinkedSale && (
-                        <Button variant="outline" onClick={openLinkedSaleDetails} className="gap-2 print:hidden">
+                        <Button variant="outline" allowViewer={true} onClick={openLinkedSaleDetails} className="gap-2 print:hidden">
                             <Receipt className="w-4 h-4" />
                             {t('loans.openLinkedSale', { defaultValue: 'Open Sale Details' })}
                         </Button>
                     )}
-                    <Button variant="outline" onClick={() => setShowWhatsAppModal(true)} className="gap-2 text-emerald-600 border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-300 dark:border-emerald-800 dark:hover:bg-emerald-500/10">
+                    <Button variant="outline" allowViewer={true} onClick={() => setShowWhatsAppModal(true)} className="gap-2 text-emerald-600 border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-300 dark:border-emerald-800 dark:hover:bg-emerald-500/10">
                         <MessageCircle className="w-4 h-4" />
                     </Button>
-                    <Button variant="outline" onClick={() => setShowPrintPreview(true)} className="gap-2 print:hidden">
+                    <Button variant="outline" allowViewer={true} onClick={() => setShowPrintPreview(true)} className="gap-2 print:hidden">
                         <Printer className="w-4 h-4" />
                         {t('common.print') || 'Print'}
                     </Button>

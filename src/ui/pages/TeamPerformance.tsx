@@ -245,7 +245,7 @@ export function TeamPerformance() {
 
         // Initialize with all members if admin, or just self if staff
         members.forEach(m => {
-            if (user?.role !== 'admin' && m.id !== user?.id) return
+            if (user?.role !== 'admin' && user?.role !== 'viewer' && m.id !== user?.id) return
 
             perfMap[m.id] = {
                 id: m.id,
@@ -487,8 +487,8 @@ export function TeamPerformance() {
                 <div className="flex flex-wrap items-center gap-3">
                     <DateRangeFilters />
 
-                    {user?.role === 'admin' && (
-                        <Button variant="outline" size="sm" onClick={() => handlePrint()} className="gap-2 h-9">
+                    {(user?.role === 'admin' || user?.role === 'viewer') && (
+                        <Button variant="outline" size="sm" allowViewer={true} onClick={() => handlePrint()} className="gap-2 h-9">
                             <Printer className="w-4 h-4" />
                             {t('report.print') || 'Print Report'}
                         </Button>

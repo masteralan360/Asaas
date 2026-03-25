@@ -36,6 +36,7 @@ import {
 import { supabase, isSupabaseConfigured } from '@/auth/supabase'
 import { useLocation } from 'wouter'
 import { useTranslation } from 'react-i18next'
+import { useAuth } from '@/auth'
 import { formatDate } from '@/lib/utils'
 import { getRetriableActionToast, isRetriableWebRequestError, normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
 import { r2Service } from '@/services/r2Service'
@@ -71,6 +72,8 @@ interface AdminWorkspace {
 }
 
 export function Admin() {
+    const { user } = useAuth()
+    const canEdit = user?.role === 'admin'
     const [,] = useLocation()
     const { toast } = useToast()
     const { t } = useTranslation()
@@ -498,8 +501,9 @@ export function Admin() {
                                                 </td>
                                                 <td className="px-6 py-4 text-right">
                                                     <button
+                                                        disabled={!canEdit}
                                                         onClick={() => handleDeleteUser(user)}
-                                                        className="p-2 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-all opacity-0 group-hover:opacity-100"
+                                                        className="p-2 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-all opacity-0 group-hover:opacity-100 disabled:opacity-0 disabled:cursor-not-allowed"
                                                         title="Delete User"
                                                     >
                                                         <Trash2 className="w-4 h-4" />
@@ -586,7 +590,7 @@ export function Admin() {
                                                         <Switch
                                                             checked={ws.pos}
                                                             onCheckedChange={() => handleToggleWorkspaceFeature(ws.id, 'pos', ws.pos)}
-                                                            disabled={!!ws.deleted_at}
+                                                            disabled={!!ws.deleted_at || !canEdit}
                                                         />
                                                     </div>
                                                 </td>
@@ -595,7 +599,7 @@ export function Admin() {
                                                         <Switch
                                                             checked={ws.crm}
                                                             onCheckedChange={() => handleToggleWorkspaceFeature(ws.id, 'crm', ws.crm)}
-                                                            disabled={!!ws.deleted_at}
+                                                            disabled={!!ws.deleted_at || !canEdit}
                                                         />
                                                     </div>
                                                 </td>

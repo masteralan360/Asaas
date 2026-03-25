@@ -12,6 +12,7 @@ import {
 } from '@/local-db'
 import type { Product, ReorderTransferRule, Storage } from '@/local-db'
 import { useWorkspace } from '@/workspace'
+import { useAuth } from '@/auth'
 import { Button } from '@/ui/components/button'
 import {
     ArrowRightLeft,
@@ -185,6 +186,8 @@ function buildRuleForm(rule: ReorderTransferRule | null): RuleFormState {
 }
 
 export default function InventoryTransfer() {
+    const { user } = useAuth()
+    const canEdit = user?.role === 'admin' || user?.role === 'staff'
     const { t } = useTranslation()
     const { activeWorkspace } = useWorkspace()
     const storages = useStorages(activeWorkspace?.id)
@@ -741,7 +744,7 @@ export default function InventoryTransfer() {
                     <div className="flex justify-end">
                         <Button
                             onClick={handleTransfer}
-                            disabled={!sourceStorageId || !targetStorageId || selectedProductIds.size === 0 || hasInvalidTransferQuantity || isTransferring}
+                            disabled={!sourceStorageId || !targetStorageId || selectedProductIds.size === 0 || hasInvalidTransferQuantity || isTransferring || !canEdit}
                             className="gap-2 rounded-xl px-8 shadow-lg"
                             size="lg"
                         >
@@ -770,10 +773,12 @@ export default function InventoryTransfer() {
                                         {t('inventoryTransfer.automation.subtitle', 'Monitor destination stock and move replenishment stock automatically when it drops below target.')}
                                     </CardDescription>
                                 </div>
-                                <Button className="gap-2 rounded-2xl" onClick={openNewRuleDialog}>
-                                    <Plus className="h-4 w-4" />
-                                    {t('inventoryTransfer.automation.newRule', 'New Rule')}
-                                </Button>
+                                {canEdit && (
+                                    <Button className="gap-2 rounded-2xl" onClick={openNewRuleDialog}>
+                                        <Plus className="h-4 w-4" />
+                                        {t('inventoryTransfer.automation.newRule', 'New Rule')}
+                                    </Button>
+                                )}
                             </CardHeader>
                             <CardContent className="p-6">
                                 {activeRules.length === 0 ? (
@@ -783,9 +788,11 @@ export default function InventoryTransfer() {
                                         <p className="mt-2 text-sm text-muted-foreground">
                                             {t('inventoryTransfer.automation.emptyDescription', 'Create a rule to replenish a destination storage automatically whenever it falls below your threshold.')}
                                         </p>
-                                        <Button className="mt-5 rounded-2xl" onClick={openNewRuleDialog}>
-                                            {t('inventoryTransfer.automation.createFirstRule', 'Create First Rule')}
-                                        </Button>
+                                        {canEdit && (
+                                            <Button className="mt-5 rounded-2xl" onClick={openNewRuleDialog}>
+                                                {t('inventoryTransfer.automation.createFirstRule', 'Create First Rule')}
+                                            </Button>
+                                        )}
                                     </div>
                                 ) : (
                                     <div className="overflow-hidden rounded-3xl border">
@@ -868,6 +875,7 @@ export default function InventoryTransfer() {
                                                                 size="icon"
                                                                 className="rounded-xl"
                                                                 onClick={() => openEditRuleDialog(rule)}
+                                                                disabled={!canEdit}
                                                             >
                                                                 <Pencil className="h-4 w-4" />
                                                             </Button>
@@ -876,7 +884,7 @@ export default function InventoryTransfer() {
                                                                 variant="ghost"
                                                                 size="icon"
                                                                 className="rounded-xl text-destructive hover:text-destructive"
-                                                                disabled={deletingRuleId === rule.id}
+                                                                disabled={deletingRuleId === rule.id || !canEdit}
                                                                 onClick={() => handleDeleteRule(rule)}
                                                             >
                                                                 <Trash2 className="h-4 w-4" />

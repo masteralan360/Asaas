@@ -752,7 +752,7 @@ function OrdersListView({ workspaceId }: { workspaceId: string }) {
                                         <div className="flex flex-wrap justify-end gap-2">
                                             {activeTab === 'sales' ? (
                                                 <>
-                                                    <Button variant="outline" size="sm" onClick={() => navigate(`/orders/${row.id}`)}><Eye className="mr-1 h-3.5 w-3.5" />{t('common.view') || 'View'}</Button>
+                                                    <Button variant="outline" size="sm" allowViewer={true} onClick={() => navigate(`/orders/${row.id}`)}><Eye className="mr-1 h-3.5 w-3.5" />{t('common.view') || 'View'}</Button>
                                                     {canEdit && <Button variant="outline" size="sm" onClick={() => openSalesEdit(row as SalesOrder)}><Pencil className="mr-1 h-3.5 w-3.5" />{t('common.edit') || 'Edit'}</Button>}
                                                     {canManageOrders && row.status === 'draft' && <Button size="sm" onClick={() => runAction(() => updateSalesOrderStatus(row.id, 'pending'), 'Sales order reserved')}>{t('orders.actions.reserve') || 'Reserve'}</Button>}
                                                     {canManageOrders && row.status === 'pending' && <Button size="sm" onClick={() => runAction(() => updateSalesOrderStatus(row.id, 'completed'), 'Sales order completed')}>{t('orders.actions.complete') || 'Complete'}</Button>}
@@ -763,7 +763,7 @@ function OrdersListView({ workspaceId }: { workspaceId: string }) {
                                                 </>
                                             ) : (
                                                 <>
-                                                    <Button variant="outline" size="sm" onClick={() => navigate(`/orders/${row.id}`)}><Eye className="mr-1 h-3.5 w-3.5" />{t('common.view') || 'View'}</Button>
+                                                    <Button variant="outline" size="sm" allowViewer={true} onClick={() => navigate(`/orders/${row.id}`)}><Eye className="mr-1 h-3.5 w-3.5" />{t('common.view') || 'View'}</Button>
                                                     {canEdit && <Button variant="outline" size="sm" onClick={() => openPurchaseEdit(row as PurchaseOrder)}><Pencil className="mr-1 h-3.5 w-3.5" />{t('common.edit') || 'Edit'}</Button>}
                                                     {canManageOrders && row.status === 'draft' && <Button size="sm" onClick={() => runAction(() => updatePurchaseOrderStatus(row.id, 'ordered'), 'Purchase order sent')}>{t('orders.actions.order') || 'Order'}</Button>}
                                                     {canManageOrders && row.status === 'ordered' && <Button size="sm" onClick={() => runAction(() => updatePurchaseOrderStatus(row.id, 'received'), 'Purchase order received')}>{t('orders.actions.receive') || 'Receive'}</Button>}
@@ -853,7 +853,7 @@ function OrdersListView({ workspaceId }: { workspaceId: string }) {
                             </div>
 
                             <div className="flex flex-wrap items-center justify-end gap-2 pt-1">
-                                <Button variant="outline" size="sm" className="flex-1 h-9 rounded-xl font-bold gap-2 text-xs" onClick={() => navigate(`/orders/${row.id}`)}>
+                                <Button variant="outline" size="sm" allowViewer={true} className="flex-1 h-9 rounded-xl font-bold gap-2 text-xs" onClick={() => navigate(`/orders/${row.id}`)}>
                                     <Eye className="w-3.5 h-3.5" />
                                     {t('common.view') || 'View'}
                                 </Button>
@@ -996,6 +996,7 @@ function OrdersListView({ workspaceId }: { workspaceId: string }) {
                                     <Input
                                         value={search}
                                         onChange={(event) => setSearch(event.target.value)}
+                                        allowViewer={true}
                                         placeholder={activeTab === 'sales'
                                             ? (t('orders.placeholder.searchSales') || 'Search sales orders...')
                                             : (t('orders.placeholder.searchPurchase') || 'Search purchase orders...')}
@@ -1007,6 +1008,7 @@ function OrdersListView({ workspaceId }: { workspaceId: string }) {
                                         <Button
                                             variant="ghost"
                                             size="sm"
+                                            allowViewer={true}
                                             onClick={() => setViewMode('table')}
                                             className={cn(
                                                 "h-7 px-3 font-bold uppercase text-[9px] flex items-center gap-1.5 transition-all text-primary",
@@ -1021,6 +1023,7 @@ function OrdersListView({ workspaceId }: { workspaceId: string }) {
                                         <Button
                                             variant="ghost"
                                             size="sm"
+                                            allowViewer={true}
                                             onClick={() => setViewMode('grid')}
                                             className={cn(
                                                 "h-7 px-3 font-bold uppercase text-[9px] flex items-center gap-1.5 transition-all text-primary",

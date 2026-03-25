@@ -7,14 +7,15 @@ interface CurrencySelectorProps {
     onChange: (value: CurrencyCode) => void
     label?: string
     iqdDisplayPreference?: 'IQD' | 'د.ع'
+    disabled?: boolean
 }
 
-export function CurrencySelector({ value, onChange, label, iqdDisplayPreference = 'IQD' }: CurrencySelectorProps) {
+export function CurrencySelector({ value, onChange, label, iqdDisplayPreference = 'IQD', disabled }: CurrencySelectorProps) {
     return (
         <div className="space-y-2">
             {label && <Label>{label}</Label>}
-            <Select value={value} onValueChange={(v) => onChange(v as CurrencyCode)}>
-                <SelectTrigger>
+            <Select value={value} onValueChange={(v) => onChange(v as CurrencyCode)} disabled={disabled}>
+                <SelectTrigger allowViewer={true}>
                     <SelectValue placeholder="Select Currency" />
                 </SelectTrigger>
                 <SelectContent>

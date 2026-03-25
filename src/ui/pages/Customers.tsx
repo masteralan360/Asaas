@@ -243,6 +243,7 @@ export function Customers() {
                         <Input
                             value={search}
                             onChange={(event) => setSearch(event.target.value)}
+                            allowViewer={true}
                             placeholder={t('customers.searchPlaceholder') || 'Search customers...'}
                             className="pl-9"
                         />
@@ -297,7 +298,7 @@ export function Customers() {
                                                 </TableCell>
                                                 <TableCell className="text-right">
                                                     <div className="flex justify-end gap-1">
-                                                        <Button variant="ghost" size="icon" onClick={() => navigate(`/customers/${customer.id}`)}>
+                                                        <Button variant="ghost" size="icon" allowViewer={true} onClick={() => navigate(`/customers/${customer.id}`)}>
                                                             <Eye className="h-4 w-4" />
                                                         </Button>
                                                         {canEdit && (

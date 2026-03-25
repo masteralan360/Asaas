@@ -95,7 +95,7 @@ async function enrichUser(parsedUser: AuthUser): Promise<AuthUser> {
         supabase.rpc('get_workspace_features').single(),
         supabase
             .from('profiles')
-            .select('profile_url')
+            .select('profile_url, role')
             .eq('id', parsedUser.id)
             .single()
     ])
@@ -136,8 +136,13 @@ async function enrichUser(parsedUser: AuthUser): Promise<AuthUser> {
         }
     }
 
-    if (profileResult.status === 'fulfilled' && profileResult.value.data?.profile_url) {
-        parsedUser.profileUrl = profileResult.value.data.profile_url
+    if (profileResult.status === 'fulfilled' && profileResult.value.data) {
+        if (profileResult.value.data.profile_url) {
+            parsedUser.profileUrl = profileResult.value.data.profile_url
+        }
+        if (profileResult.value.data.role) {
+            parsedUser.role = profileResult.value.data.role as UserRole
+        }
     }
 
     return parsedUser

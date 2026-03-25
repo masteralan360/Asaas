@@ -210,6 +210,7 @@ export function TravelAgency() {
                         <Input
                             value={query}
                             onChange={(event) => setQuery(event.target.value)}
+                            allowViewer={true}
                             placeholder="Search sales, suppliers, packages, or tourists..."
                             className="pl-9"
                         />
@@ -289,6 +290,7 @@ export function TravelAgency() {
                                                         <Button
                                                             variant="ghost"
                                                             size="icon"
+                                                            allowViewer={true}
                                                             onClick={() => navigate(`/travel-agency/${sale.id}/view`)}
                                                             title="View Sale"
                                                         >

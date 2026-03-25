@@ -1,6 +1,7 @@
 import { useStorages, createStorage, updateStorage, deleteStorage, getReserveStorageId, useInventory, useProducts, useCategories, type Storage, type CurrencyCode } from '@/local-db'
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useExchangeRate } from '@/context/ExchangeRateContext'
+import { useAuth } from '@/auth'
 import { useWorkspace } from '@/workspace'
 import { Button } from '@/ui/components/button'
 import { Plus, Search, Edit, Trash2, Warehouse, ShieldCheck, Package, Filter, LayoutGrid, Info } from 'lucide-react'
@@ -18,6 +19,7 @@ import { platformService } from '@/services/platformService'
 
 export default function Storages() {
     const { t } = useTranslation()
+    const { user } = useAuth()
     const { activeWorkspace } = useWorkspace()
     const storages = useStorages(activeWorkspace?.id)
     const { toast } = useToast()
@@ -210,9 +212,11 @@ export default function Storages() {
                     </h1>
                     <p className="text-muted-foreground">{t('storages.subtitle', 'Manage your storage locations.')}</p>
                 </div>
-                <Button onClick={openCreateDialog} className="rounded-xl shadow-lg transition-all active:scale-95">
-                    <Plus className="mr-2 h-4 w-4" /> {t('storages.addStorage', 'New Storage')}
-                </Button>
+                {(user?.role === 'admin' || user?.role === 'staff') && (
+                    <Button onClick={openCreateDialog} className="rounded-xl shadow-lg transition-all active:scale-95">
+                        <Plus className="mr-2 h-4 w-4" /> {t('storages.addStorage', 'New Storage')}
+                    </Button>
+                )}
             </div>
 
             <Tabs defaultValue="locations" className="w-full">
@@ -235,6 +239,7 @@ export default function Storages() {
                                 placeholder={t('storages.searchPlaceholder', 'Search storages...')}
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
+                                allowViewer={true}
                                 className="pl-10 rounded-xl bg-card border-none shadow-sm focus-visible:ring-1 focus-visible:ring-primary/50 transition-all"
                             />
                         </div>
@@ -285,12 +290,16 @@ export default function Storages() {
                                                     <div className="flex justify-end gap-1 opacity-10 md:opacity-0 group-hover:opacity-100 transition-opacity">
                                                         {!storage.isSystem && (
                                                             <>
-                                                                <Button variant="ghost" size="icon" className="h-8 w-8 rounded-xl hover:bg-primary/10 hover:text-primary transition-all" onClick={() => openEditDialog(storage)}>
-                                                                    <Edit className="h-4 w-4" />
-                                                                </Button>
-                                                                <Button variant="ghost" size="icon" className="h-8 w-8 rounded-xl hover:bg-destructive/10 hover:text-destructive transition-all" onClick={() => setDeletingStorage(storage)}>
-                                                                    <Trash2 className="h-4 w-4" />
-                                                                </Button>
+                                                                {(user?.role === 'admin' || user?.role === 'staff') && (
+                                                                    <Button variant="ghost" size="icon" className="h-8 w-8 rounded-xl hover:bg-primary/10 hover:text-primary transition-all" onClick={() => openEditDialog(storage)}>
+                                                                        <Edit className="h-4 w-4" />
+                                                                    </Button>
+                                                                )}
+                                                                {user?.role === 'admin' && (
+                                                                    <Button variant="ghost" size="icon" className="h-8 w-8 rounded-xl hover:bg-destructive/10 hover:text-destructive transition-all" onClick={() => setDeletingStorage(storage)}>
+                                                                        <Trash2 className="h-4 w-4" />
+                                                                    </Button>
+                                                                )}
                                                             </>
                                                         )}
                                                     </div>
@@ -328,7 +337,7 @@ export default function Storages() {
                                             {t('products.table.category', 'Category')}
                                         </Label>
                                         <Select value={selectedCategoryId} onValueChange={setSelectedCategoryId}>
-                                            <SelectTrigger className="w-full h-11 rounded-xl bg-card border-none shadow-sm">
+                                            <SelectTrigger allowViewer={true} className="w-full h-11 rounded-xl bg-card border-none shadow-sm">
                                                 <div className="flex items-center gap-2">
                                                     <Filter className="w-3.5 h-3.5 text-muted-foreground" />
                                                     <SelectValue />
@@ -356,6 +365,7 @@ export default function Storages() {
                                                 placeholder={t('products.searchPlaceholder', 'SKU or Name...')}
                                                 value={inventorySearch}
                                                 onChange={(e) => setInventorySearch(e.target.value)}
+                                                allowViewer={true}
                                                 className="pl-10 h-11 rounded-xl bg-card border-none shadow-sm focus-visible:ring-1 focus-visible:ring-primary/50"
                                             />
                                         </div>

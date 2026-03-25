@@ -234,7 +234,7 @@ export function Layout({ children }: LayoutProps) {
     const navigation: Array<{ name: string; href: string; icon: any; status?: string; alert?: boolean; children?: Array<{ name: string; href: string; icon?: any }> }> = [
         { name: t('nav.dashboard'), href: '/', icon: LayoutDashboard },
         // POS - requires feature flag AND role
-        ...((user?.role === 'admin' || user?.role === 'staff') && hasFeature('pos') ? [
+        ...((user?.role === 'admin' || user?.role === 'staff' || user?.role === 'viewer') && hasFeature('pos') ? [
             { name: t('nav.pos') || 'POS', href: '/pos', icon: CreditCard },
             {
                 name: t('nav.instantPos') || 'Instant POS',
@@ -247,24 +247,24 @@ export function Layout({ children }: LayoutProps) {
         ] : []),
         // Sales
         ...(hasFeature('sales_history') ? [{ name: t('nav.sales') || 'Sales', href: '/sales', icon: Receipt }] : []),
-        ...((user?.role === 'admin' || user?.role === 'staff') && hasFeature('crm') ? [
+        ...((user?.role === 'admin' || user?.role === 'staff' || user?.role === 'viewer') && hasFeature('crm') ? [
             { name: t('nav.customers') || 'Customers', href: '/customers', icon: Users },
             { name: t('nav.suppliers') || 'Suppliers', href: '/suppliers', icon: Truck },
             { name: t('nav.orders') || 'Orders', href: '/orders', icon: ShoppingCart }
         ] : []),
-        ...((user?.role === 'admin' || user?.role === 'staff') && hasFeature('travel_agency') ? [
+        ...((user?.role === 'admin' || user?.role === 'staff' || user?.role === 'viewer') && hasFeature('travel_agency') ? [
             { name: t('nav.travelAgency', { defaultValue: 'Travel Agency' }), href: '/travel-agency', icon: Plane }
         ] : []),
         ...(hasFeature('loans') ? [{ name: t('nav.loans') || 'Loans', href: '/loans', icon: HandCoins }] : []),
-        // Revenue - admin only
-        ...(user?.role === 'admin' ? [
+        // Revenue - allow all roles for the menu item if feature is on (restriction is handled in route/page)
+        ...((user?.role === 'admin' || user?.role === 'staff' || user?.role === 'viewer') ? [
             ...(hasFeature('net_revenue') ? [{ name: t('nav.revenue') || 'Net Revenue', href: '/revenue', icon: BarChart3 }] : []),
             ...(hasFeature('budget') ? [{ name: t('nav.budget') || 'Budget', href: '/budget', icon: Wallet }] : []),
             ...(hasFeature('monthly_comparison') ? [{ name: t('monthlyComparison.title'), href: '/monthly-comparison', icon: ArrowRightLeft }] : []),
             ...(hasFeature('team_performance') ? [{ name: t('nav.performance') || 'Team Performance', href: '/performance', icon: TrendingUp }] : [])
         ] : []),
         // WhatsApp - requires feature flag AND role AND desktop platform
-        ...((user?.role === 'admin' || user?.role === 'staff') && hasFeature('allow_whatsapp') && isDesktop() ? [
+        ...((user?.role === 'admin' || user?.role === 'staff' || user?.role === 'viewer') && hasFeature('allow_whatsapp') && isDesktop() ? [
             { name: t('nav.whatsapp'), href: '/whatsapp', icon: MessageSquare, status: whatsappStatus }
         ] : []),
         // Products
@@ -278,11 +278,11 @@ export function Layout({ children }: LayoutProps) {
             { name: t('nav.invoicesHistory') || 'Invoices History', href: '/invoices-history', icon: FileText }
         ] : []),
         // Admin/Staff routes
-        ...((user?.role === 'admin' || user?.role === 'staff') ? [
+        ...((user?.role === 'admin' || user?.role === 'staff' || user?.role === 'viewer') ? [
             ...(hasFeature('hr') ? [{ name: t('nav.hr') || 'HR', href: '/hr', icon: UsersRound }] : []),
             ...(hasFeature('members') ? [{ name: t('members.title'), href: '/members', icon: Users }] : []),
         ] : []),
-        ...((user?.role === 'admin' || user?.role === 'staff') ? [
+        ...((user?.role === 'admin' || user?.role === 'staff' || user?.role === 'viewer') ? [
             { name: t('nav.settings'), href: '/settings', icon: Settings }
         ] : []),
     ]
@@ -606,7 +606,7 @@ export function Layout({ children }: LayoutProps) {
                             })}
 
                             {/* Workspace Members Section */}
-                            {(user?.role === 'admin' || user?.role === 'staff') && (
+                            {(user?.role === 'admin' || user?.role === 'staff' || user?.role === 'viewer') && (
                                 <div className="pt-6 pb-2">
                                     {!(isMini && !mobileSidebarOpen) ? (
                                         <h2 className="px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">

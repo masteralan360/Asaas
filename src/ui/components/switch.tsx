@@ -4,11 +4,15 @@ import * as SwitchPrimitives from "@radix-ui/react-switch"
 import { cn } from "@/lib/utils"
 
 import { useTranslation } from "react-i18next"
+import { useAuth } from "@/auth"
 
 const Switch = React.forwardRef<
     React.ElementRef<typeof SwitchPrimitives.Root>,
-    React.ComponentPropsWithoutRef<typeof SwitchPrimitives.Root>
->(({ className, ...props }, ref) => {
+    React.ComponentPropsWithoutRef<typeof SwitchPrimitives.Root> & { allowViewer?: boolean }
+>(({ className, allowViewer = false, disabled, ...props }, ref) => {
+    const { user } = useAuth()
+    const isViewer = user?.role === 'viewer'
+    const effectiveDisabled = disabled || (isViewer && !allowViewer)
     const { i18n } = useTranslation()
     const dir = i18n.language === 'ar' || i18n.language === 'ku' ? 'rtl' : 'ltr'
     
@@ -20,6 +24,7 @@ const Switch = React.forwardRef<
                 className
             )}
             {...props}
+            disabled={effectiveDisabled}
             ref={ref}
         >
             <SwitchPrimitives.Thumb

@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react'
+import { useAuth } from '@/auth'
 import { useTranslation } from 'react-i18next'
 import { Plus, Search, Mail, Phone, Trash2, Edit, AlertTriangle, MessageCircle } from 'lucide-react'
 import { useLocation } from 'wouter'
@@ -28,6 +29,10 @@ const ROLE_HIERARCHY: Record<string, string[]> = {
 }
 
 export default function HR() {
+    const { user } = useAuth()
+    const canEdit = user?.role === 'admin' || user?.role === 'staff'
+    const canDelete = user?.role === 'admin' || user?.role === 'staff'
+
     const { t } = useTranslation()
     const { toast } = useToast()
     const { activeWorkspace, features } = useWorkspace()
@@ -205,10 +210,12 @@ export default function HR() {
                     <h1 className="text-2xl font-bold tracking-tight">{t('nav.hr', 'HR')}</h1>
                     <p className="text-muted-foreground">{t('hr.subtitle', 'Manage your team and payroll')}</p>
                 </div>
-                <Button onClick={() => setIsDialogOpen(true)} className="gap-2">
-                    <Plus className="w-4 h-4" />
-                    {t('hr.addEmployee', 'Add Employee')}
-                </Button>
+                {canEdit && (
+                    <Button onClick={() => setIsDialogOpen(true)} className="gap-2">
+                        <Plus className="w-4 h-4" />
+                        {t('hr.addEmployee', 'Add Employee')}
+                    </Button>
+                )}
             </div>
 
             <div className="relative">
@@ -217,6 +224,7 @@ export default function HR() {
                     placeholder={t('hr.searchPlaceholder', 'Search by name, role, or email...')}
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
+                    allowViewer={true}
                     className="pl-10"
                 />
             </div>
@@ -269,25 +277,40 @@ export default function HR() {
                                         )}
                                     </div>
                                 </div>
-                                <div className="flex items-center gap-1 transition-opacity">
-                                    <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        className={cn(employee.isFired ? "text-primary" : "text-destructive")}
-                                        onClick={() => handleFireClick(employee)}
-                                    >
-                                        <Plus className={cn("w-4 h-4", !employee.isFired && "rotate-45")} />
-                                    </Button>
-                                    <Button variant="ghost" size="icon" onClick={() => {
-                                        setEditingEmployee(employee)
-                                        setIsDialogOpen(true)
-                                    }}>
-                                        <Edit className="w-4 h-4" />
-                                    </Button>
-                                    <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" onClick={() => handleDeleteClick(employee)}>
-                                        <Trash2 className="w-4 h-4" />
-                                    </Button>
-                                </div>
+                                {canEdit && (
+                                    <div className="flex items-center gap-1 transition-opacity">
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className={cn(employee.isFired ? "text-primary" : "text-destructive")}
+                                            onClick={() => handleFireClick(employee)}
+                                            title={employee.isFired ? t('hr.rehire', 'Rehire') : t('hr.fire', 'Suspended / Fire')}
+                                        >
+                                            <Plus className={cn("w-4 h-4", !employee.isFired && "rotate-45")} />
+                                        </Button>
+                                        <Button 
+                                            variant="ghost" 
+                                            size="icon" 
+                                            onClick={() => {
+                                                setEditingEmployee(employee)
+                                                setIsDialogOpen(true)
+                                            }}
+                                            title={t('common.edit', 'Edit')}
+                                        >
+                                            <Edit className="w-4 h-4" />
+                                        </Button>
+                                        <Button 
+                                            variant="ghost" 
+                                            size="icon" 
+                                            className="text-destructive hover:text-destructive" 
+                                            onClick={() => handleDeleteClick(employee)}
+                                            title={t('common.delete', 'Delete')}
+                                            disabled={!canDelete}
+                                        >
+                                            <Trash2 className="w-4 h-4" />
+                                        </Button>
+                                    </div>
+                                )}
                             </div>
 
                             <div className="mt-6 space-y-3">
@@ -306,6 +329,7 @@ export default function HR() {
                                         <Button
                                             variant="ghost"
                                             size="icon"
+                                            allowViewer={true}
                                             className="h-6 w-6 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-500/10"
                                             onClick={(e) => {
                                                 e.stopPropagation()
