@@ -59,7 +59,7 @@ interface AdminWorkspace {
     name: string
     code: string
     created_at: string
-    data_mode: 'cloud' | 'local'
+    data_mode: 'cloud' | 'local' | 'hybrid'
     pos: boolean
     crm: boolean
     invoices_history: boolean
@@ -575,8 +575,8 @@ export function Admin() {
                                                             )}
                                                         </div>
                                                         <div className="mt-2 flex flex-wrap items-center gap-2">
-                                                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase border ${ws.data_mode === 'local' ? 'border-sky-500/20 bg-sky-500/10 text-sky-700' : 'border-emerald-500/20 bg-emerald-500/10 text-emerald-700'}`}>
-                                                                {ws.data_mode === 'local' ? 'Local' : 'Cloud'}
+                                                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase border ${ws.data_mode === 'local' ? 'border-sky-500/20 bg-sky-500/10 text-sky-700' : ws.data_mode === 'hybrid' ? 'border-amber-500/20 bg-amber-500/10 text-amber-700' : 'border-emerald-500/20 bg-emerald-500/10 text-emerald-700'}`}>
+                                                                {ws.data_mode === 'local' ? 'Local' : ws.data_mode === 'hybrid' ? 'Hybrid' : 'Cloud'}
                                                             </span>
                                                         </div>
                                                         <div className="text-xs text-muted-foreground flex items-center gap-1 mt-1">

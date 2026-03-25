@@ -6,7 +6,7 @@ export type SyncStatus = 'pending' | 'synced' | 'conflict'
 export type UserRole = 'admin' | 'staff' | 'viewer'
 
 export type CurrencyCode = 'usd' | 'eur' | 'iqd' | 'try'
-export type WorkspaceDataMode = 'cloud' | 'local'
+export type WorkspaceDataMode = 'cloud' | 'local' | 'hybrid'
 
 export type PaymentMethod = 'cash' | 'fib' | 'qicard' | 'zaincash' | 'fastpay' | 'loan'
 export type LoanPaymentMethod = PaymentMethod | 'loan_adjustment'

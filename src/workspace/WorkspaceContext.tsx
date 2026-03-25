@@ -9,7 +9,7 @@ import type {
 } from '@/local-db/models'
 import { db } from '@/local-db/database'
 import { addToOfflineMutations } from '@/local-db/hooks'
-import { hydrateLocalModeCacheFromSqlite } from '@/local-db/localModeSqlite'
+import { hydrateLocalModeCacheFromSqlite, clearWorkspaceSqliteData } from '@/local-db/localModeSqlite'
 import { isMobile } from '@/lib/platform'
 import { connectionManager } from '@/lib/connectionManager'
 import {
@@ -18,7 +18,7 @@ import {
     type WorkspaceCacheSnapshot
 } from './workspaceCache'
 import { writeWorkspaceModeSnapshot } from './workspaceMode'
-import { runSupabaseAction } from '@/lib/supabaseRequest'
+import { runSupabaseAction, normalizeSupabaseActionError } from '@/lib/supabaseRequest'
 
 export type ModuleFeatureKey =
     | 'pos'
@@ -95,9 +95,11 @@ interface WorkspaceContextType {
     isLocked: boolean
     isLocalMode: boolean
     isCloudMode: boolean
+    isHybridMode: boolean
     hasFeature: (feature: ModuleFeatureKey) => boolean
     refreshFeatures: () => Promise<void>
     updateSettings: (settings: Partial<Pick<WorkspaceFeatures, 'default_currency' | 'iqd_display_preference' | 'eur_conversion_enabled' | 'try_conversion_enabled' | 'allow_whatsapp' | 'kds_enabled' | 'logo_url' | 'coordination' | 'print_lang' | 'print_qr' | 'receipt_template' | 'a4_template' | 'print_quality' | 'thermal_printing'>> & { name?: string }) => Promise<void>
+    switchDataMode: (newMode: 'cloud' | 'hybrid') => Promise<{ error: string | null }>
     activeWorkspace: { id: string } | undefined
 }
 
@@ -310,7 +312,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             updatedAt: timestamp
         })
 
-        if (nextFeatures.data_mode === 'local') {
+        if (nextFeatures.data_mode === 'local' || nextFeatures.data_mode === 'hybrid') {
             await hydrateLocalModeCacheFromSqlite(db, workspaceId)
         }
     }
@@ -713,6 +715,63 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         }
     }
 
+    const switchDataMode = async (newMode: 'cloud' | 'hybrid'): Promise<{ error: string | null }> => {
+        const workspaceId = user?.workspaceId
+        if (!workspaceId) return { error: 'No workspace' }
+
+        const currentMode = featuresRef.current.data_mode
+        if (currentMode === 'local') return { error: 'Cannot switch from local mode' }
+        if (currentMode === newMode) return { error: null }
+
+        try {
+            const { error: rpcError } = await runSupabaseAction(
+                'workspace.switchDataMode',
+                () => supabase.rpc('switch_workspace_data_mode', {
+                    p_new_mode: newMode
+                })
+            )
+
+            if (rpcError) {
+                const normalized = normalizeSupabaseActionError(rpcError)
+                return { error: normalized.message }
+            }
+
+            // Update local state
+            const updatedFeatures = { ...featuresRef.current, data_mode: newMode }
+            setFeatures(updatedFeatures)
+            writeWorkspaceCache({
+                workspaceId,
+                features: updatedFeatures,
+                workspaceName: workspaceNameRef.current ?? user?.workspaceName ?? 'My Workspace'
+            })
+
+            // Update workspace mode snapshot
+            writeWorkspaceModeSnapshot({
+                workspaceId,
+                dataMode: newMode
+            })
+
+            // Update Dexie workspace record
+            await db.workspaces.update(workspaceId, { data_mode: newMode })
+
+            // Update auth user mode
+            updateUser({ workspaceMode: newMode })
+
+            if (newMode === 'hybrid') {
+                // Cloud → Hybrid: start mirroring by hydrating SQLite from Dexie cache
+                await hydrateLocalModeCacheFromSqlite(db, workspaceId)
+            } else {
+                // Hybrid → Cloud: abandon SQLite data
+                await clearWorkspaceSqliteData(workspaceId)
+            }
+
+            return { error: null }
+        } catch (err) {
+            const normalized = normalizeSupabaseActionError(err)
+            return { error: normalized.message }
+        }
+    }
+
     useEffect(() => {
         if (!user?.workspaceId) {
             return
@@ -729,6 +788,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 
     const isLocalMode = features.data_mode === 'local'
     const isCloudMode = features.data_mode === 'cloud'
+    const isHybridMode = features.data_mode === 'hybrid'
     const isLocked = features.locked_workspace
         || (features.subscription_expires_at ? new Date(features.subscription_expires_at) < new Date() : false)
 
@@ -742,10 +802,12 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             isLocked,
             isLocalMode,
             isCloudMode,
+            isHybridMode,
             hasFeature,
             isFullscreen,
             refreshFeatures,
             updateSettings,
+            switchDataMode,
             activeWorkspace: user?.workspaceId ? { id: user.workspaceId } : undefined
         }}>
             {children}

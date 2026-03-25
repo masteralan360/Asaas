@@ -326,12 +326,15 @@ export function WorkspaceConfiguration() {
                                 <SelectContent>
                                     <SelectItem value="cloud">{t('workspaceConfig.mode.cloud') || 'Cloud Mode'}</SelectItem>
                                     <SelectItem value="local">{t('workspaceConfig.mode.local') || 'Local Mode'}</SelectItem>
+                                    <SelectItem value="hybrid">{t('workspaceConfig.mode.hybrid') || 'Hybrid Mode'}</SelectItem>
                                 </SelectContent>
                             </Select>
                             <p className="text-xs text-muted-foreground">
                                 {dataMode === 'local'
                                     ? (t('workspaceConfig.mode.localHint') || 'Local Mode keeps business data on the device and does not use cloud business-data sync.')
-                                    : (t('workspaceConfig.mode.cloudHint') || 'Cloud Mode keeps business data in the cloud and uses the existing sync flow.')}
+                                    : dataMode === 'hybrid'
+                                        ? (t('workspaceConfig.mode.hybridHint') || 'Hybrid Mode keeps business data in the cloud (source of truth) and also saves a local backup to the device for offline access.')
+                                        : (t('workspaceConfig.mode.cloudHint') || 'Cloud Mode keeps business data in the cloud and uses the existing sync flow.')}
                             </p>
                         </div>
 

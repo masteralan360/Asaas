@@ -1,7 +1,7 @@
 import type Dexie from 'dexie'
 
 import { isTauri } from '@/lib/platform'
-import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
+import { shouldMirrorToSqlite } from '@/workspace/workspaceMode'
 
 const LOCAL_MODE_SQLITE_PATH = 'sqlite:atlas-local-mode.db'
 
@@ -319,8 +319,8 @@ async function persistEntity(
 
     const workspaceId = await resolveWorkspaceId(cacheDb, tableName, row)
     const shouldPersist = tableName === 'workspaces'
-        ? row.data_mode === 'local' || (workspaceId ? isLocalWorkspaceMode(workspaceId) : false)
-        : (workspaceId ? isLocalWorkspaceMode(workspaceId) : false)
+        ? row.data_mode === 'local' || row.data_mode === 'hybrid' || (workspaceId ? shouldMirrorToSqlite(workspaceId) : false)
+        : (workspaceId ? shouldMirrorToSqlite(workspaceId) : false)
 
     if (!shouldPersist) {
         return
@@ -361,8 +361,8 @@ async function deleteEntity(
 
     const workspaceId = await resolveWorkspaceId(cacheDb, tableName, row)
     const shouldDelete = tableName === 'workspaces'
-        ? row.data_mode === 'local' || (workspaceId ? isLocalWorkspaceMode(workspaceId) : false)
-        : (workspaceId ? isLocalWorkspaceMode(workspaceId) : false)
+        ? row.data_mode === 'local' || row.data_mode === 'hybrid' || (workspaceId ? shouldMirrorToSqlite(workspaceId) : false)
+        : (workspaceId ? shouldMirrorToSqlite(workspaceId) : false)
 
     if (!shouldDelete) {
         return
@@ -386,7 +386,7 @@ export async function hydrateLocalModeCacheFromSqlite(
     cacheDb: Dexie,
     workspaceId?: string | null
 ) {
-    if (!workspaceId || !isLocalWorkspaceMode(workspaceId) || !isSupported()) {
+    if (!workspaceId || !shouldMirrorToSqlite(workspaceId) || !isSupported()) {
         return
     }
 
@@ -476,4 +476,27 @@ export function queueLocalModeSqliteDelete(
     }
 
     void enqueueWrite(() => deleteEntity(cacheDb, tableName, row))
+}
+
+export async function clearWorkspaceSqliteData(workspaceId: string) {
+    if (!isSupported()) {
+        return
+    }
+
+    const connection = await ensureConnection()
+    if (!connection) {
+        return
+    }
+
+    await connection.execute(
+        `
+            DELETE FROM local_entities
+            WHERE workspace_id = $1
+               OR (entity_type = 'workspaces' AND entity_id = $1)
+        `,
+        [workspaceId]
+    )
+
+    hydratedWorkspaces.delete(workspaceId)
+    console.log(`[LocalModeSQLite] Cleared all SQLite data for workspace ${workspaceId}`)
 }
