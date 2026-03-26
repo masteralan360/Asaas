@@ -1,18 +1,21 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Users, X } from 'lucide-react'
+
 import { useAuth } from '@/auth'
-import { createManualLoan, type CurrencyCode, type InstallmentFrequency } from '@/local-db'
+import { createManualLoan, type CurrencyCode, type LoanDirection } from '@/local-db'
+import { getLoanCounterpartyNameLabel, getLoanDirectionLabel } from '@/lib/loanPresentation'
 import { getLoanLinkedPartyTypeLabel, type LoanPartySelection } from '@/lib/loanParties'
 import {
+    Button,
     Dialog,
     DialogContent,
+    DialogDescription,
+    DialogFooter,
     DialogHeader,
     DialogTitle,
-    DialogFooter,
     Input,
     Label,
-    Button,
     Select,
     SelectContent,
     SelectItem,
@@ -23,7 +26,7 @@ import {
 import { useWorkspace } from '@/workspace'
 import { LoanPartyPickerDialog } from './LoanPartyPickerDialog'
 
-interface CreateManualLoanModalProps {
+interface CreateSimpleLoanModalProps {
     isOpen: boolean
     onOpenChange: (open: boolean) => void
     workspaceId: string
@@ -31,18 +34,19 @@ interface CreateManualLoanModalProps {
     onCreated?: (loanId: string) => void
 }
 
-export function CreateManualLoanModal({
+export function CreateSimpleLoanModal({
     isOpen,
     onOpenChange,
     workspaceId,
     settlementCurrency,
     onCreated
-}: CreateManualLoanModalProps) {
+}: CreateSimpleLoanModalProps) {
     const { t } = useTranslation()
     const { toast } = useToast()
     const { user } = useAuth()
     const { features } = useWorkspace()
     const [isSaving, setIsSaving] = useState(false)
+    const [direction, setDirection] = useState<LoanDirection>('lent')
     const [selectedCurrency, setSelectedCurrency] = useState<CurrencyCode>(settlementCurrency)
     const [borrowerName, setBorrowerName] = useState('')
     const [borrowerPhone, setBorrowerPhone] = useState('')
@@ -51,13 +55,14 @@ export function CreateManualLoanModal({
     const [selectedParty, setSelectedParty] = useState<LoanPartySelection | null>(null)
     const [isPartyPickerOpen, setIsPartyPickerOpen] = useState(false)
     const [principalAmount, setPrincipalAmount] = useState('')
-    const [installmentCount, setInstallmentCount] = useState(1)
-    const [installmentFrequency, setInstallmentFrequency] = useState<InstallmentFrequency>('monthly')
-    const [firstDueDate, setFirstDueDate] = useState(new Date().toISOString().slice(0, 10))
+    const [dueDate, setDueDate] = useState(new Date().toISOString().slice(0, 10))
     const [notes, setNotes] = useState('')
 
     useEffect(() => {
         if (!isOpen) return
+
+        setIsSaving(false)
+        setDirection('lent')
         setSelectedCurrency(settlementCurrency)
         setBorrowerName('')
         setBorrowerPhone('')
@@ -66,19 +71,16 @@ export function CreateManualLoanModal({
         setSelectedParty(null)
         setIsPartyPickerOpen(false)
         setPrincipalAmount('')
-        setInstallmentCount(1)
-        setInstallmentFrequency('monthly')
-        setFirstDueDate(new Date().toISOString().slice(0, 10))
+        setDueDate(new Date().toISOString().slice(0, 10))
         setNotes('')
-    }, [isOpen, settlementCurrency])
+    }, [isOpen])
 
-    const canSubmit = borrowerName.trim() &&
-        borrowerPhone.trim() &&
-        borrowerAddress.trim() &&
-        borrowerNationalId.trim() &&
-        Number(principalAmount) > 0 &&
-        installmentCount > 0 &&
-        firstDueDate
+    const canSubmit = borrowerName.trim() && Number(principalAmount) > 0 && dueDate
+
+    const counterpartyNameLabel = useMemo(
+        () => getLoanCounterpartyNameLabel({ loanCategory: 'simple', direction }, t),
+        [direction, t]
+    )
     const availableCurrencies = useMemo(() => {
         const currencies: CurrencyCode[] = Array.from(new Set([settlementCurrency, 'usd', 'iqd'])) as CurrencyCode[]
         if (features.eur_conversion_enabled && !currencies.includes('eur')) currencies.push('eur')
@@ -96,10 +98,13 @@ export function CreateManualLoanModal({
 
     const handleCreate = async () => {
         if (!canSubmit || isSaving) return
+
         setIsSaving(true)
         try {
             const result = await createManualLoan(workspaceId, {
                 saleId: null,
+                loanCategory: 'simple',
+                direction,
                 linkedPartyType: selectedParty?.linkedPartyType || null,
                 linkedPartyId: selectedParty?.linkedPartyId || null,
                 linkedPartyName: selectedParty?.linkedPartyName || null,
@@ -109,9 +114,9 @@ export function CreateManualLoanModal({
                 borrowerNationalId: borrowerNationalId.trim(),
                 principalAmount: Number(principalAmount),
                 settlementCurrency: selectedCurrency,
-                installmentCount,
-                installmentFrequency,
-                firstDueDate,
+                installmentCount: 1,
+                installmentFrequency: 'monthly',
+                firstDueDate: dueDate,
                 notes: notes.trim() || undefined,
                 createdBy: user?.id
             })
@@ -137,12 +142,45 @@ export function CreateManualLoanModal({
         <Dialog open={isOpen} onOpenChange={onOpenChange}>
             <DialogContent className="sm:max-w-2xl">
                 <DialogHeader>
-                    <DialogTitle>{t('loans.createManualLoan') || 'Create Manual Loan'}</DialogTitle>
+                    <DialogTitle>{t('loans.createSimpleLoan', { defaultValue: 'Create Simple Loan' })}</DialogTitle>
+                    <DialogDescription>
+                        {t('loans.simpleLoanDescription', { defaultValue: 'Add a manual lending or borrowing entry and optionally link it to a business partner.' })}
+                    </DialogDescription>
                 </DialogHeader>
 
                 <div className="grid gap-4">
+                    <div className="grid gap-2 md:grid-cols-2">
+                        <div className="grid gap-2">
+                            <Label>{t('loans.direction', { defaultValue: 'Direction' })}</Label>
+                            <Select value={direction} onValueChange={(value: LoanDirection) => setDirection(value)}>
+                                <SelectTrigger>
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="lent">{getLoanDirectionLabel('lent', t)}</SelectItem>
+                                    <SelectItem value="borrowed">{getLoanDirectionLabel('borrowed', t)}</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="grid gap-2">
+                            <Label>{t('loans.currencyHint', { defaultValue: 'Settlement Currency' })}</Label>
+                            <Select value={selectedCurrency} onValueChange={(value: CurrencyCode) => setSelectedCurrency(value)}>
+                                <SelectTrigger>
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {availableCurrencies.map((currency) => (
+                                        <SelectItem key={currency} value={currency}>
+                                            {currency.toUpperCase()}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    </div>
+
                     <div className="grid gap-2">
-                        <Label>{t('loans.borrowerName') || 'Borrower Name'}</Label>
+                        <Label>{counterpartyNameLabel}</Label>
                         <div className="flex items-center gap-2">
                             <Input value={borrowerName} onChange={e => setBorrowerName(e.target.value)} className="flex-1" />
                             <Button type="button" variant="outline" className="shrink-0 gap-2" onClick={() => setIsPartyPickerOpen(true)}>
@@ -174,25 +212,25 @@ export function CreateManualLoanModal({
                         ) : null}
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                         <div className="grid gap-2">
-                            <Label>{t('loans.borrowerPhone') || 'Borrower Phone'}</Label>
+                            <Label>{t('loans.contactPhone', { defaultValue: 'Phone' })}</Label>
                             <Input value={borrowerPhone} onChange={e => setBorrowerPhone(e.target.value)} />
                         </div>
                         <div className="grid gap-2">
-                            <Label>{t('loans.borrowerNationalId') || 'Borrower National ID'}</Label>
+                            <Label>{t('loans.referenceId', { defaultValue: 'Reference / ID' })}</Label>
                             <Input value={borrowerNationalId} onChange={e => setBorrowerNationalId(e.target.value)} />
                         </div>
                     </div>
 
                     <div className="grid gap-2">
-                        <Label>{t('loans.borrowerAddress') || 'Borrower Address'}</Label>
+                        <Label>{t('loans.contactAddress', { defaultValue: 'Address' })}</Label>
                         <Input value={borrowerAddress} onChange={e => setBorrowerAddress(e.target.value)} />
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                         <div className="grid gap-2">
-                            <Label>{t('loans.principal') || 'Principal'}</Label>
+                            <Label>{t('loans.principal', { defaultValue: 'Principal' })}</Label>
                             <Input
                                 type="number"
                                 min={0}
@@ -201,46 +239,13 @@ export function CreateManualLoanModal({
                             />
                         </div>
                         <div className="grid gap-2">
-                            <Label>{t('loans.currencyHint') || 'Settlement Currency'}</Label>
-                            <Select value={selectedCurrency} onValueChange={(value: CurrencyCode) => setSelectedCurrency(value)}>
-                                <SelectTrigger><SelectValue /></SelectTrigger>
-                                <SelectContent>
-                                    {availableCurrencies.map((currency) => (
-                                        <SelectItem key={currency} value={currency}>
-                                            {currency.toUpperCase()}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
-                        <div className="grid gap-2">
-                            <Label>{t('loans.installmentCount') || 'Installments'}</Label>
-                            <Input
-                                type="number"
-                                min={1}
-                                value={installmentCount}
-                                onChange={e => setInstallmentCount(Math.max(1, Number(e.target.value || 1)))}
-                            />
-                        </div>
-                        <div className="grid gap-2">
-                            <Label>{t('loans.frequency') || 'Frequency'}</Label>
-                            <Select value={installmentFrequency} onValueChange={(value: InstallmentFrequency) => setInstallmentFrequency(value)}>
-                                <SelectTrigger><SelectValue /></SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="weekly">{t('loans.frequencies.weekly') || 'Weekly'}</SelectItem>
-                                    <SelectItem value="biweekly">{t('loans.frequencies.biweekly') || 'Biweekly'}</SelectItem>
-                                    <SelectItem value="monthly">{t('loans.frequencies.monthly') || 'Monthly'}</SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
-                        <div className="grid gap-2">
-                            <Label>{t('loans.firstDueDate') || 'First Due Date'}</Label>
-                            <Input type="date" value={firstDueDate} onChange={e => setFirstDueDate(e.target.value)} />
+                            <Label>{t('loans.dueDate', { defaultValue: 'Due Date' })}</Label>
+                            <Input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} />
                         </div>
                     </div>
 
                     <div className="grid gap-2">
-                        <Label>{t('loans.notes') || 'Notes'}</Label>
+                        <Label>{t('loans.notes', { defaultValue: 'Notes' })}</Label>
                         <Input value={notes} onChange={e => setNotes(e.target.value)} />
                     </div>
                 </div>

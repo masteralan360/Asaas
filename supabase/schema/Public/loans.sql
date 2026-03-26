@@ -4,6 +4,8 @@ CREATE TABLE public.loans (
   sale_id uuid NULL,
   loan_no text NOT NULL,
   source text NOT NULL,
+  loan_category text NOT NULL DEFAULT 'standard'::text,
+  direction text NOT NULL DEFAULT 'lent'::text,
   linked_party_type text NULL,
   linked_party_id uuid NULL,
   linked_party_name text NULL,
@@ -28,6 +30,12 @@ CREATE TABLE public.loans (
   is_deleted boolean NOT NULL DEFAULT false,
   overdue_reminder_snoozed_at timestamp with time zone NULL,
   overdue_reminder_snoozed_for_due_date date NULL,
+  CONSTRAINT loans_category_check CHECK (
+    loan_category IN ('standard', 'simple')
+  ),
+  CONSTRAINT loans_direction_check CHECK (
+    direction IN ('lent', 'borrowed')
+  ),
   CONSTRAINT loans_linked_party_type_check CHECK (
     linked_party_type IS NULL
     OR linked_party_type = 'business_partner'::text
@@ -49,4 +57,8 @@ CREATE TABLE public.loans (
 
 CREATE INDEX IF NOT EXISTS idx_loans_workspace_linked_party
   ON public.loans (workspace_id, linked_party_type, linked_party_id)
+  WHERE is_deleted = false;
+
+CREATE INDEX IF NOT EXISTS idx_loans_workspace_category_direction
+  ON public.loans (workspace_id, loan_category, direction)
   WHERE is_deleted = false;

@@ -1245,16 +1245,27 @@
             "grid": "تۆڕی قەرزەکان"
         },
         "searchPlaceholder": "گەڕان بەپێی ناوی قەرزدار یان ژمارەی قەرز...",
+        "simpleSearchPlaceholder": "گەڕان بە ناوی لایەنی بەرامبەر، هاوبەش، یان ژمارەی قەرز...",
         "registerFromPos": "تۆمارکردنی قەرز",
         "createManualLoan": "دروستکردنی قەرزی دەستی",
+        "createSimpleLoan": "دروستکردنی قەرزی ئاسان",
+        "simpleTab": "قەرزە ئاسانەکان",
+        "simpleLoanDescription": "تۆمارێکی دەستی بۆ قەرزی دراو یان وەرگیراو زیاد بکە و بە هەڵبژاردن بیبەستەوە بە هاوبەشی بازرگانی.",
         "confirmDelete": "سڕینەوەی قەرز",
         "deleteWarning": "سڕینەوەی ئەم قەرزە بە یەکجاری قەرزەکە، خشتەی قیستەکانی و مێژووی پارەدانەکانی دەسڕێتەوە. ئەمە پاشگەزبوونەوەی تێدا نییە.",
         "borrowerIdentity": "ناسنامەی قەرزدار",
         "borrower": "قەرزدار",
         "borrowerName": "ناوی قەرزدار",
+        "counterparty": "لایەنی بەرامبەر",
+        "lender": "قەرزپێدەر",
+        "lenderName": "ناوی قەرزپێدەر",
+        "lenderIdentity": "ناسنامەی قەرزپێدەر",
         "borrowerPhone": "تەلەفۆنی قەرزدار",
         "borrowerAddress": "ناونیشانی قەرزدار",
         "borrowerNationalId": "ناسنامەی نیشتمانی قەرزدار",
+        "contactPhone": "تەلەفۆن",
+        "contactAddress": "ناونیشان",
+        "referenceId": "سەرچاوە / ناسنامە",
         "principal": "قەرز",
         "paid": "پارەدراو",
         "balance": "ماوە",
@@ -1266,8 +1277,11 @@
         "totalOutstanding": "کۆی ماوە",
         "loanNo": "ژمارەی قەرز",
         "source": "سەرچاوە",
+        "direction": "ئاراستە",
         "status": "دۆخ",
         "recordPayment": "تۆمارکردنی پارەدان",
+        "recordRepayment": "تۆمارکردنی پارەدانەوە",
+        "recordCollection": "تۆمارکردنی وەرگرتن",
         "paymentAmount": "بڕی پارەدان",
         "adjustment": "ڕێکخستنی قەرز",
         "notes": "تێبینییەکان",
@@ -1286,6 +1300,10 @@
         "recentActivity": "کۆتا چالاکی",
         "currencyHint": "دراوی یەکلاکردنەوە",
         "pay": "پارەدان",
+        "totalLent": "کۆی قەرزی دراو",
+        "totalBorrowed": "کۆی قەرزی وەرگیراو",
+        "activeEntries": "تۆمارە چالاکەکان",
+        "settledEntries": "تۆمارە یەکلاکراوەکان",
         "snoozedItems": "بیرخستنەوە دواخراوەکانی قەرز",
         "snoozedItemsDesc": "ئەم بیرخستنەوە بەسەرچووانەی قەرز دواخراون تا کاتێک دووبارە دەیانکەیتەوە.",
         "snoozedAt": "دواخراوە لە",
@@ -1295,6 +1313,10 @@
             "weekly": "هەفتانە",
             "biweekly": "دوو هەفتە جارێک",
             "monthly": "مانگانە"
+        },
+        "directions": {
+            "lent": "دراو",
+            "borrowed": "وەرگیراو"
         },
         "filters": {
             "all": "هەموو",
@@ -1315,7 +1337,10 @@
         },
         "activities": {
             "paymentReceived": "پارەدان وەرگیرا",
-            "loanDisbursed": "قەرز درا"
+            "paymentMade": "پارەدانەوە کرا",
+            "loanDisbursed": "قەرز درا",
+            "amountLent": "بڕی قەرزی دراو",
+            "amountBorrowed": "بڕی قەرزی وەرگیراو"
         },
         "reminder": {
             "title": "پارەدانی قەرزی بەسەرچوو",

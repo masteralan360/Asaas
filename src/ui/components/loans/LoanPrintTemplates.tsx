@@ -1,5 +1,13 @@
 import { Loan, LoanInstallment, LoanPayment, type IQDDisplayPreference } from '@/local-db'
 import { getLoanLinkedPartySummary } from '@/lib/loanParties'
+import {
+    getLoanCounterpartyLabel,
+    getLoanDirection,
+    getLoanDirectionLabel,
+    getLoanIdentityTitle,
+    getLoanPaymentActivityLabel,
+    isSimpleLoan
+} from '@/lib/loanPresentation'
 import { formatCurrency, formatDate, formatDateTime } from '@/lib/utils'
 import { platformService } from '@/services/platformService'
 import { useTranslation } from 'react-i18next'
@@ -151,6 +159,9 @@ export function LoanListPrintTemplate({
 }: LoanListPrintTemplateProps) {
     const { i18n } = useTranslation()
     const t = i18n.getFixedT(printLang)
+    const counterpartyColumnLabel = loans.some((loan) => isSimpleLoan(loan))
+        ? (t('loans.counterparty') || 'Counterparty')
+        : (t('loans.borrower') || 'Borrower')
 
     return (
         <div
@@ -201,7 +212,7 @@ export function LoanListPrintTemplate({
                 <thead>
                     <tr className="bg-slate-100">
                         <th className="border border-slate-300 p-2 text-start">{t('loans.loanNo') || 'Loan No.'}</th>
-                        <th className="border border-slate-300 p-2 text-start">{t('loans.borrower') || 'Borrower'}</th>
+                        <th className="border border-slate-300 p-2 text-start">{counterpartyColumnLabel}</th>
                         <th className="border border-slate-300 p-2 text-end">{t('loans.principal') || 'Principal'}</th>
                         <th className="border border-slate-300 p-2 text-end">{t('loans.paid') || 'Paid'}</th>
                         <th className="border border-slate-300 p-2 text-end">{t('loans.balance') || 'Balance'}</th>
@@ -223,6 +234,11 @@ export function LoanListPrintTemplate({
                             </td>
                             <td className="border border-slate-300 p-2">
                                 <p className="font-medium">{loan.borrowerName}</p>
+                                {isSimpleLoan(loan) ? (
+                                    <p className="text-[10px] font-semibold text-slate-600">
+                                        {getLoanDirectionLabel(getLoanDirection(loan), t)}
+                                    </p>
+                                ) : null}
                                 {getLoanLinkedPartySummary(loan, t) ? (
                                     <p className="text-[10px] font-medium text-slate-600">{getLoanLinkedPartySummary(loan, t)}</p>
                                 ) : null}
@@ -289,9 +305,12 @@ export function LoanDetailsPrintTemplate({
 
             <div className="grid grid-cols-2 gap-4 mb-4 text-xs text-center">
                 <div className="border border-slate-300 rounded-md p-3">
-                    <h2 className="font-semibold mb-2">{t('loans.borrowerIdentity') || 'Borrower Identity'}</h2>
+                    <h2 className="font-semibold mb-2">{getLoanIdentityTitle(loan, t)}</h2>
                     {getLoanLinkedPartySummary(loan, t) ? (
                         <p className="mb-1 text-slate-600">{getLoanLinkedPartySummary(loan, t)}</p>
+                    ) : null}
+                    {isSimpleLoan(loan) ? (
+                        <p className="mb-1 font-semibold text-slate-700">{getLoanDirectionLabel(getLoanDirection(loan), t)}</p>
                     ) : null}
                     <p>{loan.borrowerName}</p>
                     <p>{loan.borrowerPhone}</p>
@@ -364,7 +383,7 @@ export function LoanDetailsPrintTemplate({
                             <tr key={payment.id}>
                                 <td className="border border-slate-300 p-2">{formatDate(payment.paidAt)}</td>
                                 <td className="border border-slate-300 p-2">
-                                    {t('loans.activities.paymentReceived') || 'Payment Received'}
+                                    {getLoanPaymentActivityLabel(loan, t)}
                                 </td>
                                 <td className="border border-slate-300 p-2">
                                     {t(`pos.${payment.paymentMethod}`) || payment.paymentMethod}
@@ -457,9 +476,12 @@ export function LoanReceiptPrintTemplate({
             </div>
 
             <div className="border-b border-gray-200 pb-3 mb-3 text-xs">
-                <div className="font-semibold text-[10px] text-gray-500 mb-1">{t('loans.borrower') || 'Borrower'}</div>
+                <div className="font-semibold text-[10px] text-gray-500 mb-1">{getLoanCounterpartyLabel(loan, t)}</div>
                 {getLoanLinkedPartySummary(loan, t) ? (
                     <div className="text-[10px] font-semibold text-primary mb-1">{getLoanLinkedPartySummary(loan, t)}</div>
+                ) : null}
+                {isSimpleLoan(loan) ? (
+                    <div className="text-[10px] font-semibold text-slate-600 mb-1">{getLoanDirectionLabel(getLoanDirection(loan), t)}</div>
                 ) : null}
                 <div className="font-bold text-sm">{loan.borrowerName}</div>
                 <div className="text-[10px] text-gray-500">{loan.borrowerPhone}</div>

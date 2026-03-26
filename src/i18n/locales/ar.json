@@ -1244,16 +1244,27 @@
             "grid": "شبكة القروض"
         },
         "searchPlaceholder": "البحث باسم المقترض أو رقم القرض...",
+        "simpleSearchPlaceholder": "ابحث باسم الطرف أو الشريك أو رقم القرض...",
         "registerFromPos": "تسجيل قرض",
         "createManualLoan": "إنشاء قرض يدوي",
+        "createSimpleLoan": "إنشاء قرض بسيط",
+        "simpleTab": "القروض البسيطة",
+        "simpleLoanDescription": "أضف قيد إقراض أو اقتراض يدوي مع إمكانية ربطه بشريك أعمال.",
         "confirmDelete": "حذف القرض",
         "deleteWarning": "سيؤدي حذف هذا القرض إلى إزالة القرض وجدول أقساطه وسجل مدفوعاته بشكل دائم. لا يمكن التراجع عن هذا.",
         "borrowerIdentity": "هوية المقترض",
         "borrower": "المقترض",
         "borrowerName": "اسم المقترض",
+        "counterparty": "الطرف المقابل",
+        "lender": "المُقرض",
+        "lenderName": "اسم المُقرض",
+        "lenderIdentity": "بيانات المُقرض",
         "borrowerPhone": "هاتف المقترض",
         "borrowerAddress": "عنوان المقترض",
         "borrowerNationalId": "الرقم الوطني للمقترض",
+        "contactPhone": "الهاتف",
+        "contactAddress": "العنوان",
+        "referenceId": "المرجع / الهوية",
         "principal": "أصل القرض",
         "paid": "المدفوع",
         "balance": "الرصيد",
@@ -1265,8 +1276,11 @@
         "totalOutstanding": "إجمالي المستحق",
         "loanNo": "رقم القرض",
         "source": "المصدر",
+        "direction": "الاتجاه",
         "status": "الحالة",
         "recordPayment": "تسجيل دفعة",
+        "recordRepayment": "تسجيل سداد",
+        "recordCollection": "تسجيل تحصيل",
         "paymentAmount": "مبلغ الدفعة",
         "adjustment": "تسوية القرض",
         "notes": "ملاحظات",
@@ -1285,6 +1299,10 @@
         "recentActivity": "النشاط الأخير",
         "currencyHint": "عملة التسوية",
         "pay": "دفع",
+        "totalLent": "إجمالي المبالغ المُقرضة",
+        "totalBorrowed": "إجمالي المبالغ المُقترضة",
+        "activeEntries": "القيود النشطة",
+        "settledEntries": "القيود المسواة",
         "snoozedItems": "تذكيرات القروض المؤجلة",
         "snoozedItemsDesc": "يتم تأجيل تذكيرات القروض المتأخرة هذه حتى تفتحها مرة أخرى.",
         "snoozedAt": "تم التأجيل في",
@@ -1294,6 +1312,10 @@
             "weekly": "أسبوعياً",
             "biweekly": "كل أسبوعين",
             "monthly": "شهرياً"
+        },
+        "directions": {
+            "lent": "إقراض",
+            "borrowed": "اقتراض"
         },
         "filters": {
             "all": "الكل",
@@ -1314,7 +1336,10 @@
         },
         "activities": {
             "paymentReceived": "تم استلام الدفعة",
-            "loanDisbursed": "تم صرف القرض"
+            "paymentMade": "تم السداد",
+            "loanDisbursed": "تم صرف القرض",
+            "amountLent": "تم إقراض المبلغ",
+            "amountBorrowed": "تم اقتراض المبلغ"
         },
         "reminder": {
             "title": "دفعة قرض متأخرة",

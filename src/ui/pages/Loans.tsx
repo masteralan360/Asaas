@@ -16,6 +16,12 @@ import {
 } from '@/local-db'
 import { useWorkspace } from '@/workspace'
 import { getLoanLinkedPartySummary } from '@/lib/loanParties'
+import {
+    getLoanDisbursementActivityLabel,
+    getLoanIdentityTitle,
+    getLoanPaymentActivityLabel,
+    getLoanRecordPaymentLabel
+} from '@/lib/loanPresentation'
 import { setPendingSaleDetailsId } from '@/lib/saleNavigation'
 import { formatCurrency, formatDate, cn, formatLoanDetailsForWhatsApp } from '@/lib/utils'
 import { WhatsAppNumberInputModal } from '@/ui/components/modals/WhatsAppNumberInputModal'
@@ -34,6 +40,10 @@ import {
     TableHead,
     TableHeader,
     TableRow,
+    Tabs,
+    TabsContent,
+    TabsList,
+    TabsTrigger,
     AppPagination,
     DeleteConfirmationModal,
     PrintPreviewModal,
@@ -44,9 +54,11 @@ import { CreateManualLoanModal } from '@/ui/components/loans/CreateManualLoanMod
 import { LoanDetailsPrintTemplate, LoanListPrintTemplate } from '@/ui/components/loans/LoanPrintTemplates'
 import { LoanNoDisplay } from '@/ui/components/loans/LoanNoDisplay'
 import { useLoanPaymentModal } from '@/ui/components/loans/LoanPaymentModalProvider'
+import { SimpleLoanListView } from '@/ui/components/loans/SimpleLoanListView'
 import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
 
 type LoanFilter = 'all' | 'active' | 'overdue' | 'completed'
+type LoanModuleTab = 'standard' | 'simple'
 
 function statusClass(status: string) {
     if (status === 'completed') return 'bg-blue-500/15 text-blue-600 dark:text-blue-300'
@@ -93,7 +105,15 @@ function LoanListView({
     const [isDeletingLoan, setIsDeletingLoan] = useState(false)
     const [showPrintPreview, setShowPrintPreview] = useState(false)
     const pageSize = 10
-    const loans = useLoans(workspaceId)
+    const allLoans = useLoans(workspaceId)
+    const loans = useMemo(
+        () => allLoans.filter((loan) => loan.loanCategory !== 'simple'),
+        [allLoans]
+    )
+    const standardLoanIds = useMemo(
+        () => new Set(loans.map((loan) => loan.id)),
+        [loans]
+    )
     const installments = useLiveQuery(
         () => db.loan_installments.where('workspaceId').equals(workspaceId).and(item => !item.isDeleted).toArray(),
         [workspaceId]
@@ -113,11 +133,11 @@ function LoanListView({
         const activeLoans = loans.filter(loan => loan.status === 'active' && loan.balanceAmount > 0).length
         const overdueLoans = loans.filter(loan => isLoanOverdue(loan)).length
         const dueToday = installments
-            .filter(item => item.dueDate === today && item.balanceAmount > 0 && item.status !== 'paid')
+            .filter(item => standardLoanIds.has(item.loanId) && item.dueDate === today && item.balanceAmount > 0 && item.status !== 'paid')
             .reduce((sum, item) => sum + item.balanceAmount, 0)
 
         return { totalOutstanding, activeLoans, overdueLoans, dueToday }
-    }, [loans, installments])
+    }, [installments, loans, standardLoanIds])
 
     const filtered = useMemo(() => {
         const query = search.trim().toLowerCase()
@@ -690,13 +710,13 @@ function LoanDetailsView({
         ...payments.map(payment => ({
             id: payment.id,
             date: payment.paidAt,
-            label: t('loans.activities.paymentReceived') || 'Payment Received',
+            label: getLoanPaymentActivityLabel(loan, t),
             amount: payment.amount
         })),
         {
             id: `${loan.id}-created`,
             date: loan.createdAt,
-            label: t('loans.activities.loanDisbursed') || 'Loan Disbursed',
+            label: getLoanDisbursementActivityLabel(loan, t),
             amount: loan.principalAmount
         }
     ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
@@ -745,7 +765,7 @@ function LoanDetailsView({
                     )}
                     {!isReadOnly && (
                         <Button onClick={() => onOpenPayment(loan)} className="print:hidden">
-                            {t('loans.recordPayment') || 'Record Payment'}
+                            {getLoanRecordPaymentLabel(loan, t)}
                         </Button>
                     )}
                 </div>
@@ -755,7 +775,7 @@ function LoanDetailsView({
                 <div className="space-y-4">
                     <Card>
                         <CardHeader>
-                            <CardTitle>{t('loans.borrowerIdentity') || 'Borrower Identity'}</CardTitle>
+                            <CardTitle>{getLoanIdentityTitle(loan, t)}</CardTitle>
                         </CardHeader>
                         <CardContent className="space-y-2 text-sm">
                             <div className="font-semibold text-lg">{loan.borrowerName}</div>
@@ -1029,10 +1049,20 @@ function LoanDetailsView({
 }
 
 export function Loans() {
+    const { t } = useTranslation()
     const { user } = useAuth()
     const [detailMatch, params] = useRoute('/loans/:loanId')
     const { openLoanPayment } = useLoanPaymentModal()
     const workspaceId = user?.workspaceId
+    const [activeTab, setActiveTab] = useState<LoanModuleTab>(() => {
+        const storedValue = localStorage.getItem('loans_module_tab')
+        return storedValue === 'simple' ? 'simple' : 'standard'
+    })
+
+    useEffect(() => {
+        localStorage.setItem('loans_module_tab', activeTab)
+    }, [activeTab])
+
     const openPaymentForLoan = (loan: Loan, installment?: LoanInstallment | null) => {
         openLoanPayment(loan.id, {
             installmentId: installment?.id ?? null
@@ -1053,5 +1083,22 @@ export function Loans() {
         )
     }
 
-    return <LoanListView workspaceId={workspaceId} />
+    return (
+        <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as LoanModuleTab)} className="space-y-4">
+            <TabsList className="grid w-full max-w-[360px] grid-cols-2 rounded-2xl bg-secondary/50 p-1">
+                <TabsTrigger value="standard" className="rounded-xl">
+                    {t('loans.title') || 'Loans'}
+                </TabsTrigger>
+                <TabsTrigger value="simple" className="rounded-xl">
+                    {t('loans.simpleTab') || 'Simple Loans'}
+                </TabsTrigger>
+            </TabsList>
+            <TabsContent value="standard" className="mt-0">
+                <LoanListView workspaceId={workspaceId} />
+            </TabsContent>
+            <TabsContent value="simple" className="mt-0">
+                <SimpleLoanListView workspaceId={workspaceId} />
+            </TabsContent>
+        </Tabs>
+    )
 }

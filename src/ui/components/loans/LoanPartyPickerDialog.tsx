@@ -36,6 +36,7 @@ function buildPartnerSelection(partner: BusinessPartner): LoanPartySelection {
         linkedPartyType: 'business_partner',
         linkedPartyId: partner.id,
         linkedPartyName: partner.name,
+        defaultCurrency: partner.defaultCurrency,
         borrowerName: partner.contactName?.trim() || partner.name,
         borrowerPhone: partner.phone?.trim() || '',
         borrowerAddress: composeAddress([partner.address, partner.city, partner.country])

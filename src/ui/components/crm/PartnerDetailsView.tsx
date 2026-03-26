@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { Link, useLocation } from 'wouter'
 
 import { convertCurrencyAmountWithSnapshot } from '@/lib/orderCurrency'
+import { getLoanDirection, getLoanDirectionLabel, isSimpleLoan } from '@/lib/loanPresentation'
 import { getTravelSaleCost, getTravelStatusLabel } from '@/lib/travelAgency'
 import { cn, formatCurrency, formatDate, formatDateTime } from '@/lib/utils'
 import {
@@ -225,6 +226,8 @@ function loanStatusLabel(t: TranslationFn, status: Loan['status']) {
 }
 
 function normalizeLoan(loan: Loan, currency: SalesOrder['currency'], t: TranslationFn): RelatedTransaction {
+    const direction = getLoanDirection(loan)
+    const directionLabel = getLoanDirectionLabel(direction, t)
     return {
         id: loan.id,
         source: 'loan',
@@ -235,12 +238,12 @@ function normalizeLoan(loan: Loan, currency: SalesOrder['currency'], t: Translat
         status: loan.status,
         statusLabel: loanStatusLabel(t, loan.status),
         isPaid: loan.balanceAmount <= 0 || loan.status === 'completed',
-        summary: loan.borrowerName,
+        summary: isSimpleLoan(loan) ? `${directionLabel} • ${loan.borrowerName}` : loan.borrowerName,
         total: loan.balanceAmount,
         currency: loan.settlementCurrency,
-        totalInPartnerCurrency: loan.settlementCurrency === currency ? loan.balanceAmount : 0,
+        totalInPartnerCurrency: convertCurrencyAmountWithSnapshot(loan.balanceAmount, loan.settlementCurrency, currency),
         units: 0,
-        viewHref: '/loans',
+        viewHref: `/loans/${loan.id}`,
         isActive: loan.status !== 'completed',
         isCompleted: loan.status === 'completed',
         isOutstanding: loan.balanceAmount > 0

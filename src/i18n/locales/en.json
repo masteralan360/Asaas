@@ -1290,16 +1290,27 @@
             "grid": "Loans Grid"
         },
         "searchPlaceholder": "Search by borrower name or loan number...",
+        "simpleSearchPlaceholder": "Search by counterparty, partner, or loan number...",
         "registerFromPos": "Register Loan",
         "createManualLoan": "Create Manual Loan",
+        "createSimpleLoan": "Create Simple Loan",
+        "simpleTab": "Simple Loans",
+        "simpleLoanDescription": "Add a manual lending or borrowing entry and optionally link it to a business partner.",
         "confirmDelete": "Delete Loan",
         "deleteWarning": "Deleting this loan will permanently remove the loan, its installment schedule, and its payment history. This cannot be undone.",
         "borrowerIdentity": "Borrower Identity",
         "borrower": "Borrower",
         "borrowerName": "Borrower Name",
+        "counterparty": "Counterparty",
+        "lender": "Lender",
+        "lenderName": "Lender Name",
+        "lenderIdentity": "Lender Identity",
         "borrowerPhone": "Borrower Phone",
         "borrowerAddress": "Borrower Address",
         "borrowerNationalId": "Borrower National ID",
+        "contactPhone": "Phone",
+        "contactAddress": "Address",
+        "referenceId": "Reference / ID",
         "selectParty": "Business Partner",
         "selectPartyHint": "You can link this loan to an existing business partner and still edit the borrower fields manually.",
         "selectPartyDescription": "Choose an existing business partner to fill the borrower details and mark who this loan belongs to.",
@@ -1322,8 +1333,11 @@
         "totalOutstanding": "Total Outstanding",
         "loanNo": "Loan No.",
         "source": "Source",
+        "direction": "Direction",
         "status": "Status",
         "recordPayment": "Record Payment",
+        "recordRepayment": "Record Repayment",
+        "recordCollection": "Record Collection",
         "paymentAmount": "Payment Amount",
         "adjustment": "Loan Adjustment",
         "notes": "Notes",
@@ -1342,6 +1356,10 @@
         "recentActivity": "Recent Activity",
         "currencyHint": "Settlement Currency",
         "pay": "Pay",
+        "totalLent": "Total Lent",
+        "totalBorrowed": "Total Borrowed",
+        "activeEntries": "Active Entries",
+        "settledEntries": "Settled Entries",
         "snoozedItems": "Snoozed Loan Reminders",
         "snoozedItemsDesc": "These overdue loan reminders are snoozed until you open them again.",
         "snoozedAt": "Snoozed at",
@@ -1351,6 +1369,10 @@
             "weekly": "Weekly",
             "biweekly": "Biweekly",
             "monthly": "Monthly"
+        },
+        "directions": {
+            "lent": "Lent",
+            "borrowed": "Borrowed"
         },
         "filters": {
             "all": "All",
@@ -1371,7 +1393,10 @@
         },
         "activities": {
             "paymentReceived": "Payment Received",
-            "loanDisbursed": "Loan Disbursed"
+            "paymentMade": "Repayment Made",
+            "loanDisbursed": "Loan Disbursed",
+            "amountLent": "Amount Lent",
+            "amountBorrowed": "Amount Borrowed"
         },
         "reminder": {
             "title": "Overdue Loan Payment",

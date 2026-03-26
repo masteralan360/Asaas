@@ -535,7 +535,16 @@ export async function recalculateBusinessPartnerSummary(workspaceId: string, par
     const activeSalesOrders = salesOrders.filter((order) => order.status !== 'cancelled')
     const activePurchaseOrders = purchaseOrders.filter((order) => order.status !== 'cancelled')
     const activeTravelSales = travelSales.filter((sale) => sale.status === 'completed')
-    const activeLoans = loans.filter((loan) => loan.balanceAmount > 0 && loan.status !== 'completed')
+    const activeLentLoans = loans.filter((loan) =>
+        loan.balanceAmount > 0
+        && loan.status !== 'completed'
+        && (loan.direction ?? 'lent') !== 'borrowed'
+    )
+    const activeBorrowedLoans = loans.filter((loan) =>
+        loan.balanceAmount > 0
+        && loan.status !== 'completed'
+        && loan.direction === 'borrowed'
+    )
 
     const totalSalesOrders = activeSalesOrders.length
     const totalSalesValue = roundAmount(
@@ -591,13 +600,17 @@ export async function recalculateBusinessPartnerSummary(workspaceId: string, par
                         sale.exchangeRateSnapshot ? [sale.exchangeRateSnapshot] as any : undefined
                     ),
                     0
-                ),
+                )
+            + activeBorrowedLoans.reduce(
+                (sum, loan) => sum + convertCurrencyAmountWithSnapshot(loan.balanceAmount, loan.settlementCurrency, partner.defaultCurrency),
+                0
+            ),
         partner.defaultCurrency
     )
 
     const totalLoanCount = loans.length
     const loanOutstandingBalance = roundAmount(
-        activeLoans.reduce((sum, loan) => sum + convertCurrencyAmountWithSnapshot(loan.balanceAmount, loan.settlementCurrency, partner.defaultCurrency), 0),
+        activeLentLoans.reduce((sum, loan) => sum + convertCurrencyAmountWithSnapshot(loan.balanceAmount, loan.settlementCurrency, partner.defaultCurrency), 0),
         partner.defaultCurrency
     )
     const netExposure = roundAmount(receivableBalance + loanOutstandingBalance - payableBalance, partner.defaultCurrency)

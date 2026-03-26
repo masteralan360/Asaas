@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/auth'
+import { getLoanRecordPaymentLabel } from '@/lib/loanPresentation'
 import { formatCurrency, formatDate, formatNumberWithCommas, parseFormattedNumber } from '@/lib/utils'
 import { recordLoanPayment, type Loan, type LoanInstallment, type LoanPaymentMethod } from '@/local-db'
 import {
@@ -133,7 +134,7 @@ export function RecordLoanPaymentModal({
         <Dialog open={isOpen} onOpenChange={onOpenChange}>
             <DialogContent>
                 <DialogHeader>
-                    <DialogTitle>{t('loans.recordPayment') || 'Record Payment'}</DialogTitle>
+                    <DialogTitle>{getLoanRecordPaymentLabel(loan, t)}</DialogTitle>
                 </DialogHeader>
 
                 <div className="grid gap-4">

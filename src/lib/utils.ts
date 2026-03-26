@@ -1,6 +1,7 @@
 import { type ClassValue, clsx } from "clsx"
 import { twMerge } from "tailwind-merge"
 import { getLoanLinkedPartySummary } from '@/lib/loanParties'
+import { getLoanCounterpartyLabel, getLoanDirection, getLoanDirectionLabel, isSimpleLoan } from '@/lib/loanPresentation'
 
 export function cn(...inputs: ClassValue[]) {
     return twMerge(clsx(inputs))
@@ -185,11 +186,15 @@ export function formatLoanDetailsForWhatsApp(loan: any, t: (key: string) => stri
     const id = loan.loanNo
     const linkedPartySummary = getLoanLinkedPartySummary(loan, t)
     const belongsToLabel = t('loans.belongsTo') === 'loans.belongsTo' ? 'Belongs to' : t('loans.belongsTo')
+    const counterpartyLabel = getLoanCounterpartyLabel(loan, t)
 
     // Header
     let text = `*${t('loans.details') || 'Loan Details'}*\n`
     text += `*${t('loans.loanNo') || 'Loan No'}:* ${id}\n`
-    text += `*${t('loans.borrower') || 'Borrower'}:* ${loan.borrowerName}\n`
+    text += `*${counterpartyLabel}:* ${loan.borrowerName}\n`
+    if (isSimpleLoan(loan)) {
+        text += `*${t('loans.direction') || 'Direction'}:* ${getLoanDirectionLabel(getLoanDirection(loan), t)}\n`
+    }
     if (linkedPartySummary) {
         text += `*${belongsToLabel}:* ${linkedPartySummary.replace(`${belongsToLabel}: `, '')}\n`
     }

@@ -1,4 +1,4 @@
-import type { Loan, LoanLinkedPartyType } from '@/local-db/models'
+import type { CurrencyCode, Loan, LoanLinkedPartyType } from '@/local-db/models'
 
 type Translate = (key: string) => string
 
@@ -8,6 +8,7 @@ export interface LoanPartySelection {
     linkedPartyType: LoanLinkedPartyType
     linkedPartyId: string
     linkedPartyName: string
+    defaultCurrency: CurrencyCode
     borrowerName: string
     borrowerPhone: string
     borrowerAddress: string

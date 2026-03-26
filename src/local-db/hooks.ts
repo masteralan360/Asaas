@@ -32,6 +32,8 @@ import type {
     CurrencyCode,
     InstallmentFrequency,
     InstallmentStatus,
+    LoanCategory,
+    LoanDirection,
     LoanLinkedPartyType,
     LoanPaymentMethod,
     LoanStatus
@@ -2333,8 +2335,12 @@ async function resolveLinkedBusinessPartner(linkedPartyType?: LoanLinkedPartyTyp
 
 async function assertLoanCreditLimit(
     workspaceId: string,
-    input: Pick<LoanCreateInput, 'linkedPartyType' | 'linkedPartyId' | 'principalAmount' | 'settlementCurrency'>
+    input: Pick<LoanCreateInput, 'linkedPartyType' | 'linkedPartyId' | 'principalAmount' | 'settlementCurrency' | 'direction'>
 ) {
+    if (input.direction === 'borrowed') {
+        return
+    }
+
     const partner = await resolveLinkedBusinessPartner(input.linkedPartyType, input.linkedPartyId)
     if (!partner?.creditLimit || partner.creditLimit <= 0) {
         return
@@ -2367,11 +2373,12 @@ async function recalculateLoanLinkedBusinessPartnerSummary(workspaceId: string, 
     await recalculateBusinessPartnerSummary(workspaceId, partner.id)
 }
 
-function generateLoanNo(id: string, now = new Date()): string {
+function generateLoanNo(id: string, now = new Date(), loanCategory: LoanCategory = 'standard'): string {
     const yyyy = now.getFullYear()
     const mm = String(now.getMonth() + 1).padStart(2, '0')
     const dd = String(now.getDate()).padStart(2, '0')
-    return `LN-${yyyy}${mm}${dd}-${id.replace(/-/g, '').slice(0, 6).toUpperCase()}`
+    const prefix = loanCategory === 'simple' ? 'SL' : 'LN'
+    return `${prefix}-${yyyy}${mm}${dd}-${id.replace(/-/g, '').slice(0, 6).toUpperCase()}`
 }
 
 function addInstallmentDate(baseDate: string, frequency: InstallmentFrequency, index: number): string {
@@ -2459,6 +2466,8 @@ async function enqueueLoanCreateMutations(workspaceId: string, loan: Loan, insta
 interface LoanCreateInput {
     saleId?: string | null
     source: 'pos' | 'manual'
+    loanCategory?: LoanCategory
+    direction?: LoanDirection
     linkedPartyType?: LoanLinkedPartyType | null
     linkedPartyId?: string | null
     linkedPartyName?: string | null
@@ -2489,6 +2498,8 @@ async function createLoanAggregate(workspaceId: string, input: LoanCreateInput):
     const loanId = generateId()
     const firstDueDate = normalizeDueDate(input.firstDueDate)
     const principalAmount = roundLoanAmount(Math.max(0, Number(input.principalAmount || 0)), input.settlementCurrency)
+    const loanCategory = input.loanCategory === 'simple' ? 'simple' : 'standard'
+    const direction = input.direction === 'borrowed' ? 'borrowed' : 'lent'
     const linkedPartyType = input.linkedPartyType === 'business_partner'
         ? input.linkedPartyType
         : null
@@ -2502,7 +2513,10 @@ async function createLoanAggregate(workspaceId: string, input: LoanCreateInput):
     if (!principalAmount || principalAmount <= 0) {
         throw new Error('Invalid principal amount')
     }
-    if (!borrowerName || !borrowerPhone || !borrowerAddress || !borrowerNationalId) {
+    if (!borrowerName) {
+        throw new Error('Missing borrower information')
+    }
+    if (loanCategory === 'standard' && (!borrowerPhone || !borrowerAddress || !borrowerNationalId)) {
         throw new Error('Missing borrower information')
     }
 
@@ -2517,7 +2531,8 @@ async function createLoanAggregate(workspaceId: string, input: LoanCreateInput):
             linkedPartyType,
             linkedPartyId,
             principalAmount,
-            settlementCurrency: input.settlementCurrency
+            settlementCurrency: input.settlementCurrency,
+            direction
         })
     }
 
@@ -2556,8 +2571,10 @@ async function createLoanAggregate(workspaceId: string, input: LoanCreateInput):
         id: loanId,
         workspaceId,
         saleId: input.saleId ?? null,
-        loanNo: generateLoanNo(loanId),
+        loanNo: generateLoanNo(loanId, new Date(now), loanCategory),
         source: input.source,
+        loanCategory,
+        direction,
         linkedPartyType: linkedPartyType && linkedPartyId && linkedPartyName ? linkedPartyType : null,
         linkedPartyId: linkedPartyType && linkedPartyId && linkedPartyName ? linkedPartyId : null,
         linkedPartyName: linkedPartyType && linkedPartyId && linkedPartyName ? linkedPartyName : null,
