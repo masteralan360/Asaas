@@ -7,12 +7,11 @@ import { convertCurrencyAmountWithSnapshot } from '@/lib/orderCurrency'
 import { getTravelSaleCost, getTravelStatusLabel } from '@/lib/travelAgency'
 import { cn, formatCurrency, formatDate, formatDateTime } from '@/lib/utils'
 import {
-    useBusinessPartner,
+    useCustomer,
     useCustomerSalesOrders,
-    useLoans,
+    useSupplier,
     useSupplierPurchaseOrders,
     useSupplierTravelAgencySales,
-    type Loan,
     type PurchaseOrder,
     type SalesOrder,
     type TravelAgencySale
@@ -30,13 +29,13 @@ import {
     TableHeader,
     TableRow
 } from '@/ui/components'
+import { OrderStatusBadge } from '@/ui/components/orders/OrderStatusBadge'
 import { useWorkspace } from '@/workspace'
 
-type PartnerKind = 'customer' | 'supplier' | 'business_partner'
+type PartnerKind = 'customer' | 'supplier'
 type RelatedProductOrder = SalesOrder | PurchaseOrder
 type RelatedTransaction = {
     id: string
-    source: 'sales_order' | 'purchase_order' | 'travel_sale' | 'loan'
     reference: string
     displayDate: string
     sortDate: string
@@ -55,63 +54,6 @@ type RelatedTransaction = {
     isOutstanding: boolean
 }
 type TranslationFn = (key: string, options?: Record<string, unknown>) => string
-
-function roleIncludesCustomer(role: 'customer' | 'supplier' | 'both') {
-    return role === 'customer' || role === 'both'
-}
-
-function roleIncludesSupplier(role: 'customer' | 'supplier' | 'both') {
-    return role === 'supplier' || role === 'both'
-}
-
-function roleBadgeLabel(role: 'customer' | 'supplier' | 'both', t: TranslationFn) {
-    switch (role) {
-        case 'customer':
-            return t('customers.title', { defaultValue: 'Customer' })
-        case 'supplier':
-            return t('suppliers.title', { defaultValue: 'Supplier' })
-        default:
-            return t('businessPartners.roles.both', { defaultValue: 'Both' })
-    }
-}
-
-function sourceLabel(source: RelatedTransaction['source'], t: TranslationFn) {
-    switch (source) {
-        case 'sales_order':
-            return t('orders.tabs.sales', { defaultValue: 'Sales Order' })
-        case 'purchase_order':
-            return t('orders.tabs.purchase', { defaultValue: 'Purchase Order' })
-        case 'travel_sale':
-            return t('travelAgency.title', { defaultValue: 'Travel Sale' })
-        default:
-            return t('loans.title', { defaultValue: 'Loan' })
-    }
-}
-
-function sourceBadgeClass(source: RelatedTransaction['source']) {
-    switch (source) {
-        case 'sales_order':
-            return 'border-emerald-200 bg-emerald-500/10 text-emerald-700'
-        case 'purchase_order':
-            return 'border-sky-200 bg-sky-500/10 text-sky-700'
-        case 'travel_sale':
-            return 'border-violet-200 bg-violet-500/10 text-violet-700'
-        default:
-            return 'border-orange-200 bg-orange-500/10 text-orange-700'
-    }
-}
-
-function statusBadgeClass(status: string) {
-    if (status === 'draft') return 'bg-slate-100 text-slate-700 border-slate-200'
-    if (status === 'pending') return 'bg-amber-100 text-amber-800 border-amber-200'
-    if (status === 'ordered') return 'bg-blue-100 text-blue-800 border-blue-200'
-    if (status === 'received') return 'bg-cyan-100 text-cyan-800 border-cyan-200'
-    if (status === 'completed') return 'bg-emerald-100 text-emerald-800 border-emerald-200'
-    if (status === 'cancelled') return 'bg-rose-100 text-rose-800 border-rose-200'
-    if (status === 'active') return 'bg-emerald-100 text-emerald-800 border-emerald-200'
-    if (status === 'overdue') return 'bg-rose-100 text-rose-800 border-rose-200'
-    return 'bg-muted text-muted-foreground border-border'
-}
 
 function statusLabel(t: TranslationFn, status: string) {
     return t(`orders.status.${status}`, { defaultValue: status })
@@ -151,7 +93,6 @@ function toPartnerCurrencyFromTravelSale(sale: TravelAgencySale, currency: Sales
 function normalizeSalesOrder(order: SalesOrder, currency: SalesOrder['currency'], t: TranslationFn): RelatedTransaction {
     return {
         id: order.id,
-        source: 'sales_order',
         reference: order.orderNumber,
         displayDate: order.createdAt,
         sortDate: order.updatedAt || order.createdAt,
@@ -174,7 +115,6 @@ function normalizeSalesOrder(order: SalesOrder, currency: SalesOrder['currency']
 function normalizePurchaseOrder(order: PurchaseOrder, currency: SalesOrder['currency'], t: TranslationFn): RelatedTransaction {
     return {
         id: order.id,
-        source: 'purchase_order',
         reference: order.orderNumber,
         displayDate: order.createdAt,
         sortDate: order.updatedAt || order.createdAt,
@@ -197,7 +137,6 @@ function normalizePurchaseOrder(order: PurchaseOrder, currency: SalesOrder['curr
 function normalizeTravelSale(sale: TravelAgencySale, currency: SalesOrder['currency']): RelatedTransaction {
     return {
         id: sale.id,
-        source: 'travel_sale',
         reference: sale.saleNumber,
         displayDate: sale.saleDate,
         sortDate: sale.updatedAt || sale.saleDate || sale.createdAt,
@@ -217,43 +156,13 @@ function normalizeTravelSale(sale: TravelAgencySale, currency: SalesOrder['curre
     }
 }
 
-function loanStatusLabel(t: TranslationFn, status: Loan['status']) {
-    if (status === 'active') return t('sales.loanActive', { defaultValue: 'Loan Active' })
-    if (status === 'overdue') return t('sales.loanOverdue', { defaultValue: 'Loan Overdue' })
-    if (status === 'completed') return t('sales.loanCompleted', { defaultValue: 'Loan Completed' })
-    return status
-}
-
-function normalizeLoan(loan: Loan, currency: SalesOrder['currency'], t: TranslationFn): RelatedTransaction {
-    return {
-        id: loan.id,
-        source: 'loan',
-        reference: loan.loanNo,
-        displayDate: loan.createdAt,
-        sortDate: loan.updatedAt || loan.createdAt,
-        activityDate: loan.updatedAt || loan.createdAt,
-        status: loan.status,
-        statusLabel: loanStatusLabel(t, loan.status),
-        isPaid: loan.balanceAmount <= 0 || loan.status === 'completed',
-        summary: loan.borrowerName,
-        total: loan.balanceAmount,
-        currency: loan.settlementCurrency,
-        totalInPartnerCurrency: loan.settlementCurrency === currency ? loan.balanceAmount : 0,
-        units: 0,
-        viewHref: '/loans',
-        isActive: loan.status !== 'completed',
-        isCompleted: loan.status === 'completed',
-        isOutstanding: loan.balanceAmount > 0
-    }
-}
-
 function paymentBadgeClass(isPaid: boolean) {
     return isPaid
         ? 'border-emerald-200 bg-emerald-500/10 text-emerald-700'
         : 'border-amber-200 bg-amber-500/10 text-amber-700'
 }
 
-export function PartnerDetailsView({
+export function LegacyPartnerDetailsView({
     workspaceId,
     partnerId,
     kind
@@ -265,69 +174,74 @@ export function PartnerDetailsView({
     const { t } = useTranslation()
     const { features } = useWorkspace()
     const [, navigate] = useLocation()
-    const partner = useBusinessPartner(partnerId)
-    const customerOrders = useCustomerSalesOrders(partnerId, workspaceId)
-    const supplierOrders = useSupplierPurchaseOrders(partnerId, workspaceId)
-    const supplierTravelSales = useSupplierTravelAgencySales(partnerId, workspaceId)
-    const loans = useLoans(workspaceId)
+    const customer = useCustomer(kind === 'customer' ? partnerId : undefined)
+    const supplier = useSupplier(kind === 'supplier' ? partnerId : undefined)
+    const customerOrders = useCustomerSalesOrders(kind === 'customer' ? partnerId : undefined, kind === 'customer' ? workspaceId : undefined)
+    const supplierOrders = useSupplierPurchaseOrders(kind === 'supplier' ? partnerId : undefined, kind === 'supplier' ? workspaceId : undefined)
+    const supplierTravelSales = useSupplierTravelAgencySales(kind === 'supplier' ? partnerId : undefined, kind === 'supplier' ? workspaceId : undefined)
+    const partner = kind === 'customer' ? customer : supplier
     const [viewMode, setViewMode] = useState<'table' | 'grid'>(() => readViewMode(kind))
 
     useEffect(() => {
         localStorage.setItem(`partner_details_view_mode_${kind}`, viewMode)
     }, [kind, viewMode])
 
-    const partnerLoans = useMemo(
-        () => loans.filter((loan) => loan.linkedPartyType === 'business_partner' && loan.linkedPartyId === partner?.id),
-        [loans, partner?.id]
-    )
-    const allowedByRoute = useMemo(() => {
-        if (!partner) {
-            return false
-        }
-        if (kind === 'customer') {
-            return roleIncludesCustomer(partner.role)
-        }
-        if (kind === 'supplier') {
-            return roleIncludesSupplier(partner.role)
-        }
-        return true
-    }, [kind, partner])
-
     const defaultCurrency = partner?.defaultCurrency ?? features.default_currency
     const iqdPreference = features.iqd_display_preference
-    const listHref = kind === 'customer'
-        ? '/customers'
-        : kind === 'supplier'
-            ? '/suppliers'
-            : '/business-partners'
-    const listLabel = kind === 'customer'
+    const isCustomer = kind === 'customer'
+    const listHref = isCustomer ? '/customers' : '/suppliers'
+    const listLabel = isCustomer
         ? t('customers.title', { defaultValue: 'Customers' })
-        : kind === 'supplier'
-            ? t('suppliers.title', { defaultValue: 'Suppliers' })
-            : t('businessPartners.title', { defaultValue: 'Business Partners' })
-    const typeLabel = partner ? roleBadgeLabel(partner.role, t) : t('businessPartners.title', { defaultValue: 'Business Partner' })
-    const contactName = partner?.contactName
-    const emptyRelatedLabel = t('businessPartners.noActivity', { defaultValue: 'No related activity yet.' })
-    const totalValueLabel = t('businessPartners.relationshipValue', { defaultValue: 'Relationship Value' })
-    const completedLabel = t('businessPartners.completedItems', { defaultValue: 'Completed Items' })
-    const paidLabel = t('businessPartners.settledItems', { defaultValue: 'Settled Items' })
-    const activeLabel = t('businessPartners.activeItems', { defaultValue: 'Active Items' })
-    const listTitle = t('businessPartners.activityTimeline', { defaultValue: 'Unified Activity Timeline' })
-    const overviewTitle = t('businessPartners.overview', { defaultValue: 'Partner Overview' })
-    const lastActivityLabel = t('businessPartners.lastActivity', { defaultValue: 'Last Activity' })
-    const firstActivityLabel = t('businessPartners.firstActivity', { defaultValue: 'First Activity' })
-    const detailsColumnLabel = t('common.details', { defaultValue: 'Details' })
-    const referenceColumnLabel = t('common.reference', { defaultValue: 'Reference' })
-    const productOrders = [...customerOrders, ...supplierOrders]
+        : t('suppliers.title', { defaultValue: 'Suppliers' })
+    const typeLabel = isCustomer
+        ? t('orders.details.customer', { defaultValue: 'Customer' })
+        : t('orders.details.supplier', { defaultValue: 'Supplier' })
+    const contactName = isCustomer ? undefined : supplier?.contactName
+    const emptyRelatedLabel = isCustomer
+        ? t('customers.details.noOrders', { defaultValue: 'No related orders yet.' })
+        : t('suppliers.details.noOrders', { defaultValue: 'No related transactions yet.' })
+    const totalValueLabel = isCustomer
+        ? t('customers.details.totalSales', { defaultValue: 'Total Sales' })
+        : t('suppliers.details.totalTransactions', { defaultValue: 'Total Transactions' })
+    const completedLabel = isCustomer
+        ? t('customers.details.completedOrders', { defaultValue: 'Completed Orders' })
+        : t('suppliers.details.completedTransactions', { defaultValue: 'Completed Transactions' })
+    const paidLabel = isCustomer
+        ? t('customers.details.paidOrders', { defaultValue: 'Paid Orders' })
+        : t('suppliers.details.paidTransactions', { defaultValue: 'Paid Transactions' })
+    const activeLabel = isCustomer
+        ? t('customers.details.activeOrders', { defaultValue: 'Active Orders' })
+        : t('suppliers.details.activeTransactions', { defaultValue: 'Active Transactions' })
+    const listTitle = isCustomer
+        ? t('orders.tabs.sales', { defaultValue: 'Sales Orders' })
+        : t('suppliers.details.transactions', { defaultValue: 'Transactions' })
+    const overviewTitle = isCustomer
+        ? t('customers.details.overview', { defaultValue: 'Sales Overview' })
+        : t('suppliers.details.transactionOverview', { defaultValue: 'Supplier Overview' })
+    const lastActivityLabel = isCustomer
+        ? t('customers.details.lastOrder', { defaultValue: 'Last order' })
+        : t('suppliers.details.lastTransaction', { defaultValue: 'Last transaction' })
+    const firstActivityLabel = isCustomer
+        ? t('customers.details.firstOrder', { defaultValue: 'First Order' })
+        : t('suppliers.details.firstTransaction', { defaultValue: 'First transaction' })
+    const detailsColumnLabel = isCustomer
+        ? t('common.items', { defaultValue: 'Items' })
+        : t('common.details', { defaultValue: 'Details' })
+    const referenceColumnLabel = isCustomer
+        ? t('orders.table.orderNumber', { defaultValue: 'Order #' })
+        : t('common.reference', { defaultValue: 'Reference' })
+    const productOrders = isCustomer ? customerOrders : supplierOrders
 
     const relatedTransactions = useMemo(
-        () => [
-            ...customerOrders.map((order) => normalizeSalesOrder(order, defaultCurrency, t)),
-            ...supplierOrders.map((order) => normalizePurchaseOrder(order, defaultCurrency, t)),
-            ...supplierTravelSales.map((sale) => normalizeTravelSale(sale, defaultCurrency)),
-            ...partnerLoans.map((loan) => normalizeLoan(loan, defaultCurrency, t))
-        ],
-        [customerOrders, defaultCurrency, partnerLoans, supplierOrders, supplierTravelSales, t]
+        () => (
+            isCustomer
+                ? customerOrders.map((order) => normalizeSalesOrder(order, defaultCurrency, t))
+                : [
+                    ...supplierOrders.map((order) => normalizePurchaseOrder(order, defaultCurrency, t)),
+                    ...supplierTravelSales.map((sale) => normalizeTravelSale(sale, defaultCurrency))
+                ]
+        ),
+        [customerOrders, defaultCurrency, isCustomer, supplierOrders, supplierTravelSales, t]
     )
     const activeTransactions = useMemo(
         () => relatedTransactions.filter((transaction) => transaction.isActive),
@@ -341,23 +255,35 @@ export function PartnerDetailsView({
         () => activeTransactions.filter((transaction) => transaction.isCompleted),
         [activeTransactions]
     )
+    const outstandingTransactions = useMemo(
+        () => activeTransactions.filter((transaction) => transaction.isOutstanding),
+        [activeTransactions]
+    )
     const sortedTransactions = useMemo(
         () => [...relatedTransactions].sort((a, b) => new Date(b.sortDate).getTime() - new Date(a.sortDate).getTime()),
         [relatedTransactions]
     )
-    const totalValue = partner ? partner.totalSalesValue + partner.totalPurchaseValue : 0
-    const outstandingValue = (partner?.receivableBalance || 0) + (partner?.payableBalance || 0) + (partner?.loanOutstandingBalance || 0)
-    const averageOrderValue = (customerOrders.length + supplierOrders.length + supplierTravelSales.length) > 0
-        ? totalValue / (customerOrders.length + supplierOrders.length + supplierTravelSales.length)
-        : 0
+    const totalValue = useMemo(
+        () => activeTransactions.reduce((sum, transaction) => sum + transaction.totalInPartnerCurrency, 0),
+        [activeTransactions]
+    )
+    const settledValue = useMemo(
+        () => settledTransactions.reduce((sum, transaction) => sum + transaction.totalInPartnerCurrency, 0),
+        [settledTransactions]
+    )
+    const outstandingValue = useMemo(
+        () => outstandingTransactions.reduce((sum, transaction) => sum + transaction.totalInPartnerCurrency, 0),
+        [outstandingTransactions]
+    )
+    const averageOrderValue = activeTransactions.length > 0 ? totalValue / activeTransactions.length : 0
     const totalUnits = useMemo(
         () => productOrders
             .filter((order) => order.status !== 'cancelled')
             .reduce((sum, order) => sum + order.items.reduce((lineSum, item) => lineSum + item.quantity, 0), 0),
         [productOrders]
     )
-    const settledPercent = relatedTransactions.length > 0 ? Math.min(100, (settledTransactions.length / relatedTransactions.length) * 100) : 0
-    const creditUsagePercent = partner?.creditLimit && partner.creditLimit > 0 ? Math.min(100, (Math.max(partner.netExposure, 0) / partner.creditLimit) * 100) : 0
+    const settledPercent = totalValue > 0 ? Math.min(100, (settledValue / totalValue) * 100) : 0
+    const creditUsagePercent = partner?.creditLimit && partner.creditLimit > 0 ? Math.min(100, (outstandingValue / partner.creditLimit) * 100) : 0
     const latestTransaction = sortedTransactions[0]
     const earliestTransaction = sortedTransactions[sortedTransactions.length - 1]
     const locationLabel = partner ? [partner.city, partner.country].filter(Boolean).join(', ') || 'N/A' : 'N/A'
@@ -368,8 +294,7 @@ export function PartnerDetailsView({
             title: transaction.reference,
             statusLabel: transaction.statusLabel,
             total: transaction.total,
-            currency: transaction.currency,
-            source: transaction.source
+            currency: transaction.currency
         })),
         [sortedTransactions]
     )
@@ -398,20 +323,26 @@ export function PartnerDetailsView({
         }).slice(0, 5)
     }, [defaultCurrency, productOrders])
 
-    if (!partner || !allowedByRoute) {
+    if (!partner) {
         return (
             <Card>
                 <CardContent className="space-y-4 py-10 text-center">
                     <div className="text-lg font-semibold">
-                        {t('businessPartners.notFound', { defaultValue: 'Business partner not found' })}
+                        {kind === 'customer'
+                            ? t('customers.details.notFound', { defaultValue: 'Customer not found' })
+                            : t('suppliers.details.notFound', { defaultValue: 'Supplier not found' })}
                     </div>
                     <div className="text-sm text-muted-foreground">
-                        {t('businessPartners.notFoundDescription', { defaultValue: 'The requested record may have been deleted or moved out of this workspace.' })}
+                        {kind === 'customer'
+                            ? t('customers.details.notFoundDescription', { defaultValue: 'The customer may have been deleted or moved out of this workspace.' })
+                            : t('suppliers.details.notFoundDescription', { defaultValue: 'The supplier may have been deleted or moved out of this workspace.' })}
                     </div>
                     <div>
-                        <Button variant="outline" onClick={() => navigate(listHref)}>
+                        <Button variant="outline" onClick={() => navigate(kind === 'customer' ? '/customers' : '/suppliers')}>
                             <ArrowLeft className="mr-2 h-4 w-4" />
-                            {listLabel}
+                            {kind === 'customer'
+                                ? t('customers.title', { defaultValue: 'Customers' })
+                                : t('suppliers.title', { defaultValue: 'Suppliers' })}
                         </Button>
                     </div>
                 </CardContent>
@@ -436,12 +367,16 @@ export function PartnerDetailsView({
                 <div className="space-y-4">
                     <Card>
                         <CardHeader>
-                            <CardTitle>{t('businessPartners.profile', { defaultValue: 'Partner Profile' })}</CardTitle>
+                            <CardTitle>
+                                {isCustomer
+                                    ? t('customers.details.identity', { defaultValue: 'Customer Profile' })
+                                    : t('suppliers.details.identity', { defaultValue: 'Supplier Profile' })}
+                            </CardTitle>
                         </CardHeader>
                         <CardContent className="space-y-3 text-sm">
                             <div className="flex items-start gap-3 rounded-2xl border bg-muted/20 p-4">
                                 <div className="rounded-xl bg-primary/10 p-2 text-primary">
-                                    {partner.role === 'supplier' ? <Truck className="h-4 w-4" /> : <UsersRound className="h-4 w-4" />}
+                                    {isCustomer ? <UsersRound className="h-4 w-4" /> : <Truck className="h-4 w-4" />}
                                 </div>
                                 <div className="min-w-0">
                                     <div className="text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">{typeLabel}</div>
@@ -529,7 +464,11 @@ export function PartnerDetailsView({
 
                     <Card className="overflow-hidden border-none bg-transparent shadow-none">
                         <CardHeader className="flex flex-row items-center justify-between pb-2">
-                            <CardTitle className="text-xl font-bold">{t('businessPartners.relationship', { defaultValue: 'Relationship Summary' })}</CardTitle>
+                            <CardTitle className="text-xl font-bold">
+                                {isCustomer
+                                    ? t('customers.details.relationship', { defaultValue: 'Relationship Summary' })
+                                    : t('suppliers.details.relationship', { defaultValue: 'Relationship Summary' })}
+                            </CardTitle>
                             <span className="rounded-md bg-primary/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-primary">
                                 {typeLabel}
                             </span>
@@ -566,7 +505,11 @@ export function PartnerDetailsView({
 
                             <div className="space-y-2 pt-2">
                                 <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                                    <span>{t('businessPartners.settlementProgress', { defaultValue: 'Settlement Progress' })}</span>
+                                    <span>
+                                        {isCustomer
+                                            ? t('customers.details.settlementProgress', { defaultValue: 'Settlement Progress' })
+                                            : t('suppliers.details.settlementProgress', { defaultValue: 'Settlement Progress' })}
+                                    </span>
                                     <span>{Math.round(settledPercent)}%</span>
                                 </div>
                                 <div className="h-1.5 overflow-hidden rounded-full bg-muted/40">
@@ -594,12 +537,7 @@ export function PartnerDetailsView({
                                         <div key={row.id} className="group relative">
                                             <div className="absolute -start-[1.375rem] top-1.5 h-3 w-3 rounded-full border-2 border-background bg-primary shadow-[0_0_8px_rgba(59,130,246,0.35)] transition-transform group-hover:scale-125" />
                                             <div className="space-y-0.5">
-                                                <div className="flex flex-wrap items-center gap-2">
-                                                    <div className="font-bold leading-none transition-colors group-hover:text-primary">{row.title}</div>
-                                                    <span className={cn('inline-flex rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide', sourceBadgeClass(row.source))}>
-                                                        {sourceLabel(row.source, t)}
-                                                    </span>
-                                                </div>
+                                                <div className="font-bold leading-none transition-colors group-hover:text-primary">{row.title}</div>
                                                 <div className="pt-1 text-xs font-medium text-muted-foreground">
                                                     {row.statusLabel}
                                                 </div>
@@ -636,7 +574,9 @@ export function PartnerDetailsView({
                                         </span>
                                     </div>
                                     <div className="mt-6 text-xs font-bold uppercase tracking-[0.18em] text-muted-foreground">
-                                        {t('businessPartners.relationshipValue', { defaultValue: 'Relationship Value' })}
+                                        {isCustomer
+                                            ? t('customers.details.relationshipValue', { defaultValue: 'Relationship Value' })
+                                            : t('suppliers.details.relationshipValue', { defaultValue: 'Relationship Value' })}
                                     </div>
                                     <div className="mt-2 text-4xl font-black tracking-tight">
                                         {formatCurrency(totalValue, defaultCurrency, iqdPreference)}
@@ -648,7 +588,11 @@ export function PartnerDetailsView({
                                     </div>
                                     <div className="mt-6 space-y-2">
                                         <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
-                                            <span>{t('businessPartners.creditUsage', { defaultValue: 'Credit Usage' })}</span>
+                                            <span>
+                                                {isCustomer
+                                                    ? t('customers.details.creditUsage', { defaultValue: 'Credit Usage' })
+                                                    : t('suppliers.details.creditUsage', { defaultValue: 'Credit Usage' })}
+                                            </span>
                                             <span>{Math.round(creditUsagePercent)}%</span>
                                         </div>
                                         <div className="h-2 overflow-hidden rounded-full bg-background/80">
@@ -685,7 +629,9 @@ export function PartnerDetailsView({
                                     <div className="rounded-2xl border bg-muted/20 p-4">
                                         <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">
                                             <ShoppingCart className="h-4 w-4" />
-                                            {t('businessPartners.averageDocument', { defaultValue: 'Average Document' })}
+                                            {isCustomer
+                                                ? t('customers.details.averageOrder', { defaultValue: 'Average Order' })
+                                                : t('suppliers.details.averageTransaction', { defaultValue: 'Average Transaction' })}
                                         </div>
                                         <div className="mt-2 text-xl font-black">
                                             {formatCurrency(averageOrderValue, defaultCurrency, iqdPreference)}
@@ -733,11 +679,15 @@ export function PartnerDetailsView({
                             <div className="mt-6 rounded-2xl border bg-background/70 p-4">
                                 <div className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">
                                     <Package className="h-4 w-4" />
-                                    {t('products.topProducts', { defaultValue: 'Top Products' })}
+                                    {isCustomer
+                                        ? t('customers.details.topProducts', { defaultValue: 'Top Products' })
+                                        : t('suppliers.details.topProducts', { defaultValue: 'Top Products' })}
                                 </div>
                                 {topProducts.length === 0 ? (
                                     <div className="text-sm text-muted-foreground">
-                                        {t('businessPartners.topProductsEmpty', { defaultValue: 'Product activity will appear once orders are added.' })}
+                                        {isCustomer
+                                            ? t('customers.details.topProductsEmpty', { defaultValue: 'Product activity will appear once orders are added.' })
+                                            : t('suppliers.details.topProductsEmpty', { defaultValue: 'Product activity will appear once orders are added.' })}
                                     </div>
                                 ) : (
                                     <div className="space-y-3">
@@ -806,17 +756,10 @@ export function PartnerDetailsView({
                                         <div key={transaction.id} className="rounded-3xl border bg-background/80 p-4 shadow-sm">
                                             <div className="flex items-start justify-between gap-3">
                                                 <div>
-                                                    <div className="flex flex-wrap items-center gap-2">
-                                                        <div className="text-lg font-semibold">{transaction.reference}</div>
-                                                        <span className={cn('inline-flex rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide', sourceBadgeClass(transaction.source))}>
-                                                            {sourceLabel(transaction.source, t)}
-                                                        </span>
-                                                    </div>
+                                                    <div className="text-lg font-semibold">{transaction.reference}</div>
                                                     <div className="text-xs text-muted-foreground">{formatDate(transaction.displayDate)}</div>
                                                 </div>
-                                                <span className={cn('inline-flex rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide', statusBadgeClass(transaction.status))}>
-                                                    {transaction.statusLabel}
-                                                </span>
+                                                <OrderStatusBadge status={transaction.status} label={transaction.statusLabel} />
                                             </div>
 
                                             <div className="mt-4 rounded-2xl border bg-muted/20 p-3">
@@ -861,7 +804,6 @@ export function PartnerDetailsView({
                                     <Table>
                                         <TableHeader>
                                             <TableRow>
-                                                <TableHead>{t('common.type', { defaultValue: 'Type' })}</TableHead>
                                                 <TableHead>{referenceColumnLabel}</TableHead>
                                                 <TableHead>{t('common.date', { defaultValue: 'Date' })}</TableHead>
                                                 <TableHead>{t('common.status', { defaultValue: 'Status' })}</TableHead>
@@ -874,17 +816,10 @@ export function PartnerDetailsView({
                                         <TableBody>
                                             {sortedTransactions.map((transaction) => (
                                                 <TableRow key={transaction.id}>
-                                                    <TableCell>
-                                                        <span className={cn('inline-flex rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide', sourceBadgeClass(transaction.source))}>
-                                                            {sourceLabel(transaction.source, t)}
-                                                        </span>
-                                                    </TableCell>
                                                     <TableCell className="font-semibold">{transaction.reference}</TableCell>
                                                     <TableCell>{formatDate(transaction.displayDate)}</TableCell>
                                                     <TableCell>
-                                                        <span className={cn('inline-flex rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide', statusBadgeClass(transaction.status))}>
-                                                            {transaction.statusLabel}
-                                                        </span>
+                                                        <OrderStatusBadge status={transaction.status} label={transaction.statusLabel} />
                                                     </TableCell>
                                                     <TableCell>{transaction.summary}</TableCell>
                                                     <TableCell>

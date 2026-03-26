@@ -1,7 +1,7 @@
 import { useRoute } from 'wouter'
 
 import { useAuth } from '@/auth'
-import { PartnerDetailsView } from '@/ui/components/crm/PartnerDetailsView'
+import { LegacyPartnerDetailsView } from '@/ui/components/crm/LegacyPartnerDetailsView'
 
 export function SupplierDetails() {
     const { user } = useAuth()
@@ -12,7 +12,7 @@ export function SupplierDetails() {
     }
 
     return (
-        <PartnerDetailsView
+        <LegacyPartnerDetailsView
             workspaceId={user.workspaceId}
             partnerId={params.supplierId}
             kind="supplier"
