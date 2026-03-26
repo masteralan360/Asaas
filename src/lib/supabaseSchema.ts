@@ -12,6 +12,8 @@ const budgetTables = new Set([
 const crmTables = new Set([
     'customers',
     'suppliers',
+    'business_partners',
+    'business_partner_merge_candidates',
     'sales_orders',
     'purchase_orders',
     'travel_agency_sales'

@@ -19,7 +19,7 @@ function translateLoanParty(t: Translate, key: string, fallback: string) {
 }
 
 export function getLoanLinkedPartyTypeLabel(_type: LoanLinkedPartyType, t: Translate) {
-    return translateLoanParty(t, 'loans.partyTypes.customer', 'Customer')
+    return translateLoanParty(t, 'loans.partyTypes.businessPartner', 'Business Partner')
 }
 
 export function hasLoanLinkedParty(loan: LoanPartySource | null | undefined): loan is LoanPartySource & {

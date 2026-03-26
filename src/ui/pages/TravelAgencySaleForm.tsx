@@ -211,7 +211,7 @@ function mapSaleToForm(sale: TravelAgencySale): TravelAgencyFormState {
                     : [createEmptyTravelPlan()]
             }))
         ),
-        supplierId: sale.supplierId || '',
+        supplierId: sale.businessPartnerId || sale.supplierId || '',
         supplierCost: formatNumberWithCommas(sale.supplierCost),
         currency: sale.currency,
         travelPackages: sale.travelPackages || [],
@@ -802,6 +802,7 @@ function TravelAgencySaleEditor({ saleId, readOnly = false }: { saleId?: string;
                 groupTravelPlans: buildTravelPlans(formState.groupTravelPlans),
                 groupName: formState.groupName.trim() || null,
                 groupRevenue: parseFormattedNumber(formState.groupRevenue) || 0,
+                businessPartnerId: formState.supplierId || null,
                 supplierId: formState.supplierId || null,
                 supplierName: selectedSupplier?.name || sale?.supplierName || null,
                 supplierCost: parseFormattedNumber(formState.supplierCost) || 0,

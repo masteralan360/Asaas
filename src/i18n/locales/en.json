@@ -508,6 +508,41 @@
         "confirmDelete": "Delete Customer",
         "deleteWarning": "All customer data and transaction history will be permanently removed."
     },
+    "businessPartners": {
+        "title": "Business Partners",
+        "subtitle": "Manage shared customer and supplier profiles in one place.",
+        "addPartner": "Add Business Partner",
+        "editPartner": "Edit Business Partner",
+        "searchPlaceholder": "Search business partners...",
+        "mergeReview": "Merge Review",
+        "merge": "Merge",
+        "receivable": "Receivable",
+        "payable": "Payable",
+        "loans": "Loans",
+        "netExposure": "Net Exposure",
+        "deleteTitle": "Delete Business Partner",
+        "deleteWarning": "Partners with historical transactions cannot be deleted and must be archived instead.",
+        "notFound": "Business partner not found",
+        "notFoundDescription": "The requested record may have been deleted or moved out of this workspace.",
+        "profile": "Partner Profile",
+        "relationship": "Relationship Summary",
+        "lastActivity": "Last Activity",
+        "activityTimeline": "Unified Activity Timeline",
+        "noActivity": "No related activity yet.",
+        "noMergeCandidates": "No merge candidates found.",
+        "form": {
+            "role": "Role"
+        },
+        "roles": {
+            "both": "Both"
+        },
+        "messages": {
+            "addSuccess": "Business partner created successfully",
+            "updateSuccess": "Business partner updated successfully",
+            "deleteSuccess": "Business partner deleted successfully",
+            "mergeSuccess": "Business partners merged successfully"
+        }
+    },
     "orders": {
         "title": "Orders",
         "subtitle": "orders total",
@@ -1265,15 +1300,16 @@
         "borrowerPhone": "Borrower Phone",
         "borrowerAddress": "Borrower Address",
         "borrowerNationalId": "Borrower National ID",
-        "selectParty": "Customer",
-        "selectPartyHint": "You can link this loan to an existing customer and still edit the borrower fields manually.",
-        "selectPartyDescription": "Choose an existing customer to fill the borrower details and mark who this loan belongs to.",
-        "searchPartyPlaceholder": "Search customers...",
-        "noPartyResults": "No matching customers found.",
+        "selectParty": "Business Partner",
+        "selectPartyHint": "You can link this loan to an existing business partner and still edit the borrower fields manually.",
+        "selectPartyDescription": "Choose an existing business partner to fill the borrower details and mark who this loan belongs to.",
+        "searchPartyPlaceholder": "Search business partners...",
+        "noPartyResults": "No matching business partners found.",
         "clearParty": "Clear Link",
         "belongsTo": "Belongs to",
         "partyTypes": {
-            "customer": "Customer"
+            "customer": "Customer",
+            "businessPartner": "Business Partner"
         },
         "principal": "Principal",
         "paid": "Paid",

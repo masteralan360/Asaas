@@ -76,7 +76,7 @@ function isLoanRegistrationData(value: unknown): value is LoanRegistrationData {
     return (
         (payload.linkedPartyType === undefined ||
             payload.linkedPartyType === null ||
-            payload.linkedPartyType === 'customer') &&
+            payload.linkedPartyType === 'business_partner') &&
         (payload.linkedPartyId === undefined || payload.linkedPartyId === null || typeof payload.linkedPartyId === 'string') &&
         (payload.linkedPartyName === undefined || payload.linkedPartyName === null || typeof payload.linkedPartyName === 'string') &&
         typeof payload.borrowerName === 'string' &&

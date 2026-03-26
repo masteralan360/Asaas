@@ -57,6 +57,8 @@ const Storages = lazy(() => import('@/ui/pages/Storages').then(m => ({ default: 
 const InventoryTransfer = lazy(() => import('@/ui/pages/InventoryTransfer').then(m => ({ default: m.default })))
 const HR = lazy(() => import('@/ui/pages/HR').then(m => ({ default: m.default })))
 const Loans = lazy(() => import('@/ui/pages/Loans').then(m => ({ default: m.Loans })))
+const BusinessPartners = lazy(() => import('@/ui/pages/BusinessPartners').then(m => ({ default: m.BusinessPartners })))
+const BusinessPartnerDetails = lazy(() => import('@/ui/pages/BusinessPartnerDetails').then(m => ({ default: m.BusinessPartnerDetails })))
 const Customers = lazy(() => import('@/ui/pages/Customers').then(m => ({ default: m.Customers })))
 const CustomerDetails = lazy(() => import('@/ui/pages/CustomerDetails').then(m => ({ default: m.CustomerDetails })))
 const Suppliers = lazy(() => import('@/ui/pages/Suppliers').then(m => ({ default: m.Suppliers })))
@@ -533,6 +535,20 @@ function App() {
                                                 <ProtectedRoute requiredFeature="sales_history">
                                                     <Layout>
                                                         <Sales />
+                                                    </Layout>
+                                                </ProtectedRoute>
+                                            </Route>
+                                            <Route path="/business-partners">
+                                                <ProtectedRoute allowedRoles={['admin', 'staff', 'viewer']} requiredFeature="crm">
+                                                    <Layout>
+                                                        <BusinessPartners />
+                                                    </Layout>
+                                                </ProtectedRoute>
+                                            </Route>
+                                            <Route path="/business-partners/:partnerId">
+                                                <ProtectedRoute allowedRoles={['admin', 'staff', 'viewer']} requiredFeature="crm">
+                                                    <Layout>
+                                                        <BusinessPartnerDetails />
                                                     </Layout>
                                                 </ProtectedRoute>
                                             </Route>

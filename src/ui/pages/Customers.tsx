@@ -1,71 +1,36 @@
-import { useMemo, useState, type FormEvent } from 'react'
-import { Users, Plus, Pencil, Trash2, Search, Eye } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { Eye, Pencil, Plus, Search, Trash2, Users } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useLocation } from 'wouter'
 
 import { useAuth } from '@/auth'
-import { useWorkspace } from '@/workspace'
-import { formatCurrency } from '@/lib/utils'
 import {
-    createCustomer,
-    deleteCustomer,
-    updateCustomer,
-    useCustomers,
-    type CurrencyCode,
-    type Customer
+    createBusinessPartner,
+    deleteBusinessPartner,
+    updateBusinessPartner,
+    useBusinessPartners,
+    type BusinessPartner,
+    type CurrencyCode
 } from '@/local-db'
+import { formatCurrency } from '@/lib/utils'
+import { useWorkspace } from '@/workspace'
 import {
     Button,
     Card,
     CardContent,
     CardHeader,
     CardTitle,
-    Dialog,
-    DialogContent,
-    DialogFooter,
-    DialogHeader,
-    DialogTitle,
     Input,
-    Label,
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
     Table,
     TableBody,
     TableCell,
     TableHead,
     TableHeader,
     TableRow,
-    Textarea,
     useToast
 } from '@/ui/components'
 import { DeleteConfirmationModal } from '@/ui/components/DeleteConfirmationModal'
-
-type CustomerFormState = {
-    name: string
-    email: string
-    phone: string
-    address: string
-    city: string
-    country: string
-    defaultCurrency: CurrencyCode
-    notes: string
-    creditLimit: string
-}
-
-const emptyForm: CustomerFormState = {
-    name: '',
-    email: '',
-    phone: '',
-    address: '',
-    city: '',
-    country: '',
-    defaultCurrency: 'usd',
-    notes: '',
-    creditLimit: ''
-}
+import { BusinessPartnerFormDialog, type BusinessPartnerFormPayload } from '@/ui/components/crm/BusinessPartnerFormDialog'
 
 export function Customers() {
     const { t } = useTranslation()
@@ -73,15 +38,11 @@ export function Customers() {
     const { features } = useWorkspace()
     const { toast } = useToast()
     const [, navigate] = useLocation()
-    const customers = useCustomers(user?.workspaceId)
+    const customers = useBusinessPartners(user?.workspaceId, { roles: ['customer'] })
     const [search, setSearch] = useState('')
     const [dialogOpen, setDialogOpen] = useState(false)
-    const [deleteTarget, setDeleteTarget] = useState<Customer | null>(null)
-    const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null)
-    const [formState, setFormState] = useState<CustomerFormState>({
-        ...emptyForm,
-        defaultCurrency: features.default_currency
-    })
+    const [editingPartner, setEditingPartner] = useState<BusinessPartner | null>(null)
+    const [deleteTarget, setDeleteTarget] = useState<BusinessPartner | null>(null)
     const [isSaving, setIsSaving] = useState(false)
 
     const availableCurrencies = useMemo(() => {
@@ -89,79 +50,39 @@ export function Customers() {
         if (features.eur_conversion_enabled) currencies.push('eur')
         if (features.try_conversion_enabled) currencies.push('try')
         return currencies
-    }, [features.default_currency, features.eur_conversion_enabled, features.try_conversion_enabled])
+    }, [features.eur_conversion_enabled, features.try_conversion_enabled])
 
     const filteredCustomers = useMemo(() => {
         const query = search.trim().toLowerCase()
         if (!query) return customers
         return customers.filter((customer) =>
-            customer.name.toLowerCase().includes(query)
-            || customer.phone?.toLowerCase().includes(query)
-            || customer.email?.toLowerCase().includes(query)
-            || customer.city?.toLowerCase().includes(query)
+            [customer.name, customer.contactName, customer.phone, customer.email, customer.city]
+                .filter((value): value is string => typeof value === 'string' && value.length > 0)
+                .some((value) => value.toLowerCase().includes(query))
         )
     }, [customers, search])
 
     const canEdit = user?.role === 'admin' || user?.role === 'staff'
     const canDelete = user?.role === 'admin'
 
-    function resetForm() {
-        setEditingCustomer(null)
-        setFormState({
-            ...emptyForm,
-            defaultCurrency: features.default_currency
-        })
-    }
-
-    function openCreateDialog() {
-        resetForm()
-        setDialogOpen(true)
-    }
-
-    function openEditDialog(customer: Customer) {
-        setEditingCustomer(customer)
-        setFormState({
-            name: customer.name,
-            email: customer.email || '',
-            phone: customer.phone || '',
-            address: customer.address || '',
-            city: customer.city || '',
-            country: customer.country || '',
-            defaultCurrency: customer.defaultCurrency,
-            notes: customer.notes || '',
-            creditLimit: customer.creditLimit ? String(customer.creditLimit) : ''
-        })
-        setDialogOpen(true)
-    }
-
-    async function handleSubmit(event: FormEvent) {
-        event.preventDefault()
+    async function handleSubmit(payload: BusinessPartnerFormPayload) {
         if (!user?.workspaceId) return
 
         setIsSaving(true)
         try {
-            const payload = {
-                name: formState.name.trim(),
-                email: formState.email.trim() || undefined,
-                phone: formState.phone.trim() || undefined,
-                address: formState.address.trim() || undefined,
-                city: formState.city.trim() || undefined,
-                country: formState.country.trim() || undefined,
-                defaultCurrency: formState.defaultCurrency,
-                notes: formState.notes.trim() || undefined,
-                creditLimit: Number(formState.creditLimit || 0)
-            }
-
-            if (editingCustomer) {
-                await updateCustomer(editingCustomer.id, payload)
+            if (editingPartner) {
+                await updateBusinessPartner(editingPartner.id, payload)
                 toast({ title: t('customers.messages.updateSuccess') || 'Customer updated successfully' })
             } else {
-                await createCustomer(user.workspaceId, payload)
+                await createBusinessPartner(user.workspaceId, {
+                    ...payload,
+                    role: payload.role || 'customer'
+                })
                 toast({ title: t('customers.messages.addSuccess') || 'Customer added successfully' })
             }
 
             setDialogOpen(false)
-            resetForm()
+            setEditingPartner(null)
         } catch (error: any) {
             toast({
                 title: t('common.error') || 'Error',
@@ -176,7 +97,7 @@ export function Customers() {
     async function handleDelete() {
         if (!deleteTarget) return
         try {
-            await deleteCustomer(deleteTarget.id)
+            await deleteBusinessPartner(deleteTarget.id)
             toast({ title: t('customers.messages.deleteSuccess') || 'Customer deleted successfully' })
             setDeleteTarget(null)
         } catch (error: any) {
@@ -188,7 +109,7 @@ export function Customers() {
         }
     }
 
-    const totalOutstanding = filteredCustomers.reduce((count, customer) => count + (customer.outstandingBalance > 0 ? 1 : 0), 0)
+    const totalOutstanding = filteredCustomers.reduce((count, customer) => count + (customer.receivableBalance > 0 ? 1 : 0), 0)
 
     return (
         <div className="space-y-6">
@@ -201,7 +122,7 @@ export function Customers() {
                     <p className="text-muted-foreground">{t('customers.subtitle') || 'Manage customer accounts and balances'}</p>
                 </div>
                 {canEdit && (
-                    <Button onClick={openCreateDialog} className="gap-2 self-start rounded-xl">
+                    <Button onClick={() => { setEditingPartner(null); setDialogOpen(true) }} className="gap-2 self-start rounded-xl">
                         <Plus className="h-4 w-4" />
                         {t('customers.addCustomer') || 'Add Customer'}
                     </Button>
@@ -222,7 +143,7 @@ export function Customers() {
                         <CardTitle className="text-sm text-muted-foreground">{t('orders.table.items') || 'Orders'}</CardTitle>
                     </CardHeader>
                     <CardContent>
-                        <div className="text-3xl font-black">{customers.reduce((sum, customer) => sum + customer.totalOrders, 0)}</div>
+                        <div className="text-3xl font-black">{customers.reduce((sum, customer) => sum + customer.totalSalesOrders, 0)}</div>
                     </CardContent>
                 </Card>
                 <Card>
@@ -273,9 +194,9 @@ export function Customers() {
                                     </TableRow>
                                 ) : (
                                     filteredCustomers.map((customer) => {
-                                        const location = [customer.city, customer.country].filter(Boolean).join(', ') || '—'
-                                        const outstandingLabel = customer.outstandingBalance > 0
-                                            ? `${t('common.amount') || 'Amount'}: ${formatCurrency(customer.outstandingBalance, customer.defaultCurrency, features.iqd_display_preference)}`
+                                        const location = [customer.city, customer.country].filter(Boolean).join(', ') || 'N/A'
+                                        const outstandingLabel = customer.receivableBalance > 0
+                                            ? `${t('common.amount') || 'Amount'}: ${formatCurrency(customer.receivableBalance, customer.defaultCurrency, features.iqd_display_preference)}`
                                             : (t('common.status') || 'Clear')
 
                                         return (
@@ -283,16 +204,16 @@ export function Customers() {
                                                 <TableCell className="font-semibold">{customer.name}</TableCell>
                                                 <TableCell>
                                                     <div className="space-y-1">
-                                                        <div>{customer.phone || '—'}</div>
-                                                        <div className="text-xs text-muted-foreground">{customer.email || '—'}</div>
+                                                        <div>{customer.phone || customer.contactName || 'N/A'}</div>
+                                                        <div className="text-xs text-muted-foreground">{customer.email || 'N/A'}</div>
                                                     </div>
                                                 </TableCell>
                                                 <TableCell>{location}</TableCell>
-                                                <TableCell>{customer.totalOrders}</TableCell>
-                                                <TableCell>{formatCurrency(customer.totalSpent, customer.defaultCurrency, features.iqd_display_preference)}</TableCell>
+                                                <TableCell>{customer.totalSalesOrders}</TableCell>
+                                                <TableCell>{formatCurrency(customer.totalSalesValue, customer.defaultCurrency, features.iqd_display_preference)}</TableCell>
                                                 <TableCell>{formatCurrency(customer.creditLimit || 0, customer.defaultCurrency, features.iqd_display_preference)}</TableCell>
                                                 <TableCell>
-                                                    <span className={customer.outstandingBalance > 0 ? 'font-semibold text-amber-600' : 'text-emerald-600'}>
+                                                    <span className={customer.receivableBalance > 0 ? 'font-semibold text-amber-600' : 'text-emerald-600'}>
                                                         {outstandingLabel}
                                                     </span>
                                                 </TableCell>
@@ -302,7 +223,7 @@ export function Customers() {
                                                             <Eye className="h-4 w-4" />
                                                         </Button>
                                                         {canEdit && (
-                                                            <Button variant="ghost" size="icon" onClick={() => openEditDialog(customer)}>
+                                                            <Button variant="ghost" size="icon" onClick={() => { setEditingPartner(customer); setDialogOpen(true) }}>
                                                                 <Pencil className="h-4 w-4" />
                                                             </Button>
                                                         )}
@@ -323,75 +244,23 @@ export function Customers() {
                 </CardContent>
             </Card>
 
-            <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-                <DialogContent className="top-[calc(50%+var(--titlebar-height)/2+var(--safe-area-top)/2)] flex max-h-[calc(100dvh-var(--titlebar-height)-var(--safe-area-top)-var(--safe-area-bottom)-0.75rem)] w-[calc(100vw-0.75rem)] max-w-2xl flex-col overflow-hidden rounded-[1.25rem] border-border/60 p-0 sm:w-full sm:max-h-[min(calc(100dvh-var(--titlebar-height)-var(--safe-area-top)-var(--safe-area-bottom)-2rem),800px)] sm:rounded-[1.75rem]">
-                    <DialogHeader className="border-b bg-muted/30 px-4 py-4 pr-14 text-left sm:px-6 sm:py-5">
-                        <DialogTitle className="text-xl">{editingCustomer ? (t('customers.editCustomer') || 'Edit Customer') : (t('customers.addCustomer') || 'Add Customer')}</DialogTitle>
-                    </DialogHeader>
-                    <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
-                        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6 sm:py-6">
-                            <div className="grid gap-4 md:grid-cols-2">
-                                <div className="space-y-2">
-                                    <Label htmlFor="customer-name">{t('customers.form.name') || 'Full Name'}</Label>
-                                    <Input id="customer-name" value={formState.name} onChange={(event) => setFormState((current) => ({ ...current, name: event.target.value }))} required />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="customer-phone">{t('customers.form.phone') || 'Phone'}</Label>
-                                    <Input id="customer-phone" value={formState.phone} onChange={(event) => setFormState((current) => ({ ...current, phone: event.target.value }))} />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="customer-email">{t('customers.form.email') || 'Email'}</Label>
-                                    <Input id="customer-email" type="email" value={formState.email} onChange={(event) => setFormState((current) => ({ ...current, email: event.target.value }))} />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label>{t('customers.form.defaultCurrency') || 'Default Currency'}</Label>
-                                    <Select value={formState.defaultCurrency} onValueChange={(value) => setFormState((current) => ({ ...current, defaultCurrency: value as CurrencyCode }))}>
-                                        <SelectTrigger>
-                                            <SelectValue />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            {availableCurrencies.map((currency) => (
-                                                <SelectItem key={currency} value={currency}>
-                                                    {currency.toUpperCase()}
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="customer-city">{t('customers.form.city') || 'City'}</Label>
-                                    <Input id="customer-city" value={formState.city} onChange={(event) => setFormState((current) => ({ ...current, city: event.target.value }))} />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="customer-country">{t('customers.form.country') || 'Country'}</Label>
-                                    <Input id="customer-country" value={formState.country} onChange={(event) => setFormState((current) => ({ ...current, country: event.target.value }))} />
-                                </div>
-                                <div className="space-y-2 md:col-span-2">
-                                    <Label htmlFor="customer-address">{t('customers.form.address') || 'Address'}</Label>
-                                    <Input id="customer-address" value={formState.address} onChange={(event) => setFormState((current) => ({ ...current, address: event.target.value }))} />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="customer-credit">{t('customers.form.creditLimit') || 'Credit Limit'}</Label>
-                                    <Input id="customer-credit" type="number" min="0" step="0.01" value={formState.creditLimit} onChange={(event) => setFormState((current) => ({ ...current, creditLimit: event.target.value }))} />
-                                </div>
-                                <div className="space-y-2 md:col-span-2">
-                                    <Label htmlFor="customer-notes">{t('customers.form.notes') || 'Notes'}</Label>
-                                    <Textarea id="customer-notes" rows={4} value={formState.notes} onChange={(event) => setFormState((current) => ({ ...current, notes: event.target.value }))} />
-                                </div>
-                            </div>
-                        </div>
-
-                        <DialogFooter className="border-t bg-muted/20 px-4 py-4 pb-[calc(1rem+var(--safe-area-bottom))] sm:justify-between sm:px-6">
-                            <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={() => setDialogOpen(false)}>
-                                {t('common.cancel') || 'Cancel'}
-                            </Button>
-                            <Button type="submit" className="w-full sm:w-auto" disabled={isSaving}>
-                                {isSaving ? (t('common.loading') || 'Loading...') : (editingCustomer ? (t('common.save') || 'Save') : (t('common.create') || 'Create'))}
-                            </Button>
-                        </DialogFooter>
-                    </form>
-                </DialogContent>
-            </Dialog>
+            <BusinessPartnerFormDialog
+                isOpen={dialogOpen}
+                onOpenChange={(open) => {
+                    setDialogOpen(open)
+                    if (!open) {
+                        setEditingPartner(null)
+                    }
+                }}
+                partner={editingPartner}
+                defaultCurrency={features.default_currency}
+                availableCurrencies={availableCurrencies}
+                initialRole="customer"
+                isSaving={isSaving}
+                title={editingPartner ? (t('customers.editCustomer') || 'Edit Customer') : (t('customers.addCustomer') || 'Add Customer')}
+                submitLabel={editingPartner ? (t('common.save') || 'Save') : (t('common.create') || 'Create')}
+                onSubmit={handleSubmit}
+            />
 
             <DeleteConfirmationModal
                 isOpen={!!deleteTarget}

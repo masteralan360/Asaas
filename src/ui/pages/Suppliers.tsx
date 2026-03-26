@@ -1,73 +1,36 @@
-import { useMemo, useState, type FormEvent } from 'react'
-import { Plus, Pencil, Search, Trash2, Truck, Eye } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { Eye, Pencil, Plus, Search, Trash2, Truck } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useLocation } from 'wouter'
 
 import { useAuth } from '@/auth'
-import { useWorkspace } from '@/workspace'
-import { formatCurrency } from '@/lib/utils'
 import {
-    createSupplier,
-    deleteSupplier,
-    updateSupplier,
-    useSuppliers,
-    type CurrencyCode,
-    type Supplier
+    createBusinessPartner,
+    deleteBusinessPartner,
+    updateBusinessPartner,
+    useBusinessPartners,
+    type BusinessPartner,
+    type CurrencyCode
 } from '@/local-db'
+import { formatCurrency } from '@/lib/utils'
+import { useWorkspace } from '@/workspace'
 import {
     Button,
     Card,
     CardContent,
     CardHeader,
     CardTitle,
-    Dialog,
-    DialogContent,
-    DialogFooter,
-    DialogHeader,
-    DialogTitle,
     Input,
-    Label,
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
     Table,
     TableBody,
     TableCell,
     TableHead,
     TableHeader,
     TableRow,
-    Textarea,
     useToast
 } from '@/ui/components'
 import { DeleteConfirmationModal } from '@/ui/components/DeleteConfirmationModal'
-
-type SupplierFormState = {
-    name: string
-    contactName: string
-    email: string
-    phone: string
-    address: string
-    city: string
-    country: string
-    defaultCurrency: CurrencyCode
-    notes: string
-    creditLimit: string
-}
-
-const emptyForm: SupplierFormState = {
-    name: '',
-    contactName: '',
-    email: '',
-    phone: '',
-    address: '',
-    city: '',
-    country: '',
-    defaultCurrency: 'usd',
-    notes: '',
-    creditLimit: ''
-}
+import { BusinessPartnerFormDialog, type BusinessPartnerFormPayload } from '@/ui/components/crm/BusinessPartnerFormDialog'
 
 export function Suppliers() {
     const { t } = useTranslation()
@@ -75,15 +38,11 @@ export function Suppliers() {
     const { features } = useWorkspace()
     const { toast } = useToast()
     const [, navigate] = useLocation()
-    const suppliers = useSuppliers(user?.workspaceId)
+    const suppliers = useBusinessPartners(user?.workspaceId, { roles: ['supplier'] })
     const [search, setSearch] = useState('')
     const [dialogOpen, setDialogOpen] = useState(false)
-    const [deleteTarget, setDeleteTarget] = useState<Supplier | null>(null)
-    const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null)
-    const [formState, setFormState] = useState<SupplierFormState>({
-        ...emptyForm,
-        defaultCurrency: features.default_currency
-    })
+    const [editingPartner, setEditingPartner] = useState<BusinessPartner | null>(null)
+    const [deleteTarget, setDeleteTarget] = useState<BusinessPartner | null>(null)
     const [isSaving, setIsSaving] = useState(false)
 
     const availableCurrencies = useMemo(() => {
@@ -91,81 +50,39 @@ export function Suppliers() {
         if (features.eur_conversion_enabled) currencies.push('eur')
         if (features.try_conversion_enabled) currencies.push('try')
         return currencies
-    }, [features.default_currency, features.eur_conversion_enabled, features.try_conversion_enabled])
+    }, [features.eur_conversion_enabled, features.try_conversion_enabled])
 
     const filteredSuppliers = useMemo(() => {
         const query = search.trim().toLowerCase()
         if (!query) return suppliers
         return suppliers.filter((supplier) =>
-            supplier.name.toLowerCase().includes(query)
-            || supplier.contactName?.toLowerCase().includes(query)
-            || supplier.phone?.toLowerCase().includes(query)
-            || supplier.email?.toLowerCase().includes(query)
+            [supplier.name, supplier.contactName, supplier.phone, supplier.email, supplier.city]
+                .filter((value): value is string => typeof value === 'string' && value.length > 0)
+                .some((value) => value.toLowerCase().includes(query))
         )
     }, [suppliers, search])
 
     const canEdit = user?.role === 'admin' || user?.role === 'staff'
     const canDelete = user?.role === 'admin'
 
-    function resetForm() {
-        setEditingSupplier(null)
-        setFormState({
-            ...emptyForm,
-            defaultCurrency: features.default_currency
-        })
-    }
-
-    function openCreateDialog() {
-        resetForm()
-        setDialogOpen(true)
-    }
-
-    function openEditDialog(supplier: Supplier) {
-        setEditingSupplier(supplier)
-        setFormState({
-            name: supplier.name,
-            contactName: supplier.contactName || '',
-            email: supplier.email || '',
-            phone: supplier.phone || '',
-            address: supplier.address || '',
-            city: supplier.city || '',
-            country: supplier.country || '',
-            defaultCurrency: supplier.defaultCurrency,
-            notes: supplier.notes || '',
-            creditLimit: supplier.creditLimit ? String(supplier.creditLimit) : ''
-        })
-        setDialogOpen(true)
-    }
-
-    async function handleSubmit(event: FormEvent) {
-        event.preventDefault()
+    async function handleSubmit(payload: BusinessPartnerFormPayload) {
         if (!user?.workspaceId) return
 
         setIsSaving(true)
         try {
-            const payload = {
-                name: formState.name.trim(),
-                contactName: formState.contactName.trim() || undefined,
-                email: formState.email.trim() || undefined,
-                phone: formState.phone.trim() || undefined,
-                address: formState.address.trim() || undefined,
-                city: formState.city.trim() || undefined,
-                country: formState.country.trim() || undefined,
-                defaultCurrency: formState.defaultCurrency,
-                notes: formState.notes.trim() || undefined,
-                creditLimit: Number(formState.creditLimit || 0)
-            }
-
-            if (editingSupplier) {
-                await updateSupplier(editingSupplier.id, payload)
+            if (editingPartner) {
+                await updateBusinessPartner(editingPartner.id, payload)
                 toast({ title: t('suppliers.messages.updateSuccess') || 'Supplier updated successfully' })
             } else {
-                await createSupplier(user.workspaceId, payload)
+                await createBusinessPartner(user.workspaceId, {
+                    ...payload,
+                    role: payload.role || 'supplier'
+                })
                 toast({ title: t('suppliers.messages.addSuccess') || 'Supplier added successfully' })
             }
 
             setDialogOpen(false)
-            resetForm()
+            setEditingPartner(null)
         } catch (error: any) {
             toast({
                 title: t('common.error') || 'Error',
@@ -180,7 +97,7 @@ export function Suppliers() {
     async function handleDelete() {
         if (!deleteTarget) return
         try {
-            await deleteSupplier(deleteTarget.id)
+            await deleteBusinessPartner(deleteTarget.id)
             toast({ title: t('suppliers.messages.deleteSuccess') || 'Supplier deleted successfully' })
             setDeleteTarget(null)
         } catch (error: any) {
@@ -203,7 +120,7 @@ export function Suppliers() {
                     <p className="text-muted-foreground">{t('suppliers.subtitle') || 'Manage your suppliers'}</p>
                 </div>
                 {canEdit && (
-                    <Button onClick={openCreateDialog} className="gap-2 self-start rounded-xl">
+                    <Button onClick={() => { setEditingPartner(null); setDialogOpen(true) }} className="gap-2 self-start rounded-xl">
                         <Plus className="h-4 w-4" />
                         {t('suppliers.addSupplier') || 'Add Supplier'}
                     </Button>
@@ -221,10 +138,10 @@ export function Suppliers() {
                 </Card>
                 <Card>
                     <CardHeader className="pb-2">
-                        <CardTitle className="text-sm text-muted-foreground">Transactions</CardTitle>
+                        <CardTitle className="text-sm text-muted-foreground">{t('suppliers.details.transactions', { defaultValue: 'Transactions' })}</CardTitle>
                     </CardHeader>
                     <CardContent>
-                        <div className="text-3xl font-black">{suppliers.reduce((sum, supplier) => sum + supplier.totalPurchases, 0)}</div>
+                        <div className="text-3xl font-black">{suppliers.reduce((sum, supplier) => sum + supplier.totalPurchaseOrders, 0)}</div>
                     </CardContent>
                 </Card>
                 <Card>
@@ -232,7 +149,7 @@ export function Suppliers() {
                         <CardTitle className="text-sm text-muted-foreground">{t('common.total') || 'Total Spent'}</CardTitle>
                     </CardHeader>
                     <CardContent>
-                        <div className="text-3xl font-black">{suppliers.filter((supplier) => supplier.totalSpent > 0).length}</div>
+                        <div className="text-3xl font-black">{suppliers.filter((supplier) => supplier.totalPurchaseValue > 0).length}</div>
                     </CardContent>
                 </Card>
             </div>
@@ -261,7 +178,7 @@ export function Suppliers() {
                                     <TableHead>{t('suppliers.table.email') || 'Email'}</TableHead>
                                     <TableHead>{t('suppliers.table.phone') || 'Phone'}</TableHead>
                                     <TableHead>{t('suppliers.table.currency') || 'Currency'}</TableHead>
-                                    <TableHead>Transactions</TableHead>
+                                    <TableHead>{t('suppliers.details.transactions', { defaultValue: 'Transactions' })}</TableHead>
                                     <TableHead>{t('common.total') || 'Total Spent'}</TableHead>
                                     <TableHead className="text-right">{t('common.actions') || 'Actions'}</TableHead>
                                 </TableRow>
@@ -277,19 +194,19 @@ export function Suppliers() {
                                     filteredSuppliers.map((supplier) => (
                                         <TableRow key={supplier.id}>
                                             <TableCell className="font-semibold">{supplier.name}</TableCell>
-                                            <TableCell>{supplier.contactName || '—'}</TableCell>
-                                            <TableCell>{supplier.email || '—'}</TableCell>
-                                            <TableCell>{supplier.phone || '—'}</TableCell>
+                                            <TableCell>{supplier.contactName || 'N/A'}</TableCell>
+                                            <TableCell>{supplier.email || 'N/A'}</TableCell>
+                                            <TableCell>{supplier.phone || 'N/A'}</TableCell>
                                             <TableCell>{supplier.defaultCurrency.toUpperCase()}</TableCell>
-                                            <TableCell>{supplier.totalPurchases}</TableCell>
-                                            <TableCell>{formatCurrency(supplier.totalSpent, supplier.defaultCurrency, features.iqd_display_preference)}</TableCell>
+                                            <TableCell>{supplier.totalPurchaseOrders}</TableCell>
+                                            <TableCell>{formatCurrency(supplier.totalPurchaseValue, supplier.defaultCurrency, features.iqd_display_preference)}</TableCell>
                                             <TableCell className="text-right">
                                                 <div className="flex justify-end gap-1">
                                                     <Button variant="ghost" size="icon" allowViewer={true} onClick={() => navigate(`/suppliers/${supplier.id}`)}>
                                                         <Eye className="h-4 w-4" />
                                                     </Button>
                                                     {canEdit && (
-                                                        <Button variant="ghost" size="icon" onClick={() => openEditDialog(supplier)}>
+                                                        <Button variant="ghost" size="icon" onClick={() => { setEditingPartner(supplier); setDialogOpen(true) }}>
                                                             <Pencil className="h-4 w-4" />
                                                         </Button>
                                                     )}
@@ -309,79 +226,23 @@ export function Suppliers() {
                 </CardContent>
             </Card>
 
-            <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-                <DialogContent className="top-[calc(50%+var(--titlebar-height)/2+var(--safe-area-top)/2)] flex max-h-[calc(100dvh-var(--titlebar-height)-var(--safe-area-top)-var(--safe-area-bottom)-0.75rem)] w-[calc(100vw-0.75rem)] max-w-2xl flex-col overflow-hidden rounded-[1.25rem] border-border/60 p-0 sm:w-full sm:max-h-[min(calc(100dvh-var(--titlebar-height)-var(--safe-area-top)-var(--safe-area-bottom)-2rem),800px)] sm:rounded-[1.75rem]">
-                    <DialogHeader className="border-b bg-muted/30 px-4 py-4 pr-14 text-left sm:px-6 sm:py-5">
-                        <DialogTitle className="text-xl">{editingSupplier ? (t('suppliers.editSupplier') || 'Edit Supplier') : (t('suppliers.addSupplier') || 'Add Supplier')}</DialogTitle>
-                    </DialogHeader>
-                    <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
-                        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6 sm:py-6">
-                            <div className="grid gap-4 md:grid-cols-2">
-                                <div className="space-y-2">
-                                    <Label htmlFor="supplier-name">{t('suppliers.form.name') || 'Company Name'}</Label>
-                                    <Input id="supplier-name" value={formState.name} onChange={(event) => setFormState((current) => ({ ...current, name: event.target.value }))} required />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="supplier-contact">{t('suppliers.form.contactName') || 'Contact Name'}</Label>
-                                    <Input id="supplier-contact" value={formState.contactName} onChange={(event) => setFormState((current) => ({ ...current, contactName: event.target.value }))} />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="supplier-email">{t('suppliers.form.email') || 'Email'}</Label>
-                                    <Input id="supplier-email" type="email" value={formState.email} onChange={(event) => setFormState((current) => ({ ...current, email: event.target.value }))} />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="supplier-phone">{t('suppliers.form.phone') || 'Phone'}</Label>
-                                    <Input id="supplier-phone" value={formState.phone} onChange={(event) => setFormState((current) => ({ ...current, phone: event.target.value }))} />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label>{t('suppliers.form.defaultCurrency') || 'Default Currency'}</Label>
-                                    <Select value={formState.defaultCurrency} onValueChange={(value) => setFormState((current) => ({ ...current, defaultCurrency: value as CurrencyCode }))}>
-                                        <SelectTrigger>
-                                            <SelectValue />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            {availableCurrencies.map((currency) => (
-                                                <SelectItem key={currency} value={currency}>
-                                                    {currency.toUpperCase()}
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="supplier-credit">{t('suppliers.form.creditLimit') || 'Credit Limit'}</Label>
-                                    <Input id="supplier-credit" type="number" min="0" step="0.01" value={formState.creditLimit} onChange={(event) => setFormState((current) => ({ ...current, creditLimit: event.target.value }))} />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="supplier-city">{t('suppliers.form.city') || 'City'}</Label>
-                                    <Input id="supplier-city" value={formState.city} onChange={(event) => setFormState((current) => ({ ...current, city: event.target.value }))} />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="supplier-country">{t('suppliers.form.country') || 'Country'}</Label>
-                                    <Input id="supplier-country" value={formState.country} onChange={(event) => setFormState((current) => ({ ...current, country: event.target.value }))} />
-                                </div>
-                                <div className="space-y-2 md:col-span-2">
-                                    <Label htmlFor="supplier-address">{t('suppliers.form.address') || 'Address'}</Label>
-                                    <Input id="supplier-address" value={formState.address} onChange={(event) => setFormState((current) => ({ ...current, address: event.target.value }))} />
-                                </div>
-                                <div className="space-y-2 md:col-span-2">
-                                    <Label htmlFor="supplier-notes">{t('suppliers.form.notes') || 'Notes'}</Label>
-                                    <Textarea id="supplier-notes" rows={4} value={formState.notes} onChange={(event) => setFormState((current) => ({ ...current, notes: event.target.value }))} />
-                                </div>
-                            </div>
-                        </div>
-
-                        <DialogFooter className="border-t bg-muted/20 px-4 py-4 pb-[calc(1rem+var(--safe-area-bottom))] sm:justify-between sm:px-6">
-                            <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={() => setDialogOpen(false)}>
-                                {t('common.cancel') || 'Cancel'}
-                            </Button>
-                            <Button type="submit" className="w-full sm:w-auto" disabled={isSaving}>
-                                {isSaving ? (t('common.loading') || 'Loading...') : (editingSupplier ? (t('common.save') || 'Save') : (t('common.create') || 'Create'))}
-                            </Button>
-                        </DialogFooter>
-                    </form>
-                </DialogContent>
-            </Dialog>
+            <BusinessPartnerFormDialog
+                isOpen={dialogOpen}
+                onOpenChange={(open) => {
+                    setDialogOpen(open)
+                    if (!open) {
+                        setEditingPartner(null)
+                    }
+                }}
+                partner={editingPartner}
+                defaultCurrency={features.default_currency}
+                availableCurrencies={availableCurrencies}
+                initialRole="supplier"
+                isSaving={isSaving}
+                title={editingPartner ? (t('suppliers.editSupplier') || 'Edit Supplier') : (t('suppliers.addSupplier') || 'Add Supplier')}
+                submitLabel={editingPartner ? (t('common.save') || 'Save') : (t('common.create') || 'Create')}
+                onSubmit={handleSubmit}
+            />
 
             <DeleteConfirmationModal
                 isOpen={!!deleteTarget}

@@ -22,7 +22,7 @@ import {
 import { LoanPartyPickerDialog } from '@/ui/components/loans/LoanPartyPickerDialog'
 
 export interface LoanRegistrationData {
-    linkedPartyType?: 'customer' | null
+    linkedPartyType?: 'business_partner' | null
     linkedPartyId?: string | null
     linkedPartyName?: string | null
     borrowerName: string
@@ -125,7 +125,7 @@ export function LoanRegistrationModal({
             <DialogContent className="sm:max-w-2xl">
                 <DialogHeader>
                     <DialogTitle>{t('loans.registerFromPos') || 'Register Loan'}</DialogTitle>
-                    <DialogDescription>{t('loans.selectPartyHint', { defaultValue: 'You can link this loan to an existing customer and still edit the borrower fields manually.' })}</DialogDescription>
+                    <DialogDescription>{t('loans.selectPartyHint', { defaultValue: 'You can link this loan to an existing business partner and still edit the borrower fields manually.' })}</DialogDescription>
                 </DialogHeader>
 
                 <div className="grid gap-4 py-2">
@@ -143,7 +143,7 @@ export function LoanRegistrationModal({
                             />
                             <Button type="button" variant="outline" className="shrink-0 gap-2" onClick={() => setIsPartyPickerOpen(true)}>
                                 <Users className="h-4 w-4" />
-                                {t('loans.selectParty', { defaultValue: 'Customer' })}
+                                {t('loans.selectParty', { defaultValue: 'Business Partner' })}
                             </Button>
                         </div>
                         {form.linkedPartyType && form.linkedPartyName ? (

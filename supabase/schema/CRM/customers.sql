@@ -1,6 +1,7 @@
 CREATE TABLE crm.customers (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   workspace_id uuid NOT NULL,
+  business_partner_id uuid NULL,
   name text NOT NULL,
   email text NULL,
   phone text NULL,
@@ -29,6 +30,9 @@ CREATE INDEX IF NOT EXISTS idx_crm_customers_workspace_updated
 
 CREATE INDEX IF NOT EXISTS idx_crm_customers_workspace_deleted
   ON crm.customers (workspace_id, is_deleted);
+
+CREATE INDEX IF NOT EXISTS idx_crm_customers_business_partner
+  ON crm.customers (business_partner_id);
 
 ALTER TABLE crm.customers ENABLE ROW LEVEL SECURITY;
 

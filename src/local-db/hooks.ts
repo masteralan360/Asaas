@@ -40,6 +40,7 @@ import { generateId, toSnakeCase, toCamelCase } from '@/lib/utils'
 import { supabase } from '@/auth/supabase'
 import { useNetworkStatus } from '@/hooks/useNetworkStatus'
 import { isOnline } from '@/lib/network'
+import { convertCurrencyAmountWithSnapshot } from '@/lib/orderCurrency'
 import { isRetriableWebRequestError, normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
 import { getSupabaseClientForTable } from '@/lib/supabaseSchema'
 import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
@@ -2316,6 +2317,56 @@ function roundLoanAmount(amount: number, currency: CurrencyCode): number {
     return Number(amount.toFixed(2))
 }
 
+async function resolveLinkedBusinessPartner(linkedPartyType?: LoanLinkedPartyType | null, linkedPartyId?: string | null) {
+    if (linkedPartyType !== 'business_partner' || !linkedPartyId) {
+        return undefined
+    }
+
+    const { getBusinessPartnerByAnyId } = await import('./businessPartners')
+    const partner = await getBusinessPartnerByAnyId(linkedPartyId)
+    if (!partner || partner.isDeleted || partner.mergedIntoBusinessPartnerId) {
+        return undefined
+    }
+
+    return partner
+}
+
+async function assertLoanCreditLimit(
+    workspaceId: string,
+    input: Pick<LoanCreateInput, 'linkedPartyType' | 'linkedPartyId' | 'principalAmount' | 'settlementCurrency'>
+) {
+    const partner = await resolveLinkedBusinessPartner(input.linkedPartyType, input.linkedPartyId)
+    if (!partner?.creditLimit || partner.creditLimit <= 0) {
+        return
+    }
+
+    const { recalculateBusinessPartnerSummary } = await import('./businessPartners')
+    const refreshedPartner = await recalculateBusinessPartnerSummary(workspaceId, partner.id)
+    const activePartner = refreshedPartner || partner
+    const nextExposure = roundLoanAmount(
+        activePartner.netExposure + convertCurrencyAmountWithSnapshot(
+            input.principalAmount,
+            input.settlementCurrency,
+            activePartner.defaultCurrency
+        ),
+        activePartner.defaultCurrency
+    )
+
+    if (nextExposure > 0 && nextExposure > activePartner.creditLimit) {
+        throw new Error('credit_limit_exceeded')
+    }
+}
+
+async function recalculateLoanLinkedBusinessPartnerSummary(workspaceId: string, linkedPartyType?: LoanLinkedPartyType | null, linkedPartyId?: string | null) {
+    const partner = await resolveLinkedBusinessPartner(linkedPartyType, linkedPartyId)
+    if (!partner) {
+        return
+    }
+
+    const { recalculateBusinessPartnerSummary } = await import('./businessPartners')
+    await recalculateBusinessPartnerSummary(workspaceId, partner.id)
+}
+
 function generateLoanNo(id: string, now = new Date()): string {
     const yyyy = now.getFullYear()
     const mm = String(now.getMonth() + 1).padStart(2, '0')
@@ -2438,11 +2489,11 @@ async function createLoanAggregate(workspaceId: string, input: LoanCreateInput):
     const loanId = generateId()
     const firstDueDate = normalizeDueDate(input.firstDueDate)
     const principalAmount = roundLoanAmount(Math.max(0, Number(input.principalAmount || 0)), input.settlementCurrency)
-    const linkedPartyType = input.linkedPartyType === 'customer'
+    const linkedPartyType = input.linkedPartyType === 'business_partner'
         ? input.linkedPartyType
         : null
-    const linkedPartyId = typeof input.linkedPartyId === 'string' ? input.linkedPartyId.trim() : ''
-    const linkedPartyName = typeof input.linkedPartyName === 'string' ? input.linkedPartyName.trim() : ''
+    let linkedPartyId = typeof input.linkedPartyId === 'string' ? input.linkedPartyId.trim() : ''
+    let linkedPartyName = typeof input.linkedPartyName === 'string' ? input.linkedPartyName.trim() : ''
     const borrowerName = typeof input.borrowerName === 'string' ? input.borrowerName.trim() : ''
     const borrowerPhone = typeof input.borrowerPhone === 'string' ? input.borrowerPhone.trim() : ''
     const borrowerAddress = typeof input.borrowerAddress === 'string' ? input.borrowerAddress.trim() : ''
@@ -2453,6 +2504,21 @@ async function createLoanAggregate(workspaceId: string, input: LoanCreateInput):
     }
     if (!borrowerName || !borrowerPhone || !borrowerAddress || !borrowerNationalId) {
         throw new Error('Missing borrower information')
+    }
+
+    const linkedBusinessPartner = await resolveLinkedBusinessPartner(linkedPartyType, linkedPartyId)
+    if (linkedPartyType && linkedPartyId && !linkedBusinessPartner) {
+        throw new Error('Business partner not found')
+    }
+    if (linkedBusinessPartner) {
+        linkedPartyId = linkedBusinessPartner.id
+        linkedPartyName = linkedPartyName || linkedBusinessPartner.name
+        await assertLoanCreditLimit(workspaceId, {
+            linkedPartyType,
+            linkedPartyId,
+            principalAmount,
+            settlementCurrency: input.settlementCurrency
+        })
     }
 
     const plan = createInstallmentPlan(
@@ -2529,6 +2595,7 @@ async function createLoanAggregate(workspaceId: string, input: LoanCreateInput):
 
     if (!isOnline()) {
         await enqueueLoanCreateMutations(workspaceId, loan, installments)
+        await recalculateLoanLinkedBusinessPartnerSummary(workspaceId, loan.linkedPartyType, loan.linkedPartyId)
         return { loan, installments }
     }
 
@@ -2552,6 +2619,8 @@ async function createLoanAggregate(workspaceId: string, input: LoanCreateInput):
             }
         })
 
+        await recalculateLoanLinkedBusinessPartnerSummary(workspaceId, loan.linkedPartyType, loan.linkedPartyId)
+
         return {
             loan: { ...loan, syncStatus: 'synced', lastSyncedAt: syncedAt },
             installments: installments.map(item => ({ ...item, syncStatus: 'synced', lastSyncedAt: syncedAt }))
@@ -2560,6 +2629,7 @@ async function createLoanAggregate(workspaceId: string, input: LoanCreateInput):
         if (shouldUseOfflineMutationFallback(error)) {
             console.error('[Loans] Online create failed, queued offline mutation:', error)
             await enqueueLoanCreateMutations(workspaceId, loan, installments)
+            await recalculateLoanLinkedBusinessPartnerSummary(workspaceId, loan.linkedPartyType, loan.linkedPartyId)
             return { loan, installments }
         }
 
@@ -2569,6 +2639,8 @@ async function createLoanAggregate(workspaceId: string, input: LoanCreateInput):
                 await db.loan_installments.delete(installment.id)
             }
         })
+
+        await recalculateLoanLinkedBusinessPartnerSummary(workspaceId, loan.linkedPartyType, loan.linkedPartyId)
 
         throw normalizeSupabaseActionError(error)
     }
@@ -2821,6 +2893,7 @@ export async function deleteLoan(loanId: string): Promise<void> {
 
     if (!isOnline()) {
         await removeLoanAggregateLocally(true)
+        await recalculateLoanLinkedBusinessPartnerSummary(loan.workspaceId, loan.linkedPartyType, loan.linkedPartyId)
         return
     }
 
@@ -2831,10 +2904,12 @@ export async function deleteLoan(loanId: string): Promise<void> {
         if (error) throw error
 
         await removeLoanAggregateLocally(false)
+        await recalculateLoanLinkedBusinessPartnerSummary(loan.workspaceId, loan.linkedPartyType, loan.linkedPartyId)
     } catch (error) {
         if (shouldUseOfflineMutationFallback(error)) {
             console.error('[Loans] Delete sync failed, queued offline mutation:', error)
             await removeLoanAggregateLocally(true)
+            await recalculateLoanLinkedBusinessPartnerSummary(loan.workspaceId, loan.linkedPartyType, loan.linkedPartyId)
             return
         }
 
@@ -2987,6 +3062,7 @@ export async function recordLoanPayment(workspaceId: string, input: LoanPaymentI
 
     if (!isOnline()) {
         await enqueueMutations()
+        await recalculateLoanLinkedBusinessPartnerSummary(workspaceId, updatedLoan.linkedPartyType, updatedLoan.linkedPartyId)
         return { loan: updatedLoan, payment, installments: updatedInstallments }
     }
 
@@ -3034,6 +3110,8 @@ export async function recordLoanPayment(workspaceId: string, input: LoanPaymentI
             await db.loan_payments.update(payment.id, { syncStatus: 'synced', lastSyncedAt: syncedAt })
         })
 
+        await recalculateLoanLinkedBusinessPartnerSummary(workspaceId, updatedLoan.linkedPartyType, updatedLoan.linkedPartyId)
+
         return {
             loan: { ...updatedLoan, syncStatus: 'synced', lastSyncedAt: syncedAt },
             payment: { ...payment, syncStatus: 'synced', lastSyncedAt: syncedAt },
@@ -3043,6 +3121,7 @@ export async function recordLoanPayment(workspaceId: string, input: LoanPaymentI
         if (shouldUseOfflineMutationFallback(error)) {
             console.error('[Loans] Payment sync failed, queued offline mutation:', error)
             await enqueueMutations()
+            await recalculateLoanLinkedBusinessPartnerSummary(workspaceId, updatedLoan.linkedPartyType, updatedLoan.linkedPartyId)
             return { loan: updatedLoan, payment, installments: updatedInstallments }
         }
 
@@ -3053,6 +3132,8 @@ export async function recordLoanPayment(workspaceId: string, input: LoanPaymentI
             }
             await db.loan_payments.delete(payment.id)
         })
+
+        await recalculateLoanLinkedBusinessPartnerSummary(workspaceId, loan.linkedPartyType, loan.linkedPartyId)
 
         throw normalizeSupabaseActionError(error)
     }

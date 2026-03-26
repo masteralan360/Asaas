@@ -30,7 +30,7 @@ CREATE TABLE public.loans (
   overdue_reminder_snoozed_for_due_date date NULL,
   CONSTRAINT loans_linked_party_type_check CHECK (
     linked_party_type IS NULL
-    OR linked_party_type = 'customer'::text
+    OR linked_party_type = 'business_partner'::text
   ),
   CONSTRAINT loans_linked_party_presence_check CHECK (
     (

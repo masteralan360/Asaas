@@ -2,6 +2,7 @@ CREATE TABLE crm.sales_orders (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   workspace_id uuid NOT NULL,
   order_number text NOT NULL,
+  business_partner_id uuid NULL,
   customer_id uuid NOT NULL,
   customer_name text NULL,
   subtotal numeric NULL DEFAULT 0,
@@ -46,6 +47,9 @@ CREATE INDEX IF NOT EXISTS idx_crm_sales_orders_workspace_status
 
 CREATE INDEX IF NOT EXISTS idx_crm_sales_orders_customer
   ON crm.sales_orders (customer_id);
+
+CREATE INDEX IF NOT EXISTS idx_crm_sales_orders_business_partner
+  ON crm.sales_orders (business_partner_id);
 
 ALTER TABLE crm.sales_orders ENABLE ROW LEVEL SECURITY;
 

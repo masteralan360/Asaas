@@ -133,6 +133,27 @@ export async function processMutationQueue(_userId: string): Promise<{ success: 
 
                     await db.inventory.put(localInventoryRow)
                     entityHandledInline = true
+                } else if (entityType === 'business_partner_merge_candidates') {
+                    const { data: remoteMergeCandidateRow, error } = await client
+                        .from(tableName)
+                        .upsert(dbPayload, { onConflict: 'primary_partner_id,secondary_partner_id,merge_type' })
+                        .select('*')
+                        .single()
+
+                    if (error) throw error
+
+                    const syncedAt = new Date().toISOString()
+                    const localMergeCandidateRow = toCamelCase(remoteMergeCandidateRow as Record<string, unknown>) as Record<string, unknown>
+                    localMergeCandidateRow.syncStatus = 'synced'
+                    localMergeCandidateRow.lastSyncedAt = syncedAt
+                    syncedEntityId = String(localMergeCandidateRow.id)
+
+                    if (syncedEntityId !== entityId) {
+                        await db.business_partner_merge_candidates.delete(entityId)
+                    }
+
+                    await db.business_partner_merge_candidates.put(localMergeCandidateRow as never)
+                    entityHandledInline = true
                 } else {
                     // Special handling for invoices to remove legacy fields
                     if (tableName === 'invoices') {
@@ -221,6 +242,8 @@ export async function pullChanges(workspaceId: string, lastSyncTime: string | nu
         'categories',
         'customers',
         'suppliers',
+        'business_partners',
+        'business_partner_merge_candidates',
         'invoices',
         'workspaces',
         'sales',

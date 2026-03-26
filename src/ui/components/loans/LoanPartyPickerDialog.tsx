@@ -2,7 +2,7 @@ import { type ReactNode, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { MapPin, Phone, Search, UserRound } from 'lucide-react'
 
-import { type Customer, useCustomers } from '@/local-db'
+import { type BusinessPartner, useBusinessPartners } from '@/local-db'
 import type { LoanPartySelection } from '@/lib/loanParties'
 import { cn } from '@/lib/utils'
 import {
@@ -31,14 +31,14 @@ function composeAddress(parts: Array<string | null | undefined>) {
         .join(', ')
 }
 
-function buildCustomerSelection(customer: Customer): LoanPartySelection {
+function buildPartnerSelection(partner: BusinessPartner): LoanPartySelection {
     return {
-        linkedPartyType: 'customer',
-        linkedPartyId: customer.id,
-        linkedPartyName: customer.name,
-        borrowerName: customer.name,
-        borrowerPhone: customer.phone?.trim() || '',
-        borrowerAddress: composeAddress([customer.address, customer.city, customer.country])
+        linkedPartyType: 'business_partner',
+        linkedPartyId: partner.id,
+        linkedPartyName: partner.name,
+        borrowerName: partner.contactName?.trim() || partner.name,
+        borrowerPhone: partner.phone?.trim() || '',
+        borrowerAddress: composeAddress([partner.address, partner.city, partner.country])
     }
 }
 
@@ -98,7 +98,7 @@ export function LoanPartyPickerDialog({
     selectedPartyId
 }: LoanPartyPickerDialogProps) {
     const { t } = useTranslation()
-    const customers = useCustomers(workspaceId)
+    const businessPartners = useBusinessPartners(workspaceId)
     const [search, setSearch] = useState('')
 
     useEffect(() => {
@@ -111,20 +111,20 @@ export function LoanPartyPickerDialog({
 
     const normalizedQuery = search.trim().toLowerCase()
 
-    const filteredCustomers = useMemo(() => {
+    const filteredPartners = useMemo(() => {
         if (!normalizedQuery) {
-            return customers
+            return businessPartners
         }
 
-        return customers.filter((customer) =>
-            [customer.name, customer.phone, customer.email, customer.address, customer.city, customer.country]
+        return businessPartners.filter((partner) =>
+            [partner.name, partner.contactName, partner.phone, partner.email, partner.address, partner.city, partner.country]
                 .filter((value): value is string => typeof value === 'string' && value.length > 0)
                 .some((value) => value.toLowerCase().includes(normalizedQuery))
         )
-    }, [customers, normalizedQuery])
+    }, [businessPartners, normalizedQuery])
 
-    const handleCustomerSelect = (customer: Customer) => {
-        onSelect(buildCustomerSelection(customer))
+    const handlePartnerSelect = (partner: BusinessPartner) => {
+        onSelect(buildPartnerSelection(partner))
         onOpenChange(false)
     }
 
@@ -132,8 +132,8 @@ export function LoanPartyPickerDialog({
         <Dialog open={isOpen} onOpenChange={onOpenChange}>
             <DialogContent className="sm:max-w-3xl">
                 <DialogHeader>
-                    <DialogTitle>{t('loans.selectParty', { defaultValue: 'Customer' })}</DialogTitle>
-                    <DialogDescription>{t('loans.selectPartyDescription', { defaultValue: 'Choose an existing customer to fill the borrower details and mark who this loan belongs to.' })}</DialogDescription>
+                    <DialogTitle>{t('loans.selectParty', { defaultValue: 'Business Partner' })}</DialogTitle>
+                    <DialogDescription>{t('loans.selectPartyDescription', { defaultValue: 'Choose an existing business partner to fill the borrower details and mark who this loan belongs to.' })}</DialogDescription>
                 </DialogHeader>
 
                 <div className="relative">
@@ -142,24 +142,24 @@ export function LoanPartyPickerDialog({
                         value={search}
                         onChange={(event) => setSearch(event.target.value)}
                         className="ps-9"
-                        placeholder={t('loans.searchPartyPlaceholder', { defaultValue: 'Search customers...' })}
+                        placeholder={t('loans.searchPartyPlaceholder', { defaultValue: 'Search business partners...' })}
                     />
                 </div>
 
                 <div className="max-h-[360px] space-y-3 overflow-y-auto pr-1">
-                    {filteredCustomers.length === 0 ? (
+                    {filteredPartners.length === 0 ? (
                         <div className="rounded-xl border border-dashed py-10 text-center text-sm text-muted-foreground">
-                            {t('loans.noPartyResults', { defaultValue: 'No matching customers found.' })}
+                            {t('loans.noPartyResults', { defaultValue: 'No matching business partners found.' })}
                         </div>
-                    ) : filteredCustomers.map((customer) => (
+                    ) : filteredPartners.map((partner) => (
                         <CustomerListItem
-                            key={customer.id}
+                            key={partner.id}
                             icon={<UserRound className="h-4 w-4" />}
-                            name={customer.name}
-                            phone={customer.phone}
-                            address={composeAddress([customer.address, customer.city, customer.country])}
-                            isActive={selectedPartyId === customer.id}
-                            onClick={() => handleCustomerSelect(customer)}
+                            name={partner.name}
+                            phone={partner.phone}
+                            address={composeAddress([partner.address, partner.city, partner.country])}
+                            isActive={selectedPartyId === partner.id}
+                            onClick={() => handlePartnerSelect(partner)}
                         />
                     ))}
                 </div>

@@ -2,7 +2,7 @@ import { useEffect } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 
 import { useNetworkStatus } from '@/hooks/useNetworkStatus'
-import { getTravelSaleNet } from '@/lib/travelAgency'
+import { getTravelSaleCost } from '@/lib/travelAgency'
 import { convertCurrencyAmountWithSnapshot } from '@/lib/orderCurrency'
 import { isOnline } from '@/lib/network'
 import { getSupabaseClientForTable } from '@/lib/supabaseSchema'
@@ -11,6 +11,11 @@ import { generateId } from '@/lib/utils'
 import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
 
 import { db } from './database'
+import {
+    ensurePartnerFacet,
+    getBusinessPartnerByAnyId,
+    recalculateBusinessPartnerSummary
+} from './businessPartners'
 import {
     adjustInventoryQuantity,
     getInventoryQuantityForProductStorage
@@ -246,9 +251,9 @@ async function recalculateCustomerSummary(workspaceId: string, customerId: strin
     return updated
 }
 
-function convertTravelSupplierNetForSupplier(sale: TravelAgencySale, supplierCurrency: CurrencyCode) {
+function convertTravelSupplierCostForSupplier(sale: TravelAgencySale, supplierCurrency: CurrencyCode) {
     return convertCurrencyAmountWithSnapshot(
-        getTravelSaleNet(sale),
+        getTravelSaleCost(sale),
         sale.currency,
         supplierCurrency,
         sale.exchangeRateSnapshot ? [sale.exchangeRateSnapshot] as any : undefined
@@ -283,7 +288,7 @@ export async function recalculateSupplierSummary(workspaceId: string, supplierId
             0
         )
     const travelSalesSpent = activeTravelSales.reduce(
-        (sum, sale) => sum + convertTravelSupplierNetForSupplier(sale, supplier.defaultCurrency),
+        (sum, sale) => sum + convertTravelSupplierCostForSupplier(sale, supplier.defaultCurrency),
         0
     )
     const totalPurchases = activeOrders.length + activeTravelSales.length
@@ -321,6 +326,122 @@ export async function recalculateAllSupplierSummaries(workspaceId: string) {
     await Promise.all(suppliers.map((supplier) => recalculateSupplierSummary(workspaceId, supplier.id)))
 }
 
+function orderCountsTowardReceivable(order: Pick<SalesOrder, 'status' | 'isPaid'>) {
+    return (order.status === 'pending' || order.status === 'completed') && !order.isPaid
+}
+
+async function resolveCustomerBusinessPartner(customerId?: string | null, businessPartnerId?: string | null) {
+    const directPartnerId = typeof businessPartnerId === 'string' && businessPartnerId.trim().length > 0
+        ? businessPartnerId.trim()
+        : typeof customerId === 'string'
+            ? customerId.trim()
+            : ''
+    if (directPartnerId) {
+        const partner = await getBusinessPartnerByAnyId(directPartnerId)
+        if (partner && !partner.isDeleted && !partner.mergedIntoBusinessPartnerId) {
+            return partner
+        }
+    }
+
+    const facetId = typeof customerId === 'string' ? customerId.trim() : ''
+    if (!facetId) {
+        return undefined
+    }
+
+    const customer = await db.customers.get(facetId)
+    if (customer?.businessPartnerId) {
+        const partner = await db.business_partners.get(customer.businessPartnerId)
+        if (partner && !partner.isDeleted && !partner.mergedIntoBusinessPartnerId) {
+            return partner
+        }
+    }
+
+    return undefined
+}
+
+async function resolveSupplierBusinessPartner(supplierId?: string | null, businessPartnerId?: string | null) {
+    const directPartnerId = typeof businessPartnerId === 'string' && businessPartnerId.trim().length > 0
+        ? businessPartnerId.trim()
+        : typeof supplierId === 'string'
+            ? supplierId.trim()
+            : ''
+    if (directPartnerId) {
+        const partner = await getBusinessPartnerByAnyId(directPartnerId)
+        if (partner && !partner.isDeleted && !partner.mergedIntoBusinessPartnerId) {
+            return partner
+        }
+    }
+
+    const facetId = typeof supplierId === 'string' ? supplierId.trim() : ''
+    if (!facetId) {
+        return undefined
+    }
+
+    const supplier = await db.suppliers.get(facetId)
+    if (supplier?.businessPartnerId) {
+        const partner = await db.business_partners.get(supplier.businessPartnerId)
+        if (partner && !partner.isDeleted && !partner.mergedIntoBusinessPartnerId) {
+            return partner
+        }
+    }
+
+    return undefined
+}
+
+async function normalizeSalesOrderCounterparty(
+    data: Pick<SalesOrder, 'businessPartnerId' | 'customerId' | 'customerName'>
+) {
+    const partner = await resolveCustomerBusinessPartner(data.customerId, data.businessPartnerId)
+    if (!partner) {
+        throw new Error('Customer not found')
+    }
+
+    const customerFacet = await ensurePartnerFacet(partner.id, 'customer')
+    return {
+        businessPartnerId: partner.id,
+        customerId: customerFacet.id,
+        customerName: data.customerName || partner.name
+    }
+}
+
+async function normalizePurchaseOrderCounterparty(
+    data: Pick<PurchaseOrder, 'businessPartnerId' | 'supplierId' | 'supplierName'>
+) {
+    const partner = await resolveSupplierBusinessPartner(data.supplierId, data.businessPartnerId)
+    if (!partner) {
+        throw new Error('Supplier not found')
+    }
+
+    const supplierFacet = await ensurePartnerFacet(partner.id, 'supplier')
+    return {
+        businessPartnerId: partner.id,
+        supplierId: supplierFacet.id,
+        supplierName: data.supplierName || partner.name
+    }
+}
+
+async function recalculateCustomerAndPartnerSummaries(workspaceId: string, customerId?: string | null, businessPartnerId?: string | null) {
+    const tasks: Array<Promise<unknown>> = []
+    if (customerId) {
+        tasks.push(recalculateCustomerSummary(workspaceId, customerId))
+    }
+    if (businessPartnerId) {
+        tasks.push(recalculateBusinessPartnerSummary(workspaceId, businessPartnerId))
+    }
+    await Promise.all(tasks)
+}
+
+async function recalculateSupplierAndPartnerSummaries(workspaceId: string, supplierId?: string | null, businessPartnerId?: string | null) {
+    const tasks: Array<Promise<unknown>> = []
+    if (supplierId) {
+        tasks.push(recalculateSupplierSummary(workspaceId, supplierId))
+    }
+    if (businessPartnerId) {
+        tasks.push(recalculateBusinessPartnerSummary(workspaceId, businessPartnerId))
+    }
+    await Promise.all(tasks)
+}
+
 function buildBaseEntity<T extends Record<string, unknown>>(workspaceId: string, data: T): T & BaseEntityPayload {
     const now = new Date().toISOString()
 
@@ -337,41 +458,33 @@ function buildBaseEntity<T extends Record<string, unknown>>(workspaceId: string,
     }
 }
 
-export function useCustomers(workspaceId: string | undefined) {
-    const online = useNetworkStatus()
-
-    const customers = useLiveQuery(
-        async () => {
-            if (!workspaceId) return []
-            const rows = await db.customers.where('workspaceId').equals(workspaceId).and((item) => !item.isDeleted).toArray()
-            return rows.sort((a, b) => a.name.localeCompare(b.name))
-        },
-        [workspaceId]
-    )
-
-    useEffect(() => {
-        if (online && workspaceId && shouldUseCloudBusinessData(workspaceId)) {
-            fetchTableFromSupabase('customers', db.customers, workspaceId)
-        }
-    }, [online, workspaceId])
-
-    return customers ?? []
-}
-
-export function useCustomer(customerId: string | undefined) {
-    return useLiveQuery(() => customerId ? db.customers.get(customerId) : undefined, [customerId])
-}
-
 export function useCustomerSalesOrders(customerId: string | undefined, workspaceId: string | undefined) {
     const online = useNetworkStatus()
 
     const orders = useLiveQuery(
         async () => {
             if (!customerId) return []
-            const rows = await db.sales_orders.where('customerId').equals(customerId).and((item) => !item.isDeleted).toArray()
+            const partner = await resolveCustomerBusinessPartner(customerId, customerId)
+            const rows = await db.sales_orders
+                .where('workspaceId')
+                .equals(workspaceId || '')
+                .and((item) => {
+                    if (item.isDeleted) {
+                        return false
+                    }
+
+                    if (!partner) {
+                        return item.customerId === customerId
+                    }
+
+                    return item.businessPartnerId === partner.id
+                        || item.customerId === customerId
+                        || Boolean(partner.customerFacetId && item.customerId === partner.customerFacetId)
+                })
+                .toArray()
             return rows.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
         },
-        [customerId]
+        [customerId, workspaceId]
     )
 
     useEffect(() => {
@@ -383,99 +496,6 @@ export function useCustomerSalesOrders(customerId: string | undefined, workspace
     return orders ?? []
 }
 
-export async function createCustomer(
-    workspaceId: string,
-    data: Omit<Customer, 'id' | 'workspaceId' | 'createdAt' | 'updatedAt' | 'syncStatus' | 'lastSyncedAt' | 'version' | 'isDeleted' | 'totalOrders' | 'totalSpent' | 'outstandingBalance'>
-) {
-    const customer = buildBaseEntity(workspaceId, {
-        ...data,
-        totalOrders: 0,
-        totalSpent: 0,
-        outstandingBalance: 0
-    }) as Customer
-
-    await db.customers.put(customer)
-    await syncUpsertEntities('customers', [customer as unknown as Record<string, unknown> & { id: string; version: number }], workspaceId)
-    return customer
-}
-
-export async function updateCustomer(id: string, data: Partial<Customer>) {
-    const customer = await db.customers.get(id)
-    if (!customer || customer.isDeleted) {
-        throw new Error('Customer not found')
-    }
-
-    const now = new Date().toISOString()
-    const updated: Customer = {
-        ...customer,
-        ...data,
-        updatedAt: now,
-        version: customer.version + 1,
-        ...getSyncMetadata(customer.workspaceId, now)
-    }
-
-    await db.customers.put(updated)
-    await syncUpsertEntities('customers', [updated as unknown as Record<string, unknown> & { id: string; version: number }], customer.workspaceId)
-    return updated
-}
-
-export async function deleteCustomer(id: string) {
-    const customer = await db.customers.get(id)
-    if (!customer || customer.isDeleted) {
-        return
-    }
-
-    const now = new Date().toISOString()
-    await db.customers.put({
-        ...customer,
-        isDeleted: true,
-        updatedAt: now,
-        version: customer.version + 1,
-        ...getSyncMetadata(customer.workspaceId, now)
-    })
-    await syncSoftDelete('customers', id, customer.workspaceId)
-}
-
-export function useSuppliers(workspaceId: string | undefined) {
-    const online = useNetworkStatus()
-
-    const suppliers = useLiveQuery(
-        async () => {
-            if (!workspaceId) return []
-            const rows = await db.suppliers.where('workspaceId').equals(workspaceId).and((item) => !item.isDeleted).toArray()
-            return rows.sort((a, b) => a.name.localeCompare(b.name))
-        },
-        [workspaceId]
-    )
-
-    useEffect(() => {
-        if (!workspaceId) {
-            return
-        }
-
-        const hydrate = async () => {
-            if (online && shouldUseCloudBusinessData(workspaceId)) {
-                await Promise.all([
-                    fetchTableFromSupabase('suppliers', db.suppliers, workspaceId),
-                    fetchTableFromSupabase('purchase_orders', db.purchase_orders, workspaceId),
-                    fetchTableFromSupabase('travel_agency_sales', db.travel_agency_sales, workspaceId)
-                ])
-            }
-
-            await recalculateAllSupplierSummaries(workspaceId)
-        }
-
-        void hydrate().catch((error) => {
-            console.error('[Suppliers] Failed to hydrate supplier summaries:', error)
-        })
-    }, [online, workspaceId])
-
-    return suppliers ?? []
-}
-
-export function useSupplier(supplierId: string | undefined) {
-    return useLiveQuery(() => supplierId ? db.suppliers.get(supplierId) : undefined, [supplierId])
-}
 
 export function useSupplierPurchaseOrders(supplierId: string | undefined, workspaceId: string | undefined) {
     const online = useNetworkStatus()
@@ -483,10 +503,27 @@ export function useSupplierPurchaseOrders(supplierId: string | undefined, worksp
     const orders = useLiveQuery(
         async () => {
             if (!supplierId) return []
-            const rows = await db.purchase_orders.where('supplierId').equals(supplierId).and((item) => !item.isDeleted).toArray()
+            const partner = await resolveSupplierBusinessPartner(supplierId, supplierId)
+            const rows = await db.purchase_orders
+                .where('workspaceId')
+                .equals(workspaceId || '')
+                .and((item) => {
+                    if (item.isDeleted) {
+                        return false
+                    }
+
+                    if (!partner) {
+                        return item.supplierId === supplierId
+                    }
+
+                    return item.businessPartnerId === partner.id
+                        || item.supplierId === supplierId
+                        || Boolean(partner.supplierFacetId && item.supplierId === partner.supplierFacetId)
+                })
+                .toArray()
             return rows.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
         },
-        [supplierId]
+        [supplierId, workspaceId]
     )
 
     useEffect(() => {
@@ -498,93 +535,58 @@ export function useSupplierPurchaseOrders(supplierId: string | undefined, worksp
     return orders ?? []
 }
 
-export async function createSupplier(
-    workspaceId: string,
-    data: Omit<Supplier, 'id' | 'workspaceId' | 'createdAt' | 'updatedAt' | 'syncStatus' | 'lastSyncedAt' | 'version' | 'isDeleted' | 'totalPurchases' | 'totalSpent'>
-) {
-    const supplier = buildBaseEntity(workspaceId, {
-        ...data,
-        totalPurchases: 0,
-        totalSpent: 0
-    }) as Supplier
-
-    await db.suppliers.put(supplier)
-    await syncUpsertEntities('suppliers', [supplier as unknown as Record<string, unknown> & { id: string; version: number }], workspaceId)
-    return supplier
-}
-
-export async function updateSupplier(id: string, data: Partial<Supplier>) {
-    const supplier = await db.suppliers.get(id)
-    if (!supplier || supplier.isDeleted) {
-        throw new Error('Supplier not found')
-    }
-
-    const now = new Date().toISOString()
-    const updated: Supplier = {
-        ...supplier,
-        ...data,
-        updatedAt: now,
-        version: supplier.version + 1,
-        ...getSyncMetadata(supplier.workspaceId, now)
-    }
-
-    await db.suppliers.put(updated)
-    await syncUpsertEntities('suppliers', [updated as unknown as Record<string, unknown> & { id: string; version: number }], supplier.workspaceId)
-    return updated
-}
-
-export async function deleteSupplier(id: string) {
-    const supplier = await db.suppliers.get(id)
-    if (!supplier || supplier.isDeleted) {
-        return
-    }
-
-    const now = new Date().toISOString()
-    await db.suppliers.put({
-        ...supplier,
-        isDeleted: true,
-        updatedAt: now,
-        version: supplier.version + 1,
-        ...getSyncMetadata(supplier.workspaceId, now)
-    })
-    await syncSoftDelete('suppliers', id, supplier.workspaceId)
-}
-
-async function computeCustomerOutstandingBeforeOrder(customer: Customer, excludeOrderId?: string) {
-    const orders = await db.sales_orders
-        .where('customerId')
-        .equals(customer.id)
-        .and((item) => !item.isDeleted && item.id !== excludeOrderId)
-        .toArray()
-
-    return roundAmount(
-        orders
-            .filter((order) => (order.status === 'pending' || order.status === 'completed') && !order.isPaid)
-            .reduce(
-                (sum, order) => sum + convertCurrencyAmountWithSnapshot(order.total, order.currency, customer.defaultCurrency, order.exchangeRates),
-                0
-            ),
-        customer.defaultCurrency
-    )
-}
 
 async function assertSalesCreditLimit(order: SalesOrder, excludeOrderId?: string) {
-    if (order.isPaid) {
+    if (!orderCountsTowardReceivable(order)) {
         return
     }
 
-    const customer = await db.customers.get(order.customerId)
-    if (!customer || customer.isDeleted) {
+    const partner = await resolveCustomerBusinessPartner(order.customerId, order.businessPartnerId)
+    if (!partner) {
         throw new Error('Customer not found')
     }
 
-    if (!customer.creditLimit || customer.creditLimit <= 0) {
+    if (!partner.creditLimit || partner.creditLimit <= 0) {
         return
     }
 
-    const outstanding = await computeCustomerOutstandingBeforeOrder(customer, excludeOrderId)
-    const nextExposure = outstanding + convertCurrencyAmountWithSnapshot(order.total, order.currency, customer.defaultCurrency, order.exchangeRates)
-    if (nextExposure > customer.creditLimit) {
+    const refreshedPartner = await recalculateBusinessPartnerSummary(order.workspaceId, partner.id)
+    const activePartner = refreshedPartner || partner
+    let currentExposure = activePartner.netExposure
+
+    if (excludeOrderId) {
+        const existingOrder = await db.sales_orders.get(excludeOrderId)
+        if (
+            existingOrder
+            && !existingOrder.isDeleted
+            && orderCountsTowardReceivable(existingOrder)
+            && (
+                existingOrder.businessPartnerId === activePartner.id
+                || Boolean(activePartner.customerFacetId && existingOrder.customerId === activePartner.customerFacetId)
+            )
+        ) {
+            currentExposure = roundAmount(
+                currentExposure - convertCurrencyAmountWithSnapshot(
+                    existingOrder.total,
+                    existingOrder.currency,
+                    activePartner.defaultCurrency,
+                    existingOrder.exchangeRates
+                ),
+                activePartner.defaultCurrency
+            )
+        }
+    }
+
+    const nextExposure = roundAmount(
+        currentExposure + convertCurrencyAmountWithSnapshot(
+            order.total,
+            order.currency,
+            activePartner.defaultCurrency,
+            order.exchangeRates
+        ),
+        activePartner.defaultCurrency
+    )
+    if (nextExposure > 0 && nextExposure > activePartner.creditLimit) {
         throw new Error('credit_limit_exceeded')
     }
 }
@@ -797,8 +799,10 @@ export async function createSalesOrder(
 ) {
     const orderNumber = await generateDocumentNumber('sales_orders', workspaceId)
     const status = data.status || 'draft'
+    const counterparty = await normalizeSalesOrderCounterparty(data)
     const order = buildBaseEntity(workspaceId, {
         ...data,
+        ...counterparty,
         orderNumber,
         status
     }) as SalesOrder
@@ -828,7 +832,7 @@ export async function createSalesOrder(
     if (updatedProducts.length > 0) {
         await syncUpsertEntities('products', updatedProducts as unknown as Array<Record<string, unknown> & { id: string; version: number }>, workspaceId)
     }
-    await recalculateCustomerSummary(workspaceId, order.customerId)
+    await recalculateCustomerAndPartnerSummaries(workspaceId, order.customerId, order.businessPartnerId)
     return (await db.sales_orders.get(order.id)) as SalesOrder
 }
 
@@ -843,9 +847,15 @@ export async function updateSalesOrder(id: string, data: Partial<SalesOrder>) {
     }
 
     const now = new Date().toISOString()
+    const counterparty = await normalizeSalesOrderCounterparty({
+        businessPartnerId: data.businessPartnerId ?? existing.businessPartnerId ?? null,
+        customerId: data.customerId ?? existing.businessPartnerId ?? existing.customerId,
+        customerName: data.customerName ?? existing.customerName
+    })
     const updated: SalesOrder = {
         ...existing,
         ...data,
+        ...counterparty,
         updatedAt: now,
         version: existing.version + 1,
         ...getSyncMetadata(existing.workspaceId, now)
@@ -854,10 +864,19 @@ export async function updateSalesOrder(id: string, data: Partial<SalesOrder>) {
     await db.sales_orders.put(updated)
     await syncUpsertEntities('sales_orders', [updated as unknown as Record<string, unknown> & { id: string; version: number }], existing.workspaceId)
 
-    if (existing.customerId !== updated.customerId) {
-        await recalculateCustomerSummary(existing.workspaceId, existing.customerId)
-    }
-    await recalculateCustomerSummary(existing.workspaceId, updated.customerId)
+    await Promise.all(
+        Array.from(new Set([
+            `${existing.customerId}::${existing.businessPartnerId || ''}`,
+            `${updated.customerId}::${updated.businessPartnerId || ''}`
+        ])).map((key) => {
+            const [customerId, businessPartnerId] = key.split('::')
+            return recalculateCustomerAndPartnerSummaries(
+                existing.workspaceId,
+                customerId || null,
+                businessPartnerId || null
+            )
+        })
+    )
     return updated
 }
 
@@ -872,8 +891,14 @@ export async function updateSalesOrderStatus(id: string, status: SalesOrderStatu
     }
 
     const now = new Date().toISOString()
+    const counterparty = await normalizeSalesOrderCounterparty({
+        businessPartnerId: existing.businessPartnerId ?? null,
+        customerId: existing.businessPartnerId ?? existing.customerId,
+        customerName: existing.customerName
+    })
     const updated: SalesOrder = {
         ...existing,
+        ...counterparty,
         status,
         updatedAt: now,
         version: existing.version + 1,
@@ -900,7 +925,19 @@ export async function updateSalesOrderStatus(id: string, status: SalesOrderStatu
     if (updatedProducts.length > 0) {
         await syncUpsertEntities('products', updatedProducts as unknown as Array<Record<string, unknown> & { id: string; version: number }>, existing.workspaceId)
     }
-    await recalculateCustomerSummary(existing.workspaceId, existing.customerId)
+    await Promise.all(
+        Array.from(new Set([
+            `${existing.customerId}::${existing.businessPartnerId || ''}`,
+            `${updated.customerId}::${updated.businessPartnerId || ''}`
+        ])).map((key) => {
+            const [customerId, businessPartnerId] = key.split('::')
+            return recalculateCustomerAndPartnerSummaries(
+                existing.workspaceId,
+                customerId || null,
+                businessPartnerId || null
+            )
+        })
+    )
     return updated
 }
 
@@ -918,8 +955,14 @@ export async function setSalesOrderPaymentStatus(
     }
 
     const now = new Date().toISOString()
+    const counterparty = await normalizeSalesOrderCounterparty({
+        businessPartnerId: existing.businessPartnerId ?? null,
+        customerId: existing.businessPartnerId ?? existing.customerId,
+        customerName: existing.customerName
+    })
     const updated: SalesOrder = {
         ...existing,
+        ...counterparty,
         isPaid: input.isPaid,
         paymentMethod: input.isPaid ? input.paymentMethod || existing.paymentMethod : existing.paymentMethod,
         paidAt: input.isPaid ? (input.paidAt || now) : null,
@@ -938,7 +981,19 @@ export async function setSalesOrderPaymentStatus(
 
     await db.sales_orders.put(updated)
     await syncUpsertEntities('sales_orders', [updated as unknown as Record<string, unknown> & { id: string; version: number }], existing.workspaceId)
-    await recalculateCustomerSummary(existing.workspaceId, existing.customerId)
+    await Promise.all(
+        Array.from(new Set([
+            `${existing.customerId}::${existing.businessPartnerId || ''}`,
+            `${updated.customerId}::${updated.businessPartnerId || ''}`
+        ])).map((key) => {
+            const [customerId, businessPartnerId] = key.split('::')
+            return recalculateCustomerAndPartnerSummaries(
+                existing.workspaceId,
+                customerId || null,
+                businessPartnerId || null
+            )
+        })
+    )
     return updated
 }
 
@@ -985,7 +1040,7 @@ export async function deleteSalesOrder(id: string) {
         ...getSyncMetadata(existing.workspaceId, now)
     })
     await syncSoftDelete('sales_orders', id, existing.workspaceId)
-    await recalculateCustomerSummary(existing.workspaceId, existing.customerId)
+    await recalculateCustomerAndPartnerSummaries(existing.workspaceId, existing.customerId, existing.businessPartnerId)
 }
 
 export async function createPurchaseOrder(
@@ -994,8 +1049,10 @@ export async function createPurchaseOrder(
 ) {
     const orderNumber = await generateDocumentNumber('purchase_orders', workspaceId)
     const status = data.status || 'draft'
+    const counterparty = await normalizePurchaseOrderCounterparty(data)
     const order = buildBaseEntity(workspaceId, {
         ...data,
+        ...counterparty,
         orderNumber,
         status
     }) as PurchaseOrder
@@ -1011,7 +1068,7 @@ export async function createPurchaseOrder(
     if (updatedProducts.length > 0) {
         await syncUpsertEntities('products', updatedProducts as unknown as Array<Record<string, unknown> & { id: string; version: number }>, workspaceId)
     }
-    await recalculateSupplierSummary(workspaceId, order.supplierId)
+    await recalculateSupplierAndPartnerSummaries(workspaceId, order.supplierId, order.businessPartnerId)
     return (await db.purchase_orders.get(order.id)) as PurchaseOrder
 }
 
@@ -1026,9 +1083,15 @@ export async function updatePurchaseOrder(id: string, data: Partial<PurchaseOrde
     }
 
     const now = new Date().toISOString()
+    const counterparty = await normalizePurchaseOrderCounterparty({
+        businessPartnerId: data.businessPartnerId ?? existing.businessPartnerId ?? null,
+        supplierId: data.supplierId ?? existing.businessPartnerId ?? existing.supplierId,
+        supplierName: data.supplierName ?? existing.supplierName
+    })
     const updated: PurchaseOrder = {
         ...existing,
         ...data,
+        ...counterparty,
         updatedAt: now,
         version: existing.version + 1,
         ...getSyncMetadata(existing.workspaceId, now)
@@ -1037,10 +1100,19 @@ export async function updatePurchaseOrder(id: string, data: Partial<PurchaseOrde
     await db.purchase_orders.put(updated)
     await syncUpsertEntities('purchase_orders', [updated as unknown as Record<string, unknown> & { id: string; version: number }], existing.workspaceId)
 
-    if (existing.supplierId !== updated.supplierId) {
-        await recalculateSupplierSummary(existing.workspaceId, existing.supplierId)
-    }
-    await recalculateSupplierSummary(existing.workspaceId, updated.supplierId)
+    await Promise.all(
+        Array.from(new Set([
+            `${existing.supplierId}::${existing.businessPartnerId || ''}`,
+            `${updated.supplierId}::${updated.businessPartnerId || ''}`
+        ])).map((key) => {
+            const [supplierId, businessPartnerId] = key.split('::')
+            return recalculateSupplierAndPartnerSummaries(
+                existing.workspaceId,
+                supplierId || null,
+                businessPartnerId || null
+            )
+        })
+    )
     return updated
 }
 
@@ -1059,8 +1131,14 @@ export async function updatePurchaseOrderStatus(id: string, status: PurchaseOrde
     }
 
     const now = new Date().toISOString()
+    const counterparty = await normalizePurchaseOrderCounterparty({
+        businessPartnerId: existing.businessPartnerId ?? null,
+        supplierId: existing.businessPartnerId ?? existing.supplierId,
+        supplierName: existing.supplierName
+    })
     const updated: PurchaseOrder = {
         ...existing,
+        ...counterparty,
         status,
         updatedAt: now,
         version: existing.version + 1,
@@ -1079,7 +1157,19 @@ export async function updatePurchaseOrderStatus(id: string, status: PurchaseOrde
     if (updatedProducts.length > 0) {
         await syncUpsertEntities('products', updatedProducts as unknown as Array<Record<string, unknown> & { id: string; version: number }>, existing.workspaceId)
     }
-    await recalculateSupplierSummary(existing.workspaceId, existing.supplierId)
+    await Promise.all(
+        Array.from(new Set([
+            `${existing.supplierId}::${existing.businessPartnerId || ''}`,
+            `${updated.supplierId}::${updated.businessPartnerId || ''}`
+        ])).map((key) => {
+            const [supplierId, businessPartnerId] = key.split('::')
+            return recalculateSupplierAndPartnerSummaries(
+                existing.workspaceId,
+                supplierId || null,
+                businessPartnerId || null
+            )
+        })
+    )
     return updated
 }
 
@@ -1097,8 +1187,14 @@ export async function setPurchaseOrderPaymentStatus(
     }
 
     const now = new Date().toISOString()
+    const counterparty = await normalizePurchaseOrderCounterparty({
+        businessPartnerId: existing.businessPartnerId ?? null,
+        supplierId: existing.businessPartnerId ?? existing.supplierId,
+        supplierName: existing.supplierName
+    })
     const updated: PurchaseOrder = {
         ...existing,
+        ...counterparty,
         isPaid: input.isPaid,
         paymentMethod: input.isPaid ? input.paymentMethod || existing.paymentMethod : existing.paymentMethod,
         paidAt: input.isPaid ? (input.paidAt || now) : null,
@@ -1113,7 +1209,19 @@ export async function setPurchaseOrderPaymentStatus(
 
     await db.purchase_orders.put(updated)
     await syncUpsertEntities('purchase_orders', [updated as unknown as Record<string, unknown> & { id: string; version: number }], existing.workspaceId)
-    await recalculateSupplierSummary(existing.workspaceId, existing.supplierId)
+    await Promise.all(
+        Array.from(new Set([
+            `${existing.supplierId}::${existing.businessPartnerId || ''}`,
+            `${updated.supplierId}::${updated.businessPartnerId || ''}`
+        ])).map((key) => {
+            const [supplierId, businessPartnerId] = key.split('::')
+            return recalculateSupplierAndPartnerSummaries(
+                existing.workspaceId,
+                supplierId || null,
+                businessPartnerId || null
+            )
+        })
+    )
     return updated
 }
 
@@ -1160,5 +1268,5 @@ export async function deletePurchaseOrder(id: string) {
         ...getSyncMetadata(existing.workspaceId, now)
     })
     await syncSoftDelete('purchase_orders', id, existing.workspaceId)
-    await recalculateSupplierSummary(existing.workspaceId, existing.supplierId)
+    await recalculateSupplierAndPartnerSummaries(existing.workspaceId, existing.supplierId, existing.businessPartnerId)
 }

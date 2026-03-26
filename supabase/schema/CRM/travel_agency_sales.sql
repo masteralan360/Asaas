@@ -6,17 +6,22 @@ CREATE TABLE crm.travel_agency_sales (
   tourist_count integer NOT NULL DEFAULT 1,
   tourists jsonb NOT NULL DEFAULT '[]'::jsonb,
   group_travel_plan jsonb NULL,
+  group_name text NULL,
   group_revenue numeric NULL DEFAULT 0,
+  business_partner_id uuid NULL,
   supplier_id uuid NULL,
   supplier_name text NULL,
   supplier_cost numeric NULL DEFAULT 0,
   currency text NOT NULL DEFAULT 'usd'::text,
   travel_packages jsonb NOT NULL DEFAULT '[]'::jsonb,
   payment_method text NOT NULL,
+  paid_amount numeric NULL DEFAULT 0,
   receiver text NOT NULL,
   notes text NULL,
   is_paid boolean NULL DEFAULT false,
   paid_at timestamp with time zone NULL,
+  status text NULL DEFAULT 'completed'::text,
+  exchange_rate_snapshot jsonb NULL,
   created_at timestamp with time zone NULL DEFAULT now(),
   updated_at timestamp with time zone NULL DEFAULT now(),
   sync_status text NULL DEFAULT 'synced'::text,
@@ -39,6 +44,9 @@ CREATE INDEX IF NOT EXISTS idx_crm_travel_agency_sales_workspace_paid
 
 CREATE INDEX IF NOT EXISTS idx_crm_travel_agency_sales_workspace_date
   ON crm.travel_agency_sales (workspace_id, sale_date DESC);
+
+CREATE INDEX IF NOT EXISTS idx_crm_travel_agency_sales_business_partner
+  ON crm.travel_agency_sales (business_partner_id);
 
 ALTER TABLE crm.travel_agency_sales ENABLE ROW LEVEL SECURITY;
 

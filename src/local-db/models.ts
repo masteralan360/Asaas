@@ -97,6 +97,7 @@ export interface InventoryTransferTransaction extends BaseEntity {
 }
 
 export interface Supplier extends BaseEntity {
+    businessPartnerId?: string | null
     name: string
     contactName?: string
     email?: string
@@ -112,6 +113,7 @@ export interface Supplier extends BaseEntity {
 }
 
 export interface Customer extends BaseEntity {
+    businessPartnerId?: string | null
     name: string
     email?: string
     phone?: string
@@ -124,6 +126,46 @@ export interface Customer extends BaseEntity {
     totalSpent: number
     outstandingBalance: number
     creditLimit: number
+}
+
+export type BusinessPartnerRole = 'customer' | 'supplier' | 'both'
+
+export interface BusinessPartner extends BaseEntity {
+    name: string
+    contactName?: string
+    email?: string
+    phone?: string
+    address?: string
+    city?: string
+    country?: string
+    defaultCurrency: CurrencyCode
+    notes?: string
+    role: BusinessPartnerRole
+    creditLimit: number
+    customerFacetId?: string | null
+    supplierFacetId?: string | null
+    totalSalesOrders: number
+    totalSalesValue: number
+    receivableBalance: number
+    totalPurchaseOrders: number
+    totalPurchaseValue: number
+    payableBalance: number
+    totalLoanCount: number
+    loanOutstandingBalance: number
+    netExposure: number
+    mergedIntoBusinessPartnerId?: string | null
+}
+
+export type BusinessPartnerMergeType = 'customer_supplier'
+export type BusinessPartnerMergeStatus = 'pending' | 'accepted' | 'dismissed'
+
+export interface BusinessPartnerMergeCandidate extends BaseEntity {
+    primaryPartnerId: string
+    secondaryPartnerId: string
+    mergeType: BusinessPartnerMergeType
+    reason: string
+    confidence: number
+    status: BusinessPartnerMergeStatus
 }
 
 export type SalesOrderStatus = 'draft' | 'pending' | 'completed' | 'cancelled'
@@ -164,6 +206,7 @@ export interface PurchaseOrderItem extends OrderLineItem {
 
 export interface SalesOrder extends BaseEntity {
     orderNumber: string
+    businessPartnerId?: string | null
     customerId: string
     customerName: string
     sourceStorageId?: string | null
@@ -191,6 +234,7 @@ export interface SalesOrder extends BaseEntity {
 
 export interface PurchaseOrder extends BaseEntity {
     orderNumber: string
+    businessPartnerId?: string | null
     supplierId: string
     supplierName: string
     destinationStorageId?: string | null
@@ -246,6 +290,7 @@ export interface TravelAgencySale extends BaseEntity {
     groupTravelPlans: TravelAgencyTravelPlan[]
     groupName?: string | null
     groupRevenue: number
+    businessPartnerId?: string | null
     supplierId?: string | null
     supplierName?: string | null
     supplierCost: number
@@ -441,7 +486,7 @@ export type LoanSource = 'pos' | 'manual'
 export type LoanStatus = 'active' | 'overdue' | 'completed'
 export type InstallmentStatus = 'unpaid' | 'partial' | 'paid' | 'overdue'
 export type InstallmentFrequency = 'weekly' | 'biweekly' | 'monthly'
-export type LoanLinkedPartyType = 'customer'
+export type LoanLinkedPartyType = 'business_partner'
 
 export interface Loan extends BaseEntity {
     saleId?: string | null
@@ -493,7 +538,7 @@ export interface LoanPayment extends BaseEntity {
 // Sync Queue Item for tracking pending changes
 export interface SyncQueueItem {
     id: string
-    entityType: 'products' | 'inventory' | 'reorder_transfer_rules' | 'inventory_transfer_transactions' | 'invoices' | 'users' | 'sales' | 'categories' | 'storages' | 'employees' | 'workspace_contacts' | 'loans' | 'loan_installments' | 'loan_payments' | 'budget_settings' | 'budget_allocations' | 'expense_series' | 'expense_items' | 'payroll_statuses' | 'dividend_statuses' | 'customers' | 'suppliers' | 'sales_orders' | 'purchase_orders' | 'travel_agency_sales'
+    entityType: 'products' | 'inventory' | 'reorder_transfer_rules' | 'inventory_transfer_transactions' | 'invoices' | 'users' | 'sales' | 'categories' | 'storages' | 'employees' | 'workspace_contacts' | 'loans' | 'loan_installments' | 'loan_payments' | 'budget_settings' | 'budget_allocations' | 'expense_series' | 'expense_items' | 'payroll_statuses' | 'dividend_statuses' | 'customers' | 'suppliers' | 'business_partners' | 'business_partner_merge_candidates' | 'sales_orders' | 'purchase_orders' | 'travel_agency_sales'
     entityId: string
     operation: 'create' | 'update' | 'delete'
     data: Record<string, unknown>
@@ -557,7 +602,7 @@ export interface WorkspaceContact extends Omit<BaseEntity, 'isDeleted'> {
 export interface OfflineMutation {
     id: string
     workspaceId: string
-    entityType: 'products' | 'inventory' | 'reorder_transfer_rules' | 'inventory_transfer_transactions' | 'invoices' | 'users' | 'sales' | 'categories' | 'workspaces' | 'storages' | 'employees' | 'workspace_contacts' | 'loans' | 'loan_installments' | 'loan_payments' | 'budget_settings' | 'budget_allocations' | 'expense_series' | 'expense_items' | 'payroll_statuses' | 'dividend_statuses' | 'customers' | 'suppliers' | 'sales_orders' | 'purchase_orders' | 'travel_agency_sales'
+    entityType: 'products' | 'inventory' | 'reorder_transfer_rules' | 'inventory_transfer_transactions' | 'invoices' | 'users' | 'sales' | 'categories' | 'workspaces' | 'storages' | 'employees' | 'workspace_contacts' | 'loans' | 'loan_installments' | 'loan_payments' | 'budget_settings' | 'budget_allocations' | 'expense_series' | 'expense_items' | 'payroll_statuses' | 'dividend_statuses' | 'customers' | 'suppliers' | 'business_partners' | 'business_partner_merge_candidates' | 'sales_orders' | 'purchase_orders' | 'travel_agency_sales'
     entityId: string
     operation: 'create' | 'update' | 'delete'
     payload: Record<string, unknown>

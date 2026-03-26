@@ -10,6 +10,11 @@ import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
 
 import { db } from './database'
 import { addToOfflineMutations, fetchTableFromSupabase } from './hooks'
+import {
+    ensurePartnerFacet,
+    getBusinessPartnerByAnyId,
+    recalculateBusinessPartnerSummary
+} from './businessPartners'
 import { recalculateSupplierSummary } from './orders'
 import type { TravelAgencySale } from './models'
 
@@ -28,6 +33,70 @@ type BaseEntityPayload = {
 
 function shouldUseCloudBusinessData(workspaceId?: string | null) {
     return !!workspaceId && !isLocalWorkspaceMode(workspaceId)
+}
+
+async function resolveSupplierBusinessPartner(supplierId?: string | null, businessPartnerId?: string | null) {
+    const directPartnerId = typeof businessPartnerId === 'string' && businessPartnerId.trim().length > 0
+        ? businessPartnerId.trim()
+        : typeof supplierId === 'string'
+            ? supplierId.trim()
+            : ''
+    if (directPartnerId) {
+        const partner = await getBusinessPartnerByAnyId(directPartnerId)
+        if (partner && !partner.isDeleted && !partner.mergedIntoBusinessPartnerId) {
+            return partner
+        }
+    }
+
+    const facetId = typeof supplierId === 'string' ? supplierId.trim() : ''
+    if (!facetId) {
+        return undefined
+    }
+
+    const supplier = await db.suppliers.get(facetId)
+    if (supplier?.businessPartnerId) {
+        const partner = await db.business_partners.get(supplier.businessPartnerId)
+        if (partner && !partner.isDeleted && !partner.mergedIntoBusinessPartnerId) {
+            return partner
+        }
+    }
+
+    return undefined
+}
+
+async function normalizeTravelSaleSupplier(
+    data: Pick<TravelAgencySale, 'businessPartnerId' | 'supplierId' | 'supplierName'>
+) {
+    if (!data.businessPartnerId && !data.supplierId) {
+        return {
+            businessPartnerId: null,
+            supplierId: null,
+            supplierName: data.supplierName || null
+        }
+    }
+
+    const partner = await resolveSupplierBusinessPartner(data.supplierId, data.businessPartnerId)
+    if (!partner) {
+        throw new Error('Supplier not found')
+    }
+
+    const supplierFacet = await ensurePartnerFacet(partner.id, 'supplier')
+    return {
+        businessPartnerId: partner.id,
+        supplierId: supplierFacet.id,
+        supplierName: data.supplierName || partner.name
+    }
+}
+
+async function recalculateSupplierAndPartnerSummaries(workspaceId: string, supplierId?: string | null, businessPartnerId?: string | null) {
+    const tasks: Array<Promise<unknown>> = []
+    if (supplierId) {
+        tasks.push(recalculateSupplierSummary(workspaceId, supplierId))
+    }
+    if (businessPartnerId) {
+        tasks.push(recalculateBusinessPartnerSummary(workspaceId, businessPartnerId))
+    }
+    await Promise.all(tasks)
 }
 
 async function runMutation<T>(label: string, promiseFactory: () => PromiseLike<T>): Promise<T> {
@@ -195,10 +264,27 @@ export function useSupplierTravelAgencySales(supplierId: string | undefined, wor
     const sales = useLiveQuery(
         async () => {
             if (!supplierId) return []
-            const rows = await db.travel_agency_sales.where('supplierId').equals(supplierId).and((item) => !item.isDeleted).toArray()
+            const partner = await resolveSupplierBusinessPartner(supplierId, supplierId)
+            const rows = await db.travel_agency_sales
+                .where('workspaceId')
+                .equals(workspaceId || '')
+                .and((item) => {
+                    if (item.isDeleted) {
+                        return false
+                    }
+
+                    if (!partner) {
+                        return item.supplierId === supplierId
+                    }
+
+                    return item.businessPartnerId === partner.id
+                        || item.supplierId === supplierId
+                        || Boolean(partner.supplierFacetId && item.supplierId === partner.supplierFacetId)
+                })
+                .toArray()
             return rows.sort((left, right) => new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime())
         },
-        [supplierId]
+        [supplierId, workspaceId]
     )
 
     useEffect(() => {
@@ -226,17 +312,17 @@ export async function createTravelAgencySale(
 ) {
     const saleNumber = await generateSaleNumber(workspaceId, data.saleDate)
     const snapshots = computeSnapshots(data)
+    const supplier = await normalizeTravelSaleSupplier(data)
     const sale = buildBaseEntity(workspaceId, {
         ...data,
+        ...supplier,
         ...snapshots,
         saleNumber
     }) as TravelAgencySale
 
     await db.travel_agency_sales.put(sale)
     await syncUpsertEntities([sale as unknown as Record<string, unknown> & { id: string; version: number }], workspaceId)
-    if (sale.supplierId) {
-        await recalculateSupplierSummary(workspaceId, sale.supplierId)
-    }
+    await recalculateSupplierAndPartnerSummaries(workspaceId, sale.supplierId, sale.businessPartnerId)
     return sale
 }
 
@@ -248,7 +334,12 @@ export async function updateTravelAgencySale(id: string, data: Partial<TravelAge
 
     const now = new Date().toISOString()
     const nextIsPaid = data.isPaid ?? existing.isPaid
-    const merged = { ...existing, ...data }
+    const supplier = await normalizeTravelSaleSupplier({
+        businessPartnerId: data.businessPartnerId ?? existing.businessPartnerId ?? null,
+        supplierId: data.supplierId ?? existing.businessPartnerId ?? existing.supplierId ?? null,
+        supplierName: data.supplierName ?? existing.supplierName ?? null
+    })
+    const merged = { ...existing, ...data, ...supplier }
     const snapshots = computeSnapshots({
         groupRevenue: merged.groupRevenue,
         supplierCost: merged.supplierCost,
@@ -267,8 +358,19 @@ export async function updateTravelAgencySale(id: string, data: Partial<TravelAge
 
     await db.travel_agency_sales.put(updated)
     await syncUpsertEntities([updated as unknown as Record<string, unknown> & { id: string; version: number }], existing.workspaceId)
-    const supplierIds = Array.from(new Set([existing.supplierId, updated.supplierId].filter((value): value is string => Boolean(value))))
-    await Promise.all(supplierIds.map((supplierId) => recalculateSupplierSummary(existing.workspaceId, supplierId)))
+    await Promise.all(
+        Array.from(new Set([
+            `${existing.supplierId || ''}::${existing.businessPartnerId || ''}`,
+            `${updated.supplierId || ''}::${updated.businessPartnerId || ''}`
+        ])).map((key) => {
+            const [supplierId, businessPartnerId] = key.split('::')
+            return recalculateSupplierAndPartnerSummaries(
+                existing.workspaceId,
+                supplierId || null,
+                businessPartnerId || null
+            )
+        })
+    )
     return updated
 }
 
@@ -285,8 +387,14 @@ export async function setTravelAgencySalePaymentStatus(
     }
 
     const now = new Date().toISOString()
+    const supplier = await normalizeTravelSaleSupplier({
+        businessPartnerId: existing.businessPartnerId ?? null,
+        supplierId: existing.businessPartnerId ?? existing.supplierId ?? null,
+        supplierName: existing.supplierName ?? null
+    })
     const updated: TravelAgencySale = {
         ...existing,
+        ...supplier,
         isPaid: input.isPaid,
         paidAt: input.isPaid ? (input.paidAt ?? now) : null,
         updatedAt: now,
@@ -296,9 +404,19 @@ export async function setTravelAgencySalePaymentStatus(
 
     await db.travel_agency_sales.put(updated)
     await syncUpsertEntities([updated as unknown as Record<string, unknown> & { id: string; version: number }], existing.workspaceId)
-    if (updated.supplierId) {
-        await recalculateSupplierSummary(existing.workspaceId, updated.supplierId)
-    }
+    await Promise.all(
+        Array.from(new Set([
+            `${existing.supplierId || ''}::${existing.businessPartnerId || ''}`,
+            `${updated.supplierId || ''}::${updated.businessPartnerId || ''}`
+        ])).map((key) => {
+            const [supplierId, businessPartnerId] = key.split('::')
+            return recalculateSupplierAndPartnerSummaries(
+                existing.workspaceId,
+                supplierId || null,
+                businessPartnerId || null
+            )
+        })
+    )
     return updated
 }
 
@@ -312,8 +430,14 @@ export async function setTravelAgencySaleStatus(
     }
 
     const now = new Date().toISOString()
+    const supplier = await normalizeTravelSaleSupplier({
+        businessPartnerId: existing.businessPartnerId ?? null,
+        supplierId: existing.businessPartnerId ?? existing.supplierId ?? null,
+        supplierName: existing.supplierName ?? null
+    })
     const updated: TravelAgencySale = {
         ...existing,
+        ...supplier,
         status,
         updatedAt: now,
         version: existing.version + 1,
@@ -322,9 +446,19 @@ export async function setTravelAgencySaleStatus(
 
     await db.travel_agency_sales.put(updated)
     await syncUpsertEntities([updated as unknown as Record<string, unknown> & { id: string; version: number }], existing.workspaceId)
-    if (updated.supplierId) {
-        await recalculateSupplierSummary(existing.workspaceId, updated.supplierId)
-    }
+    await Promise.all(
+        Array.from(new Set([
+            `${existing.supplierId || ''}::${existing.businessPartnerId || ''}`,
+            `${updated.supplierId || ''}::${updated.businessPartnerId || ''}`
+        ])).map((key) => {
+            const [supplierId, businessPartnerId] = key.split('::')
+            return recalculateSupplierAndPartnerSummaries(
+                existing.workspaceId,
+                supplierId || null,
+                businessPartnerId || null
+            )
+        })
+    )
     return updated
 }
 
@@ -343,9 +477,7 @@ export async function deleteTravelAgencySale(id: string) {
         ...getSyncMetadata(existing.workspaceId, now)
     })
     await syncSoftDelete(id, existing.workspaceId)
-    if (existing.supplierId) {
-        await recalculateSupplierSummary(existing.workspaceId, existing.supplierId)
-    }
+    await recalculateSupplierAndPartnerSummaries(existing.workspaceId, existing.supplierId, existing.businessPartnerId)
 }
 
 export async function lockTravelSale(id: string) {

@@ -79,6 +79,7 @@ const routePrefetchMap: Record<string, () => Promise<unknown>> = {
     '/instant-pos': () => import('@/ui/pages/InstantPOS'),
     '/kds': () => import('@/ui/pages/KDSDashboard'),
     '/sales': () => import('@/ui/pages/Sales'),
+    '/business-partners': () => import('@/ui/pages/BusinessPartners'),
     '/customers': () => import('@/ui/pages/Customers'),
     '/suppliers': () => import('@/ui/pages/Suppliers'),
     '/orders': () => import('@/ui/pages/Orders'),
@@ -248,6 +249,7 @@ export function Layout({ children }: LayoutProps) {
         // Sales
         ...(hasFeature('sales_history') ? [{ name: t('nav.sales') || 'Sales', href: '/sales', icon: Receipt }] : []),
         ...((user?.role === 'admin' || user?.role === 'staff' || user?.role === 'viewer') && hasFeature('crm') ? [
+            { name: t('businessPartners.title') || 'Business Partners', href: '/business-partners', icon: UsersRound },
             { name: t('nav.customers') || 'Customers', href: '/customers', icon: Users },
             { name: t('nav.suppliers') || 'Suppliers', href: '/suppliers', icon: Truck },
             { name: t('nav.orders') || 'Orders', href: '/orders', icon: ShoppingCart }

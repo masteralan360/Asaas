@@ -413,7 +413,7 @@ function OrdersListView({ workspaceId }: { workspaceId: string }) {
         setActiveTab('sales')
         setEditingSalesOrder(order)
         setSalesForm({
-            customerId: order.customerId,
+            customerId: order.businessPartnerId || order.customerId,
             sourceStorageId: order.sourceStorageId || defaultStorageId,
             currency: order.currency,
             shippingAddress: order.shippingAddress || '',
@@ -437,7 +437,7 @@ function OrdersListView({ workspaceId }: { workspaceId: string }) {
         setActiveTab('purchase')
         setEditingPurchaseOrder(order)
         setPurchaseForm({
-            supplierId: order.supplierId,
+            supplierId: order.businessPartnerId || order.supplierId,
             destinationStorageId: order.destinationStorageId || defaultStorageId,
             currency: order.currency,
             expectedDeliveryDate: order.expectedDeliveryDate ? order.expectedDeliveryDate.slice(0, 10) : '',
@@ -576,6 +576,7 @@ function OrdersListView({ workspaceId }: { workspaceId: string }) {
             const primaryRate = getPrimaryExchangeDetails(salesForm.currency, features.default_currency, snapshot)
 
             const payload = {
+                businessPartnerId: customer.id,
                 customerId: customer.id,
                 customerName: customer.name,
                 sourceStorageId,
@@ -635,6 +636,7 @@ function OrdersListView({ workspaceId }: { workspaceId: string }) {
             const primaryRate = getPrimaryExchangeDetails(purchaseForm.currency, features.default_currency, snapshot)
 
             const payload = {
+                businessPartnerId: supplier.id,
                 supplierId: supplier.id,
                 supplierName: supplier.name,
                 destinationStorageId,

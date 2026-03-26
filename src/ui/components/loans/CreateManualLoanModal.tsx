@@ -136,7 +136,7 @@ export function CreateManualLoanModal({
                             <Input value={borrowerName} onChange={e => setBorrowerName(e.target.value)} className="flex-1" />
                             <Button type="button" variant="outline" className="shrink-0 gap-2" onClick={() => setIsPartyPickerOpen(true)}>
                                 <Users className="h-4 w-4" />
-                                {t('loans.selectParty', { defaultValue: 'Customer' })}
+                                {t('loans.selectParty', { defaultValue: 'Business Partner' })}
                             </Button>
                         </div>
                         {selectedParty ? (

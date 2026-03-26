@@ -16,6 +16,8 @@ import type {
     ReorderTransferRule,
     Supplier,
     Customer,
+    BusinessPartner,
+    BusinessPartnerMergeCandidate,
     Employee,
     WorkspaceContact,
     Loan,
@@ -53,6 +55,8 @@ export class AtlasDatabase extends Dexie {
     reorder_transfer_rules!: EntityTable<ReorderTransferRule, 'id'>
     suppliers!: EntityTable<Supplier, 'id'>
     customers!: EntityTable<Customer, 'id'>
+    business_partners!: EntityTable<BusinessPartner, 'id'>
+    business_partner_merge_candidates!: EntityTable<BusinessPartnerMergeCandidate, 'id'>
     employees!: EntityTable<Employee, 'id'>
     budget_settings!: EntityTable<BudgetSettings, 'id'>
     budget_allocations!: EntityTable<BudgetAllocation, 'id'>
@@ -386,6 +390,223 @@ export class AtlasDatabase extends Dexie {
             app_settings: 'key'
         })
 
+        this.version(48).stores({
+            products: 'id, sku, name, categoryId, storageId, workspaceId, currency, syncStatus, updatedAt, isDeleted, canBeReturned',
+            categories: 'id, name, workspaceId, syncStatus, updatedAt, isDeleted',
+            invoices: 'id, invoiceid, orderId, customerId, status, workspaceId, syncStatus, updatedAt, isDeleted, origin, createdBy, cashierName, createdByName, sequenceId, printFormat, r2PathA4, r2PathReceipt',
+            users: 'id, email, role, workspaceId, syncStatus, updatedAt, isDeleted, monthlyTarget',
+            sales: 'id, cashierId, workspaceId, settlementCurrency, syncStatus, createdAt, updatedAt, notes',
+            sale_items: 'id, saleId, productId',
+            workspaces: 'id, name, code, syncStatus, updatedAt, isDeleted, print_lang, print_qr',
+            storages: 'id, name, workspaceId, isSystem, isProtected, syncStatus, updatedAt, isDeleted',
+            inventory: 'id, workspaceId, productId, storageId, quantity, syncStatus, updatedAt, isDeleted, [workspaceId+storageId], [workspaceId+productId], [productId+storageId]',
+            inventory_transfer_transactions: 'id, workspaceId, productId, sourceStorageId, destinationStorageId, transferType, createdAt, isDeleted, [workspaceId+createdAt], [workspaceId+productId], [workspaceId+transferType]',
+            reorder_transfer_rules: 'id, workspaceId, productId, sourceStorageId, destinationStorageId, isIndefinite, expiresOn, updatedAt, isDeleted, [workspaceId+productId], [workspaceId+destinationStorageId], [workspaceId+expiresOn]',
+            suppliers: 'id, name, workspaceId, businessPartnerId, phone, email, defaultCurrency, updatedAt, isDeleted, syncStatus',
+            customers: 'id, name, workspaceId, businessPartnerId, phone, email, defaultCurrency, updatedAt, isDeleted, syncStatus',
+            business_partners: 'id, name, workspaceId, role, customerFacetId, supplierFacetId, defaultCurrency, updatedAt, isDeleted, syncStatus, mergedIntoBusinessPartnerId',
+            business_partner_merge_candidates: 'id, workspaceId, primaryPartnerId, secondaryPartnerId, status, confidence, updatedAt, syncStatus, isDeleted',
+            employees: 'id, name, workspaceId, linkedUserId, syncStatus, updatedAt, isDeleted',
+            budget_settings: 'id, workspaceId',
+            budget_allocations: 'id, workspaceId, month, [workspaceId+month]',
+            expense_series: 'id, workspaceId, recurrence, startMonth, endMonth, isDeleted',
+            expense_items: 'id, workspaceId, seriesId, month, dueDate, status, [seriesId+month], [workspaceId+month]',
+            payroll_statuses: 'id, workspaceId, employeeId, month, status, [employeeId+month], [workspaceId+month]',
+            dividend_statuses: 'id, workspaceId, employeeId, month, status, [employeeId+month], [workspaceId+month]',
+            syncQueue: 'id, entityType, entityId, operation, timestamp',
+            offline_mutations: 'id, workspaceId, entityType, entityId, status, createdAt, [entityType+entityId+status]',
+            workspace_contacts: 'id, workspaceId, type, value, syncStatus, updatedAt',
+            loans: 'id, workspaceId, saleId, status, nextDueDate, borrowerName, loanNo, linkedPartyType, linkedPartyId, syncStatus, updatedAt, isDeleted',
+            loan_installments: 'id, loanId, workspaceId, dueDate, status, syncStatus, updatedAt, isDeleted, [loanId+installmentNo]',
+            loan_payments: 'id, loanId, workspaceId, paidAt, syncStatus, updatedAt, isDeleted',
+            sales_orders: 'id, orderNumber, businessPartnerId, customerId, workspaceId, status, currency, createdAt, updatedAt, isDeleted, syncStatus',
+            purchase_orders: 'id, orderNumber, businessPartnerId, supplierId, workspaceId, status, currency, createdAt, updatedAt, isDeleted, syncStatus',
+            travel_agency_sales: 'id, saleNumber, workspaceId, saleDate, businessPartnerId, supplierId, isPaid, updatedAt, isDeleted, syncStatus, [workspaceId+saleDate], [workspaceId+isPaid]',
+            app_settings: 'key'
+        }).upgrade(async tx => {
+            const now = new Date().toISOString()
+            const customers = await tx.table('customers').toArray()
+            const suppliers = await tx.table('suppliers').toArray()
+            const existingPartners = await tx.table('business_partners').toArray().catch(() => [])
+            const existingMergeCandidates = await tx.table('business_partner_merge_candidates').toArray().catch(() => [])
+            const partnerMap = new Map<string, Record<string, unknown>>(existingPartners.map((partner: Record<string, unknown>) => [String(partner.id), partner]))
+            const customerPartnerIdByFacetId = new Map<string, string>()
+            const supplierPartnerIdByFacetId = new Map<string, string>()
+
+            const buildPartnerBase = (facet: Record<string, unknown>, partnerId: string, role: 'customer' | 'supplier') => ({
+                id: partnerId,
+                workspaceId: facet.workspaceId,
+                name: facet.name,
+                contactName: role === 'supplier' ? facet.contactName : undefined,
+                email: facet.email,
+                phone: facet.phone,
+                address: facet.address,
+                city: facet.city,
+                country: facet.country,
+                defaultCurrency: facet.defaultCurrency || 'usd',
+                notes: facet.notes,
+                role,
+                creditLimit: Number(facet.creditLimit || 0),
+                customerFacetId: role === 'customer' ? facet.id : null,
+                supplierFacetId: role === 'supplier' ? facet.id : null,
+                totalSalesOrders: 0,
+                totalSalesValue: 0,
+                receivableBalance: 0,
+                totalPurchaseOrders: 0,
+                totalPurchaseValue: 0,
+                payableBalance: 0,
+                totalLoanCount: 0,
+                loanOutstandingBalance: 0,
+                netExposure: 0,
+                mergedIntoBusinessPartnerId: null,
+                createdAt: facet.createdAt || now,
+                updatedAt: facet.updatedAt || now,
+                syncStatus: facet.syncStatus || 'pending',
+                lastSyncedAt: facet.lastSyncedAt || null,
+                version: Number(facet.version || 1),
+                isDeleted: Boolean(facet.isDeleted)
+            })
+
+            for (const customer of customers as Array<Record<string, unknown>>) {
+                const facetId = String(customer.id)
+                const partnerId = typeof customer.businessPartnerId === 'string' && customer.businessPartnerId
+                    ? customer.businessPartnerId
+                    : facetId
+
+                customer.businessPartnerId = partnerId
+                customerPartnerIdByFacetId.set(facetId, partnerId)
+                if (!partnerMap.has(partnerId)) {
+                    partnerMap.set(partnerId, buildPartnerBase(customer, partnerId, 'customer'))
+                }
+            }
+
+            for (const supplier of suppliers as Array<Record<string, unknown>>) {
+                const facetId = String(supplier.id)
+                const partnerId = typeof supplier.businessPartnerId === 'string' && supplier.businessPartnerId
+                    ? supplier.businessPartnerId
+                    : facetId
+
+                supplier.businessPartnerId = partnerId
+                supplierPartnerIdByFacetId.set(facetId, partnerId)
+                if (!partnerMap.has(partnerId)) {
+                    partnerMap.set(partnerId, buildPartnerBase(supplier, partnerId, 'supplier'))
+                }
+            }
+
+            await tx.table('customers').bulkPut(customers)
+            await tx.table('suppliers').bulkPut(suppliers)
+            await tx.table('business_partners').bulkPut(Array.from(partnerMap.values()))
+
+            const salesOrders = await tx.table('sales_orders').toArray()
+            for (const order of salesOrders as Array<Record<string, unknown>>) {
+                if (!order.businessPartnerId && typeof order.customerId === 'string') {
+                    order.businessPartnerId = customerPartnerIdByFacetId.get(order.customerId) || null
+                }
+            }
+            if (salesOrders.length > 0) {
+                await tx.table('sales_orders').bulkPut(salesOrders)
+            }
+
+            const purchaseOrders = await tx.table('purchase_orders').toArray()
+            for (const order of purchaseOrders as Array<Record<string, unknown>>) {
+                if (!order.businessPartnerId && typeof order.supplierId === 'string') {
+                    order.businessPartnerId = supplierPartnerIdByFacetId.get(order.supplierId) || null
+                }
+            }
+            if (purchaseOrders.length > 0) {
+                await tx.table('purchase_orders').bulkPut(purchaseOrders)
+            }
+
+            const travelSales = await tx.table('travel_agency_sales').toArray().catch(() => [])
+            for (const sale of travelSales as Array<Record<string, unknown>>) {
+                if (!sale.businessPartnerId && typeof sale.supplierId === 'string') {
+                    sale.businessPartnerId = supplierPartnerIdByFacetId.get(sale.supplierId) || null
+                }
+            }
+            if (travelSales.length > 0) {
+                await tx.table('travel_agency_sales').bulkPut(travelSales)
+            }
+
+            const loans = await tx.table('loans').toArray()
+            for (const loan of loans as Array<Record<string, unknown>>) {
+                if (loan.linkedPartyType === 'customer' && typeof loan.linkedPartyId === 'string') {
+                    loan.linkedPartyType = 'business_partner'
+                    loan.linkedPartyId = customerPartnerIdByFacetId.get(loan.linkedPartyId) || null
+                }
+            }
+            if (loans.length > 0) {
+                await tx.table('loans').bulkPut(loans)
+            }
+
+            const normalizeValue = (value: unknown) => String(value || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+            const candidateMap = new Map<string, Record<string, unknown>>(existingMergeCandidates.map((candidate: Record<string, unknown>) => [String(candidate.id), candidate]))
+
+            for (const customer of customers as Array<Record<string, unknown>>) {
+                const customerPartnerId = customerPartnerIdByFacetId.get(String(customer.id))
+                if (!customerPartnerId) {
+                    continue
+                }
+                const customerName = normalizeValue(customer.name)
+                const customerPhone = normalizeValue(customer.phone)
+                const customerEmail = normalizeValue(customer.email)
+
+                for (const supplier of suppliers as Array<Record<string, unknown>>) {
+                    const supplierPartnerId = supplierPartnerIdByFacetId.get(String(supplier.id))
+                    if (!supplierPartnerId || customer.workspaceId !== supplier.workspaceId) {
+                        continue
+                    }
+
+                    const supplierName = normalizeValue(supplier.name)
+                    const supplierPhone = normalizeValue(supplier.phone)
+                    const supplierEmail = normalizeValue(supplier.email)
+                    const exactName = customerName && customerName === supplierName
+                    const phoneMatch = customerPhone && customerPhone === supplierPhone
+                    const emailMatch = customerEmail && customerEmail === supplierEmail
+
+                    if (!exactName && !phoneMatch && !emailMatch) {
+                        continue
+                    }
+
+                    const confidence = exactName && (phoneMatch || emailMatch)
+                        ? 0.98
+                        : exactName
+                            ? 0.86
+                            : 0.78
+                    const candidateId = `${customerPartnerId}:${supplierPartnerId}`
+                    if (candidateMap.has(candidateId)) {
+                        continue
+                    }
+
+                    const reasons = [
+                        exactName ? 'matching name' : '',
+                        phoneMatch ? 'matching phone' : '',
+                        emailMatch ? 'matching email' : ''
+                    ].filter(Boolean)
+
+                    candidateMap.set(candidateId, {
+                        id: candidateId,
+                        workspaceId: customer.workspaceId,
+                        primaryPartnerId: customerPartnerId,
+                        secondaryPartnerId: supplierPartnerId,
+                        mergeType: 'customer_supplier',
+                        reason: reasons.join(', '),
+                        confidence,
+                        status: 'pending',
+                        createdAt: now,
+                        updatedAt: now,
+                        syncStatus: 'pending',
+                        lastSyncedAt: null,
+                        version: 1,
+                        isDeleted: false
+                    })
+                }
+            }
+
+            if (candidateMap.size > 0) {
+                await tx.table('business_partner_merge_candidates').bulkPut(Array.from(candidateMap.values()))
+            }
+        })
+
         this.registerLocalModeSyncHooks()
     }
 
@@ -404,6 +625,8 @@ export class AtlasDatabase extends Dexie {
             'reorder_transfer_rules',
             'suppliers',
             'customers',
+            'business_partners',
+            'business_partner_merge_candidates',
             'employees',
             'workspace_contacts',
             'loans',
