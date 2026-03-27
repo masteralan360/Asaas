@@ -2,7 +2,7 @@ import { useEffect, useMemo } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 
 import { useNetworkStatus } from '@/hooks/useNetworkStatus'
-import { addMonths, buildDueDate, monthKeyFromDate } from '@/lib/budget'
+import { addMonths, buildDueDate, monthKeyFromDate, type MonthKey } from '@/lib/budget'
 import { isOnline } from '@/lib/network'
 import { getSupabaseClientForTable } from '@/lib/supabaseSchema'
 import { isRetriableWebRequestError, normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
@@ -18,6 +18,8 @@ import type {
     ExpenseSeries,
     Loan,
     LoanInstallment,
+    LoanPaymentMethod,
+    OrderPaymentMethod,
     PaymentObligation,
     PaymentTransaction,
     PaymentTransactionDirection,
@@ -49,6 +51,19 @@ export interface RecordObligationSettlementInput {
     paymentMethod: WorkspacePaymentMethod
     paidAt?: string
     note?: string
+    createdBy?: string | null
+}
+
+export interface RecordDirectTransactionInput {
+    direction: PaymentTransactionDirection
+    amount: number
+    currency: CurrencyCode
+    paymentMethod: WorkspacePaymentMethod
+    paidAt?: string
+    reason: string
+    note?: string
+    counterpartyName?: string
+    businessPartnerId?: string | null
     createdBy?: string | null
 }
 
@@ -145,13 +160,22 @@ function matchesSearch(values: Array<string | null | undefined>, search: string)
     return values.some((value) => value?.toLowerCase().includes(normalized))
 }
 
-function getTransactionRoutePath(transaction: Pick<PaymentTransaction, 'sourceModule' | 'sourceType' | 'sourceRecordId'>) {
+function getTransactionRoutePath(transaction: Pick<PaymentTransaction, 'sourceModule' | 'sourceType' | 'sourceRecordId' | 'metadata'>) {
     if (transaction.sourceModule === 'orders') {
         return `/orders/${transaction.sourceRecordId}`
     }
 
     if (transaction.sourceModule === 'budget') {
         return '/budget'
+    }
+
+    if (transaction.sourceModule === 'payments') {
+        const businessPartnerId = transaction.metadata?.businessPartnerId
+        if (typeof businessPartnerId === 'string' && businessPartnerId) {
+            return `/business-partners/${businessPartnerId}`
+        }
+
+        return '/payments'
     }
 
     if (transaction.sourceType === 'simple_loan') {
@@ -271,14 +295,14 @@ async function ensureExpenseItemsThroughCurrentMonth(workspaceId: string) {
 
     const earliestMonth = series
         .map((item) => item.startMonth)
-        .sort((left, right) => left.localeCompare(right))[0]
+        .sort((left, right) => left.localeCompare(right))[0] as MonthKey | undefined
 
     if (!earliestMonth) {
         return
     }
 
     const { ensureExpenseItemsForMonth } = await import('./hooks')
-    let monthCursor = earliestMonth
+    let monthCursor: MonthKey = earliestMonth
 
     while (monthCursor <= currentMonth) {
         await ensureExpenseItemsForMonth(workspaceId, monthCursor)
@@ -381,7 +405,7 @@ function buildExpenseObligation(item: ExpenseItem, series: ExpenseSeries | undef
 
 function buildPayrollObligation(
     employee: Employee,
-    month: string,
+    month: MonthKey,
     status: PayrollStatus | undefined,
     todayKey: string
 ): PaymentObligation | null {
@@ -529,7 +553,7 @@ function buildPayrollObligations(
 
         const startMonth = monthKeyFromDate(employee.joiningDate)
         const obligations: PaymentObligation[] = []
-        let monthCursor = startMonth
+        let monthCursor: MonthKey = startMonth
 
         while (monthCursor <= currentMonth) {
             const obligation = buildPayrollObligation(
@@ -727,9 +751,19 @@ export function useLockedPaymentSourceKeys(workspaceId: string | undefined) {
     return useMemo(() => new Set(keys ?? []), [keys])
 }
 
-function assertSettlementPaymentMethod(paymentMethod: WorkspacePaymentMethod) {
+function assertSettlementPaymentMethod(paymentMethod: WorkspacePaymentMethod): asserts paymentMethod is LoanPaymentMethod {
     if (paymentMethod === 'credit' || paymentMethod === 'unknown') {
         throw new Error('Select a settlement payment method')
+    }
+}
+
+function assertStandardSettlementPaymentMethod(
+    paymentMethod: WorkspacePaymentMethod
+): asserts paymentMethod is Exclude<LoanPaymentMethod, 'loan_adjustment'> {
+    assertSettlementPaymentMethod(paymentMethod)
+
+    if (paymentMethod === 'loan_adjustment') {
+        throw new Error('Loan adjustment is only available for loan settlements')
     }
 }
 
@@ -738,6 +772,7 @@ export function isReversiblePaymentSourceType(sourceType: PaymentTransactionSour
         || sourceType === 'purchase_order'
         || sourceType === 'expense_item'
         || sourceType === 'payroll_status'
+        || sourceType === 'direct_transaction'
 }
 
 export async function appendPaymentTransaction(
@@ -825,6 +860,60 @@ export async function appendPaymentTransaction(
     }
 }
 
+export async function recordDirectTransaction(
+    workspaceId: string,
+    input: RecordDirectTransactionInput
+) {
+    assertStandardSettlementPaymentMethod(input.paymentMethod)
+
+    const reason = input.reason.trim()
+    if (!reason) {
+        throw new Error('Reason is required')
+    }
+
+    const amount = Number(input.amount || 0)
+    if (!Number.isFinite(amount) || amount <= 0) {
+        throw new Error('Enter a valid amount')
+    }
+
+    let counterpartyName = input.counterpartyName?.trim() || null
+    let businessPartnerId = input.businessPartnerId || null
+
+    if (businessPartnerId) {
+        const partner = await db.business_partners.get(businessPartnerId)
+        if (!partner || partner.isDeleted || partner.mergedIntoBusinessPartnerId) {
+            throw new Error('Business partner not found')
+        }
+
+        counterpartyName = partner.name
+        businessPartnerId = partner.id
+    }
+
+    if (!counterpartyName) {
+        throw new Error('Counterparty is required')
+    }
+
+    return appendPaymentTransaction(workspaceId, {
+        sourceModule: 'payments',
+        sourceType: 'direct_transaction',
+        sourceRecordId: generateId(),
+        sourceSubrecordId: businessPartnerId,
+        direction: input.direction,
+        amount,
+        currency: input.currency,
+        paymentMethod: input.paymentMethod,
+        paidAt: input.paidAt || new Date().toISOString(),
+        counterpartyName,
+        referenceLabel: reason,
+        note: input.note?.trim() || null,
+        createdBy: input.createdBy || null,
+        metadata: {
+            reason,
+            businessPartnerId
+        }
+    })
+}
+
 export async function findLatestUnreversedPaymentTransaction(
     workspaceId: string,
     locator: SourceLocator
@@ -908,11 +997,11 @@ export async function recordObligationSettlement(
         }
 
         case 'sales_order': {
-            assertSettlementPaymentMethod(input.paymentMethod)
+            assertStandardSettlementPaymentMethod(input.paymentMethod)
             const { setSalesOrderPaymentStatus } = await import('./orders')
             const order = await setSalesOrderPaymentStatus(obligation.sourceRecordId, {
                 isPaid: true,
-                paymentMethod: input.paymentMethod,
+                paymentMethod: input.paymentMethod as OrderPaymentMethod,
                 paidAt
             })
             await appendPaymentTransaction(workspaceId, {
@@ -937,11 +1026,11 @@ export async function recordObligationSettlement(
         }
 
         case 'purchase_order': {
-            assertSettlementPaymentMethod(input.paymentMethod)
+            assertStandardSettlementPaymentMethod(input.paymentMethod)
             const { setPurchaseOrderPaymentStatus } = await import('./orders')
             const order = await setPurchaseOrderPaymentStatus(obligation.sourceRecordId, {
                 isPaid: true,
-                paymentMethod: input.paymentMethod,
+                paymentMethod: input.paymentMethod as OrderPaymentMethod,
                 paidAt
             })
             await appendPaymentTransaction(workspaceId, {
@@ -966,7 +1055,7 @@ export async function recordObligationSettlement(
         }
 
         case 'expense_item': {
-            assertSettlementPaymentMethod(input.paymentMethod)
+            assertStandardSettlementPaymentMethod(input.paymentMethod)
             const item = await db.expense_items.get(obligation.sourceRecordId)
             if (!item || item.isDeleted) {
                 throw new Error('Expense item not found')
@@ -1006,7 +1095,7 @@ export async function recordObligationSettlement(
         }
 
         case 'payroll_status': {
-            assertSettlementPaymentMethod(input.paymentMethod)
+            assertStandardSettlementPaymentMethod(input.paymentMethod)
             const employeeId = String(obligation.metadata?.employeeId || obligation.sourceSubrecordId || '')
             const month = String(obligation.metadata?.month || '')
             if (!employeeId || !month) {
@@ -1150,6 +1239,9 @@ export async function reversePaymentTransaction(
             })
             break
         }
+
+        case 'direct_transaction':
+            break
     }
 
     const note = input.note?.trim() || `Reversal of ${transaction.referenceLabel || transaction.sourceType}`
@@ -1175,6 +1267,6 @@ export async function reversePaymentTransaction(
     })
 }
 
-export function getPaymentTransactionRoutePath(transaction: Pick<PaymentTransaction, 'sourceModule' | 'sourceType' | 'sourceRecordId'>) {
+export function getPaymentTransactionRoutePath(transaction: Pick<PaymentTransaction, 'sourceModule' | 'sourceType' | 'sourceRecordId' | 'metadata'>) {
     return getTransactionRoutePath(transaction)
 }

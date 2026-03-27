@@ -539,7 +539,7 @@ export interface LoanPayment extends BaseEntity {
     createdBy?: string
 }
 
-export type PaymentTransactionSourceModule = 'loans' | 'orders' | 'budget'
+export type PaymentTransactionSourceModule = 'loans' | 'orders' | 'budget' | 'payments'
 export type PaymentTransactionSourceType =
     | 'loan_payment'
     | 'simple_loan'
@@ -548,6 +548,7 @@ export type PaymentTransactionSourceType =
     | 'purchase_order'
     | 'expense_item'
     | 'payroll_status'
+    | 'direct_transaction'
 export type PaymentTransactionDirection = 'incoming' | 'outgoing'
 
 export interface PaymentTransaction extends BaseEntity {
