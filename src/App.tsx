@@ -69,6 +69,7 @@ const TravelAgency = lazy(() => import('@/ui/pages/TravelAgency').then(m => ({ d
 const TravelAgencySaleCreate = lazy(() => import('@/ui/pages/TravelAgencySaleForm').then(m => ({ default: m.TravelAgencySaleCreate })))
 const TravelAgencySaleEdit = lazy(() => import('@/ui/pages/TravelAgencySaleForm').then(m => ({ default: m.TravelAgencySaleEdit })))
 const TravelAgencySaleView = lazy(() => import('@/ui/pages/TravelAgencySaleForm').then(m => ({ default: m.TravelAgencySaleView })))
+const Finance = lazy(() => import('@/ui/pages/Finance').then(m => ({ default: m.Finance })))
 
 function LoadingState() {
     const [isSlow, setIsSlow] = useState(false)
@@ -620,6 +621,13 @@ function App() {
                                                 <ProtectedRoute allowedRoles={['admin', 'staff', 'viewer']} requiredFeature="travel_agency">
                                                     <Layout>
                                                         <TravelAgencySaleEdit />
+                                                    </Layout>
+                                                </ProtectedRoute>
+                                            </Route>
+                                            <Route path="/finance">
+                                                <ProtectedRoute allowedRoles={['admin', 'staff', 'viewer']}>
+                                                    <Layout>
+                                                        <Finance />
                                                     </Layout>
                                                 </ProtectedRoute>
                                             </Route>

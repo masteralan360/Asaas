@@ -146,6 +146,7 @@
         "performance": "أداء الفريق",
         "hr": "الموارد البشرية",
         "budget": "الميزانية",
+        "finance": "Finance",
         "invoicesHistory": "سجل الفواتير",
         "settings": "الإعدادات",
         "whatsapp": "واتساب",
@@ -1985,5 +1986,23 @@
         "geolocation": "الموقع الجغرافي",
         "workspaceGeolocation": "الموقع الجغرافي لمساحة العمل",
         "manageGeolocation": "إدارة وتتبع مواقع مساحات العمل."
+    },
+    "finance": {
+        "title": "Finance Analytics Hub",
+        "subtitle": "A read-only hub for finance analysis across revenue, budget, loans, partners, and travel activity.",
+        "tabs": {
+            "overview": "Overview",
+            "sales": "Sales",
+            "spend": "Spend",
+            "loans": "Loans",
+            "partners": "Partners & Commissions"
+        },
+        "actions": {
+            "export": "Export",
+            "backHome": "Return to Dashboard"
+        },
+        "controls": {
+            "month": "Select month"
+        }
     }
 }

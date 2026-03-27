@@ -85,6 +85,7 @@ const routePrefetchMap: Record<string, () => Promise<unknown>> = {
     '/suppliers': () => import('@/ui/pages/Suppliers'),
     '/orders': () => import('@/ui/pages/Orders'),
     '/travel-agency': () => import('@/ui/pages/TravelAgency'),
+    '/finance': () => import('@/ui/pages/Finance'),
     '/loans': () => import('@/ui/pages/Loans'),
     '/installments': () => import('@/ui/pages/Loans'),
     '/revenue': () => import('@/ui/pages/Revenue'),
@@ -234,6 +235,8 @@ export function Layout({ children }: LayoutProps) {
         }
     }, [isLocked, location])
 
+    const hasFinanceAnalytics = features.net_revenue || features.budget || features.loans || features.crm || features.travel_agency || features.hr
+
     const navigation: Array<{ name: string; href: string; icon: any; status?: string; alert?: boolean; mobileOnly?: boolean; children?: Array<{ name: string; href: string; icon?: any }> }> = [
         { name: t('nav.dashboard'), href: '/', icon: LayoutDashboard },
         // POS - requires feature flag AND role
@@ -265,6 +268,7 @@ export function Layout({ children }: LayoutProps) {
         ] : []),
         // Revenue - allow all roles for the menu item if feature is on (restriction is handled in route/page)
         ...((user?.role === 'admin' || user?.role === 'staff' || user?.role === 'viewer') ? [
+            ...(hasFinanceAnalytics ? [{ name: t('nav.finance', { defaultValue: 'Finance' }), href: '/finance', icon: TrendingUp }] : []),
             ...(hasFeature('net_revenue') ? [{ name: t('nav.revenue') || 'Net Revenue', href: '/revenue', icon: BarChart3 }] : []),
             ...(hasFeature('budget') ? [{ name: t('nav.budget') || 'Budget', href: '/budget', icon: Wallet }] : []),
             ...(hasFeature('monthly_comparison') ? [{ name: t('monthlyComparison.title'), href: '/monthly-comparison', icon: ArrowRightLeft }] : []),

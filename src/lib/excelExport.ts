@@ -70,3 +70,18 @@ export const mapRevenueForExport = (saleStats: any[], t: any) => {
         [t('revenue.table.margin') || 'Margin (%)']: `${(sale.margin ?? 0).toFixed(2)}%`
     }));
 };
+
+export const mapFinanceForExport = (rows: any[]) => {
+    return rows.map((row) => Object.fromEntries(
+        Object.entries(row).map(([key, value]) => [
+            key,
+            Array.isArray(value)
+                ? value.join(', ')
+                : value == null
+                    ? ''
+                    : typeof value === 'object'
+                        ? JSON.stringify(value)
+                        : value
+        ])
+    ));
+};

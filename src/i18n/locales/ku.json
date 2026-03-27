@@ -1985,5 +1985,23 @@
         "geolocation": "شوێنی جوگرافی",
         "workspaceGeolocation": "شوێنی جوگرافی شوێنی کار",
         "manageGeolocation": "بەڕێوەبردن و چاودێریکردنی موقعەکانی شوێنی کار."
+    },
+    "finance": {
+        "title": "Finance Analytics Hub",
+        "subtitle": "A read-only hub for finance analysis across revenue, budget, loans, partners, and travel activity.",
+        "tabs": {
+            "overview": "Overview",
+            "sales": "Sales",
+            "spend": "Spend",
+            "loans": "Loans",
+            "partners": "Partners & Commissions"
+        },
+        "actions": {
+            "export": "Export",
+            "backHome": "Return to Dashboard"
+        },
+        "controls": {
+            "month": "Select month"
+        }
     }
 }

@@ -13,7 +13,7 @@ import {
     DialogFooter,
     Button
 } from '@/ui/components'
-import { exportToExcel, mapSalesForExport, mapRevenueForExport } from '@/lib/excelExport'
+import { exportToExcel, mapFinanceForExport, mapSalesForExport, mapRevenueForExport } from '@/lib/excelExport'
 import { supabase } from '@/auth/supabase'
 
 interface ExportPreviewModalProps {
@@ -24,7 +24,7 @@ interface ExportPreviewModalProps {
         customDates: { start: string | null; end: string | null }
         selectedCashier: string
     }
-    type?: 'sales' | 'revenue'
+    type?: 'sales' | 'revenue' | 'finance'
     records?: any[]
 }
 
@@ -42,7 +42,7 @@ export function ExportPreviewModal({
     const [data, setData] = useState<any[]>([])
 
     useEffect(() => {
-        if (isOpen && type === 'revenue' && records) {
+        if (isOpen && (type === 'revenue' || type === 'finance') && records) {
             setData(records)
             setIsLoading(false)
         } else if (isOpen && filters) {
@@ -250,6 +250,7 @@ export function ExportPreviewModal({
     // Map data based on type to the format for XLSX (objects with headers)
     const exportData = useMemo(() => {
         if (!data) return []
+        if (type === 'finance') return mapFinanceForExport(data)
         if (type === 'revenue') return mapRevenueForExport(data, t)
         return mapSalesForExport(data, t)
     }, [data, t, type])
@@ -271,7 +272,12 @@ export function ExportPreviewModal({
         try {
             // Give a small delay for UI feedback
             await new Promise(resolve => setTimeout(resolve, 500))
-            const success = await exportToExcel(exportData, `Sales_Export_${new Date().toISOString().split('T')[0]}`)
+            const prefix = type === 'revenue'
+                ? 'Revenue_Export'
+                : type === 'finance'
+                    ? 'Finance_Export'
+                    : 'Sales_Export'
+            const success = await exportToExcel(exportData, `${prefix}_${new Date().toISOString().split('T')[0]}`)
 
             // Only close the modal if the download was successful (not cancelled in Tauri)
             if (success) {
