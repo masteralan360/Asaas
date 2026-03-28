@@ -66,6 +66,8 @@ const DEMO_USER: AuthUser = {
     workspaceMode: 'local'
 }
 
+const AUTH_WORKSPACE_BOOTSTRAP_COLUMNS = 'name, code, is_configured, data_mode'
+
 function parseUserFromSupabase(user: User): AuthUser {
     return {
         id: user.id,
@@ -166,7 +168,7 @@ async function enrichUser(parsedUser: AuthUser): Promise<AuthUser> {
     try {
         const { data: workspaceRow, error: workspaceError } = await runSupabaseAction(
             'auth.workspaceBootstrap',
-            () => supabase.from('workspaces').select('*').eq('id', parsedUser.workspaceId).maybeSingle(),
+            () => supabase.from('workspaces').select(AUTH_WORKSPACE_BOOTSTRAP_COLUMNS).eq('id', parsedUser.workspaceId).maybeSingle(),
             { timeoutMs: 8000, platform: 'all' }
         ) as { data: WorkspaceBootstrapRow | null; error?: unknown }
 

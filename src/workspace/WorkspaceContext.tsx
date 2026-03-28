@@ -142,6 +142,44 @@ const defaultFeatures: WorkspaceFeatures = {
     subscription_expires_at: null
 }
 
+const WORKSPACE_FEATURE_COLUMNS = [
+    'name',
+    'data_mode',
+    'pos',
+    'instant_pos',
+    'sales_history',
+    'crm',
+    'travel_agency',
+    'loans',
+    'net_revenue',
+    'budget',
+    'monthly_comparison',
+    'team_performance',
+    'products',
+    'storages',
+    'inventory_transfer',
+    'invoices_history',
+    'hr',
+    'members',
+    'is_configured',
+    'default_currency',
+    'iqd_display_preference',
+    'eur_conversion_enabled',
+    'try_conversion_enabled',
+    'locked_workspace',
+    'logo_url',
+    'coordination',
+    'max_discount_percent',
+    'allow_whatsapp',
+    'kds_enabled',
+    'print_lang',
+    'print_qr',
+    'receipt_template',
+    'a4_template',
+    'print_quality',
+    'subscription_expires_at'
+].join(', ')
+
 function mergeWorkspaceFeatures(features?: Partial<WorkspaceFeatures> | null): WorkspaceFeatures {
     return { ...defaultFeatures, ...(features ?? {}) }
 }
@@ -391,7 +429,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         try {
             const { data, error } = await runSupabaseAction(
                 'workspace.getFeatures',
-                () => supabase.from('workspaces').select('*').eq('id', workspaceId).maybeSingle(),
+                () => supabase.from('workspaces').select(WORKSPACE_FEATURE_COLUMNS).eq('id', workspaceId).maybeSingle(),
                 { timeoutMs: 12000, platform: 'all' }
             ) as any
 
