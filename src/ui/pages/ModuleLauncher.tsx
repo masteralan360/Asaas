@@ -126,7 +126,7 @@ export function ModuleLauncher() {
     const { user } = useAuth()
     const { workspaceName, hasFeature, features } = useWorkspace()
     const [query, setQuery] = useState('')
-    const [viewMode, setViewMode] = useState<'detail' | 'grid'>('detail')
+    const [viewMode, setViewMode] = useState<'detail' | 'grid'>(() => (isMobile() ? 'grid' : 'detail'))
 
     const navigation = useMemo(() => buildWorkspaceNavigation({
         t,
@@ -311,16 +311,30 @@ export function ModuleLauncher() {
                                     key={module.href}
                                     href={module.href}
                                     className={cn(
-                                        'group flex aspect-square min-h-[118px] flex-col items-center justify-center gap-3 rounded-[1.35rem] border border-border/60 bg-background/85 p-4 text-center shadow-[0_12px_28px_rgba(15,23,42,0.05)] backdrop-blur-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_18px_36px_rgba(15,23,42,0.10)]',
+                                        'group relative flex aspect-square min-h-[118px] flex-col items-center justify-center gap-3 overflow-hidden rounded-[1.35rem] border border-border/60 bg-background/85 p-4 text-center shadow-[0_12px_28px_rgba(15,23,42,0.05)] backdrop-blur-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_18px_36px_rgba(15,23,42,0.10)]',
                                         module.theme.border
                                     )}
                                 >
-                                    <div className={cn('flex h-12 w-12 items-center justify-center rounded-2xl', module.theme.surface, module.theme.text)}>
-                                        <module.icon className="h-5 w-5" />
+                                    <div className={cn('absolute right-3 top-3 flex h-7 w-7 items-center justify-center rounded-xl border border-border/50 bg-background/80 shadow-sm transition-all duration-300 group-hover:scale-105', module.theme.text)}>
+                                        <ArrowUpRight className="h-3.5 w-3.5" />
                                     </div>
-                                    <h3 className="max-w-[10rem] text-sm font-black leading-5 tracking-tight text-foreground">
-                                        {module.label}
-                                    </h3>
+                                    <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-current to-transparent opacity-25" />
+                                    <div className="absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-1.5 opacity-80">
+                                        <span className={cn('h-1.5 w-1.5 rounded-full', module.theme.surface)} />
+                                        <span className={cn('h-1.5 w-1.5 rounded-full', module.theme.surface)} />
+                                        <span className={cn('h-1.5 w-1.5 rounded-full', module.theme.surface)} />
+                                    </div>
+                                    <div className="relative z-10 flex flex-col items-center gap-3">
+                                        <div className={cn('flex h-12 w-12 items-center justify-center rounded-2xl shadow-sm', module.theme.surface, module.theme.text)}>
+                                            <module.icon className="h-5 w-5" />
+                                        </div>
+                                        <h3 className="max-w-[10rem] text-sm font-black leading-5 tracking-tight text-foreground">
+                                            {module.label}
+                                        </h3>
+                                        <span className={cn('inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.16em]', module.theme.surface, module.theme.text)}>
+                                            {module.badge}
+                                        </span>
+                                    </div>
                                 </Link>
                             ))}
                         </div>
