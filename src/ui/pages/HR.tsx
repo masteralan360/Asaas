@@ -334,7 +334,9 @@ export default function HR() {
                                             onClick={(e) => {
                                                 e.stopPropagation()
                                                 if (employee.phone) {
-                                                    whatsappManager.openChat(employee.phone)
+                                                    void whatsappManager.openChat(employee.phone).catch((error) => {
+                                                        console.error('[HR] Failed to open WhatsApp chat:', error)
+                                                    })
                                                     setLocation('/whatsapp')
                                                 }
                                             }}

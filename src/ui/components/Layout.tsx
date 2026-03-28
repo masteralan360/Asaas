@@ -208,8 +208,11 @@ export function Layout({ children }: LayoutProps) {
     useEffect(() => {
         if (!isTauri) return;
 
-        // If user is NOT on the whatsapp page, ensure the webview is hidden
-        // This acts as a global fail-safe during navigation or refreshes
+        if (location === '/whatsapp') {
+            void whatsappManager.show();
+        } else {
+            void whatsappManager.hide();
+        }
     }, [location, isTauri]);
 
     // Locking Enforcement

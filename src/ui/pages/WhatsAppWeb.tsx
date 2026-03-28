@@ -10,6 +10,51 @@ export default function WhatsAppWeb() {
 
     useEffect(() => {
         let isUnmounted = false;
+        let animationFrameId: number | null = null;
+        let burstFrameId: number | null = null;
+        let burstUntil = 0;
+        let resizeObserver: ResizeObserver | null = null;
+
+        setStatus('Loading...');
+
+        const syncPosition = async () => {
+            if (!containerRef.current || !whatsappManager.isActive()) {
+                return;
+            }
+
+            const rect = containerRef.current.getBoundingClientRect();
+            await whatsappManager.updatePosition(rect.x, rect.y, rect.width, rect.height);
+        };
+
+        const scheduleSync = () => {
+            if (animationFrameId !== null) {
+                return;
+            }
+
+            animationFrameId = window.requestAnimationFrame(() => {
+                animationFrameId = null;
+                void syncPosition();
+            });
+        };
+
+        const startSyncBurst = (durationMs: number) => {
+            burstUntil = Math.max(burstUntil, performance.now() + durationMs);
+            if (burstFrameId !== null) {
+                return;
+            }
+
+            const tick = () => {
+                scheduleSync();
+
+                if (performance.now() < burstUntil) {
+                    burstFrameId = window.requestAnimationFrame(tick);
+                } else {
+                    burstFrameId = null;
+                }
+            };
+
+            burstFrameId = window.requestAnimationFrame(tick);
+        };
 
         const initWebview = async () => {
             if (!containerRef.current) return;
@@ -24,17 +69,10 @@ export default function WhatsAppWeb() {
             );
 
             if (webview && !isUnmounted) {
-                // If this is a fresh JS session (refresh), we might want to reload the webview
-                // but usually, re-showing it is enough for persistence. 
-                // However, the user explicitly asked for the webview to reload when the app refreshes.
-                const isNavigatedRefresh = !localStorage.getItem('whatsapp_session_active');
-                if (isNavigatedRefresh) {
-                    await whatsappManager.reload();
-                    localStorage.setItem('whatsapp_session_active', 'true');
-                }
-
                 await whatsappManager.show();
                 setStatus('');
+                scheduleSync();
+                startSyncBurst(900);
             } else if (!isUnmounted) {
                 setStatus('Failed to load');
             }
@@ -43,25 +81,34 @@ export default function WhatsAppWeb() {
         // Delay to ensure layout is ready
         const bootTimer = setTimeout(initWebview, 200);
 
-        // Sync engine to keep webview positioned correctly
-        const syncPosition = async () => {
-            if (containerRef.current && whatsappManager.isActive()) {
-                const rect = containerRef.current.getBoundingClientRect();
-                await whatsappManager.updatePosition(rect.x, rect.y, rect.width, rect.height);
-            }
-        };
+        if (containerRef.current && typeof ResizeObserver !== 'undefined') {
+            resizeObserver = new ResizeObserver(() => {
+                scheduleSync();
+                startSyncBurst(250);
+            });
+            resizeObserver.observe(containerRef.current);
+        }
 
-        const syncInterval = setInterval(syncPosition, 100);
-        window.addEventListener('resize', syncPosition);
+        window.addEventListener('resize', scheduleSync);
+        window.addEventListener('scroll', scheduleSync, true);
+        document.addEventListener('transitionend', scheduleSync, true);
 
         return () => {
             isUnmounted = true;
             clearTimeout(bootTimer);
-            clearInterval(syncInterval);
-            window.removeEventListener('resize', syncPosition);
+            if (animationFrameId !== null) {
+                window.cancelAnimationFrame(animationFrameId);
+            }
+            if (burstFrameId !== null) {
+                window.cancelAnimationFrame(burstFrameId);
+            }
+            resizeObserver?.disconnect();
+            window.removeEventListener('resize', scheduleSync);
+            window.removeEventListener('scroll', scheduleSync, true);
+            document.removeEventListener('transitionend', scheduleSync, true);
 
             // HIDE when unmounting or toggling off
-            whatsappManager.hide();
+            void whatsappManager.hide();
         };
     }, [isEnabled]); // REDUCED: The one true source of initialization logic
 

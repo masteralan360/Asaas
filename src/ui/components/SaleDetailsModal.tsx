@@ -77,11 +77,13 @@ export function SaleDetailsModal({ sale, isOpen, onClose, onReturnItem, onReturn
     const { style } = useTheme()
     const linkedLoan = useLoanBySaleId(sale?.id, user?.workspaceId)
 
-    const handleShareOnWhatsApp = async (phone: string, dialogLanguage: string) => {
+    const handleShareOnWhatsApp = (phone: string, dialogLanguage: string) => {
         if (!sale) return
         const translator = i18n.getFixedT(dialogLanguage)
         const text = formatSaleDetailsForWhatsApp(sale, translator)
-        await whatsappManager.openChat(phone, text)
+        void whatsappManager.openChat(phone, text).catch((error) => {
+            console.error('[Sales] Failed to open WhatsApp chat:', error)
+        })
         setLocation('/whatsapp')
     }
 

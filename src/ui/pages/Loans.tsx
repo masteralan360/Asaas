@@ -35,6 +35,7 @@ import {
 } from '@/lib/loanPresentation'
 import { setPendingSaleDetailsId } from '@/lib/saleNavigation'
 import { formatCurrency, formatDate, cn, formatLoanDetailsForWhatsApp } from '@/lib/utils'
+import { whatsappManager } from '@/lib/whatsappWebviewManager'
 import { WhatsAppNumberInputModal } from '@/ui/components/modals/WhatsAppNumberInputModal'
 import { isMobile } from '@/lib/platform'
 import { generateTemplatePdf, type PrintFormat } from '@/services/pdfGenerator'
@@ -591,17 +592,16 @@ function LoanDetailsView({
     }, [viewMode])
 
     const handleWhatsAppConfirm = (phone: string, dialogLanguage: string) => {
-        if (!loan) return; // Changed selectedLoan to loan based on context
+        if (!loan) return
 
-        const formattedPhone = phone.replace(/\D/g, '');
-        const translator = i18n.getFixedT(dialogLanguage);
-        const message = formatLoanDetailsForWhatsApp(loan, translator); // Changed selectedLoan to loan
-        const whatsappUrl = `https://wa.me/${formattedPhone}?text=${encodeURIComponent(message)}`;
+        const translator = i18n.getFixedT(dialogLanguage)
+        const message = formatLoanDetailsForWhatsApp(loan, translator)
 
-        // Assuming isDesktop and whatsappAutoLaunch are defined elsewhere or need to be added
-        // For now, just open the URL
-        window.open(whatsappUrl, '_blank');
-    };
+        void whatsappManager.openChat(phone, message).catch((error) => {
+            console.error('[Loans] Failed to open WhatsApp chat:', error)
+        })
+        navigate('/whatsapp')
+    }
 
 
     const [deleteOpen, setDeleteOpen] = useState(false)

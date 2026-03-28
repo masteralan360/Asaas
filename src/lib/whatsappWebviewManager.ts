@@ -15,6 +15,25 @@ class WhatsAppWebviewManager {
 
     private pendingUrl: string | null = null;
 
+    private hasRenderableBounds(): boolean {
+        return this.lastBounds.width > 32 && this.lastBounds.height > 32;
+    }
+
+    private async tryNavigateWebview(webview: Webview, url: string): Promise<boolean> {
+        try {
+            const candidate = webview as Webview & { eval?: (script: string) => Promise<void> };
+            if (typeof candidate.eval !== 'function') {
+                return false;
+            }
+
+            await candidate.eval(`window.location.replace(${JSON.stringify(url)});`);
+            return true;
+        } catch (e) {
+            console.warn('[WhatsApp Manager] In-place navigation failed, falling back to recreate:', e);
+            return false;
+        }
+    }
+
     async getOrCreate(x: number, y: number, width: number, height: number): Promise<Webview | null> {
         console.log(`[WhatsApp Manager] getOrCreate called with bounds: ${JSON.stringify({ x, y, width, height })}`);
         this.lastBounds = { x, y, width, height };
@@ -82,29 +101,36 @@ class WhatsAppWebviewManager {
         this.pendingUrl = url;
 
         if (this.webview) {
+            const navigatedInline = await this.tryNavigateWebview(this.webview, url);
+            if (navigatedInline) {
+                this.pendingUrl = null;
+                await this.show();
+                return;
+            }
+
             try {
-                // Since eval/loadUrl is unreliable on Webview instance directly,
-                // close and recreate to force navigation to new URL.
-                console.log('[WhatsApp Manager] Closing existing webview to navigate...');
+                console.log('[WhatsApp Manager] Recreating webview after inline navigation fallback...');
                 await this.webview.close();
-                this.webview = null;
             } catch (e) {
                 console.error('[WhatsApp Manager] Failed to close existing webview:', e);
             }
+            this.webview = null;
         } else {
             console.log('[WhatsApp Manager] Webview not ready, stored pending URL');
         }
 
-        // Trigger recreation if we have bounds
-        if (this.lastBounds) {
-            await this.getOrCreate(
-                this.lastBounds.x,
-                this.lastBounds.y,
-                this.lastBounds.width,
-                this.lastBounds.height
-            );
-            await this.show();
+        if (!this.hasRenderableBounds()) {
+            console.log('[WhatsApp Manager] Stored pending URL until page bounds are ready');
+            return;
         }
+
+        await this.getOrCreate(
+            this.lastBounds.x,
+            this.lastBounds.y,
+            this.lastBounds.width,
+            this.lastBounds.height
+        );
+        await this.show();
     }
 
     private async createWebview(x: number, y: number, width: number, height: number): Promise<Webview | null> {
@@ -116,21 +142,24 @@ class WhatsAppWebviewManager {
             const existing = await Webview.getByLabel(label);
             if (existing) {
                 console.log('[WhatsApp Manager] Re-hooked existing native webview');
-                this.webview = existing;
-
-                // If we had a pending URL, navigate to it now that we found the webview
                 if (this.pendingUrl) {
                     console.log(`[WhatsApp Manager] Navigating re-hooked webview to pending URL: ${this.pendingUrl}`);
-                    try {
-                        // @ts-ignore
-                        await existing.eval(`window.location.href = "${this.pendingUrl}"`);
-                    } catch (e) {
-                        console.error('[WhatsApp Manager] Failed to navigate re-hooked webview:', e);
+                    const navigatedInline = await this.tryNavigateWebview(existing, this.pendingUrl);
+                    if (!navigatedInline) {
+                        try {
+                            await existing.close();
+                        } catch (e) {
+                            console.warn('[WhatsApp Manager] Failed to close stale webview before recreate:', e);
+                        }
+                    } else {
+                        this.pendingUrl = null;
+                        this.webview = existing;
+                        return existing;
                     }
-                    this.pendingUrl = null;
+                } else {
+                    this.webview = existing;
+                    return existing;
                 }
-
-                return existing;
             }
 
             console.log(`[WhatsApp Manager] No existing native webview found with label "${label}"`);
@@ -229,14 +258,19 @@ class WhatsAppWebviewManager {
     }
 
     async reload() {
-        if (this.webview) {
-            try {
-                // @ts-ignore - Tauri v2 JS API might not have direct reload on the class yet, 
-                // but we can re-evaluate location or use the eval method
-                await this.webview.clearAllBrowsingData(); // Optional cleanup
-            } catch (e) {
-                // Ignore
-            }
+        if (!this.webview) {
+            return;
+        }
+
+        const candidate = this.webview as Webview & { eval?: (script: string) => Promise<void> };
+        if (typeof candidate.eval !== 'function') {
+            return;
+        }
+
+        try {
+            await candidate.eval('window.location.reload();');
+        } catch (e) {
+            console.warn('[WhatsApp Manager] Reload failed:', e);
         }
     }
 
