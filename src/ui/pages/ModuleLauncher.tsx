@@ -2,52 +2,27 @@ import { useMemo, useState } from 'react'
 import { Link } from 'wouter'
 import { useTranslation } from 'react-i18next'
 import {
-    ArrowRightLeft,
     ArrowUpRight,
     BarChart3,
-    Calculator,
     CreditCard,
-    FileSpreadsheet,
-    FileText,
-    HandCoins,
-    LayoutDashboard,
-    type LucideIcon,
-    MessageSquare,
-    Monitor,
-    Package,
-    Plane,
-    Receipt,
+    LayoutGrid,
+    Rows3,
     Search,
-    Settings,
-    ShoppingCart,
-    TrendingUp,
-    Truck,
-    Users,
+    type LucideIcon,
     UsersRound,
     Warehouse,
     Wallet,
-    X,
-    Zap
+    X
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/auth'
 import { useWorkspace } from '@/workspace'
-import { isDesktop } from '@/lib/platform'
+import { isDesktop, isMobile } from '@/lib/platform'
 import { Input } from '@/ui/components/input'
 import { ThemeAwareLogo } from '@/ui/components/ThemeAwareLogo'
+import { buildWorkspaceNavigation, flattenWorkspaceNavigation } from '@/ui/navigation/workspaceNavigation'
 
-interface ModuleTile {
-    key: string
-    href: string
-    label: string
-    description: string
-    icon: LucideIcon
-    enabled: boolean
-    badge: string
-}
-
-interface ModuleSection {
-    key: string
+interface LauncherSection {
     title: string
     eyebrow: string
     description: string
@@ -59,7 +34,91 @@ interface ModuleSection {
         border: string
         glow: string
     }
-    modules: ModuleTile[]
+}
+
+const launcherSectionOrder = [
+    'sell-and-serve',
+    'stock-and-supply',
+    'cash-and-control',
+    'partners-and-demand',
+    'insights-and-trends',
+    'people-and-workspace'
+] as const
+
+const launcherSections: Record<(typeof launcherSectionOrder)[number], LauncherSection> = {
+    'sell-and-serve': {
+        title: 'Sell & Serve',
+        eyebrow: 'Frontline operations',
+        description: 'Checkout, service, and sales-touch workflows grouped into one fast-launch section.',
+        icon: CreditCard,
+        theme: { shell: 'from-emerald-500/18 via-teal-500/10 to-transparent', surface: 'bg-emerald-500/12 ring-1 ring-emerald-500/20', text: 'text-emerald-700 dark:text-emerald-300', border: 'border-emerald-500/20 hover:border-emerald-400/40', glow: 'bg-emerald-400/18' }
+    },
+    'stock-and-supply': {
+        title: 'Stock & Supply',
+        eyebrow: 'Inventory control',
+        description: 'Inventory visibility, movement, and warehouse control in one place.',
+        icon: Warehouse,
+        theme: { shell: 'from-amber-500/18 via-orange-500/10 to-transparent', surface: 'bg-amber-500/12 ring-1 ring-amber-500/20', text: 'text-amber-700 dark:text-amber-300', border: 'border-amber-500/20 hover:border-amber-400/40', glow: 'bg-amber-400/18' }
+    },
+    'cash-and-control': {
+        title: 'Cash & Control',
+        eyebrow: 'Finance operations',
+        description: 'Money movement, finance records, and payment follow-up organized for faster scanning.',
+        icon: Wallet,
+        theme: { shell: 'from-sky-500/18 via-cyan-500/10 to-transparent', surface: 'bg-sky-500/12 ring-1 ring-sky-500/20', text: 'text-sky-700 dark:text-sky-300', border: 'border-sky-500/20 hover:border-sky-400/40', glow: 'bg-sky-400/18' }
+    },
+    'partners-and-demand': {
+        title: 'Partners & Demand',
+        eyebrow: 'Relationship management',
+        description: 'Customer-facing and partner-facing workflows grouped around trade relationships.',
+        icon: UsersRound,
+        theme: { shell: 'from-rose-500/18 via-orange-500/10 to-transparent', surface: 'bg-rose-500/12 ring-1 ring-rose-500/20', text: 'text-rose-700 dark:text-rose-300', border: 'border-rose-500/20 hover:border-rose-400/40', glow: 'bg-rose-400/18' }
+    },
+    'insights-and-trends': {
+        title: 'Insights & Trends',
+        eyebrow: 'Analytics',
+        description: 'Performance reading and comparison views that turn activity into direction.',
+        icon: BarChart3,
+        theme: { shell: 'from-indigo-500/18 via-blue-500/10 to-transparent', surface: 'bg-indigo-500/12 ring-1 ring-indigo-500/20', text: 'text-indigo-700 dark:text-indigo-300', border: 'border-indigo-500/20 hover:border-indigo-400/40', glow: 'bg-indigo-400/18' }
+    },
+    'people-and-workspace': {
+        title: 'People & Workspace',
+        eyebrow: 'Operations support',
+        description: 'Internal team operations and workspace-level tools collected into one calmer utility layer.',
+        icon: UsersRound,
+        theme: { shell: 'from-slate-500/18 via-zinc-500/10 to-transparent', surface: 'bg-slate-500/12 ring-1 ring-slate-500/20', text: 'text-slate-700 dark:text-slate-300', border: 'border-slate-500/20 hover:border-slate-400/40', glow: 'bg-slate-400/16' }
+    }
+}
+
+const moduleMetaByHref: Record<string, { section: (typeof launcherSectionOrder)[number]; description: string; badge: string }> = {
+    '/': { section: 'insights-and-trends', description: 'Return to the main business overview and headline numbers.', badge: 'Overview' },
+    '/pos': { section: 'sell-and-serve', description: 'Run the main checkout and in-store selling flow.', badge: 'Checkout' },
+    '/instant-pos': { section: 'sell-and-serve', description: 'Handle rapid-service orders with the faster POS flow.', badge: 'Fast lane' },
+    '/kds': { section: 'sell-and-serve', description: 'Track kitchen-ready work and live preparation status.', badge: 'Live' },
+    '/sales': { section: 'sell-and-serve', description: 'Review completed sales, returns, and sales records.', badge: 'History' },
+    '/travel-agency': { section: 'sell-and-serve', description: 'Manage travel-related bookings and service sales.', badge: 'Service' },
+    '/products': { section: 'stock-and-supply', description: 'Maintain product catalog, stock rules, and pricing.', badge: 'Catalog' },
+    '/storages': { section: 'stock-and-supply', description: 'Manage warehouses, storage locations, and availability.', badge: 'Warehouses' },
+    '/inventory-transfer': { section: 'stock-and-supply', description: 'Move stock across locations and coordinate replenishment.', badge: 'Movement' },
+    '/ledger': { section: 'cash-and-control', description: 'Inspect cross-module inflows, outflows, and payment trails.', badge: 'Flow' },
+    '/payments': { section: 'cash-and-control', description: 'Settle obligations and review transaction timelines.', badge: 'Settlement' },
+    '/direct-transactions': { section: 'cash-and-control', description: 'Record standalone inflows and outflows outside linked records.', badge: 'Manual' },
+    '/loans': { section: 'cash-and-control', description: 'Manage issued and received loans with their histories.', badge: 'Credit' },
+    '/installments': { section: 'cash-and-control', description: 'Review staged repayments and installment collection flow.', badge: 'Plans' },
+    '/budget': { section: 'cash-and-control', description: 'Track accounting records, budgets, and financial controls.', badge: 'Books' },
+    '/invoices-history': { section: 'cash-and-control', description: 'Browse invoice records and audit issued invoice activity.', badge: 'Archive' },
+    '/currency-converter': { section: 'cash-and-control', description: 'Check exchange values and switch currencies with current rates.', badge: 'Rates' },
+    '/business-partners': { section: 'partners-and-demand', description: 'View trading entities, balances, and relationship data.', badge: 'Network' },
+    '/customers': { section: 'partners-and-demand', description: 'Track customer records, histories, and engagement context.', badge: 'Demand' },
+    '/suppliers': { section: 'partners-and-demand', description: 'Manage supplier relationships and procurement context.', badge: 'Supply' },
+    '/orders': { section: 'partners-and-demand', description: 'Open, settle, and review purchase or sales orders.', badge: 'Pipeline' },
+    '/revenue': { section: 'insights-and-trends', description: 'Analyze revenue behavior, inflows, and reporting trends.', badge: 'Revenue' },
+    '/monthly-comparison': { section: 'insights-and-trends', description: 'Compare monthly movement side by side and track change over time.', badge: 'Compare' },
+    '/hr': { section: 'people-and-workspace', description: 'Manage HR workflows, records, and team operations.', badge: 'People' },
+    '/performance': { section: 'people-and-workspace', description: 'Read team output, progress, and contribution trends.', badge: 'Performance' },
+    '/whatsapp': { section: 'people-and-workspace', description: 'Open the desktop communication surface for live follow-up.', badge: 'Desktop' },
+    '/members': { section: 'people-and-workspace', description: 'Review workspace members and role visibility.', badge: 'Access' },
+    '/settings': { section: 'people-and-workspace', description: 'Adjust workspace configuration, behavior, and system preferences.', badge: 'Control' }
 }
 
 export function ModuleLauncher() {
@@ -67,119 +126,53 @@ export function ModuleLauncher() {
     const { user } = useAuth()
     const { workspaceName, hasFeature, features } = useWorkspace()
     const [query, setQuery] = useState('')
+    const [viewMode, setViewMode] = useState<'detail' | 'grid'>('detail')
 
-    const isCoreRole = user?.role === 'admin' || user?.role === 'staff' || user?.role === 'viewer'
-    const hasLedgerSurface = features.pos || features.instant_pos || features.sales_history || features.crm || features.budget || features.hr || features.loans
-    const hasPaymentsSurface = features.loans || features.crm || features.budget || features.hr
-    const search = query.trim().toLowerCase()
+    const navigation = useMemo(() => buildWorkspaceNavigation({
+        t,
+        role: user?.role,
+        hasFeature,
+        features,
+        isDesktopDevice: isDesktop()
+    }), [features, hasFeature, t, user?.role])
 
-    const sections = useMemo<ModuleSection[]>(() => {
-        const themes = {
-            commerce: { shell: 'from-emerald-500/18 via-teal-500/10 to-transparent', surface: 'bg-emerald-500/12 ring-1 ring-emerald-500/20', text: 'text-emerald-700 dark:text-emerald-300', border: 'border-emerald-500/20 hover:border-emerald-400/40', glow: 'bg-emerald-400/18' },
-            inventory: { shell: 'from-amber-500/18 via-orange-500/10 to-transparent', surface: 'bg-amber-500/12 ring-1 ring-amber-500/20', text: 'text-amber-700 dark:text-amber-300', border: 'border-amber-500/20 hover:border-amber-400/40', glow: 'bg-amber-400/18' },
-            finance: { shell: 'from-sky-500/18 via-cyan-500/10 to-transparent', surface: 'bg-sky-500/12 ring-1 ring-sky-500/20', text: 'text-sky-700 dark:text-sky-300', border: 'border-sky-500/20 hover:border-sky-400/40', glow: 'bg-sky-400/18' },
-            crm: { shell: 'from-rose-500/18 via-orange-500/10 to-transparent', surface: 'bg-rose-500/12 ring-1 ring-rose-500/20', text: 'text-rose-700 dark:text-rose-300', border: 'border-rose-500/20 hover:border-rose-400/40', glow: 'bg-rose-400/18' },
-            analytics: { shell: 'from-indigo-500/18 via-blue-500/10 to-transparent', surface: 'bg-indigo-500/12 ring-1 ring-indigo-500/20', text: 'text-indigo-700 dark:text-indigo-300', border: 'border-indigo-500/20 hover:border-indigo-400/40', glow: 'bg-indigo-400/18' },
-            operations: { shell: 'from-slate-500/18 via-zinc-500/10 to-transparent', surface: 'bg-slate-500/12 ring-1 ring-slate-500/20', text: 'text-slate-700 dark:text-slate-300', border: 'border-slate-500/20 hover:border-slate-400/40', glow: 'bg-slate-400/16' }
-        }
+    const sections = useMemo(() => {
+        const visibleSidebarItems = flattenWorkspaceNavigation(navigation).filter((item) => !item.mobileOnly || isMobile())
+        const grouped = new Map<(typeof launcherSectionOrder)[number], Array<{
+            href: string
+            label: string
+            icon: LucideIcon
+            description: string
+            badge: string
+        }>>()
 
-        const groups: ModuleSection[] = [
-            {
-                key: 'sell-and-serve',
-                title: 'Sell & Serve',
-                eyebrow: 'Frontline operations',
-                description: 'Checkout, service, and sales-touch workflows grouped into one fast-launch section.',
-                icon: CreditCard,
-                theme: themes.commerce,
-                modules: [
-                    { key: 'pos', href: '/pos', label: t('nav.pos', { defaultValue: 'Point of Sale' }), description: 'Run the main checkout and in-store selling flow.', icon: CreditCard, enabled: isCoreRole && hasFeature('pos'), badge: 'Checkout' },
-                    { key: 'instant-pos', href: '/instant-pos', label: t('nav.instantPos', { defaultValue: 'Instant POS' }), description: 'Handle rapid-service orders with the faster POS flow.', icon: Zap, enabled: isCoreRole && hasFeature('instant_pos'), badge: 'Fast lane' },
-                    { key: 'kds', href: '/kds', label: t('nav.kdsDashboard', { defaultValue: 'KDS Dashboard' }), description: 'Track kitchen-ready work and live preparation status.', icon: Monitor, enabled: isCoreRole && hasFeature('pos'), badge: 'Live' },
-                    { key: 'sales', href: '/sales', label: t('nav.sales', { defaultValue: 'Sales History' }), description: 'Review completed sales, returns, and sales records.', icon: Receipt, enabled: hasFeature('sales_history'), badge: 'History' },
-                    { key: 'travel-agency', href: '/travel-agency', label: t('nav.travelAgency', { defaultValue: 'Travel Agency' }), description: 'Manage travel-related bookings and service sales.', icon: Plane, enabled: isCoreRole && hasFeature('travel_agency'), badge: 'Service' }
-                ]
-            },
-            {
-                key: 'stock-and-supply',
-                title: 'Stock & Supply',
-                eyebrow: 'Inventory control',
-                description: 'Inventory visibility, movement, and warehouse control in one place.',
-                icon: Warehouse,
-                theme: themes.inventory,
-                modules: [
-                    { key: 'products', href: '/products', label: t('nav.products', { defaultValue: 'Products' }), description: 'Maintain product catalog, stock rules, and pricing.', icon: Package, enabled: hasFeature('products'), badge: 'Catalog' },
-                    { key: 'storages', href: '/storages', label: t('nav.storages', { defaultValue: 'Storages' }), description: 'Manage warehouses, storage locations, and availability.', icon: Warehouse, enabled: hasFeature('storages'), badge: 'Warehouses' },
-                    { key: 'inventory-transfer', href: '/inventory-transfer', label: t('nav.inventoryTransfer', { defaultValue: 'Inventory Transfer' }), description: 'Move stock across locations and coordinate replenishment.', icon: ArrowRightLeft, enabled: hasFeature('inventory_transfer'), badge: 'Movement' }
-                ]
-            },
-            {
-                key: 'cash-and-control',
-                title: 'Cash & Control',
-                eyebrow: 'Finance operations',
-                description: 'Money movement, finance records, and payment follow-up organized for faster scanning.',
-                icon: Wallet,
-                theme: themes.finance,
-                modules: [
-                    { key: 'ledger', href: '/ledger', label: t('nav.ledger', { defaultValue: 'Ledger' }), description: 'Inspect cross-module inflows, outflows, and payment trails.', icon: Wallet, enabled: isCoreRole && hasLedgerSurface, badge: 'Flow' },
-                    { key: 'budget', href: '/budget', label: t('nav.budget', { defaultValue: 'Accounting' }), description: 'Track accounting records, budgets, and financial controls.', icon: FileSpreadsheet, enabled: isCoreRole && hasFeature('budget'), badge: 'Books' },
-                    { key: 'payments', href: '/payments', label: t('nav.payments', { defaultValue: 'Payments' }), description: 'Settle obligations and review transaction timelines.', icon: CreditCard, enabled: isCoreRole && hasPaymentsSurface, badge: 'Settlement' },
-                    { key: 'direct-transactions', href: '/direct-transactions', label: t('nav.directTransactions', { defaultValue: 'Direct Transactions' }), description: 'Record standalone inflows and outflows outside linked records.', icon: ArrowRightLeft, enabled: isCoreRole && hasPaymentsSurface, badge: 'Manual' },
-                    { key: 'loans', href: '/loans', label: t('nav.loans', { defaultValue: 'Loans' }), description: 'Manage issued and received loans with their histories.', icon: HandCoins, enabled: isCoreRole && hasFeature('loans'), badge: 'Credit' },
-                    { key: 'installments', href: '/installments', label: t('nav.installments', { defaultValue: 'Installments' }), description: 'Review staged repayments and installment collection flow.', icon: Receipt, enabled: isCoreRole && hasFeature('loans'), badge: 'Plans' },
-                    { key: 'invoices-history', href: '/invoices-history', label: t('nav.invoicesHistory', { defaultValue: 'Invoices History' }), description: 'Browse invoice records and audit issued invoice activity.', icon: FileText, enabled: hasFeature('invoices_history'), badge: 'Archive' },
-                    { key: 'currency-converter', href: '/currency-converter', label: t('nav.currencyConverter', { defaultValue: 'Currency Converter' }), description: 'Check exchange values and switch currencies with current rates.', icon: Calculator, enabled: isCoreRole, badge: 'Rates' }
-                ]
-            },
-            {
-                key: 'partners-and-demand',
-                title: 'Partners & Demand',
-                eyebrow: 'Relationship management',
-                description: 'Customer-facing and partner-facing workflows grouped around trade relationships.',
-                icon: UsersRound,
-                theme: themes.crm,
-                modules: [
-                    { key: 'business-partners', href: '/business-partners', label: t('businessPartners.title', { defaultValue: 'Business Partners' }), description: 'View trading entities, balances, and relationship data.', icon: UsersRound, enabled: isCoreRole && hasFeature('crm'), badge: 'Network' },
-                    { key: 'customers', href: '/customers', label: t('nav.customers', { defaultValue: 'Customers' }), description: 'Track customer records, histories, and engagement context.', icon: Users, enabled: isCoreRole && hasFeature('crm'), badge: 'Demand' },
-                    { key: 'suppliers', href: '/suppliers', label: t('nav.suppliers', { defaultValue: 'Suppliers' }), description: 'Manage supplier relationships and procurement context.', icon: Truck, enabled: isCoreRole && hasFeature('crm'), badge: 'Supply' },
-                    { key: 'orders', href: '/orders', label: t('nav.orders', { defaultValue: 'Orders' }), description: 'Open, settle, and review purchase or sales orders.', icon: ShoppingCart, enabled: isCoreRole && hasFeature('crm'), badge: 'Pipeline' }
-                ]
-            },
-            {
-                key: 'insights-and-trends',
-                title: 'Insights & Trends',
-                eyebrow: 'Analytics',
-                description: 'Performance reading and comparison views that turn activity into direction.',
-                icon: BarChart3,
-                theme: themes.analytics,
-                modules: [
-                    { key: 'dashboard', href: '/', label: t('nav.dashboard', { defaultValue: 'Dashboard' }), description: 'Return to the main business overview and headline numbers.', icon: LayoutDashboard, enabled: true, badge: 'Overview' },
-                    { key: 'revenue', href: '/revenue', label: t('nav.revenue', { defaultValue: 'Revenue Analytics' }), description: 'Analyze revenue behavior, inflows, and reporting trends.', icon: TrendingUp, enabled: isCoreRole && hasFeature('net_revenue'), badge: 'Revenue' },
-                    { key: 'monthly-comparison', href: '/monthly-comparison', label: t('monthlyComparison.title', { defaultValue: 'Monthly Comparison' }), description: 'Compare monthly movement side by side and track change over time.', icon: BarChart3, enabled: isCoreRole && hasFeature('monthly_comparison'), badge: 'Compare' }
-                ]
-            },
-            {
-                key: 'people-and-workspace',
-                title: 'People & Workspace',
-                eyebrow: 'Operations support',
-                description: 'Internal team operations and workspace-level tools collected into one calmer utility layer.',
-                icon: UsersRound,
-                theme: themes.operations,
-                modules: [
-                    { key: 'hr', href: '/hr', label: t('nav.hr', { defaultValue: 'HR' }), description: 'Manage HR workflows, records, and team operations.', icon: UsersRound, enabled: isCoreRole && hasFeature('hr'), badge: 'People' },
-                    { key: 'performance', href: '/performance', label: t('nav.performance', { defaultValue: 'Team Performance' }), description: 'Read team output, progress, and contribution trends.', icon: TrendingUp, enabled: isCoreRole && hasFeature('team_performance'), badge: 'Performance' },
-                    { key: 'whatsapp', href: '/whatsapp', label: t('nav.whatsapp', { defaultValue: 'WhatsApp' }), description: 'Open the desktop communication surface for live follow-up.', icon: MessageSquare, enabled: isCoreRole && hasFeature('allow_whatsapp') && isDesktop(), badge: 'Desktop' },
-                    { key: 'members', href: '/members', label: t('members.title', { defaultValue: 'Members' }), description: 'Review workspace members and role visibility.', icon: Users, enabled: isCoreRole && hasFeature('members'), badge: 'Access' },
-                    { key: 'settings', href: '/settings', label: t('nav.settings', { defaultValue: 'Settings' }), description: 'Adjust workspace configuration, behavior, and system preferences.', icon: Settings, enabled: isCoreRole, badge: 'Control' }
-                ]
+        visibleSidebarItems.forEach((item) => {
+            const meta = moduleMetaByHref[item.href] || {
+                section: 'people-and-workspace' as const,
+                description: 'Open this workspace module from the launcher.',
+                badge: 'Module'
             }
-        ]
+            const list = grouped.get(meta.section) || []
+            list.push({
+                href: item.href,
+                label: item.name,
+                icon: item.icon,
+                description: meta.description,
+                badge: meta.badge
+            })
+            grouped.set(meta.section, list)
+        })
 
-        return groups.map((section) => ({
-            ...section,
-            modules: section.modules.filter((module) => module.enabled)
-        })).filter((section) => section.modules.length > 0)
-    }, [features, hasFeature, isCoreRole, t, hasLedgerSurface, hasPaymentsSurface])
+        return launcherSectionOrder
+            .map((key) => ({
+                key,
+                ...launcherSections[key],
+                modules: grouped.get(key) || []
+            }))
+            .filter((section) => section.modules.length > 0)
+    }, [navigation])
 
+    const search = query.trim().toLowerCase()
     const filteredSections = useMemo(() => {
         if (!search) return sections
         return sections.map((section) => ({
@@ -190,6 +183,15 @@ export function ModuleLauncher() {
             })
         })).filter((section) => section.modules.length > 0)
     }, [search, sections])
+
+    const gridModules = useMemo(() => (
+        filteredSections.flatMap((section) => (
+            section.modules.map((module) => ({
+                ...module,
+                theme: section.theme
+            }))
+        ))
+    ), [filteredSections])
 
     const totalModuleCount = sections.reduce((sum, section) => sum + section.modules.length, 0)
     const visibleModuleCount = filteredSections.reduce((sum, section) => sum + section.modules.length, 0)
@@ -204,26 +206,23 @@ export function ModuleLauncher() {
 
             <div className="relative space-y-6">
                 <section className="overflow-hidden rounded-[2rem] border border-border/60 bg-card/75 shadow-[0_24px_80px_rgba(15,23,42,0.08)] backdrop-blur-xl">
-                    <div className="relative p-6 sm:p-8 lg:p-10">
+                    <div className="relative p-5 sm:p-6 lg:p-7">
                         <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(16,185,129,0.08),transparent_35%,rgba(59,130,246,0.06))]" />
-                        <div className="relative flex flex-col gap-8 xl:flex-row xl:items-end xl:justify-between">
+                        <div className="relative flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
                             <div className="max-w-3xl">
-                                <div className="inline-flex items-center gap-3 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-700 dark:text-emerald-300">
-                                    <ThemeAwareLogo className="h-5 w-5" />
+                                <div className="inline-flex items-center gap-2.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1.5 text-xs font-semibold text-emerald-700 dark:text-emerald-300">
+                                    <ThemeAwareLogo className="h-4 w-4" />
                                     Workspace launcher
                                 </div>
-                                <h1 className="mt-5 text-3xl font-black tracking-tight sm:text-4xl lg:text-5xl">
+                                <h1 className="mt-4 text-3xl font-black tracking-tight sm:text-4xl lg:text-[2.8rem]">
                                     Navigate {workspaceName || 'Atlas'} by workflow
                                 </h1>
-                                <p className="mt-4 max-w-2xl text-sm text-muted-foreground sm:text-base">
-                                    Modules are organized around your dashboard brief, but regrouped with clearer workflow labels and stronger visual separation.
-                                </p>
-                                <div className="mt-6 flex flex-wrap gap-3">
+                                <div className="mt-5 flex flex-wrap gap-3">
                                     <SummaryCard label="Visible Sections" value={filteredSections.length} />
                                     <SummaryCard label={search ? 'Matching Modules' : 'Available Modules'} value={visibleModuleCount} />
                                     <div className="rounded-2xl border border-border/60 bg-background/70 px-4 py-3 backdrop-blur-sm">
-                                        <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground/70">Experience</div>
-                                        <div className="mt-1 text-sm font-semibold text-muted-foreground">Color-coded, task-first navigation</div>
+                                        <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground/70">Source</div>
+                                        <div className="mt-1 text-sm font-semibold text-muted-foreground">Same visibility logic as the sidebar</div>
                                     </div>
                                 </div>
                             </div>
@@ -237,7 +236,7 @@ export function ModuleLauncher() {
                                         <Input
                                             value={query}
                                             onChange={(event) => setQuery(event.target.value)}
-                                            placeholder="Search modules, workflows, or roles..."
+                                            placeholder="Search visible modules..."
                                             className="h-11 border-0 bg-transparent px-0 text-sm shadow-none focus-visible:ring-0"
                                         />
                                         {query && (
@@ -253,11 +252,39 @@ export function ModuleLauncher() {
                                     </div>
                                 </div>
                                 <div className="mt-3 flex flex-wrap items-center gap-3">
+                                    <div className="inline-flex items-center rounded-2xl border border-border/60 bg-background/75 p-1 shadow-sm">
+                                        <button
+                                            type="button"
+                                            onClick={() => setViewMode('detail')}
+                                            className={cn(
+                                                'inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition-all',
+                                                viewMode === 'detail'
+                                                    ? 'bg-primary text-primary-foreground shadow-sm'
+                                                    : 'text-muted-foreground hover:text-foreground'
+                                            )}
+                                        >
+                                            <Rows3 className="h-4 w-4" />
+                                            Detail
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setViewMode('grid')}
+                                            className={cn(
+                                                'inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition-all',
+                                                viewMode === 'grid'
+                                                    ? 'bg-primary text-primary-foreground shadow-sm'
+                                                    : 'text-muted-foreground hover:text-foreground'
+                                            )}
+                                        >
+                                            <LayoutGrid className="h-4 w-4" />
+                                            Grid
+                                        </button>
+                                    </div>
                                     <Link href="/" className="inline-flex items-center justify-center rounded-2xl border border-border/60 bg-background/75 px-4 py-2.5 text-sm font-semibold text-foreground transition-all hover:-translate-y-0.5 hover:border-primary/30 hover:bg-primary/5">
                                         Open {t('nav.dashboard', { defaultValue: 'Dashboard' })}
                                     </Link>
                                     <div className="text-xs font-medium text-muted-foreground">
-                                        {search ? `Showing ${visibleModuleCount} of ${totalModuleCount} modules for "${query.trim()}".` : `Browse ${totalModuleCount} modules grouped by business purpose.`}
+                                        {search ? `Showing ${visibleModuleCount} of ${totalModuleCount} modules for "${query.trim()}".` : `Browsing ${totalModuleCount} modules currently visible in the sidebar.`}
                                     </div>
                                 </div>
                             </div>
@@ -275,6 +302,28 @@ export function ModuleLauncher() {
                         <button type="button" onClick={() => setQuery('')} className="mt-6 inline-flex items-center justify-center rounded-2xl bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90">
                             Reset search
                         </button>
+                    </section>
+                ) : viewMode === 'grid' ? (
+                    <section className="rounded-[2rem] border border-border/60 bg-card/70 p-4 shadow-[0_20px_60px_rgba(15,23,42,0.08)] backdrop-blur-xl sm:p-5">
+                        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
+                            {gridModules.map((module) => (
+                                <Link
+                                    key={module.href}
+                                    href={module.href}
+                                    className={cn(
+                                        'group flex aspect-square min-h-[118px] flex-col items-center justify-center gap-3 rounded-[1.35rem] border border-border/60 bg-background/85 p-4 text-center shadow-[0_12px_28px_rgba(15,23,42,0.05)] backdrop-blur-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_18px_36px_rgba(15,23,42,0.10)]',
+                                        module.theme.border
+                                    )}
+                                >
+                                    <div className={cn('flex h-12 w-12 items-center justify-center rounded-2xl', module.theme.surface, module.theme.text)}>
+                                        <module.icon className="h-5 w-5" />
+                                    </div>
+                                    <h3 className="max-w-[10rem] text-sm font-black leading-5 tracking-tight text-foreground">
+                                        {module.label}
+                                    </h3>
+                                </Link>
+                            ))}
+                        </div>
                     </section>
                 ) : (
                     <div className="grid gap-6 xl:grid-cols-2">
@@ -297,7 +346,7 @@ export function ModuleLauncher() {
                                     </div>
                                     <div className="mt-6 grid gap-3 sm:grid-cols-2">
                                         {section.modules.map((module) => (
-                                            <Link key={module.key} href={module.href} className={cn('group relative overflow-hidden rounded-[1.5rem] border border-border/60 bg-background/80 p-4 shadow-[0_14px_38px_rgba(15,23,42,0.05)] backdrop-blur-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_20px_48px_rgba(15,23,42,0.10)]', section.theme.border)}>
+                                            <Link key={module.href} href={module.href} className={cn('group relative overflow-hidden rounded-[1.5rem] border border-border/60 bg-background/80 p-4 shadow-[0_14px_38px_rgba(15,23,42,0.05)] backdrop-blur-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_20px_48px_rgba(15,23,42,0.10)]', section.theme.border)}>
                                                 <div className={cn('absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-current to-transparent opacity-30', section.theme.text)} />
                                                 <div className="flex items-start justify-between gap-3">
                                                     <div className={cn('flex h-11 w-11 items-center justify-center rounded-2xl', section.theme.surface, section.theme.text)}>

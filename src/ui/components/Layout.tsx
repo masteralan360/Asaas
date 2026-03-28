@@ -21,44 +21,24 @@ import { UnifiedSnoozeProvider } from '@/context/UnifiedSnoozeContext'
 import { GlobalExchangeRateReminders } from './exchange/GlobalExchangeRateReminders'
 import { UnifiedSnoozedRemindersBell } from './reminders/UnifiedSnoozedRemindersBell'
 import { ThemeAwareLogo } from './ThemeAwareLogo'
+import { buildWorkspaceNavigation } from '@/ui/navigation/workspaceNavigation'
 
 import {
-    LayoutDashboard,
-    Package,
-    FileText,
-    Settings,
     LogOut,
     Menu,
     X,
     Boxes,
     Copy,
     Check,
-    UsersRound,
-    CreditCard,
-    Receipt,
-    ShoppingCart,
-    Zap,
-    TrendingUp,
     ChevronLeft,
     ChevronRight,
     ChevronDown,
-    BarChart3,
     RotateCw,
     MessageSquare,
-    Users,
-    Warehouse,
-    ArrowRightLeft,
-    HandCoins,
-    FileSpreadsheet,
     AlertCircle,
     Bot,
     PanelRightOpen,
     PanelRightClose,
-    Monitor,
-    Truck,
-    Plane,
-    Calculator,
-    Wallet,
     LayoutGrid
 } from 'lucide-react'
 import { useState } from 'react'
@@ -241,74 +221,14 @@ export function Layout({ children }: LayoutProps) {
         }
     }, [isLocked, location])
 
-    const hasLedgerSurface = features.pos || features.instant_pos || features.sales_history || features.crm || features.budget || features.hr || features.loans
-    const hasPaymentsSurface = features.loans || features.crm || features.budget || features.hr
-
-    const navigation: Array<{ name: string; href: string; icon: any; status?: string; alert?: boolean; mobileOnly?: boolean; children?: Array<{ name: string; href: string; icon?: any }> }> = [
-        { name: t('nav.dashboard'), href: '/', icon: LayoutDashboard },
-        // POS - requires feature flag AND role
-        ...((user?.role === 'admin' || user?.role === 'staff' || user?.role === 'viewer') && hasFeature('pos') ? [
-            { name: t('nav.pos') || 'POS', href: '/pos', icon: CreditCard },
-            {
-                name: t('nav.instantPos') || 'Instant POS',
-                href: '/instant-pos',
-                icon: Zap,
-                children: [
-                    { name: t('nav.kdsDashboard') || 'KDS Dashboard', href: '/kds', icon: Monitor }
-                ]
-            }
-        ] : []),
-        // Sales
-        ...(hasFeature('sales_history') ? [{ name: t('nav.sales') || 'Sales', href: '/sales', icon: Receipt }] : []),
-        ...((user?.role === 'admin' || user?.role === 'staff' || user?.role === 'viewer') && hasFeature('crm') ? [
-            { name: t('businessPartners.title') || 'Business Partners', href: '/business-partners', icon: UsersRound },
-            { name: t('nav.customers') || 'Customers', href: '/customers', icon: Users },
-            { name: t('nav.suppliers') || 'Suppliers', href: '/suppliers', icon: Truck },
-            { name: t('nav.orders') || 'Orders', href: '/orders', icon: ShoppingCart }
-        ] : []),
-        ...((user?.role === 'admin' || user?.role === 'staff' || user?.role === 'viewer') && hasFeature('travel_agency') ? [
-            { name: t('nav.travelAgency', { defaultValue: 'Travel Agency' }), href: '/travel-agency', icon: Plane }
-        ] : []),
-        ...(hasFeature('loans') ? [
-            { name: t('nav.loans', { defaultValue: 'Loans' }), href: '/loans', icon: HandCoins },
-            { name: t('nav.installments', { defaultValue: t('loans.title', { defaultValue: 'Installments' }) }), href: '/installments', icon: Copy }
-        ] : []),
-        // Revenue - allow all roles for the menu item if feature is on (restriction is handled in route/page)
-        ...((user?.role === 'admin' || user?.role === 'staff' || user?.role === 'viewer') ? [
-            // Finance Tab - Hidden by request. Uncomment to restore.
-            // ...(hasFinanceAnalytics ? [{ name: t('nav.finance', { defaultValue: 'Finance' }), href: '/finance', icon: TrendingUp }] : []),
-            ...(hasLedgerSurface ? [{ name: t('nav.ledger', { defaultValue: 'Ledger' }), href: '/ledger', icon: Wallet }] : []),
-            ...(hasPaymentsSurface ? [{ name: t('nav.payments', { defaultValue: 'Payments' }), href: '/payments', icon: CreditCard }] : []),
-            ...(hasPaymentsSurface ? [{ name: t('nav.directTransactions', { defaultValue: 'Direct Transactions' }), href: '/direct-transactions', icon: ArrowRightLeft }] : []),
-            ...(hasFeature('net_revenue') ? [{ name: t('nav.revenue') || 'Revenue Analytics', href: '/revenue', icon: BarChart3 }] : []),
-            ...(hasFeature('budget') ? [{ name: t('nav.budget', { defaultValue: 'Accounting' }), href: '/budget', icon: FileSpreadsheet }] : []),
-            ...(hasFeature('monthly_comparison') ? [{ name: t('monthlyComparison.title'), href: '/monthly-comparison', icon: ArrowRightLeft }] : []),
-            ...(hasFeature('team_performance') ? [{ name: t('nav.performance') || 'Team Performance', href: '/performance', icon: TrendingUp }] : [])
-        ] : []),
-        { name: t('nav.currencyConverter') || 'Currency Converter', href: '/currency-converter', icon: Calculator, mobileOnly: true },
-        // WhatsApp - requires feature flag AND role AND desktop platform
-        ...((user?.role === 'admin' || user?.role === 'staff' || user?.role === 'viewer') && hasFeature('allow_whatsapp') && isDesktop() ? [
-            { name: t('nav.whatsapp'), href: '/whatsapp', icon: MessageSquare, status: whatsappStatus }
-        ] : []),
-        // Products
-        ...(hasFeature('products') ? [{ name: t('nav.products'), href: '/products', icon: Package }] : []),
-        // Storages
-        ...(hasFeature('storages') ? [{ name: t('nav.storages') || 'Storages', href: '/storages', icon: Warehouse }] : []),
-        // Inventory Transfer
-        ...(hasFeature('inventory_transfer') ? [{ name: t('nav.inventoryTransfer') || 'Transfer', href: '/inventory-transfer', icon: ArrowRightLeft }] : []),
-        // Invoices - requires feature flag
-        ...(hasFeature('invoices_history') ? [
-            { name: t('nav.invoicesHistory') || 'Invoices History', href: '/invoices-history', icon: FileText }
-        ] : []),
-        // Admin/Staff routes
-        ...((user?.role === 'admin' || user?.role === 'staff' || user?.role === 'viewer') ? [
-            ...(hasFeature('hr') ? [{ name: t('nav.hr') || 'HR', href: '/hr', icon: UsersRound }] : []),
-            ...(hasFeature('members') ? [{ name: t('members.title'), href: '/members', icon: Users }] : []),
-        ] : []),
-        ...((user?.role === 'admin' || user?.role === 'staff' || user?.role === 'viewer') ? [
-            { name: t('nav.settings'), href: '/settings', icon: Settings }
-        ] : []),
-    ]
+    const navigation = buildWorkspaceNavigation({
+        t,
+        role: user?.role,
+        hasFeature,
+        features,
+        isDesktopDevice: isDesktop(),
+        whatsappStatus
+    })
 
     const today = new Date().toISOString().slice(0, 10)
     const reorderAutomationCount = reorderRules.filter((rule) =>
