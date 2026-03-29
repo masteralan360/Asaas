@@ -1,3 +1,17 @@
+ALTER TABLE public.sales
+  ALTER COLUMN system_verified DROP DEFAULT,
+  ALTER COLUMN system_review_status DROP DEFAULT;
+
+ALTER TABLE public.sales
+  DROP CONSTRAINT IF EXISTS sales_system_review_status_check;
+
+ALTER TABLE public.sales
+  ADD CONSTRAINT sales_system_review_status_check
+  CHECK (
+    system_review_status IS NULL
+    OR system_review_status = ANY (ARRAY['approved'::text, 'flagged'::text, 'inconsistent'::text])
+  );
+
 CREATE OR REPLACE FUNCTION public.complete_sale(payload jsonb)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -44,7 +58,6 @@ BEGIN
         RAISE EXCEPTION 'User does not belong to a workspace';
     END IF;
 
-    -- Check if POS feature is enabled for this workspace
     SELECT pos, COALESCE(max_discount_percent, 100)
     INTO v_pos, v_max_discount_percent
     FROM public.workspaces
@@ -290,4 +303,4 @@ BEGIN
         'system_review_reason', v_system_review_reason
     );
 END;
-$function$
+$function$;

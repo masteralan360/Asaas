@@ -1270,9 +1270,10 @@ export function POS() {
         const verificationSale = createVerificationSale(
             totalAmount,
             settlementCurrency,
-            snapshotRate,
-            snapshotSource,
-            itemsWithMetadata
+            hasExchangeSnapshot ? snapshotRate : null,
+            hasExchangeSnapshot ? snapshotSource : null,
+            itemsWithMetadata,
+            exchangeRatesPayload
         )
         const verificationResult = verifySale(verificationSale, {
             maxDiscountPercent: features.max_discount_percent
@@ -1292,11 +1293,7 @@ export function POS() {
                 ? 'cash'
                 : paymentType === 'loan'
                     ? 'loan'
-                    : digitalProvider) as 'cash' | 'fib' | 'qicard' | 'zaincash' | 'fastpay' | 'loan',
-            // System Verification (offline-first, immutable)
-            system_verified: verificationResult.verified,
-            system_review_status: verificationResult.status,
-            system_review_reason: verificationResult.reason
+                    : digitalProvider) as 'cash' | 'fib' | 'qicard' | 'zaincash' | 'fastpay' | 'loan'
         }
 
         try {
@@ -1412,9 +1409,10 @@ export function POS() {
                     const verificationSale = createVerificationSale(
                         totalAmount,
                         settlementCurrency,
-                        snapshotRate,
-                        snapshotSource,
-                        itemsWithMetadata
+                        hasExchangeSnapshot ? snapshotRate : null,
+                        hasExchangeSnapshot ? snapshotSource : null,
+                        itemsWithMetadata,
+                        exchangeRatesPayload
                     )
                     const verificationResult = verifySale(verificationSale, {
                         maxDiscountPercent: features.max_discount_percent
@@ -1510,13 +1508,8 @@ export function POS() {
                         })
                     }
 
-                    // 5. Add to Sync Queue (include verification fields)
-                    await addToOfflineMutations('sales', saleId, 'create', {
-                        ...checkoutPayload,
-                        system_verified: verificationResult.verified,
-                        system_review_status: verificationResult.status,
-                        system_review_reason: verificationResult.reason
-                    }, user.workspaceId)
+                    // 5. Add to Sync Queue (server will compute authoritative review fields)
+                    await addToOfflineMutations('sales', saleId, 'create', checkoutPayload, user.workspaceId)
 
                     if (paymentType === 'loan' && validLoanRegistrationData) {
                         try {

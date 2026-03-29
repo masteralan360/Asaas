@@ -12,6 +12,7 @@ import { AlertCircle, CheckCircle2, ChevronDown, ChevronRight, ChevronUp, Loader
 import { normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
 import { platformService } from '@/services/platformService'
 import { useKdsStream } from '@/hooks/useKdsStream'
+import { createVerificationSale, verifySale } from '@/lib/saleVerification'
 
 const TICKETS_STORAGE_KEY = 'instant_pos_tickets'
 const TICKET_COUNTER_KEY = 'instant_pos_ticket_counter'
@@ -848,6 +849,17 @@ export function InstantPOS() {
         })
 
         const totalAmount = itemsWithMetadata.reduce((sum, item) => sum + item.total_price, 0)
+        const verificationSale = createVerificationSale(
+            totalAmount,
+            settlementCurrency,
+            null,
+            null,
+            itemsWithMetadata,
+            null
+        )
+        const verificationResult = verifySale(verificationSale, {
+            maxDiscountPercent: features.max_discount_percent
+        })
 
         const consolidatedNotes = activeTicket.items
             .filter(item => item.note)
@@ -865,9 +877,6 @@ export function InstantPOS() {
             exchange_rates: null,
             origin: 'instant_pos',
             payment_method: 'cash',
-            system_verified: true,
-            system_review_status: 'approved',
-            system_review_reason: null,
             notes: consolidatedNotes || null
         }
 
@@ -951,9 +960,9 @@ export function InstantPOS() {
                         lastSyncedAt: null,
                         version: 1,
                         isDeleted: false,
-                        systemVerified: true,
-                        systemReviewStatus: 'approved',
-                        systemReviewReason: null
+                        systemVerified: verificationResult.verified,
+                        systemReviewStatus: verificationResult.status,
+                        systemReviewReason: verificationResult.reason
                     })
 
                     await Promise.all(itemsWithMetadata.map(item =>

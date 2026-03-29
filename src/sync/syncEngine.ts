@@ -99,16 +99,28 @@ export async function processMutationQueue(_userId: string): Promise<{ success: 
 
                         // Capture sequence_id and update local records
                         const result = serverResult as any
+                        const saleReviewUpdate: Record<string, unknown> = {}
+                        if (result?.system_verified !== undefined) {
+                            saleReviewUpdate.systemVerified = result.system_verified
+                        }
+                        if (result?.system_review_status !== undefined) {
+                            saleReviewUpdate.systemReviewStatus = result.system_review_status
+                        }
+                        if (result?.system_review_reason !== undefined) {
+                            saleReviewUpdate.systemReviewReason = result.system_review_reason
+                        }
                         if (result?.sequence_id) {
                             const sequenceId = result.sequence_id
                             const formattedInvoiceId = `#${String(sequenceId).padStart(5, '0')}`
 
                             // Update both sales and invoices tables locally
-                            await db.sales.update(entityId, { sequenceId })
+                            await db.sales.update(entityId, { sequenceId, ...saleReviewUpdate })
                             await db.invoices.update(entityId, {
                                 sequenceId,
                                 invoiceid: formattedInvoiceId
                             })
+                        } else if (Object.keys(saleReviewUpdate).length > 0) {
+                            await db.sales.update(entityId, saleReviewUpdate)
                         }
                     } else if (rpcAction === 'return_sale_items') {
                         const { error } = await supabase.rpc('return_sale_items', {

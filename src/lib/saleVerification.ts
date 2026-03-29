@@ -33,8 +33,12 @@ export interface VerificationItem {
 
 export interface VerificationSale {
     totalAmount: number
-    exchangeRate: number
-    exchangeSource: string
+    exchangeRate: number | null
+    exchangeSource: string | null
+    exchangeRates?: Array<{
+        rate?: number | null
+        source?: string | null
+    }> | null
     settlementCurrency: string
     items: VerificationItem[]
 }
@@ -95,10 +99,13 @@ export function verifySale(
         item => item.originalCurrency !== sale.settlementCurrency
     )
     if (hasMixedCurrency) {
-        if (!sale.exchangeRate || sale.exchangeRate === 0) {
+        const hasSnapshotRate = sale.exchangeRates?.some(rate => (rate?.rate ?? 0) > 0) ?? false
+        const hasSnapshotSource = sale.exchangeRates?.some(rate => !!rate?.source && rate.source !== 'none') ?? false
+
+        if (!hasSnapshotRate && (!sale.exchangeRate || sale.exchangeRate === 0)) {
             flags.push('Missing exchange rate for multi-currency sale')
         }
-        if (!sale.exchangeSource || sale.exchangeSource === 'none') {
+        if (!hasSnapshotSource && (!sale.exchangeSource || sale.exchangeSource === 'none')) {
             flags.push('Missing exchange rate source')
         }
     }
@@ -134,8 +141,8 @@ export function verifySale(
 export function createVerificationSale(
     totalAmount: number,
     settlementCurrency: string,
-    exchangeRate: number,
-    exchangeSource: string,
+    exchangeRate: number | null,
+    exchangeSource: string | null,
     items: Array<{
         quantity: number
         unit_price: number
@@ -146,13 +153,18 @@ export function createVerificationSale(
         inventory_snapshot: number
         original_currency: string
         settlement_currency: string
-    }>
+    }>,
+    exchangeRates?: Array<{
+        rate?: number | null
+        source?: string | null
+    }> | null
 ): VerificationSale {
     return {
         totalAmount,
         settlementCurrency,
         exchangeRate,
         exchangeSource,
+        exchangeRates: exchangeRates ?? null,
         items: items.map(item => ({
             quantity: item.quantity,
             unitPrice: item.unit_price,
