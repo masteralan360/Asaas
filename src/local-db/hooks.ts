@@ -1629,6 +1629,7 @@ async function enrichSalesForUiRows(workspaceId: string, sales: Sale[]) {
             settlement_currency: item.settlementCurrency,
             negotiated_price: item.negotiatedPrice,
             inventory_snapshot: item.inventorySnapshot,
+            batch_allocations: item.batchAllocations,
             returned_quantity: item.returnedQuantity,
             is_returned: (item as SaleItem & { isReturned?: boolean }).isReturned,
             return_reason: (item as SaleItem & { returnReason?: string }).returnReason,

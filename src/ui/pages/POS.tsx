@@ -5,11 +5,14 @@ import { supabase } from '@/auth/supabase'
 import {
     addToOfflineMutations,
     adjustInventoryQuantity,
+    commitStockBatchAllocations,
     createLoanFromPosSale,
+    getStockBatchSalePlan,
     getPrimaryStorageFromList,
+    refreshStockBatchesFromSupabase,
+    useBatchAwareInventoryProducts,
     useActiveDiscountMap,
     useCategories,
-    useInventoryProducts,
     useWorkspaceProductBarcodes,
     useStorages,
     type Category,
@@ -251,7 +254,7 @@ export function POS() {
     const { t, i18n } = useTranslation()
     const { features, isLocalMode } = useWorkspace()
     const isRTL = i18n.dir() === 'rtl'
-    const products = useInventoryProducts(user?.workspaceId)
+    const products = useBatchAwareInventoryProducts(user?.workspaceId)
     const productBarcodes = useWorkspaceProductBarcodes(user?.workspaceId)
     const activeDiscountMap = useActiveDiscountMap(user?.workspaceId)
     const storages = useStorages(user?.workspaceId)
@@ -1508,13 +1511,35 @@ export function POS() {
         const hasExchangeSnapshot = exchangeRatesSnapshot.length > 0
         const exchangeRatesPayload = hasExchangeSnapshot ? exchangeRatesSnapshot : null
 
-        const itemsWithMetadata = cart.map((item) => {
+        let batchSalePlans: Awaited<ReturnType<typeof getStockBatchSalePlan>>[]
+        try {
+            batchSalePlans = await Promise.all(cart.map(async (item) => {
+                const storageId = item.storageId || selectedStorageId
+                if (!storageId) {
+                    throw new Error('Storage is required for batched sale items')
+                }
+
+                return getStockBatchSalePlan(item.product_id, storageId, item.quantity)
+            }))
+        } catch (error) {
+            const normalized = normalizeSupabaseActionError(error)
+            toast({
+                variant: 'destructive',
+                title: t('messages.error'),
+                description: normalized.message || (t('pos.stockMismatch') || 'Unable to allocate stock batches for one or more items.')
+            })
+            setIsLoading(false)
+            return
+        }
+
+        const itemsWithMetadata = cart.map((item, index) => {
             const product = findStockProduct(item.product_id, item.storageId)
             const originalCurrency = product?.currency || 'usd'
             const effectivePrice = getCartEffectivePrice(item)
             const convertedUnitPrice = convertPrice(effectivePrice, originalCurrency, settlementCurrency)
             const costPrice = product?.costPrice || 0
             const convertedCostPrice = convertPrice(costPrice, originalCurrency, settlementCurrency)
+            const batchPlan = batchSalePlans[index]
 
             return {
                 product_id: item.product_id,
@@ -1533,7 +1558,16 @@ export function POS() {
                 negotiated_price: item.negotiated_price, // store if negotiated
                 total: convertedUnitPrice * item.quantity,
                 // Immutable inventory snapshot at checkout time
-                inventory_snapshot: product?.inventoryQuantity ?? 0
+                inventory_snapshot: product?.inventoryQuantity ?? 0,
+                batch_allocations: batchPlan.allocations.length > 0
+                    ? batchPlan.allocations.map((allocation) => ({
+                        batch_id: allocation.batchId,
+                        batch_number: allocation.batchNumber,
+                        quantity: allocation.quantity,
+                        expiry_date: allocation.expiryDate ?? null,
+                        manufacturing_date: allocation.manufacturingDate ?? null
+                    }))
+                    : null
             }
         })
 
@@ -1590,6 +1624,21 @@ export function POS() {
                     skipRemoteSync: true
                 })
             }))
+
+            await Promise.all(batchSalePlans.map((plan) =>
+                commitStockBatchAllocations(
+                    user.workspaceId,
+                    plan.productId,
+                    plan.storageId,
+                    plan.allocations,
+                    {
+                        timestamp: snapshotTimestamp,
+                        syncSource: 'remote',
+                        skipRemoteSync: true
+                    }
+                )
+            ))
+            await refreshStockBatchesFromSupabase(user.workspaceId)
 
             const saleData = mapSaleToUniversal({
                 ...checkoutPayload,
@@ -1721,7 +1770,14 @@ export function POS() {
                             convertedUnitPrice: item.converted_unit_price,
                             settlementCurrency: item.settlement_currency,
                             negotiatedPrice: item.negotiated_price,
-                            inventorySnapshot: item.inventory_snapshot
+                            inventorySnapshot: item.inventory_snapshot,
+                            batchAllocations: item.batch_allocations?.map((allocation) => ({
+                                batchId: allocation.batch_id,
+                                batchNumber: allocation.batch_number,
+                                quantity: allocation.quantity,
+                                expiryDate: allocation.expiry_date ?? null,
+                                manufacturingDate: allocation.manufacturing_date ?? null
+                            }))
                         })
                     ))
 
@@ -1738,6 +1794,16 @@ export function POS() {
                             timestamp: snapshotTimestamp
                         })
                     }))
+
+                    await Promise.all(batchSalePlans.map((plan) =>
+                        commitStockBatchAllocations(
+                            user.workspaceId,
+                            plan.productId,
+                            plan.storageId,
+                            plan.allocations,
+                            { timestamp: snapshotTimestamp }
+                        )
+                    ))
 
                     const saleDataOffline = mapSaleToUniversal({
                         ...checkoutPayload,

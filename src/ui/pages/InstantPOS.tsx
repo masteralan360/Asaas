@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/auth'
 import { supabase } from '@/auth/supabase'
-import { addToOfflineMutations, adjustInventoryQuantity, getPrimaryStorageFromList, useActiveDiscountMap, useCategories, useInventoryProducts, useStorages } from '@/local-db'
+import { addToOfflineMutations, adjustInventoryQuantity, commitStockBatchAllocations, getPrimaryStorageFromList, getStockBatchSalePlan, refreshStockBatchesFromSupabase, useActiveDiscountMap, useBatchAwareInventoryProducts, useCategories, useStorages } from '@/local-db'
 import { db } from '@/local-db/database'
 import type { CurrencyCode } from '@/local-db/models'
 import { useWorkspace } from '@/workspace'
@@ -481,7 +481,7 @@ export function InstantPOS() {
     const { toast } = useToast()
     const { user } = useAuth()
     const { features, isLocalMode } = useWorkspace()
-    const products = useInventoryProducts(user?.workspaceId)
+    const products = useBatchAwareInventoryProducts(user?.workspaceId)
     const activeDiscountMap = useActiveDiscountMap(user?.workspaceId)
     const storages = useStorages(user?.workspaceId)
     const categories = useCategories(user?.workspaceId)
@@ -868,13 +868,36 @@ export function InstantPOS() {
             }
         }
 
-        const itemsWithMetadata = activeTicket.items.map(item => {
+        let batchSalePlans: Awaited<ReturnType<typeof getStockBatchSalePlan>>[]
+        try {
+            batchSalePlans = await Promise.all(activeTicket.items.map(async (item) => {
+                const resolvedStorageId = item.storageId || resolveTicketProduct(item)?.storageId
+                if (!resolvedStorageId) {
+                    throw new Error('Storage is required for batched sale items')
+                }
+
+                return getStockBatchSalePlan(item.productId, resolvedStorageId, item.quantity)
+            }))
+        } catch (error) {
+            const normalized = normalizeSupabaseActionError(error)
+            toast({
+                title: t('common.error') || 'Error',
+                description: normalized.message || (t('instantPos.checkoutError') || 'Unable to allocate stock batches for this ticket.'),
+                variant: 'destructive'
+            })
+            setIsCheckoutLoading(false)
+            return
+        }
+
+        const itemsWithMetadata = activeTicket.items.map((item, index) => {
             const product = resolveTicketProduct(item)
             const costPrice = product?.costPrice || 0
             const inventorySnapshot = product?.quantity ?? 0
+            const batchPlan = batchSalePlans[index]
+            const resolvedStorageId = item.storageId || product?.storageId || null
             return {
                 product_id: item.productId,
-                storage_id: item.storageId,
+                storage_id: resolvedStorageId,
                 product_name: item.name,
                 product_sku: item.sku,
                 quantity: item.quantity,
@@ -888,7 +911,16 @@ export function InstantPOS() {
                 settlement_currency: settlementCurrency,
                 negotiated_price: null,
                 total: item.unitPrice * item.quantity,
-                inventory_snapshot: inventorySnapshot
+                inventory_snapshot: inventorySnapshot,
+                batch_allocations: batchPlan.allocations.length > 0
+                    ? batchPlan.allocations.map((allocation) => ({
+                        batch_id: allocation.batchId,
+                        batch_number: allocation.batchNumber,
+                        quantity: allocation.quantity,
+                        expiry_date: allocation.expiryDate ?? null,
+                        manufacturing_date: allocation.manufacturingDate ?? null
+                    }))
+                    : null
             }
         })
 
@@ -953,6 +985,21 @@ export function InstantPOS() {
                     })
                 }
             }))
+
+            await Promise.all(batchSalePlans.map((plan) =>
+                commitStockBatchAllocations(
+                    user.workspaceId,
+                    plan.productId,
+                    plan.storageId,
+                    plan.allocations,
+                    {
+                        timestamp: snapshotTimestamp,
+                        syncSource: 'remote',
+                        skipRemoteSync: true
+                    }
+                )
+            ))
+            await refreshStockBatchesFromSupabase(user.workspaceId)
 
             await db.invoices.add({
                 id: saleId,
@@ -1025,7 +1072,14 @@ export function InstantPOS() {
                             convertedUnitPrice: item.converted_unit_price,
                             settlementCurrency: item.settlement_currency as CurrencyCode,
                             negotiatedPrice: undefined,
-                            inventorySnapshot: item.inventory_snapshot
+                            inventorySnapshot: item.inventory_snapshot,
+                            batchAllocations: item.batch_allocations?.map((allocation) => ({
+                                batchId: allocation.batch_id,
+                                batchNumber: allocation.batch_number,
+                                quantity: allocation.quantity,
+                                expiryDate: allocation.expiry_date ?? null,
+                                manufacturingDate: allocation.manufacturing_date ?? null
+                            }))
                         })
                     ))
 
@@ -1041,6 +1095,16 @@ export function InstantPOS() {
                             })
                         }
                     }))
+
+                    await Promise.all(batchSalePlans.map((plan) =>
+                        commitStockBatchAllocations(
+                            user.workspaceId,
+                            plan.productId,
+                            plan.storageId,
+                            plan.allocations,
+                            { timestamp: snapshotTimestamp }
+                        )
+                    ))
 
                     if (!isLocalMode) {
                         await db.invoices.add({

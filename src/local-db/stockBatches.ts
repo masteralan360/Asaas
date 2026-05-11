@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useMemo } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 
 import { useNetworkStatus } from '@/hooks/useNetworkStatus'
@@ -9,9 +9,9 @@ import { generateId, toCamelCase, toSnakeCase } from '@/lib/utils'
 import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
 
 import { db } from './database'
-import { getInventoryQuantityForProductStorage } from './inventory'
+import { getInventoryQuantityForProductStorage, useInventoryProducts, type InventoryProduct } from './inventory'
 import { addToOfflineMutations } from './offlineMutations'
-import type { StockBatch } from './models'
+import type { StockBatch, StockBatchAllocation } from './models'
 
 const TABLE_NAME = 'stock_batches'
 
@@ -31,12 +31,26 @@ export interface StockBatchCoverage {
     isBalanced: boolean
 }
 
+export interface StockBatchSalePlan {
+    productId: string
+    storageId: string
+    requestedQuantity: number
+    inventoryQuantity: number
+    batchQuantity: number
+    sellableQuantity: number
+    allocations: StockBatchAllocation[]
+}
+
 function shouldUseCloudBusinessData(workspaceId?: string | null) {
     return !!workspaceId && !isLocalWorkspaceMode(workspaceId)
 }
 
-function getSyncMetadata(workspaceId: string, timestamp: string) {
-    if (!shouldUseCloudBusinessData(workspaceId)) {
+function getSyncMetadata(
+    workspaceId: string,
+    timestamp: string,
+    syncSource: 'local' | 'remote' = 'local'
+) {
+    if (syncSource === 'remote' || !shouldUseCloudBusinessData(workspaceId)) {
         return {
             syncStatus: 'synced' as const,
             lastSyncedAt: timestamp
@@ -74,6 +88,85 @@ function normalizeDateString(value?: string | null) {
     }
 
     return normalized
+}
+
+function compareOptionalDate(left?: string | null, right?: string | null) {
+    if (!left && !right) {
+        return 0
+    }
+
+    if (!left) {
+        return 1
+    }
+
+    if (!right) {
+        return -1
+    }
+
+    return left.localeCompare(right)
+}
+
+function sortBatchesForConsumption(batches: StockBatch[]) {
+    return [...batches].sort((left, right) => {
+        const expiryComparison = compareOptionalDate(left.expiryDate, right.expiryDate)
+        if (expiryComparison !== 0) {
+            return expiryComparison
+        }
+
+        const manufacturingComparison = compareOptionalDate(left.manufacturingDate, right.manufacturingDate)
+        if (manufacturingComparison !== 0) {
+            return manufacturingComparison
+        }
+
+        const createdAtComparison = new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime()
+        if (createdAtComparison !== 0) {
+            return createdAtComparison
+        }
+
+        return left.batchNumber.localeCompare(right.batchNumber)
+    })
+}
+
+function normalizeAllocationList(allocations: StockBatchAllocation[]) {
+    const merged = new Map<string, StockBatchAllocation>()
+
+    for (const allocation of allocations) {
+        const batchId = allocation.batchId?.trim()
+        const batchNumber = allocation.batchNumber?.trim()
+        const quantity = Number(allocation.quantity)
+
+        if (!batchId) {
+            throw new Error('Batch allocation is missing batch ID')
+        }
+
+        if (!batchNumber) {
+            throw new Error('Batch allocation is missing batch number')
+        }
+
+        if (!Number.isInteger(quantity) || quantity <= 0) {
+            throw new Error('Batch allocation quantity must be a whole number greater than zero')
+        }
+
+        const existing = merged.get(batchId)
+        merged.set(batchId, {
+            batchId,
+            batchNumber,
+            quantity: (existing?.quantity || 0) + quantity,
+            expiryDate: allocation.expiryDate ?? existing?.expiryDate ?? null,
+            manufacturingDate: allocation.manufacturingDate ?? existing?.manufacturingDate ?? null
+        })
+    }
+
+    return Array.from(merged.values())
+}
+
+function getSellableQuantity(inventoryQuantity: number, batches: StockBatch[]) {
+    if (batches.length === 0) {
+        return inventoryQuantity
+    }
+
+    const batchQuantity = batches.reduce((sum, row) => sum + row.quantity, 0)
+    return Math.max(0, Math.min(inventoryQuantity, batchQuantity))
 }
 
 function normalizeBatchInput(input: StockBatchInput) {
@@ -231,6 +324,315 @@ export async function getStockBatchCoverage(
     }
 }
 
+export async function getStockBatchSalePlan(
+    productId: string,
+    storageId: string,
+    requestedQuantity: number
+): Promise<StockBatchSalePlan> {
+    const quantity = Number(requestedQuantity)
+    if (!Number.isInteger(quantity) || quantity <= 0) {
+        throw new Error('Sale quantity must be a whole number greater than zero')
+    }
+
+    const [inventoryQuantity, activeBatches] = await Promise.all([
+        getInventoryQuantityForProductStorage(productId, storageId),
+        getActiveBatchesForProductStorage(productId, storageId)
+    ])
+
+    const sortedBatches = sortBatchesForConsumption(activeBatches)
+    const batchQuantity = sortedBatches.reduce((sum, row) => sum + row.quantity, 0)
+    const sellableQuantity = getSellableQuantity(inventoryQuantity, sortedBatches)
+
+    if (quantity > sellableQuantity) {
+        throw new Error('Insufficient batched inventory for this product')
+    }
+
+    if (sortedBatches.length === 0) {
+        return {
+            productId,
+            storageId,
+            requestedQuantity: quantity,
+            inventoryQuantity,
+            batchQuantity,
+            sellableQuantity,
+            allocations: []
+        }
+    }
+
+    let remaining = quantity
+    const allocations: StockBatchAllocation[] = []
+
+    for (const batch of sortedBatches) {
+        if (remaining <= 0) {
+            break
+        }
+
+        const allocatedQuantity = Math.min(remaining, batch.quantity)
+        if (allocatedQuantity <= 0) {
+            continue
+        }
+
+        allocations.push({
+            batchId: batch.id,
+            batchNumber: batch.batchNumber,
+            quantity: allocatedQuantity,
+            expiryDate: batch.expiryDate ?? null,
+            manufacturingDate: batch.manufacturingDate ?? null
+        })
+        remaining -= allocatedQuantity
+    }
+
+    if (remaining > 0) {
+        throw new Error('Insufficient batched inventory for this product')
+    }
+
+    return {
+        productId,
+        storageId,
+        requestedQuantity: quantity,
+        inventoryQuantity,
+        batchQuantity,
+        sellableQuantity,
+        allocations
+    }
+}
+
+export async function commitStockBatchAllocations(
+    workspaceId: string,
+    productId: string,
+    storageId: string,
+    allocations: StockBatchAllocation[],
+    options?: {
+        timestamp?: string
+        syncSource?: 'local' | 'remote'
+        skipRemoteSync?: boolean
+    }
+) {
+    const normalizedAllocations = normalizeAllocationList(allocations)
+    if (normalizedAllocations.length === 0) {
+        return []
+    }
+
+    const timestamp = options?.timestamp || new Date().toISOString()
+    const syncSource = options?.syncSource || 'local'
+    const updatedBatches = await db.transaction('rw', db.stock_batches, async () => {
+        const rowsToSync: StockBatch[] = []
+
+        for (const allocation of normalizedAllocations) {
+            const existing = await db.stock_batches.get(allocation.batchId)
+            if (!existing || existing.isDeleted) {
+                throw new Error(`Batch ${allocation.batchNumber} is not available`)
+            }
+
+            if (existing.productId !== productId || existing.storageId !== storageId) {
+                throw new Error(`Batch ${allocation.batchNumber} does not belong to the selected product/storage`)
+            }
+
+            if (existing.quantity < allocation.quantity) {
+                throw new Error(`Batch ${allocation.batchNumber} does not have enough stock`)
+            }
+
+            const nextQuantity = existing.quantity - allocation.quantity
+            const updated: StockBatch = {
+                ...existing,
+                quantity: nextQuantity,
+                isDeleted: nextQuantity <= 0,
+                updatedAt: timestamp,
+                version: existing.version + 1,
+                ...getSyncMetadata(workspaceId, timestamp, syncSource)
+            }
+
+            await db.stock_batches.put(updated)
+            rowsToSync.push(updated)
+        }
+
+        return rowsToSync
+    })
+
+    if (!options?.skipRemoteSync && syncSource !== 'remote') {
+        await syncUpsertBatches(updatedBatches, workspaceId)
+    }
+    return updatedBatches
+}
+
+export function splitStockBatchAllocationsForReturn(
+    allocations: StockBatchAllocation[] | undefined,
+    returnQuantity: number
+) {
+    const normalizedQuantity = Number(returnQuantity)
+    if (!Number.isInteger(normalizedQuantity) || normalizedQuantity < 0) {
+        throw new Error('Return quantity must be a whole number greater than or equal to zero')
+    }
+
+    const normalizedAllocations = normalizeAllocationList(allocations ?? [])
+    if (normalizedQuantity === 0 || normalizedAllocations.length === 0) {
+        return {
+            restoredAllocations: [] as StockBatchAllocation[],
+            remainingAllocations: normalizedAllocations
+        }
+    }
+
+    const allocatedQuantity = normalizedAllocations.reduce((sum, allocation) => sum + allocation.quantity, 0)
+    if (normalizedQuantity > allocatedQuantity) {
+        throw new Error('Return quantity exceeds stored batch allocations')
+    }
+
+    let remainingToRestore = normalizedQuantity
+    const restoredAllocations: StockBatchAllocation[] = []
+    const remainingAllocations: StockBatchAllocation[] = []
+
+    for (const allocation of normalizedAllocations) {
+        if (remainingToRestore <= 0) {
+            remainingAllocations.push(allocation)
+            continue
+        }
+
+        const restoredQuantity = Math.min(remainingToRestore, allocation.quantity)
+        if (restoredQuantity > 0) {
+            restoredAllocations.push({
+                ...allocation,
+                quantity: restoredQuantity
+            })
+        }
+
+        const leftoverQuantity = allocation.quantity - restoredQuantity
+        if (leftoverQuantity > 0) {
+            remainingAllocations.push({
+                ...allocation,
+                quantity: leftoverQuantity
+            })
+        }
+
+        remainingToRestore -= restoredQuantity
+    }
+
+    return {
+        restoredAllocations,
+        remainingAllocations
+    }
+}
+
+export async function restoreStockBatchAllocations(
+    workspaceId: string,
+    productId: string,
+    storageId: string,
+    allocations: StockBatchAllocation[],
+    options?: {
+        timestamp?: string
+        syncSource?: 'local' | 'remote'
+        skipRemoteSync?: boolean
+    }
+) {
+    const normalizedAllocations = normalizeAllocationList(allocations)
+    if (normalizedAllocations.length === 0) {
+        return []
+    }
+
+    const timestamp = options?.timestamp || new Date().toISOString()
+    const syncSource = options?.syncSource || 'local'
+    const restorationResult = await db.transaction('rw', db.stock_batches, async () => {
+        const rowsToSync: StockBatch[] = []
+        const appliedAllocations: StockBatchAllocation[] = []
+
+        for (const allocation of normalizedAllocations) {
+            const existing = await db.stock_batches.get(allocation.batchId)
+
+            if (existing && existing.productId === productId && existing.storageId === storageId) {
+                const updated: StockBatch = {
+                    ...existing,
+                    quantity: existing.quantity + allocation.quantity,
+                    batchNumber: existing.batchNumber || allocation.batchNumber,
+                    expiryDate: existing.expiryDate ?? allocation.expiryDate ?? null,
+                    manufacturingDate: existing.manufacturingDate ?? allocation.manufacturingDate ?? null,
+                    isDeleted: false,
+                    updatedAt: timestamp,
+                    version: existing.version + 1,
+                    ...getSyncMetadata(workspaceId, timestamp, syncSource)
+                }
+
+                await db.stock_batches.put(updated)
+                rowsToSync.push(updated)
+                appliedAllocations.push({
+                    batchId: updated.id,
+                    batchNumber: updated.batchNumber,
+                    quantity: allocation.quantity,
+                    expiryDate: updated.expiryDate ?? null,
+                    manufacturingDate: updated.manufacturingDate ?? null
+                })
+                continue
+            }
+
+            const matchingBatchNumber = await db.stock_batches
+                .where('[productId+storageId]')
+                .equals([productId, storageId])
+                .filter((row) => row.batchNumber.trim().toLowerCase() === allocation.batchNumber.toLowerCase())
+                .first()
+
+            if (matchingBatchNumber) {
+                const updated: StockBatch = {
+                    ...matchingBatchNumber,
+                    quantity: matchingBatchNumber.quantity + allocation.quantity,
+                    batchNumber: matchingBatchNumber.batchNumber || allocation.batchNumber,
+                    expiryDate: matchingBatchNumber.expiryDate ?? allocation.expiryDate ?? null,
+                    manufacturingDate: matchingBatchNumber.manufacturingDate ?? allocation.manufacturingDate ?? null,
+                    isDeleted: false,
+                    updatedAt: timestamp,
+                    version: matchingBatchNumber.version + 1,
+                    ...getSyncMetadata(workspaceId, timestamp, syncSource)
+                }
+
+                await db.stock_batches.put(updated)
+                rowsToSync.push(updated)
+                appliedAllocations.push({
+                    batchId: updated.id,
+                    batchNumber: updated.batchNumber,
+                    quantity: allocation.quantity,
+                    expiryDate: updated.expiryDate ?? null,
+                    manufacturingDate: updated.manufacturingDate ?? null
+                })
+                continue
+            }
+
+            const restored: StockBatch = {
+                id: existing ? generateId() : allocation.batchId,
+                workspaceId,
+                productId,
+                storageId,
+                batchNumber: allocation.batchNumber,
+                quantity: allocation.quantity,
+                expiryDate: allocation.expiryDate ?? null,
+                manufacturingDate: allocation.manufacturingDate ?? null,
+                notes: null,
+                createdAt: timestamp,
+                updatedAt: timestamp,
+                version: 1,
+                isDeleted: false,
+                ...getSyncMetadata(workspaceId, timestamp, syncSource)
+            }
+
+            await db.stock_batches.put(restored)
+            rowsToSync.push(restored)
+            appliedAllocations.push({
+                batchId: restored.id,
+                batchNumber: restored.batchNumber,
+                quantity: allocation.quantity,
+                expiryDate: restored.expiryDate ?? null,
+                manufacturingDate: restored.manufacturingDate ?? null
+            })
+        }
+
+        return {
+            rowsToSync,
+            appliedAllocations
+        }
+    })
+
+    if (!options?.skipRemoteSync && syncSource !== 'remote') {
+        await syncUpsertBatches(restorationResult.rowsToSync, workspaceId)
+    }
+    return restorationResult.appliedAllocations
+}
+
 export async function createStockBatch(
     workspaceId: string,
     input: StockBatchInput,
@@ -309,6 +711,46 @@ export async function deleteStockBatch(id: string) {
     await syncUpsertBatches([deleted], existing.workspaceId)
 }
 
+export async function refreshStockBatchesFromSupabase(workspaceId: string) {
+    if (!workspaceId || !shouldUseCloudBusinessData(workspaceId) || !isOnline()) {
+        return
+    }
+
+    const client = getSupabaseClientForTable(TABLE_NAME)
+    const { data, error } = await runSupabaseAction(`${TABLE_NAME}.fetch`, () =>
+        client
+            .from(TABLE_NAME)
+            .select('*')
+            .eq('workspace_id', workspaceId)
+            .eq('is_deleted', false)
+    )
+
+    if (!data || error || !shouldUseCloudBusinessData(workspaceId)) {
+        return
+    }
+
+    const syncedAt = new Date().toISOString()
+    const remoteIds = new Set(data.map((row: Record<string, unknown>) => row.id as string))
+
+    await db.transaction('rw', db.stock_batches, async () => {
+        for (const remoteItem of data) {
+            const localItem = toCamelCase(remoteItem as Record<string, unknown>) as unknown as StockBatch
+            localItem.syncStatus = 'synced'
+            localItem.lastSyncedAt = syncedAt
+            await db.stock_batches.put(localItem)
+        }
+
+        const localRows = await db.stock_batches.where('workspaceId').equals(workspaceId).toArray()
+        const staleIds = localRows
+            .filter((row) => row.syncStatus === 'synced' && !remoteIds.has(row.id))
+            .map((row) => row.id)
+
+        if (staleIds.length > 0) {
+            await db.stock_batches.bulkDelete(staleIds)
+        }
+    })
+}
+
 export function useStockBatches(workspaceId: string | undefined) {
     const online = useNetworkStatus()
 
@@ -341,38 +783,49 @@ export function useStockBatches(workspaceId: string | undefined) {
 
     useEffect(() => {
         async function fetchFromSupabase() {
-            if (!online || !workspaceId || !shouldUseCloudBusinessData(workspaceId)) {
+            if (!online || !workspaceId) {
                 return
             }
 
-            const client = getSupabaseClientForTable(TABLE_NAME)
-            const { data, error } = await runSupabaseAction(`${TABLE_NAME}.fetch`, () =>
-                client
-                    .from(TABLE_NAME)
-                    .select('*')
-                    .eq('workspace_id', workspaceId)
-                    .eq('is_deleted', false)
-            )
-
-            if (!data || error || !shouldUseCloudBusinessData(workspaceId)) {
-                return
-            }
-
-            const syncedAt = new Date().toISOString()
-            await db.transaction('rw', db.stock_batches, async () => {
-                for (const remoteItem of data) {
-                    const localItem = toCamelCase(remoteItem as Record<string, unknown>) as unknown as StockBatch
-                    localItem.syncStatus = 'synced'
-                    localItem.lastSyncedAt = syncedAt
-                    await db.stock_batches.put(localItem)
-                }
-            })
+            await refreshStockBatchesFromSupabase(workspaceId)
         }
 
         void fetchFromSupabase()
     }, [online, workspaceId])
 
     return batches ?? []
+}
+
+export function useBatchAwareInventoryProducts(workspaceId: string | undefined) {
+    const inventoryProducts = useInventoryProducts(workspaceId)
+    const stockBatches = useStockBatches(workspaceId)
+
+    return useMemo(() => {
+        const batchRowsByPosition = new Map<string, StockBatch[]>()
+
+        for (const batch of stockBatches) {
+            const positionKey = `${batch.productId}:${batch.storageId}`
+            const existing = batchRowsByPosition.get(positionKey) ?? []
+            existing.push(batch)
+            batchRowsByPosition.set(positionKey, existing)
+        }
+
+        return inventoryProducts.map((product) => {
+            const positionKey = `${product.id}:${product.storageId}`
+            const batchRows = batchRowsByPosition.get(positionKey) ?? []
+
+            if (batchRows.length === 0) {
+                return product
+            }
+
+            const sellableQuantity = getSellableQuantity(product.inventoryQuantity, batchRows)
+            return {
+                ...product,
+                inventoryQuantity: sellableQuantity,
+                quantity: sellableQuantity
+            } satisfies InventoryProduct
+        })
+    }, [inventoryProducts, stockBatches])
 }
 
 export function useStockBatchesForProduct(productId: string | undefined) {

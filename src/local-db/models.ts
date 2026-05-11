@@ -154,6 +154,14 @@ export interface StockBatch extends BaseEntity {
   notes?: string | null;
 }
 
+export interface StockBatchAllocation {
+  batchId: string;
+  batchNumber: string;
+  quantity: number;
+  expiryDate?: string | null;
+  manufacturingDate?: string | null;
+}
+
 export type DiscountType = "percentage" | "fixed_amount";
 export type DiscountSource = "product" | "category";
 
@@ -665,6 +673,7 @@ export interface SaleItem {
   negotiatedPrice?: number;
   // Immutable inventory snapshot at checkout
   inventorySnapshot: number;
+  batchAllocations?: StockBatchAllocation[] | null;
   returnedQuantity?: number;
 }
 

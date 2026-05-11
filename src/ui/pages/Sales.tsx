@@ -11,7 +11,7 @@ import { formatLocalizedMonthYear } from '@/lib/monthDisplay'
 import { getLoanDetailsPath } from '@/lib/loanPresentation'
 import { getRetriableActionToast, isRetriableWebRequestError, normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
 
-import { adjustInventoryQuantity, db, resolveReturnStorageId, useLoanBySaleId, useLoanInstallments, useLoanPayments, useLoans, useSales, useSalesOrders, useTravelAgencySales, toUISale, toUISaleFromOrder, toUISaleFromTravelAgency, type Loan } from '@/local-db'
+import { adjustInventoryQuantity, commitStockBatchAllocations, db, resolveReturnStorageId, restoreStockBatchAllocations, splitStockBatchAllocationsForReturn, useLoanBySaleId, useLoanInstallments, useLoanPayments, useLoans, useSales, useSalesOrders, useTravelAgencySales, toUISale, toUISaleFromOrder, toUISaleFromTravelAgency, type Loan, type StockBatchAllocation } from '@/local-db'
 import { useWorkspace } from '@/workspace'
 import { isMobile } from '@/lib/platform'
 import { useDateRange } from '@/context/DateRangeContext'
@@ -660,6 +660,26 @@ export function Sales() {
         initiateReturn(mockSale, false)
     }
 
+    const toLocalBatchAllocations = useCallback((item: SaleItem) => {
+        return (item.batch_allocations || []).map((allocation) => ({
+            batchId: allocation.batch_id,
+            batchNumber: allocation.batch_number,
+            quantity: allocation.quantity,
+            expiryDate: allocation.expiry_date ?? null,
+            manufacturingDate: allocation.manufacturing_date ?? null
+        }))
+    }, [])
+
+    const toUiBatchAllocations = useCallback((allocations: StockBatchAllocation[]) => {
+        return allocations.map((allocation) => ({
+            batch_id: allocation.batchId,
+            batch_number: allocation.batchNumber,
+            quantity: allocation.quantity,
+            expiry_date: allocation.expiryDate ?? null,
+            manufacturing_date: allocation.manufacturingDate ?? null
+        }))
+    }, [])
+
     const restoreInventoryForReturn = useCallback(async (input: {
         workspaceId: string
         items: SaleItem[]
@@ -676,11 +696,19 @@ export function Sales() {
                     saleStorageId: item.storage_id ?? null
                 })
                 : (item.storage_id ?? null)
+            const existingBatchAllocations = toLocalBatchAllocations(item)
+            const { restoredAllocations, remainingAllocations } = splitStockBatchAllocationsForReturn(
+                existingBatchAllocations,
+                quantityToRestore
+            )
 
             return {
                 item,
                 quantity: quantityToRestore,
-                storageId
+                storageId,
+                restoredAllocations,
+                remainingBatchAllocations: remainingAllocations,
+                appliedRestoreAllocations: [] as StockBatchAllocation[]
             }
         }))
 
@@ -706,6 +734,20 @@ export function Sales() {
                     skipRemoteSync: input.syncSource === 'remote'
                 })
 
+                if (plan.restoredAllocations.length > 0) {
+                    plan.appliedRestoreAllocations = await restoreStockBatchAllocations(
+                        input.workspaceId,
+                        plan.item.product_id,
+                        plan.storageId,
+                        plan.restoredAllocations,
+                        {
+                            timestamp: input.timestamp,
+                            syncSource: input.syncSource,
+                            skipRemoteSync: input.syncSource === 'remote'
+                        }
+                    )
+                }
+
                 appliedPlans.push(plan)
             }
         } catch (error) {
@@ -713,6 +755,20 @@ export function Sales() {
                 try {
                     if (!plan.storageId) {
                         continue
+                    }
+
+                    if (plan.appliedRestoreAllocations.length > 0) {
+                        await commitStockBatchAllocations(
+                            input.workspaceId,
+                            plan.item.product_id,
+                            plan.storageId,
+                            plan.appliedRestoreAllocations,
+                            {
+                                timestamp: input.timestamp,
+                                syncSource: input.syncSource,
+                                skipRemoteSync: input.syncSource === 'remote'
+                            }
+                        )
                     }
 
                     await adjustInventoryQuantity({
@@ -732,8 +788,11 @@ export function Sales() {
             throw error
         }
 
-        return plans.map((plan) => plan.storageId)
-    }, [])
+        return plans.map((plan) => ({
+            storageId: plan.storageId,
+            remainingBatchAllocations: toUiBatchAllocations(plan.remainingBatchAllocations)
+        }))
+    }, [toLocalBatchAllocations, toUiBatchAllocations])
 
     const handleReturnConfirm = async (reason: string, quantity?: number) => {
         if (!saleToReturn) return
@@ -768,7 +827,7 @@ export function Sales() {
                         quantity && itemsToReturn.length === 1 ? quantity : (i.quantity - (i.returned_quantity || 0))
                     )
                     const returnTimestamp = new Date().toISOString()
-                    const restoredStorageIds = await restoreInventoryForReturn({
+                    const restoredPlans = await restoreInventoryForReturn({
                         workspaceId: saleToReturn.workspace_id,
                         items: itemsToReturn,
                         quantities,
@@ -790,7 +849,8 @@ export function Sales() {
                             const newReturnedQty = (i.returned_quantity || 0) + q
                             return {
                                 ...i,
-                                storage_id: restoredStorageIds[returnedIdx] || i.storage_id,
+                                storage_id: restoredPlans[returnedIdx]?.storageId || i.storage_id,
+                                batch_allocations: restoredPlans[returnedIdx]?.remainingBatchAllocations || i.batch_allocations,
                                 returned_quantity: newReturnedQty,
                                 is_returned: newReturnedQty >= i.quantity,
                                 return_reason: reason,
@@ -823,7 +883,14 @@ export function Sales() {
                         const newReturnedQty = (item.returned_quantity || 0) + quantities[index]
                         return db.sale_items.update(item.id, {
                             returnedQuantity: newReturnedQty,
-                            storageId: restoredStorageIds[index] || item.storage_id
+                            storageId: restoredPlans[index]?.storageId || item.storage_id,
+                            batchAllocations: restoredPlans[index]?.remainingBatchAllocations?.map((allocation) => ({
+                                batchId: allocation.batch_id,
+                                batchNumber: allocation.batch_number,
+                                quantity: allocation.quantity,
+                                expiryDate: allocation.expiry_date ?? null,
+                                manufacturingDate: allocation.manufacturing_date ?? null
+                            }))
                         } as any)
                     }))
                     if (selectedSale?.id === saleToReturn.id) {
@@ -845,7 +912,7 @@ export function Sales() {
                     const itemsToReturn = saleToReturn.items || []
                     const quantities = itemsToReturn.map((item) => item.quantity - (item.returned_quantity || 0))
                     const returnTimestamp = new Date().toISOString()
-                    const restoredStorageIds = await restoreInventoryForReturn({
+                    const restoredPlans = await restoreInventoryForReturn({
                         workspaceId: saleToReturn.workspace_id,
                         items: itemsToReturn,
                         quantities,
@@ -863,7 +930,8 @@ export function Sales() {
                             returned_at: returnTimestamp,
                             items: s.items?.map((i, index) => ({
                                 ...i,
-                                storage_id: restoredStorageIds[index] || i.storage_id,
+                                storage_id: restoredPlans[index]?.storageId || i.storage_id,
+                                batch_allocations: restoredPlans[index]?.remainingBatchAllocations || i.batch_allocations,
                                 is_returned: true,
                                 returned_quantity: i.quantity,
                                 return_reason: reason,
@@ -881,7 +949,8 @@ export function Sales() {
                             ; (existingLocal as any).updatedAt = returnTimestamp
                         const updatedItems = ((existingLocal as any)._enrichedItems || []).map((i: any, index: number) => ({
                             ...i,
-                            storage_id: restoredStorageIds[index] || i.storage_id,
+                            storage_id: restoredPlans[index]?.storageId || i.storage_id,
+                            batch_allocations: restoredPlans[index]?.remainingBatchAllocations || i.batch_allocations,
                             is_returned: true,
                             returned_quantity: i.quantity,
                             return_reason: reason,
@@ -900,7 +969,14 @@ export function Sales() {
                     await Promise.all(itemsToReturn.map((item, index) =>
                         db.sale_items.update(item.id, {
                             returnedQuantity: item.quantity,
-                            storageId: restoredStorageIds[index] || item.storage_id
+                            storageId: restoredPlans[index]?.storageId || item.storage_id,
+                            batchAllocations: restoredPlans[index]?.remainingBatchAllocations?.map((allocation) => ({
+                                batchId: allocation.batch_id,
+                                batchNumber: allocation.batch_number,
+                                quantity: allocation.quantity,
+                                expiryDate: allocation.expiry_date ?? null,
+                                manufacturingDate: allocation.manufacturing_date ?? null
+                            }))
                         } as any)
                     ))
                     if (shouldQueueOfflineReturn) {
@@ -944,7 +1020,7 @@ export function Sales() {
                 if (!error && data?.success) {
                     const returnValue = data.return_value || 0
                     const returnTimestamp = new Date().toISOString()
-                    const restoredStorageIds = await restoreInventoryForReturn({
+                    const restoredPlans = await restoreInventoryForReturn({
                         workspaceId: saleToReturn.workspace_id,
                         items: itemsToReturn,
                         quantities,
@@ -962,7 +1038,8 @@ export function Sales() {
                             const newReturnedQty = (i.returned_quantity || 0) + q
                             return {
                                 ...i,
-                                storage_id: restoredStorageIds[returnedIdx] || i.storage_id,
+                                storage_id: restoredPlans[returnedIdx]?.storageId || i.storage_id,
+                                batch_allocations: restoredPlans[returnedIdx]?.remainingBatchAllocations || i.batch_allocations,
                                 returned_quantity: newReturnedQty,
                                 is_returned: newReturnedQty >= i.quantity,
                                 return_reason: reason,
@@ -992,7 +1069,14 @@ export function Sales() {
                         const newReturnedQty = (item.returned_quantity || 0) + quantities[index]
                         return db.sale_items.update(item.id, {
                             returnedQuantity: newReturnedQty,
-                            storageId: restoredStorageIds[index] || item.storage_id
+                            storageId: restoredPlans[index]?.storageId || item.storage_id,
+                            batchAllocations: restoredPlans[index]?.remainingBatchAllocations?.map((allocation) => ({
+                                batchId: allocation.batch_id,
+                                batchNumber: allocation.batch_number,
+                                quantity: allocation.quantity,
+                                expiryDate: allocation.expiry_date ?? null,
+                                manufacturingDate: allocation.manufacturing_date ?? null
+                            }))
                         } as any)
                     }))
                     if (selectedSale?.id === saleToReturn.id) {
@@ -1013,7 +1097,7 @@ export function Sales() {
 
                 if (!error && data?.success) {
                     const returnTimestamp = new Date().toISOString()
-                    const restoredStorageIds = await restoreInventoryForReturn({
+                    const restoredPlans = await restoreInventoryForReturn({
                         workspaceId: saleToReturn.workspace_id,
                         items: itemsToReturn,
                         quantities,
@@ -1031,7 +1115,8 @@ export function Sales() {
                             returned_at: returnTimestamp,
                             items: s.items?.map((i, index) => ({
                                 ...i,
-                                storage_id: restoredStorageIds[index] || i.storage_id,
+                                storage_id: restoredPlans[index]?.storageId || i.storage_id,
+                                batch_allocations: restoredPlans[index]?.remainingBatchAllocations || i.batch_allocations,
                                 is_returned: true,
                                 returned_quantity: i.quantity,
                                 return_reason: reason,
@@ -1050,7 +1135,8 @@ export function Sales() {
                             ; (existingLocal as any).updatedAt = returnTimestamp
                         const updatedItems = ((existingLocal as any)._enrichedItems || []).map((i: any, index: number) => ({
                             ...i,
-                            storage_id: restoredStorageIds[index] || i.storage_id,
+                            storage_id: restoredPlans[index]?.storageId || i.storage_id,
+                            batch_allocations: restoredPlans[index]?.remainingBatchAllocations || i.batch_allocations,
                             is_returned: true,
                             returned_quantity: i.quantity,
                             return_reason: reason,
@@ -1062,7 +1148,14 @@ export function Sales() {
                     await Promise.all(itemsToReturn.map((item, index) =>
                         db.sale_items.update(item.id, {
                             returnedQuantity: item.quantity,
-                            storageId: restoredStorageIds[index] || item.storage_id
+                            storageId: restoredPlans[index]?.storageId || item.storage_id,
+                            batchAllocations: restoredPlans[index]?.remainingBatchAllocations?.map((allocation) => ({
+                                batchId: allocation.batch_id,
+                                batchNumber: allocation.batch_number,
+                                quantity: allocation.quantity,
+                                expiryDate: allocation.expiry_date ?? null,
+                                manufacturingDate: allocation.manufacturing_date ?? null
+                            }))
                         } as any)
                     ))
                     if (selectedSale?.id === saleToReturn.id) {

@@ -8,6 +8,7 @@ DECLARE
     v_sequence_id BIGINT;
     item JSONB;
     snapshot JSONB;
+    v_batch_record RECORD;
     p_workspace_id UUID;
     total_sale_amount NUMERIC := 0;
     v_pos BOOLEAN;
@@ -35,6 +36,10 @@ DECLARE
     v_system_verified BOOLEAN := true;
     v_system_review_status TEXT := 'approved';
     v_system_review_reason TEXT := NULL;
+    v_has_active_batches BOOLEAN := false;
+    v_batch_remaining INTEGER := 0;
+    v_allocated_quantity INTEGER := 0;
+    v_batch_allocations JSONB := '[]'::jsonb;
 BEGIN
     SELECT workspace_id INTO p_workspace_id
     FROM public.profiles
@@ -44,7 +49,6 @@ BEGIN
         RAISE EXCEPTION 'User does not belong to a workspace';
     END IF;
 
-    -- Check if POS feature is enabled for this workspace
     SELECT pos, COALESCE(max_discount_percent, 100)
     INTO v_pos, v_max_discount_percent
     FROM public.workspaces
@@ -205,6 +209,9 @@ BEGIN
         v_product_id := (item->>'product_id')::UUID;
         v_quantity := COALESCE((item->>'quantity')::INTEGER, 0);
         v_storage_id := NULLIF(item->>'storage_id', '')::UUID;
+        v_has_active_batches := false;
+        v_batch_remaining := v_quantity;
+        v_batch_allocations := '[]'::jsonb;
 
         IF v_product_id IS NULL OR v_quantity <= 0 THEN
             RAISE EXCEPTION 'Invalid sale item payload';
@@ -231,6 +238,59 @@ BEGIN
             RAISE EXCEPTION 'Storage not found for product %', v_product_id;
         END IF;
 
+        SELECT EXISTS (
+            SELECT 1
+            FROM public.stock_batches
+            WHERE workspace_id = p_workspace_id
+              AND product_id = v_product_id
+              AND storage_id = v_storage_id
+              AND COALESCE(is_deleted, false) = false
+        )
+        INTO v_has_active_batches;
+
+        IF v_has_active_batches THEN
+            FOR v_batch_record IN
+                SELECT *
+                FROM public.stock_batches
+                WHERE workspace_id = p_workspace_id
+                  AND product_id = v_product_id
+                  AND storage_id = v_storage_id
+                  AND COALESCE(is_deleted, false) = false
+                ORDER BY expiry_date ASC NULLS LAST, manufacturing_date ASC NULLS LAST, created_at ASC, batch_number ASC
+                FOR UPDATE
+            LOOP
+                EXIT WHEN v_batch_remaining <= 0;
+
+                v_allocated_quantity := LEAST(v_batch_remaining, COALESCE(v_batch_record.quantity, 0));
+                IF v_allocated_quantity <= 0 THEN
+                    CONTINUE;
+                END IF;
+
+                UPDATE public.stock_batches
+                SET
+                    quantity = v_batch_record.quantity - v_allocated_quantity,
+                    updated_at = NOW(),
+                    version = COALESCE(version, 0) + 1,
+                    is_deleted = (v_batch_record.quantity - v_allocated_quantity) <= 0
+                WHERE id = v_batch_record.id;
+
+                v_batch_allocations := v_batch_allocations || jsonb_build_array(
+                    jsonb_build_object(
+                        'batch_id', v_batch_record.id,
+                        'batch_number', v_batch_record.batch_number,
+                        'quantity', v_allocated_quantity,
+                        'expiry_date', v_batch_record.expiry_date,
+                        'manufacturing_date', v_batch_record.manufacturing_date
+                    )
+                );
+                v_batch_remaining := v_batch_remaining - v_allocated_quantity;
+            END LOOP;
+
+            IF v_batch_remaining > 0 THEN
+                RAISE EXCEPTION 'Insufficient batched inventory for product % in storage %', v_product_id, v_storage_id;
+            END IF;
+        END IF;
+
         INSERT INTO public.sale_items (
             sale_id,
             product_id,
@@ -245,7 +305,8 @@ BEGIN
             converted_unit_price,
             settlement_currency,
             negotiated_price,
-            inventory_snapshot
+            inventory_snapshot,
+            batch_allocations
         )
         VALUES (
             new_sale_id,
@@ -261,7 +322,11 @@ BEGIN
             COALESCE((item->>'converted_unit_price')::NUMERIC, (item->>'unit_price')::NUMERIC),
             COALESCE(item->>'settlement_currency', 'usd'),
             (item->>'negotiated_price')::NUMERIC,
-            COALESCE((item->>'inventory_snapshot')::INTEGER, 0)
+            COALESCE((item->>'inventory_snapshot')::INTEGER, 0),
+            CASE
+                WHEN v_has_active_batches AND jsonb_array_length(v_batch_allocations) > 0 THEN v_batch_allocations
+                ELSE NULL
+            END
         );
 
         UPDATE public.inventory

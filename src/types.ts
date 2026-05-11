@@ -16,6 +16,13 @@ export interface SaleItem {
     settlement_currency: string
     negotiated_price?: number
     inventory_snapshot?: number
+    batch_allocations?: {
+        batch_id: string
+        batch_number: string
+        quantity: number
+        expiry_date?: string | null
+        manufacturing_date?: string | null
+    }[] | null
     returned_quantity?: number
     is_returned?: boolean
     return_reason?: string
