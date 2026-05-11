@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   fetchInventoryWorkspaceFromSupabase,
   refreshInventoryTransactionsFromSupabase,
@@ -224,14 +224,9 @@ export default function InventoryTransfer() {
     TransferWorkspaceOption[]
   >([]);
   const [isLoadingTransferTargets, setIsLoadingTransferTargets] = useState(false);
-  const [sourceWorkspaceId, setSourceWorkspaceId] = useState<string>("");
   const [sourceStorageId, setSourceStorageId] = useState<string>("");
   const [targetWorkspaceId, setTargetWorkspaceId] = useState<string>("");
   const [targetStorageId, setTargetStorageId] = useState<string>("");
-  const [remoteSourceProducts, setRemoteSourceProducts] = useState<
-    TransferSourceProductOption[]
-  >([]);
-  const [isLoadingSourceProducts, setIsLoadingSourceProducts] = useState(false);
   const [selectedProductIds, setSelectedProductIds] = useState<Set<string>>(
     new Set(),
   );
@@ -247,7 +242,6 @@ export default function InventoryTransfer() {
   );
   const [isSavingRule, setIsSavingRule] = useState(false);
   const [deletingRuleId, setDeletingRuleId] = useState<string | null>(null);
-  const remoteSourceProductsRequestRef = useRef(0);
 
   const productsById = useMemo(
     () => new Map(products.map((product) => [product.id, product] as const)),
@@ -275,6 +269,7 @@ export default function InventoryTransfer() {
     workspaceName ||
     branchInfo?.branchName ||
     t("workspace.title", { defaultValue: "Workspace" });
+  const sourceWorkspaceId = activeWorkspace?.id ?? "";
 
   const currentWorkspaceOption = useMemo<TransferWorkspaceOption | null>(() => {
     if (!activeWorkspace) {
@@ -316,9 +311,6 @@ export default function InventoryTransfer() {
       ),
     [transferTargets],
   );
-  const sourceWorkspaceOption = sourceWorkspaceId
-    ? transferTargetsByWorkspaceId.get(sourceWorkspaceId)
-    : undefined;
   const targetWorkspaceOption = targetWorkspaceId
     ? transferTargetsByWorkspaceId.get(targetWorkspaceId)
     : undefined;
@@ -328,22 +320,12 @@ export default function InventoryTransfer() {
       return [] as TransferWorkspaceOptionStorage[];
     }
 
-    if (activeWorkspace && sourceWorkspaceId === activeWorkspace.id) {
-      return storages.map((storage) => ({
-        id: storage.id,
-        name: getStorageDisplayName(storage),
-        is_primary: storage.isPrimary,
-      }));
-    }
-
-    return sourceWorkspaceOption?.storages ?? [];
-  }, [
-    activeWorkspace,
-    getStorageDisplayName,
-    sourceWorkspaceId,
-    sourceWorkspaceOption?.storages,
-    storages,
-  ]);
+    return storages.map((storage) => ({
+      id: storage.id,
+      name: getStorageDisplayName(storage),
+      is_primary: storage.isPrimary,
+    }));
+  }, [getStorageDisplayName, sourceWorkspaceId, storages]);
 
   const targetWorkspaceStorages = useMemo(() => {
     if (!targetWorkspaceId) {
@@ -369,38 +351,29 @@ export default function InventoryTransfer() {
 
   const sourceProducts = useMemo(
     () =>
-      activeWorkspace && sourceWorkspaceId && sourceWorkspaceId !== activeWorkspace.id
-        ? remoteSourceProducts
-        : inventory
-          .filter((row) => row.storageId === sourceStorageId)
-          .map((row) => {
-            const product = products.find((entry) => entry.id === row.productId);
-            if (!product || product.isDeleted) {
-              return null;
-            }
+      inventory
+        .filter((row) => row.storageId === sourceStorageId)
+        .map((row) => {
+          const product = products.find((entry) => entry.id === row.productId);
+          if (!product || product.isDeleted) {
+            return null;
+          }
 
-            return {
-              productId: product.id,
-              sku: product.sku,
-              name: product.name,
-              unit: product.unit,
-              availableQuantity: row.quantity,
-            };
-          })
-          .filter(
-            (
-              entry,
-            ): entry is TransferSourceProductOption => !!entry,
-          )
-          .sort((left, right) => left.name.localeCompare(right.name)),
-    [
-      activeWorkspace,
-      inventory,
-      products,
-      remoteSourceProducts,
-      sourceStorageId,
-      sourceWorkspaceId,
-    ],
+          return {
+            productId: product.id,
+            sku: product.sku,
+            name: product.name,
+            unit: product.unit,
+            availableQuantity: row.quantity,
+          };
+        })
+        .filter(
+          (
+            entry,
+          ): entry is TransferSourceProductOption => !!entry,
+        )
+        .sort((left, right) => left.name.localeCompare(right.name)),
+    [inventory, products, sourceStorageId],
   );
 
   const availableTargetStorages = useMemo(
@@ -554,63 +527,6 @@ export default function InventoryTransfer() {
     transferTargetsByWorkspaceId.get(workspaceId ?? "")?.workspaceName ||
     currentWorkspaceLabel;
 
-  const loadRemoteSourceProducts = async (
-    workspaceId: string,
-    storageId: string,
-  ) => {
-    const requestId = ++remoteSourceProductsRequestRef.current;
-    setIsLoadingSourceProducts(true);
-
-    try {
-      const accessToken = await getAccessToken();
-      if (!accessToken) {
-        throw new Error("Authentication required");
-      }
-
-      const { data, error } = (await runSupabaseAction(
-        "inventoryTransfer.sourceProducts",
-        () =>
-          supabase.functions.invoke("workspace-access", {
-            headers: {
-              Authorization: `Bearer ${accessToken}`,
-            },
-            body: {
-              action: "list-inventory-transfer-source-products",
-              sourceWorkspaceId: workspaceId,
-              sourceStorageId: storageId,
-            },
-          }),
-        { timeoutMs: 20000, platform: "all" },
-      )) as {
-        data: { products?: TransferSourceProductOption[] } | null;
-        error?: unknown;
-      };
-
-      if (error) {
-        throw error;
-      }
-
-      if (requestId === remoteSourceProductsRequestRef.current) {
-        setRemoteSourceProducts(data?.products ?? []);
-      }
-    } catch (error) {
-      console.error("[InventoryTransfer] Failed to load source products:", error);
-      if (requestId === remoteSourceProductsRequestRef.current) {
-        setRemoteSourceProducts([]);
-      }
-      showTransferActionError(
-        error,
-        t("inventoryTransfer.sourceProductsError", {
-          defaultValue: "Failed to load source products for the selected workspace.",
-        }),
-      );
-    } finally {
-      if (requestId === remoteSourceProductsRequestRef.current) {
-        setIsLoadingSourceProducts(false);
-      }
-    }
-  };
-
   useEffect(() => {
     let isCancelled = false;
 
@@ -682,15 +598,6 @@ export default function InventoryTransfer() {
   }, [activeWorkspace?.id]);
 
   useEffect(() => {
-    if (!activeWorkspace) {
-      setSourceWorkspaceId("");
-      return;
-    }
-
-    setSourceWorkspaceId(activeWorkspace.id);
-  }, [activeWorkspace?.id]);
-
-  useEffect(() => {
     if (!sourceWorkspaceId) {
       setSourceStorageId("");
       return;
@@ -717,22 +624,6 @@ export default function InventoryTransfer() {
       return getDefaultStorageId(availableTargetStorages);
     });
   }, [availableTargetStorages, targetWorkspaceId]);
-
-  useEffect(() => {
-    if (
-      !activeWorkspace ||
-      !sourceWorkspaceId ||
-      !sourceStorageId ||
-      sourceWorkspaceId === activeWorkspace.id
-    ) {
-      remoteSourceProductsRequestRef.current += 1;
-      setRemoteSourceProducts([]);
-      setIsLoadingSourceProducts(false);
-      return;
-    }
-
-    void loadRemoteSourceProducts(sourceWorkspaceId, sourceStorageId);
-  }, [activeWorkspace, sourceStorageId, sourceWorkspaceId]);
 
   useEffect(() => {
     const pendingTab = consumePendingInventoryTransferTab();
@@ -920,10 +811,6 @@ export default function InventoryTransfer() {
             refreshInventoryTransactionsFromSupabase(activeWorkspace.id),
             refreshInventoryTransferTransactionsFromSupabase(activeWorkspace.id),
           ]);
-        }
-
-        if (sourceWorkspaceId !== activeWorkspace.id) {
-          await loadRemoteSourceProducts(sourceWorkspaceId, sourceStorageId);
         }
       }
 
@@ -1149,45 +1036,39 @@ export default function InventoryTransfer() {
               <CardContent className="space-y-4 p-4">
                 <div className="space-y-2">
                   <Label>
-                    {t("inventoryTransfer.sourceWorkspaceLabel", {
-                      defaultValue: "Source Workspace / Branch",
+                    {t("inventoryTransfer.sourceStorageLabel", {
+                      defaultValue: "Source Storage",
                     })}
                   </Label>
-                  <div className="rounded-xl border bg-muted/30 px-3 py-2 text-sm font-medium text-foreground">
-                    {currentWorkspaceOption
-                      ? getWorkspaceOptionLabel(currentWorkspaceOption)
-                      : currentWorkspaceLabel}
-                  </div>
+                  <Select
+                    value={sourceStorageId}
+                    onValueChange={(id) => {
+                      setSourceStorageId(id);
+                      setSelectedProductIds(new Set());
+                      setTransferQuantities({});
+                    }}
+                    disabled={!sourceWorkspaceId}
+                  >
+                    <SelectTrigger className="rounded-xl">
+                      <SelectValue
+                        placeholder={t(
+                          "inventoryTransfer.selectStorage",
+                          "Select storage...",
+                        )}
+                      />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {sourceWorkspaceStorages.map((storage) => (
+                        <SelectItem key={storage.id} value={storage.id}>
+                          <div className="flex items-center gap-2">
+                            <Warehouse className="h-4 w-4" />
+                            {getStorageDisplayName(storage)}
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
-
-                <Select
-                  value={sourceStorageId}
-                  onValueChange={(id) => {
-                    setSourceStorageId(id);
-                    setSelectedProductIds(new Set());
-                    setTransferQuantities({});
-                  }}
-                  disabled={!sourceWorkspaceId}
-                >
-                  <SelectTrigger className="rounded-xl">
-                    <SelectValue
-                      placeholder={t(
-                        "inventoryTransfer.selectStorage",
-                        "Select storage...",
-                      )}
-                    />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {sourceWorkspaceStorages.map((storage) => (
-                      <SelectItem key={storage.id} value={storage.id}>
-                        <div className="flex items-center gap-2">
-                          <Warehouse className="h-4 w-4" />
-                          {getStorageDisplayName(storage)}
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
 
                 {isLoadingTransferTargets && (
                   <div className="text-sm text-muted-foreground">
@@ -1251,15 +1132,6 @@ export default function InventoryTransfer() {
                         "inventoryTransfer.selectSourceFirst",
                         "Select a source storage first",
                       )}
-                    </p>
-                  </div>
-                ) : isLoadingSourceProducts ? (
-                  <div className="py-8 text-center text-muted-foreground">
-                    <Package className="mx-auto mb-2 h-8 w-8 opacity-30" />
-                    <p className="text-sm">
-                      {t("inventoryTransfer.loadingProducts", {
-                        defaultValue: "Loading products from the selected source...",
-                      })}
                     </p>
                   </div>
                 ) : sourceProducts.length === 0 ? (
@@ -1462,7 +1334,6 @@ export default function InventoryTransfer() {
                 !targetStorageId ||
                 selectedProductIds.size === 0 ||
                 hasInvalidTransferQuantity ||
-                isLoadingSourceProducts ||
                 isTransferring ||
                 !canEdit
               }

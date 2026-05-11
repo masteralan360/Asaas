@@ -94,6 +94,7 @@ type SourceCategoryRow = {
 
 type SourceProductRow = {
     id: string
+    workspace_id?: string | null
     sku: string
     name: string
     description?: string | null
@@ -1478,9 +1479,37 @@ async function handleTransferInventoryBetweenWorkspaces(
 
     const sourceProductsById = new Map(sourceProducts.map((product) => [product.id, product] as const))
     const quantityBySourceProductId = new Map(normalizedItems.map((item) => [item.productId, item.quantity] as const))
+    const previousSourceProducts = sourceProducts.map((product) => ({ ...product }))
+    let previousDestinationProducts: SourceProductRow[] = []
 
     const destinationProductIdBySourceProductId = new Map<string, string>()
     const destinationProductsById = new Map<string, SourceProductRow>()
+    const insertedDestinationCategoryIds = new Set<string>()
+    const insertedDestinationProductIds = new Set<string>()
+    const insertedDestinationProductBarcodeIds = new Set<string>()
+
+    const cleanupInsertedDestinationEntities = async () => {
+        if (insertedDestinationProductBarcodeIds.size > 0) {
+            await adminClient
+                .from('product_barcodes')
+                .delete()
+                .in('id', Array.from(insertedDestinationProductBarcodeIds))
+        }
+
+        if (insertedDestinationProductIds.size > 0) {
+            await adminClient
+                .from('products')
+                .delete()
+                .in('id', Array.from(insertedDestinationProductIds))
+        }
+
+        if (insertedDestinationCategoryIds.size > 0) {
+            await adminClient
+                .from('categories')
+                .delete()
+                .in('id', Array.from(insertedDestinationCategoryIds))
+        }
+    }
 
     if (sourceWorkspaceId === destinationWorkspaceId) {
         for (const product of sourceProducts) {
@@ -1520,6 +1549,8 @@ async function handleTransferInventoryBetweenWorkspaces(
         }
 
         const destinationProductRowsList = (destinationProductRows ?? []) as SourceProductRow[]
+        previousDestinationProducts = destinationProductRowsList.map((product) => ({ ...product }))
+
         const destinationProductBySku = new Map<string, SourceProductRow>()
         const duplicateDestinationSkus = new Set<string>()
 
@@ -1539,6 +1570,243 @@ async function handleTransferInventoryBetweenWorkspaces(
 
         if (duplicateDestinationSkus.size > 0) {
             return errorResponse('Destination workspace has duplicate SKUs for one or more selected products', 400)
+        }
+
+        const missingSourceProducts = sourceProducts.filter((product) => {
+            const normalizedSku = sourceSkuByProductId.get(product.id) ?? ''
+            return !destinationProductBySku.has(normalizedSku)
+        })
+
+        if (missingSourceProducts.length > 0) {
+            const missingSourceProductIds = missingSourceProducts.map((product) => product.id)
+            const sourceCategoryIds = Array.from(
+                new Set(
+                    missingSourceProducts
+                        .map((product) => product.category_id?.trim())
+                        .filter((categoryId): categoryId is string => Boolean(categoryId))
+                )
+            )
+
+            let sourceCategories: SourceCategoryRow[] = []
+            if (sourceCategoryIds.length > 0) {
+                const { data: categoryRows, error: categoriesError } = await adminClient
+                    .from('categories')
+                    .select('id, name, description')
+                    .eq('workspace_id', sourceWorkspaceId)
+                    .eq('is_deleted', false)
+                    .in('id', sourceCategoryIds)
+
+                if (categoriesError) {
+                    return errorResponse(categoriesError.message, 500)
+                }
+
+                sourceCategories = (categoryRows ?? []) as SourceCategoryRow[]
+            }
+
+            const sourceCategoryById = new Map(sourceCategories.map((category) => [category.id, category] as const))
+            const sourceCategoryNameSet = new Set(
+                sourceCategories
+                    .map((category) => category.name.trim().toLowerCase())
+                    .filter(Boolean)
+            )
+
+            const targetCategoryByName = new Map<string, TargetCategoryRow>()
+            if (sourceCategoryNameSet.size > 0) {
+                const { data: targetCategoryRows, error: targetCategoriesError } = await adminClient
+                    .from('categories')
+                    .select('id, name')
+                    .eq('workspace_id', destinationWorkspaceId)
+                    .eq('is_deleted', false)
+
+                if (targetCategoriesError) {
+                    return errorResponse(targetCategoriesError.message, 500)
+                }
+
+                for (const category of (targetCategoryRows ?? []) as TargetCategoryRow[]) {
+                    const normalizedName = category.name.trim().toLowerCase()
+                    if (!normalizedName || targetCategoryByName.has(normalizedName)) {
+                        continue
+                    }
+                    targetCategoryByName.set(normalizedName, category)
+                }
+            }
+
+            const categoryIdMap = new Map<string, string>()
+            const categoriesToInsert = sourceCategories.flatMap<Record<string, unknown>>((category) => {
+                const normalizedName = category.name.trim().toLowerCase()
+                const existingCategory = targetCategoryByName.get(normalizedName)
+
+                if (existingCategory) {
+                    categoryIdMap.set(category.id, existingCategory.id)
+                    return []
+                }
+
+                const id = crypto.randomUUID()
+                insertedDestinationCategoryIds.add(id)
+                targetCategoryByName.set(normalizedName, { id, name: category.name })
+                categoryIdMap.set(category.id, id)
+
+                return [{
+                    id,
+                    workspace_id: destinationWorkspaceId,
+                    name: category.name,
+                    description: category.description ?? null,
+                    created_at: new Date().toISOString(),
+                    updated_at: new Date().toISOString(),
+                    version: 1,
+                    is_deleted: false
+                }]
+            })
+
+            if (categoriesToInsert.length > 0) {
+                const { error: insertCategoriesError } = await adminClient
+                    .from('categories')
+                    .insert(categoriesToInsert)
+
+                if (insertCategoriesError) {
+                    console.error('[workspace-access] transfer destination category insert failed', insertCategoriesError)
+                    await cleanupInsertedDestinationEntities()
+                    return errorResponse(insertCategoriesError.message, 500)
+                }
+            }
+
+            const { data: sourceProductBarcodeRows, error: sourceProductBarcodesError } = await adminClient
+                .from('product_barcodes')
+                .select('product_id, barcode, label, is_primary')
+                .eq('workspace_id', sourceWorkspaceId)
+                .eq('is_deleted', false)
+                .in('product_id', missingSourceProductIds)
+
+            if (sourceProductBarcodesError) {
+                console.error('[workspace-access] transfer source barcode lookup failed', sourceProductBarcodesError)
+                await cleanupInsertedDestinationEntities()
+                return errorResponse(sourceProductBarcodesError.message, 500)
+            }
+
+            const insertedDestinationProducts: SourceProductRow[] = []
+            const productIdMap = new Map<string, string>()
+            const productInsertTimestamp = new Date().toISOString()
+
+            const productsToInsert = missingSourceProducts.map<Record<string, unknown>>((product) => {
+                const insertedProductId = crypto.randomUUID()
+                const mappedCategoryId = product.category_id
+                    ? categoryIdMap.get(product.category_id) ?? null
+                    : null
+                const resolvedCategoryName = mappedCategoryId
+                    ? sourceCategoryById.get(product.category_id ?? '')?.name ?? product.category ?? null
+                    : product.category ?? null
+
+                productIdMap.set(product.id, insertedProductId)
+                insertedDestinationProductIds.add(insertedProductId)
+
+                insertedDestinationProducts.push({
+                    id: insertedProductId,
+                    workspace_id: destinationWorkspaceId,
+                    sku: product.sku,
+                    name: product.name,
+                    description: product.description ?? '',
+                    category: resolvedCategoryName,
+                    category_id: mappedCategoryId,
+                    storage_id: destinationStorageId,
+                    price: Number(product.price ?? 0),
+                    cost_price: Number(product.cost_price ?? 0),
+                    quantity: 0,
+                    min_stock_level: Number(product.min_stock_level ?? 0),
+                    unit: product.unit ?? 'pcs',
+                    currency: product.currency ?? 'usd',
+                    image_url: product.image_url ?? null,
+                    can_be_returned: product.can_be_returned ?? true,
+                    return_rules: product.return_rules ?? null,
+                    created_at: productInsertTimestamp,
+                    updated_at: productInsertTimestamp,
+                    version: 1,
+                    is_deleted: false
+                })
+
+                const insertedProduct: Record<string, unknown> = {
+                    id: insertedProductId,
+                    workspace_id: destinationWorkspaceId,
+                    sku: product.sku,
+                    name: product.name,
+                    description: product.description ?? '',
+                    category: resolvedCategoryName,
+                    category_id: mappedCategoryId,
+                    storage_id: destinationStorageId,
+                    price: Number(product.price ?? 0),
+                    cost_price: Number(product.cost_price ?? 0),
+                    quantity: 0,
+                    min_stock_level: Number(product.min_stock_level ?? 0),
+                    unit: product.unit ?? 'pcs',
+                    currency: product.currency ?? 'usd',
+                    image_url: product.image_url ?? null,
+                    can_be_returned: product.can_be_returned ?? true,
+                    return_rules: product.return_rules ?? null,
+                    created_at: productInsertTimestamp,
+                    updated_at: productInsertTimestamp,
+                    version: 1,
+                    is_deleted: false
+                }
+
+                if (Object.prototype.hasOwnProperty.call(product, 'barcode')) {
+                    insertedProduct.barcode = product.barcode ?? null
+                }
+
+                return insertedProduct
+            })
+
+            const { error: insertProductsError } = await adminClient
+                .from('products')
+                .insert(productsToInsert)
+
+            if (insertProductsError) {
+                console.error('[workspace-access] transfer destination product insert failed', insertProductsError)
+                await cleanupInsertedDestinationEntities()
+                return errorResponse(insertProductsError.message, 500)
+            }
+
+            const productBarcodesToInsert = ((sourceProductBarcodeRows ?? []) as SourceProductBarcodeRow[])
+                .flatMap<Record<string, unknown>>((productBarcode) => {
+                    const destinationProductId = productIdMap.get(productBarcode.product_id)
+                    if (!destinationProductId) {
+                        return []
+                    }
+
+                    const insertedBarcodeId = crypto.randomUUID()
+                    insertedDestinationProductBarcodeIds.add(insertedBarcodeId)
+                    return [{
+                        id: insertedBarcodeId,
+                        workspace_id: destinationWorkspaceId,
+                        product_id: destinationProductId,
+                        barcode: productBarcode.barcode,
+                        label: productBarcode.label ?? null,
+                        is_primary: productBarcode.is_primary ?? false,
+                        created_at: productInsertTimestamp,
+                        updated_at: productInsertTimestamp,
+                        version: 1,
+                        is_deleted: false
+                    }]
+                })
+
+            if (productBarcodesToInsert.length > 0) {
+                const { error: insertProductBarcodesError } = await adminClient
+                    .from('product_barcodes')
+                    .insert(productBarcodesToInsert)
+
+                if (insertProductBarcodesError) {
+                    console.error('[workspace-access] transfer destination barcode insert failed', insertProductBarcodesError)
+                    await cleanupInsertedDestinationEntities()
+                    return errorResponse(insertProductBarcodesError.message, 500)
+                }
+            }
+
+            for (const insertedProduct of insertedDestinationProducts) {
+                const normalizedSku = normalizeSkuKey(insertedProduct.sku)
+                if (!normalizedSku) {
+                    continue
+                }
+                destinationProductBySku.set(normalizedSku, insertedProduct)
+                destinationProductsById.set(insertedProduct.id, insertedProduct)
+            }
         }
 
         for (const product of sourceProducts) {
@@ -1634,10 +1902,6 @@ async function handleTransferInventoryBetweenWorkspaces(
 
     const inventoryRowsToUpsert = new Map<string, SourceInventoryRow>()
     const insertedInventoryRowIds = new Set<string>()
-    const storageNameById = new Map<string, string>(
-        (storageRows ?? []).map((row) => [String(row.id), String(row.name ?? '')] as const)
-    )
-
     const applyInventoryState = (
         workspaceId: string,
         productId: string,
@@ -1847,7 +2111,7 @@ async function handleTransferInventoryBetweenWorkspaces(
         productIdsByWorkspaceKey.set(buildWorkspaceProductKey(destinationWorkspaceId, product.id), product)
     }
 
-    const updatedProductsToUpsert: SourceProductRow[] = []
+    const updatedProductsToUpsert: Record<string, unknown>[] = []
     for (const productKey of changedProductKeys) {
         const product = productIdsByWorkspaceKey.get(productKey)
         if (!product) {
@@ -1857,22 +2121,30 @@ async function handleTransferInventoryBetweenWorkspaces(
         const activeRows = activeInventoryRowsByWorkspaceProductKey.get(productKey) ?? []
         const totalQuantity = activeRows.reduce((sum, row) => sum + Number(row.quantity ?? 0), 0)
         const resolvedStorageId = activeRows.length === 1 ? activeRows[0].storage_id : null
-        const resolvedStorageName = resolvedStorageId
-            ? storageNameById.get(resolvedStorageId) ?? null
-            : null
-
         updatedProductsToUpsert.push({
-            ...product,
+            id: product.id,
+            workspace_id: product.workspace_id ?? (productKey.startsWith(`${sourceWorkspaceId}::`) ? sourceWorkspaceId : destinationWorkspaceId),
+            sku: product.sku,
+            name: product.name,
+            description: product.description ?? '',
+            category: product.category ?? null,
+            category_id: product.category_id ?? null,
+            price: Number(product.price ?? 0),
+            cost_price: Number(product.cost_price ?? 0),
             quantity: totalQuantity,
+            min_stock_level: Number(product.min_stock_level ?? 0),
+            unit: product.unit ?? 'pcs',
+            currency: product.currency ?? 'usd',
+            image_url: product.image_url ?? null,
+            can_be_returned: product.can_be_returned ?? true,
+            return_rules: product.return_rules ?? null,
             storage_id: resolvedStorageId,
-            storage_name: resolvedStorageName,
+            is_deleted: product.is_deleted ?? false,
             updated_at: transactionTimestamp,
             version: Number(product.version ?? 0) + 1
         })
     }
 
-    const previousSourceProducts = sourceProducts.map((product) => ({ ...product }))
-    const previousDestinationProducts = Array.from(destinationProductsById.values()).map((product) => ({ ...product }))
     const previousInventoryRows = Array.from(inventoryRowsByPositionKey.values()).map((row) => ({ ...row }))
     const inventoryRowsInserted = Array.from(insertedInventoryRowIds)
     let inventoryTransactionsInserted = false
@@ -1907,6 +2179,8 @@ async function handleTransferInventoryBetweenWorkspaces(
                 .from('products')
                 .upsert(previousProductsToRestore)
         }
+
+        await cleanupInsertedDestinationEntities()
     }
 
     try {
@@ -1916,6 +2190,8 @@ async function handleTransferInventoryBetweenWorkspaces(
                 .upsert(Array.from(inventoryRowsToUpsert.values()))
 
             if (inventoryUpsertError) {
+                console.error('[workspace-access] transfer inventory upsert failed', inventoryUpsertError)
+                await rollbackChanges()
                 return errorResponse(inventoryUpsertError.message, 500)
             }
         }
@@ -1926,6 +2202,7 @@ async function handleTransferInventoryBetweenWorkspaces(
                 .upsert(updatedProductsToUpsert)
 
             if (productsUpsertError) {
+                console.error('[workspace-access] transfer products upsert failed', productsUpsertError)
                 await rollbackChanges()
                 return errorResponse(productsUpsertError.message, 500)
             }
@@ -1937,6 +2214,7 @@ async function handleTransferInventoryBetweenWorkspaces(
                 .insert(inventoryTransactionRows)
 
             if (inventoryTransactionsError) {
+                console.error('[workspace-access] transfer inventory transaction insert failed', inventoryTransactionsError)
                 await rollbackChanges()
                 return errorResponse(inventoryTransactionsError.message, 500)
             }
@@ -1950,11 +2228,13 @@ async function handleTransferInventoryBetweenWorkspaces(
                 .insert(inventoryTransferTransactionRows)
 
             if (transferTransactionsError) {
+                console.error('[workspace-access] transfer transfer-transaction insert failed', transferTransactionsError)
                 await rollbackChanges()
                 return errorResponse(transferTransactionsError.message, 500)
             }
         }
     } catch (error) {
+        console.error('[workspace-access] transfer-inventory-between-workspaces failed', error)
         await rollbackChanges()
         return errorResponse(error instanceof Error ? error.message : 'Failed to transfer inventory', 500)
     }
@@ -2351,6 +2631,10 @@ Deno.serve(async (req) => {
         return errorResponse('Unsupported action', 400)
     } catch (error) {
         const message = error instanceof Error ? error.message : 'Unexpected error'
+        console.error('[workspace-access] unhandled request failure', {
+            action: body.action,
+            error
+        })
         return errorResponse(message, 500)
     }
 })

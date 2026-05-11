@@ -71,10 +71,13 @@ import {
     LayoutGrid,
     List,
     SlidersHorizontal,
-    Search
+    Search,
+    ArrowUp,
+    ArrowDown,
+    ArrowUpDown
 } from 'lucide-react'
 
-export type SalesSortOption = 'date_desc' | 'date_asc' | 'amount_desc' | 'amount_asc'
+export type SalesSortOption = 'date_desc' | 'date_asc' | 'amount_desc' | 'amount_asc' | 'cashier_asc' | 'cashier_desc' | 'origin_asc' | 'origin_desc'
 
 export interface SalesFilterState {
     search: string
@@ -293,6 +296,10 @@ export function Sales() {
         result.sort((a, b) => {
             if (effectiveFilters.sort === 'amount_desc') return b.total_amount - a.total_amount
             if (effectiveFilters.sort === 'amount_asc') return a.total_amount - b.total_amount
+            if (effectiveFilters.sort === 'cashier_asc') return (a.cashier_name || '').localeCompare(b.cashier_name || '')
+            if (effectiveFilters.sort === 'cashier_desc') return (b.cashier_name || '').localeCompare(a.cashier_name || '')
+            if (effectiveFilters.sort === 'origin_asc') return (a.origin || '').localeCompare(b.origin || '')
+            if (effectiveFilters.sort === 'origin_desc') return (b.origin || '').localeCompare(a.origin || '')
             if (effectiveFilters.sort === 'date_asc') return new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
             return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
         })
@@ -1564,11 +1571,87 @@ export function Sales() {
                                 <TableHeader>
                                     <TableRow>
                                         <TableHead className="w-[80px]">{t('sales.id') || '#'}</TableHead>
-                                        <TableHead className="text-start">{t('sales.date') || 'Date'}</TableHead>
-                                        <TableHead className="text-start">{t('sales.cashier') || 'Cashier'}</TableHead>
-                                        <TableHead className="text-start">{t('sales.origin') || 'Origin'}</TableHead>
+                                        <TableHead
+                                            className="text-start cursor-pointer select-none group/sort"
+                                            onClick={() => {
+                                                setFilters(prev => ({
+                                                    ...prev,
+                                                    sort: prev.sort === 'date_asc' ? 'date_desc' : 'date_asc'
+                                                }))
+                                            }}
+                                        >
+                                            <span className="inline-flex items-center gap-1.5">
+                                                {t('sales.date') || 'Date'}
+                                                {filters.sort === 'date_asc' ? (
+                                                    <ArrowUp className="w-3.5 h-3.5 text-primary" />
+                                                ) : filters.sort === 'date_desc' ? (
+                                                    <ArrowDown className="w-3.5 h-3.5 text-primary" />
+                                                ) : (
+                                                    <ArrowUpDown className="w-3.5 h-3.5 text-muted-foreground/40 opacity-0 group-hover/sort:opacity-100 transition-opacity" />
+                                                )}
+                                            </span>
+                                        </TableHead>
+                                        <TableHead
+                                            className="text-start cursor-pointer select-none group/sort"
+                                            onClick={() => {
+                                                setFilters(prev => ({
+                                                    ...prev,
+                                                    sort: prev.sort === 'cashier_asc' ? 'cashier_desc' : 'cashier_asc'
+                                                }))
+                                            }}
+                                        >
+                                            <span className="inline-flex items-center gap-1.5">
+                                                {t('sales.cashier') || 'Cashier'}
+                                                {filters.sort === 'cashier_asc' ? (
+                                                    <ArrowUp className="w-3.5 h-3.5 text-primary" />
+                                                ) : filters.sort === 'cashier_desc' ? (
+                                                    <ArrowDown className="w-3.5 h-3.5 text-primary" />
+                                                ) : (
+                                                    <ArrowUpDown className="w-3.5 h-3.5 text-muted-foreground/40 opacity-0 group-hover/sort:opacity-100 transition-opacity" />
+                                                )}
+                                            </span>
+                                        </TableHead>
+                                        <TableHead
+                                            className="text-start cursor-pointer select-none group/sort"
+                                            onClick={() => {
+                                                setFilters(prev => ({
+                                                    ...prev,
+                                                    sort: prev.sort === 'origin_asc' ? 'origin_desc' : 'origin_asc'
+                                                }))
+                                            }}
+                                        >
+                                            <span className="inline-flex items-center gap-1.5">
+                                                {t('sales.origin') || 'Origin'}
+                                                {filters.sort === 'origin_asc' ? (
+                                                    <ArrowUp className="w-3.5 h-3.5 text-primary" />
+                                                ) : filters.sort === 'origin_desc' ? (
+                                                    <ArrowDown className="w-3.5 h-3.5 text-primary" />
+                                                ) : (
+                                                    <ArrowUpDown className="w-3.5 h-3.5 text-muted-foreground/40 opacity-0 group-hover/sort:opacity-100 transition-opacity" />
+                                                )}
+                                            </span>
+                                        </TableHead>
                                         <TableHead className="text-start">{t('sales.notes.title') || 'Notes'}</TableHead>
-                                        <TableHead className="text-end">{t('sales.total') || 'Total'}</TableHead>
+                                        <TableHead
+                                            className="text-end cursor-pointer select-none group/sort"
+                                            onClick={() => {
+                                                setFilters(prev => ({
+                                                    ...prev,
+                                                    sort: prev.sort === 'amount_asc' ? 'amount_desc' : 'amount_asc'
+                                                }))
+                                            }}
+                                        >
+                                            <span className="inline-flex items-center gap-1.5 justify-end">
+                                                {t('sales.total') || 'Total'}
+                                                {filters.sort === 'amount_asc' ? (
+                                                    <ArrowUp className="w-3.5 h-3.5 text-primary" />
+                                                ) : filters.sort === 'amount_desc' ? (
+                                                    <ArrowDown className="w-3.5 h-3.5 text-primary" />
+                                                ) : (
+                                                    <ArrowUpDown className="w-3.5 h-3.5 text-muted-foreground/40 opacity-0 group-hover/sort:opacity-100 transition-opacity" />
+                                                )}
+                                            </span>
+                                        </TableHead>
                                         <TableHead className="text-end">{t('common.actions')}</TableHead>
                                     </TableRow>
                                 </TableHeader>
@@ -1919,6 +2002,10 @@ export function Sales() {
                                                     <SelectItem value="date_asc">{t('sales.filters.sortDateAsc', { defaultValue: 'Date: Oldest First' })}</SelectItem>
                                                     <SelectItem value="amount_desc">{t('sales.filters.sortAmountDesc', { defaultValue: 'Amount: Highest First' })}</SelectItem>
                                                     <SelectItem value="amount_asc">{t('sales.filters.sortAmountAsc', { defaultValue: 'Amount: Lowest First' })}</SelectItem>
+                                                    <SelectItem value="cashier_asc">{t('sales.filters.sortCashierAsc', { defaultValue: 'Cashier: A → Z' })}</SelectItem>
+                                                    <SelectItem value="cashier_desc">{t('sales.filters.sortCashierDesc', { defaultValue: 'Cashier: Z → A' })}</SelectItem>
+                                                    <SelectItem value="origin_asc">{t('sales.filters.sortOriginAsc', { defaultValue: 'Origin: A → Z' })}</SelectItem>
+                                                    <SelectItem value="origin_desc">{t('sales.filters.sortOriginDesc', { defaultValue: 'Origin: Z → A' })}</SelectItem>
                                                 </SelectContent>
                                             </Select>
                                         </div>

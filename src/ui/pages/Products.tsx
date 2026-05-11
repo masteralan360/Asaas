@@ -54,6 +54,7 @@ import {
     TableHeader,
     TableRow,
     Textarea,
+    AppPagination,
     useToast
 } from '@/ui/components'
 
@@ -89,6 +90,8 @@ export function Products() {
     const isBranchWorkspace = Boolean(branchInfo?.isBranch)
 
     const [search, setSearch] = useState('')
+    const [currentPage, setCurrentPage] = useState(1)
+    const pageSize = 20
     const [isCategoryDialogOpen, setIsCategoryDialogOpen] = useState(false)
     const [editingCategory, setEditingCategory] = useState<Category | null>(null)
     const [categoryFormData, setCategoryFormData] = useState(emptyCategoryFormData)
@@ -315,12 +318,24 @@ export function Products() {
         return storage ? storage.name : ''
     }
 
-    const filteredProducts = products.filter((product) =>
+    const filteredProducts = useMemo(() => products.filter((product) =>
         product.name.toLowerCase().includes(search.toLowerCase()) ||
         product.sku.toLowerCase().includes(search.toLowerCase()) ||
         getCategoryName(product.categoryId).toLowerCase().includes(search.toLowerCase()) ||
         getStorageName(product.storageId).toLowerCase().includes(search.toLowerCase())
-    )
+    ), [products, search, categories, storages])
+
+    const totalCount = filteredProducts.length
+
+    const paginatedProducts = useMemo(() => {
+        const from = (currentPage - 1) * pageSize
+        return filteredProducts.slice(from, from + pageSize)
+    }, [filteredProducts, currentPage, pageSize])
+
+    useEffect(() => {
+        setCurrentPage(1)
+    }, [search])
+
     const selectedProductsCount = selectedProductIds.size
     const allWorkspaceProductsSelected = products.length > 0 && selectedProductsCount === products.length
     const selectedCloneTarget = cloneTargets.find((target) => target.workspaceId === selectedCloneTargetWorkspaceId)
@@ -668,8 +683,22 @@ export function Products() {
             )}
 
             <Card>
-                <CardHeader>
-                    <CardTitle>{t('products.title')}</CardTitle>
+                <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between space-y-0 gap-4 pb-4">
+                    <div className="flex flex-col gap-1">
+                        <CardTitle>{t('products.title')}</CardTitle>
+                        {totalCount > 0 && (
+                            <p className="text-[10px] text-muted-foreground font-black uppercase tracking-[0.2em] opacity-70">
+                                {t('products.pagination.total', { count: totalCount, defaultValue: '{{count}} Products Found' })}
+                            </p>
+                        )}
+                    </div>
+                    <AppPagination
+                        currentPage={currentPage}
+                        totalCount={totalCount}
+                        pageSize={pageSize}
+                        onPageChange={setCurrentPage}
+                        className="w-auto"
+                    />
                 </CardHeader>
                 <CardContent>
                     {filteredProducts.length === 0 ? (
@@ -678,7 +707,7 @@ export function Products() {
                         <>
                             {isMobile() && (
                                 <div className="grid grid-cols-1 gap-4">
-                                    {filteredProducts.map((product) => (
+                                    {paginatedProducts.map((product) => (
                                         <div
                                             key={product.id}
                                             className={cn(
@@ -771,7 +800,7 @@ export function Products() {
                                 <>
                                     {viewMode === 'grid' ? (
                                         <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-                                            {filteredProducts.map((product) => (
+                                            {paginatedProducts.map((product) => (
                                                 <div
                                                     key={product.id}
                                                     className={cn(
@@ -878,7 +907,7 @@ export function Products() {
                                                 </TableRow>
                                             </TableHeader>
                                             <TableBody>
-                                                {filteredProducts.map((product) => (
+                                                {paginatedProducts.map((product) => (
                                                     <TableRow key={product.id} className={cn(canCloneToBranch && isBranchCloneSelectionMode && selectedProductIds.has(product.id) && 'bg-primary/5')}>
                                                         {canCloneToBranch && isBranchCloneSelectionMode && (
                                                             <TableCell>
