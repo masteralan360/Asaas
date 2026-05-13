@@ -305,13 +305,13 @@ export function ExchangeRateIndicator() {
                 </div>
 
                 {/* Mobile View */}
-                <div className="md:hidden flex items-center gap-2">
+                <div className="md:hidden flex items-center gap-1.5">
                     <DialogTrigger asChild>
                         <Button
                             variant="outline"
                             size="sm"
                             className={cn(
-                                "flex items-center gap-2 h-9 px-3 transition-all",
+                                "flex items-center gap-1.5 h-8 px-2.5 transition-all",
                                 style === 'neo-orange' ? "neo-indicator" : cn(
                                     "rounded-full border-emerald-500/20 bg-emerald-500/5 text-emerald-500 hover:bg-emerald-500/10 hover:text-emerald-600",
                                     status === 'loading' && "opacity-70 animate-pulse",
@@ -319,8 +319,8 @@ export function ExchangeRateIndicator() {
                                 )
                             )}
                         >
-                            <Globe className={cn("w-4 h-4", status === 'loading' && "animate-spin")} />
-                            <span className="text-xs font-bold uppercase tracking-tight">Live Rate</span>
+                            <Globe className={cn("w-4 h-4 shrink-0", status === 'loading' && "animate-spin")} />
+                            <span className="text-xs font-bold uppercase tracking-tight hidden min-[380px]:inline">Live Rate</span>
                         </Button>
                     </DialogTrigger>
 
@@ -328,7 +328,7 @@ export function ExchangeRateIndicator() {
                         variant="outline"
                         size="icon"
                         className={cn(
-                            "h-9 w-9 rounded-full transition-all",
+                            "h-8 w-8 rounded-full transition-all",
                             style === 'neo-orange'
                                 ? "rounded-[var(--radius)] border-black dark:border-white bg-white dark:bg-black"
                                 : cn(
