@@ -82,6 +82,7 @@ import { BarcodeScannerModal } from '@/ui/components/pos/BarcodeScannerModal'
 import { mapSaleToUniversal } from '@/lib/mappings'
 import { LoanRegistrationModal, type LoanRegistrationData } from '@/ui/components/pos/LoanRegistrationModal'
 import { getRetriableActionToast, isRetriableWebRequestError, normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
+import { isOnline } from '@/lib/network'
 import { useWebHaptics } from 'web-haptics/react'
 
 function isLoanRegistrationData(value: unknown): value is LoanRegistrationData {
@@ -1589,8 +1590,8 @@ export function POS() {
         }
 
         try {
-            if (isLocalMode) {
-                throw new Error('local_workspace_sale')
+            if (isLocalMode || !isOnline(user.workspaceId)) {
+                throw new Error(isLocalMode ? 'local_workspace_sale' : 'offline_workspace_sale')
             }
 
             // Attempt online checkout
@@ -1713,7 +1714,7 @@ export function POS() {
             console.error('Checkout failed, attempting offline save:', err)
             const normalizedError = normalizeSupabaseActionError(err)
 
-            if (!navigator.onLine || isLocalMode) {
+            if (isLocalMode || !isOnline(user.workspaceId) || isRetriableWebRequestError(normalizedError)) {
                 try {
                     // Run local verification FIRST (before save, but using the data we're about to save)
                     const verificationSale = createVerificationSale(

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
     Dialog,
     DialogContent,
@@ -14,6 +14,7 @@ import { useToast } from '@/ui/components/use-toast'
 import { usePendingSyncCount, clearOfflineMutations } from '@/local-db/hooks'
 import { useTranslation } from 'react-i18next'
 import { runManagedFullSync } from '@/sync/syncCoordinator'
+import { connectionManager } from '@/lib/connectionManager'
 
 interface ManualSyncModalProps {
     open: boolean
@@ -26,11 +27,22 @@ export function ManualSyncModal({ open, onOpenChange, onSyncComplete }: ManualSy
     const { user } = useAuth()
     const { toast } = useToast()
     const pendingCount = usePendingSyncCount()
+    const [isOnline, setIsOnline] = useState(() => connectionManager.getState().isOnline)
 
     const [isSyncing, setIsSyncing] = useState(false)
     const [status, setStatus] = useState<'idle' | 'syncing' | 'success' | 'error'>('idle')
     const [errorMessage, setErrorMessage] = useState<string | null>(null)
     const [showDiscardConfirm, setShowDiscardConfirm] = useState(false)
+
+    useEffect(() => {
+        return connectionManager.subscribe((event) => {
+            if (event === 'online' || event === 'heartbeat') {
+                setIsOnline(true)
+            } else if (event === 'offline') {
+                setIsOnline(false)
+            }
+        })
+    }, [])
 
     async function handleSync() {
         if (!user || !user.workspaceId) return
@@ -168,7 +180,7 @@ export function ManualSyncModal({ open, onOpenChange, onSyncComplete }: ManualSy
                         {status !== 'success' && (
                             <Button
                                 onClick={handleSync}
-                                disabled={isSyncing || !navigator.onLine}
+                                disabled={isSyncing || !isOnline}
                             >
                                 {isSyncing ? t('sync.syncingBtn') : t('sync.syncNow')}
                             </Button>

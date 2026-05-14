@@ -1,4 +1,5 @@
 import { isWeb } from '@/lib/platform'
+import { connectionManager } from '@/lib/connectionManager'
 
 export const WEB_REQUEST_TIMEOUT_MS = 12000
 
@@ -100,6 +101,12 @@ export function getRetriableActionToast(error: unknown): { title: string; descri
     }
 }
 
+function reportRetriableConnectionFailure(label: string, error: Error) {
+    if (error instanceof SupabaseRequestTimeoutError || error instanceof SupabaseNetworkError) {
+        connectionManager.reportConnectivityFailure(label)
+    }
+}
+
 export async function runSupabaseAction<T>(
     label: string,
     promiseFactory: () => PromiseLike<T> | Promise<T> | T,
@@ -134,6 +141,7 @@ export async function runSupabaseAction<T>(
             return result
         } catch (error) {
             const normalized = normalizeSupabaseActionError(error)
+            reportRetriableConnectionFailure(label, normalized)
             logResult('failed', normalized)
             throw normalized
         }
@@ -159,6 +167,7 @@ export async function runSupabaseAction<T>(
         return result
     } catch (error) {
         const normalized = normalizeSupabaseActionError(error)
+        reportRetriableConnectionFailure(label, normalized)
         logResult('failed', normalized)
         throw normalized
     } finally {

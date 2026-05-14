@@ -1,3 +1,6 @@
+import { isSupabaseConfigured, resolvedSupabaseAnonKey, resolvedSupabaseUrl } from '@/auth/supabase'
+import { setNetworkStatus } from '@/lib/network'
+
 type ConnectionEvent = 'wake' | 'online' | 'offline' | 'heartbeat'
 type ConnectionListener = (event: ConnectionEvent) => void
 
@@ -19,9 +22,10 @@ class ConnectionManager {
     private heartbeatFailures = 0
     private initialized = false
 
-    // Minimum idle time (ms) before a "wake" event is emitted
-    private static WAKE_THRESHOLD = 60_000 // 1 minute
-    private static HEARTBEAT_INTERVAL = 30_000 // 30 seconds
+    // Minimum idle time (ms) before a "wake" event is emitted.
+    private static WAKE_THRESHOLD = 60_000
+    private static HEARTBEAT_INTERVAL = 30_000
+    private static HEARTBEAT_TIMEOUT = 10_000
     private static DEBOUNCE_MS = 500
 
     init() {
@@ -33,7 +37,9 @@ class ConnectionManager {
         document.addEventListener('visibilitychange', this.handleVisibilityChange)
         window.addEventListener('focus', this.handleFocus)
 
+        setNetworkStatus(this.state.isOnline)
         this.startHeartbeat()
+        void this.checkConnectivity()
         console.log('[ConnectionManager] Initialized')
     }
 
@@ -56,6 +62,33 @@ class ConnectionManager {
         return { ...this.state }
     }
 
+    reportConnectivitySuccess(source = 'supabase') {
+        this.heartbeatFailures = 0
+        if (navigator.onLine === false) return
+
+        if (!this.state.isOnline) {
+            console.log(`[ConnectionManager] ${source} reachable - marking online`)
+            this.state.isOnline = true
+            setNetworkStatus(true)
+            this.emit('online')
+            this.startHeartbeat()
+            return
+        }
+
+        setNetworkStatus(true)
+    }
+
+    reportConnectivityFailure(source = 'supabase') {
+        this.heartbeatFailures++
+
+        if (this.state.isOnline) {
+            console.log(`[ConnectionManager] ${source} unreachable - marking offline`)
+            this.state.isOnline = false
+            setNetworkStatus(false)
+            this.emit('offline')
+        }
+    }
+
     private emit(event: ConnectionEvent) {
         this.listeners.forEach(fn => {
             try { fn(event) } catch (e) {
@@ -70,19 +103,18 @@ class ConnectionManager {
     }
 
     private handleOnline = () => {
-        if (this.state.isOnline) return // already online
-        console.log('[ConnectionManager] Network: online')
-        this.state.isOnline = true
-        this.debouncedEmit('online')
+        console.log('[ConnectionManager] Browser network: online')
         this.startHeartbeat()
+        void this.checkConnectivity(true)
     }
 
     private handleOffline = () => {
-        if (!this.state.isOnline) return // already offline
-        console.log('[ConnectionManager] Network: offline')
+        if (!this.state.isOnline) return
+        console.log('[ConnectionManager] Browser network: offline')
         this.state.isOnline = false
+        setNetworkStatus(false)
         this.stopHeartbeat()
-        this.emit('offline') // offline is immediate, no debounce
+        this.emit('offline')
     }
 
     private handleVisibilityChange = () => {
@@ -93,24 +125,30 @@ class ConnectionManager {
             const idleDuration = Date.now() - this.state.lastActiveAt
             console.log(`[ConnectionManager] Tab visible after ${Math.round(idleDuration / 1000)}s idle`)
 
-            if (idleDuration >= ConnectionManager.WAKE_THRESHOLD) {
-                this.emit('wake')
-            }
-
             this.state.lastActiveAt = Date.now()
             this.startHeartbeat()
+
+            if (idleDuration >= ConnectionManager.WAKE_THRESHOLD) {
+                void this.checkConnectivity().then((online) => {
+                    if (online) this.emit('wake')
+                })
+            } else {
+                void this.checkConnectivity()
+            }
         } else {
             this.state.lastActiveAt = Date.now()
-            this.stopHeartbeat() // save resources when tab is hidden
+            this.stopHeartbeat()
         }
     }
 
     private handleFocus = () => {
-        // Focus can fire without visibilitychange (e.g., alt-tabbing between windows)
+        // Focus can fire without visibilitychange, e.g. alt-tabbing between windows.
         const idleDuration = Date.now() - this.state.lastActiveAt
         if (idleDuration >= ConnectionManager.WAKE_THRESHOLD) {
             this.state.isVisible = true
-            this.emit('wake')
+            void this.checkConnectivity().then((online) => {
+                if (online) this.emit('wake')
+            })
         }
         this.state.lastActiveAt = Date.now()
     }
@@ -119,7 +157,7 @@ class ConnectionManager {
         this.stopHeartbeat()
         this.heartbeatTimer = setInterval(() => {
             if (!this.state.isVisible) return
-            this.checkConnectivity()
+            void this.checkConnectivity()
         }, ConnectionManager.HEARTBEAT_INTERVAL)
     }
 
@@ -130,38 +168,84 @@ class ConnectionManager {
         }
     }
 
-    private async checkConnectivity() {
+    private getConnectivityCheck() {
+        if (isSupabaseConfigured) {
+            const supabaseUrl = resolvedSupabaseUrl.replace(/\/+$/, '')
+
+            return {
+                url: `${supabaseUrl}/auth/v1/health?_=${Date.now()}`,
+                init: {
+                    method: 'GET',
+                    headers: {
+                        apikey: resolvedSupabaseAnonKey,
+                        Authorization: `Bearer ${resolvedSupabaseAnonKey}`
+                    }
+                } satisfies RequestInit
+            }
+        }
+
+        return {
+            url: `https://www.google.com/favicon.ico?v=${Date.now()}`,
+            init: {
+                mode: 'no-cors',
+                cache: 'no-store'
+            } satisfies RequestInit
+        }
+    }
+
+    private async checkConnectivity(useDebouncedOnlineEvent = false): Promise<boolean> {
+        if (navigator.onLine === false) {
+            this.reportConnectivityFailure('browser network')
+            return false
+        }
+
+        let timeoutId: ReturnType<typeof setTimeout> | null = null
+
         try {
             const controller = new AbortController()
-            const timeoutId = setTimeout(() => controller.abort(), 10000) // Increased to 10s
+            timeoutId = setTimeout(() => controller.abort(), ConnectionManager.HEARTBEAT_TIMEOUT)
+            const { url, init } = this.getConnectivityCheck()
 
-            await fetch('https://www.google.com/favicon.ico?v=' + Date.now(), {
-                mode: 'no-cors',
+            const response = await fetch(url, {
+                ...init,
                 cache: 'no-store',
                 signal: controller.signal
             })
-            clearTimeout(timeoutId)
 
-            // Success: Reset failures
+            if (response.type !== 'opaque' && !response.ok) {
+                throw new Error(`Connectivity check failed with HTTP ${response.status}`)
+            }
+
             this.heartbeatFailures = 0
 
             if (!this.state.isOnline) {
-                console.log('[ConnectionManager] Heartbeat restored — marking online')
+                console.log('[ConnectionManager] Heartbeat restored - marking online')
                 this.state.isOnline = true
-                this.emit('online')
+                setNetworkStatus(true)
+                if (useDebouncedOnlineEvent) {
+                    this.debouncedEmit('online')
+                } else {
+                    this.emit('online')
+                }
+            } else {
+                setNetworkStatus(true)
             }
+
             this.emit('heartbeat')
+            return true
         } catch {
             this.heartbeatFailures++
 
-            // Only mark offline if we fail 2 times in a row
-            if (this.state.isOnline && this.heartbeatFailures >= 2) {
-                console.log(`[ConnectionManager] Heartbeat failed ${this.heartbeatFailures} times — marking offline`)
+            if (this.state.isOnline) {
+                console.log(`[ConnectionManager] Heartbeat failed ${this.heartbeatFailures} time(s) - marking offline`)
                 this.state.isOnline = false
+                setNetworkStatus(false)
                 this.emit('offline')
-            } else if (this.state.isOnline) {
-                console.log(`[ConnectionManager] Heartbeat missed once (${this.heartbeatFailures}/2) — waiting for next attempt`)
             }
+
+            return false
+        } finally {
+            if (timeoutId) clearTimeout(timeoutId)
         }
     }
 }

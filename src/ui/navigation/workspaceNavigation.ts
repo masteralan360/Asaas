@@ -116,6 +116,10 @@ export function buildWorkspaceNavigation({
             href: "/pos",
             icon: CreditCard,
           },
+        ]
+      : []),
+    ...(isCoreRole && hasFeature("instant_pos")
+      ? [
           {
             name: t("nav.instantPos", { defaultValue: "Instant POS" }),
             href: "/instant-pos",
