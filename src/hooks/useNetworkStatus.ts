@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useRef, useState, useEffect } from 'react'
 import { toast } from '@/ui/components/use-toast'
 import { setNetworkStatus } from '@/lib/network'
 import { connectionManager } from '@/lib/connectionManager'
@@ -6,6 +6,7 @@ import { connectionManager } from '@/lib/connectionManager'
 export function useNetworkStatus() {
     const [isOnline, setIsOnline] = useState(() => connectionManager.getState().isOnline)
     const [wasOffline, setWasOffline] = useState(false)
+    const prevIsOnline = useRef(isOnline)
 
     useEffect(() => {
         const updateOnlineState = (online: boolean) => {
@@ -50,9 +51,9 @@ export function useNetworkStatus() {
         }
     }, [isOnline, wasOffline])
 
-    // "Offline" toast
+    // "Offline" toast – only on actual transition, not on initial mount
     useEffect(() => {
-        if (!isOnline) {
+        if (prevIsOnline.current === true && isOnline === false) {
             setWasOffline(true)
             toast({
                 title: "You are offline",
@@ -60,6 +61,7 @@ export function useNetworkStatus() {
                 variant: "destructive",
             })
         }
+        prevIsOnline.current = isOnline
     }, [isOnline])
 
     return isOnline
