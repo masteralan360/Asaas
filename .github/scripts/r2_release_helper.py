@@ -102,11 +102,14 @@ def upload_assets():
 
     # Determine version from tauri conf
     version = "0.0.0"
+    local_min_version = "0.0.0"
     try:
         with open("src-tauri/tauri.conf.json", 'r') as f:
-            version = json.load(f).get("version", "0.0.0")
+            conf_data = json.load(f)
+            version = conf_data.get("version", "0.0.0")
+            local_min_version = conf_data.get("min_version", "0.0.0")
     except Exception as e:
-        print(f"Warning: Could not read version from tauri.conf.json: {e}")
+        print(f"Warning: Could not read version/min_version from tauri.conf.json: {e}")
 
     # Preserve min_version from remote if it exists
     remote_min_version = remote_data.get("min_version", "0.0.0") if remote_data else "0.0.0"
@@ -122,8 +125,8 @@ def upload_assets():
             "platforms": {}
         }
 
-    # Always carry min_version forward
-    data["min_version"] = data.get("min_version", remote_min_version)
+    # Prioritize local min_version if it's set in tauri.conf.json, else carry remote forward
+    data["min_version"] = local_min_version if local_min_version != "0.0.0" else remote_min_version
         
     if "platforms" not in data:
         data["platforms"] = {}

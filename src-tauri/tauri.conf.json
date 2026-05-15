@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Atlas",
-  "version": "0.1.36",
+  "version": "0.1.37",
   "identifier": "com.atlas.app",
   "build": {
     "frontendDist": "../dist",
@@ -60,5 +60,6 @@
       },
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEUwOTQ3MENENDBDQTNBRjIKUldUeU9zcEF6WENVNEkzd3FGOFlKckMzMmN6YWNEQjU4ZDFKYXl5dTRnZWsxMzJYZ1ZxenBKdDcK"
     }
-  }
+  },
+  "min_version": "0.1.36"
 }

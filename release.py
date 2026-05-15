@@ -18,10 +18,10 @@ PATCH_NOTES = SCRIPT_DIR / "src" / "data" / "patch-notes.json"
 
 
 def read_version():
-    """Read current version from tauri.conf.json"""
+    """Read current version and min_version from tauri.conf.json"""
     with open(TAURI_CONF, 'r') as f:
         data = json.load(f)
-    return data.get('version', '1.0.0')
+    return data.get('version', '1.0.0'), data.get('min_version', '0.0.0')
 
 
 def increment_version(version):
@@ -31,12 +31,13 @@ def increment_version(version):
     return '.'.join(parts)
 
 
-def update_version(new_version):
-    """Update version in both config files"""
+def update_version(new_version, new_min_version):
+    """Update version and min_version in config files"""
     # Update tauri.conf.json
     with open(TAURI_CONF, 'r') as f:
         tauri_data = json.load(f)
     tauri_data['version'] = new_version
+    tauri_data['min_version'] = new_min_version
     with open(TAURI_CONF, 'w') as f:
         json.dump(tauri_data, f, indent=2)
     
@@ -44,6 +45,7 @@ def update_version(new_version):
     with open(PACKAGE_JSON, 'r') as f:
         pkg_data = json.load(f)
     pkg_data['version'] = new_version
+    # package.json usually doesn't need min_version, keeping it standard
     with open(PACKAGE_JSON, 'w') as f:
         json.dump(pkg_data, f, indent=2)
 
@@ -136,19 +138,27 @@ class ReleaseApp:
         ttk.Label(root, text="🚀 Release Helper", style='Header.TLabel').pack(pady=15)
         
         # Current version
-        current = read_version()
-        ttk.Label(root, text=f"Current Version: {current}").pack()
+        current, current_min = read_version()
+        ttk.Label(root, text=f"Current Version: {current} (Min: {current_min})").pack()
         
         # New version
         frame = ttk.Frame(root)
-        frame.pack(pady=15)
+        frame.pack(pady=5)
         ttk.Label(frame, text="New Version:").pack(side=tk.LEFT, padx=5)
         self.version_var = tk.StringVar(value=increment_version(current))
         self.version_entry = ttk.Entry(frame, textvariable=self.version_var, width=15)
         self.version_entry.pack(side=tk.LEFT)
+
+        # Min version
+        min_frame = ttk.Frame(root)
+        min_frame.pack(pady=5)
+        ttk.Label(min_frame, text="Min Version:").pack(side=tk.LEFT, padx=5)
+        self.min_version_var = tk.StringVar(value=current_min)
+        self.min_version_entry = ttk.Entry(min_frame, textvariable=self.min_version_var, width=15)
+        self.min_version_entry.pack(side=tk.LEFT)
         
         # Commit message
-        ttk.Label(root, text="Commit Message:").pack(pady=(10, 5))
+        ttk.Label(root, text="Commit Message:").pack(pady=(5, 5))
         self.msg_var = tk.StringVar(value=f"Release v{increment_version(current)}")
         self.msg_entry = ttk.Entry(root, textvariable=self.msg_var, width=40)
         self.msg_entry.pack()
@@ -458,7 +468,7 @@ class ReleaseApp:
         self.root.update()
         
         try:
-            update_version(version)
+            update_version(version, self.min_version_var.get().strip())
             
             if not self.stealth_var.get():
                 # Save current team message before finalizing
