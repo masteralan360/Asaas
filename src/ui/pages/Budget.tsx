@@ -1,5 +1,5 @@
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
     CalendarDays,
@@ -12,7 +12,8 @@ import {
     Users,
     Receipt,
     User,
-    Trash2
+    Trash2,
+    Printer
 } from 'lucide-react'
 import { useAuth } from '@/auth'
 import { useWorkspace } from '@/workspace'
@@ -50,10 +51,10 @@ import {
     buildConversionRates,
     buildPayrollItems,
     buildDividendItems,
+    formatMonthLabel,
     type PayrollItem,
     monthKeyFromDate,
     addMonths,
-    formatMonthLabel,
     buildDueDate
 } from '@/lib/budget'
 import { buildRevenueAnalysisRecords, calculateRevenueAnalysisNetProfitBase } from '@/lib/revenueAnalysis'
@@ -87,11 +88,15 @@ import {
     Progress,
     CurrencySelector,
     DeleteConfirmationModal,
-    SettlementDialog
+    SettlementDialog,
+    PrintPreviewModal
 } from '@/ui/components'
 import { BudgetSnoozeModal, type BudgetSnoozeOption } from '@/ui/components/budget/BudgetSnoozeModal'
 import { BudgetLockPromptModal } from '@/ui/components/budget/BudgetLockPromptModal'
 import { MonthlyBudgetAllocationModal } from '@/ui/components/budget/MonthlyBudgetAllocationModal'
+import { BudgetPrintTemplate } from '@/ui/components/budget/BudgetPrintTemplate'
+import { generateTemplatePdf, type PrintFormat } from '@/services/pdfGenerator'
+import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
 
 interface ExpenseRow {
     item: ExpenseItem
@@ -431,7 +436,7 @@ function SummaryCard({
 export function Budget() {
     const { user } = useAuth()
     const canEdit = user?.role === 'admin' || user?.role === 'staff'
-    const { features } = useWorkspace()
+    const { features, workspaceName } = useWorkspace()
     const { t, i18n } = useTranslation()
     const { toast } = useToast()
     const { exchangeData, eurRates, tryRates } = useExchangeRate()
@@ -495,6 +500,7 @@ export function Budget() {
     const [lockTarget, setLockTarget] = useState<LockTarget | null>(null)
     const [settlementTarget, setSettlementTarget] = useState<PaymentObligation | null>(null)
     const [isSubmittingSettlement, setIsSubmittingSettlement] = useState(false)
+    const [showPrintPreview, setShowPrintPreview] = useState(false)
 
     const expenseItems = useExpenseItems(workspaceId, selectedMonth)
 
@@ -645,6 +651,87 @@ export function Budget() {
     }, [currentBudgetAllocation, netProfitBase, baseCurrency, rates])
 
     const budgetUsageRatio = calculatedBudgetLimitBase > 0 ? (totalAllocatedBase / calculatedBudgetLimitBase) * 100 : 0
+    const printLang = features?.print_lang && features.print_lang !== 'auto' ? features.print_lang : i18n.language
+    const selectedMonthLabel = useMemo(
+        () => formatMonthLabel(selectedMonth as any, printLang),
+        [printLang, selectedMonth]
+    )
+    const budgetPrintMetrics = useMemo(() => ({
+        netProfitBase,
+        budgetLimitBase: calculatedBudgetLimitBase,
+        totalAllocatedBase,
+        totalPaidBase,
+        totalOutstandingBase,
+        operationalTotalBase: operationalTotals.totalBase,
+        operationalPaidBase: operationalTotals.paidBase,
+        payrollTotalBase: payrollTotals.totalBase,
+        payrollPaidBase: payrollTotals.paidBase,
+        surplusPoolBase,
+        dividendTotalBase: dividendResult.totalBase,
+        surplusRemainderBase,
+        budgetUsageRatio
+    }), [
+        budgetUsageRatio,
+        calculatedBudgetLimitBase,
+        dividendResult.totalBase,
+        netProfitBase,
+        operationalTotals.paidBase,
+        operationalTotals.totalBase,
+        payrollTotals.paidBase,
+        payrollTotals.totalBase,
+        surplusPoolBase,
+        surplusRemainderBase,
+        totalAllocatedBase,
+        totalOutstandingBase,
+        totalPaidBase
+    ])
+    const buildQrValue = useCallback((effectiveId: string) => {
+        if (!features.print_qr || !workspaceId || isLocalWorkspaceMode(workspaceId)) return undefined
+        return `https://asaas-r2-proxy.alanepic360.workers.dev/${workspaceId}/printed-invoices/A4/${effectiveId}.pdf`
+    }, [features.print_qr, workspaceId])
+    const renderBudgetPrintTemplate = useCallback((effectiveId?: string) => (
+        <BudgetPrintTemplate
+            workspaceName={workspaceName}
+            printLang={printLang}
+            monthLabel={selectedMonthLabel}
+            baseCurrency={baseCurrency}
+            iqdPreference={iqdPreference}
+            expenseRows={expenseRows}
+            payrollItems={payrollItems}
+            dividendItems={dividendResult.items}
+            metrics={budgetPrintMetrics}
+            logoUrl={features.logo_url}
+            qrValue={effectiveId ? buildQrValue(effectiveId) : undefined}
+        />
+    ), [
+        baseCurrency,
+        buildQrValue,
+        budgetPrintMetrics,
+        dividendResult.items,
+        expenseRows,
+        features.logo_url,
+        iqdPreference,
+        payrollItems,
+        printLang,
+        selectedMonthLabel,
+        workspaceName
+    ])
+    const buildBudgetReportPdf = useCallback(async ({ format, effectiveId }: { format: PrintFormat; effectiveId: string }) => {
+        return generateTemplatePdf({
+            element: renderBudgetPrintTemplate(effectiveId),
+            format,
+            printLang,
+            printQuality: features.print_quality
+        })
+    }, [features.print_quality, printLang, renderBudgetPrintTemplate])
+    const budgetReportInvoiceData = useMemo(() => ({
+        totalAmount: totalAllocatedBase + dividendResult.totalBase,
+        settlementCurrency: baseCurrency,
+        origin: 'accounting' as const,
+        createdByName: user?.name || 'Unknown',
+        cashierName: user?.name || 'Unknown',
+        printFormat: 'a4' as const
+    }), [baseCurrency, dividendResult.totalBase, totalAllocatedBase, user?.name])
 
     const handleSaveStartMonth = async () => {
         if (!workspaceId) return
@@ -1024,6 +1111,15 @@ export function Budget() {
                             ))}
                         </SelectContent>
                     </Select>
+                    <Button
+                        variant="outline"
+                        onClick={() => setShowPrintPreview(true)}
+                        className="h-10 rounded-xl"
+                        allowViewer={true}
+                    >
+                        <Printer className="mr-2 h-4 w-4 text-muted-foreground" />
+                        {t('common.print') || 'Print'}
+                    </Button>
                     <Button 
                         variant="outline" 
                         onClick={() => setIsAllocationModalOpen(true)} 
@@ -1331,6 +1427,18 @@ export function Budget() {
                 }}
                 title={deleteTarget?.type === 'series' ? t('budget.deleteSeries') : t('budget.deleteOccurrence')}
                 itemName={deleteTarget?.series?.name || deleteTarget?.item?.id || ''}
+            />
+
+            <PrintPreviewModal
+                isOpen={showPrintPreview}
+                onClose={() => setShowPrintPreview(false)}
+                onConfirm={() => setShowPrintPreview(false)}
+                title={t('budget.print.title', { defaultValue: 'Accounting Report' })}
+                features={features}
+                workspaceName={workspaceName}
+                invoiceData={budgetReportInvoiceData}
+                pdfBuilder={buildBudgetReportPdf}
+                printTemplate={({ effectiveId }) => renderBudgetPrintTemplate(effectiveId)}
             />
 
             <BudgetSnoozeModal

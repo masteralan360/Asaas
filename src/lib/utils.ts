@@ -437,6 +437,7 @@ export function formatOriginLabel(origin?: string | null, sourceChannel?: string
     if (normalized === 'sales_order' || normalized === 'sales-order' || normalized === 'sales order') return 'Sales Order'
     if (normalized === 'ecommerce' || normalized === 'e-commerce' || normalized === 'e commerce') return 'E-Commerce'
     if (normalized === 'travel_agency' || normalized === 'travel-agency' || normalized === 'travel agency') return 'Travel Agency'
+    if (normalized === 'accounting' || normalized === 'budget') return 'Accounting'
     if (normalized === 'manual') return 'Manual'
     if (normalized === 'loans' || normalized === 'loan') return 'Loans'
     if (normalized === 'upload' || normalized === 'uploads') return 'Upload'
