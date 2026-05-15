@@ -994,7 +994,13 @@ export function Ledger() {
     const [isDirectionSplitView, setIsDirectionSplitView] = useState(false)
 
     const [currentPage, setCurrentPage] = useState(1)
-    const pageSize = 50
+    const [pageSize, setPageSize] = useState(() => {
+        return Number(localStorage.getItem('ledger_page_size')) || 50
+    })
+
+    useEffect(() => {
+        localStorage.setItem('ledger_page_size', String(pageSize))
+    }, [pageSize])
 
     const deferredSearch = useDeferredValue(filters.search)
     const loanById = useMemo(
@@ -1063,7 +1069,7 @@ export function Ledger() {
     )
     const visibleEntries = useMemo(
         () => filteredEntries.slice((currentPage - 1) * pageSize, currentPage * pageSize),
-        [currentPage, filteredEntries]
+        [currentPage, filteredEntries, pageSize]
     )
     const visibleIncomingEntries = useMemo(
         () => visibleEntries.filter((entry) => entry.direction === 'incoming'),
@@ -1120,7 +1126,7 @@ export function Ledger() {
 
     useEffect(() => {
         setCurrentPage(1)
-    }, [dateRange, customDates, filters])
+    }, [dateRange, customDates, filters, pageSize])
 
     useEffect(() => {
         if (hoveredRelationKey && !visibleEntries.some((entry) => entry.relationKey === hoveredRelationKey)) {
@@ -2035,6 +2041,10 @@ export function Ledger() {
                             totalCount={filteredEntries.length}
                             pageSize={pageSize}
                             onPageChange={setCurrentPage}
+                            onPageSizeChange={(newSize) => {
+                                setPageSize(newSize)
+                                setCurrentPage(1)
+                            }}
                             className="w-auto"
                         />
                     </div>

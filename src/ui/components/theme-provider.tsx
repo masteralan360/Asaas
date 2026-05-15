@@ -1,7 +1,9 @@
 import { createContext, useContext, useEffect, useState } from "react"
+import { isTauri } from "@/lib/platform"
+import { platformService } from "@/services/platformService"
 
 type Theme = "dark" | "light" | "system"
-type ThemeStyle = "modern" | "legacy" | "primary" | "emerald" | "neo-orange"
+type ThemeStyle = "modern" | "legacy" | "primary" | "emerald" | "neo-orange" | "low-power"
 
 type ThemeProviderProps = {
     children: React.ReactNode
@@ -60,8 +62,15 @@ export function ThemeProvider({
 
     useEffect(() => {
         const root = window.document.documentElement
-        root.classList.remove("theme-modern", "theme-legacy", "theme-primary", "theme-emerald", "theme-neo-orange")
-        root.classList.add(`theme-${style}`)
+        root.classList.remove("theme-modern", "theme-legacy", "theme-primary", "theme-emerald", "theme-neo-orange", "theme-low-power", "low-power")
+        
+        if (style === "low-power") {
+            root.classList.add("low-power")
+            // Fallback color scheme if low-power is the style
+            root.classList.add("theme-primary")
+        } else {
+            root.classList.add(`theme-${style}`)
+        }
     }, [style])
 
     const value = {
@@ -71,9 +80,28 @@ export function ThemeProvider({
             localStorage.setItem(storageKey, theme)
             setTheme(theme)
         },
-        setStyle: (style: ThemeStyle) => {
-            localStorage.setItem(styleStorageKey, style)
-            setStyle(style)
+        setStyle: async (newStyle: ThemeStyle) => {
+            const isSwitchingToLowPower = newStyle === "low-power" && style !== "low-power"
+            const isLeavingLowPower = newStyle !== "low-power" && style === "low-power"
+
+            if (isTauri() && (isSwitchingToLowPower || isLeavingLowPower)) {
+                // We'll use a standard confirm for now as we're at the root level
+                // Localization will be handled by passing message or hardcoded for now
+                const confirmed = window.confirm(
+                    isSwitchingToLowPower 
+                        ? "Relaunch the app to apply memory-saving optimizations?" 
+                        : "Relaunch the app to restore full visual effects?"
+                )
+                if (!confirmed) return
+                
+                localStorage.setItem(styleStorageKey, newStyle)
+                setStyle(newStyle)
+                await platformService.relaunch()
+                return
+            }
+
+            localStorage.setItem(styleStorageKey, newStyle)
+            setStyle(newStyle)
         },
     }
 

@@ -69,6 +69,14 @@ export function SimpleLoanListView({
     const [search, setSearch] = useState('')
     const [filter, setFilter] = useState<SimpleLoanFilter>('all')
     const [currentPage, setCurrentPage] = useState(1)
+    const [pageSize, setPageSize] = useState(() => {
+        return Number(localStorage.getItem('simple_loans_page_size')) || 10
+    })
+
+    useEffect(() => {
+        localStorage.setItem('simple_loans_page_size', String(pageSize))
+    }, [pageSize])
+
     const [viewMode, setViewMode] = useState<'table' | 'grid'>(() => {
         return (localStorage.getItem('simple_loans_view_mode') as 'table' | 'grid') || 'table'
     })
@@ -76,7 +84,6 @@ export function SimpleLoanListView({
     const [loanToDelete, setLoanToDelete] = useState<Loan | null>(null)
     const [isDeletingLoan, setIsDeletingLoan] = useState(false)
     const [showPrintPreview, setShowPrintPreview] = useState(false)
-    const pageSize = 10
 
     useEffect(() => {
         localStorage.setItem('simple_loans_view_mode', viewMode)
@@ -136,7 +143,7 @@ export function SimpleLoanListView({
     const paginated = useMemo(() => {
         const from = (currentPage - 1) * pageSize
         return filtered.slice(from, from + pageSize)
-    }, [filtered, currentPage])
+    }, [filtered, currentPage, pageSize])
     const printLang = features?.print_lang && features.print_lang !== 'auto' ? features.print_lang : i18n.language
     const buildQrValue = useCallback((effectiveId: string) => {
         if (!features.print_qr || !workspaceId || isLocalWorkspaceMode(workspaceId)) return undefined
@@ -253,65 +260,82 @@ export function SimpleLoanListView({
                         <div className="hidden md:flex items-center bg-muted/30 p-1 rounded-lg border border-border/40">
                             <Button
                                 variant="ghost"
-                                size="sm"
+                                size={filtered.length > pageSize ? "icon" : "sm"}
                                 allowViewer={true}
                                 onClick={() => setViewMode('table')}
                                 className={cn(
-                                    "h-7 px-3 font-bold uppercase text-[9px] flex items-center gap-1.5 transition-all",
+                                    filtered.length > pageSize ? "h-7 w-7" : "h-7 px-3 font-bold uppercase text-[9px] flex items-center gap-1.5",
+                                    "transition-all",
                                     viewMode === 'table'
                                         ? "bg-primary text-primary-foreground shadow-sm"
                                         : "text-muted-foreground hover:bg-background/50"
                                 )}
                             >
-                                <List className="w-3 h-3" />
-                                {t('loans.view.table') || 'Loans Details'}
+                                <List className="w-3.5 h-3.5" />
+                                {filtered.length <= pageSize && (t('loans.view.table') || 'Loans Details')}
                             </Button>
                             <Button
                                 variant="ghost"
-                                size="sm"
+                                size={filtered.length > pageSize ? "icon" : "sm"}
                                 allowViewer={true}
                                 onClick={() => setViewMode('grid')}
                                 className={cn(
-                                    "h-7 px-3 font-bold uppercase text-[9px] flex items-center gap-1.5 transition-all",
+                                    filtered.length > pageSize ? "h-7 w-7" : "h-7 px-3 font-bold uppercase text-[9px] flex items-center gap-1.5",
+                                    "transition-all",
                                     viewMode === 'grid'
                                         ? "bg-primary text-primary-foreground shadow-sm"
                                         : "text-muted-foreground hover:bg-background/50"
                                 )}
                             >
-                                <LayoutGrid className="w-3 h-3" />
-                                {t('loans.view.grid') || 'Loans Grid'}
+                                <LayoutGrid className="w-3.5 h-3.5" />
+                                {filtered.length <= pageSize && (t('loans.view.grid') || 'Loans Grid')}
                             </Button>
                         </div>
-                        <div className="flex items-center gap-1 rounded-md bg-muted/30 p-1">
-                            {(['all', 'lent', 'borrowed', 'completed'] as SimpleLoanFilter[]).map((value) => (
-                                <button
-                                    key={value}
-                                    type="button"
-                                    onClick={() => {
-                                        setCurrentPage(1)
-                                        setFilter(value)
-                                    }}
-                                    className={cn(
-                                        'rounded-md px-3 py-1.5 text-xs font-medium transition-colors',
-                                        filter === value ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-background'
-                                    )}
-                                >
-                                    {value === 'lent' || value === 'borrowed'
-                                        ? getLoanDirectionLabel(value, t)
-                                        : (t(`loans.filters.${value}`) || value)}
-                                </button>
-                            ))}
+                        <div className="flex flex-col sm:flex-row items-center gap-4">
+                            <AppPagination
+                                currentPage={currentPage}
+                                totalCount={filtered.length}
+                                pageSize={pageSize}
+                                onPageChange={setCurrentPage}
+                                onPageSizeChange={(newSize) => {
+                                    setPageSize(newSize)
+                                    setCurrentPage(1)
+                                }}
+                                className="w-auto"
+                            />
+                            <div className="flex items-center gap-1 rounded-md bg-muted/30 p-1">
+                                {(['all', 'lent', 'borrowed', 'completed'] as SimpleLoanFilter[]).map((value) => (
+                                    <button
+                                        key={value}
+                                        type="button"
+                                        onClick={() => {
+                                            setCurrentPage(1)
+                                            setFilter(value)
+                                        }}
+                                        className={cn(
+                                            'rounded-md px-3 py-1.5 text-xs font-medium transition-colors',
+                                            filter === value ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-background'
+                                        )}
+                                    >
+                                        {value === 'lent' || value === 'borrowed'
+                                            ? getLoanDirectionLabel(value, t)
+                                            : (t(`loans.filters.${value}`) || value)}
+                                    </button>
+                                ))}
+                            </div>
                         </div>
-                        <Button variant="outline" allowViewer={true} onClick={() => setShowPrintPreview(true)} className="gap-2 print:hidden">
-                            <Printer className="h-4 w-4" />
-                            {t('common.print') || 'Print'}
-                        </Button>
-                        {!isReadOnly ? (
-                            <Button onClick={() => setCreateOpen(true)} className="gap-2 print:hidden">
-                                <Plus className="h-4 w-4" />
-                                {t('loans.createSimpleLoan', { defaultValue: 'Create Simple Loan' })}
+                        <div className="flex items-center gap-2">
+                            <Button variant="outline" allowViewer={true} onClick={() => setShowPrintPreview(true)} className="gap-2 print:hidden h-10 rounded-xl px-4">
+                                <Printer className="h-4 w-4" />
+                                <span className="hidden sm:inline">{t('common.print') || 'Print'}</span>
                             </Button>
-                        ) : null}
+                            {!isReadOnly && (
+                                <Button onClick={() => setCreateOpen(true)} className="gap-2 print:hidden h-10 rounded-xl px-4">
+                                    <Plus className="h-4 w-4" />
+                                    <span>{t('loans.createSimpleLoan', { defaultValue: 'Create Simple Loan' })}</span>
+                                </Button>
+                            )}
+                        </div>
                     </div>
 
                     <div className="overflow-hidden rounded-lg border">
@@ -474,12 +498,6 @@ export function SimpleLoanListView({
                         )}
                     </div>
 
-                    <AppPagination
-                        currentPage={currentPage}
-                        totalCount={filtered.length}
-                        pageSize={pageSize}
-                        onPageChange={setCurrentPage}
-                    />
                 </CardContent>
             </Card>
 

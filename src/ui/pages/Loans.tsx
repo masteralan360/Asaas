@@ -101,6 +101,14 @@ function LoanListView({
     const [search, setSearch] = useState('')
     const [filter, setFilter] = useState<LoanFilter>('all')
     const [currentPage, setCurrentPage] = useState(1)
+    const [pageSize, setPageSize] = useState(() => {
+        return Number(localStorage.getItem('loans_page_size')) || 10
+    })
+
+    useEffect(() => {
+        localStorage.setItem('loans_page_size', String(pageSize))
+    }, [pageSize])
+
     const [viewMode, setViewMode] = useState<'table' | 'grid'>(() => {
         return (localStorage.getItem('loans_view_mode') as 'table' | 'grid') || 'table'
     })
@@ -108,11 +116,11 @@ function LoanListView({
     useEffect(() => {
         localStorage.setItem('loans_view_mode', viewMode)
     }, [viewMode])
+
     const [createOpen, setCreateOpen] = useState(false)
     const [loanToDelete, setLoanToDelete] = useState<Loan | null>(null)
     const [isDeletingLoan, setIsDeletingLoan] = useState(false)
     const [showPrintPreview, setShowPrintPreview] = useState(false)
-    const pageSize = 10
     const allLoans = useLoans(workspaceId)
     const loans = useMemo(
         () => allLoans.filter((loan) => loan.loanCategory !== 'simple'),
@@ -177,7 +185,7 @@ function LoanListView({
     const paginated = useMemo(() => {
         const from = (currentPage - 1) * pageSize
         return filtered.slice(from, from + pageSize)
-    }, [filtered, currentPage])
+    }, [filtered, currentPage, pageSize])
 
     const currency = features.default_currency || 'usd'
     const iqdPreference = features.iqd_display_preference
@@ -305,62 +313,79 @@ function LoanListView({
                         <div className="hidden md:flex items-center bg-muted/30 p-1 rounded-lg border border-border/40">
                             <Button
                                 variant="ghost"
-                                size="sm"
+                                size={filtered.length > pageSize ? "icon" : "sm"}
                                 allowViewer={true}
                                 onClick={() => setViewMode('table')}
                                 className={cn(
-                                    "h-7 px-3 font-bold uppercase text-[9px] flex items-center gap-1.5 transition-all",
+                                    filtered.length > pageSize ? "h-7 w-7" : "h-7 px-3 font-bold uppercase text-[9px] flex items-center gap-1.5",
+                                    "transition-all",
                                     viewMode === 'table'
                                         ? "bg-primary text-primary-foreground shadow-sm"
                                         : "text-muted-foreground hover:bg-background/50"
                                 )}
                             >
-                                <List className="w-3 h-3" />
-                                {t('loans.view.table')}
+                                <List className="w-3.5 h-3.5" />
+                                {filtered.length <= pageSize && t('loans.view.table')}
                             </Button>
                             <Button
                                 variant="ghost"
-                                size="sm"
+                                size={filtered.length > pageSize ? "icon" : "sm"}
                                 allowViewer={true}
                                 onClick={() => setViewMode('grid')}
                                 className={cn(
-                                    "h-7 px-3 font-bold uppercase text-[9px] flex items-center gap-1.5 transition-all",
+                                    filtered.length > pageSize ? "h-7 w-7" : "h-7 px-3 font-bold uppercase text-[9px] flex items-center gap-1.5",
+                                    "transition-all",
                                     viewMode === 'grid'
                                         ? "bg-primary text-primary-foreground shadow-sm"
                                         : "text-muted-foreground hover:bg-background/50"
                                 )}
                             >
-                                <LayoutGrid className="w-3 h-3" />
-                                {t('loans.view.grid')}
+                                <LayoutGrid className="w-3.5 h-3.5" />
+                                {filtered.length <= pageSize && t('loans.view.grid')}
                             </Button>
                         </div>
-                        <div className="flex items-center gap-1 bg-muted/30 rounded-md p-1">
-                            {(['all', 'active', 'overdue', 'completed'] as LoanFilter[]).map(value => (
-                                <button
-                                    key={value}
-                                    onClick={() => {
-                                        setCurrentPage(1)
-                                        setFilter(value)
-                                    }}
-                                    className={cn(
-                                        'px-3 py-1.5 text-xs rounded-md font-medium transition-colors',
-                                        filter === value ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-background'
-                                    )}
-                                >
-                                    {t(`loans.filters.${value}`) || value}
-                                </button>
-                            ))}
+                        <div className="flex flex-col sm:flex-row items-center gap-4">
+                            <AppPagination
+                                currentPage={currentPage}
+                                totalCount={filtered.length}
+                                pageSize={pageSize}
+                                onPageChange={setCurrentPage}
+                                onPageSizeChange={(newSize) => {
+                                    setPageSize(newSize)
+                                    setCurrentPage(1)
+                                }}
+                                className="w-auto"
+                            />
+                            <div className="flex items-center gap-1 bg-muted/30 rounded-md p-1">
+                                {(['all', 'active', 'overdue', 'completed'] as LoanFilter[]).map(value => (
+                                    <button
+                                        key={value}
+                                        onClick={() => {
+                                            setCurrentPage(1)
+                                            setFilter(value)
+                                        }}
+                                        className={cn(
+                                            'px-3 py-1.5 text-xs rounded-md font-medium transition-colors',
+                                            filter === value ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-background'
+                                        )}
+                                    >
+                                        {t(`loans.filters.${value}`) || value}
+                                    </button>
+                                ))}
+                            </div>
                         </div>
-                        <Button variant="outline" allowViewer={true} onClick={() => setShowPrintPreview(true)} className="gap-2 print:hidden">
-                            <Printer className="w-4 h-4" />
-                            {t('common.print') || 'Print'}
-                        </Button>
-                        {!isReadOnly && (
-                            <Button onClick={() => setCreateOpen(true)} className="gap-2 print:hidden">
-                                <Plus className="w-4 h-4" />
-                                {t('loans.createManualLoan') || 'Create Manual Loan'}
+                        <div className="flex items-center gap-2">
+                            <Button variant="outline" allowViewer={true} onClick={() => setShowPrintPreview(true)} className="gap-2 print:hidden h-10 rounded-xl px-4">
+                                <Printer className="w-4 h-4" />
+                                <span className="hidden sm:inline">{t('common.print') || 'Print'}</span>
                             </Button>
-                        )}
+                            {!isReadOnly && (
+                                <Button onClick={() => setCreateOpen(true)} className="gap-2 print:hidden h-10 rounded-xl px-4">
+                                    <Plus className="w-4 h-4" />
+                                    <span>{t('loans.createManualLoan') || 'Create Manual Loan'}</span>
+                                </Button>
+                            )}
+                        </div>
                     </div>
 
                     <div className="rounded-lg border overflow-hidden">
@@ -530,13 +555,6 @@ function LoanListView({
                         )}
                     </div>
 
-                    <AppPagination
-                        currentPage={currentPage}
-                        totalCount={filtered.length}
-                        pageSize={pageSize}
-                        onPageChange={setCurrentPage}
-                        className="print:hidden"
-                    />
                 </CardContent>
             </Card>
 
@@ -917,31 +935,29 @@ function LoanDetailsView({
                         <div className="hidden md:flex items-center bg-muted/30 p-1 rounded-lg border border-border/40">
                             <Button
                                 variant="ghost"
-                                size="sm"
+                                size="icon"
                                 onClick={() => setViewMode('table')}
                                 className={cn(
-                                    "h-7 px-3 font-bold uppercase text-[9px] flex items-center gap-1.5 transition-all",
+                                    "h-7 w-7 transition-all",
                                     viewMode === 'table'
                                         ? "bg-primary text-primary-foreground shadow-sm"
                                         : "text-muted-foreground hover:bg-background/50"
                                 )}
                             >
-                                <List className="w-3 h-3" />
-                                {t('loans.view.table')}
+                                <List className="w-3.5 h-3.5" />
                             </Button>
                             <Button
                                 variant="ghost"
-                                size="sm"
+                                size="icon"
                                 onClick={() => setViewMode('grid')}
                                 className={cn(
-                                    "h-7 px-3 font-bold uppercase text-[9px] flex items-center gap-1.5 transition-all",
+                                    "h-7 w-7 transition-all",
                                     viewMode === 'grid'
                                         ? "bg-primary text-primary-foreground shadow-sm"
                                         : "text-muted-foreground hover:bg-background/50"
                                 )}
                             >
-                                <LayoutGrid className="w-3 h-3" />
-                                {t('loans.view.grid')}
+                                <LayoutGrid className="w-3.5 h-3.5" />
                             </Button>
                         </div>
                     </CardHeader>

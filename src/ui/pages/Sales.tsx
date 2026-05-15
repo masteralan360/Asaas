@@ -188,7 +188,13 @@ export function Sales() {
     const [isFilterDialogOpen, setIsFilterDialogOpen] = useState(false)
     const [draftFilters, setDraftFilters] = useState<SalesFilterState>(filters)
     const [currentPage, setCurrentPage] = useState(1)
-    const pageSize = 20
+    const [pageSize, setPageSize] = useState(() => {
+        return Number(localStorage.getItem('sales_page_size')) || 20
+    })
+
+    useEffect(() => {
+        localStorage.setItem('sales_page_size', String(pageSize))
+    }, [pageSize])
 
     const [viewMode, setViewMode] = useState<'table' | 'grid'>(() => {
         return (localStorage.getItem('sales_view_mode') as 'table' | 'grid') || 'table'
@@ -1434,6 +1440,10 @@ export function Sales() {
                                 totalCount={totalCount}
                                 pageSize={pageSize}
                                 onPageChange={setCurrentPage}
+                                onPageSizeChange={(newSize) => {
+                                    setPageSize(newSize)
+                                    setCurrentPage(1)
+                                }}
                                 className="w-auto"
                             />
                             <Button

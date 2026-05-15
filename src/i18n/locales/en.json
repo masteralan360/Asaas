@@ -106,7 +106,8 @@
         "badge_fixed": "Fixed",
         "fromTeam": "From the Team",
         "yes": "Yes",
-        "no": "No"
+        "no": "No",
+        "rowsPerPage": "Rows per page"
     },
     "messages": {
         "saleCompleted": "Sale completed successfully",
@@ -1632,7 +1633,9 @@
             "modern": "Modern (Premium)",
             "legacy": "Legacy (Classic)",
             "emerald": "Emerald (Teal & Charcoal)",
-            "neo-orange": "Neo-Orange (Brutalist)",
+            "neo-orange": "Neo Orange",
+            "low-power": "Low Power (Memory Saving)",
+            "low-power-desc": "Disables animations and blurs to save memory.",
             "light": "Light",
             "dark": "Dark",
             "system": "System"

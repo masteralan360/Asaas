@@ -726,3 +726,36 @@
     @apply bg-background/40 backdrop-blur-xl border border-white/10 shadow-2xl;
   }
 }
+
+/* =========================================
+   LOW POWER MODE (Memory & GPU Saving)
+   ========================================= */
+.low-power,
+.low-power * {
+  /* Disable all animations and transitions */
+  transition: none !important;
+  animation: none !important;
+  transition-duration: 0s !important;
+  animation-duration: 0s !important;
+  
+  /* Disable resource-heavy graphical effects */
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  filter: none !important;
+  
+  /* Simplify shadows to reduce compositing work */
+  box-shadow: none !important;
+}
+
+/* Ensure glass elements remain readable without blur */
+.low-power .glass,
+.low-power .glass-card,
+.low-power [class*="glass"] {
+  @apply bg-background border-border;
+  backdrop-filter: none !important;
+}
+
+.low-power.dark .glass,
+.low-power.dark .glass-card {
+  @apply bg-card border-white/10;
+}

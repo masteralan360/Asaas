@@ -2992,7 +2992,7 @@ const ProductImage = ({ url, name, getDisplayImageUrl, className, fallbackIcon }
     }
 
     return (
-        <div className={cn("relative overflow-hidden", className)}>
+        <div className={cn("relative overflow-hidden transition-all ease-in-out", className)}>
             <img
                 src={getDisplayImageUrl(url)}
                 alt={name}

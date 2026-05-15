@@ -12,7 +12,7 @@ import { formatDate, formatDateTime, formatTime, cn, getHourDisplayPreference, s
 import { useTheme } from '@/ui/components/theme-provider'
 import { Moon, Sun, Monitor, Unlock, Server, MessageSquare, Bell, MonitorPlay, Wifi } from 'lucide-react'
 import { useState, useEffect } from 'react'
-import { isMobile, isDesktop } from '@/lib/platform'
+import { isMobile, isDesktop, isTauri } from '@/lib/platform'
 import { useExchangeRate } from '@/context/ExchangeRateContext'
 import { getAppSettingSync, setAppSetting } from '@/local-db/settings'
 import { decrypt } from '@/lib/encryption'
@@ -1210,6 +1210,17 @@ export function Settings() {
                                         >
                                             {t('settings.theme.neo-orange', 'Neo-Orange (Brutalist)')}
                                         </Button>
+                                        {isTauri() && (
+                                            <Button
+                                                variant={style === 'low-power' ? 'default' : 'outline'}
+                                                className="flex items-center gap-2 justify-center border-amber-500/50 hover:bg-amber-500/10"
+                                                allowViewer={true}
+                                                onClick={() => setStyle('low-power')}
+                                            >
+                                                <RefreshCw className={cn("w-4 h-4", style === 'low-power' && "animate-spin")} />
+                                                {t('settings.theme.low-power', 'Low Power (Memory Saving)')}
+                                            </Button>
+                                        )}
                                     </div>
                                 </div>
 

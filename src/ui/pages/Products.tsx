@@ -91,7 +91,13 @@ export function Products() {
 
     const [search, setSearch] = useState('')
     const [currentPage, setCurrentPage] = useState(1)
-    const pageSize = 20
+    const [pageSize, setPageSize] = useState(() => {
+        return Number(localStorage.getItem('products_page_size')) || 20
+    })
+
+    useEffect(() => {
+        localStorage.setItem('products_page_size', String(pageSize))
+    }, [pageSize])
     const [isCategoryDialogOpen, setIsCategoryDialogOpen] = useState(false)
     const [editingCategory, setEditingCategory] = useState<Category | null>(null)
     const [categoryFormData, setCategoryFormData] = useState(emptyCategoryFormData)
@@ -334,7 +340,7 @@ export function Products() {
 
     useEffect(() => {
         setCurrentPage(1)
-    }, [search])
+    }, [search, pageSize])
 
     const selectedProductsCount = selectedProductIds.size
     const allWorkspaceProductsSelected = products.length > 0 && selectedProductsCount === products.length
@@ -697,6 +703,10 @@ export function Products() {
                         totalCount={totalCount}
                         pageSize={pageSize}
                         onPageChange={setCurrentPage}
+                        onPageSizeChange={(newSize) => {
+                            setPageSize(newSize)
+                            setCurrentPage(1)
+                        }}
                         className="w-auto"
                     />
                 </CardHeader>

@@ -111,7 +111,13 @@ export function Revenue() {
 
     const [isExportModalOpen, setIsExportModalOpen] = useState(false)
     const [currentPage, setCurrentPage] = useState(1)
-    const itemsPerPage = 25
+    const [itemsPerPage, setItemsPerPage] = useState(() => {
+        return Number(localStorage.getItem('revenue_page_size')) || 25
+    })
+
+    useEffect(() => {
+        localStorage.setItem('revenue_page_size', String(itemsPerPage))
+    }, [itemsPerPage])
     const listRef = useRef<HTMLDivElement>(null)
 
     const categoryNameById = useMemo(
@@ -152,7 +158,7 @@ export function Revenue() {
     useEffect(() => {
         setSelectedRecordKeys(new Set())
         setCurrentPage(1)
-    }, [dateRange, customDates])
+    }, [dateRange, customDates, itemsPerPage])
 
 
     const getDateDisplay = () => {
@@ -496,7 +502,7 @@ export function Revenue() {
     const paginatedSales = useMemo(() => {
         const startIndex = (currentPage - 1) * itemsPerPage
         return stats.saleStats.slice(startIndex, startIndex + itemsPerPage)
-    }, [stats.saleStats, currentPage])
+    }, [stats.saleStats, currentPage, itemsPerPage])
 
     return (
         <TooltipProvider>
@@ -1027,6 +1033,10 @@ export function Revenue() {
                                     totalCount={stats.saleStats.length}
                                     pageSize={itemsPerPage}
                                     onPageChange={setCurrentPage}
+                                    onPageSizeChange={(newSize) => {
+                                        setItemsPerPage(newSize)
+                                        setCurrentPage(1)
+                                    }}
                                     className="w-auto"
                                 />
                                 <div className="flex items-center gap-2">
