@@ -71,6 +71,7 @@
     "@tauri-apps/plugin-fs": "^2.4.5",
     "@tauri-apps/plugin-http": "^2.5.6",
     "@tauri-apps/plugin-notification": "^2.3.3",
+    "@tauri-apps/plugin-opener": "^2.5.4",
     "@tauri-apps/plugin-process": "^2.3.1",
     "@tauri-apps/plugin-shell": "^2.3.4",
     "@tauri-apps/plugin-sql": "^2.3.2",
@@ -138,5 +139,5 @@
     "vite-plugin-pwa": "^1.2.0",
     "workbox-window": "^7.1.0"
   },
-  "min_version": "0.1.37"
+  "min_version": "0.1.39"
 }

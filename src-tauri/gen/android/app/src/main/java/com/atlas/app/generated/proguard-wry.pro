@@ -4,25 +4,25 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-License-Identifier: MIT
 
--keep class com.asaas.app.* {
+-keep class com.atlas.app.* {
   native <methods>;
 }
 
--keep class com.asaas.app.WryActivity {
+-keep class com.atlas.app.WryActivity {
   public <init>(...);
 
-  void setWebView(com.asaas.app.RustWebView);
+  void setWebView(com.atlas.app.RustWebView);
   java.lang.Class getAppClass(...);
   java.lang.String getVersion();
 }
 
--keep class com.asaas.app.Ipc {
+-keep class com.atlas.app.Ipc {
   public <init>(...);
 
   @android.webkit.JavascriptInterface public <methods>;
 }
 
--keep class com.asaas.app.RustWebView {
+-keep class com.atlas.app.RustWebView {
   public <init>(...);
 
   void loadUrlMainThread(...);
@@ -30,6 +30,6 @@
   void evalScript(...);
 }
 
--keep class com.asaas.app.RustWebChromeClient,com.asaas.app.RustWebViewClient {
+-keep class com.atlas.app.RustWebChromeClient,com.atlas.app.RustWebViewClient {
   public <init>(...);
 }

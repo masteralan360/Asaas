@@ -15,6 +15,7 @@
     "sql:allow-execute",
     "dialog:default",
     "http:default",
-    "updater:default"
+    "updater:default",
+    "opener:default"
   ]
 }

@@ -92,7 +92,7 @@ class RustWebViewClient(context: Context): WebViewClient() {
 
     companion object {
         init {
-            System.loadLibrary("asaas_lib")
+            System.loadLibrary("atlas_lib")
         }
     }
 

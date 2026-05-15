@@ -391,7 +391,6 @@ export function Settings() {
             if (isMobile()) {
                 console.log('[Settings] Android custom update check...')
                 const { getVersion } = await import('@tauri-apps/api/app')
-                const { open } = await import('@tauri-apps/plugin-shell')
 
                 const currentVersion = await getVersion()
 
@@ -411,8 +410,9 @@ export function Settings() {
                         }
 
                         if (downloadUrl) {
-                            console.log('[Settings] Opening Android APK URL automatically:', downloadUrl)
-                            await open(downloadUrl)
+                            console.log('[Settings] Opening Android APK URL via system browser:', downloadUrl)
+                            const { openUrl } = await import('@tauri-apps/plugin-opener')
+                            await openUrl(downloadUrl)
                             setUpdateStatus({ status: 'downloaded' })
                         } else {
                             console.error('[Settings] Android APK URL not found in JSON')
