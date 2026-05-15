@@ -46,7 +46,13 @@ import {
     DialogClose,
     useToast,
     Label,
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
 } from '@/ui/components'
+import { UiAccessGate } from '@/context/UiAccessContext'
 import {
     Search,
     ShoppingCart,
@@ -400,8 +406,18 @@ export function POS() {
         if (isDesktop()) setFocusedProductIndex(0);
     }, [])
 
+    const [productsPerRow, setProductsPerRow] = useState<number>(() => {
+        const saved = localStorage.getItem('pos_products_per_row')
+        return saved ? parseInt(saved, 10) : 4
+    })
+
+    useEffect(() => {
+        localStorage.setItem('pos_products_per_row', productsPerRow.toString())
+    }, [productsPerRow])
+
     // Calculate grid columns for ArrowUp/Down navigation
     const getGridColumns = () => {
+        if (!isLayoutMobile) return productsPerRow
         const width = window.innerWidth
         if (width >= 1280) return 4 // xl
         if (width >= 1024) return 3 // lg
@@ -2010,6 +2026,31 @@ export function POS() {
                                 selectedStorageId={selectedStorageId}
                                 onSelect={handleStorageSelect}
                             />
+
+                            <UiAccessGate>
+                                <div className="flex items-center gap-2 animate-in fade-in zoom-in duration-300">
+                                    <Select
+                                        value={productsPerRow.toString()}
+                                        onValueChange={(val) => setProductsPerRow(parseInt(val, 10))}
+                                    >
+                                        <SelectTrigger className="h-12 w-[140px] rounded-xl border-dashed border-primary/50 bg-primary/5 font-bold">
+                                            <div className="flex items-center gap-2">
+                                                <Menu className="w-4 h-4 text-primary" />
+                                                <SelectValue placeholder="Columns" />
+                                            </div>
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="2">2 Columns</SelectItem>
+                                            <SelectItem value="3">3 Columns</SelectItem>
+                                            <SelectItem value="4">4 Columns</SelectItem>
+                                            <SelectItem value="5">5 Columns</SelectItem>
+                                            <SelectItem value="6">6 Columns</SelectItem>
+                                            <SelectItem value="7">7 Columns</SelectItem>
+                                            <SelectItem value="8">8 Columns</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                            </UiAccessGate>
                             <div className="relative flex-1">
                                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                                 <Input
@@ -2049,7 +2090,14 @@ export function POS() {
                         </div>
 
                         <div className="flex-1 overflow-y-auto pr-2">
-                            <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                            <div
+                                className="grid gap-4"
+                                style={{
+                                    gridTemplateColumns: isLayoutMobile
+                                        ? undefined
+                                        : `repeat(${productsPerRow}, minmax(0, 1fr))`
+                                }}
+                            >
                                 {filteredProducts.map((product, index) => {
                                     const cartItem = cart.find((item) => getCartItemKey(item) === buildCartItemKey(product.id, product.storageId))
                                     const inCartQuantity = cartItem?.quantity || 0
@@ -2922,10 +2970,12 @@ interface ProductImageProps {
 
 const ProductImage = ({ url, name, getDisplayImageUrl, className, fallbackIcon }: ProductImageProps) => {
     const [error, setError] = useState(false)
+    const [isLoaded, setIsLoaded] = useState(false)
 
-    // Reset error when URL changes
+    // Reset state when URL changes
     useEffect(() => {
         setError(false)
+        setIsLoaded(false)
     }, [url])
 
     if (!url) {
@@ -2942,12 +2992,25 @@ const ProductImage = ({ url, name, getDisplayImageUrl, className, fallbackIcon }
     }
 
     return (
-        <img
-            src={getDisplayImageUrl(url)}
-            alt={name}
-            className={cn("object-cover transition-transform duration-500", className)}
-            onError={() => setError(true)}
-        />
+        <div className={cn("relative overflow-hidden", className)}>
+            <img
+                src={getDisplayImageUrl(url)}
+                alt={name}
+                loading="lazy"
+                decoding="async"
+                className={cn(
+                    "object-cover transition-all w-full h-full",
+                    isLoaded ? "opacity-100 scale-100 blur-0" : "opacity-0 scale-105 blur-sm"
+                )}
+                onLoad={() => setIsLoaded(true)}
+                onError={() => setError(true)}
+            />
+            {!isLoaded && (
+                <div className="absolute inset-0 flex items-center justify-center bg-muted/10 animate-pulse">
+                    {fallbackIcon || <Zap className="w-6 h-6 opacity-5" />}
+                </div>
+            )}
+        </div>
     )
 }
 

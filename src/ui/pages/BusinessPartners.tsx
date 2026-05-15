@@ -40,6 +40,7 @@ import {
 } from '@/ui/components'
 import { DeleteConfirmationModal } from '@/ui/components/DeleteConfirmationModal'
 import { BusinessPartnerFormDialog, type BusinessPartnerFormPayload } from '@/ui/components/crm/BusinessPartnerFormDialog'
+import { UiAccessGate } from '@/context/UiAccessContext'
 
 function roleLabel(role: BusinessPartnerRole, t: (key: string, options?: Record<string, unknown>) => string) {
     switch (role) {
@@ -300,23 +301,25 @@ export function BusinessPartners() {
                     </TabsList>
 
                     <div className="flex w-full flex-col gap-3 lg:max-w-2xl lg:flex-row lg:items-center lg:justify-end">
-                        <div className="flex items-center justify-between gap-3 rounded-2xl border border-border/60 bg-background/60 px-4 py-3">
-                            <div className="space-y-0.5">
-                                <div className="text-sm font-medium">
-                                    {t('businessPartners.showEcommerce', { defaultValue: 'Show E-Commerce profiles' })}
+                        <UiAccessGate>
+                            <div className="flex items-center justify-between gap-3 rounded-2xl border border-border/60 bg-background/60 px-4 py-3">
+                                <div className="space-y-0.5">
+                                    <div className="text-sm font-medium">
+                                        {t('businessPartners.showEcommerce', { defaultValue: 'Show E-Commerce profiles' })}
+                                    </div>
+                                    <div className="text-xs text-muted-foreground">
+                                        {showEcommercePartners
+                                            ? t('businessPartners.showEcommerceVisible', { defaultValue: 'E-Commerce profiles are visible in this module.' })
+                                            : t('businessPartners.showEcommerceHidden', { defaultValue: 'E-Commerce profiles are hidden from this module.' })}
+                                    </div>
                                 </div>
-                                <div className="text-xs text-muted-foreground">
-                                    {showEcommercePartners
-                                        ? t('businessPartners.showEcommerceVisible', { defaultValue: 'E-Commerce profiles are visible in this module.' })
-                                        : t('businessPartners.showEcommerceHidden', { defaultValue: 'E-Commerce profiles are hidden from this module.' })}
-                                </div>
+                                <Switch
+                                    checked={showEcommercePartners}
+                                    onCheckedChange={setShowEcommercePartners}
+                                    allowViewer={true}
+                                />
                             </div>
-                            <Switch
-                                checked={showEcommercePartners}
-                                onCheckedChange={setShowEcommercePartners}
-                                allowViewer={true}
-                            />
-                        </div>
+                        </UiAccessGate>
                         <div className="relative w-full max-w-sm">
                             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                             <Input

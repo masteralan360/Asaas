@@ -32,6 +32,7 @@ import {
 } from '@/ui/components'
 import { DeleteConfirmationModal } from '@/ui/components/DeleteConfirmationModal'
 import { BusinessPartnerFormDialog, type BusinessPartnerFormPayload } from '@/ui/components/crm/BusinessPartnerFormDialog'
+import { UiAccessGate } from '@/context/UiAccessContext'
 
 export function Customers() {
     const { t } = useTranslation()
@@ -170,23 +171,25 @@ export function Customers() {
                 <CardHeader className="gap-4 lg:flex-row lg:items-center lg:justify-between">
                     <CardTitle>{t('customers.title') || 'Customers'}</CardTitle>
                     <div className="flex w-full flex-col gap-3 lg:max-w-xl lg:flex-row lg:items-center lg:justify-end">
-                        <div className="flex items-center justify-between gap-3 rounded-2xl border border-border/60 bg-background/60 px-4 py-3">
-                            <div className="space-y-0.5">
-                                <div className="text-sm font-medium">
-                                    {t('customers.showEcommerce', { defaultValue: 'Show E-Commerce buyers' })}
+                        <UiAccessGate>
+                            <div className="flex items-center justify-between gap-3 rounded-2xl border border-border/60 bg-background/60 px-4 py-3">
+                                <div className="space-y-0.5">
+                                    <div className="text-sm font-medium">
+                                        {t('customers.showEcommerce', { defaultValue: 'Show E-Commerce buyers' })}
+                                    </div>
+                                    <div className="text-xs text-muted-foreground">
+                                        {showEcommerceCustomers
+                                            ? t('customers.showEcommerceVisible', { defaultValue: 'E-Commerce buyers are visible in this module.' })
+                                            : t('customers.showEcommerceHidden', { defaultValue: 'E-Commerce buyers are hidden from this module.' })}
+                                    </div>
                                 </div>
-                                <div className="text-xs text-muted-foreground">
-                                    {showEcommerceCustomers
-                                        ? t('customers.showEcommerceVisible', { defaultValue: 'E-Commerce buyers are visible in this module.' })
-                                        : t('customers.showEcommerceHidden', { defaultValue: 'E-Commerce buyers are hidden from this module.' })}
-                                </div>
+                                <Switch
+                                    checked={showEcommerceCustomers}
+                                    onCheckedChange={setShowEcommerceCustomers}
+                                    allowViewer={true}
+                                />
                             </div>
-                            <Switch
-                                checked={showEcommerceCustomers}
-                                onCheckedChange={setShowEcommerceCustomers}
-                                allowViewer={true}
-                            />
-                        </div>
+                        </UiAccessGate>
                         <div className="relative w-full max-w-sm">
                             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                             <Input
