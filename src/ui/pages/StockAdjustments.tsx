@@ -24,6 +24,7 @@ import {
   useStockAdjustments,
   useStockBatches,
   useStorages,
+  type CurrencyCode,
   type InventoryTransaction,
   type StockAdjustmentReason,
   type StockAdjustmentType,
@@ -31,6 +32,7 @@ import {
 } from "@/local-db";
 import {
   cn,
+  formatCurrency,
   formatDate,
   formatDateTime,
   formatLocalDateValue,
@@ -46,6 +48,7 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
+  CurrencySelector,
   DateTimePicker,
   DeleteConfirmationModal,
   Dialog,
@@ -85,6 +88,9 @@ type BatchFormState = {
   storageId: string;
   batchNumber: string;
   quantity: string;
+  price: string;
+  costPrice: string;
+  currency: CurrencyCode;
   expiryDate: string;
   manufacturingDate: string;
   notes: string;
@@ -117,6 +123,9 @@ const emptyBatchForm: BatchFormState = {
   storageId: "",
   batchNumber: "",
   quantity: "",
+  price: "",
+  costPrice: "",
+  currency: "usd",
   expiryDate: "",
   manufacturingDate: "",
   notes: "",
@@ -341,6 +350,20 @@ export function StockAdjustments() {
   const batchInventoryQuantity = batchSelectionKey
     ? (inventoryByKey.get(batchSelectionKey) ?? 0)
     : null;
+  const batchPriceValue =
+    batchForm.price === "" ? null : parseFormattedNumber(batchForm.price);
+  const batchCostPriceValue =
+    batchForm.costPrice === ""
+      ? null
+      : parseFormattedNumber(batchForm.costPrice);
+  const selectedBatchProduct = batchForm.productId
+    ? productsById.get(batchForm.productId)
+    : null;
+  const batchUsesCustomPricing =
+    !!selectedBatchProduct &&
+    (selectedBatchProduct.price !== batchPriceValue ||
+      selectedBatchProduct.costPrice !== batchCostPriceValue ||
+      selectedBatchProduct.currency !== batchForm.currency);
 
   useEffect(() => {
     if (!adjustmentDialogOpen) {
@@ -447,7 +470,13 @@ export function StockAdjustments() {
     !!batchForm.storageId &&
     !!batchForm.batchNumber.trim() &&
     Number.isInteger(parseFormattedNumber(batchForm.quantity || "")) &&
-    parseFormattedNumber(batchForm.quantity || "") > 0;
+    parseFormattedNumber(batchForm.quantity || "") > 0 &&
+    batchPriceValue !== null &&
+    Number.isFinite(batchPriceValue) &&
+    batchPriceValue >= 0 &&
+    batchCostPriceValue !== null &&
+    Number.isFinite(batchCostPriceValue) &&
+    batchCostPriceValue >= 0;
 
   const resetAdjustmentForm = () => {
     setAdjustmentForm(emptyAdjustmentForm);
@@ -511,6 +540,9 @@ export function StockAdjustments() {
         storageId: batchForm.storageId,
         batchNumber: batchForm.batchNumber,
         quantity: parseFormattedNumber(batchForm.quantity),
+        price: parseFormattedNumber(batchForm.price),
+        costPrice: parseFormattedNumber(batchForm.costPrice),
+        currency: batchForm.currency,
         expiryDate: batchForm.expiryDate || null,
         manufacturingDate: batchForm.manufacturingDate || null,
         notes: batchForm.notes,
@@ -928,6 +960,14 @@ export function StockAdjustments() {
                       <div className="mt-4 space-y-3">
                         {group.rows.map((batch) => {
                           const expiryBadge = getExpiryBadge(batch.expiryDate);
+                          const productDefaults = productsById.get(
+                            batch.productId,
+                          );
+                          const hasCustomPricing =
+                            !!productDefaults &&
+                            (batch.price !== productDefaults.price ||
+                              batch.costPrice !== productDefaults.costPrice ||
+                              batch.currency !== productDefaults.currency);
                           return (
                             <div
                               key={batch.id}
@@ -951,6 +991,30 @@ export function StockAdjustments() {
                                       {expiryBadge.label}
                                     </span>
                                   )}
+                                  {hasCustomPricing && (
+                                    <span className="rounded-full border border-sky-500/20 bg-sky-500/10 px-2 py-0.5 text-xs font-semibold text-sky-700">
+                                      Custom pricing
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="flex flex-wrap gap-2 text-sm">
+                                  <span className="rounded-full border border-border/60 bg-background px-2.5 py-1 font-semibold">
+                                    Sell{" "}
+                                    {formatCurrency(
+                                      batch.price,
+                                      batch.currency,
+                                    )}
+                                  </span>
+                                  <span className="rounded-full border border-border/60 bg-background px-2.5 py-1 font-semibold">
+                                    Cost{" "}
+                                    {formatCurrency(
+                                      batch.costPrice,
+                                      batch.currency,
+                                    )}
+                                  </span>
+                                  <span className="rounded-full border border-border/60 bg-background px-2.5 py-1 font-semibold uppercase text-muted-foreground">
+                                    {batch.currency}
+                                  </span>
                                 </div>
                                 <div className="text-sm text-muted-foreground">
                                   {batch.manufacturingDate
@@ -978,6 +1042,20 @@ export function StockAdjustments() {
                                         storageId: batch.storageId,
                                         batchNumber: batch.batchNumber,
                                         quantity: String(batch.quantity),
+                                        price: String(
+                                          batch.price ??
+                                            productDefaults?.price ??
+                                            0,
+                                        ),
+                                        costPrice: String(
+                                          batch.costPrice ??
+                                            productDefaults?.costPrice ??
+                                            0,
+                                        ),
+                                        currency:
+                                          batch.currency ??
+                                          productDefaults?.currency ??
+                                          "usd",
                                         expiryDate: batch.expiryDate || "",
                                         manufacturingDate:
                                           batch.manufacturingDate || "",
@@ -1239,8 +1317,9 @@ export function StockAdjustments() {
               {batchForm.id ? "Edit Stock Batch" : "New Stock Batch"}
             </DialogTitle>
             <DialogDescription>
-              Track the batch quantity for one storage and keep optional
-              manufacturing and expiry dates attached to it.
+              Track the batch quantity, dates, and pricing snapshot for one
+              storage. Product pricing is loaded by default and can be
+              overridden for this batch.
             </DialogDescription>
           </DialogHeader>
           <form
@@ -1261,14 +1340,22 @@ export function StockAdjustments() {
                 </div>
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">
-                    <Label>Product</Label>
+                    <Label>Product <span className="text-destructive">*</span></Label>
                     <Select
                       value={batchForm.productId}
                       onValueChange={(value) =>
-                        setBatchForm((current) => ({
-                          ...current,
-                          productId: value,
-                        }))
+                        setBatchForm((current) => {
+                          const product = productsById.get(value);
+                          return {
+                            ...current,
+                            productId: value,
+                            price: product ? String(product.price ?? 0) : "",
+                            costPrice: product
+                              ? String(product.costPrice ?? 0)
+                              : "",
+                            currency: product?.currency ?? "usd",
+                          };
+                        })
                       }
                     >
                       <SelectTrigger className="rounded-xl">
@@ -1284,7 +1371,7 @@ export function StockAdjustments() {
                     </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label>Storage</Label>
+                    <Label>Storage <span className="text-destructive">*</span></Label>
                     <Select
                       value={batchForm.storageId}
                       onValueChange={(value) =>
@@ -1309,7 +1396,7 @@ export function StockAdjustments() {
                 </div>
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">
-                    <Label htmlFor="batch-number">Batch / Lot Number</Label>
+                    <Label htmlFor="batch-number">Batch / Lot Number <span className="text-destructive">*</span></Label>
                     <Input
                       id="batch-number"
                       value={batchForm.batchNumber}
@@ -1324,7 +1411,7 @@ export function StockAdjustments() {
                   </div>
                   <div className="grid gap-2">
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                      <Label htmlFor="batch-quantity">Quantity</Label>
+                      <Label htmlFor="batch-quantity">Quantity <span className="text-destructive">*</span></Label>
                       {batchInventoryQuantity !== null ? (
                         <span className="text-xs text-muted-foreground">
                           Inventory available{" "}
@@ -1348,6 +1435,86 @@ export function StockAdjustments() {
                       }
                     />
                   </div>
+                </div>
+                <div className="grid gap-4 md:grid-cols-3">
+                  <div className="grid gap-2">
+                    <Label htmlFor="batch-price">Batch price <span className="text-destructive">*</span></Label>
+                    <Input
+                      id="batch-price"
+                      type="text"
+                      inputMode="decimal"
+                      placeholder="0.00"
+                      value={formatNumericInput(batchForm.price)}
+                      onChange={(event) =>
+                        setBatchForm((current) => ({
+                          ...current,
+                          price: sanitizeNumericInput(event.target.value),
+                        }))
+                      }
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="batch-cost-price">Batch cost <span className="text-destructive">*</span></Label>
+                    <Input
+                      id="batch-cost-price"
+                      type="text"
+                      inputMode="decimal"
+                      placeholder="0.00"
+                      value={formatNumericInput(batchForm.costPrice)}
+                      onChange={(event) =>
+                        setBatchForm((current) => ({
+                          ...current,
+                          costPrice: sanitizeNumericInput(event.target.value),
+                        }))
+                      }
+                    />
+                  </div>
+                  <CurrencySelector
+                    label="Currency"
+                    value={batchForm.currency}
+                    onChange={(value) =>
+                      setBatchForm((current) => ({
+                        ...current,
+                        currency: value,
+                      }))
+                    }
+                  />
+                </div>
+                <div className="rounded-2xl border border-dashed border-border/60 bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
+                  {selectedBatchProduct ? (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span>
+                        Product default:
+                        {" "}
+                        {formatCurrency(
+                          selectedBatchProduct.price,
+                          selectedBatchProduct.currency,
+                        )}
+                      </span>
+                      <span>
+                        Cost
+                        {" "}
+                        {formatCurrency(
+                          selectedBatchProduct.costPrice,
+                          selectedBatchProduct.currency,
+                        )}
+                      </span>
+                      <span className="uppercase">
+                        {selectedBatchProduct.currency}
+                      </span>
+                      {batchUsesCustomPricing ? (
+                        <span className="rounded-full border border-sky-500/20 bg-sky-500/10 px-2 py-0.5 text-xs font-semibold text-sky-700">
+                          Batch override active
+                        </span>
+                      ) : (
+                        <span className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 text-xs font-semibold text-emerald-700">
+                          Using product defaults
+                        </span>
+                      )}
+                    </div>
+                  ) : (
+                    "Select a product to load its default price, cost, and currency."
+                  )}
                 </div>
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">

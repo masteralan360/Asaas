@@ -16,7 +16,8 @@ export function ThemeAwareLogo({ className }: ThemeAwareLogoProps) {
             emerald: { dark: '#1ACBB1', light: '#1ACBB1' }, // Emerald / Teal (Light color used in both)
             'neo-orange': { dark: '#f97316', light: '#ea580c' }, // Orange
             legacy: { dark: '#3b82f6', light: '#3b82f6' }, // Indigo / Blue
-            primary: { dark: '#ffffff', light: '#0f172a' }  // White / Dark Slate
+            primary: { dark: '#ffffff', light: '#0f172a' },  // White / Dark Slate
+            'low-power': { dark: '#ffffff', light: '#0f172a' }
         }
 
         const currentStyle = colors[style] || colors.primary

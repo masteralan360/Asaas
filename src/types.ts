@@ -20,6 +20,9 @@ export interface SaleItem {
         batch_id: string
         batch_number: string
         quantity: number
+        price?: number | null
+        cost_price?: number | null
+        currency?: string | null
         expiry_date?: string | null
         manufacturing_date?: string | null
     }[] | null

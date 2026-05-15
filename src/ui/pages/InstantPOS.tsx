@@ -917,6 +917,9 @@ export function InstantPOS() {
                         batch_id: allocation.batchId,
                         batch_number: allocation.batchNumber,
                         quantity: allocation.quantity,
+                        price: allocation.price ?? null,
+                        cost_price: allocation.costPrice ?? null,
+                        currency: allocation.currency ?? null,
                         expiry_date: allocation.expiryDate ?? null,
                         manufacturing_date: allocation.manufacturingDate ?? null
                     }))
@@ -1077,6 +1080,9 @@ export function InstantPOS() {
                                 batchId: allocation.batch_id,
                                 batchNumber: allocation.batch_number,
                                 quantity: allocation.quantity,
+                                price: allocation.price ?? null,
+                                costPrice: allocation.cost_price ?? null,
+                                currency: allocation.currency ?? null,
                                 expiryDate: allocation.expiry_date ?? null,
                                 manufacturingDate: allocation.manufacturing_date ?? null
                             }))

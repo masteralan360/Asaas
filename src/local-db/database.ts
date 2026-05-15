@@ -57,6 +57,8 @@ const STOCK_ADJUSTMENT_REASONS = [
   "other",
 ] as const;
 
+const SUPPORTED_CURRENCIES = ["usd", "eur", "iqd", "try"] as const;
+
 function getStringValue(
   record: Record<string, unknown> | undefined,
   key: string,
@@ -93,6 +95,20 @@ function getBooleanValue(
 ) {
   const value = record?.[key];
   return typeof value === "boolean" ? value : fallback;
+}
+
+function getCurrencyCodeValue(
+  record: Record<string, unknown> | undefined,
+  key: string,
+  fallback: (typeof SUPPORTED_CURRENCIES)[number],
+) {
+  const value = getStringValue(record, key)?.toLowerCase();
+  return value &&
+    SUPPORTED_CURRENCIES.includes(
+      value as (typeof SUPPORTED_CURRENCIES)[number],
+    )
+    ? (value as (typeof SUPPORTED_CURRENCIES)[number])
+    : fallback;
 }
 
 function getAdjustmentReason(record: Record<string, unknown> | undefined) {
@@ -2021,6 +2037,55 @@ export class AtlasDatabase extends Dexie {
         }
 
         await tx.table("storages").bulkPut(storageRows);
+      });
+
+    this.version(57)
+      .stores({
+        stock_batches:
+          "id, workspaceId, productId, storageId, batchNumber, expiryDate, isDeleted, [workspaceId+productId], [productId+storageId]",
+      })
+      .upgrade(async (tx) => {
+        const [batchRows, productRows] = await Promise.all([
+          tx.table("stock_batches").toArray() as Promise<
+            Array<Record<string, unknown>>
+          >,
+          tx.table("products").toArray() as Promise<
+            Array<Record<string, unknown>>
+          >,
+        ]);
+
+        if (batchRows.length === 0) {
+          return;
+        }
+
+        const productById = new Map<string, Record<string, unknown>>();
+        for (const productRow of productRows) {
+          const productId = getStringValue(productRow, "id");
+          if (productId) {
+            productById.set(productId, productRow);
+          }
+        }
+
+        for (const batchRow of batchRows) {
+          const product = productById.get(getStringValue(batchRow, "productId") ?? "");
+          batchRow.price = getNumberValue(
+            batchRow,
+            "price",
+            getNumberValue(product, "price", 0),
+          );
+          batchRow.costPrice = getNumberValue(
+            batchRow,
+            "costPrice",
+            getNumberValue(product, "costPrice", 0),
+          );
+          batchRow.currency = getCurrencyCodeValue(
+            batchRow,
+            "currency",
+            getCurrencyCodeValue(product, "currency", "usd"),
+          );
+        }
+
+        await tx.table("stock_batches").bulkPut(batchRows);
       });
 
     this.registerLocalModeSyncHooks();

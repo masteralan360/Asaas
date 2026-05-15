@@ -15,6 +15,7 @@ import {
     useCategories,
     useWorkspaceProductBarcodes,
     useStorages,
+    type BatchAwareInventoryProduct,
     type Category,
     type CurrencyCode,
     type InventoryProduct
@@ -140,6 +141,49 @@ function formatDiscountBadge(
     }
 
     return `-${formatCurrency(discount.discountValue, currency, iqdPreference)}`
+}
+
+function getBatchExpiryStatus(expiryDate?: string | null) {
+    if (!expiryDate) {
+        return 'none' as const
+    }
+
+    const expiryTime = new Date(`${expiryDate}T00:00:00`).getTime()
+    if (Number.isNaN(expiryTime)) {
+        return 'none' as const
+    }
+
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const thirtyDaysFromNow = new Date(today)
+    thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30)
+
+    if (expiryTime < today.getTime()) {
+        return 'expired' as const
+    }
+
+    if (expiryTime <= thirtyDaysFromNow.getTime()) {
+        return 'soon' as const
+    }
+
+    return 'fresh' as const
+}
+
+function formatBatchExpiryDate(expiryDate?: string | null) {
+    if (!expiryDate) {
+        return 'No expiry'
+    }
+
+    const parsed = new Date(`${expiryDate}T00:00:00`)
+    if (Number.isNaN(parsed.getTime())) {
+        return expiryDate
+    }
+
+    return new Intl.DateTimeFormat(undefined, {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric'
+    }).format(parsed)
 }
 
 type EditableScanElement = HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | HTMLElement
@@ -1583,6 +1627,9 @@ export function POS() {
                         batch_id: allocation.batchId,
                         batch_number: allocation.batchNumber,
                         quantity: allocation.quantity,
+                        price: allocation.price ?? null,
+                        cost_price: allocation.costPrice ?? null,
+                        currency: allocation.currency ?? null,
                         expiry_date: allocation.expiryDate ?? null,
                         manufacturing_date: allocation.manufacturingDate ?? null
                     }))
@@ -1794,6 +1841,9 @@ export function POS() {
                                 batchId: allocation.batch_id,
                                 batchNumber: allocation.batch_number,
                                 quantity: allocation.quantity,
+                                price: allocation.price ?? null,
+                                costPrice: allocation.cost_price ?? null,
+                                currency: allocation.currency ?? null,
                                 expiryDate: allocation.expiry_date ?? null,
                                 manufacturingDate: allocation.manufacturing_date ?? null
                             }))
@@ -2116,6 +2166,7 @@ export function POS() {
                                             disabled={remainingQuantity <= 0}
                                             className={cn(
                                                 "group relative bg-card hover:bg-accent/5 rounded-[1.5rem] border border-border/50 p-4 transition-all duration-300 hover:shadow-2xl hover:shadow-primary/5 hover:-translate-y-1 flex flex-col gap-4 overflow-hidden text-left outline-none",
+                                                product.hasBatches && "border-sky-300/70 bg-gradient-to-br from-sky-50/70 via-card to-card shadow-[0_10px_30px_rgba(14,165,233,0.08)] dark:border-sky-500/25 dark:from-sky-500/10",
                                                 remainingQuantity <= 0 ? 'opacity-60 cursor-not-allowed' : '',
                                                 // Keyboard focus highlight (Electron only)
                                                 (isElectron && focusedSection === 'grid' && focusedProductIndex === index) ? "ring-2 ring-primary ring-offset-2 ring-offset-background scale-[1.02] shadow-lg z-10 box-shadow-[0_0_0_2px_hsl(var(--primary))]" : ""
@@ -2156,12 +2207,30 @@ export function POS() {
                                                         {formatDiscountBadge(activeDiscount, product.currency, features.iqd_display_preference)}
                                                     </div>
                                                 )}
+
+                                                {product.hasBatches && product.nextBatchNumber && (
+                                                    <div className={cn(
+                                                        "absolute bottom-2 right-2 rounded-2xl px-2.5 py-1 text-[9px] font-black shadow-md z-10 backdrop-blur-md truncate",
+                                                        getBatchExpiryStatus(product.nextBatchExpiryDate) === 'expired'
+                                                            ? "bg-rose-500/90 text-white border border-rose-400/50"
+                                                            : getBatchExpiryStatus(product.nextBatchExpiryDate) === 'soon'
+                                                                ? "bg-amber-400/90 text-amber-950 border border-amber-300/50"
+                                                                : "bg-background/80 text-sky-700 dark:text-sky-300 border border-border/50"
+                                                    )}>
+                                                        EXP {formatBatchExpiryDate(product.nextBatchExpiryDate)}
+                                                    </div>
+                                                )}
                                             </div>
 
                                             {/* Product Info */}
-                                            <div className="flex-1 space-y-1">
-                                                <div className="text-[10px] font-mono font-bold text-muted-foreground uppercase tracking-widest opacity-60">
-                                                    {product.sku}
+                                            <div className="flex-1 space-y-2 flex flex-col">
+                                                <div className="flex items-center justify-between text-[10px] font-mono font-bold text-muted-foreground uppercase tracking-widest opacity-60 gap-2">
+                                                    <span className="truncate">{product.sku}</span>
+                                                    {product.hasBatches && product.nextBatchNumber && (
+                                                        <span className="text-secondary-foreground/80 shrink-0">
+                                                            BATCH {product.nextBatchNumber}
+                                                        </span>
+                                                    )}
                                                 </div>
                                                 <h3 className="font-bold text-foreground text-sm line-clamp-2 leading-snug group-hover:text-primary transition-colors">
                                                     {product.name}
@@ -3014,6 +3083,7 @@ const ProductImage = ({ url, name, getDisplayImageUrl, className, fallbackIcon }
     )
 }
 
+
 // --- Mobile UI Components ---
 
 interface MobileHeaderProps {
@@ -3199,7 +3269,7 @@ interface MobileGridProps {
     setIsSkuModalOpen: (o: boolean) => void
     setIsBarcodeModalOpen: (o: boolean) => void
     isDeviceScannerAutoEnabled: boolean
-    filteredProducts: InventoryProduct[]
+    filteredProducts: BatchAwareInventoryProduct[]
     cart: CartItem[]
     addToCart: (p: InventoryProduct) => void
     updateQuantity: (itemKey: string, d: number) => void
@@ -3299,7 +3369,10 @@ function MobileGrid({ t, search, setSearch, setIsSkuModalOpen, setIsBarcodeModal
                     return (
                         <div
                             key={product.id}
-                            className="bg-card rounded-[2rem] border border-border p-3 shadow-sm flex flex-col gap-3 group active:scale-[0.98] transition-all"
+                            className={cn(
+                                "bg-card rounded-[2rem] border border-border p-3 shadow-sm flex flex-col gap-3 group active:scale-[0.98] transition-all",
+                                product.hasBatches && "border-sky-300/70 bg-gradient-to-br from-sky-50/70 via-card to-card shadow-[0_10px_30px_rgba(14,165,233,0.08)] dark:border-sky-500/25 dark:from-sky-500/10"
+                            )}
                             onClick={(e) => {
                                 if ((e.target as HTMLElement).closest('button')) return;
                                 if (remainingQuantity > 0) addToCart(product);
@@ -3340,14 +3413,32 @@ function MobileGrid({ t, search, setSearch, setIsSkuModalOpen, setIsBarcodeModal
                                     </div>
                                 )}
 
+                                {product.hasBatches && product.nextBatchNumber && (
+                                    <div className={cn(
+                                        "absolute bottom-2 right-2 rounded-xl px-2 py-1 text-[9px] font-black shadow-sm z-10 backdrop-blur-md truncate",
+                                        getBatchExpiryStatus(product.nextBatchExpiryDate) === 'expired'
+                                            ? "bg-rose-500/90 text-white border border-rose-400/50"
+                                            : getBatchExpiryStatus(product.nextBatchExpiryDate) === 'soon'
+                                                ? "bg-amber-400/90 text-amber-950 border border-amber-300/50"
+                                                : "bg-background/80 text-sky-700 dark:text-sky-300 border border-border/50"
+                                    )}>
+                                        EXP {formatBatchExpiryDate(product.nextBatchExpiryDate)}
+                                    </div>
+                                )}
+
                                 {remainingQuantity <= 0 && (
                                     <div className="absolute inset-0 bg-background/60 backdrop-blur-[2px] flex items-center justify-center text-xs font-bold text-destructive">
                                         {t('pos.outOfStock') || 'Out of stock'}
                                     </div>
                                 )}
                             </div>
-                            <div className="flex flex-col gap-1 px-1">
+                            <div className="flex flex-col gap-2 px-1">
                                 <h3 className="font-bold text-sm line-clamp-1">{product.name}</h3>
+                                {product.hasBatches && product.nextBatchNumber && (
+                                    <div className="text-[10px] font-mono font-bold text-secondary-foreground/80 uppercase tracking-widest truncate -mt-1">
+                                        BATCH {product.nextBatchNumber}
+                                    </div>
+                                )}
                                 {activeDiscount ? (
                                     <div className="space-y-0.5">
                                         <div className="text-[11px] font-semibold text-muted-foreground line-through">

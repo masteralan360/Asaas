@@ -11,7 +11,7 @@ import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
 import { db } from './database'
 import { getInventoryQuantityForProductStorage, useInventoryProducts, type InventoryProduct } from './inventory'
 import { addToOfflineMutations } from './offlineMutations'
-import type { StockBatch, StockBatchAllocation } from './models'
+import type { CurrencyCode, StockBatch, StockBatchAllocation } from './models'
 
 const TABLE_NAME = 'stock_batches'
 
@@ -20,6 +20,9 @@ export interface StockBatchInput {
     storageId: string
     batchNumber: string
     quantity: number
+    price?: number
+    costPrice?: number
+    currency?: CurrencyCode
     expiryDate?: string | null
     manufacturingDate?: string | null
     notes?: string | null
@@ -40,6 +43,19 @@ export interface StockBatchSalePlan {
     sellableQuantity: number
     allocations: StockBatchAllocation[]
 }
+
+export type BatchAwareInventoryProduct = InventoryProduct & {
+    hasBatches: boolean
+    batchCount: number
+    nextBatchNumber: string | null
+    nextBatchExpiryDate: string | null
+    nextBatchQuantity: number | null
+    nextBatchPrice?: number | null
+    nextBatchCostPrice?: number | null
+    nextBatchCurrency?: CurrencyCode | null
+}
+
+const SUPPORTED_CURRENCIES = new Set<CurrencyCode>(['usd', 'eur', 'iqd', 'try'])
 
 function shouldUseCloudBusinessData(workspaceId?: string | null) {
     return !!workspaceId && !isLocalWorkspaceMode(workspaceId)
@@ -88,6 +104,29 @@ function normalizeDateString(value?: string | null) {
     }
 
     return normalized
+}
+
+function normalizeCurrencyCode(
+    value: unknown,
+    fallback: CurrencyCode = 'usd'
+): CurrencyCode {
+    if (typeof value !== 'string') {
+        return fallback
+    }
+
+    const normalized = value.trim().toLowerCase()
+    return SUPPORTED_CURRENCIES.has(normalized as CurrencyCode)
+        ? (normalized as CurrencyCode)
+        : fallback
+}
+
+function normalizeMoneyValue(value: unknown, fieldLabel: string) {
+    const amount = Number(value)
+    if (!Number.isFinite(amount) || amount < 0) {
+        throw new Error(`${fieldLabel} must be zero or greater`)
+    }
+
+    return amount
 }
 
 function compareOptionalDate(left?: string | null, right?: string | null) {
@@ -152,6 +191,15 @@ function normalizeAllocationList(allocations: StockBatchAllocation[]) {
             batchId,
             batchNumber,
             quantity: (existing?.quantity || 0) + quantity,
+            price: allocation.price == null
+                ? (existing?.price ?? null)
+                : normalizeMoneyValue(allocation.price, 'Batch allocation price'),
+            costPrice: allocation.costPrice == null
+                ? (existing?.costPrice ?? null)
+                : normalizeMoneyValue(allocation.costPrice, 'Batch allocation cost'),
+            currency: allocation.currency == null
+                ? (existing?.currency ?? null)
+                : normalizeCurrencyCode(allocation.currency, existing?.currency ?? 'usd'),
             expiryDate: allocation.expiryDate ?? existing?.expiryDate ?? null,
             manufacturingDate: allocation.manufacturingDate ?? existing?.manufacturingDate ?? null
         })
@@ -169,7 +217,36 @@ function getSellableQuantity(inventoryQuantity: number, batches: StockBatch[]) {
     return Math.max(0, Math.min(inventoryQuantity, batchQuantity))
 }
 
-function normalizeBatchInput(input: StockBatchInput) {
+async function getProductBatchDefaults(
+    productId: string,
+    options?: {
+        allowMissing?: boolean
+    }
+) {
+    const product = await db.products.get(productId)
+    if (!product || product.isDeleted) {
+        if (options?.allowMissing) {
+            return {
+                price: 0,
+                costPrice: 0,
+                currency: 'usd' as CurrencyCode
+            }
+        }
+
+        throw new Error('Product not found')
+    }
+
+    return {
+        price: normalizeMoneyValue(product.price, 'Batch price'),
+        costPrice: normalizeMoneyValue(product.costPrice, 'Batch cost'),
+        currency: normalizeCurrencyCode(product.currency, 'usd')
+    }
+}
+
+async function normalizeBatchInput(
+    input: StockBatchInput,
+    existing?: Partial<StockBatch>
+) {
     const productId = input.productId.trim()
     const storageId = input.storageId.trim()
     const batchNumber = input.batchNumber.trim()
@@ -191,11 +268,25 @@ function normalizeBatchInput(input: StockBatchInput) {
         throw new Error('Batch quantity must be a whole number greater than zero')
     }
 
+    const productDefaults = await getProductBatchDefaults(productId)
+
     return {
         productId,
         storageId,
         batchNumber,
         quantity,
+        price: normalizeMoneyValue(
+            input.price ?? existing?.price ?? productDefaults.price,
+            'Batch price'
+        ),
+        costPrice: normalizeMoneyValue(
+            input.costPrice ?? existing?.costPrice ?? productDefaults.costPrice,
+            'Batch cost'
+        ),
+        currency: normalizeCurrencyCode(
+            input.currency ?? existing?.currency ?? productDefaults.currency,
+            productDefaults.currency
+        ),
         expiryDate: normalizeDateString(input.expiryDate),
         manufacturingDate: normalizeDateString(input.manufacturingDate),
         notes: normalizeOptionalString(input.notes)
@@ -273,9 +364,11 @@ async function getActiveBatchesForProductStorage(productId: string, storageId: s
         .toArray()
 }
 
+type NormalizedStockBatchInput = Awaited<ReturnType<typeof normalizeBatchInput>>
+
 async function validateBatchTotals(
     workspaceId: string,
-    batch: ReturnType<typeof normalizeBatchInput>,
+    batch: NormalizedStockBatchInput,
     currentBatchId?: string
 ) {
     const inventoryQuantity = await getInventoryQuantityForProductStorage(batch.productId, batch.storageId)
@@ -376,6 +469,9 @@ export async function getStockBatchSalePlan(
             batchId: batch.id,
             batchNumber: batch.batchNumber,
             quantity: allocatedQuantity,
+            price: batch.price,
+            costPrice: batch.costPrice,
+            currency: batch.currency,
             expiryDate: batch.expiryDate ?? null,
             manufacturingDate: batch.manufacturingDate ?? null
         })
@@ -530,6 +626,9 @@ export async function restoreStockBatchAllocations(
 
     const timestamp = options?.timestamp || new Date().toISOString()
     const syncSource = options?.syncSource || 'local'
+    const productDefaults = await getProductBatchDefaults(productId, {
+        allowMissing: true
+    })
     const restorationResult = await db.transaction('rw', db.stock_batches, async () => {
         const rowsToSync: StockBatch[] = []
         const appliedAllocations: StockBatchAllocation[] = []
@@ -542,6 +641,22 @@ export async function restoreStockBatchAllocations(
                     ...existing,
                     quantity: existing.quantity + allocation.quantity,
                     batchNumber: existing.batchNumber || allocation.batchNumber,
+                    price: Number.isFinite(existing.price)
+                        ? existing.price
+                        : normalizeMoneyValue(
+                            allocation.price ?? productDefaults.price,
+                            'Batch price'
+                        ),
+                    costPrice: Number.isFinite(existing.costPrice)
+                        ? existing.costPrice
+                        : normalizeMoneyValue(
+                            allocation.costPrice ?? productDefaults.costPrice,
+                            'Batch cost'
+                        ),
+                    currency: normalizeCurrencyCode(
+                        existing.currency ?? allocation.currency ?? productDefaults.currency,
+                        productDefaults.currency
+                    ),
                     expiryDate: existing.expiryDate ?? allocation.expiryDate ?? null,
                     manufacturingDate: existing.manufacturingDate ?? allocation.manufacturingDate ?? null,
                     isDeleted: false,
@@ -556,6 +671,9 @@ export async function restoreStockBatchAllocations(
                     batchId: updated.id,
                     batchNumber: updated.batchNumber,
                     quantity: allocation.quantity,
+                    price: updated.price,
+                    costPrice: updated.costPrice,
+                    currency: updated.currency,
                     expiryDate: updated.expiryDate ?? null,
                     manufacturingDate: updated.manufacturingDate ?? null
                 })
@@ -573,6 +691,22 @@ export async function restoreStockBatchAllocations(
                     ...matchingBatchNumber,
                     quantity: matchingBatchNumber.quantity + allocation.quantity,
                     batchNumber: matchingBatchNumber.batchNumber || allocation.batchNumber,
+                    price: Number.isFinite(matchingBatchNumber.price)
+                        ? matchingBatchNumber.price
+                        : normalizeMoneyValue(
+                            allocation.price ?? productDefaults.price,
+                            'Batch price'
+                        ),
+                    costPrice: Number.isFinite(matchingBatchNumber.costPrice)
+                        ? matchingBatchNumber.costPrice
+                        : normalizeMoneyValue(
+                            allocation.costPrice ?? productDefaults.costPrice,
+                            'Batch cost'
+                        ),
+                    currency: normalizeCurrencyCode(
+                        matchingBatchNumber.currency ?? allocation.currency ?? productDefaults.currency,
+                        productDefaults.currency
+                    ),
                     expiryDate: matchingBatchNumber.expiryDate ?? allocation.expiryDate ?? null,
                     manufacturingDate: matchingBatchNumber.manufacturingDate ?? allocation.manufacturingDate ?? null,
                     isDeleted: false,
@@ -587,6 +721,9 @@ export async function restoreStockBatchAllocations(
                     batchId: updated.id,
                     batchNumber: updated.batchNumber,
                     quantity: allocation.quantity,
+                    price: updated.price,
+                    costPrice: updated.costPrice,
+                    currency: updated.currency,
                     expiryDate: updated.expiryDate ?? null,
                     manufacturingDate: updated.manufacturingDate ?? null
                 })
@@ -600,6 +737,18 @@ export async function restoreStockBatchAllocations(
                 storageId,
                 batchNumber: allocation.batchNumber,
                 quantity: allocation.quantity,
+                price: normalizeMoneyValue(
+                    allocation.price ?? productDefaults.price,
+                    'Batch price'
+                ),
+                costPrice: normalizeMoneyValue(
+                    allocation.costPrice ?? productDefaults.costPrice,
+                    'Batch cost'
+                ),
+                currency: normalizeCurrencyCode(
+                    allocation.currency ?? productDefaults.currency,
+                    productDefaults.currency
+                ),
                 expiryDate: allocation.expiryDate ?? null,
                 manufacturingDate: allocation.manufacturingDate ?? null,
                 notes: null,
@@ -616,6 +765,9 @@ export async function restoreStockBatchAllocations(
                 batchId: restored.id,
                 batchNumber: restored.batchNumber,
                 quantity: allocation.quantity,
+                price: restored.price,
+                costPrice: restored.costPrice,
+                currency: restored.currency,
                 expiryDate: restored.expiryDate ?? null,
                 manufacturingDate: restored.manufacturingDate ?? null
             })
@@ -642,7 +794,7 @@ export async function createStockBatch(
     }
 ) {
     const timestamp = options?.timestamp || new Date().toISOString()
-    const normalized = normalizeBatchInput(input)
+    const normalized = await normalizeBatchInput(input)
     await validateBatchTotals(workspaceId, normalized)
 
     const batch: StockBatch = {
@@ -668,15 +820,18 @@ export async function updateStockBatch(id: string, data: Partial<StockBatchInput
     }
 
     const timestamp = new Date().toISOString()
-    const normalized = normalizeBatchInput({
+    const normalized = await normalizeBatchInput({
         productId: data.productId ?? existing.productId,
         storageId: data.storageId ?? existing.storageId,
         batchNumber: data.batchNumber ?? existing.batchNumber,
         quantity: data.quantity ?? existing.quantity,
+        price: data.price ?? existing.price,
+        costPrice: data.costPrice ?? existing.costPrice,
+        currency: data.currency ?? existing.currency,
         expiryDate: data.expiryDate ?? existing.expiryDate,
         manufacturingDate: data.manufacturingDate ?? existing.manufacturingDate,
         notes: data.notes ?? existing.notes
-    })
+    }, existing)
     await validateBatchTotals(existing.workspaceId, normalized, existing.id)
 
     const updated: StockBatch = {
@@ -731,10 +886,27 @@ export async function refreshStockBatchesFromSupabase(workspaceId: string) {
 
     const syncedAt = new Date().toISOString()
     const remoteIds = new Set(data.map((row: Record<string, unknown>) => row.id as string))
+    const productRows = await db.products.where('workspaceId').equals(workspaceId).and((row) => !row.isDeleted).toArray()
+    const productDefaultsById = new Map(productRows.map((product) => [product.id, {
+        price: normalizeMoneyValue(product.price, 'Batch price'),
+        costPrice: normalizeMoneyValue(product.costPrice, 'Batch cost'),
+        currency: normalizeCurrencyCode(product.currency, 'usd')
+    }] as const))
 
     await db.transaction('rw', db.stock_batches, async () => {
         for (const remoteItem of data) {
             const localItem = toCamelCase(remoteItem as Record<string, unknown>) as unknown as StockBatch
+            const productDefaults = productDefaultsById.get(localItem.productId)
+            localItem.price = Number.isFinite(localItem.price)
+                ? localItem.price
+                : productDefaults?.price ?? 0
+            localItem.costPrice = Number.isFinite(localItem.costPrice)
+                ? localItem.costPrice
+                : productDefaults?.costPrice ?? 0
+            localItem.currency = normalizeCurrencyCode(
+                localItem.currency,
+                productDefaults?.currency ?? 'usd'
+            )
             localItem.syncStatus = 'synced'
             localItem.lastSyncedAt = syncedAt
             await db.stock_batches.put(localItem)
@@ -813,17 +985,42 @@ export function useBatchAwareInventoryProducts(workspaceId: string | undefined) 
         return inventoryProducts.map((product) => {
             const positionKey = `${product.id}:${product.storageId}`
             const batchRows = batchRowsByPosition.get(positionKey) ?? []
+            const sortedBatchRows = sortBatchesForConsumption(batchRows)
 
-            if (batchRows.length === 0) {
-                return product
+            if (sortedBatchRows.length === 0) {
+                return {
+                    ...product,
+                    hasBatches: false,
+                    batchCount: 0,
+                    nextBatchNumber: null,
+                    nextBatchExpiryDate: null,
+                    nextBatchQuantity: null
+                } satisfies BatchAwareInventoryProduct
             }
 
-            const sellableQuantity = getSellableQuantity(product.inventoryQuantity, batchRows)
+            const nextBatch = sortedBatchRows[0]
+            const sellableQuantity = getSellableQuantity(product.inventoryQuantity, sortedBatchRows)
+            
+            const effectivePrice = nextBatch?.price ?? product.price
+            const effectiveCostPrice = nextBatch?.costPrice ?? product.costPrice
+            const effectiveCurrency = nextBatch?.currency ?? product.currency
+
             return {
                 ...product,
+                price: effectivePrice,
+                costPrice: effectiveCostPrice,
+                currency: effectiveCurrency,
                 inventoryQuantity: sellableQuantity,
-                quantity: sellableQuantity
-            } satisfies InventoryProduct
+                quantity: sellableQuantity,
+                hasBatches: true,
+                batchCount: sortedBatchRows.length,
+                nextBatchNumber: nextBatch?.batchNumber ?? null,
+                nextBatchExpiryDate: nextBatch?.expiryDate ?? null,
+                nextBatchQuantity: nextBatch?.quantity ?? null,
+                nextBatchPrice: effectivePrice,
+                nextBatchCostPrice: effectiveCostPrice,
+                nextBatchCurrency: effectiveCurrency
+            } satisfies BatchAwareInventoryProduct
         })
     }, [inventoryProducts, stockBatches])
 }

@@ -672,12 +672,15 @@ export function Sales() {
     }
 
     const toLocalBatchAllocations = useCallback((item: SaleItem) => {
-        return (item.batch_allocations || []).map((allocation) => ({
-            batchId: allocation.batch_id,
-            batchNumber: allocation.batch_number,
+        return (item.batch_allocations || []).map((allocation: any) => ({
+            batchId: allocation.batch_id ?? allocation.batchId,
+            batchNumber: allocation.batch_number ?? allocation.batchNumber,
             quantity: allocation.quantity,
-            expiryDate: allocation.expiry_date ?? null,
-            manufacturingDate: allocation.manufacturing_date ?? null
+            price: allocation.price ?? null,
+            costPrice: allocation.cost_price ?? allocation.costPrice ?? null,
+            currency: allocation.currency ?? null,
+            expiryDate: allocation.expiry_date ?? allocation.expiryDate ?? null,
+            manufacturingDate: allocation.manufacturing_date ?? allocation.manufacturingDate ?? null
         }))
     }, [])
 
@@ -686,6 +689,9 @@ export function Sales() {
             batch_id: allocation.batchId,
             batch_number: allocation.batchNumber,
             quantity: allocation.quantity,
+            price: allocation.price ?? null,
+            cost_price: allocation.costPrice ?? null,
+            currency: allocation.currency ?? null,
             expiry_date: allocation.expiryDate ?? null,
             manufacturing_date: allocation.manufacturingDate ?? null
         }))

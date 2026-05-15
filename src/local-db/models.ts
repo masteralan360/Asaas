@@ -149,6 +149,9 @@ export interface StockBatch extends BaseEntity {
   storageId: string;
   batchNumber: string;
   quantity: number;
+  price: number;
+  costPrice: number;
+  currency: CurrencyCode;
   expiryDate?: string | null;
   manufacturingDate?: string | null;
   notes?: string | null;
@@ -158,6 +161,9 @@ export interface StockBatchAllocation {
   batchId: string;
   batchNumber: string;
   quantity: number;
+  price?: number | null;
+  costPrice?: number | null;
+  currency?: CurrencyCode | null;
   expiryDate?: string | null;
   manufacturingDate?: string | null;
 }

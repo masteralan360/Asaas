@@ -279,6 +279,9 @@ BEGIN
                         'batch_id', v_batch_record.id,
                         'batch_number', v_batch_record.batch_number,
                         'quantity', v_allocated_quantity,
+                        'price', v_batch_record.price,
+                        'cost_price', v_batch_record.cost_price,
+                        'currency', lower(v_batch_record.currency),
                         'expiry_date', v_batch_record.expiry_date,
                         'manufacturing_date', v_batch_record.manufacturing_date
                     )
