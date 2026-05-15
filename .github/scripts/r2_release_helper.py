@@ -100,16 +100,17 @@ def upload_assets():
     except Exception as e:
         print(f"Warning: Error fetching existing latest.json: {e}")
 
-    # Determine version from tauri conf
+    # Determine version from tauri conf and min_version from package.json
     version = "0.0.0"
     local_min_version = "0.0.0"
     try:
         with open("src-tauri/tauri.conf.json", 'r') as f:
-            conf_data = json.load(f)
-            version = conf_data.get("version", "0.0.0")
-            local_min_version = conf_data.get("min_version", "0.0.0")
+            version = json.load(f).get("version", "0.0.0")
+            
+        with open("package.json", 'r') as f:
+            local_min_version = json.load(f).get("min_version", "0.0.0")
     except Exception as e:
-        print(f"Warning: Could not read version/min_version from tauri.conf.json: {e}")
+        print(f"Warning: Could not read version/min_version: {e}")
 
     # Preserve min_version from remote if it exists
     remote_min_version = remote_data.get("min_version", "0.0.0") if remote_data else "0.0.0"

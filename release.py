@@ -18,10 +18,15 @@ PATCH_NOTES = SCRIPT_DIR / "src" / "data" / "patch-notes.json"
 
 
 def read_version():
-    """Read current version and min_version from tauri.conf.json"""
+    """Read current version from tauri.conf.json and min_version from package.json"""
     with open(TAURI_CONF, 'r') as f:
-        data = json.load(f)
-    return data.get('version', '1.0.0'), data.get('min_version', '0.0.0')
+        tauri_data = json.load(f)
+    with open(PACKAGE_JSON, 'r') as f:
+        pkg_data = json.load(f)
+    
+    # Check both for migration, prioritize package.json
+    min_v = pkg_data.get('min_version') or tauri_data.get('min_version', '0.0.0')
+    return tauri_data.get('version', '1.0.0'), min_v
 
 
 def increment_version(version):
@@ -37,7 +42,10 @@ def update_version(new_version, new_min_version):
     with open(TAURI_CONF, 'r') as f:
         tauri_data = json.load(f)
     tauri_data['version'] = new_version
-    tauri_data['min_version'] = new_min_version
+    # REMOVE min_version from tauri.conf.json as it causes build errors
+    if 'min_version' in tauri_data:
+        del tauri_data['min_version']
+        
     with open(TAURI_CONF, 'w') as f:
         json.dump(tauri_data, f, indent=2)
     
@@ -45,7 +53,7 @@ def update_version(new_version, new_min_version):
     with open(PACKAGE_JSON, 'r') as f:
         pkg_data = json.load(f)
     pkg_data['version'] = new_version
-    # package.json usually doesn't need min_version, keeping it standard
+    pkg_data['min_version'] = new_min_version
     with open(PACKAGE_JSON, 'w') as f:
         json.dump(pkg_data, f, indent=2)
 
