@@ -1,23 +1,29 @@
-import time
-import pyautogui
+from PIL import Image, ImageEnhance, ImageFilter
 
-def process_barcode(data):
-    # Modify this if you want transformation logic
-    # Example: strip spaces or add prefix
-    return data.strip()
+# Load image
+img_path = "/mnt/data/AppIcon-512@2x.png"
+img = Image.open(img_path)
 
-def send_barcode(data, delay=0.02):
-    for char in data:
-        pyautogui.write(char)
-        time.sleep(delay)  # mimic real scanner speed
-    pyautogui.press("enter")
+# Upscale 2x using high quality resampling
+upscaled = img.resize((img.width * 2, img.height * 2), Image.LANCZOS)
 
-if __name__ == "__main__":
-    barcode = input("Scan/Enter barcode: ")
+# Enhance sharpness
+sharpener = ImageEnhance.Sharpness(upscaled)
+upscaled = sharpener.enhance(2.0)
 
-    processed = process_barcode(barcode)
+# Enhance contrast slightly
+contrast = ImageEnhance.Contrast(upscaled)
+upscaled = contrast.enhance(1.2)
 
-    print("Focus your target input field NOW...")
-    time.sleep(3)  # gives you time to click into a field
+# Enhance color slightly
+color = ImageEnhance.Color(upscaled)
+upscaled = color.enhance(1.1)
 
-    send_barcode(processed)
+# Apply slight smoothing then re-sharpen (denoise-ish effect)
+upscaled = upscaled.filter(ImageFilter.MedianFilter(size=3))
+upscaled = ImageEnhance.Sharpness(upscaled).enhance(1.5)
+
+output_path = "/mnt/data/enhanced_icon.png"
+upscaled.save(output_path)
+
+output_path
