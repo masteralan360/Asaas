@@ -599,24 +599,29 @@ export function Sales() {
 
     const initiateReturn = (sale: Sale, isWholeSale: boolean) => {
         const itemsToCheck = sale.items || []
-        const nonReturnableItems = itemsToCheck.filter(item => item.product && item.product.can_be_returned === false)
-        const returnableItems = itemsToCheck.filter(item => !item.product || item.product.can_be_returned !== false)
+        const isFlaggedSale = sale.system_review_status === 'flagged'
 
-        const nonReturnableNames = nonReturnableItems.map(item => item.product?.name || item.product_name || 'Unknown Product')
+        // Flagged sales bypass non-returnable product restrictions
+        if (!isFlaggedSale) {
+            const nonReturnableItems = itemsToCheck.filter(item => item.product && item.product.can_be_returned === false)
+            const returnableItems = itemsToCheck.filter(item => !item.product || item.product.can_be_returned !== false)
 
-        if (nonReturnableNames.length > 0) {
-            setNonReturnableProducts(nonReturnableNames)
-            setSaleToReturn(sale)
-            setIsWholeSaleReturn(isWholeSale)
+            const nonReturnableNames = nonReturnableItems.map(item => item.product?.name || item.product_name || 'Unknown Product')
 
-            if (returnableItems.length > 0) {
-                setFilteredReturnItems(returnableItems)
-                setShowDeclineModal(true)
-            } else {
-                setFilteredReturnItems([])
-                setShowDeclineModal(true)
+            if (nonReturnableNames.length > 0) {
+                setNonReturnableProducts(nonReturnableNames)
+                setSaleToReturn(sale)
+                setIsWholeSaleReturn(isWholeSale)
+
+                if (returnableItems.length > 0) {
+                    setFilteredReturnItems(returnableItems)
+                    setShowDeclineModal(true)
+                } else {
+                    setFilteredReturnItems([])
+                    setShowDeclineModal(true)
+                }
+                return
             }
-            return
         }
 
         finalizeReturn(sale, itemsToCheck, isWholeSale, false)
