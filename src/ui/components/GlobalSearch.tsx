@@ -143,16 +143,16 @@ export function GlobalSearch({ className, placeholder }: GlobalSearchProps) {
                     onKeyDown={handleKeyDown}
                     className={cn(
                         "flex h-9 w-full bg-secondary/30 px-3 py-1 text-sm transition-all duration-300",
-                        style === 'neo-orange' ? "rounded-[var(--radius)] border-2 border-black dark:border-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]" : "rounded-md border border-input shadow-sm",
+                        style === 'neo-orange' ? "rounded-[var(--radius)] border-2 border-black dark:border-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]" : "rounded-md border border-input dark:border-primary/40 shadow-sm",
                         "placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
                         "pl-9 pr-12 text-center focus:text-left focus:bg-background/80 focus:shadow-lg"
                     )}
-                    placeholder={placeholder || t('common.search', 'Search...') + ' (Ctrl+K)'}
+                    placeholder={placeholder || t('common.search', 'Search...')}
                     spellCheck={false}
                 />
                 <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none hidden sm:flex">
                     <kbd className="pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground opacity-100">
-                        <span className="text-xs">âŒ˜</span>K
+                        <span className="text-xs">Ctrl+K</span>
                     </kbd>
                 </div>
             </div>

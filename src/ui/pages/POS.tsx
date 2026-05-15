@@ -76,7 +76,7 @@ import { BarcodeScanner } from 'react-barcode-scanner'
 import 'react-barcode-scanner/polyfill'
 import { isDesktop } from '@/lib/platform'
 import { platformService } from '@/services/platformService'
-import { ExchangeRateList } from '@/ui/components' // Import ExchangeRateList
+import { ExchangeRateList } from '@/ui/components'
 import { CheckoutSuccessModal, HeldSalesModal, type HeldSale, StorageSelector, CrossStorageWarningModal } from '@/ui/components'
 import { BarcodeScannerModal } from '@/ui/components/pos/BarcodeScannerModal'
 import { mapSaleToUniversal } from '@/lib/mappings'
@@ -84,6 +84,8 @@ import { LoanRegistrationModal, type LoanRegistrationData } from '@/ui/component
 import { getRetriableActionToast, isRetriableWebRequestError, normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
 import { isOnline } from '@/lib/network'
 import { useWebHaptics } from 'web-haptics/react'
+
+const CART_IMAGE_VISIBILITY_THRESHOLD = 450
 
 function isLoanRegistrationData(value: unknown): value is LoanRegistrationData {
     if (!value || typeof value !== 'object') return false
@@ -225,7 +227,7 @@ const playCheckoutSound = () => {
         const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
         if (!AudioContext) return;
         const ctx = new AudioContext();
-        
+
         const playNote = (freq: number, startDelay: number, type: OscillatorType = 'sine', duration: number = 0.15) => {
             const osc = ctx.createOscillator();
             const gain = ctx.createGain();
@@ -243,7 +245,7 @@ const playCheckoutSound = () => {
         // A minimalist, modern dual-tone chime (elegant UI success pop)
         playNote(783.99, 0, 'sine', 0.1);     // G5 short
         playNote(1046.50, 0.08, 'sine', 0.3); // C6 slightly longer with fade
-    } catch(e) {
+    } catch (e) {
         // Ignore gracefully
     }
 };
@@ -2228,6 +2230,19 @@ export function POS() {
                                                         (isElectron && focusedSection === 'cart' && focusedCartIndex === index) ? "ring-2 ring-primary ring-offset-2 ring-offset-background border-primary/50 shadow-md transform scale-[1.01]" : ""
                                                     )}
                                                 >
+                                                    {/* Product Image - Responsive Visibility */}
+                                                    {cartWidth > CART_IMAGE_VISIBILITY_THRESHOLD && (
+                                                        <div className="w-12 h-12 bg-muted/30 rounded-lg overflow-hidden shrink-0 border border-border/50 shadow-sm transition-all animate-in zoom-in-95 duration-300">
+                                                            <ProductImage
+                                                                url={item.imageUrl}
+                                                                name={item.name}
+                                                                getDisplayImageUrl={getDisplayImageUrl}
+                                                                className="w-full h-full"
+                                                                fallbackIcon={<Zap className="w-6 h-6 opacity-10" />}
+                                                            />
+                                                        </div>
+                                                    )}
+
                                                     <div className="flex-1 min-w-0">
                                                         <div className="font-medium truncate">{item.name}</div>
                                                         <div className="flex flex-col gap-0.5">

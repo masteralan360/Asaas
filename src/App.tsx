@@ -11,6 +11,7 @@ import { useTranslation } from "react-i18next";
 import { useWorkspace } from "@/workspace";
 import { ExchangeRateProvider } from "@/context/ExchangeRateContext";
 import { DateRangeProvider } from "@/context/DateRangeContext";
+import { UiAccessProvider } from "@/context/UiAccessContext";
 import { AutoSyncOverlay } from "@/ui/components/AutoSyncOverlay";
 import {
   isBackendConfigurationRequired,
@@ -697,8 +698,9 @@ function App() {
     <AuthProvider>
       <DeviceTokenBootstrap />
       <WorkspaceProvider>
-        <DateRangeProvider>
-          <KdsStreamAutostart />
+        <UiAccessProvider>
+          <DateRangeProvider>
+            <KdsStreamAutostart />
           <UpdateHandler />
           <FaviconHandler />
           <AutoSyncOverlay />
@@ -1232,6 +1234,7 @@ function App() {
             />
           )}
         </DateRangeProvider>
+        </UiAccessProvider>
       </WorkspaceProvider>
     </AuthProvider>
   );
