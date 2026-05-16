@@ -885,7 +885,9 @@
             "deleteConfirm": "Are you sure you want to delete this product?"
         },
         "confirmDelete": "Delete Product",
-        "deleteWarning": "Deleting this product will remove it from inventory. This cannot be undone."
+        "deleteWarning": "Deleting this product will remove it from inventory. This cannot be undone.",
+        "expiryDate": "Expiry",
+        "manufacturingDate": "Mfg"
     },
     "suppliers": {
         "title": "Suppliers",
@@ -2147,7 +2149,9 @@
         "loanBalance": "Balance",
         "loanNextDue": "Next Due",
         "openLoan": "Open Loan",
-        "loanPendingMessage": "Loan record pending sync/link."
+        "loanPendingMessage": "Loan record pending sync/link.",
+        "batchSnapshot": "Batch Snapshot",
+        "batchNumber": "Batch"
     },
     "loans": {
         "title": "Installments",

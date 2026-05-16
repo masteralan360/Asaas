@@ -20,7 +20,11 @@ import {
     DialogContent,
     DialogHeader,
     DialogTitle,
-    Button
+    Button,
+    Tooltip,
+    TooltipContent,
+    TooltipTrigger,
+    TooltipProvider
 } from '@/ui/components'
 import { RotateCcw, ArrowRight, XCircle, MessageCircle, CircleDollarSign, TrendingUp, Download } from 'lucide-react'
 import { isMobile } from '@/lib/platform'
@@ -474,6 +478,46 @@ export function SaleDetailsModal({ sale, isOpen, onClose, onReturnItem, onReturn
                                                         <div className={cn("font-bold text-sm", isItemReturned && "line-through opacity-50")}>
                                                             {item.product_name}
                                                         </div>
+                                                        {item.batch_allocations && item.batch_allocations.length > 0 && (
+                                                            <TooltipProvider>
+                                                                <Tooltip delayDuration={200}>
+                                                                    <TooltipTrigger asChild>
+                                                                        <span className="inline-flex items-center gap-1 text-[8px] font-mono font-medium text-amber-600 dark:text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded cursor-default leading-none border-b border-dashed border-amber-600/40 dark:border-amber-400/40">
+                                                                            {item.batch_allocations.map(a => a.batch_number.slice(0, 10)).join(', ')}
+                                                                        </span>
+                                                                    </TooltipTrigger>
+                                                                    <TooltipContent side="top" align="start" className="max-w-[260px] p-3 space-y-2">
+                                                                        <div className="text-xs font-bold text-foreground">{t('sales.batchSnapshot') || 'Batch Snapshot'}</div>
+                                                                        <div className="space-y-1.5">
+                                                                            {item.batch_allocations.map((a, i) => (
+                                                                                <div key={a.batch_id} className={cn("text-[11px] space-y-0.5", i > 0 && "pt-1.5 border-t border-border/50")}>
+                                                                                    <div className="flex justify-between gap-2">
+                                                                                        <span className="text-muted-foreground">{t('sales.batchNumber') || 'Batch'}:</span>
+                                                                                        <span className="font-medium text-foreground text-right">{a.batch_number}</span>
+                                                                                    </div>
+                                                                                    <div className="flex justify-between gap-2">
+                                                                                        <span className="text-muted-foreground">{t('common.id') || 'ID'}:</span>
+                                                                                        <span className="font-mono text-[10px] text-foreground text-right break-all">{a.batch_id}</span>
+                                                                                    </div>
+                                                                                    {a.manufacturing_date && (
+                                                                                        <div className="flex justify-between gap-2">
+                                                                                            <span className="text-muted-foreground">{t('products.manufacturingDate') || 'Mfg'}:</span>
+                                                                                            <span className="font-medium text-foreground text-right">{formatDate(a.manufacturing_date)}</span>
+                                                                                        </div>
+                                                                                    )}
+                                                                                    {a.expiry_date && (
+                                                                                        <div className="flex justify-between gap-2">
+                                                                                            <span className="text-muted-foreground">{t('products.expiryDate') || 'Expiry'}:</span>
+                                                                                            <span className="font-medium text-foreground text-right">{formatDate(a.expiry_date)}</span>
+                                                                                        </div>
+                                                                                    )}
+                                                                                </div>
+                                                                            ))}
+                                                                        </div>
+                                                                    </TooltipContent>
+                                                                </Tooltip>
+                                                            </TooltipProvider>
+                                                        )}
                                                         {!isItemReturned && !item.is_returned && onReturnItem && (user?.role === 'admin' || user?.role === 'staff') && (
                                                             <Button
                                                                 size="sm"
@@ -631,10 +675,50 @@ export function SaleDetailsModal({ sale, isOpen, onClose, onReturnItem, onReturn
                                             >
                                                 {/* Product Name */}
                                                 <TableCell className="text-start">
-                                                    <div className="flex items-center gap-2">
+                                                    <div className="flex items-center gap-2 flex-wrap">
                                                         <div className={cn("font-medium text-sm", isItemReturned && "line-through opacity-50")}>
                                                             {item.product_name}
                                                         </div>
+                                                        {item.batch_allocations && item.batch_allocations.length > 0 && (
+                                                            <TooltipProvider>
+                                                                <Tooltip delayDuration={200}>
+                                                                     <TooltipTrigger asChild>
+                                                                        <span className="inline-flex items-center gap-1 text-[9px] font-mono font-medium text-amber-600 dark:text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded cursor-default leading-none border-b border-dashed border-amber-600/40 dark:border-amber-400/40">
+                                                                            {item.batch_allocations.map(a => a.batch_number.slice(0, 10)).join(', ')}
+                                                                        </span>
+                                                                    </TooltipTrigger>
+                                                                    <TooltipContent side="top" align="start" className="max-w-[260px] p-3 space-y-2">
+                                                                        <div className="text-xs font-bold text-foreground">{t('sales.batchSnapshot') || 'Batch Snapshot'}</div>
+                                                                        <div className="space-y-1.5">
+                                                                            {item.batch_allocations.map((a, i) => (
+                                                                                <div key={a.batch_id} className={cn("text-[11px] space-y-0.5", i > 0 && "pt-1.5 border-t border-border/50")}>
+                                                                                    <div className="flex justify-between gap-2">
+                                                                                        <span className="text-muted-foreground">{t('sales.batchNumber') || 'Batch'}:</span>
+                                                                                        <span className="font-medium text-foreground text-right">{a.batch_number}</span>
+                                                                                    </div>
+                                                                                    <div className="flex justify-between gap-2">
+                                                                                        <span className="text-muted-foreground">{t('common.id') || 'ID'}:</span>
+                                                                                        <span className="font-mono text-[10px] text-foreground text-right break-all">{a.batch_id}</span>
+                                                                                    </div>
+                                                                                    {a.manufacturing_date && (
+                                                                                        <div className="flex justify-between gap-2">
+                                                                                            <span className="text-muted-foreground">{t('products.manufacturingDate') || 'Mfg'}:</span>
+                                                                                            <span className="font-medium text-foreground text-right">{formatDate(a.manufacturing_date)}</span>
+                                                                                        </div>
+                                                                                    )}
+                                                                                    {a.expiry_date && (
+                                                                                        <div className="flex justify-between gap-2">
+                                                                                            <span className="text-muted-foreground">{t('products.expiryDate') || 'Expiry'}:</span>
+                                                                                            <span className="font-medium text-foreground text-right">{formatDate(a.expiry_date)}</span>
+                                                                                        </div>
+                                                                                    )}
+                                                                                </div>
+                                                                            ))}
+                                                                        </div>
+                                                                    </TooltipContent>
+                                                                </Tooltip>
+                                                            </TooltipProvider>
+                                                        )}
                                                         {!isItemReturned && !item.is_returned && onReturnItem && (user?.role === 'admin' || user?.role === 'staff') && (
                                                             <Button
                                                                 size="sm"
