@@ -341,7 +341,7 @@ export function PdfPreviewPage() {
         if (!source || isSaving) return
         setIsSaving(true)
         try {
-            await source.onSave?.()
+            await source.onSave?.(new Blob([]))
         } catch (err) {
             console.error('Failed to save:', err)
         } finally {
@@ -386,13 +386,15 @@ export function PdfPreviewPage() {
                         <h1 className="text-sm font-semibold truncate">{title}</h1>
                     </div>
                     <div className="flex items-center gap-2">
-                        <button
-                            className="inline-flex items-center justify-center rounded-md h-8 px-3 text-xs font-medium transition-colors gap-1.5 bg-secondary text-secondary-foreground hover:bg-secondary/80"
-                            onClick={() => setEditPanelOpen(o => !o)}
-                        >
-                            <Edit3 className="h-3.5 w-3.5" />
-                            {editPanelOpen ? (t('common.close') || 'Close') : (t('common.edit') || 'Edit')}
-                        </button>
+                        {templatePreview.fields.length > 0 && (
+                            <button
+                                className="inline-flex items-center justify-center rounded-md h-8 px-3 text-xs font-medium transition-colors gap-1.5 bg-secondary text-secondary-foreground hover:bg-secondary/80"
+                                onClick={() => setEditPanelOpen(o => !o)}
+                            >
+                                <Edit3 className="h-3.5 w-3.5" />
+                                {editPanelOpen ? (t('common.close') || 'Close') : (t('common.edit') || 'Edit')}
+                            </button>
+                        )}
                         <button
                             className="inline-flex items-center justify-center rounded-md h-8 px-3 text-xs font-medium transition-colors gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
                             onClick={handleTemplatePreviewSave}

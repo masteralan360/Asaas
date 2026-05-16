@@ -1,5 +1,5 @@
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ReactElement } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
     CalendarDays,
@@ -753,7 +753,7 @@ export function Budget() {
                 qrValue={effectiveId ? buildQrValue(effectiveId) : undefined}
             />
         ),
-        buildPdf: async (element: ReactNode) => generateTemplatePdf({
+        buildPdf: async (element: ReactElement) => generateTemplatePdf({
             element,
             format: 'a4',
             printLang,

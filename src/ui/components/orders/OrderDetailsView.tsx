@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactElement } from 'react'
 import { ArrowLeft, CalendarDays, CreditCard, LayoutGrid, List, Lock, Package, Printer, Receipt, ShoppingCart, Trash2, Truck, UsersRound, Warehouse } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Link, useLocation } from 'wouter'
@@ -361,7 +361,7 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                     />
                 )
             },
-            buildPdf: async (element: ReactNode) => {
+            buildPdf: async (element: ReactElement) => {
                 const printLang = features?.print_lang && features.print_lang !== 'auto' ? features.print_lang : i18n.language
                 return generateTemplatePdf({
                     element,

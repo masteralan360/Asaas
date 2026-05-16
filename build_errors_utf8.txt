@@ -1,0 +1,20 @@
+﻿src/ui/components/loans/SimpleLoanListView.tsx(250,17): error TS2322: Type 'ReactNode' is not assignable to type 'ReactElement<any, string | JSXElementConstructor<any>>'.
+  Type 'undefined' is not assignable to type 'ReactElement<any, string | JSXElementConstructor<any>>'.
+src/ui/components/orders/OrderDetailsView.tsx(367,21): error TS2322: Type 'ReactNode' is not assignable to type 'ReactElement<any, string | JSXElementConstructor<any>>'.
+  Type 'undefined' is not assignable to type 'ReactElement<any, string | JSXElementConstructor<any>>'.
+src/ui/components/PrintPreviewModal.tsx(231,11): error TS6133: 'canTemplatePrint' is declared but its value is never read.
+src/ui/components/PrintPreviewModal.tsx(241,11): error TS6133: 'handleTemplatePrint' is declared but its value is never read.
+src/ui/components/PrintPreviewModal.tsx(527,33): error TS2322: Type '(preGeneratedBlob?: Blob) => Promise<void>' is not assignable to type 'MouseEventHandler<HTMLButtonElement>'.
+  Types of parameters 'preGeneratedBlob' and 'event' are incompatible.
+    Type 'MouseEvent<HTMLButtonElement, MouseEvent>' is missing the following properties from type 'Blob': size, arrayBuffer, slice, stream, text
+src/ui/pages/Budget.tsx(757,13): error TS2322: Type 'ReactNode' is not assignable to type 'ReactElement<any, string | JSXElementConstructor<any>>'.
+  Type 'undefined' is not assignable to type 'ReactElement<any, string | JSXElementConstructor<any>>'.
+src/ui/pages/InvoicesHistory.tsx(1,10): error TS6133: 'useEffect' is declared but its value is never read.
+src/ui/pages/Loans.tsx(244,25): error TS6133: 'data' is declared but its value is never read.
+src/ui/pages/Loans.tsx(258,13): error TS2322: Type 'ReactNode' is not assignable to type 'ReactElement<any, string | JSXElementConstructor<any>>'.
+  Type 'undefined' is not assignable to type 'ReactElement<any, string | JSXElementConstructor<any>>'.
+src/ui/pages/Loans.tsx(313,17): error TS2322: Type 'ReactNode' is not assignable to type 'ReactElement<any, string | JSXElementConstructor<any>>'.
+  Type 'undefined' is not assignable to type 'ReactElement<any, string | JSXElementConstructor<any>>'.
+src/ui/pages/Loans.tsx(950,17): error TS2322: Type 'ReactNode' is not assignable to type 'ReactElement<any, string | JSXElementConstructor<any>>'.
+  Type 'undefined' is not assignable to type 'ReactElement<any, string | JSXElementConstructor<any>>'.
+src/ui/pages/PdfPreviewPage.tsx(344,26): error TS2554: Expected 1 arguments, but got 0.

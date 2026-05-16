@@ -1,5 +1,5 @@
 import type { UniversalInvoice } from '@/types'
-import type { ReactNode } from 'react'
+import type { ReactElement } from 'react'
 
 export type PrintFormat = 'a4' | 'receipt'
 
@@ -12,8 +12,8 @@ export type TemplatePreviewField = {
 
 export type TemplatePreview = {
     fields: TemplatePreviewField[]
-    createElement: (data: Record<string, string>, effectiveId?: string) => ReactNode
-    buildPdf: (element: ReactNode) => Promise<Blob>
+    createElement: (data: Record<string, string>, effectiveId?: string) => ReactElement
+    buildPdf: (element: ReactElement) => Promise<Blob>
 }
 
 export type InvoicePreviewSource = {

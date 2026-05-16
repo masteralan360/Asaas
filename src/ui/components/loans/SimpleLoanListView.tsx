@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ReactElement } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useTranslation } from 'react-i18next'
 import { useLocation } from 'wouter'
@@ -246,7 +246,7 @@ export function SimpleLoanListView({
                     qrValue={effectiveId ? buildQrValue(effectiveId) : undefined}
                 />
             ),
-            buildPdf: async (element: ReactNode) => generateTemplatePdf({
+            buildPdf: async (element: ReactElement) => generateTemplatePdf({
                 element,
                 format: 'a4',
                 printLang,

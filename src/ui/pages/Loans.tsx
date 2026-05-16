@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState, useEffect, type ReactNode } from 'react'
+import { useCallback, useMemo, useState, useEffect, type ReactElement } from 'react'
 import { Link, useLocation, useRoute } from 'wouter'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useTranslation } from 'react-i18next'
@@ -239,6 +239,29 @@ function LoanListView({
         })
     }, [features.print_quality, printLang, renderLoanListTemplate])
 
+    const loanListPreview = useMemo<TemplatePreview | undefined>(() => ({
+        fields: [],
+        createElement: (_data: Record<string, string>, effectiveId?: string) => (
+            <LoanListPrintTemplate
+                workspaceName={workspaceName}
+                printLang={printLang}
+                loans={filtered}
+                filter={filter}
+                displayCurrency={currency}
+                iqdPreference={iqdPreference}
+                metrics={metrics}
+                logoUrl={features.logo_url}
+                qrValue={effectiveId ? buildQrValue(effectiveId) : undefined}
+            />
+        ),
+        buildPdf: async (element: ReactElement) => generateTemplatePdf({
+            element,
+            format: 'a4',
+            printLang,
+            printQuality: features.print_quality,
+        }),
+    }), [workspaceName, printLang, filtered, filter, currency, iqdPreference, metrics, features.logo_url, buildQrValue, features.print_quality])
+
     const loanPrintInstallments = useLoanInstallments(loanToPrint?.id, workspaceId)
     const loanPrintPayments = useLoanPayments(loanToPrint?.id, workspaceId)
     const renderLoanPrintTemplate = useCallback((effectiveId?: string) => {
@@ -286,7 +309,7 @@ function LoanListView({
                     qrValue={effectiveId ? buildQrValue(effectiveId) : undefined}
                 />
             ),
-            buildPdf: async (element: ReactNode) => generateTemplatePdf({
+            buildPdf: async (element: ReactElement) => generateTemplatePdf({
                 element,
                 format: 'a4',
                 printLang,
@@ -750,6 +773,7 @@ function LoanListView({
                 invoiceData={loanListInvoiceData}
                 pdfBuilder={buildLoanListPdf}
                 printTemplate={({ effectiveId }) => renderLoanListTemplate(effectiveId)}
+                templatePreview={loanListPreview}
             />
             <PrintPreviewModal
                 isOpen={showLoanPrintPreview}
@@ -922,7 +946,7 @@ function LoanDetailsView({
                     qrValue={effectiveId ? buildQrValue(effectiveId) : undefined}
                 />
             ),
-            buildPdf: async (element: ReactNode) => generateTemplatePdf({
+            buildPdf: async (element: ReactElement) => generateTemplatePdf({
                 element,
                 format: 'a4',
                 printLang,

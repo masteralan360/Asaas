@@ -228,7 +228,7 @@ export function PrintPreviewModal({
         return children || null
     }, [children, effectiveId, pdfData, printFormat, printTemplate, printableFeatures, workspaceFooterContacts, workspaceId, workspaceName])
 
-    const canTemplatePrint = !!templateContent
+
 
     const handleHtmlPrint = useReactToPrint({
         contentRef: htmlPrintRef,
@@ -238,13 +238,7 @@ export function PrintPreviewModal({
         }
     })
 
-    const handleTemplatePrint = useReactToPrint({
-        contentRef: templatePrintRef,
-        documentTitle: title || 'Print_Preview',
-        onAfterPrint: () => {
-            if (onConfirm) onConfirm()
-        }
-    })
+
 
     const buildPdfBlobs = useCallback(async (requestedFormat?: PrintFormat): Promise<{ a4?: Blob; receipt?: Blob }> => {
         const format = requestedFormat || printFormat
@@ -524,7 +518,7 @@ export function PrintPreviewModal({
                         {t('common.cancel')}
                     </Button>
                     {showSaveButton && (
-                        <Button onClick={handleSave} disabled={isSaving}>
+                        <Button onClick={() => handleSave()} disabled={isSaving}>
                             {isSaving ? (
                                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                             ) : (
