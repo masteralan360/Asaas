@@ -1,5 +1,5 @@
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
     CalendarDays,
@@ -96,6 +96,7 @@ import { BudgetLockPromptModal } from '@/ui/components/budget/BudgetLockPromptMo
 import { MonthlyBudgetAllocationModal } from '@/ui/components/budget/MonthlyBudgetAllocationModal'
 import { BudgetPrintTemplate } from '@/ui/components/budget/BudgetPrintTemplate'
 import { generateTemplatePdf, type PrintFormat } from '@/services/pdfGenerator'
+import type { TemplatePreview } from '@/lib/pdfPreviewStore'
 import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
 
 interface ExpenseRow {
@@ -732,6 +733,33 @@ export function Budget() {
         cashierName: user?.name || 'Unknown',
         printFormat: 'a4' as const
     }), [baseCurrency, dividendResult.totalBase, totalAllocatedBase, user?.name])
+
+    const budgetPreview = useMemo<TemplatePreview | undefined>(() => ({
+        fields: [
+            { key: 'monthLabel', label: t('budget.month') || 'Month', value: selectedMonthLabel || '', type: 'text' },
+        ],
+        createElement: (data: Record<string, string>, effectiveId?: string) => (
+            <BudgetPrintTemplate
+                workspaceName={workspaceName}
+                printLang={printLang}
+                monthLabel={data.monthLabel}
+                baseCurrency={baseCurrency}
+                iqdPreference={iqdPreference}
+                expenseRows={expenseRows}
+                payrollItems={payrollItems}
+                dividendItems={dividendResult.items}
+                metrics={budgetPrintMetrics}
+                logoUrl={features.logo_url}
+                qrValue={effectiveId ? buildQrValue(effectiveId) : undefined}
+            />
+        ),
+        buildPdf: async (element: ReactNode) => generateTemplatePdf({
+            element,
+            format: 'a4',
+            printLang,
+            printQuality: features.print_quality,
+        }),
+    }), [workspaceName, printLang, selectedMonthLabel, baseCurrency, iqdPreference, expenseRows, payrollItems, dividendResult.items, budgetPrintMetrics, features.logo_url, buildQrValue, t, features.print_quality])
 
     const handleSaveStartMonth = async () => {
         if (!workspaceId) return
@@ -1439,6 +1467,7 @@ export function Budget() {
                 invoiceData={budgetReportInvoiceData}
                 pdfBuilder={buildBudgetReportPdf}
                 printTemplate={({ effectiveId }) => renderBudgetPrintTemplate(effectiveId)}
+                templatePreview={budgetPreview}
             />
 
             <BudgetSnoozeModal

@@ -31,7 +31,7 @@ import { useDateRange } from '@/context/DateRangeContext'
 import { DateRangeFilters } from '@/ui/components/DateRangeFilters'
 import { r2Service } from '@/services/r2Service'
 import { UploadFilesTab } from './UploadFile'
-import { setPdfPreviewSource } from '@/lib/pdfPreviewStore'
+import { setInvoicePreviewSource } from '@/lib/pdfPreviewStore'
 
 const UPLOAD_FILES_ROUTE = '/invoices-history/upload-files'
 
@@ -159,7 +159,7 @@ export function InvoicesHistory() {
                 return
             }
 
-            setPdfPreviewSource({
+            setInvoicePreviewSource({
                 url,
                 title: `${t('invoices.viewInvoice') || 'Invoice'} ${invoice.invoiceid}`
             })

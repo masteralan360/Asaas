@@ -31,7 +31,7 @@ import {
 import { type WorkspaceFeatures } from '@/workspace'
 import { supabase } from '@/auth/supabase'
 import { getRetriableActionToast, isRetriableWebRequestError, normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
-import { setPdfPreviewSource } from '@/lib/pdfPreviewStore'
+import { setInvoicePreviewSource, type TemplatePreview } from '@/lib/pdfPreviewStore'
 
 interface PrintPreviewModalProps {
     isOpen: boolean
@@ -46,6 +46,7 @@ interface PrintPreviewModalProps {
     pdfBuilder?: (options: { format: PrintFormat; effectiveId: string }) => Promise<Blob>
     documentId?: string
     printTemplate?: ReactNode | ((options: { effectiveId: string }) => ReactNode)
+    templatePreview?: TemplatePreview
     features?: WorkspaceFeatures
     workspaceName?: string | null
 }
@@ -74,6 +75,7 @@ export function PrintPreviewModal({
     pdfBuilder,
     documentId,
     printTemplate,
+    templatePreview: templatePreviewProp,
     features,
     workspaceName
 }: PrintPreviewModalProps) {
@@ -297,13 +299,13 @@ export function PrintPreviewModal({
         })
     }, [pdfBuilder, pdfData, printableFeatures, printFormat, effectiveId, workspaceId, workspaceName, translations, workspaceFooterContacts])
 
-    const handleSave = async () => {
+    const handleSave = async (preGeneratedBlob?: Blob) => {
         if (isSaving) return
         if (!hasPdfData) { handleHtmlPrint(); return }
 
         setIsSaving(true)
         try {
-            const activeBlob = await ensureSaveBlob()
+            const activeBlob = preGeneratedBlob || await ensureSaveBlob()
             let savedInvoice: Invoice | null = null
 
             if (invoiceData && workspaceId) {
@@ -321,7 +323,7 @@ export function PrintPreviewModal({
                     const storageWorkspaceId = workspaceId || savedInvoice.workspaceId
                     if (!storageWorkspaceId) throw new Error('Missing workspace ID')
 
-                    const finalBlob = !pdfBuilder && pdfData && printableFeatures
+                    const finalBlob = preGeneratedBlob || (!pdfBuilder && pdfData && printableFeatures
                         ? await generateInvoicePdf({
                             data: { ...pdfData, ...savedInvoice, id: savedInvoice.id, invoiceid: savedInvoice.invoiceid, sequenceId: savedInvoice.sequenceId },
                             format: printFormat,
@@ -331,7 +333,7 @@ export function PrintPreviewModal({
                             translations,
                             workspaceFooterContacts
                         })
-                        : activeBlob
+                        : activeBlob)
 
                     const localPath = await saveInvoicePdfToLocalAppData(storageWorkspaceId, savedInvoice.id, printFormat, finalBlob)
                     const dbUpdate: any = { syncStatus: 'synced', lastSyncedAt: new Date().toISOString() }
@@ -354,7 +356,7 @@ export function PrintPreviewModal({
                 }
             } else if (savedInvoice && isOnline() && assetManager) {
                 try {
-                    const finalBlob = !pdfBuilder && pdfData && printableFeatures
+                    const finalBlob = preGeneratedBlob || (!pdfBuilder && pdfData && printableFeatures
                         ? await generateInvoicePdf({
                             data: { ...pdfData, ...savedInvoice, id: savedInvoice.id, invoiceid: savedInvoice.invoiceid, sequenceId: savedInvoice.sequenceId },
                             format: printFormat,
@@ -364,7 +366,7 @@ export function PrintPreviewModal({
                             translations,
                             workspaceFooterContacts
                         })
-                        : activeBlob
+                        : activeBlob)
 
                     const path = `${workspaceId}/printed-invoices/${printFormat === 'a4' ? 'A4' : 'receipts'}/${savedInvoice.id}.pdf`
                     await assetManager.uploadInvoicePdf(savedInvoice.id, finalBlob, printFormat, path)
@@ -421,20 +423,66 @@ export function PrintPreviewModal({
 
     const handleOpenPreview = useCallback(async () => {
         try {
-            const blobs = await buildPdfBlobs(printFormat)
-            const blob = printFormat === 'receipt' ? blobs.receipt : blobs.a4
-            if (!blob) throw new Error('Failed to generate PDF')
-            const url = await blobToDataUrl(blob)
-            setPdfPreviewSource({
-                url,
-                title: title || t('print.previewTitle') || 'Print Preview',
-                onSave: handleSave
-            })
+            const hasPdfDataForPreview = !!pdfData
+            const hasPdfBuilder = !!pdfBuilder
+
+            if (hasPdfDataForPreview) {
+                const generatePdfBlob = async (editedData: any): Promise<Blob> => {
+                    const dataToUse = editedData || pdfData
+                    if (pdfBuilder) {
+                        return await pdfBuilder({ format: printFormat, effectiveId })
+                    }
+                    if (!dataToUse || !printableFeatures) throw new Error('Missing PDF data')
+                    return await generateInvoicePdf({
+                        data: { ...dataToUse, id: effectiveId },
+                        format: printFormat,
+                        workspaceId: workspaceId || '',
+                        features: { ...printableFeatures, logo_url: printableFeatures.logo_url || undefined },
+                        workspaceName: workspaceName || workspaceId || '',
+                        translations,
+                        workspaceFooterContacts
+                    })
+                }
+
+                setInvoicePreviewSource({
+                    data: pdfData || { id: effectiveId, items: [], total_amount: 0, settlement_currency: 'usd', created_at: new Date().toISOString() },
+                    features: printableFeatures || {},
+                    workspaceId,
+                    workspaceName: workspaceName || undefined,
+                    workspaceFooterContacts,
+                    printFormat,
+                    title: title || t('print.previewTitle') || 'Print Preview',
+                    onSave: handleSave,
+                    invoiceData,
+                    effectiveId,
+                    generatePdfBlob,
+                })
+            } else if (hasPdfBuilder) {
+                if (templatePreviewProp) {
+                    setInvoicePreviewSource({
+                        title: title || t('print.previewTitle') || 'Print Preview',
+                        onSave: handleSave,
+                        effectiveId,
+                        templatePreview: templatePreviewProp,
+                    })
+                } else {
+                    const blobs = await buildPdfBlobs(printFormat)
+                    const blob = printFormat === 'receipt' ? blobs.receipt : blobs.a4
+                    if (!blob) throw new Error('Failed to generate PDF')
+                    const url = await blobToDataUrl(blob)
+                    setInvoicePreviewSource({
+                        url,
+                        title: title || t('print.previewTitle') || 'Print Preview',
+                        onSave: handleSave,
+                    })
+                }
+            }
+
             setLocation('/pdf-preview')
         } catch (err) {
-            console.error('Failed to generate PDF for preview:', err)
+            console.error('Failed to open preview:', err)
         }
-    }, [buildPdfBlobs, blobToDataUrl, printFormat, title, t, setLocation, handleSave])
+    }, [printFormat, title, t, setLocation, handleSave, pdfData, printableFeatures, workspaceId, workspaceName, workspaceFooterContacts, invoiceData, effectiveId, pdfBuilder, translations, buildPdfBlobs, blobToDataUrl, templatePreviewProp])
 
     const actionLabel = saveButtonText
         || (invoiceData ? (t('print.printAndSave') || 'Print & Save') : (t('common.print') || 'Print'))

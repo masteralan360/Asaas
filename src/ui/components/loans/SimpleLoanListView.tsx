@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useTranslation } from 'react-i18next'
 import { useLocation } from 'wouter'
@@ -13,6 +13,7 @@ import { whatsappManager } from '@/lib/whatsappWebviewManager'
 import { deleteLoan, isLoanDeletionAllowed, type Loan, useLoanInstallments, useLoanPayments, useLoans } from '@/local-db'
 import { db } from '@/local-db/database'
 import { generateTemplatePdf, type PrintFormat } from '@/services/pdfGenerator'
+import type { TemplatePreview } from '@/lib/pdfPreviewStore'
 import {
     AppPagination,
     Button,
@@ -225,6 +226,34 @@ export function SimpleLoanListView({
             printQuality: features.print_quality
         })
     }, [features.print_quality, printLang, renderLoanPrintTemplate])
+
+    const simpleLoanDetailsPreview = useMemo<TemplatePreview | undefined>(() => {
+        if (!loanToPrint) return undefined
+        return {
+            fields: [
+                { key: 'borrowerName', label: t('loans.borrowerName') || 'Borrower Name', value: loanToPrint.borrowerName || '', type: 'text' },
+                { key: 'principalAmount', label: t('loans.principal') || 'Principal', value: String(loanToPrint.principalAmount ?? ''), type: 'number' },
+            ],
+            createElement: (data: Record<string, string>, effectiveId?: string) => (
+                <LoanDetailsPrintTemplate
+                    workspaceName={workspaceName}
+                    printLang={printLang}
+                    loan={{ ...loanToPrint, borrowerName: data.borrowerName, principalAmount: Number(data.principalAmount) }}
+                    installments={loanPrintInstallments}
+                    payments={loanPrintPayments}
+                    iqdPreference={features.iqd_display_preference}
+                    logoUrl={features.logo_url}
+                    qrValue={effectiveId ? buildQrValue(effectiveId) : undefined}
+                />
+            ),
+            buildPdf: async (element: ReactNode) => generateTemplatePdf({
+                element,
+                format: 'a4',
+                printLang,
+                printQuality: features.print_quality,
+            }),
+        }
+    }, [loanToPrint, workspaceName, printLang, features, loanPrintInstallments, loanPrintPayments, t, buildQrValue])
 
     const simpleLoanListInvoiceData = useMemo(() => ({
         totalAmount: metrics.totalLent + metrics.totalBorrowed,
@@ -692,6 +721,7 @@ export function SimpleLoanListView({
                 } : undefined}
                 pdfBuilder={buildLoanPrintPdf}
                 printTemplate={loanToPrint ? ({ effectiveId }) => renderLoanPrintTemplate(effectiveId) : undefined}
+                templatePreview={simpleLoanDetailsPreview}
             />
             <WhatsAppNumberInputModal
                 isOpen={showWhatsAppModal}
