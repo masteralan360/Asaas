@@ -56,7 +56,11 @@ import {
     AppPagination,
     DeleteConfirmationModal,
     PrintPreviewModal,
-    useToast
+    useToast,
+    ContextMenu,
+    ContextMenuTrigger,
+    ContextMenuContent,
+    ContextMenuItem,
 } from '@/ui/components'
 import { Search, Plus, ArrowLeft, Printer, Trash2, List, LayoutGrid, MessageCircle, Receipt } from 'lucide-react'
 import { CreateManualLoanModal } from '@/ui/components/loans/CreateManualLoanModal'
@@ -121,6 +125,22 @@ function LoanListView({
     const [loanToDelete, setLoanToDelete] = useState<Loan | null>(null)
     const [isDeletingLoan, setIsDeletingLoan] = useState(false)
     const [showPrintPreview, setShowPrintPreview] = useState(false)
+    const [loanForWhatsApp, setLoanForWhatsApp] = useState<Loan | null>(null)
+    const [showWhatsAppModal, setShowWhatsAppModal] = useState(false)
+    const [loanToPrint, setLoanToPrint] = useState<Loan | null>(null)
+    const [showLoanPrintPreview, setShowLoanPrintPreview] = useState(false)
+
+    const handleShareOnWhatsApp = (phone: string, dialogLanguage: string) => {
+        if (!loanForWhatsApp) return
+        const translator = i18n.getFixedT(dialogLanguage)
+        const message = formatLoanDetailsForWhatsApp(loanForWhatsApp, translator)
+        void whatsappManager.openChat(phone, message).catch((error) => {
+            console.error('[Loans] Failed to open WhatsApp chat:', error)
+        })
+        navigate('/whatsapp')
+        setLoanForWhatsApp(null)
+    }
+
     const allLoans = useLoans(workspaceId)
     const loans = useMemo(
         () => allLoans.filter((loan) => loan.loanCategory !== 'simple'),
@@ -217,6 +237,34 @@ function LoanListView({
             printQuality: features.print_quality
         })
     }, [features.print_quality, printLang, renderLoanListTemplate])
+
+    const loanPrintInstallments = useLoanInstallments(loanToPrint?.id, workspaceId)
+    const loanPrintPayments = useLoanPayments(loanToPrint?.id, workspaceId)
+    const renderLoanPrintTemplate = useCallback((effectiveId?: string) => {
+        if (!loanToPrint) return null
+        return (
+            <LoanDetailsPrintTemplate
+                workspaceName={workspaceName}
+                printLang={printLang}
+                loan={loanToPrint}
+                installments={loanPrintInstallments}
+                payments={loanPrintPayments}
+                iqdPreference={features.iqd_display_preference}
+                logoUrl={features.logo_url}
+                qrValue={effectiveId ? buildQrValue(effectiveId) : undefined}
+            />
+        )
+    }, [buildQrValue, features.iqd_display_preference, features.logo_url, loanPrintInstallments, loanPrintPayments, loanToPrint, printLang, workspaceName])
+    const buildLoanPrintPdf = useCallback(async ({ format, effectiveId }: { format: PrintFormat; effectiveId: string }) => {
+        const template = renderLoanPrintTemplate(effectiveId)
+        if (!template) throw new Error('Loan data not ready')
+        return generateTemplatePdf({
+            element: template,
+            format,
+            printLang,
+            printQuality: features.print_quality
+        })
+    }, [features.print_quality, printLang, renderLoanPrintTemplate])
 
     const loanListInvoiceData = useMemo(() => ({
         totalAmount: metrics.totalOutstanding,
@@ -402,8 +450,9 @@ function LoanListView({
                                     const overdue = isLoanOverdue(loan)
                                     const linkedPartySummary = getLoanLinkedPartySummary(loan, t)
                                     return (
+                                        <ContextMenu key={loan.id}>
+                                        <ContextMenuTrigger asChild>
                                         <div
-                                            key={loan.id}
                                             className={cn(
                                                 "p-4 border shadow-sm space-y-4 transition-all active:scale-[0.98] bg-background rounded-2xl",
                                                 overdue ? 'border-red-500/20 bg-red-500/5' : 'border-border'
@@ -479,6 +528,46 @@ function LoanListView({
                                                 )}
                                             </div>
                                         </div>
+                                        </ContextMenuTrigger>
+                                        <ContextMenuContent>
+                                            <ContextMenuItem
+                                                className="gap-2"
+                                                onSelect={() => navigate(getLoanDetailsPath(loan, loan.id))}
+                                            >
+                                                <Search className="w-4 h-4" />
+                                                {t('common.view') || 'View'}
+                                            </ContextMenuItem>
+                                            <ContextMenuItem
+                                                className="gap-2"
+                                                onSelect={() => {
+                                                    setLoanToPrint(loan)
+                                                    setShowLoanPrintPreview(true)
+                                                }}
+                                            >
+                                                <Printer className="w-4 h-4" />
+                                                {t('common.print') || 'Print'}
+                                            </ContextMenuItem>
+                                            <ContextMenuItem
+                                                className="gap-2"
+                                                onSelect={() => {
+                                                    setLoanForWhatsApp(loan)
+                                                    setShowWhatsAppModal(true)
+                                                }}
+                                            >
+                                                <MessageCircle className="w-4 h-4 text-emerald-600" />
+                                                {t('sales.share.whatsapp') || 'Share to WhatsApp'}
+                                            </ContextMenuItem>
+                                            {!isReadOnly && canDeleteLoanRecord(loan) && (
+                                                <ContextMenuItem
+                                                    className="gap-2"
+                                                    onSelect={() => setLoanToDelete(loan)}
+                                                >
+                                                    <Trash2 className="w-4 h-4 text-destructive" />
+                                                    {t('common.delete') || 'Delete'}
+                                                </ContextMenuItem>
+                                            )}
+                                        </ContextMenuContent>
+                                        </ContextMenu>
                                     )
                                 })}
                             </div>
@@ -505,7 +594,9 @@ function LoanListView({
                                             </TableCell>
                                         </TableRow>
                                     ) : paginated.map(loan => (
-                                        <TableRow key={loan.id}>
+                                        <ContextMenu key={loan.id}>
+                                        <ContextMenuTrigger asChild>
+                                        <TableRow>
                                             <TableCell>
                                                 <LoanNoDisplay loanNo={loan.loanNo} className="text-primary" />
                                             </TableCell>
@@ -549,6 +640,46 @@ function LoanListView({
                                                 </div>
                                             </TableCell>
                                         </TableRow>
+                                        </ContextMenuTrigger>
+                                        <ContextMenuContent>
+                                            <ContextMenuItem
+                                                className="gap-2"
+                                                onSelect={() => navigate(getLoanDetailsPath(loan, loan.id))}
+                                            >
+                                                <Search className="w-4 h-4" />
+                                                {t('common.view') || 'View'}
+                                            </ContextMenuItem>
+                                            <ContextMenuItem
+                                                className="gap-2"
+                                                onSelect={() => {
+                                                    setLoanToPrint(loan)
+                                                    setShowLoanPrintPreview(true)
+                                                }}
+                                            >
+                                                <Printer className="w-4 h-4" />
+                                                {t('common.print') || 'Print'}
+                                            </ContextMenuItem>
+                                            <ContextMenuItem
+                                                className="gap-2"
+                                                onSelect={() => {
+                                                    setLoanForWhatsApp(loan)
+                                                    setShowWhatsAppModal(true)
+                                                }}
+                                            >
+                                                <MessageCircle className="w-4 h-4 text-emerald-600" />
+                                                {t('sales.share.whatsapp') || 'Share to WhatsApp'}
+                                            </ContextMenuItem>
+                                            {!isReadOnly && canDeleteLoanRecord(loan) && (
+                                                <ContextMenuItem
+                                                    className="gap-2"
+                                                    onSelect={() => setLoanToDelete(loan)}
+                                                >
+                                                    <Trash2 className="w-4 h-4 text-destructive" />
+                                                    {t('common.delete') || 'Delete'}
+                                                </ContextMenuItem>
+                                            )}
+                                        </ContextMenuContent>
+                                        </ContextMenu>
                                     ))}
                                 </TableBody>
                             </Table>
@@ -590,6 +721,39 @@ function LoanListView({
                 invoiceData={loanListInvoiceData}
                 pdfBuilder={buildLoanListPdf}
                 printTemplate={({ effectiveId }) => renderLoanListTemplate(effectiveId)}
+            />
+            <PrintPreviewModal
+                isOpen={showLoanPrintPreview}
+                onClose={() => {
+                    setShowLoanPrintPreview(false)
+                    setLoanToPrint(null)
+                }}
+                onConfirm={() => {
+                    setShowLoanPrintPreview(false)
+                    setLoanToPrint(null)
+                }}
+                title={getLoanDetailsTitle(loanToPrint || ({} as Loan), t)}
+                features={features}
+                workspaceName={workspaceName}
+                invoiceData={loanToPrint ? {
+                    sequenceId: 0,
+                    totalAmount: loanToPrint.principalAmount,
+                    settlementCurrency: loanToPrint.settlementCurrency,
+                    origin: 'manual',
+                    cashierName: loanToPrint.borrowerName,
+                    createdByName: loanToPrint.borrowerName,
+                    printFormat: 'a4' as PrintFormat
+                } : undefined}
+                pdfBuilder={buildLoanPrintPdf}
+                printTemplate={loanToPrint ? ({ effectiveId }) => renderLoanPrintTemplate(effectiveId) : undefined}
+            />
+            <WhatsAppNumberInputModal
+                isOpen={showWhatsAppModal}
+                onClose={() => {
+                    setShowWhatsAppModal(false)
+                    setLoanForWhatsApp(null)
+                }}
+                onConfirm={handleShareOnWhatsApp}
             />
         </div>
     )

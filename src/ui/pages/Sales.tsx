@@ -1703,6 +1703,21 @@ export function Sales() {
                                         </div>
                                             </ContextMenuTrigger>
                                             <ContextMenuContent>
+                                                <ContextMenuItem
+                                                    className="gap-2"
+                                                    onSelect={() => {
+                                                        if (sale.origin === 'sales_order') {
+                                                            setLocation(`/orders/${sale.id}`)
+                                                        } else if (sale.origin === 'travel_agency') {
+                                                            setLocation(`/travel-agency/${sale.id}/view`)
+                                                        } else {
+                                                            setSelectedSale(sale)
+                                                        }
+                                                    }}
+                                                >
+                                                    <Eye className="w-4 h-4" />
+                                                    {t('common.view') || 'View Details'}
+                                                </ContextMenuItem>
                                                 {sale.origin !== 'sales_order' && sale.origin !== 'travel_agency' && (
                                                     <ContextMenuItem
                                                         className="gap-2"
@@ -1719,6 +1734,18 @@ export function Sales() {
                                                     >
                                                         <RotateCcw className="w-4 h-4 text-orange-600" />
                                                         {t('sales.return.confirmTitle')}
+                                                    </ContextMenuItem>
+                                                )}
+                                                {sale.origin !== 'sales_order' && sale.origin !== 'travel_agency' && (
+                                                    <ContextMenuItem
+                                                        className="gap-2"
+                                                        onSelect={() => {
+                                                            setSelectedSaleForNote(sale)
+                                                            setIsNoteModalOpen(true)
+                                                        }}
+                                                    >
+                                                        <StickyNote className="w-4 h-4" />
+                                                        {sale.notes ? (t('sales.notes.viewNote') || 'View Notes..') : (t('sales.notes.addNote') || 'Add Note')}
                                                     </ContextMenuItem>
                                                 )}
                                                 <ContextMenuItem
@@ -2003,6 +2030,21 @@ export function Sales() {
                                                 </TableRow>
                                                 </ContextMenuTrigger>
                                                 <ContextMenuContent>
+                                                    <ContextMenuItem
+                                                        className="gap-2"
+                                                        onSelect={() => {
+                                                            if (sale.origin === 'sales_order') {
+                                                                setLocation(`/orders/${sale.id}`)
+                                                            } else if (sale.origin === 'travel_agency') {
+                                                                setLocation(`/travel-agency/${sale.id}/view`)
+                                                            } else {
+                                                                setSelectedSale(sale)
+                                                            }
+                                                        }}
+                                                    >
+                                                        <Eye className="w-4 h-4" />
+                                                        {t('common.view') || 'View Details'}
+                                                    </ContextMenuItem>
                                                     {sale.origin !== 'sales_order' && sale.origin !== 'travel_agency' && (
                                                         <ContextMenuItem
                                                             className="gap-2"
@@ -2019,6 +2061,18 @@ export function Sales() {
                                                         >
                                                             <RotateCcw className="w-4 h-4 text-orange-600" />
                                                             {t('sales.return.confirmTitle')}
+                                                        </ContextMenuItem>
+                                                    )}
+                                                    {sale.origin !== 'sales_order' && sale.origin !== 'travel_agency' && (
+                                                        <ContextMenuItem
+                                                            className="gap-2"
+                                                            onSelect={() => {
+                                                                setSelectedSaleForNote(sale)
+                                                                setIsNoteModalOpen(true)
+                                                            }}
+                                                        >
+                                                            <StickyNote className="w-4 h-4" />
+                                                            {sale.notes ? (t('sales.notes.viewNote') || 'View Notes..') : (t('sales.notes.addNote') || 'Add Note')}
                                                         </ContextMenuItem>
                                                     )}
                                                     <ContextMenuItem
