@@ -314,7 +314,8 @@ export async function generateInvoicePdf(options: PDFGeneratorOptions): Promise<
                     data,
                     features: processedFeatures,
                     workspaceId,
-                    workspaceName: workspaceName || workspaceId || 'Atlas'
+                    workspaceName: workspaceName || workspaceId || 'Atlas',
+                    workspaceFooterContacts
                 }))
             : isModernA4
             ? createElement(ModernA4InvoiceTemplate, {
@@ -328,7 +329,8 @@ export async function generateInvoicePdf(options: PDFGeneratorOptions): Promise<
                 data,
                 features: processedFeatures,
                 workspaceId,
-                workspaceName: workspaceName || workspaceId || 'Atlas'
+                workspaceName: workspaceName || workspaceId || 'Atlas',
+                workspaceFooterContacts
             })
     )
     const renderResult = await renderToCanvas(element, A4_WIDTH_MM, features?.print_quality)

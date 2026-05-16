@@ -120,6 +120,8 @@ export interface UniversalInvoice {
 
     cashier_name?: string
     customer_name?: string
+    customer_address?: string
+    terms?: string
     items: UniversalInvoiceItem[]
     total_amount: number
     subtotal_amount?: number

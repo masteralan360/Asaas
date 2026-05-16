@@ -5,12 +5,25 @@ import { localizeReturnReason } from '@/lib/returnReasons'
 import { platformService } from '@/services/platformService'
 import { useTranslation } from 'react-i18next'
 import { ReactQRCode } from '@lglab/react-qr-code'
+import { Mail, MapPin, Phone } from 'lucide-react'
+
+interface WorkspaceContactPair {
+    primary?: string
+    nonPrimary?: string
+}
+
+interface WorkspaceFooterContacts {
+    address?: WorkspaceContactPair
+    email?: WorkspaceContactPair
+    phone?: WorkspaceContactPair
+}
 
 interface RefundPrimaryA4InvoiceTemplateProps {
     data: UniversalInvoice
     features: any
     workspaceId?: string
     workspaceName?: string
+    workspaceFooterContacts?: WorkspaceFooterContacts
 }
 
 type RefundRow = {
@@ -57,7 +70,7 @@ function resolveRow(item: UniversalInvoiceItem): RefundRow {
 }
 
 export const RefundPrimaryA4InvoiceTemplate = forwardRef<HTMLDivElement, RefundPrimaryA4InvoiceTemplateProps>(
-    ({ data, features, workspaceId: propWorkspaceId, workspaceName }, ref) => {
+    ({ data, features, workspaceId: propWorkspaceId, workspaceName, workspaceFooterContacts }, ref) => {
         const { i18n } = useTranslation()
         const printLang = features?.print_lang && features.print_lang !== 'auto' ? features.print_lang : i18n.language
         const t = i18n.getFixedT(printLang)
@@ -68,6 +81,36 @@ export const RefundPrimaryA4InvoiceTemplate = forwardRef<HTMLDivElement, RefundP
         const rows = (data.items || []).map(resolveRow)
         const settlementCurrency = data.settlement_currency || 'usd'
         const effectiveWorkspaceId = propWorkspaceId || data.workspaceId
+
+        const footerContactGroups = [
+            {
+                key: 'address',
+                primary: workspaceFooterContacts?.address?.primary?.trim() || '',
+                nonPrimary: workspaceFooterContacts?.address?.nonPrimary?.trim() || '',
+                valueDir: 'auto' as const,
+                icon: MapPin,
+            },
+            {
+                key: 'email',
+                primary: workspaceFooterContacts?.email?.primary?.trim() || '',
+                nonPrimary: workspaceFooterContacts?.email?.nonPrimary?.trim() || '',
+                valueDir: 'ltr' as const,
+                icon: Mail,
+            },
+            {
+                key: 'phone',
+                primary: workspaceFooterContacts?.phone?.primary?.trim() || '',
+                nonPrimary: workspaceFooterContacts?.phone?.nonPrimary?.trim() || '',
+                valueDir: 'ltr' as const,
+                icon: Phone,
+            }
+        ].map((group) => {
+            const entries: Array<{ type: 'primary' | 'nonPrimary'; value: string }> = []
+            if (group.primary.length > 0) entries.push({ type: 'primary', value: group.primary })
+            if (group.nonPrimary.length > 0) entries.push({ type: 'nonPrimary', value: group.nonPrimary })
+            return { ...group, entries }
+        }).filter((group) => group.entries.length > 0)
+        const hasFooterContacts = footerContactGroups.length > 0
 
         const fallbackOriginalTotal = rows.reduce((sum, row) => sum + (row.unitPrice * row.originalQuantity), 0)
         const fallbackRefundedTotal = rows.reduce((sum, row) => sum + row.refundedAmount, 0)
@@ -101,6 +144,58 @@ export const RefundPrimaryA4InvoiceTemplate = forwardRef<HTMLDivElement, RefundP
 @media print {
     @page { margin: 0; size: A4; }
     body { -webkit-print-color-adjust: exact; margin: 0; padding: 0; }
+}
+.modern-footer-row {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+    row-gap: 8px;
+    line-height: 1.2;
+}
+.modern-footer-group {
+    display: inline-flex;
+    align-items: center;
+    white-space: nowrap;
+}
+.modern-footer-icon {
+    width: 16px;
+    height: 16px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    vertical-align: middle;
+    line-height: 1;
+    flex-shrink: 0;
+    margin-right: 8px;
+}
+.modern-footer-entry {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    line-height: 1.2;
+}
+.modern-footer-entry + .modern-footer-entry {
+    margin-left: 12px;
+}
+.modern-footer-primary-dot {
+    color: ${BRAND_COLOR};
+    font-size: 10px;
+    line-height: 1;
+    display: inline;
+    vertical-align: middle;
+}
+.modern-footer-value {
+    line-height: 1.2;
+    display: inline;
+}
+.modern-footer-separator {
+    display: inline-flex;
+    align-items: center;
+    margin: 0 16px;
+    color: #cbd5e1;
+    font-weight: 700;
+    line-height: 1.2;
 }
 .text-main { color: ${BRAND_COLOR}; }
 .bg-main { background-color: ${BRAND_COLOR}; }
@@ -280,7 +375,34 @@ export const RefundPrimaryA4InvoiceTemplate = forwardRef<HTMLDivElement, RefundP
                         </table>
                     </div>
 
-                    <div className="mt-8 border-t border-gray-200 pt-3 text-center text-xs text-neutral-500">
+                    {hasFooterContacts && (
+                        <div dir="ltr" className="mt-4 pt-4 border-t border-slate-200 shrink-0">
+                            <div className="modern-footer-row text-[11px] text-slate-500">
+                                {footerContactGroups.map((group, groupIndex) => (
+                                    <div key={group.key} className="modern-footer-group">
+                                        <span className="modern-footer-icon text-main">
+                                            <group.icon className="block w-3.5 h-3.5 text-main shrink-0" />
+                                        </span>
+                                        {group.entries.map((entry, entryIndex) => (
+                                            <span key={`${group.key}-${entry.type}-${entryIndex}`} className="modern-footer-entry">
+                                                {entryIndex > 0 && (
+                                                    <span className="modern-footer-primary-dot" aria-hidden="true">{'\u25CF'}</span>
+                                                )}
+                                                <span dir={group.valueDir} className="modern-footer-value font-medium text-slate-500 whitespace-nowrap">
+                                                    {entry.value}
+                                                </span>
+                                            </span>
+                                        ))}
+                                        {groupIndex < footerContactGroups.length - 1 && (
+                                            <span className="modern-footer-separator select-none" aria-hidden="true">|</span>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    <div className="mt-4 border-t border-gray-200 pt-3 text-center text-xs text-neutral-500">
                         {data.origin === 'pos' ? (t('invoice.posSystem') || 'Issued via Atlas ERP System') : 'Atlas'}
                         <span className="text-slate-300 px-2">|</span>
                         {t('invoice.generated') || 'Generated Automatically'}

@@ -3,7 +3,7 @@ import { useState, useRef, useEffect, useCallback, type ReactNode } from 'react'
 interface EditableFieldProps {
     value: string | number
     onChange: (value: string) => void
-    type?: 'text' | 'number' | 'date'
+    type?: 'text' | 'number' | 'date' | 'textarea'
     className?: string
     display?: ((value: string) => ReactNode)
     placeholder?: string
@@ -72,6 +72,27 @@ export function EditableField({
             >
                 {display ? display(String(value)) : value || placeholder || <span className="text-gray-300 italic">empty</span>}
             </span>
+        )
+    }
+
+    if (type === 'textarea') {
+        return (
+            <textarea
+                ref={inputRef as any}
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                onBlur={handleBlur}
+                onKeyDown={(e) => {
+                    if (e.key === 'Escape') {
+                        setDraft(String(value))
+                        setEditing(false)
+                    }
+                    // For textarea, Enter adds a newline, so no auto-finish on Enter.
+                }}
+                className={`border border-blue-400 rounded px-1 py-0.5 text-sm bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-300 w-full resize-none ${inputClassName || className}`}
+                placeholder={placeholder}
+                rows={3}
+            />
         )
     }
 

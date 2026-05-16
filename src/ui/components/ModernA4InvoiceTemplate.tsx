@@ -5,6 +5,7 @@ import { platformService } from '@/services/platformService'
 import { useTranslation } from 'react-i18next'
 import { ReactQRCode } from '@lglab/react-qr-code'
 import { Mail, MapPin, Phone } from 'lucide-react'
+import { EditableField } from '@/ui/components/EditableField'
 
 interface WorkspaceContactPair {
     primary?: string
@@ -23,10 +24,11 @@ interface ModernA4InvoiceTemplateProps {
     workspaceId?: string
     workspaceName?: string
     workspaceFooterContacts?: WorkspaceFooterContacts
+    onDataChange?: (data: UniversalInvoice) => void
 }
 
 export const ModernA4InvoiceTemplate = forwardRef<HTMLDivElement, ModernA4InvoiceTemplateProps>(
-    ({ data, features, workspaceId: propWorkspaceId, workspaceName, workspaceFooterContacts }, ref) => {
+    ({ data, features, workspaceId: propWorkspaceId, workspaceName, workspaceFooterContacts, onDataChange }, ref) => {
         const { i18n } = useTranslation()
         const printLang = features?.print_lang && features.print_lang !== 'auto' ? features.print_lang : i18n.language
         const t = i18n.getFixedT(printLang)
@@ -256,10 +258,23 @@ export const ModernA4InvoiceTemplate = forwardRef<HTMLDivElement, ModernA4Invoic
                             <h3 className={cn("text-primary text-[10px] font-bold border-b border-primary/20 pb-1 mb-1", !isRTL && "uppercase tracking-wide")}>
                                 {tr('invoice.soldTo', 'Sold To:')}
                             </h3>
-                            <div className="flex flex-col gap-1 mt-1">
-                                <span className="font-bold text-slate-800 text-xs">{data.customer_name || ''}</span>
-                                <div className="border-b border-slate-200 dark:border-slate-600 w-full h-4"></div>
-                                <div className="border-b border-slate-200 dark:border-slate-600 w-full h-4"></div>
+                            <div className="mt-1">
+                                <EditableField
+                                    value={data.customer_address || data.customer_name || ''}
+                                    onChange={(v) => onDataChange?.({ ...data, customer_address: v })}
+                                    type="textarea"
+                                    placeholder={tr('invoice.enterCustomerDetails', 'Enter customer details...')}
+                                    className="font-bold text-slate-800 text-xs w-full"
+                                    editable={!!onDataChange}
+                                    display={(val) => val ? (
+                                        <div className="whitespace-pre-wrap">{val}</div>
+                                    ) : (
+                                        <div className="flex flex-col gap-1 w-full opacity-40">
+                                            <div className="border-b border-slate-200 dark:border-slate-600 w-full h-4"></div>
+                                            <div className="border-b border-slate-200 dark:border-slate-600 w-full h-4"></div>
+                                        </div>
+                                    )}
+                                />
                             </div>
                         </div>
                     </div>
@@ -346,9 +361,23 @@ export const ModernA4InvoiceTemplate = forwardRef<HTMLDivElement, ModernA4Invoic
                             <h4 className={cn("text-[10px] font-bold text-slate-800 mb-1 dark:text-white", !isRTL && "uppercase tracking-wider")}>
                                 {tr('invoice.terms', 'Terms & Conditions')}
                             </h4>
-                            <div className="flex flex-col gap-3 mt-1 w-full opacity-40">
-                                <div className="border-b border-slate-200 dark:border-slate-600 w-full h-3"></div>
-                                <div className="border-b border-slate-200 dark:border-slate-600 w-full h-3"></div>
+                            <div className="mt-1 w-full">
+                                <EditableField
+                                    value={data.terms || ''}
+                                    onChange={(v) => onDataChange?.({ ...data, terms: v })}
+                                    type="textarea"
+                                    placeholder={tr('invoice.termsContent', 'Enter terms and conditions')}
+                                    className="text-[9px] text-slate-500 w-full"
+                                    editable={!!onDataChange}
+                                    display={(val) => val ? (
+                                        <div className="whitespace-pre-wrap">{val}</div>
+                                    ) : (
+                                        <div className="flex flex-col gap-3 w-full opacity-40">
+                                            <div className="border-b border-slate-200 dark:border-slate-600 w-full h-3"></div>
+                                            <div className="border-b border-slate-200 dark:border-slate-600 w-full h-3"></div>
+                                        </div>
+                                    )}
+                                />
                             </div>
                         </div>
 

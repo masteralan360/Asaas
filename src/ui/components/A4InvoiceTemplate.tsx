@@ -4,22 +4,67 @@ import { formatCurrency, formatDateTime, cn } from '@/lib/utils'
 import { platformService } from '@/services/platformService'
 import { useTranslation } from 'react-i18next'
 import { ReactQRCode } from '@lglab/react-qr-code'
+import { Mail, MapPin, Phone } from 'lucide-react'
+import { EditableField } from '@/ui/components/EditableField'
+
+interface WorkspaceContactPair {
+    primary?: string
+    nonPrimary?: string
+}
+
+interface WorkspaceFooterContacts {
+    address?: WorkspaceContactPair
+    email?: WorkspaceContactPair
+    phone?: WorkspaceContactPair
+}
 
 interface A4InvoiceTemplateProps {
     data: UniversalInvoice
     features: any
     workspaceId?: string
     workspaceName?: string
+    workspaceFooterContacts?: WorkspaceFooterContacts
+    onDataChange?: (data: UniversalInvoice) => void
 }
 
 export const A4InvoiceTemplate = forwardRef<HTMLDivElement, A4InvoiceTemplateProps>(
-    ({ data, features, workspaceId: propWorkspaceId, workspaceName }, ref) => {
+    ({ data, features, workspaceId: propWorkspaceId, workspaceName, workspaceFooterContacts, onDataChange }, ref) => {
         const { i18n } = useTranslation()
         const printLang = features?.print_lang && features.print_lang !== 'auto' ? features.print_lang : i18n.language
         const t = i18n.getFixedT(printLang)
         const isRTL = printLang === 'ar' || printLang === 'ku'
         const items = data.items || []
         const effectiveWorkspaceId = propWorkspaceId || data.workspaceId
+
+        const footerContactGroups = [
+            {
+                key: 'address',
+                primary: workspaceFooterContacts?.address?.primary?.trim() || '',
+                nonPrimary: workspaceFooterContacts?.address?.nonPrimary?.trim() || '',
+                valueDir: 'auto' as const,
+                icon: MapPin,
+            },
+            {
+                key: 'email',
+                primary: workspaceFooterContacts?.email?.primary?.trim() || '',
+                nonPrimary: workspaceFooterContacts?.email?.nonPrimary?.trim() || '',
+                valueDir: 'ltr' as const,
+                icon: Mail,
+            },
+            {
+                key: 'phone',
+                primary: workspaceFooterContacts?.phone?.primary?.trim() || '',
+                nonPrimary: workspaceFooterContacts?.phone?.nonPrimary?.trim() || '',
+                valueDir: 'ltr' as const,
+                icon: Phone,
+            }
+        ].map((group) => {
+            const entries: Array<{ type: 'primary' | 'nonPrimary'; value: string }> = []
+            if (group.primary.length > 0) entries.push({ type: 'primary', value: group.primary })
+            if (group.nonPrimary.length > 0) entries.push({ type: 'nonPrimary', value: group.nonPrimary })
+            return { ...group, entries }
+        }).filter((group) => group.entries.length > 0)
+        const hasFooterContacts = footerContactGroups.length > 0
 
         // Extract Multi-Currency Data for Footer
         const settlementCurrency = data.settlement_currency || 'usd'
@@ -49,6 +94,58 @@ export const A4InvoiceTemplate = forwardRef<HTMLDivElement, A4InvoiceTemplatePro
 @media print {
     @page { margin: 0; size: A4; }
     body { -webkit-print-color-adjust: exact; margin: 0; padding: 0; }
+}
+.modern-footer-row {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+    row-gap: 8px;
+    line-height: 1.2;
+}
+.modern-footer-group {
+    display: inline-flex;
+    align-items: center;
+    white-space: nowrap;
+}
+.modern-footer-icon {
+    width: 16px;
+    height: 16px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    vertical-align: middle;
+    line-height: 1;
+    flex-shrink: 0;
+    margin-right: 8px;
+}
+.modern-footer-entry {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    line-height: 1.2;
+}
+.modern-footer-entry + .modern-footer-entry {
+    margin-left: 12px;
+}
+.modern-footer-primary-dot {
+    color: ${BRAND_COLOR};
+    font-size: 10px;
+    line-height: 1;
+    display: inline;
+    vertical-align: middle;
+}
+.modern-footer-value {
+    line-height: 1.2;
+    display: inline;
+}
+.modern-footer-separator {
+    display: inline-flex;
+    align-items: center;
+    margin: 0 16px;
+    color: #cbd5e1;
+    font-weight: 700;
+    line-height: 1.2;
 }
 .text-main { color: ${BRAND_COLOR}; }
 .bg-main { background-color: ${BRAND_COLOR}; }
@@ -119,11 +216,24 @@ export const A4InvoiceTemplate = forwardRef<HTMLDivElement, A4InvoiceTemplatePro
                     <table className="w-full border-collapse">
                         <tbody>
                             <tr>
-                                <td className="w-1/2 align-top text-neutral-600 text-start">
+                                <td className="w-1/2 align-top text-neutral-600 text-start pr-4">
                                     <p className="font-bold text-black mb-1">{t('invoice.soldTo')}</p>
-                                    <p className="font-medium text-black">{data.customer_name}</p>
-                                    <div className="h-6 w-full border-b border-gray-300 mb-1"></div>
-                                    <div className="h-6 w-full border-b border-gray-300 mb-1"></div>
+                                    <EditableField
+                                        value={data.customer_address || data.customer_name || ''}
+                                        onChange={(v) => onDataChange?.({ ...data, customer_address: v })}
+                                        type="textarea"
+                                        placeholder={t('invoice.enterCustomerDetails') || 'Enter customer details...'}
+                                        className="font-medium text-black w-full"
+                                        editable={!!onDataChange}
+                                        display={(val) => val ? (
+                                            <div className="whitespace-pre-wrap">{val}</div>
+                                        ) : (
+                                            <>
+                                                <div className="h-6 w-full border-b border-gray-300 mb-1"></div>
+                                                <div className="h-6 w-full border-b border-gray-300 mb-1"></div>
+                                            </>
+                                        )}
+                                    />
                                 </td>
                                 <td className={cn("w-1/2 align-top text-neutral-600", isRTL ? "text-left" : "text-right")}>
                                     <p className="font-bold text-black mb-1">{t('invoice.soldBy')} </p>
@@ -141,12 +251,11 @@ export const A4InvoiceTemplate = forwardRef<HTMLDivElement, A4InvoiceTemplatePro
                     <table className="w-full border-collapse">
                         <thead>
                             <tr>
-                                <th className="border-b-2 border-main pb-3 px-2 text-center font-bold text-main w-[60px]">{t('invoice.qty')}</th>
                                 <th className="border-b-2 border-main pb-3 px-2 text-start font-bold text-main">{t('invoice.productName')}</th>
-                                <th className="border-b-2 border-main pb-3 px-2 text-start font-bold text-main">{t('invoice.description')}</th>
-                                <th className="border-b-2 border-main pb-3 px-2 text-end font-bold text-main w-[100px]">{t('invoice.price')}</th>
-                                <th className="border-b-2 border-main pb-3 px-2 text-center font-bold text-main w-[80px]">{t('invoice.discount')}</th>
-                                <th className="border-b-2 border-main pb-3 px-2 text-end font-bold text-main w-[110px]">{t('invoice.total')}</th>
+                                <th className="border-b-2 border-main pb-3 px-2 text-center font-bold text-main w-[80px]">{t('invoice.qty')}</th>
+                                <th className="border-b-2 border-main pb-3 px-2 text-end font-bold text-main w-[120px]">{t('invoice.price')}</th>
+                                <th className="border-b-2 border-main pb-3 px-2 text-center font-bold text-main w-[100px]">{t('invoice.discount')}</th>
+                                <th className="border-b-2 border-main pb-3 px-2 text-end font-bold text-main w-[130px]">{t('invoice.total')}</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -158,9 +267,8 @@ export const A4InvoiceTemplate = forwardRef<HTMLDivElement, A4InvoiceTemplatePro
 
                                 return (
                                     <tr key={idx} className="text-neutral-700">
-                                        <td className="border-b py-2 px-2 text-center font-bold">{item.quantity}</td>
                                         <td className="border-b py-2 px-2 font-bold text-start">{item.product_name}</td>
-                                        <td className="border-b py-2 px-2 text-sm text-neutral-500 truncate max-w-[200px] text-start"></td>
+                                        <td className="border-b py-2 px-2 text-center font-bold">{item.quantity}</td>
                                         <td className="border-b py-2 px-2 text-end">
                                             {formatCurrency(priceToShow, settlementCurrency, features.iqd_display_preference)}
                                         </td>
@@ -184,8 +292,20 @@ export const A4InvoiceTemplate = forwardRef<HTMLDivElement, A4InvoiceTemplatePro
                         <div className="flex-1 text-sm text-neutral-700 space-y-6 text-start">
                             <div>
                                 <p className={cn("text-main font-bold text-xs mb-3", !isRTL && "uppercase")}>{t('invoice.terms')}</p>
-                                <div className="border border-dashed border-gray-300 h-20 rounded">
-                                </div>
+                                <EditableField
+                                    value={data.terms || ''}
+                                    onChange={(v) => onDataChange?.({ ...data, terms: v })}
+                                    type="textarea"
+                                    placeholder={t('invoice.enterTerms') || 'Enter terms and conditions...'}
+                                    className="w-full text-xs text-neutral-600"
+                                    inputClassName="w-full min-h-[80px]"
+                                    display={(val) => val ? (
+                                        <div className="whitespace-pre-wrap">{val}</div>
+                                    ) : (
+                                        <div className="border border-dashed border-gray-300 h-20 rounded w-full"></div>
+                                    )}
+                                    editable={!!onDataChange}
+                                />
                             </div>
 
                             {data.exchange_rates && data.exchange_rates.length > 0 && (
@@ -246,8 +366,35 @@ export const A4InvoiceTemplate = forwardRef<HTMLDivElement, A4InvoiceTemplatePro
                         </div>
                     </div>
 
+                    {hasFooterContacts && (
+                        <div dir="ltr" className="mt-4 pt-4 border-t border-slate-200 shrink-0">
+                            <div className="modern-footer-row text-[11px] text-slate-500">
+                                {footerContactGroups.map((group, groupIndex) => (
+                                    <div key={group.key} className="modern-footer-group">
+                                        <span className="modern-footer-icon text-main">
+                                            <group.icon className="block w-3.5 h-3.5 text-main shrink-0" />
+                                        </span>
+                                        {group.entries.map((entry, entryIndex) => (
+                                            <span key={`${group.key}-${entry.type}-${entryIndex}`} className="modern-footer-entry">
+                                                {entryIndex > 0 && (
+                                                    <span className="modern-footer-primary-dot" aria-hidden="true">{'\u25CF'}</span>
+                                                )}
+                                                <span dir={group.valueDir} className="modern-footer-value font-medium text-slate-500 whitespace-nowrap">
+                                                    {entry.value}
+                                                </span>
+                                            </span>
+                                        ))}
+                                        {groupIndex < footerContactGroups.length - 1 && (
+                                            <span className="modern-footer-separator select-none" aria-hidden="true">|</span>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
                     {/* Site Footer */}
-                    <div className="mt-8 border-t border-gray-200 pt-3 text-center text-xs text-neutral-500">
+                    <div className="mt-4 border-t border-gray-200 pt-3 text-center text-xs text-neutral-500">
                         {data.origin === 'pos' ? t('invoice.posSystem') : 'Atlas'}
                         <span className="text-slate-300 px-2">|</span>
                         {t('invoice.generated')}
