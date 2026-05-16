@@ -2075,6 +2075,7 @@
             "preparingData": "Preparing data..."
         },
         "share": {
+            "whatsapp": "Share to WhatsApp",
             "whatsappTitle": "Share to Whatsapp",
             "enterPhone": "Enter Phone Number",
             "phoneHint": "Please enter the phone number in the format 0770*******"

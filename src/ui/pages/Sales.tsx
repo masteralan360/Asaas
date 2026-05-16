@@ -6,7 +6,7 @@ import { supabase } from '@/auth/supabase'
 import { Sale } from '@/types'
 import { mapSaleToUniversal } from '@/lib/mappings'
 import { clearPendingSaleDetailsId, readPendingSaleDetailsId } from '@/lib/saleNavigation'
-import { formatCurrency, formatDateTime, formatCompactDateTime, formatDate, formatOriginLabel, cn } from '@/lib/utils'
+import { formatCurrency, formatDateTime, formatCompactDateTime, formatDate, formatOriginLabel, formatSaleDetailsForWhatsApp, cn } from '@/lib/utils'
 import { formatLocalizedMonthYear } from '@/lib/monthDisplay'
 import { getLoanDetailsPath } from '@/lib/loanPresentation'
 import { getRetriableActionToast, isRetriableWebRequestError, normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
@@ -14,6 +14,7 @@ import { getRetriableActionToast, isRetriableWebRequestError, normalizeSupabaseA
 import { adjustInventoryQuantity, commitStockBatchAllocations, db, resolveReturnStorageId, restoreStockBatchAllocations, splitStockBatchAllocationsForReturn, useLoanBySaleId, useLoanInstallments, useLoanPayments, useLoans, useSales, useSalesOrders, useTravelAgencySales, toUISale, toUISaleFromOrder, toUISaleFromTravelAgency, type Loan, type StockBatchAllocation } from '@/local-db'
 import { useWorkspace } from '@/workspace'
 import { isMobile } from '@/lib/platform'
+import { whatsappManager } from '@/lib/whatsappWebviewManager'
 import { useDateRange } from '@/context/DateRangeContext'
 import { DateRangeFilters } from '@/ui/components/DateRangeFilters'
 import { useTheme } from '@/ui/components/theme-provider'
@@ -55,9 +56,14 @@ import {
     DialogDescription,
     DialogFooter,
     Input,
-    Label
+    Label,
+    ContextMenu,
+    ContextMenuTrigger,
+    ContextMenuContent,
+    ContextMenuItem,
 } from '@/ui/components'
 import { LoanDetailsPrintTemplate, LoanReceiptPrintTemplate } from '@/ui/components/loans/LoanPrintTemplates'
+import { WhatsAppNumberInputModal } from '@/ui/components/modals/WhatsAppNumberInputModal'
 import { SaleItem } from '@/types'
 import { generateTemplatePdf, type PrintFormat } from '@/services/pdfGenerator'
 import {
@@ -74,7 +80,8 @@ import {
     Search,
     ArrowUp,
     ArrowDown,
-    ArrowUpDown
+    ArrowUpDown,
+    MessageCircle
 } from 'lucide-react'
 
 export type SalesSortOption = 'date_desc' | 'date_asc' | 'amount_desc' | 'amount_asc' | 'cashier_asc' | 'cashier_desc' | 'origin_asc' | 'origin_desc'
@@ -199,6 +206,21 @@ export function Sales() {
     const [viewMode, setViewMode] = useState<'table' | 'grid'>(() => {
         return (localStorage.getItem('sales_view_mode') as 'table' | 'grid') || 'table'
     })
+
+    const [saleForWhatsApp, setSaleForWhatsApp] = useState<Sale | null>(null)
+    const [showWhatsAppModal, setShowWhatsAppModal] = useState(false)
+    const [contextMenuSaleId, setContextMenuSaleId] = useState<string | null>(null)
+
+    const handleShareOnWhatsApp = (phone: string, dialogLanguage: string) => {
+        if (!saleForWhatsApp) return
+        const translator = i18n.getFixedT(dialogLanguage)
+        const text = formatSaleDetailsForWhatsApp(saleForWhatsApp, translator)
+        void whatsappManager.openChat(phone, text).catch((error) => {
+            console.error('[Sales] Failed to open WhatsApp chat:', error)
+        })
+        setLocation('/whatsapp')
+        setSaleForWhatsApp(null)
+    }
 
     useEffect(() => {
         localStorage.setItem('sales_view_mode', viewMode)
@@ -1501,14 +1523,19 @@ export function Sales() {
                                     const loanIndicator = getLoanIndicator(sale)
 
                                     return (
-                                        <div
+                                        <ContextMenu
                                             key={sale.id}
-                                            className={cn(
-                                                "p-4 border shadow-sm space-y-4 transition-all active:scale-[0.98]",
-                                                style === 'neo-orange' ? "rounded-[var(--radius)] border-2 border-black dark:border-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]" : "rounded-[2rem] md:rounded-2xl border-border",
-                                                isFullyReturned ? 'bg-destructive/5 border-destructive/20' : hasAnyReturn ? 'bg-orange-500/5' : 'bg-card'
-                                            )}
+                                            open={contextMenuSaleId === sale.id}
+                                            onOpenChange={(open) => setContextMenuSaleId(open ? sale.id : null)}
                                         >
+                                            <ContextMenuTrigger asChild>
+                                                <div
+                                                    className={cn(
+                                                        "p-4 border shadow-sm space-y-4 transition-all active:scale-[0.98]",
+                                                        style === 'neo-orange' ? "rounded-[var(--radius)] border-2 border-black dark:border-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]" : "rounded-[2rem] md:rounded-2xl border-border",
+                                                        isFullyReturned ? 'bg-destructive/5 border-destructive/20' : hasAnyReturn ? 'bg-orange-500/5' : 'bg-card'
+                                                    )}
+                                                >
                                             <div className="flex justify-between items-start">
                                                 <div className="space-y-2">
                                                     <div className="flex flex-col gap-1">
@@ -1677,6 +1704,38 @@ export function Sales() {
                                                 </div>
                                             </div>
                                         </div>
+                                            </ContextMenuTrigger>
+                                            <ContextMenuContent>
+                                                {sale.origin !== 'sales_order' && sale.origin !== 'travel_agency' && (
+                                                    <ContextMenuItem
+                                                        className="gap-2"
+                                                        onSelect={() => onPrintClick(sale)}
+                                                    >
+                                                        <Printer className="w-4 h-4" />
+                                                        {t('common.print') || 'Print'}
+                                                    </ContextMenuItem>
+                                                )}
+                                                {!isFullyReturned && sale.origin !== 'sales_order' && sale.origin !== 'travel_agency' && (user?.role === 'admin' || user?.role === 'staff') && (
+                                                    <ContextMenuItem
+                                                        className="gap-2"
+                                                        onSelect={() => handleReturnSale(sale)}
+                                                    >
+                                                        <RotateCcw className="w-4 h-4 text-orange-600" />
+                                                        {t('sales.return.confirmTitle')}
+                                                    </ContextMenuItem>
+                                                )}
+                                                <ContextMenuItem
+                                                    className="gap-2"
+                                                    onSelect={() => {
+                                                        setSaleForWhatsApp(sale)
+                                                        setShowWhatsAppModal(true)
+                                                    }}
+                                                >
+                                                    <MessageCircle className="w-4 h-4 text-emerald-600" />
+                                                    {t('sales.share.whatsapp')}
+                                                </ContextMenuItem>
+                                            </ContextMenuContent>
+                                        </ContextMenu>
                                     )
                                 })}
                             </div>
@@ -1785,10 +1844,15 @@ export function Sales() {
                                         const loanIndicator = getLoanIndicator(sale)
 
                                         return (
-                                            <TableRow
+                                            <ContextMenu
                                                 key={sale.id}
-                                                className={isFullyReturned ? 'bg-destructive/10 border-destructive/20' : hasAnyReturn ? 'bg-orange-500/10 border-orange-500/20 dark:bg-orange-500/5 dark:border-orange-500/10' : ''}
+                                                open={contextMenuSaleId === sale.id}
+                                                onOpenChange={(open) => setContextMenuSaleId(open ? sale.id : null)}
                                             >
+                                                <ContextMenuTrigger asChild>
+                                                    <TableRow
+                                                        className={isFullyReturned ? 'bg-destructive/10 border-destructive/20' : hasAnyReturn ? 'bg-orange-500/10 border-orange-500/20 dark:bg-orange-500/5 dark:border-orange-500/10' : ''}
+                                                    >
                                                 <TableCell className="font-mono text-sm font-bold text-primary">
                                                     {sale.sequenceId ? (
                                                         <span>{sale.origin === 'sales_order' ? ((sale as any).orderNumber || sale._orderNumber || `#${sale.id.slice(0, 8)}`) : `#${String(sale.sequenceId).padStart(5, '0')}`}</span>
@@ -1941,7 +2005,39 @@ export function Sales() {
                                                     )}
                                                     {/* Return badge moved to date cell */}
                                                 </TableCell>
-                                            </TableRow>
+                                                </TableRow>
+                                                </ContextMenuTrigger>
+                                                <ContextMenuContent>
+                                                    {sale.origin !== 'sales_order' && sale.origin !== 'travel_agency' && (
+                                                        <ContextMenuItem
+                                                            className="gap-2"
+                                                            onSelect={() => onPrintClick(sale)}
+                                                        >
+                                                            <Printer className="w-4 h-4" />
+                                                            {t('common.print') || 'Print'}
+                                                        </ContextMenuItem>
+                                                    )}
+                                                    {!isFullyReturned && sale.origin !== 'sales_order' && sale.origin !== 'travel_agency' && (user?.role === 'admin' || user?.role === 'staff') && (
+                                                        <ContextMenuItem
+                                                            className="gap-2"
+                                                            onSelect={() => handleReturnSale(sale)}
+                                                        >
+                                                            <RotateCcw className="w-4 h-4 text-orange-600" />
+                                                            {t('sales.return.confirmTitle')}
+                                                        </ContextMenuItem>
+                                                    )}
+                                                    <ContextMenuItem
+                                                        className="gap-2"
+                                                        onSelect={() => {
+                                                            setSaleForWhatsApp(sale)
+                                                            setShowWhatsAppModal(true)
+                                                        }}
+                                                    >
+                                                        <MessageCircle className="w-4 h-4 text-emerald-600" />
+                                                        {t('sales.share.whatsapp') || 'Share to WhatsApp'}
+                                                    </ContextMenuItem>
+                                                </ContextMenuContent>
+                                            </ContextMenu>
                                         )
                                     })}
                                 </TableBody>
@@ -2237,6 +2333,15 @@ export function Sales() {
                     </DialogContent>
                 </Dialog>
             </div>
+
+            <WhatsAppNumberInputModal
+                isOpen={showWhatsAppModal}
+                onClose={() => {
+                    setShowWhatsAppModal(false)
+                    setSaleForWhatsApp(null)
+                }}
+                onConfirm={handleShareOnWhatsApp}
+            />
         </TooltipProvider>
     )
 }

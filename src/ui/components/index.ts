@@ -109,6 +109,23 @@ export {
     DropdownMenuSubTrigger,
     DropdownMenuRadioGroup,
 } from './ui/dropdown-menu'
+export {
+    ContextMenu,
+    ContextMenuTrigger,
+    ContextMenuContent,
+    ContextMenuItem,
+    ContextMenuCheckboxItem,
+    ContextMenuRadioItem,
+    ContextMenuLabel,
+    ContextMenuSeparator,
+    ContextMenuShortcut,
+    ContextMenuGroup,
+    ContextMenuPortal,
+    ContextMenuSub,
+    ContextMenuSubContent,
+    ContextMenuSubTrigger,
+    ContextMenuRadioGroup,
+} from './ui/context-menu'
 export * from './map'
 export { BiometricLock } from './BiometricLock'
 export { Popover, PopoverTrigger, PopoverContent, PopoverAnchor } from './ui/popover'
