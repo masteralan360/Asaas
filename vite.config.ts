@@ -27,7 +27,7 @@ export default defineConfig(({ mode }) => {
                 disable: isTauriBuild,
                 injectRegister: null,
                 registerType: 'autoUpdate',
-                includeAssets: ['logo.ico', 'logo.png'],
+                includeAssets: ['logo.ico', 'logo.png', 'pwa-icon.png'],
                 manifest: {
                     name: 'Atlas',
                     short_name: 'Atlas',
@@ -37,17 +37,17 @@ export default defineConfig(({ mode }) => {
                     display: 'standalone',
                     icons: [
                         {
-                            src: 'logo.png',
+                            src: 'pwa-icon.png',
                             sizes: '192x192',
                             type: 'image/png'
                         },
                         {
-                            src: 'logo.png',
+                            src: 'pwa-icon.png',
                             sizes: '512x512',
                             type: 'image/png'
                         },
                         {
-                            src: 'logo.png',
+                            src: 'pwa-icon.png',
                             sizes: '512x512',
                             type: 'image/png',
                             purpose: 'any maskable'
