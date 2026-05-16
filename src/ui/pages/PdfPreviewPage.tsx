@@ -1,10 +1,11 @@
-import { useState, useCallback, useRef } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ArrowLeft, Printer, Loader2, Edit3, X } from 'lucide-react'
+import { ArrowLeft, Printer, Loader2, Edit3, X, ZoomIn, ZoomOut, Maximize } from 'lucide-react'
 import { getInvoicePreviewSource, clearInvoicePreviewSource } from '@/lib/pdfPreviewStore'
 import { EditableField } from '@/ui/components/EditableField'
-import { A4InvoiceTemplate, ModernA4InvoiceTemplate } from '@/ui/components'
+import { A4InvoiceTemplate, ModernA4InvoiceTemplate, RefundA4InvoiceTemplate, RefundPrimaryA4InvoiceTemplate } from '@/ui/components'
 import { SaleReceiptBase } from '@/ui/components/SaleReceipt'
+import { cn } from '@/lib/utils'
 import type { UniversalInvoice } from '@/types'
 
 function EditableInvoicePreview({
@@ -37,6 +38,32 @@ function EditableInvoicePreview({
                     features={features}
                     workspaceName={workspaceName || 'Atlas'}
                     workspaceId={workspaceId}
+                />
+            </div>
+        )
+    }
+
+    if (data.is_refund_invoice) {
+        if (features.a4_template === 'modern') {
+            return (
+                <div className="max-w-[900px] mx-auto">
+                    <RefundA4InvoiceTemplate
+                        data={data}
+                        features={features}
+                        workspaceId={workspaceId}
+                        workspaceName={workspaceName || 'Atlas'}
+                    />
+                </div>
+            )
+        }
+        return (
+            <div dir={isRTL ? 'rtl' : 'ltr'} className="bg-white text-black text-sm font-sans max-w-[900px] mx-auto shadow-sm border border-gray-200">
+                <RefundPrimaryA4InvoiceTemplate
+                    data={data}
+                    features={features}
+                    workspaceId={workspaceId}
+                    workspaceName={workspaceName || 'Atlas'}
+                    workspaceFooterContacts={workspaceFooterContacts}
                 />
             </div>
         )
@@ -78,7 +105,64 @@ export function PdfPreviewPage() {
     const sourceRef = useRef(getInvoicePreviewSource())
     const source = sourceRef.current
     const [editableData, setEditableData] = useState<UniversalInvoice | null>(null)
+    const [zoom, setZoom] = useState(100)
+    const [isFitToWidth, setIsFitToWidth] = useState(false)
     const title = source?.title || t('pdfPreview.title') || 'Invoice Preview'
+
+    const handleZoomIn = useCallback(() => {
+        setZoom(prev => Math.min(prev + 10, 200))
+        setIsFitToWidth(false)
+    }, [])
+
+    const handleZoomOut = useCallback(() => {
+        setZoom(prev => Math.max(prev - 10, 50))
+        setIsFitToWidth(false)
+    }, [])
+
+    const handleZoomReset = useCallback(() => {
+        setZoom(100)
+        setIsFitToWidth(false)
+    }, [])
+
+    const handleFitToWidth = useCallback(() => {
+        setIsFitToWidth(prev => !prev)
+    }, [])
+
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.ctrlKey || e.metaKey) {
+                if (e.key === '=' || e.key === '+') {
+                    e.preventDefault()
+                    handleZoomIn()
+                } else if (e.key === '-') {
+                    e.preventDefault()
+                    handleZoomOut()
+                } else if (e.key === '0') {
+                    e.preventDefault()
+                    handleZoomReset()
+                }
+            }
+        }
+
+        const handleWheel = (e: WheelEvent) => {
+            if (e.ctrlKey || e.metaKey) {
+                e.preventDefault()
+                if (e.deltaY < 0) {
+                    handleZoomIn()
+                } else {
+                    handleZoomOut()
+                }
+            }
+        }
+
+        window.addEventListener('keydown', handleKeyDown)
+        window.addEventListener('wheel', handleWheel, { passive: false })
+
+        return () => {
+            window.removeEventListener('keydown', handleKeyDown)
+            window.removeEventListener('wheel', handleWheel)
+        }
+    }, [handleZoomIn, handleZoomOut, handleZoomReset])
 
     const initialized = useRef(false)
     if (source && source.data && !initialized.current) {
@@ -176,6 +260,42 @@ export function PdfPreviewPage() {
                         </button>
                         <h1 className="text-sm font-semibold truncate">{title}</h1>
                     </div>
+
+                    <div className="flex items-center gap-1 bg-secondary/50 rounded-md p-0.5 border border-border">
+                        <button
+                            onClick={handleZoomOut}
+                            className="h-7 w-7 inline-flex items-center justify-center rounded hover:bg-accent text-muted-foreground"
+                            title={t('preview.zoomOut') || 'Zoom Out'}
+                        >
+                            <ZoomOut className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                            onClick={handleZoomReset}
+                            className="h-7 px-2 inline-flex items-center justify-center rounded hover:bg-accent text-[11px] font-medium min-w-[45px]"
+                            title={t('preview.zoomReset') || 'Reset Zoom'}
+                        >
+                            {zoom}%
+                        </button>
+                        <button
+                            onClick={handleZoomIn}
+                            className="h-7 w-7 inline-flex items-center justify-center rounded hover:bg-accent text-muted-foreground"
+                            title={t('preview.zoomIn') || 'Zoom In'}
+                        >
+                            <ZoomIn className="h-3.5 w-3.5" />
+                        </button>
+                        <div className="w-px h-4 bg-border mx-0.5" />
+                        <button
+                            onClick={handleFitToWidth}
+                            className={cn(
+                                "h-7 w-7 inline-flex items-center justify-center rounded transition-colors",
+                                isFitToWidth ? "bg-primary text-primary-foreground" : "hover:bg-accent text-muted-foreground"
+                            )}
+                            title={t('preview.fitToWidth') || 'Fit to Width'}
+                        >
+                            <Maximize className="h-3.5 w-3.5" />
+                        </button>
+                    </div>
+
                     <div className="flex items-center gap-2">
                         {templatePreview.fields.length > 0 && (
                             <button
@@ -197,11 +317,21 @@ export function PdfPreviewPage() {
                     </div>
                 </header>
                 <div className="flex flex-1 overflow-hidden">
-                    <div className="flex-1 overflow-auto p-6">
-                        <div className="max-w-[900px] mx-auto">
+                <div className="flex-1 overflow-hidden light" style={{ colorScheme: 'light' }}>
+                    <div className="h-full w-full overflow-auto p-6 bg-slate-100/50 flex flex-col items-center">
+                        <div 
+                            className={cn(
+                                "mx-auto transition-all duration-200 ease-in-out origin-top",
+                                isFitToWidth ? "w-full" : "w-fit"
+                            )}
+                            style={{
+                                transform: isFitToWidth ? 'none' : `scale(${zoom / 100})`,
+                            }}
+                        >
                             {templatePreview.createElement(fieldValues, source.effectiveId)}
                         </div>
                     </div>
+                </div>
                     {editPanelOpen && (
                         <div className="w-72 shrink-0 border-l bg-card overflow-y-auto p-4 space-y-4">
                             <div className="flex items-center justify-between">
@@ -279,6 +409,42 @@ export function PdfPreviewPage() {
                     </button>
                     <h1 className="text-sm font-semibold truncate">{title}</h1>
                 </div>
+
+                <div className="flex items-center gap-1 bg-secondary/50 rounded-md p-0.5 border border-border">
+                    <button
+                        onClick={handleZoomOut}
+                        className="h-7 w-7 inline-flex items-center justify-center rounded hover:bg-accent text-muted-foreground"
+                        title={t('preview.zoomOut') || 'Zoom Out'}
+                    >
+                        <ZoomOut className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                        onClick={handleZoomReset}
+                        className="h-7 px-2 inline-flex items-center justify-center rounded hover:bg-accent text-[11px] font-medium min-w-[45px]"
+                        title={t('preview.zoomReset') || 'Reset Zoom'}
+                    >
+                        {zoom}%
+                    </button>
+                    <button
+                        onClick={handleZoomIn}
+                        className="h-7 w-7 inline-flex items-center justify-center rounded hover:bg-accent text-muted-foreground"
+                        title={t('preview.zoomIn') || 'Zoom In'}
+                    >
+                        <ZoomIn className="h-3.5 w-3.5" />
+                    </button>
+                    <div className="w-px h-4 bg-border mx-0.5" />
+                    <button
+                        onClick={handleFitToWidth}
+                        className={cn(
+                            "h-7 w-7 inline-flex items-center justify-center rounded transition-colors",
+                            isFitToWidth ? "bg-primary text-primary-foreground" : "hover:bg-accent text-muted-foreground"
+                        )}
+                        title={t('preview.fitToWidth') || 'Fit to Width'}
+                    >
+                        <Maximize className="h-3.5 w-3.5" />
+                    </button>
+                </div>
+
                 <div className="flex items-center gap-2">
                     {editableData && (
                         <button
@@ -299,19 +465,29 @@ export function PdfPreviewPage() {
                     </button>
                 </div>
             </header>
-            <div className="flex flex-1 overflow-hidden">
-                <div className="flex-1 overflow-auto p-6">
-                    {editableData && source.features && source.printFormat && (
-                        <EditableInvoicePreview
-                            data={editableData}
-                            features={source.features}
-                            workspaceId={source.workspaceId}
-                            workspaceName={source.workspaceName}
-                            workspaceFooterContacts={source.workspaceFooterContacts}
-                            printFormat={source.printFormat}
-                            onDataChange={setEditableData}
-                        />
-                    )}
+            <div className="flex flex-1 overflow-hidden light" style={{ colorScheme: 'light' }}>
+                <div className="flex-1 overflow-auto p-6 bg-slate-100/50 flex flex-col items-center">
+                    <div 
+                        className={cn(
+                            "mx-auto transition-all duration-200 ease-in-out origin-top",
+                            isFitToWidth ? "w-full" : "w-fit"
+                        )}
+                        style={{
+                            transform: isFitToWidth ? 'none' : `scale(${zoom / 100})`,
+                        }}
+                    >
+                        {editableData && source.features && source.printFormat && (
+                            <EditableInvoicePreview
+                                data={editableData}
+                                features={source.features}
+                                workspaceId={source.workspaceId}
+                                workspaceName={source.workspaceName}
+                                workspaceFooterContacts={source.workspaceFooterContacts}
+                                printFormat={source.printFormat}
+                                onDataChange={setEditableData}
+                            />
+                        )}
+                    </div>
                 </div>
                 {editPanelOpen && editableData && (
                     <div className="w-72 shrink-0 border-l bg-card overflow-y-auto p-4 space-y-4">

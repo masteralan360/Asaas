@@ -101,11 +101,16 @@ export const RefundA4InvoiceTemplate = forwardRef<HTMLDivElement, RefundA4Invoic
             <div
                 ref={ref}
                 dir={isRTL ? 'rtl' : 'ltr'}
-                className="bg-white text-black relative flex flex-col min-h-[297mm] text-start"
+                className="a4-container bg-white text-black relative flex flex-col min-h-[297mm] text-start"
                 style={{ width: '210mm', padding: '0', margin: '0 auto' }}
             >
                 <style dangerouslySetInnerHTML={{
                     __html: `
+.a4-container {
+    color-scheme: light !important;
+    background-color: white !important;
+    color: black !important;
+}
 @media print {
     @page { margin: 0; size: A4; }
     body { -webkit-print-color-adjust: exact; margin: 0; padding: 0; }

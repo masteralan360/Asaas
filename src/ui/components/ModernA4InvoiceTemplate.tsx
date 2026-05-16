@@ -122,6 +122,11 @@ export const ModernA4InvoiceTemplate = forwardRef<HTMLDivElement, ModernA4Invoic
                 {/* Internal Styles for Print Exactness */}
                 <style dangerouslySetInnerHTML={{
                     __html: `
+.a4-container {
+    color-scheme: light !important;
+    background-color: white !important;
+    color: #0f172a !important; /* slate-900 */
+}
 @media print {
     @page { size: A4; margin: 0; }
     body { background: white !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; display: block; padding: 0; margin: 0; }
@@ -133,6 +138,8 @@ export const ModernA4InvoiceTemplate = forwardRef<HTMLDivElement, ModernA4Invoic
 .a4-container .text-primary { color: ${BRAND_COLOR} !important; }
 .a4-container .bg-primary { background-color: ${BRAND_COLOR} !important; }
 .a4-container .border-primary { border-color: ${BRAND_COLOR} !important; }
+.a4-container .border-slate-200 { border-color: #e2e8f0 !important; }
+.a4-container .bg-slate-50 { background-color: #f8fafc !important; }
 
 .a4-container .modern-footer-row {
     display: flex;
@@ -231,23 +238,23 @@ export const ModernA4InvoiceTemplate = forwardRef<HTMLDivElement, ModernA4Invoic
 
                 {/* INFO GRID */}
                 <div className="grid grid-cols-3 gap-3 mb-4 shrink-0">
-                    <div className="flex flex-col items-center justify-center text-center gap-1 p-3 rounded-lg bg-slate-50 border border-slate-100 dark:bg-slate-800/50 dark:border-slate-700 min-h-[60px]">
+                    <div className="flex flex-col items-center justify-center text-center gap-1 p-3 rounded-lg bg-slate-50 border border-slate-100 min-h-[60px]">
                         <span className={cn("text-[10px] font-semibold text-slate-400", !isRTL && "uppercase tracking-wider")}>
                             {tr('invoice.date', 'Date')}
                         </span>
-                        <span className="text-sm font-bold text-slate-800 dark:text-white leading-none">{dateLabel}</span>
+                        <span className="text-sm font-bold text-slate-800 leading-none">{dateLabel}</span>
                     </div>
-                    <div className="flex flex-col items-center justify-center text-center gap-1 p-3 rounded-lg bg-slate-50 border border-slate-100 dark:bg-slate-800/50 dark:border-slate-700 min-h-[60px]">
+                    <div className="flex flex-col items-center justify-center text-center gap-1 p-3 rounded-lg bg-slate-50 border border-slate-100 min-h-[60px]">
                         <span className={cn("text-[10px] font-semibold text-slate-400", !isRTL && "uppercase tracking-wider")}>
                             {tr('common.time', 'Time')}
                         </span>
-                        <span className="text-sm font-bold text-slate-800 dark:text-white leading-none">{timeLabel}</span>
+                        <span className="text-sm font-bold text-slate-800 leading-none">{timeLabel}</span>
                     </div>
-                    <div className="flex flex-col items-center justify-center text-center gap-1 p-3 rounded-lg bg-slate-50 border border-slate-100 dark:bg-slate-800/50 dark:border-slate-700 min-h-[60px]">
+                    <div className="flex flex-col items-center justify-center text-center gap-1 p-3 rounded-lg bg-slate-50 border border-slate-100 min-h-[60px]">
                         <span className={cn("text-[10px] font-semibold text-slate-400", !isRTL && "uppercase tracking-wider")}>
                             {tr('invoice.number', 'Invoice #')}
                         </span>
-                        <span className="text-sm font-bold text-slate-800 dark:text-white leading-none">{data.invoiceid || `#${String(data.id).slice(0, 8)}`}</span>
+                        <span className="text-sm font-bold text-slate-800 leading-none">{data.invoiceid || `#${String(data.id).slice(0, 8)}`}</span>
                     </div>
                 </div>
 
@@ -270,8 +277,8 @@ export const ModernA4InvoiceTemplate = forwardRef<HTMLDivElement, ModernA4Invoic
                                         <div className="whitespace-pre-wrap">{val}</div>
                                     ) : (
                                         <div className="flex flex-col gap-1 w-full opacity-40">
-                                            <div className="border-b border-slate-200 dark:border-slate-600 w-full h-4"></div>
-                                            <div className="border-b border-slate-200 dark:border-slate-600 w-full h-4"></div>
+                                            <div className="border-b border-slate-200 w-full h-4"></div>
+                                            <div className="border-b border-slate-200 w-full h-4"></div>
                                         </div>
                                     )}
                                 />
@@ -294,14 +301,14 @@ export const ModernA4InvoiceTemplate = forwardRef<HTMLDivElement, ModernA4Invoic
 
                 {/* ITEMS TABLE */}
                 <div className="flex-grow mb-4 flex flex-col min-h-0">
-                    <div className="overflow-hidden rounded border border-slate-200 dark:border-slate-700 flex-grow">
+                    <div className="overflow-hidden rounded border border-slate-200 flex-grow">
                         <table className={cn("w-full border-collapse table-fixed", isRTL ? "text-right" : "text-left")}>
                             <thead>
-                                <tr className={cn("bg-slate-50 text-slate-500 text-[11px] font-bold border-b border-slate-200 dark:bg-slate-800 dark:border-slate-700 h-10", !isRTL && "uppercase tracking-wider")}>
-                                    <th className="px-2 w-1/3 border-r border-slate-200 dark:border-slate-700">{tr('invoice.productName', 'Product Name')}</th>
-                                    <th className="px-2 w-12 text-center border-r border-slate-200 dark:border-slate-700">{tr('invoice.qty', 'Qty')}</th>
-                                    <th className="px-2 w-24 text-end border-r border-slate-200 dark:border-slate-700">{tr('invoice.price', 'Price')}</th>
-                                    <th className="px-2 w-16 text-center border-r border-slate-200 dark:border-slate-700">{tr('invoice.discount', 'Discount')}</th>
+                                <tr className={cn("bg-slate-50 text-slate-500 text-[11px] font-bold border-b border-slate-200 h-10", !isRTL && "uppercase tracking-wider")}>
+                                    <th className="px-2 w-1/3 border-r border-slate-200">{tr('invoice.productName', 'Product Name')}</th>
+                                    <th className="px-2 w-12 text-center border-r border-slate-200">{tr('invoice.qty', 'Qty')}</th>
+                                    <th className="px-2 w-24 text-end border-r border-slate-200">{tr('invoice.price', 'Price')}</th>
+                                    <th className="px-2 w-16 text-center border-r border-slate-200">{tr('invoice.discount', 'Discount')}</th>
                                     <th className="px-2 w-28 text-end">{tr('invoice.total', 'Total')}</th>
                                 </tr>
                             </thead>
@@ -320,20 +327,20 @@ export const ModernA4InvoiceTemplate = forwardRef<HTMLDivElement, ModernA4Invoic
                                     const priceToShow = unitPrice + (quantity > 0 ? (discountAmount / quantity) : 0)
 
                                     return (
-                                        <tr key={idx} className="border-b border-slate-100 last:border-0 hover:bg-slate-50/50 transition-colors dark:border-slate-700 h-9">
-                                            <td className="px-2 font-semibold text-slate-800 dark:text-white border-r border-slate-100 dark:border-slate-700 truncate">
+                                        <tr key={idx} className="border-b border-slate-100 last:border-0 hover:bg-slate-50/50 transition-colors h-9">
+                                            <td className="px-2 font-semibold text-slate-800 border-r border-slate-100 truncate">
                                                 {item.product_name}
                                             </td>
-                                            <td className="px-2 text-center text-slate-500 border-r border-slate-100 dark:border-slate-700 font-bold">
+                                            <td className="px-2 text-center text-slate-500 border-r border-slate-100 font-bold">
                                                 {quantity}
                                             </td>
-                                            <td className="px-2 text-end font-medium text-slate-700 dark:text-slate-300 border-r border-slate-100 dark:border-slate-700 tabular-nums">
+                                            <td className="px-2 text-end font-medium text-slate-700 border-r border-slate-100 tabular-nums">
                                                 {formatCurrency(priceToShow, settlementCurrency, iqdDisplayPreference)}
                                             </td>
-                                            <td className="px-2 text-center text-green-600 font-medium border-r border-slate-100 dark:border-slate-700">
+                                            <td className="px-2 text-center text-green-600 font-medium border-r border-slate-100">
                                                 {discountAmount > 0 ? formatCurrency(discountAmount, settlementCurrency, iqdDisplayPreference) : '-'}
                                             </td>
-                                            <td className="px-2 text-end font-bold text-slate-900 dark:text-white tabular-nums">
+                                            <td className="px-2 text-end font-bold text-slate-900 tabular-nums">
                                                 {formatCurrency(total, settlementCurrency, iqdDisplayPreference)}
                                             </td>
                                         </tr>
@@ -358,7 +365,7 @@ export const ModernA4InvoiceTemplate = forwardRef<HTMLDivElement, ModernA4Invoic
                 <div className="mt-auto pt-4 border-t border-slate-200 flex flex-row gap-6 shrink-0">
                     <div className="flex-1 pr-4 flex flex-col justify-between">
                         <div>
-                            <h4 className={cn("text-[10px] font-bold text-slate-800 mb-1 dark:text-white", !isRTL && "uppercase tracking-wider")}>
+                            <h4 className={cn("text-[10px] font-bold text-slate-800 mb-1", !isRTL && "uppercase tracking-wider")}>
                                 {tr('invoice.terms', 'Terms & Conditions')}
                             </h4>
                             <div className="mt-1 w-full">
@@ -373,8 +380,8 @@ export const ModernA4InvoiceTemplate = forwardRef<HTMLDivElement, ModernA4Invoic
                                         <div className="whitespace-pre-wrap">{val}</div>
                                     ) : (
                                         <div className="flex flex-col gap-3 w-full opacity-40">
-                                            <div className="border-b border-slate-200 dark:border-slate-600 w-full h-3"></div>
-                                            <div className="border-b border-slate-200 dark:border-slate-600 w-full h-3"></div>
+                                            <div className="border-b border-slate-200 w-full h-3"></div>
+                                            <div className="border-b border-slate-200 w-full h-3"></div>
                                         </div>
                                     )}
                                 />
@@ -398,7 +405,7 @@ export const ModernA4InvoiceTemplate = forwardRef<HTMLDivElement, ModernA4Invoic
                     </div>
 
                     <div className="w-[280px]">
-                        <div className="bg-slate-50 rounded-lg p-4 border border-slate-100 dark:bg-slate-800/50">
+                        <div className="bg-slate-50 rounded-lg p-4 border border-slate-100">
                             <div className="flex justify-between items-center mb-1">
                                 <span className={cn("text-[10px] text-slate-500 font-medium", !isRTL && "uppercase")}>
                                     {tr('invoice.subtotal', 'Subtotal')}

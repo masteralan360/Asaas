@@ -50,7 +50,18 @@ export const SaleReceiptBase = forwardRef<HTMLDivElement, SaleReceiptBaseProps>(
 
 
         return (
-            <div ref={ref} dir={isRTL ? 'rtl' : 'ltr'} className="p-8 bg-white text-black print:p-0 print:w-[80mm] print:text-sm">
+            <div ref={ref} dir={isRTL ? 'rtl' : 'ltr'} className="a4-container p-8 bg-white text-black print:p-0 print:w-[80mm] print:text-sm">
+                <style dangerouslySetInnerHTML={{
+                    __html: `
+.a4-container {
+    color-scheme: light !important;
+    background-color: white !important;
+    color: black !important;
+}
+@media print {
+    body { background: white !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+}
+`}} />
 
                 <div className="text-center mb-8 relative">
                     <div className="flex justify-between items-center mb-4">

@@ -85,7 +85,7 @@ export const A4InvoiceTemplate = forwardRef<HTMLDivElement, A4InvoiceTemplatePro
             <div
                 ref={ref}
                 dir={isRTL ? 'rtl' : 'ltr'}
-                className="bg-white text-black text-sm font-sans relative flex flex-col min-h-[297mm] text-start"
+                className="a4-container bg-white text-black text-sm font-sans relative flex flex-col min-h-[297mm] text-start"
                 style={{ width: '210mm', padding: '0', margin: '0 auto' }}
             >
                 {/* Internal Styles for Print Exactness */}
@@ -147,9 +147,17 @@ export const A4InvoiceTemplate = forwardRef<HTMLDivElement, A4InvoiceTemplatePro
     font-weight: 700;
     line-height: 1.2;
 }
-.text-main { color: ${BRAND_COLOR}; }
-.bg-main { background-color: ${BRAND_COLOR}; }
-.border-main { border-color: ${BRAND_COLOR}; }
+.a4-container {
+    color-scheme: light !important;
+    background-color: white !important;
+    color: black !important;
+}
+.text-main { color: ${BRAND_COLOR} !important; }
+.bg-main { background-color: ${BRAND_COLOR} !important; }
+.border-main { border-color: ${BRAND_COLOR} !important; }
+.border-slate-100 { border-color: #f1f5f9 !important; }
+.border-slate-200 { border-color: #e2e8f0 !important; }
+.bg-slate-100 { background-color: #f1f5f9 !important; }
 `}} />
 
                 {/* TOP HEADER SECTION */}

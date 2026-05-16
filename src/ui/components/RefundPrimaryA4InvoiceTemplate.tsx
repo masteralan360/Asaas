@@ -136,7 +136,7 @@ export const RefundPrimaryA4InvoiceTemplate = forwardRef<HTMLDivElement, RefundP
             <div
                 ref={ref}
                 dir={isRTL ? 'rtl' : 'ltr'}
-                className="bg-white text-black text-sm relative flex flex-col min-h-[297mm] text-start"
+                className="a4-container bg-white text-black text-sm relative flex flex-col min-h-[297mm] text-start"
                 style={{ width: '210mm', padding: '0', margin: '0 auto' }}
             >
                 <style dangerouslySetInnerHTML={{
