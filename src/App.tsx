@@ -136,6 +136,11 @@ const CurrencyConverter = lazy(() =>
 const Notebook = lazy(() =>
   import("@/ui/pages/Notebook").then((m) => ({ default: m.Notebook })),
 );
+const PdfPreviewPage = lazy(() =>
+  import("@/ui/pages/PdfPreviewPage").then((m) => ({
+    default: m.PdfPreviewPage,
+  })),
+);
 const ConnectionConfiguration = lazy(() =>
   import("@/ui/pages/ConnectionConfiguration").then((m) => ({
     default: m.ConnectionConfiguration,
@@ -1146,6 +1151,13 @@ function App() {
                           <Layout>
                             <InvoicesHistory />
                           </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/pdf-preview">
+                        <ProtectedRoute>
+                          <Suspense fallback={null}>
+                            <PdfPreviewPage />
+                          </Suspense>
                         </ProtectedRoute>
                       </Route>
                       <Route path="/currency-converter">

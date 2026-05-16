@@ -43,6 +43,13 @@
     "android:build:release": "tauri android build"
   },
   "dependencies": {
+    "@embedpdf/core": "^2.14.2",
+    "@embedpdf/engines": "^2.14.2",
+    "@embedpdf/plugin-document-manager": "^2.14.2",
+    "@embedpdf/plugin-render": "^2.14.2",
+    "@embedpdf/plugin-scroll": "^2.14.2",
+    "@embedpdf/plugin-viewport": "^2.14.2",
+    "@embedpdf/plugin-zoom": "^2.14.2",
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",
     "@fontsource-variable/geist": "^5.2.8",
@@ -103,7 +110,6 @@
     "react-dom": "^18.3.1",
     "react-i18next": "^16.5.1",
     "react-is": "^18.3.1",
-    "react-pdf": "^10.3.0",
     "react-spreadsheet": "^0.10.1",
     "react-to-print": "^3.2.0",
     "recharts": "^3.6.0",

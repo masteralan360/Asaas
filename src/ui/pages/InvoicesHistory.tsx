@@ -4,10 +4,7 @@ import { useInvoices, type Invoice } from '@/local-db'
 import { formatCurrency, formatDateTime, formatDate, formatOriginLabel } from '@/lib/utils'
 import { formatLocalizedMonthYear } from '@/lib/monthDisplay'
 import { platformService } from '@/services/platformService'
-import {
-    getAbsoluteAppDataPath,
-    getStoredLocalInvoicePdfPath,
-} from '@/services/localInvoiceStorage'
+import { getStoredLocalInvoicePdfPath } from '@/services/localInvoiceStorage'
 import {
     Table,
     TableBody,
@@ -21,26 +18,20 @@ import {
     CardHeader,
     CardTitle,
     Button,
-    Dialog,
-    DialogContent,
-    DialogHeader,
-    DialogTitle,
     Tabs,
     TabsList,
     TabsTrigger,
     TabsContent,
 } from '@/ui/components'
-import { FileText, Search, Eye, Download, AlertCircle, Upload } from 'lucide-react'
+import { FileText, Search, Eye, Upload } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/auth'
 import { useWorkspace } from '@/workspace'
 import { useDateRange } from '@/context/DateRangeContext'
 import { DateRangeFilters } from '@/ui/components/DateRangeFilters'
 import { r2Service } from '@/services/r2Service'
-import { PdfViewer } from '@/ui/components'
-import { open } from '@tauri-apps/plugin-shell'
-import { invoke } from '@tauri-apps/api/core'
 import { UploadFilesTab } from './UploadFile'
+import { setPdfPreviewSource } from '@/lib/pdfPreviewStore'
 
 const UPLOAD_FILES_ROUTE = '/invoices-history/upload-files'
 
@@ -52,20 +43,8 @@ export function InvoicesHistory() {
     const { t, i18n } = useTranslation()
     const { dateRange, customDates } = useDateRange()
     const [search, setSearch] = useState('')
-    const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null)
-    const [showPdfViewer, setShowPdfViewer] = useState(false)
-    const [pdfUrl, setPdfUrl] = useState<string | null>(null)
-    const [pdfPath, setPdfPath] = useState<string | null>(null)
-    const [pdfError, setPdfError] = useState<string | null>(null)
     const [isLoadingPdf, setIsLoadingPdf] = useState(false)
-
-    useEffect(() => {
-        return () => {
-            if (pdfUrl?.startsWith('blob:')) {
-                URL.revokeObjectURL(pdfUrl)
-            }
-        }
-    }, [pdfUrl])
+    const [downloadError, setDownloadError] = useState<string | null>(null)
 
     const activeTab = location === UPLOAD_FILES_ROUTE ? 'uploads' : 'history'
     const historyInvoices = useMemo(
@@ -146,78 +125,50 @@ export function InvoicesHistory() {
     }
 
     const handleView = async (invoice: Invoice, format: 'a4' | 'receipt') => {
-        setSelectedInvoice(invoice)
         setIsLoadingPdf(true)
-        setPdfError(null)
-        setPdfUrl(null)
-        setPdfPath(null)
-        setShowPdfViewer(true)
+        setDownloadError(null)
 
         try {
             const localPath = getStoredLocalInvoicePdfPath(invoice, format)
             const pdfBlob = format === 'a4' ? invoice.pdfBlobA4 : invoice.pdfBlobReceipt
             const r2Path = format === 'a4' ? invoice.r2PathA4 : invoice.r2PathReceipt
 
+            let url: string | null = null
+
             if (localPath) {
                 const exists = await platformService.exists(localPath)
                 if (exists) {
-                    setPdfPath(localPath)
-                    setPdfUrl(platformService.convertFileSrc(localPath))
-                    return
+                    url = platformService.convertFileSrc(localPath)
                 }
             }
 
-            if (pdfBlob) {
-                setPdfUrl(URL.createObjectURL(pdfBlob))
+            if (!url && pdfBlob) {
+                url = URL.createObjectURL(pdfBlob)
+            }
+
+            if (!url && r2Path) {
+                if (!navigator.onLine) {
+                    setDownloadError(t('invoices.offlineError') || 'You must be online to view invoice PDFs.')
+                    return
+                }
+                url = r2Service.getUrl(r2Path)
+            }
+
+            if (!url) {
+                setDownloadError(t('invoices.pdfNotAvailable') || 'PDF not available.')
                 return
             }
 
-            if (!r2Path) {
-                setPdfError(t('invoices.pdfNotAvailable') || 'PDF not available. This invoice was created before PDF storage was enabled.')
-                return
-            }
-
-            if (!navigator.onLine) {
-                setPdfError(t('invoices.offlineError') || 'You must be online to view invoice PDFs.')
-                return
-            }
-
-            setPdfUrl(r2Service.getUrl(r2Path))
+            setPdfPreviewSource({
+                url,
+                title: `${t('invoices.viewInvoice') || 'Invoice'} ${invoice.invoiceid}`
+            })
+            setLocation('/pdf-preview')
         } catch (error) {
             console.error('[InvoicesHistory] Failed to load PDF:', error)
-            setPdfError(t('invoices.pdfLoadError') || 'Failed to load PDF')
+            setDownloadError(t('invoices.pdfLoadError') || 'Failed to load PDF')
         } finally {
             setIsLoadingPdf(false)
-        }
-    }
-
-    const handleDownload = async () => {
-        if ((!pdfUrl && !pdfPath) || !selectedInvoice) return
-
-        if (pdfPath) {
-            try {
-                const absPath = await getAbsoluteAppDataPath(pdfPath)
-                await invoke('open_file_path', { path: absPath })
-                return
-            } catch (error) {
-                console.error('[InvoicesHistory] Failed to open file with invoke:', error)
-            }
-        }
-
-        if (!pdfUrl) return
-
-        try {
-            await open(pdfUrl)
-        } catch (error) {
-            console.error('[InvoicesHistory] Failed to open URL with Tauri shell:', error)
-
-            const link = document.createElement('a')
-            link.href = pdfUrl
-            link.download = `${selectedInvoice.invoiceid.replace(/[^\w.-]+/g, '_')}.pdf`
-            link.target = '_blank'
-            document.body.appendChild(link)
-            link.click()
-            document.body.removeChild(link)
         }
     }
 
@@ -371,60 +322,24 @@ export function InvoicesHistory() {
                 />
             </TabsContent>
 
-            <Dialog
-                open={showPdfViewer}
-                onOpenChange={(open) => {
-                    if (!open) {
-                        setShowPdfViewer(false)
-                        setSelectedInvoice(null)
-                        setPdfUrl(null)
-                        setPdfPath(null)
-                        setPdfError(null)
-                    }
-                }}
-            >
-                <DialogContent className="flex h-[90vh] max-w-4xl flex-col">
-                    <DialogHeader className="flex-shrink-0">
-                        <DialogTitle className="flex items-center justify-between">
-                            <span>{t('invoices.viewInvoice') || 'View Invoice'} {selectedInvoice?.invoiceid}</span>
-                            {pdfUrl && !pdfError && (
-                                <Button size="sm" variant="outline" allowViewer={true} onClick={handleDownload} className="ml-4">
-                                    <Download className="mr-2 h-4 w-4" />
-                                    {t('common.ViewAndDownload') || 'View and Download'}
-                                </Button>
-                            )}
-                        </DialogTitle>
-                    </DialogHeader>
-                    <div className="flex-1 overflow-hidden rounded-lg">
-                        {isLoadingPdf && (
-                            <div className="flex h-full items-center justify-center">
-                                <div className="text-center">
-                                    <div className="mx-auto mb-2 h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-                                    <p className="text-muted-foreground">{t('common.loading') || 'Loading...'}</p>
-                                </div>
-                            </div>
-                        )}
-                        {pdfError && (
-                            <div className="flex h-full items-center justify-center">
-                                <div className="p-8 text-center">
-                                    <AlertCircle className="mx-auto mb-4 h-12 w-12 text-yellow-500" />
-                                    <p className="text-muted-foreground">{pdfError}</p>
-                                </div>
-                            </div>
-                        )}
-                        {pdfUrl && !pdfError && !isLoadingPdf && (
-                            <PdfViewer
-                                file={pdfUrl}
-                                className="h-full w-full overflow-auto"
-                                onLoadError={(error) => {
-                                    console.error('[InvoicesHistory] Failed to load PDF:', error)
-                                    setPdfError(t('invoices.pdfLoadError') || 'Failed to load PDF')
-                                }}
-                            />
-                        )}
+            {isLoadingPdf && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80">
+                    <div className="text-center">
+                        <div className="mx-auto mb-2 h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                        <p className="text-muted-foreground">{t('common.loading') || 'Loading...'}</p>
                     </div>
-                </DialogContent>
-            </Dialog>
+                </div>
+            )}
+            {downloadError && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80">
+                    <div className="rounded-lg border bg-card p-6 text-center shadow-lg max-w-sm">
+                        <p className="text-sm text-muted-foreground mb-4">{downloadError}</p>
+                        <Button variant="outline" size="sm" onClick={() => setDownloadError(null)}>
+                            {t('common.close') || 'Close'}
+                        </Button>
+                    </div>
+                </div>
+            )}
         </Tabs>
     )
 }

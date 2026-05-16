@@ -1973,10 +1973,15 @@
         "clickToExpand": "Click to expand",
         "printAndSave": "Print & Save",
         "previewTitle": "Print Preview",
+        "openFullPreview": "Open the full PDF viewer to preview, zoom, and navigate the document.",
+        "openPreview": "Open Full Preview",
         "saveSuccess": "Invoice Saved",
         "saveSuccessDesc": "A record of this invoice has been added to history.",
         "saveError": "Save Failed",
         "saveErrorDesc": "Could not save invoice record."
+    },
+    "pdfPreview": {
+        "fitPage": "Fit"
     },
     "invoice": {
         "date": "Date",

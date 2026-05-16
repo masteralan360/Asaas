@@ -70,7 +70,6 @@ export { TopProductsModal, SalesOverviewModal, PeakTradingModal, ReturnsAnalysis
 export { PrintPreviewModal } from './PrintPreviewModal'
 export { ExportPreviewModal } from './ExportPreviewModal'
 export { Progress } from './ui/progress'
-export { PdfViewer } from './PdfViewer'
 export { CheckoutSuccessModal } from './pos/CheckoutSuccessModal'
 export { HeldSalesModal } from './pos/HeldSalesModal'
 export type { HeldSale } from './pos/HeldSalesModal'
