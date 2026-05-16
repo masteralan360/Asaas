@@ -209,7 +209,6 @@ export function Sales() {
 
     const [saleForWhatsApp, setSaleForWhatsApp] = useState<Sale | null>(null)
     const [showWhatsAppModal, setShowWhatsAppModal] = useState(false)
-    const [contextMenuSaleId, setContextMenuSaleId] = useState<string | null>(null)
 
     const handleShareOnWhatsApp = (phone: string, dialogLanguage: string) => {
         if (!saleForWhatsApp) return
@@ -1525,8 +1524,6 @@ export function Sales() {
                                     return (
                                         <ContextMenu
                                             key={sale.id}
-                                            open={contextMenuSaleId === sale.id}
-                                            onOpenChange={(open) => setContextMenuSaleId(open ? sale.id : null)}
                                         >
                                             <ContextMenuTrigger asChild>
                                                 <div
@@ -1846,8 +1843,6 @@ export function Sales() {
                                         return (
                                             <ContextMenu
                                                 key={sale.id}
-                                                open={contextMenuSaleId === sale.id}
-                                                onOpenChange={(open) => setContextMenuSaleId(open ? sale.id : null)}
                                             >
                                                 <ContextMenuTrigger asChild>
                                                     <TableRow
