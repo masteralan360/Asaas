@@ -1,7 +1,7 @@
 {
   "name": "atlas",
   "private": true,
-  "version": "0.1.43",
+  "version": "0.1.44",
   "main": "electron/main.cjs",
   "type": "module",
   "repository": {
@@ -139,5 +139,5 @@
     "vite-plugin-pwa": "^1.2.0",
     "workbox-window": "^7.1.0"
   },
-  "min_version": "0.1.43"
+  "min_version": "0.1.44"
 }

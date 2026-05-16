@@ -4,7 +4,7 @@ import { cn, formatCurrency, formatDate, formatTime } from '@/lib/utils'
 import { platformService } from '@/services/platformService'
 import { useTranslation } from 'react-i18next'
 import { ReactQRCode } from '@lglab/react-qr-code'
-import { Mail, MapPin, Phone } from 'lucide-react'
+import { Mail, MapPin, Phone, X, RotateCw, Scaling, Move } from 'lucide-react'
 import { EditableField } from '@/ui/components/EditableField'
 
 interface WorkspaceContactPair {
@@ -444,6 +444,336 @@ export const ModernA4InvoiceTemplate = forwardRef<HTMLDivElement, ModernA4Invoic
                         </div>
                     </div>
                 </div>
+
+                {((data.attached_images && data.attached_images.length > 0) || (data.attached_texts && data.attached_texts.length > 0)) && (
+                    <div className="absolute inset-0 pointer-events-none overflow-hidden print:overflow-visible">
+                        {(data.attached_images || []).map((img, idx) => (
+                            <div
+                                key={idx}
+                                className="absolute pointer-events-auto group"
+                                style={{
+                                    left: `${img.x}mm`,
+                                    top: `${img.y}mm`,
+                                    width: `${img.width}mm`,
+                                    transform: `rotate(${img.rotation || 0}deg)`,
+                                    cursor: onDataChange ? 'move' : 'default',
+                                    zIndex: 50 + idx
+                                }}
+                                onPointerDown={(e) => {
+                                    if (!onDataChange) return
+                                    e.preventDefault()
+                                    e.stopPropagation()
+                                    
+                                    const el = e.currentTarget
+                                    const startX = e.clientX
+                                    const startY = e.clientY
+                                    const initialX = img.x
+                                    const initialY = img.y
+                                    
+                                    const rect = el.offsetParent?.getBoundingClientRect()
+                                    if (!rect) return
+                                    const scale = 210 / rect.width
+                                    
+                                    const onPointerMove = (moveEvent: PointerEvent) => {
+                                        const dx = (moveEvent.clientX - startX) * scale
+                                        const dy = (moveEvent.clientY - startY) * scale
+                                        
+                                        const newImages = [...(data.attached_images || [])]
+                                        newImages[idx] = {
+                                            ...img,
+                                            x: initialX + dx,
+                                            y: initialY + dy
+                                        }
+                                        onDataChange({ ...data, attached_images: newImages })
+                                    }
+                                    
+                                    const onPointerUp = () => {
+                                        window.removeEventListener('pointermove', onPointerMove)
+                                        window.removeEventListener('pointerup', onPointerUp)
+                                    }
+                                    
+                                    window.addEventListener('pointermove', onPointerMove)
+                                    window.addEventListener('pointerup', onPointerUp)
+                                }}
+                            >
+                                <img
+                                    src={platformService.convertFileSrc(img.path)}
+                                    alt=""
+                                    className="w-full h-auto object-contain block ring-1 ring-transparent group-hover:ring-primary transition-shadow"
+                                    style={{ maxHeight: '1000mm' }}
+                                />
+                                
+                                {onDataChange && (
+                                    <>
+                                        {/* Rotation Handle */}
+                                        <div 
+                                            className="absolute -top-8 left-1/2 -translate-x-1/2 w-6 h-6 bg-white border border-slate-200 rounded-full shadow-sm flex items-center justify-center cursor-alias opacity-0 group-hover:opacity-100 transition-opacity hover:bg-slate-50 active:bg-slate-100"
+                                            onPointerDown={(e) => {
+                                                e.stopPropagation()
+                                                e.preventDefault()
+                                                const rect = e.currentTarget.parentElement?.getBoundingClientRect()
+                                                if (!rect) return
+                                                const centerX = rect.left + rect.width / 2
+                                                const centerY = rect.top + rect.height / 2
+                                                const startAngle = Math.atan2(e.clientY - centerY, e.clientX - centerX)
+                                                const initialRotation = img.rotation || 0
+
+                                                const onPointerMove = (mE: PointerEvent) => {
+                                                    const currentAngle = Math.atan2(mE.clientY - centerY, mE.clientX - centerX)
+                                                    const delta = (currentAngle - startAngle) * (180 / Math.PI)
+                                                    const newImages = [...(data.attached_images || [])]
+                                                    newImages[idx] = { ...img, rotation: initialRotation + delta }
+                                                    onDataChange({ ...data, attached_images: newImages })
+                                                }
+                                                const onPointerUp = () => {
+                                                    window.removeEventListener('pointermove', onPointerMove)
+                                                    window.removeEventListener('pointerup', onPointerUp)
+                                                }
+                                                window.addEventListener('pointermove', onPointerMove)
+                                                window.addEventListener('pointerup', onPointerUp)
+                                            }}
+                                        >
+                                            <RotateCw className="w-3 h-3 text-primary" />
+                                        </div>
+
+                                        {/* Resize Handle */}
+                                        <div 
+                                            className="absolute -bottom-2 -right-2 w-5 h-5 bg-white border border-slate-200 rounded shadow-sm flex items-center justify-center cursor-nwse-resize opacity-0 group-hover:opacity-100 transition-opacity hover:bg-slate-50 active:bg-slate-100"
+                                            onPointerDown={(e) => {
+                                                e.stopPropagation()
+                                                e.preventDefault()
+                                                const startX = e.clientX
+                                                const initialWidth = img.width
+                                                const rect = e.currentTarget.parentElement?.offsetParent?.getBoundingClientRect()
+                                                if (!rect) return
+                                                const scale = 210 / rect.width
+
+                                                const onPointerMove = (mE: PointerEvent) => {
+                                                    const dx = (mE.clientX - startX) * scale
+                                                    const newWidth = Math.max(10, initialWidth + dx)
+                                                    const newImages = [...(data.attached_images || [])]
+                                                    newImages[idx] = { ...img, width: newWidth }
+                                                    onDataChange({ ...data, attached_images: newImages })
+                                                }
+                                                const onPointerUp = () => {
+                                                    window.removeEventListener('pointermove', onPointerMove)
+                                                    window.removeEventListener('pointerup', onPointerUp)
+                                                }
+                                                window.addEventListener('pointermove', onPointerMove)
+                                                window.addEventListener('pointerup', onPointerUp)
+                                            }}
+                                        >
+                                            <Scaling className="w-3 h-3 text-primary" />
+                                        </div>
+
+                                        {/* Delete Handle */}
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation()
+                                                const newImages = (data.attached_images || []).filter((_, i) => i !== idx)
+                                                onDataChange({ ...data, attached_images: newImages })
+                                            }}
+                                            className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity shadow-md hover:bg-red-600 active:scale-95"
+                                        >
+                                            <X className="w-3 h-3" />
+                                        </button>
+                                    </>
+                                )}
+                            </div>
+                        ))}
+
+                        {/* Attached Texts */}
+                        {(data.attached_texts || []).map((txt, idx) => (
+                            <div
+                                key={txt.id}
+                                className="absolute pointer-events-auto group"
+                                style={{
+                                    left: `${txt.x}mm`,
+                                    top: `${txt.y}mm`,
+                                    width: `${txt.width}mm`,
+                                    transform: `rotate(${txt.rotation || 0}deg)`,
+                                    zIndex: 100 + idx
+                                }}
+                            >
+                                <textarea
+                                    value={txt.text}
+                                    onChange={(e) => {
+                                        if (!onDataChange) return
+                                        const newTexts = [...(data.attached_texts || [])]
+                                        newTexts[idx] = { ...txt, text: e.target.value }
+                                        onDataChange({ ...data, attached_texts: newTexts })
+                                    }}
+                                    className="w-full bg-transparent border-none outline-none resize-none p-1 block ring-1 ring-transparent group-hover:ring-primary transition-shadow text-inherit font-bold overflow-hidden"
+                                    style={{ 
+                                        height: 'auto',
+                                        fontSize: `${txt.fontSize || 16}px`,
+                                        color: txt.color || 'inherit'
+                                    }}
+                                    onBlur={(e) => {
+                                        if (!onDataChange) return
+                                        if (!e.target.value.trim()) {
+                                            const newTexts = (data.attached_texts || []).filter(t => t.id !== txt.id)
+                                            onDataChange({ ...data, attached_texts: newTexts })
+                                        }
+                                    }}
+                                    rows={1}
+                                    spellCheck={false}
+                                />
+                                
+                                {onDataChange && (
+                                    <>
+                                        {/* Font Size Handle */}
+                                        <div 
+                                            className="absolute -top-16 left-1/2 -translate-x-1/2 h-7 bg-white border border-slate-200 rounded-md shadow-sm flex items-center justify-center opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity z-10 px-1"
+                                            onPointerDown={(e) => e.stopPropagation()}
+                                        >
+                                            <input
+                                                type="number"
+                                                min="8"
+                                                max="72"
+                                                value={txt.fontSize === '' ? '' : (txt.fontSize ?? 16)}
+                                                onChange={(e) => {
+                                                    if (!onDataChange) return
+                                                    const newTexts = [...(data.attached_texts || [])]
+                                                    const val = e.target.value
+                                                    newTexts[idx] = { ...txt, fontSize: val === '' ? '' : parseInt(val) }
+                                                    onDataChange({ ...data, attached_texts: newTexts })
+                                                }}
+                                                className="w-12 h-5 text-center text-xs outline-none font-medium text-slate-700 bg-transparent"
+                                            />
+                                            <span className="text-[10px] text-slate-400 font-medium pr-1 select-none pointer-events-none">px</span>
+                                        </div>
+
+                                        {/* Move Handle */}
+                                        <div 
+                                            className="absolute -bottom-7 left-1/2 -translate-x-1/2 w-6 h-6 bg-white border border-slate-200 rounded-full shadow-sm flex items-center justify-center cursor-move opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity hover:bg-slate-50 active:bg-slate-100"
+                                            onPointerDown={(e) => {
+                                                if (!onDataChange) return
+                                                e.preventDefault()
+                                                e.stopPropagation()
+                                                const el = e.currentTarget.parentElement!
+                                                const startX = e.clientX
+                                                const startY = e.clientY
+                                                const initialX = txt.x
+                                                const initialY = txt.y
+                                                const rect = el.offsetParent?.getBoundingClientRect()
+                                                if (!rect) return
+                                                const scale = 210 / rect.width
+                                                const onPointerMove = (moveEvent: PointerEvent) => {
+                                                    if (!onDataChange) return
+                                                    const dx = (moveEvent.clientX - startX) * scale
+                                                    const dy = (moveEvent.clientY - startY) * scale
+                                                    const newTexts = [...(data.attached_texts || [])]
+                                                    newTexts[idx] = { ...txt, x: initialX + dx, y: initialY + dy }
+                                                    onDataChange({ ...data, attached_texts: newTexts })
+                                                }
+                                                const onPointerUp = () => {
+                                                    window.removeEventListener('pointermove', onPointerMove)
+                                                    window.removeEventListener('pointerup', onPointerUp)
+                                                }
+                                                window.addEventListener('pointermove', onPointerMove)
+                                                window.addEventListener('pointerup', onPointerUp)
+                                            }}
+                                        >
+                                            <Move className="w-3 h-3 text-primary" />
+                                        </div>
+                                        <div 
+                                            className="absolute -top-8 left-1/2 -translate-x-1/2 w-6 h-6 bg-white border border-slate-200 rounded-full shadow-sm flex items-center justify-center cursor-alias opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity hover:bg-slate-50 active:bg-slate-100"
+                                            onPointerDown={(e) => {
+                                                e.stopPropagation()
+                                                e.preventDefault()
+                                                const rect = e.currentTarget.parentElement?.getBoundingClientRect()
+                                                if (!rect) return
+                                                const centerX = rect.left + rect.width / 2
+                                                const centerY = rect.top + rect.height / 2
+                                                const startAngle = Math.atan2(e.clientY - centerY, e.clientX - centerX)
+                                                const initialRotation = txt.rotation || 0
+
+                                                const onPointerMove = (mE: PointerEvent) => {
+                                                    if (!onDataChange) return
+                                                    const currentAngle = Math.atan2(mE.clientY - centerY, mE.clientX - centerX)
+                                                    const delta = (currentAngle - startAngle) * (180 / Math.PI)
+                                                    const newTexts = [...(data.attached_texts || [])]
+                                                    newTexts[idx] = { ...txt, rotation: initialRotation + delta }
+                                                    onDataChange({ ...data, attached_texts: newTexts })
+                                                }
+                                                const onPointerUp = () => {
+                                                    window.removeEventListener('pointermove', onPointerMove)
+                                                    window.removeEventListener('pointerup', onPointerUp)
+                                                }
+                                                window.addEventListener('pointermove', onPointerMove)
+                                                window.addEventListener('pointerup', onPointerUp)
+                                            }}
+                                        >
+                                            <RotateCw className="w-3 h-3 text-primary" />
+                                        </div>
+
+                                        {/* Resize (Width) Handle */}
+                                        <div 
+                                            className="absolute -bottom-2 -right-2 w-5 h-5 bg-white border border-slate-200 rounded shadow-sm flex items-center justify-center cursor-nwse-resize opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity hover:bg-slate-50 active:bg-slate-100"
+                                            onPointerDown={(e) => {
+                                                e.stopPropagation()
+                                                e.preventDefault()
+                                                const startX = e.clientX
+                                                const initialWidth = txt.width
+                                                const rect = e.currentTarget.parentElement?.offsetParent?.getBoundingClientRect()
+                                                if (!rect) return
+                                                const scale = 210 / rect.width
+
+                                                const onPointerMove = (mE: PointerEvent) => {
+                                                    if (!onDataChange) return
+                                                    const dx = (mE.clientX - startX) * scale
+                                                    const newWidth = Math.max(20, initialWidth + dx)
+                                                    const newTexts = [...(data.attached_texts || [])]
+                                                    newTexts[idx] = { ...txt, width: newWidth }
+                                                    onDataChange({ ...data, attached_texts: newTexts })
+                                                }
+                                                const onPointerUp = () => {
+                                                    window.removeEventListener('pointermove', onPointerMove)
+                                                    window.removeEventListener('pointerup', onPointerUp)
+                                                }
+                                                window.addEventListener('pointermove', onPointerMove)
+                                                window.addEventListener('pointerup', onPointerUp)
+                                            }}
+                                        >
+                                            <Scaling className="w-3 h-3 text-primary" />
+                                        </div>
+
+                                        {/* Delete Handle */}
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation()
+                                                const newTexts = (data.attached_texts || []).filter(t => t.id !== txt.id)
+                                                onDataChange({ ...data, attached_texts: newTexts })
+                                            }}
+                                            className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity shadow-md hover:bg-red-600 active:scale-95 z-10"
+                                        >
+                                            <X className="w-3 h-3" />
+                                        </button>
+                                    </>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                )}
+
+                {/* Annotations Layer */}
+                <svg 
+                    className="absolute inset-0 z-[40] pointer-events-none" 
+                    viewBox="0 0 210 297"
+                >
+                    {(data.annotations || []).map((ann, i) => (
+                        <path 
+                            key={i}
+                            d={`M ${ann.points.map(p => `${p.x},${p.y}`).join(' L ')}`}
+                            stroke={ann.color}
+                            strokeWidth={ann.brushSize}
+                            fill="none"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                        />
+                    ))}
+                </svg>
 
                 {hasFooterContacts && (
                     <div dir="ltr" className="mt-4 pt-4 pb-2 border-t border-slate-200 shrink-0">

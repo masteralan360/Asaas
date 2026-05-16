@@ -112,6 +112,24 @@ export interface UniversalInvoiceItem {
     refund_status?: 'fully_refunded' | 'partially_refunded' | 'not_refunded'
 }
 
+export interface Annotation {
+    type: 'pen' | 'brush'
+    points: { x: number, y: number }[]
+    color: string
+    brushSize: number
+}
+
+export interface AttachedText {
+    id: string
+    text: string
+    x: number
+    y: number
+    width: number
+    rotation?: number
+    fontSize?: number | ''
+    color?: string
+}
+
 export interface UniversalInvoice {
     id: string
     sequenceId?: number
@@ -140,6 +158,14 @@ export interface UniversalInvoice {
     order_id?: string
     workspaceId?: string
     is_refund_invoice?: boolean
+    attached_images?: {
+        path: string
+        x: number
+        y: number
+        width: number
+        height?: number
+        rotation?: number
+    }[]
     refund_summary?: {
         is_fully_returned: boolean
         refund_reason?: string
@@ -148,5 +174,6 @@ export interface UniversalInvoice {
         refunded_total: number
         active_total: number
     }
+    annotations?: Annotation[]
+    attached_texts?: AttachedText[]
 }
-

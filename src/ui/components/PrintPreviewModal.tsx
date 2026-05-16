@@ -457,6 +457,7 @@ export function PrintPreviewModal({
                         title: title || t('print.previewTitle') || 'Print Preview',
                         onSave: handleSave,
                         effectiveId,
+                        workspaceId,
                         templatePreview: templatePreviewProp,
                     })
                 } else {
