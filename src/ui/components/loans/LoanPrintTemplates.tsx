@@ -44,6 +44,9 @@ interface LoanListPrintTemplateProps {
     }
     logoUrl?: string | null
     qrValue?: string | null
+    titleOverride?: string
+    subtitleOverride?: string
+    notesOverride?: string
 }
 
 interface LoanReceiptPrintTemplateProps {
@@ -169,7 +172,10 @@ export function LoanListPrintTemplate({
     iqdPreference = 'IQD',
     metrics,
     logoUrl,
-    qrValue
+    qrValue,
+    titleOverride,
+    subtitleOverride,
+    notesOverride
 }: LoanListPrintTemplateProps) {
     const { i18n } = useTranslation()
     const t = i18n.getFixedT(printLang)
@@ -198,8 +204,8 @@ export function LoanListPrintTemplate({
             <LoanPrintHeader
                 workspaceName={workspaceName}
                 printLang={printLang}
-                title={isSimpleVariant ? getSimpleLoanModuleTitle(t) : getStandardLoanModuleTitle(t)}
-                subtitle={`${t(`loans.filters.${filter}`) || filter} • ${formatDateTime(new Date().toISOString())}`}
+                title={titleOverride || (isSimpleVariant ? getSimpleLoanModuleTitle(t) : getStandardLoanModuleTitle(t))}
+                subtitle={subtitleOverride || `${t(`loans.filters.${filter}`) || filter} • ${formatDateTime(new Date().toISOString())}`}
                 logoUrl={logoUrl}
                 qrValue={qrValue}
             />
@@ -288,6 +294,15 @@ export function LoanListPrintTemplate({
                     ))}
                 </tbody>
             </table>
+
+            {notesOverride?.trim() ? (
+                <div className="mt-6 text-xs">
+                    <div className="font-semibold text-slate-600">{t('loans.noteLabel') || 'Note:'}</div>
+                    <div className="mt-2 whitespace-pre-wrap break-words text-[11px] text-slate-800">
+                        {notesOverride.trim()}
+                    </div>
+                </div>
+            ) : null}
         </div>
     )
 }

@@ -240,8 +240,12 @@ function LoanListView({
     }, [features.print_quality, printLang, renderLoanListTemplate])
 
     const loanListPreview = useMemo<TemplatePreview | undefined>(() => ({
-        fields: [],
-        createElement: (_data: Record<string, string>, effectiveId?: string) => (
+        fields: [
+            { key: 'title', label: t('common.title') || 'Title', value: getStandardLoanModuleTitle(t), type: 'text' },
+            { key: 'subtitle', label: t('common.subtitle') || 'Subtitle', value: `${t(`loans.filters.${filter}`) || filter} • ${formatDateTime(new Date().toISOString())}`, type: 'text' },
+            { key: 'notes', label: t('loans.noteLabel') || 'Notes', value: '', type: 'text' }
+        ],
+        createElement: (data: Record<string, string>, effectiveId?: string) => (
             <LoanListPrintTemplate
                 workspaceName={workspaceName}
                 printLang={printLang}
@@ -252,6 +256,9 @@ function LoanListView({
                 metrics={metrics}
                 logoUrl={features.logo_url}
                 qrValue={effectiveId ? buildQrValue(effectiveId) : undefined}
+                titleOverride={data.title}
+                subtitleOverride={data.subtitle}
+                notesOverride={data.notes}
             />
         ),
         buildPdf: async (element: ReactElement) => generateTemplatePdf({

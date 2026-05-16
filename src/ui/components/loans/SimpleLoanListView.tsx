@@ -8,7 +8,7 @@ import { useAuth } from '@/auth'
 import { getLoanLinkedPartySummary } from '@/lib/loanParties'
 import { isMobile } from '@/lib/platform'
 import { getLoanDeleteWarning, getLoanDetailsTitle, getLoanDirection, getLoanDirectionLabel, getSimpleLoanModuleTitle } from '@/lib/loanPresentation'
-import { cn, formatCurrency, formatDate, formatLoanDetailsForWhatsApp } from '@/lib/utils'
+import { cn, formatCurrency, formatDate, formatDateTime, formatLoanDetailsForWhatsApp } from '@/lib/utils'
 import { whatsappManager } from '@/lib/whatsappWebviewManager'
 import { deleteLoan, isLoanDeletionAllowed, type Loan, useLoanInstallments, useLoanPayments, useLoans } from '@/local-db'
 import { db } from '@/local-db/database'
@@ -198,6 +198,42 @@ export function SimpleLoanListView({
             printQuality: features.print_quality
         })
     }, [features.print_quality, printLang, renderSimpleLoanListTemplate])
+
+    const simpleLoanListPreview = useMemo<TemplatePreview | undefined>(() => ({
+        fields: [
+            { key: 'title', label: t('common.title') || 'Title', value: getSimpleLoanModuleTitle(t), type: 'text' },
+            { key: 'subtitle', label: t('common.subtitle') || 'Subtitle', value: `${t(`loans.filters.${filter}`) || filter} • ${formatDateTime(new Date().toISOString())}`, type: 'text' },
+            { key: 'notes', label: t('loans.noteLabel') || 'Notes', value: '', type: 'text' }
+        ],
+        createElement: (data: Record<string, string>, effectiveId?: string) => (
+            <LoanListPrintTemplate
+                workspaceName={workspaceName}
+                printLang={printLang}
+                loans={filtered}
+                filter={filter}
+                variant="simple"
+                displayCurrency={features.default_currency}
+                iqdPreference={features.iqd_display_preference}
+                metrics={{
+                    totalLent: metrics.totalLent,
+                    totalBorrowed: metrics.totalBorrowed,
+                    activeEntries: metrics.activeCount,
+                    settledEntries: metrics.settledCount
+                }}
+                logoUrl={features.logo_url}
+                qrValue={effectiveId ? buildQrValue(effectiveId) : undefined}
+                titleOverride={data.title}
+                subtitleOverride={data.subtitle}
+                notesOverride={data.notes}
+            />
+        ),
+        buildPdf: async (element: ReactElement) => generateTemplatePdf({
+            element,
+            format: 'a4',
+            printLang,
+            printQuality: features.print_quality,
+        }),
+    }), [workspaceName, printLang, filtered, filter, features.default_currency, features.iqd_display_preference, metrics, features.logo_url, buildQrValue, features.print_quality, t])
 
     const loanPrintInstallments = useLoanInstallments(loanToPrint?.id, workspaceId)
     const loanPrintPayments = useLoanPayments(loanToPrint?.id, workspaceId)
@@ -683,6 +719,7 @@ export function SimpleLoanListView({
                 invoiceData={simpleLoanListInvoiceData}
                 pdfBuilder={buildSimpleLoanListPdf}
                 printTemplate={({ effectiveId }) => renderSimpleLoanListTemplate(effectiveId)}
+                templatePreview={simpleLoanListPreview}
             />
 
             <DeleteConfirmationModal
