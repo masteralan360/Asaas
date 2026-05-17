@@ -12,8 +12,8 @@ export type TemplatePreviewField = {
 
 export type TemplatePreview = {
     fields: TemplatePreviewField[]
-    createElement: (data: Record<string, string>, effectiveId?: string) => ReactElement
-    buildPdf: (element: ReactElement) => Promise<Blob>
+    createElement: (data: Record<string, string>, effectiveId?: string, printLangOverride?: string) => ReactElement
+    buildPdf: (element: ReactElement, printLangOverride?: string) => Promise<Blob>
 }
 
 export type InvoicePreviewSource = {
@@ -27,7 +27,7 @@ export type InvoicePreviewSource = {
     onSave?: (blob: Blob) => Promise<void>
     invoiceData?: any
     effectiveId?: string
-    generatePdfBlob?: (editedData: UniversalInvoice) => Promise<Blob>
+    generatePdfBlob?: (editedData: UniversalInvoice, printLangOverride?: string) => Promise<Blob>
     /** Fallback: PDF blob/data URL for read-only viewing when structured data isn't available */
     url?: string
     /** Template preview mode for editable inline preview of custom templates (loans, orders, budget) */

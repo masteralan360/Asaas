@@ -13,6 +13,7 @@ interface RefundA4InvoiceTemplateProps {
     workspaceId?: string
     workspaceName?: string
     onDataChange?: (data: UniversalInvoice) => void
+    drawingMode?: string
 }
 
 type RefundRow = {
@@ -60,7 +61,7 @@ function resolveRow(item: UniversalInvoiceItem): RefundRow {
 }
 
 export const RefundA4InvoiceTemplate = forwardRef<HTMLDivElement, RefundA4InvoiceTemplateProps>(
-    ({ data, features, workspaceId: propWorkspaceId, workspaceName, onDataChange }, ref) => {
+    ({ data, features, workspaceId: propWorkspaceId, workspaceName, onDataChange, drawingMode }, ref) => {
         const { i18n } = useTranslation()
         const printLang = features?.print_lang && features.print_lang !== 'auto' ? features.print_lang : i18n.language
         const t = i18n.getFixedT(printLang)
@@ -575,8 +576,16 @@ export const RefundA4InvoiceTemplate = forwardRef<HTMLDivElement, RefundA4Invoic
                             stroke={ann.color}
                             strokeWidth={ann.brushSize}
                             fill="none"
-                            strokeLinecap="round"
                             strokeLinejoin="round"
+                            className={cn(drawingMode === 'eraser' && "cursor-pointer hover:stroke-destructive transition-colors")}
+                            style={{ pointerEvents: drawingMode === 'eraser' ? 'all' : 'none' }}
+                            onPointerDown={(e) => {
+                                if (drawingMode === 'eraser' && onDataChange) {
+                                    e.stopPropagation()
+                                    const newAnnotations = (data.annotations || []).filter((_, idx) => idx !== i)
+                                    onDataChange({ ...data, annotations: newAnnotations })
+                                }
+                            }}
                         />
                     ))}
                 </svg>

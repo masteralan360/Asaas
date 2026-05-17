@@ -43,7 +43,7 @@ interface PrintPreviewModalProps {
     saveButtonText?: string
     invoiceData?: Omit<Invoice, 'id' | 'workspaceId' | 'createdAt' | 'updatedAt' | 'syncStatus' | 'lastSyncedAt' | 'version' | 'isDeleted' | 'invoiceid'> & { invoiceid?: string }
     pdfData?: any // UniversalInvoice
-    pdfBuilder?: (options: { format: PrintFormat; effectiveId: string }) => Promise<Blob>
+    pdfBuilder?: (options: { format: PrintFormat; effectiveId: string; printLangOverride?: string }) => Promise<Blob>
     documentId?: string
     printTemplate?: ReactNode | ((options: { effectiveId: string }) => ReactNode)
     templatePreview?: TemplatePreview
@@ -240,11 +240,12 @@ export function PrintPreviewModal({
 
 
 
-    const buildPdfBlobs = useCallback(async (requestedFormat?: PrintFormat): Promise<{ a4?: Blob; receipt?: Blob }> => {
+    const buildPdfBlobs = useCallback(async (requestedFormat?: PrintFormat, printLangOverride?: string): Promise<{ a4?: Blob; receipt?: Blob }> => {
         const format = requestedFormat || printFormat
+        const effectiveLang = printLangOverride || printLang
 
         if (pdfBuilder) {
-            const blob = await pdfBuilder({ format, effectiveId })
+            const blob = await pdfBuilder({ format, effectiveId, printLangOverride })
             return { [format]: blob }
         }
 
@@ -258,7 +259,8 @@ export function PrintPreviewModal({
             workspaceId: workspaceId || '',
             features: {
                 ...printableFeatures,
-                logo_url: printableFeatures.logo_url || undefined
+                logo_url: printableFeatures.logo_url || undefined,
+                print_lang: effectiveLang
             },
             workspaceName: workspaceName || workspaceId || '',
             translations,
@@ -277,16 +279,21 @@ export function PrintPreviewModal({
         })
     }, [])
 
-    const ensureSaveBlob = useCallback(async (): Promise<Blob> => {
+    const ensureSaveBlob = useCallback(async (printLangOverride?: string): Promise<Blob> => {
+        const effectiveLang = printLangOverride || printLang
         if (pdfBuilder) {
-            return await pdfBuilder({ format: printFormat, effectiveId })
+            return await pdfBuilder({ format: printFormat, effectiveId, printLangOverride })
         }
         if (!pdfData || !printableFeatures) throw new Error('Missing PDF data')
         return await generateInvoicePdf({
             data: { ...pdfData, id: effectiveId },
             format: printFormat,
             workspaceId: workspaceId || '',
-            features: { ...printableFeatures, logo_url: printableFeatures.logo_url || undefined },
+            features: { 
+                ...printableFeatures, 
+                logo_url: printableFeatures.logo_url || undefined,
+                print_lang: effectiveLang
+            },
             workspaceName: workspaceName || workspaceId || '',
             translations,
             workspaceFooterContacts
@@ -421,17 +428,22 @@ export function PrintPreviewModal({
             const hasPdfBuilder = !!pdfBuilder
 
             if (hasPdfDataForPreview) {
-                const generatePdfBlob = async (editedData: any): Promise<Blob> => {
+                const generatePdfBlob = async (editedData: any, printLangOverride?: string): Promise<Blob> => {
                     const dataToUse = editedData || pdfData
                     if (pdfBuilder) {
-                        return await pdfBuilder({ format: printFormat, effectiveId })
+                        return await pdfBuilder({ format: printFormat, effectiveId, printLangOverride })
                     }
                     if (!dataToUse || !printableFeatures) throw new Error('Missing PDF data')
+                    const effectiveLang = printLangOverride || printLang
                     return await generateInvoicePdf({
                         data: { ...dataToUse, id: effectiveId },
                         format: printFormat,
                         workspaceId: workspaceId || '',
-                        features: { ...printableFeatures, logo_url: printableFeatures.logo_url || undefined },
+                        features: { 
+                            ...printableFeatures, 
+                            logo_url: printableFeatures.logo_url || undefined,
+                            print_lang: effectiveLang
+                        },
                         workspaceName: workspaceName || workspaceId || '',
                         translations,
                         workspaceFooterContacts

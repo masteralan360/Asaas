@@ -44,6 +44,8 @@ interface PDFGeneratorOptions {
         logo_url?: string | null
         iqd_display_preference?: string
         print_quality?: 'low' | 'high'
+        print_lang?: string
+        a4_template?: string
     }
     workspaceName?: string
     workspaceId?: string

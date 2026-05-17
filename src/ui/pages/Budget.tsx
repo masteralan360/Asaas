@@ -690,11 +690,11 @@ export function Budget() {
         if (!features.print_qr || !workspaceId || isLocalWorkspaceMode(workspaceId)) return undefined
         return `https://asaas-r2-proxy.alanepic360.workers.dev/${workspaceId}/printed-invoices/A4/${effectiveId}.pdf`
     }, [features.print_qr, workspaceId])
-    const renderBudgetPrintTemplate = useCallback((effectiveId?: string) => (
+    const renderBudgetPrintTemplate = useCallback((effectiveId?: string, printLangOverride?: string) => (
         <BudgetPrintTemplate
             workspaceName={workspaceName}
-            printLang={printLang}
-            monthLabel={selectedMonthLabel}
+            printLang={printLangOverride || printLang}
+            monthLabel={formatMonthLabel(selectedMonth as any, printLangOverride || printLang)}
             baseCurrency={baseCurrency}
             iqdPreference={iqdPreference}
             expenseRows={expenseRows}
@@ -714,14 +714,14 @@ export function Budget() {
         iqdPreference,
         payrollItems,
         printLang,
-        selectedMonthLabel,
+        selectedMonth,
         workspaceName
     ])
-    const buildBudgetReportPdf = useCallback(async ({ format, effectiveId }: { format: PrintFormat; effectiveId: string }) => {
+    const buildBudgetReportPdf = useCallback(async ({ format, effectiveId, printLangOverride }: { format: PrintFormat; effectiveId: string; printLangOverride?: string }) => {
         return generateTemplatePdf({
-            element: renderBudgetPrintTemplate(effectiveId),
+            element: renderBudgetPrintTemplate(effectiveId, printLangOverride),
             format,
-            printLang,
+            printLang: printLangOverride || printLang,
             printQuality: features.print_quality
         })
     }, [features.print_quality, printLang, renderBudgetPrintTemplate])
@@ -738,10 +738,10 @@ export function Budget() {
         fields: [
             { key: 'monthLabel', label: t('budget.month') || 'Month', value: selectedMonthLabel || '', type: 'text' },
         ],
-        createElement: (data: Record<string, string>, effectiveId?: string) => (
+        createElement: (data: Record<string, string>, effectiveId?: string, printLangOverride?: string) => (
             <BudgetPrintTemplate
                 workspaceName={workspaceName}
-                printLang={printLang}
+                printLang={printLangOverride || printLang}
                 monthLabel={data.monthLabel}
                 baseCurrency={baseCurrency}
                 iqdPreference={iqdPreference}
@@ -753,10 +753,10 @@ export function Budget() {
                 qrValue={effectiveId ? buildQrValue(effectiveId) : undefined}
             />
         ),
-        buildPdf: async (element: ReactElement) => generateTemplatePdf({
+        buildPdf: async (element: ReactElement, printLangOverride?: string) => generateTemplatePdf({
             element,
             format: 'a4',
-            printLang,
+            printLang: printLangOverride || printLang,
             printQuality: features.print_quality,
         }),
     }), [workspaceName, printLang, selectedMonthLabel, baseCurrency, iqdPreference, expenseRows, payrollItems, dividendResult.items, budgetPrintMetrics, features.logo_url, buildQrValue, t, features.print_quality])

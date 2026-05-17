@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ArrowLeft, Printer, Loader2, Edit3, X, ZoomIn, ZoomOut, Maximize, ImagePlus, Trash2, PenTool, Brush, Palette, Eraser, Hand, Type, RotateCw, Scaling, Move } from 'lucide-react'
+import { ArrowLeft, Printer, Loader2, Edit3, X, ZoomIn, ZoomOut, Maximize, ImagePlus, Trash2, PenTool, Brush, Palette, Eraser, Hand, Type, RotateCw, Scaling, Move, Languages, Check } from 'lucide-react'
 import { getInvoicePreviewSource, clearInvoicePreviewSource } from '@/lib/pdfPreviewStore'
 import { platformService } from '@/services/platformService'
 import { EditableField } from '@/ui/components/EditableField'
@@ -9,6 +9,70 @@ import { SaleReceiptBase } from '@/ui/components/SaleReceipt'
 import { DeleteConfirmationModal } from '@/ui/components/DeleteConfirmationModal'
 import { cn } from '@/lib/utils'
 import type { UniversalInvoice } from '@/types'
+import { useAuth } from '@/auth/AuthContext'
+import { UiAccessGate } from '@/context/UiAccessContext'
+
+const LanguageSelector = ({ value, onChange }: { value: string, onChange: (val: string) => void }) => {
+    const [isOpen, setIsOpen] = useState(false);
+    const containerRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+                setIsOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
+
+    const languages = [
+        { id: 'auto', label: 'Auto Lang' },
+        { id: 'en', label: 'English' },
+        { id: 'ar', label: 'العربية' },
+        { id: 'ku', label: 'Kurdish' }
+    ];
+
+    const currentLabel = languages.find(l => l.id === value)?.label || 'Auto Lang';
+
+    return (
+        <div className="relative" ref={containerRef}>
+            <button
+                onClick={() => setIsOpen(!isOpen)}
+                className={cn(
+                    "h-7 px-2 flex items-center gap-2 rounded transition-all outline-none",
+                    isOpen ? "bg-accent text-accent-foreground shadow-inner" : "hover:bg-accent text-muted-foreground"
+                )}
+                title="Temporary Print Language"
+            >
+                <Languages className="h-3.5 w-3.5" />
+                <span className="text-[11px] font-bold whitespace-nowrap">{currentLabel}</span>
+            </button>
+            
+            {isOpen && (
+                <div className="absolute top-full left-0 mt-1.5 w-32 bg-card border rounded-lg shadow-xl py-1 z-50 animate-in fade-in zoom-in duration-100">
+                    {languages.map((lang) => (
+                        <button
+                            key={lang.id}
+                            onClick={() => {
+                                onChange(lang.id);
+                                setIsOpen(false);
+                            }}
+                            className={cn(
+                                "w-full px-3 py-1.5 flex items-center justify-between text-[11px] transition-colors",
+                                value === lang.id ? "bg-primary/10 text-primary font-bold" : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                            )}
+                        >
+                            <span>{lang.label}</span>
+                            {value === lang.id && <Check className="h-3 w-3" />}
+                        </button>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+};
+
 
 function EditableInvoicePreview({
     data,
@@ -18,6 +82,7 @@ function EditableInvoicePreview({
     workspaceFooterContacts,
     printFormat,
     onDataChange,
+    drawingMode,
 }: {
     data: UniversalInvoice
     features: any
@@ -25,7 +90,8 @@ function EditableInvoicePreview({
     workspaceName?: string
     workspaceFooterContacts?: any
     printFormat: 'a4' | 'receipt'
-    onDataChange: (data: UniversalInvoice) => void
+    onDataChange?: (data: UniversalInvoice) => void
+    drawingMode?: string
 }) {
     const { i18n } = useTranslation()
     const printLang = features?.print_lang && features.print_lang !== 'auto' ? features.print_lang : i18n.language
@@ -54,6 +120,7 @@ function EditableInvoicePreview({
                         features={features}
                         workspaceId={workspaceId}
                         workspaceName={workspaceName || 'Atlas'}
+                        drawingMode={drawingMode}
                     />
                 </div>
             )
@@ -66,6 +133,7 @@ function EditableInvoicePreview({
                     workspaceId={workspaceId}
                     workspaceName={workspaceName || 'Atlas'}
                     workspaceFooterContacts={workspaceFooterContacts}
+                    drawingMode={drawingMode}
                 />
             </div>
         )
@@ -81,6 +149,7 @@ function EditableInvoicePreview({
                     workspaceName={workspaceName || 'Atlas'}
                     workspaceFooterContacts={workspaceFooterContacts}
                     onDataChange={onDataChange}
+                    drawingMode={drawingMode}
                 />
             </div>
         )
@@ -95,6 +164,7 @@ function EditableInvoicePreview({
                 workspaceName={workspaceName || 'Atlas'}
                 workspaceFooterContacts={workspaceFooterContacts}
                 onDataChange={onDataChange}
+                drawingMode={drawingMode}
             />
         </div>
     )
@@ -102,14 +172,17 @@ function EditableInvoicePreview({
 
 export function PdfPreviewPage() {
     const { t } = useTranslation()
+    const { hasRole } = useAuth()
+    const isAdmin = hasRole(['admin'])
     const [isSaving, setIsSaving] = useState(false)
+    const [tempPrintLang, setTempPrintLang] = useState<string>('auto')
 
     const sourceRef = useRef(getInvoicePreviewSource())
     const source = sourceRef.current
     const [editableData, setEditableData] = useState<UniversalInvoice | null>(null)
     const [zoom, setZoom] = useState(100)
     const [isFitToWidth, setIsFitToWidth] = useState(false)
-    const [drawingMode, setDrawingMode] = useState<'none' | 'pen' | 'brush'>('none')
+    const [drawingMode, setDrawingMode] = useState<'none' | 'pen' | 'brush' | 'eraser'>('none')
     const [brushColor, setBrushColor] = useState('#ef4444')
     const [brushSize, setBrushSize] = useState(2)
     const [isDrawing, setIsDrawing] = useState(false)
@@ -202,7 +275,8 @@ export function PdfPreviewPage() {
         setIsSaving(true)
         try {
             if (source.generatePdfBlob) {
-                const blob = await source.generatePdfBlob(editableData)
+                const langOverride = tempPrintLang !== 'auto' ? tempPrintLang : undefined
+                const blob = await source.generatePdfBlob(editableData, langOverride)
                 await source.onSave?.(blob)
             } else {
                 await source.onSave?.(new Blob())
@@ -214,7 +288,7 @@ export function PdfPreviewPage() {
             clearInvoicePreviewSource()
             window.history.back()
         }
-    }, [source, editableData, isSaving])
+    }, [source, editableData, isSaving, tempPrintLang])
 
     if (!source) {
         return (
@@ -243,8 +317,9 @@ export function PdfPreviewPage() {
         if (!source || !templatePreview || !fieldValues || isSaving) return
         setIsSaving(true)
         try {
-            const element = templatePreview.createElement(fieldValues, source.effectiveId)
-            const blob = await templatePreview.buildPdf(element)
+            const overrideLang = tempPrintLang !== 'auto' ? tempPrintLang : undefined
+            const element = templatePreview.createElement(fieldValues, source.effectiveId, overrideLang)
+            const blob = await templatePreview.buildPdf(element, overrideLang)
             await source.onSave?.(blob)
         } catch (err) {
             console.error('Failed to save template preview:', err)
@@ -253,7 +328,7 @@ export function PdfPreviewPage() {
             clearInvoicePreviewSource()
             window.history.back()
         }
-    }, [source, templatePreview, fieldValues, isSaving])
+    }, [source, templatePreview, fieldValues, isSaving, tempPrintLang])
 
     const handleFieldChange = useCallback((key: string, value: string) => {
         setFieldValues(prev => prev ? { ...prev, [key]: value } : null)
@@ -390,24 +465,35 @@ export function PdfPreviewPage() {
                     </div>
 
                     <div className="flex items-center gap-1 bg-secondary/50 rounded-md p-0.5 border border-border">
-                        <button
-                            onClick={handleAddTemplateImage}
-                            className="h-7 px-2 inline-flex items-center gap-1.5 rounded hover:bg-accent text-primary text-[11px] font-bold"
-                            title="Add Picture"
-                        >
-                            <ImagePlus className="h-3.5 w-3.5" />
-                            <span>Add Photo</span>
-                        </button>
-                        <div className="w-px h-4 bg-border mx-0.5" />
-                        <button
-                            onClick={handleAddTemplateText}
-                            className="h-7 px-2 inline-flex items-center gap-1.5 rounded hover:bg-accent text-primary text-[11px] font-bold"
-                            title="Add Text Field"
-                        >
-                            <Type className="h-3.5 w-3.5" />
-                            <span>Add Text</span>
-                        </button>
-                        <div className="w-px h-4 bg-border mx-0.5" />
+                        {isAdmin && (
+                            <>
+                                <UiAccessGate>
+                                    <LanguageSelector
+                                        value={tempPrintLang}
+                                        onChange={(val) => setTempPrintLang(val)}
+                                    />
+                                    <div className="w-px h-4 bg-border mx-0.5" />
+                                </UiAccessGate>
+                                <button
+                                    onClick={handleAddTemplateImage}
+                                    className="h-7 px-2 inline-flex items-center gap-1.5 rounded hover:bg-accent text-primary text-[11px] font-bold"
+                                    title="Add Picture"
+                                >
+                                    <ImagePlus className="h-3.5 w-3.5" />
+                                    <span>Add Photo</span>
+                                </button>
+                                <div className="w-px h-4 bg-border mx-0.5" />
+                                <button
+                                    onClick={handleAddTemplateText}
+                                    className="h-7 px-2 inline-flex items-center gap-1.5 rounded hover:bg-accent text-primary text-[11px] font-bold"
+                                    title="Add Text Field"
+                                >
+                                    <Type className="h-3.5 w-3.5" />
+                                    <span>Add Text</span>
+                                </button>
+                                <div className="w-px h-4 bg-border mx-0.5" />
+                            </>
+                        )}
                         <button
                             onClick={handleZoomOut}
                             className="h-7 w-7 inline-flex items-center justify-center rounded hover:bg-accent text-muted-foreground"
@@ -452,113 +538,131 @@ export function PdfPreviewPage() {
                             >
                                 <Hand className="h-3.5 w-3.5" />
                             </button>
-                            <div className="w-px h-3 bg-border mx-0.5" />
-                            <div className="relative group/tool">
-                                <button
-                                    onClick={() => {
-                                        setDrawingMode(prev => prev === 'pen' ? 'none' : 'pen')
-                                        setBrushSize(2)
-                                    }}
-                                    className={cn(
-                                        "h-7 w-7 inline-flex items-center justify-center rounded transition-colors",
-                                        drawingMode === 'pen' ? "bg-primary text-primary-foreground" : "hover:bg-accent text-muted-foreground"
-                                    )}
-                                    title="Pen Tool"
-                                >
-                                    <PenTool className="h-3.5 w-3.5" />
-                                </button>
-                                <div className="absolute top-full left-1/2 -translate-x-1/2 pt-1.5 opacity-0 pointer-events-none group-hover/tool:opacity-100 group-hover/tool:pointer-events-auto transition-all z-50">
-                                    <div className="bg-card border rounded-lg shadow-xl p-1 flex flex-col gap-0.5 min-w-[40px] items-center">
-                                        {[1, 2, 3, 5].map(size => (
-                                            <button
-                                                key={size}
-                                                onClick={() => {
-                                                    setBrushSize(size)
-                                                    setDrawingMode('pen')
-                                                }}
-                                                className={cn(
-                                                    "w-8 h-6 flex items-center justify-center rounded hover:bg-accent text-[10px] font-bold transition-colors",
-                                                    brushSize === size && drawingMode === 'pen' ? "text-primary" : "text-muted-foreground"
-                                                )}
-                                            >
-                                                {size}px
-                                            </button>
-                                        ))}
+                        <div className="w-px h-3 bg-border mx-0.5" />
+                        {isAdmin && (
+                            <>
+                                <div className="relative group/tool">
+                                    <button
+                                        onClick={() => {
+                                            setDrawingMode(prev => prev === 'pen' ? 'none' : 'pen')
+                                            setBrushSize(2)
+                                        }}
+                                        className={cn(
+                                            "h-7 w-7 inline-flex items-center justify-center rounded transition-colors",
+                                            drawingMode === 'pen' ? "bg-primary text-primary-foreground" : "hover:bg-accent text-muted-foreground"
+                                        )}
+                                        title="Pen Tool"
+                                    >
+                                        <PenTool className="h-3.5 w-3.5" />
+                                    </button>
+                                    <div className="absolute top-full left-1/2 -translate-x-1/2 pt-1.5 opacity-0 pointer-events-none group-hover/tool:opacity-100 group-hover/tool:pointer-events-auto transition-all z-50">
+                                        <div className="bg-card border rounded-lg shadow-xl p-1 flex flex-col gap-0.5 min-w-[40px] items-center">
+                                            {[1, 2, 3, 5].map(size => (
+                                                <button
+                                                    key={size}
+                                                    onClick={() => {
+                                                        setBrushSize(size)
+                                                        setDrawingMode('pen')
+                                                    }}
+                                                    className={cn(
+                                                        "w-8 h-6 flex items-center justify-center rounded hover:bg-accent text-[10px] font-bold transition-colors",
+                                                        brushSize === size && drawingMode === 'pen' ? "text-primary" : "text-muted-foreground"
+                                                    )}
+                                                >
+                                                    {size}px
+                                                </button>
+                                            ))}
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
 
-                            <div className="relative group/tool">
-                                <button
-                                    onClick={() => {
-                                        setDrawingMode(prev => prev === 'brush' ? 'none' : 'brush')
-                                        setBrushSize(10)
-                                    }}
-                                    className={cn(
-                                        "h-7 w-7 inline-flex items-center justify-center rounded transition-colors",
-                                        drawingMode === 'brush' ? "bg-primary text-primary-foreground" : "hover:bg-accent text-muted-foreground"
-                                    )}
-                                    title="Brush Tool"
-                                >
-                                    <Brush className="h-3.5 w-3.5" />
-                                </button>
-                                <div className="absolute top-full left-1/2 -translate-x-1/2 pt-1.5 opacity-0 pointer-events-none group-hover/tool:opacity-100 group-hover/tool:pointer-events-auto transition-all z-50">
-                                    <div className="bg-card border rounded-lg shadow-xl p-1 flex flex-col gap-0.5 min-w-[40px] items-center">
-                                        {[8, 12, 16, 24].map(size => (
-                                            <button
-                                                key={size}
-                                                onClick={() => {
-                                                    setBrushSize(size)
-                                                    setDrawingMode('brush')
-                                                }}
-                                                className={cn(
-                                                    "w-8 h-6 flex items-center justify-center rounded hover:bg-accent text-[10px] font-bold transition-colors",
-                                                    brushSize === size && drawingMode === 'brush' ? "text-primary" : "text-muted-foreground"
-                                                )}
-                                            >
-                                                {size}px
-                                            </button>
-                                        ))}
+                                <div className="relative group/tool">
+                                    <button
+                                        onClick={() => {
+                                            setDrawingMode(prev => prev === 'brush' ? 'none' : 'brush')
+                                            setBrushSize(10)
+                                        }}
+                                        className={cn(
+                                            "h-7 w-7 inline-flex items-center justify-center rounded transition-colors",
+                                            drawingMode === 'brush' ? "bg-primary text-primary-foreground" : "hover:bg-accent text-muted-foreground"
+                                        )}
+                                        title="Brush Tool"
+                                    >
+                                        <Brush className="h-3.5 w-3.5" />
+                                    </button>
+                                    <div className="absolute top-full left-1/2 -translate-x-1/2 pt-1.5 opacity-0 pointer-events-none group-hover/tool:opacity-100 group-hover/tool:pointer-events-auto transition-all z-50">
+                                        <div className="bg-card border rounded-lg shadow-xl p-1 flex flex-col gap-0.5 min-w-[40px] items-center">
+                                            {[8, 12, 16, 24].map(size => (
+                                                <button
+                                                    key={size}
+                                                    onClick={() => {
+                                                        setBrushSize(size)
+                                                        setDrawingMode('brush')
+                                                    }}
+                                                    className={cn(
+                                                        "w-8 h-6 flex items-center justify-center rounded hover:bg-accent text-[10px] font-bold transition-colors",
+                                                        brushSize === size && drawingMode === 'brush' ? "text-primary" : "text-muted-foreground"
+                                                    )}
+                                                >
+                                                    {size}px
+                                                </button>
+                                            ))}
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
 
-                            <div className="relative group">
-                                <button className="h-7 w-7 inline-flex items-center justify-center rounded hover:bg-accent text-muted-foreground transition-colors group-hover:bg-accent">
-                                    <Palette className="h-3.5 w-3.5" style={{ color: brushColor }} />
-                                </button>
-                                <div className="absolute top-full left-0 pt-1.5 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-all z-50">
-                                    <div className="p-2 bg-card border rounded-md shadow-lg flex gap-1 items-center">
-                                        {['#ef4444', '#22c55e', '#3b82f6', '#f59e0b', '#000000'].map(c => (
-                                            <button
-                                                key={c}
-                                                onClick={() => setBrushColor(c)}
-                                                className="w-5 h-5 rounded-full border border-border hover:scale-110 transition-transform"
-                                                style={{ backgroundColor: c }}
+                                <div className="relative group">
+                                    <button className="h-7 w-7 inline-flex items-center justify-center rounded hover:bg-accent text-muted-foreground transition-colors group-hover:bg-accent">
+                                        <Palette className="h-3.5 w-3.5" style={{ color: brushColor }} />
+                                    </button>
+                                    <div className="absolute top-full left-0 pt-1.5 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-all z-50">
+                                        <div className="p-2 bg-card border rounded-md shadow-lg flex gap-1 items-center">
+                                            {['#ef4444', '#22c55e', '#3b82f6', '#f59e0b', '#000000'].map(c => (
+                                                <button
+                                                    key={c}
+                                                    onClick={() => setBrushColor(c)}
+                                                    className="w-5 h-5 rounded-full border border-border hover:scale-110 transition-transform"
+                                                    style={{ backgroundColor: c }}
+                                                />
+                                            ))}
+                                            <div className="w-px h-4 bg-border mx-1" />
+                                            <input 
+                                                type="color" 
+                                                value={brushColor} 
+                                                onChange={(e) => setBrushColor(e.target.value)} 
+                                                className="w-5 h-5 border-none p-0 cursor-pointer bg-transparent"
                                             />
-                                        ))}
-                                        <div className="w-px h-4 bg-border mx-1" />
-                                        <input 
-                                            type="color" 
-                                            value={brushColor} 
-                                            onChange={(e) => setBrushColor(e.target.value)} 
-                                            className="w-5 h-5 border-none p-0 cursor-pointer bg-transparent"
-                                        />
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
-                            <button
-                                onClick={() => setIsClearConfirmOpen(true)}
-                                className="h-7 w-7 inline-flex items-center justify-center rounded hover:bg-accent text-muted-foreground hover:text-destructive"
-                                title="Clear All Annotations"
-                            >
-                                <Eraser className="h-3.5 w-3.5" />
-                            </button>
+                                <div className="relative group/tool">
+                                    <button
+                                        onClick={() => {
+                                            setDrawingMode(prev => prev === 'eraser' ? 'none' : 'eraser')
+                                        }}
+                                        className={cn(
+                                            "h-7 w-7 inline-flex items-center justify-center rounded transition-colors",
+                                            drawingMode === 'eraser' ? "bg-primary text-primary-foreground" : "hover:bg-accent text-muted-foreground"
+                                        )}
+                                        title="Eraser Tool"
+                                    >
+                                        <Eraser className="h-3.5 w-3.5" />
+                                    </button>
+                                </div>
+                                <button
+                                    onClick={() => setIsClearConfirmOpen(true)}
+                                    className="h-7 w-7 inline-flex items-center justify-center rounded hover:bg-accent text-muted-foreground hover:text-destructive"
+                                    title="Clear All Annotations"
+                                >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                            </>
+                        )}
                         </div>
                     </div>
 
                     <div className="flex items-center gap-2">
-                        {templatePreview.fields.length > 0 && (
+                        {templatePreview.fields.length > 0 && isAdmin && (
                             <button
                                 className="inline-flex items-center justify-center rounded-md h-8 px-3 text-xs font-medium transition-colors gap-1.5 bg-secondary text-secondary-foreground hover:bg-secondary/80"
                                 onClick={() => setEditPanelOpen(o => !o)}
@@ -632,6 +736,14 @@ export function PdfPreviewPage() {
                                         strokeLinecap="round"
                                         strokeLinejoin="round"
                                         opacity={ann.type === 'brush' ? 0.5 : 1}
+                                        onPointerDown={(e) => {
+                                            if (drawingMode === 'eraser') {
+                                                e.stopPropagation();
+                                                setTemplateAnnotations(prev => prev.filter((_, i) => i !== idx));
+                                            }
+                                        }}
+                                        className={cn(drawingMode === 'eraser' && "cursor-pointer hover:stroke-destructive transition-colors")}
+                                        style={{ pointerEvents: drawingMode === 'eraser' ? 'all' : 'auto' }}
                                     />
                                 ))}
                                 {/* Current active path preview */}
@@ -644,6 +756,7 @@ export function PdfPreviewPage() {
                                         strokeLinecap="round"
                                         strokeLinejoin="round"
                                         opacity={drawingMode === 'brush' ? 0.5 : 1}
+                                        style={{ pointerEvents: 'none' }}
                                     />
                                 )}
                             </svg>
@@ -906,7 +1019,7 @@ export function PdfPreviewPage() {
                                 </div>
                             ))}
 
-                            {templatePreview.createElement(fieldValues, source.effectiveId)}
+                            {templatePreview.createElement(fieldValues, source.effectiveId, tempPrintLang !== 'auto' ? tempPrintLang : undefined)}
                         </div>
                     </div>
                 </div>
@@ -1003,24 +1116,35 @@ export function PdfPreviewPage() {
                 </div>
 
                 <div className="flex items-center gap-1 bg-secondary/50 rounded-md p-0.5 border border-border">
-                    <button
-                        onClick={handleAddImage}
-                        className="h-7 px-2 inline-flex items-center gap-1.5 rounded hover:bg-accent text-primary text-[11px] font-bold"
-                        title="Add Picture"
-                    >
-                        <ImagePlus className="h-3.5 w-3.5" />
-                        <span>Add Photo</span>
-                    </button>
-                    <div className="w-px h-4 bg-border mx-0.5" />
-                    <button
-                        onClick={handleAddText}
-                        className="h-7 px-2 inline-flex items-center gap-1.5 rounded hover:bg-accent text-primary text-[11px] font-bold"
-                        title="Add Text Field"
-                    >
-                        <Type className="h-3.5 w-3.5" />
-                        <span>Add Text</span>
-                    </button>
-                    <div className="w-px h-4 bg-border mx-0.5" />
+                    {isAdmin && (
+                        <>
+                            <UiAccessGate>
+                                <LanguageSelector
+                                    value={tempPrintLang}
+                                    onChange={(val) => setTempPrintLang(val)}
+                                />
+                                <div className="w-px h-4 bg-border mx-0.5" />
+                            </UiAccessGate>
+                            <button
+                                onClick={handleAddImage}
+                                className="h-7 px-2 inline-flex items-center gap-1.5 rounded hover:bg-accent text-primary text-[11px] font-bold"
+                                title="Add Picture"
+                            >
+                                <ImagePlus className="h-3.5 w-3.5" />
+                                <span>Add Photo</span>
+                            </button>
+                            <div className="w-px h-4 bg-border mx-0.5" />
+                            <button
+                                onClick={handleAddText}
+                                className="h-7 px-2 inline-flex items-center gap-1.5 rounded hover:bg-accent text-primary text-[11px] font-bold"
+                                title="Add Text Field"
+                            >
+                                <Type className="h-3.5 w-3.5" />
+                                <span>Add Text</span>
+                            </button>
+                            <div className="w-px h-4 bg-border mx-0.5" />
+                        </>
+                    )}
                     <button
                         onClick={handleZoomOut}
                         className="h-7 w-7 inline-flex items-center justify-center rounded hover:bg-accent text-muted-foreground"
@@ -1066,114 +1190,131 @@ export function PdfPreviewPage() {
                             <Hand className="h-3.5 w-3.5" />
                         </button>
                         <div className="w-px h-3 bg-border mx-0.5" />
-                        <div className="relative group/tool">
-                            <button
-                                onClick={() => {
-                                    setDrawingMode(prev => prev === 'pen' ? 'none' : 'pen')
-                                    setBrushSize(2)
-                                }}
-                                className={cn(
-                                    "h-7 w-7 inline-flex items-center justify-center rounded transition-colors",
-                                    drawingMode === 'pen' ? "bg-primary text-primary-foreground" : "hover:bg-accent text-muted-foreground"
-                                )}
-                                title="Pen Tool"
-                            >
-                                <PenTool className="h-3.5 w-3.5" />
-                            </button>
-                            {/* Size Selector for Pen */}
-                            <div className="absolute top-full left-1/2 -translate-x-1/2 pt-1.5 opacity-0 pointer-events-none group-hover/tool:opacity-100 group-hover/tool:pointer-events-auto transition-all z-50">
-                                <div className="bg-card border rounded-lg shadow-xl p-1 flex flex-col gap-0.5 min-w-[40px] items-center">
-                                    {[1, 2, 3, 5].map(size => (
-                                        <button
-                                            key={size}
-                                            onClick={() => {
-                                                setBrushSize(size)
-                                                setDrawingMode('pen')
-                                            }}
-                                            className={cn(
-                                                "w-8 h-6 flex items-center justify-center rounded hover:bg-accent text-[10px] font-bold transition-colors",
-                                                brushSize === size && drawingMode === 'pen' ? "text-primary" : "text-muted-foreground"
-                                            )}
-                                        >
-                                            {size}px
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-                        </div>
+                        {isAdmin && (
+                            <>
 
-                        <div className="relative group/tool">
-                            <button
-                                onClick={() => {
-                                    setDrawingMode(prev => prev === 'brush' ? 'none' : 'brush')
-                                    setBrushSize(10)
-                                }}
-                                className={cn(
-                                    "h-7 w-7 inline-flex items-center justify-center rounded transition-colors",
-                                    drawingMode === 'brush' ? "bg-primary text-primary-foreground" : "hover:bg-accent text-muted-foreground"
-                                )}
-                                title="Brush Tool"
-                            >
-                                <Brush className="h-3.5 w-3.5" />
-                            </button>
-                            {/* Size Selector for Brush */}
-                            <div className="absolute top-full left-1/2 -translate-x-1/2 pt-1.5 opacity-0 pointer-events-none group-hover/tool:opacity-100 group-hover/tool:pointer-events-auto transition-all z-50">
-                                <div className="bg-card border rounded-lg shadow-xl p-1 flex flex-col gap-0.5 min-w-[40px] items-center">
-                                    {[8, 12, 16, 24].map(size => (
-                                        <button
-                                            key={size}
-                                            onClick={() => {
-                                                setBrushSize(size)
-                                                setDrawingMode('brush')
-                                            }}
-                                            className={cn(
-                                                "w-8 h-6 flex items-center justify-center rounded hover:bg-accent text-[10px] font-bold transition-colors",
-                                                brushSize === size && drawingMode === 'brush' ? "text-primary" : "text-muted-foreground"
-                                            )}
-                                        >
-                                            {size}px
-                                        </button>
-                                    ))}
+                                <div className="relative group/tool">
+                                    <button
+                                        onClick={() => {
+                                            setDrawingMode(prev => prev === 'pen' ? 'none' : 'pen')
+                                            setBrushSize(2)
+                                        }}
+                                        className={cn(
+                                            "h-7 w-7 inline-flex items-center justify-center rounded transition-colors",
+                                            drawingMode === 'pen' ? "bg-primary text-primary-foreground" : "hover:bg-accent text-muted-foreground"
+                                        )}
+                                        title="Pen Tool"
+                                    >
+                                        <PenTool className="h-3.5 w-3.5" />
+                                    </button>
+                                    <div className="absolute top-full left-1/2 -translate-x-1/2 pt-1.5 opacity-0 pointer-events-none group-hover/tool:opacity-100 group-hover/tool:pointer-events-auto transition-all z-50">
+                                        <div className="bg-card border rounded-lg shadow-xl p-1 flex flex-col gap-0.5 min-w-[40px] items-center">
+                                            {[1, 2, 3, 5].map(size => (
+                                                <button
+                                                    key={size}
+                                                    onClick={() => {
+                                                        setBrushSize(size)
+                                                        setDrawingMode('pen')
+                                                    }}
+                                                    className={cn(
+                                                        "w-8 h-6 flex items-center justify-center rounded hover:bg-accent text-[10px] font-bold transition-colors",
+                                                        brushSize === size && drawingMode === 'pen' ? "text-primary" : "text-muted-foreground"
+                                                    )}
+                                                >
+                                                    {size}px
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
                                 </div>
-                            </div>
-                        </div>
 
-                        <div className="relative group">
-                            <button className="h-7 w-7 inline-flex items-center justify-center rounded hover:bg-accent text-muted-foreground transition-colors group-hover:bg-accent">
-                                <Palette className="h-3.5 w-3.5" style={{ color: brushColor }} />
-                            </button>
-                            <div className="absolute top-full left-0 pt-1.5 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-all z-50">
-                                <div className="p-2 bg-card border rounded-md shadow-lg flex gap-1 items-center">
-                                    {['#ef4444', '#22c55e', '#3b82f6', '#f59e0b', '#000000'].map(c => (
-                                        <button
-                                            key={c}
-                                            onClick={() => setBrushColor(c)}
-                                            className="w-5 h-5 rounded-full border border-border hover:scale-110 transition-transform"
-                                            style={{ backgroundColor: c }}
-                                        />
-                                    ))}
-                                    <div className="w-px h-4 bg-border mx-1" />
-                                    <input 
-                                        type="color" 
-                                        value={brushColor} 
-                                        onChange={(e) => setBrushColor(e.target.value)} 
-                                        className="w-5 h-5 border-none p-0 cursor-pointer bg-transparent"
-                                    />
+                                <div className="relative group/tool">
+                                    <button
+                                        onClick={() => {
+                                            setDrawingMode(prev => prev === 'brush' ? 'none' : 'brush')
+                                            setBrushSize(10)
+                                        }}
+                                        className={cn(
+                                            "h-7 w-7 inline-flex items-center justify-center rounded transition-colors",
+                                            drawingMode === 'brush' ? "bg-primary text-primary-foreground" : "hover:bg-accent text-muted-foreground"
+                                        )}
+                                        title="Brush Tool"
+                                    >
+                                        <Brush className="h-3.5 w-3.5" />
+                                    </button>
+                                    <div className="absolute top-full left-1/2 -translate-x-1/2 pt-1.5 opacity-0 pointer-events-none group-hover/tool:opacity-100 group-hover/tool:pointer-events-auto transition-all z-50">
+                                        <div className="bg-card border rounded-lg shadow-xl p-1 flex flex-col gap-0.5 min-w-[40px] items-center">
+                                            {[8, 12, 16, 24].map(size => (
+                                                <button
+                                                    key={size}
+                                                    onClick={() => {
+                                                        setBrushSize(size)
+                                                        setDrawingMode('brush')
+                                                    }}
+                                                    className={cn(
+                                                        "w-8 h-6 flex items-center justify-center rounded hover:bg-accent text-[10px] font-bold transition-colors",
+                                                        brushSize === size && drawingMode === 'brush' ? "text-primary" : "text-muted-foreground"
+                                                    )}
+                                                >
+                                                    {size}px
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
                                 </div>
-                            </div>
-                        </div>
-                        <button
-                            onClick={() => setIsClearConfirmOpen(true)}
-                            className="h-7 w-7 inline-flex items-center justify-center rounded hover:bg-accent text-muted-foreground hover:text-destructive"
-                            title="Clear All Annotations"
-                        >
-                            <Eraser className="h-3.5 w-3.5" />
-                        </button>
+
+                                <div className="relative group">
+                                    <button className="h-7 w-7 inline-flex items-center justify-center rounded hover:bg-accent text-muted-foreground transition-colors group-hover:bg-accent">
+                                        <Palette className="h-3.5 w-3.5" style={{ color: brushColor }} />
+                                    </button>
+                                    <div className="absolute top-full left-0 pt-1.5 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-all z-50">
+                                        <div className="p-2 bg-card border rounded-md shadow-lg flex gap-1 items-center">
+                                            {['#ef4444', '#22c55e', '#3b82f6', '#f59e0b', '#000000'].map(c => (
+                                                <button
+                                                    key={c}
+                                                    onClick={() => setBrushColor(c)}
+                                                    className="w-5 h-5 rounded-full border border-border hover:scale-110 transition-transform"
+                                                    style={{ backgroundColor: c }}
+                                                />
+                                            ))}
+                                            <div className="w-px h-4 bg-border mx-1" />
+                                            <input 
+                                                type="color" 
+                                                value={brushColor} 
+                                                onChange={(e) => setBrushColor(e.target.value)} 
+                                                className="w-5 h-5 border-none p-0 cursor-pointer bg-transparent"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="relative group/tool">
+                                    <button
+                                        onClick={() => {
+                                            setDrawingMode(prev => prev === 'eraser' ? 'none' : 'eraser')
+                                        }}
+                                        className={cn(
+                                            "h-7 w-7 inline-flex items-center justify-center rounded transition-colors",
+                                            drawingMode === 'eraser' ? "bg-primary text-primary-foreground" : "hover:bg-accent text-muted-foreground"
+                                        )}
+                                        title="Eraser Tool"
+                                    >
+                                        <Eraser className="h-3.5 w-3.5" />
+                                    </button>
+                                </div>
+                                <button
+                                    onClick={() => setIsClearConfirmOpen(true)}
+                                    className="h-7 w-7 inline-flex items-center justify-center rounded hover:bg-accent text-muted-foreground hover:text-destructive"
+                                    title="Clear All Annotations"
+                                >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                            </>
+                        )}
                     </div>
                 </div>
 
                 <div className="flex items-center gap-2">
-                    {editableData && (
+                    {editableData && isAdmin && (
                         <button
                             className="inline-flex items-center justify-center rounded-md h-8 px-3 text-xs font-medium transition-colors gap-1.5 bg-secondary text-secondary-foreground hover:bg-secondary/80"
                             onClick={() => setEditPanelOpen(o => !o)}
@@ -1208,6 +1349,7 @@ export function PdfPreviewPage() {
                                 <svg 
                                     className={cn(
                                         "absolute inset-0 z-[40] touch-none",
+                                        drawingMode === 'eraser' ? "pointer-events-none cursor-crosshair" : 
                                         drawingMode !== 'none' ? "cursor-crosshair" : "pointer-events-none"
                                     )}
                                     viewBox="0 0 210 297"
@@ -1233,12 +1375,16 @@ export function PdfPreviewPage() {
                             {editableData && source.features && source.printFormat && (
                                 <EditableInvoicePreview
                                     data={editableData}
-                                    features={source.features}
+                                    features={{
+                                        ...source.features,
+                                        print_lang: tempPrintLang !== 'auto' ? tempPrintLang : source.features.print_lang
+                                    }}
                                     workspaceId={source.workspaceId}
                                     workspaceName={source.workspaceName}
                                     workspaceFooterContacts={source.workspaceFooterContacts}
                                     printFormat={source.printFormat}
-                                    onDataChange={setEditableData}
+                                    onDataChange={isAdmin ? setEditableData : undefined}
+                                    drawingMode={drawingMode}
                                 />
                             )}
                         </div>

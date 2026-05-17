@@ -216,10 +216,10 @@ function LoanListView({
         return `https://asaas-r2-proxy.alanepic360.workers.dev/${workspaceId}/printed-invoices/A4/${effectiveId}.pdf`
     }, [features.print_qr, workspaceId])
 
-    const renderLoanListTemplate = useCallback((effectiveId?: string) => (
+    const renderLoanListTemplate = useCallback((effectiveId?: string, printLangOverride?: string) => (
         <LoanListPrintTemplate
             workspaceName={workspaceName}
-            printLang={printLang}
+            printLang={printLangOverride || printLang}
             loans={filtered}
             filter={filter}
             displayCurrency={currency}
@@ -230,11 +230,11 @@ function LoanListView({
         />
     ), [buildQrValue, currency, features.logo_url, filter, filtered, iqdPreference, metrics, printLang, workspaceName])
 
-    const buildLoanListPdf = useCallback(async ({ format, effectiveId }: { format: PrintFormat; effectiveId: string }) => {
+    const buildLoanListPdf = useCallback(async ({ format, effectiveId, printLangOverride }: { format: PrintFormat; effectiveId: string; printLangOverride?: string }) => {
         return generateTemplatePdf({
-            element: renderLoanListTemplate(effectiveId),
+            element: renderLoanListTemplate(effectiveId, printLangOverride),
             format,
-            printLang,
+            printLang: printLangOverride || printLang,
             printQuality: features.print_quality
         })
     }, [features.print_quality, printLang, renderLoanListTemplate])
@@ -245,10 +245,10 @@ function LoanListView({
             { key: 'subtitle', label: t('common.subtitle') || 'Subtitle', value: `${t(`loans.filters.${filter}`) || filter} • ${formatDateTime(new Date().toISOString())}`, type: 'text' },
             { key: 'notes', label: t('loans.noteLabel') || 'Notes', value: '', type: 'text' }
         ],
-        createElement: (data: Record<string, string>, effectiveId?: string) => (
+        createElement: (data: Record<string, string>, effectiveId?: string, printLangOverride?: string) => (
             <LoanListPrintTemplate
                 workspaceName={workspaceName}
-                printLang={printLang}
+                printLang={printLangOverride || printLang}
                 loans={filtered}
                 filter={filter}
                 displayCurrency={currency}
@@ -261,22 +261,22 @@ function LoanListView({
                 notesOverride={data.notes}
             />
         ),
-        buildPdf: async (element: ReactElement) => generateTemplatePdf({
+        buildPdf: async (element: ReactElement, printLangOverride?: string) => generateTemplatePdf({
             element,
             format: 'a4',
-            printLang,
+            printLang: printLangOverride || printLang,
             printQuality: features.print_quality,
         }),
     }), [workspaceName, printLang, filtered, filter, currency, iqdPreference, metrics, features.logo_url, buildQrValue, features.print_quality])
 
     const loanPrintInstallments = useLoanInstallments(loanToPrint?.id, workspaceId)
     const loanPrintPayments = useLoanPayments(loanToPrint?.id, workspaceId)
-    const renderLoanPrintTemplate = useCallback((effectiveId?: string) => {
+    const renderLoanPrintTemplate = useCallback((effectiveId?: string, printLangOverride?: string) => {
         if (!loanToPrint) return null
         return (
             <LoanDetailsPrintTemplate
                 workspaceName={workspaceName}
-                printLang={printLang}
+                printLang={printLangOverride || printLang}
                 loan={loanToPrint}
                 installments={loanPrintInstallments}
                 payments={loanPrintPayments}
@@ -286,13 +286,13 @@ function LoanListView({
             />
         )
     }, [buildQrValue, features.iqd_display_preference, features.logo_url, loanPrintInstallments, loanPrintPayments, loanToPrint, printLang, workspaceName])
-    const buildLoanPrintPdf = useCallback(async ({ format, effectiveId }: { format: PrintFormat; effectiveId: string }) => {
-        const template = renderLoanPrintTemplate(effectiveId)
+    const buildLoanPrintPdf = useCallback(async ({ format, effectiveId, printLangOverride }: { format: PrintFormat; effectiveId: string; printLangOverride?: string }) => {
+        const template = renderLoanPrintTemplate(effectiveId, printLangOverride)
         if (!template) throw new Error('Loan data not ready')
         return generateTemplatePdf({
             element: template,
             format,
-            printLang,
+            printLang: printLangOverride || printLang,
             printQuality: features.print_quality
         })
     }, [features.print_quality, printLang, renderLoanPrintTemplate])
@@ -304,10 +304,10 @@ function LoanListView({
                 { key: 'borrowerName', label: t('loans.borrowerName') || 'Borrower Name', value: loanToPrint.borrowerName || '', type: 'text' },
                 { key: 'principalAmount', label: t('loans.principal') || 'Principal', value: String(loanToPrint.principalAmount ?? ''), type: 'number' },
             ],
-            createElement: (data: Record<string, string>, effectiveId?: string) => (
+            createElement: (data: Record<string, string>, effectiveId?: string, printLangOverride?: string) => (
                 <LoanDetailsPrintTemplate
                     workspaceName={workspaceName}
-                    printLang={printLang}
+                    printLang={printLangOverride || printLang}
                     loan={{ ...loanToPrint, borrowerName: data.borrowerName, principalAmount: Number(data.principalAmount) }}
                     installments={loanPrintInstallments}
                     payments={loanPrintPayments}
@@ -316,10 +316,10 @@ function LoanListView({
                     qrValue={effectiveId ? buildQrValue(effectiveId) : undefined}
                 />
             ),
-            buildPdf: async (element: ReactElement) => generateTemplatePdf({
+            buildPdf: async (element: ReactElement, printLangOverride?: string) => generateTemplatePdf({
                 element,
                 format: 'a4',
-                printLang,
+                printLang: printLangOverride || printLang,
                 printQuality: features.print_quality,
             }),
         }
@@ -870,12 +870,12 @@ function LoanDetailsView({
     }, [features.print_qr, workspaceId])
     const normalizedLoanNo = loan?.loanNo?.trim() || ''
 
-    const renderLoanDetailsTemplate = useCallback((effectiveId?: string) => {
+    const renderLoanDetailsTemplate = useCallback((effectiveId?: string, printLangOverride?: string) => {
         if (!loan) return null
         return (
             <LoanDetailsPrintTemplate
                 workspaceName={workspaceName}
-                printLang={printLang}
+                printLang={printLangOverride || printLang}
                 loan={loan}
                 installments={installments}
                 payments={payments}
@@ -886,8 +886,8 @@ function LoanDetailsView({
         )
     }, [buildQrValue, features.iqd_display_preference, features.logo_url, installments, loan, payments, printLang, workspaceName])
 
-    const buildLoanDetailsPdf = useCallback(async ({ format, effectiveId }: { format: PrintFormat; effectiveId: string }) => {
-        const loanDetailsTemplate = renderLoanDetailsTemplate(effectiveId)
+    const buildLoanDetailsPdf = useCallback(async ({ format, effectiveId, printLangOverride }: { format: PrintFormat; effectiveId: string; printLangOverride?: string }) => {
+        const loanDetailsTemplate = renderLoanDetailsTemplate(effectiveId, printLangOverride)
         if (!loanDetailsTemplate) {
             throw new Error('Loan data not ready')
         }
@@ -895,7 +895,7 @@ function LoanDetailsView({
         return generateTemplatePdf({
             element: loanDetailsTemplate,
             format,
-            printLang,
+            printLang: printLangOverride || printLang,
             printQuality: features.print_quality
         })
     }, [features.print_quality, printLang, renderLoanDetailsTemplate])
@@ -941,10 +941,10 @@ function LoanDetailsView({
                 { key: 'borrowerName', label: t('loans.borrowerName') || 'Borrower Name', value: loan.borrowerName || '', type: 'text' },
                 { key: 'principalAmount', label: t('loans.principal') || 'Principal', value: String(loan.principalAmount ?? ''), type: 'number' },
             ],
-            createElement: (data: Record<string, string>, effectiveId?: string) => (
+            createElement: (data: Record<string, string>, effectiveId?: string, printLangOverride?: string) => (
                 <LoanDetailsPrintTemplate
                     workspaceName={workspaceName}
-                    printLang={printLang}
+                    printLang={printLangOverride || printLang}
                     loan={{ ...loan, borrowerName: data.borrowerName, principalAmount: Number(data.principalAmount) }}
                     installments={installments}
                     payments={payments}
@@ -953,10 +953,10 @@ function LoanDetailsView({
                     qrValue={effectiveId ? buildQrValue(effectiveId) : undefined}
                 />
             ),
-            buildPdf: async (element: ReactElement) => generateTemplatePdf({
+            buildPdf: async (element: ReactElement, printLangOverride?: string) => generateTemplatePdf({
                 element,
                 format: 'a4',
-                printLang,
+                printLang: printLangOverride || printLang,
                 printQuality: features.print_quality,
             }),
         }

@@ -342,13 +342,14 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                 { key: 'counterpartyName', label: counterpartyLabel, value: counterpartyName || '', type: 'text' },
                 { key: 'notes', label: t('common.notes') || 'Notes', value: (order as any).notes || '', type: 'text' },
             ],
-            createElement: (data: Record<string, string>, effectiveId?: string) => {
+            createElement: (data: Record<string, string>, effectiveId?: string, printLangOverride?: string) => {
                 const updatedOrder = {
                     ...order,
                     ...(kind === 'sales' ? { customerName: data.counterpartyName } : { supplierName: data.counterpartyName }),
                     notes: data.notes,
                 }
-                const printLang = features?.print_lang && features.print_lang !== 'auto' ? features.print_lang : i18n.language
+                const baseLang = features?.print_lang && features.print_lang !== 'auto' ? features.print_lang : i18n.language
+                const printLang = printLangOverride || baseLang
                 return (
                     <OrderDetailsPrintTemplate
                         workspaceName={workspaceName}
@@ -361,8 +362,9 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                     />
                 )
             },
-            buildPdf: async (element: ReactElement) => {
-                const printLang = features?.print_lang && features.print_lang !== 'auto' ? features.print_lang : i18n.language
+            buildPdf: async (element: ReactElement, printLangOverride?: string) => {
+                const baseLang = features?.print_lang && features.print_lang !== 'auto' ? features.print_lang : i18n.language
+                const printLang = printLangOverride || baseLang
                 return generateTemplatePdf({
                     element,
                     format: 'a4',
@@ -805,8 +807,9 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                     cashierName: user?.name || 'Unknown',
                     printFormat: 'a4' as const
                 }}
-                pdfBuilder={async ({ format }: { format: PrintFormat; effectiveId: string }) => {
-                    const printLang = features?.print_lang && features.print_lang !== 'auto' ? features.print_lang : i18n.language
+                pdfBuilder={async ({ format, printLangOverride }: { format: PrintFormat; effectiveId: string; printLangOverride?: string }) => {
+                    const baseLang = features?.print_lang && features.print_lang !== 'auto' ? features.print_lang : i18n.language
+                    const printLang = printLangOverride || baseLang
                     return generateTemplatePdf({
                         element: (
                             <OrderDetailsPrintTemplate

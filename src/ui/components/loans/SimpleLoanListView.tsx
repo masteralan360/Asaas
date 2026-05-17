@@ -205,10 +205,10 @@ export function SimpleLoanListView({
             { key: 'subtitle', label: t('common.subtitle') || 'Subtitle', value: `${t(`loans.filters.${filter}`) || filter} • ${formatDateTime(new Date().toISOString())}`, type: 'text' },
             { key: 'notes', label: t('loans.noteLabel') || 'Notes', value: '', type: 'text' }
         ],
-        createElement: (data: Record<string, string>, effectiveId?: string) => (
+        createElement: (data: Record<string, string>, effectiveId?: string, printLangOverride?: string) => (
             <LoanListPrintTemplate
                 workspaceName={workspaceName}
-                printLang={printLang}
+                printLang={printLangOverride || printLang}
                 loans={filtered}
                 filter={filter}
                 variant="simple"
@@ -227,10 +227,10 @@ export function SimpleLoanListView({
                 notesOverride={data.notes}
             />
         ),
-        buildPdf: async (element: ReactElement) => generateTemplatePdf({
+        buildPdf: async (element: ReactElement, printLangOverride?: string) => generateTemplatePdf({
             element,
             format: 'a4',
-            printLang,
+            printLang: printLangOverride || printLang,
             printQuality: features.print_quality,
         }),
     }), [workspaceName, printLang, filtered, filter, features.default_currency, features.iqd_display_preference, metrics, features.logo_url, buildQrValue, features.print_quality, t])
@@ -270,10 +270,10 @@ export function SimpleLoanListView({
                 { key: 'borrowerName', label: t('loans.borrowerName') || 'Borrower Name', value: loanToPrint.borrowerName || '', type: 'text' },
                 { key: 'principalAmount', label: t('loans.principal') || 'Principal', value: String(loanToPrint.principalAmount ?? ''), type: 'number' },
             ],
-            createElement: (data: Record<string, string>, effectiveId?: string) => (
+            createElement: (data: Record<string, string>, effectiveId?: string, printLangOverride?: string) => (
                 <LoanDetailsPrintTemplate
                     workspaceName={workspaceName}
-                    printLang={printLang}
+                    printLang={printLangOverride || printLang}
                     loan={{ ...loanToPrint, borrowerName: data.borrowerName, principalAmount: Number(data.principalAmount) }}
                     installments={loanPrintInstallments}
                     payments={loanPrintPayments}
@@ -282,10 +282,10 @@ export function SimpleLoanListView({
                     qrValue={effectiveId ? buildQrValue(effectiveId) : undefined}
                 />
             ),
-            buildPdf: async (element: ReactElement) => generateTemplatePdf({
+            buildPdf: async (element: ReactElement, printLangOverride?: string) => generateTemplatePdf({
                 element,
                 format: 'a4',
-                printLang,
+                printLang: printLangOverride || printLang,
                 printQuality: features.print_quality,
             }),
         }

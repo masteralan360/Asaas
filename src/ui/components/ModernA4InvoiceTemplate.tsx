@@ -25,10 +25,11 @@ interface ModernA4InvoiceTemplateProps {
     workspaceName?: string
     workspaceFooterContacts?: WorkspaceFooterContacts
     onDataChange?: (data: UniversalInvoice) => void
+    drawingMode?: string
 }
 
 export const ModernA4InvoiceTemplate = forwardRef<HTMLDivElement, ModernA4InvoiceTemplateProps>(
-    ({ data, features, workspaceId: propWorkspaceId, workspaceName, workspaceFooterContacts, onDataChange }, ref) => {
+    ({ data, features, workspaceId: propWorkspaceId, workspaceName, workspaceFooterContacts, onDataChange, drawingMode }, ref) => {
         const { i18n } = useTranslation()
         const printLang = features?.print_lang && features.print_lang !== 'auto' ? features.print_lang : i18n.language
         const t = i18n.getFixedT(printLang)
@@ -771,6 +772,15 @@ export const ModernA4InvoiceTemplate = forwardRef<HTMLDivElement, ModernA4Invoic
                             fill="none"
                             strokeLinecap="round"
                             strokeLinejoin="round"
+                            className={cn(drawingMode === 'eraser' && "cursor-pointer hover:stroke-destructive transition-colors")}
+                            style={{ pointerEvents: drawingMode === 'eraser' ? 'all' : 'none' }}
+                            onPointerDown={(e) => {
+                                if (drawingMode === 'eraser' && onDataChange) {
+                                    e.stopPropagation()
+                                    const newAnnotations = (data.annotations || []).filter((_, idx) => idx !== i)
+                                    onDataChange({ ...data, annotations: newAnnotations })
+                                }
+                            }}
                         />
                     ))}
                 </svg>
