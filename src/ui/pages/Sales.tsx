@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useLocation } from 'wouter'
 import { useAuth } from '@/auth'
@@ -165,9 +165,38 @@ export function Sales() {
     const { features, workspaceName, activeWorkspace, isLocalMode } = useWorkspace()
     const { style } = useTheme()
     const { toast } = useToast()
-    const rawSales = useSales(user?.workspaceId)
-    const rawOrders = useSalesOrders(user?.workspaceId)
-    const rawTravelSales = useTravelAgencySales(user?.workspaceId)
+    const { dateRange, customDates } = useDateRange()
+
+    const dateBounds = useMemo<{ startDate?: string; endDate?: string }>(() => {
+        const now = new Date()
+
+        if (dateRange === 'today') {
+            const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0)
+            return { startDate: startOfDay.toISOString() }
+        }
+
+        if (dateRange === 'month') {
+            const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+            return { startDate: startOfMonth.toISOString() }
+        }
+
+        if (dateRange === 'custom' && (customDates.start || customDates.end)) {
+            const start = customDates.start ? new Date(customDates.start) : undefined
+            if (start) start.setHours(0, 0, 0, 0)
+            const end = customDates.end ? new Date(customDates.end) : undefined
+            if (end) end.setHours(23, 59, 59, 999)
+            return {
+                startDate: start?.toISOString(),
+                endDate: end?.toISOString()
+            }
+        }
+
+        return {}
+    }, [dateRange, customDates])
+
+    const rawSales = useSales(user?.workspaceId, dateBounds.startDate, dateBounds.endDate)
+    const rawOrders = useSalesOrders(user?.workspaceId, dateBounds.startDate, dateBounds.endDate)
+    const rawTravelSales = useTravelAgencySales(user?.workspaceId, dateBounds.startDate, dateBounds.endDate)
 
     const loans = useLoans(user?.workspaceId)
     const allSales = useMemo(() => {
@@ -182,12 +211,13 @@ export function Sales() {
     }, [rawSales, rawOrders, rawTravelSales])
 
     const isLoading = rawSales === undefined || rawOrders === undefined || rawTravelSales === undefined
+    const [isDateLoading, setIsDateLoading] = useState(false)
+    const prevDateBoundsRef = useRef(dateBounds)
 
     const [selectedSale, setSelectedSale] = useState<Sale | null>(null)
     const [printingSale, setPrintingSale] = useState<Sale | null>(null)
     const [returnModalOpen, setReturnModalOpen] = useState(false)
     const [saleToReturn, setSaleToReturn] = useState<Sale | null>(null)
-    const { dateRange, customDates } = useDateRange()
     const [filters, setFilters] = useState<SalesFilterState>(() => {
         const cachedCashier = localStorage.getItem('sales_selected_cashier') || 'all'
         return { ...DEFAULT_SALES_FILTERS, cashier: cachedCashier }
@@ -333,6 +363,20 @@ export function Sales() {
 
         return result
     }, [allSales, dateRange, customDates, effectiveFilters])
+
+    useEffect(() => {
+        const prev = prevDateBoundsRef.current
+        prevDateBoundsRef.current = dateBounds
+        if (dateRange !== 'allTime' && (prev.startDate !== dateBounds.startDate || prev.endDate !== dateBounds.endDate)) {
+            setIsDateLoading(true)
+        }
+    }, [dateBounds, dateRange])
+
+    useEffect(() => {
+        if (isDateLoading && !isLoading && filteredSales.length > 0) {
+            setIsDateLoading(false)
+        }
+    }, [isDateLoading, isLoading, filteredSales])
 
     useEffect(() => {
         setCurrentPage(1)
@@ -1369,7 +1413,7 @@ export function Sales() {
                             <h1 className="text-2xl font-bold flex items-center gap-2">
                                 <Receipt className="w-6 h-6 text-primary" />
                                 {t('sales.title') || 'Sales History'}
-                                {isLoading && (
+                                {(isLoading || isDateLoading) && (
                                     <Loader2 className="w-4 h-4 animate-spin text-primary/50 ml-1" />
                                 )}
                             </h1>
@@ -1494,7 +1538,7 @@ export function Sales() {
                         </div>
                     </CardHeader>
                     <CardContent>
-                        {isLoading ? (
+                        {(isLoading || isDateLoading) ? (
                             <div className="flex justify-center py-8">
                                 <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
                             </div>

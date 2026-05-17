@@ -1671,7 +1671,7 @@ async function enrichSalesForUiRows(workspaceId: string, sales: Sale[]) {
     })
 }
 
-export function useSales(workspaceId: string | undefined) {
+export function useSales(workspaceId: string | undefined, startDate?: string, endDate?: string) {
     const isOnline = useNetworkStatus()
 
     const sales = useLiveQuery(
@@ -1680,16 +1680,26 @@ export function useSales(workspaceId: string | undefined) {
                 return []
             }
 
-            const rows = await db.sales.where('workspaceId').equals(workspaceId).toArray()
+            let query = db.sales.where('workspaceId').equals(workspaceId)
+
+            if (startDate && endDate) {
+                query = query.filter(sale => sale.createdAt >= startDate && sale.createdAt <= endDate)
+            } else if (startDate) {
+                query = query.filter(sale => sale.createdAt >= startDate)
+            } else if (endDate) {
+                query = query.filter(sale => sale.createdAt <= endDate)
+            }
+
+            const rows = await query.toArray()
             return enrichSalesForUiRows(workspaceId, rows)
         },
-        [workspaceId]
+        [workspaceId, startDate, endDate]
     )
 
     useEffect(() => {
         async function fetchFromSupabase() {
             if (isOnline && workspaceId && shouldUseCloudBusinessData(workspaceId)) {
-                const { data, error } = await supabase
+                let supabaseQuery = supabase
                     .from('sales')
                     .select(`
                         *,
@@ -1699,6 +1709,15 @@ export function useSales(workspaceId: string | undefined) {
                             )
                     `)
                     .eq('workspace_id', workspaceId)
+
+                if (startDate) {
+                    supabaseQuery = supabaseQuery.gte('created_at', startDate)
+                }
+                if (endDate) {
+                    supabaseQuery = supabaseQuery.lte('created_at', endDate)
+                }
+
+                const { data, error } = await supabaseQuery
 
                 if (!data || error || !shouldUseCloudBusinessData(workspaceId)) {
                     return
@@ -1765,7 +1784,7 @@ export function useSales(workspaceId: string | undefined) {
             }
         }
         fetchFromSupabase()
-    }, [isOnline, workspaceId])
+    }, [isOnline, workspaceId, startDate, endDate])
 
     return sales ?? []
 }

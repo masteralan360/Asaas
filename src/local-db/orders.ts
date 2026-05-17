@@ -743,16 +743,27 @@ async function receiveInventoryForPurchaseOrder(order: PurchaseOrder) {
     return updatedProducts
 }
 
-export function useSalesOrders(workspaceId: string | undefined) {
+export function useSalesOrders(workspaceId: string | undefined, startDate?: string, endDate?: string) {
     const online = useNetworkStatus()
 
     const orders = useLiveQuery(
         async () => {
             if (!workspaceId) return []
-            const rows = await db.sales_orders.where('workspaceId').equals(workspaceId).and((item) => !item.isDeleted).toArray()
+
+            let query = db.sales_orders.where('workspaceId').equals(workspaceId).and((item) => !item.isDeleted)
+
+            if (startDate && endDate) {
+                query = query.filter(order => order.createdAt >= startDate && order.createdAt <= endDate)
+            } else if (startDate) {
+                query = query.filter(order => order.createdAt >= startDate)
+            } else if (endDate) {
+                query = query.filter(order => order.createdAt <= endDate)
+            }
+
+            const rows = await query.toArray()
             return rows.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
         },
-        [workspaceId]
+        [workspaceId, startDate, endDate]
     )
 
     useEffect(() => {

@@ -229,13 +229,24 @@ async function generateSaleNumber(workspaceId: string, saleDate: string) {
     return `TA-${year}-${String(sequence).padStart(5, '0')}`
 }
 
-export function useTravelAgencySales(workspaceId: string | undefined) {
+export function useTravelAgencySales(workspaceId: string | undefined, startDate?: string, endDate?: string) {
     const online = useNetworkStatus()
 
     const sales = useLiveQuery(
         async () => {
             if (!workspaceId) return []
-            const rows = await db.travel_agency_sales.where('workspaceId').equals(workspaceId).and((item) => !item.isDeleted).toArray()
+
+            let query = db.travel_agency_sales.where('workspaceId').equals(workspaceId).and((item) => !item.isDeleted)
+
+            if (startDate && endDate) {
+                query = query.filter(sale => sale.saleDate >= startDate && sale.saleDate <= endDate)
+            } else if (startDate) {
+                query = query.filter(sale => sale.saleDate >= startDate)
+            } else if (endDate) {
+                query = query.filter(sale => sale.saleDate <= endDate)
+            }
+
+            const rows = await query.toArray()
             return rows.sort((left, right) => {
                 const dateDiff = right.saleDate.localeCompare(left.saleDate)
                 if (dateDiff !== 0) {
@@ -246,7 +257,7 @@ export function useTravelAgencySales(workspaceId: string | undefined) {
                 return right.saleNumber.localeCompare(left.saleNumber)
             })
         },
-        [workspaceId]
+        [workspaceId, startDate, endDate]
     )
 
     useEffect(() => {
