@@ -42,6 +42,7 @@ import {
     Square,
     X,
     FileSpreadsheet,
+    Loader2,
     TrendingDown,
     DollarSign,
     TrendingUp,
@@ -75,9 +76,35 @@ export function Revenue() {
     const { t, i18n } = useTranslation()
     const [, setLocation] = useLocation()
     const { features } = useWorkspace()
-    const rawSales = useSales(user?.workspaceId)
-    const salesOrders = useSalesOrders(user?.workspaceId)
-    const rawTravelSales = useTravelAgencySales(user?.workspaceId)
+    const { dateRange, customDates } = useDateRange()
+    const { style } = useTheme()
+
+    const dateBounds = useMemo<{ startDate?: string; endDate?: string }>(() => {
+        const now = new Date()
+        if (dateRange === 'today') {
+            const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0)
+            return { startDate: startOfDay.toISOString() }
+        }
+        if (dateRange === 'month') {
+            const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+            return { startDate: startOfMonth.toISOString() }
+        }
+        if (dateRange === 'custom' && (customDates.start || customDates.end)) {
+            const start = customDates.start ? new Date(customDates.start) : undefined
+            if (start) start.setHours(0, 0, 0, 0)
+            const end = customDates.end ? new Date(customDates.end) : undefined
+            if (end) end.setHours(23, 59, 59, 999)
+            return {
+                startDate: start?.toISOString(),
+                endDate: end?.toISOString()
+            }
+        }
+        return {}
+    }, [dateRange, customDates])
+
+    const rawSales = useSales(user?.workspaceId, dateBounds.startDate, dateBounds.endDate)
+    const salesOrders = useSalesOrders(user?.workspaceId, dateBounds.startDate, dateBounds.endDate)
+    const rawTravelSales = useTravelAgencySales(user?.workspaceId, dateBounds.startDate, dateBounds.endDate)
     const products = useProducts(user?.workspaceId)
     const categories = useCategories(user?.workspaceId)
     
@@ -95,8 +122,6 @@ export function Revenue() {
     const [isSalesOverviewOpen, setIsSalesOverviewOpen] = useState(false)
     const [isPeakTradingOpen, setIsPeakTradingOpen] = useState(false)
     const [isReturnsOpen, setIsReturnsOpen] = useState(false)
-    const { dateRange, customDates } = useDateRange()
-    const { style } = useTheme()
     const [showPrintPreview, setShowPrintPreview] = useState(false)
     const [selectedRecordKeys, setSelectedRecordKeys] = useState<Set<string>>(new Set())
     const [showPeakHeatmap, setShowPeakHeatmap] = useState(false)
@@ -153,6 +178,24 @@ export function Revenue() {
         () => filterRevenueAnalysisRecords(revenueRecords, dateRange, customDates),
         [revenueRecords, dateRange, customDates]
     )
+
+    const isLoading = rawSales === undefined || salesOrders === undefined || rawTravelSales === undefined
+    const [isDateLoading, setIsDateLoading] = useState(false)
+    const prevDateBoundsRef = useRef(dateBounds)
+
+    useEffect(() => {
+        const prev = prevDateBoundsRef.current
+        prevDateBoundsRef.current = dateBounds
+        if (dateRange !== 'allTime' && (prev.startDate !== dateBounds.startDate || prev.endDate !== dateBounds.endDate)) {
+            setIsDateLoading(true)
+        }
+    }, [dateBounds, dateRange])
+
+    useEffect(() => {
+        if (isDateLoading && !isLoading && revenueRecords.length > 0) {
+            setIsDateLoading(false)
+        }
+    }, [isDateLoading, isLoading, revenueRecords])
 
     // Clear selection when date filters change
     useEffect(() => {
@@ -510,7 +553,7 @@ export function Revenue() {
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <div>
                         <div className="flex items-center gap-3">
-                            <h1 className="text-3xl font-bold tracking-tight">{t('revenue.title')}</h1>
+                            <h1 className="text-3xl font-bold tracking-tight">{t('revenue.title')}{(isLoading || isDateLoading) && <Loader2 className="w-5 h-5 animate-spin text-muted-foreground inline-block ml-3" />}</h1>
                             {getDateDisplay() && (
                                 <div className={cn(
                                     "px-3 py-1 text-sm font-bold bg-primary text-primary-foreground shadow-sm animate-pop-in",
@@ -1070,7 +1113,11 @@ export function Revenue() {
                             </div>
                         </CardHeader>
                         <CardContent ref={listRef} className="print:p-0 [print-color-adjust:exact] -webkit-print-color-adjust:exact">
-                            {(isMobile() || viewMode === 'grid') ? (
+                            {(isLoading || isDateLoading) ? (
+                                <div className="flex justify-center py-8">
+                                    <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+                                </div>
+                            ) : (isMobile() || viewMode === 'grid') ? (
                                 <div className={cn(
                                     "grid gap-4",
                                     viewMode === 'grid' && !isMobile() ? "grid-cols-1 lg:grid-cols-2 xl:grid-cols-3" : "grid-cols-1"

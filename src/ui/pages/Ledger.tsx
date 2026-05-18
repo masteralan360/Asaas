@@ -1,6 +1,6 @@
-import { useDeferredValue, useEffect, useMemo, useState } from 'react'
+import { useDeferredValue, useEffect, useMemo, useState, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ArrowDownLeft, ArrowUpRight, RotateCcw, Search, ShieldCheck, SlidersHorizontal, Wallet, TrendingUp, TrendingDown, DollarSign, Package, Percent, BarChart3, Clock } from 'lucide-react'
+import { ArrowDownLeft, ArrowUpRight, Loader2, RotateCcw, Search, ShieldCheck, SlidersHorizontal, Wallet, TrendingUp, TrendingDown, DollarSign, Package, Percent, BarChart3, Clock } from 'lucide-react'
 import { Area, AreaChart, Bar, BarChart, ResponsiveContainer, Tooltip as RechartsTooltip, XAxis } from 'recharts'
 import { useLocation } from 'wouter'
 
@@ -979,8 +979,31 @@ export function Ledger() {
         || features.hr
         || features.loans
 
+    const dateBounds = useMemo<{ startDate?: string; endDate?: string }>(() => {
+        const now = new Date()
+        if (dateRange === 'today') {
+            const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0)
+            return { startDate: startOfDay.toISOString() }
+        }
+        if (dateRange === 'month') {
+            const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+            return { startDate: startOfMonth.toISOString() }
+        }
+        if (dateRange === 'custom' && (customDates.start || customDates.end)) {
+            const start = customDates.start ? new Date(customDates.start) : undefined
+            if (start) start.setHours(0, 0, 0, 0)
+            const end = customDates.end ? new Date(customDates.end) : undefined
+            if (end) end.setHours(23, 59, 59, 999)
+            return {
+                startDate: start?.toISOString(),
+                endDate: end?.toISOString()
+            }
+        }
+        return {}
+    }, [dateRange, customDates])
+
     const loans = useLoans(workspaceId)
-    const sales = useSales(workspaceId)
+    const sales = useSales(workspaceId, dateBounds.startDate, dateBounds.endDate)
     const paymentTransactions = usePaymentTransactions(workspaceId, { includeReversals: false })
     const rates = useMemo(
         () => buildConversionRates(exchangeData, eurRates, tryRates),
@@ -1052,6 +1075,24 @@ export function Ledger() {
         () => Array.from(new Set(allEntries.map((entry) => entry.partner?.trim()).filter((value): value is string => !!value))).sort((left, right) => left.localeCompare(right)),
         [allEntries]
     )
+
+    const isLoading = sales === undefined
+    const [isDateLoading, setIsDateLoading] = useState(false)
+    const prevDateBoundsRef = useRef(dateBounds)
+
+    useEffect(() => {
+        const prev = prevDateBoundsRef.current
+        prevDateBoundsRef.current = dateBounds
+        if (dateRange !== 'allTime' && (prev.startDate !== dateBounds.startDate || prev.endDate !== dateBounds.endDate)) {
+            setIsDateLoading(true)
+        }
+    }, [dateBounds, dateRange])
+
+    useEffect(() => {
+        if (isDateLoading && !isLoading && allEntries.length > 0) {
+            setIsDateLoading(false)
+        }
+    }, [isDateLoading, isLoading, allEntries])
 
     const dateScopedEntries = useMemo(
         () => allEntries.filter((entry) => isEntryInDateRange(entry.date, dateRange, customDates)),
@@ -1617,7 +1658,7 @@ export function Ledger() {
 
                     <div className="space-y-1.5">
                         <div className="flex flex-wrap items-center gap-3">
-                            <h1 className="bg-gradient-to-br from-foreground to-foreground/70 bg-clip-text text-4xl font-black tracking-tight text-transparent">{t('ledger.title', { defaultValue: 'General Ledger' })}</h1>
+                            <h1 className="bg-gradient-to-br from-foreground to-foreground/70 bg-clip-text text-4xl font-black tracking-tight text-transparent">{t('ledger.title', { defaultValue: 'General Ledger' })}{(isLoading || isDateLoading) && <Loader2 className="w-5 h-5 animate-spin text-muted-foreground inline-block ml-3" />}</h1>
                             {dateDisplay && (
                                 <div className={cn(
                                     "px-3 py-1 text-sm font-bold bg-primary text-primary-foreground shadow-sm animate-pop-in",
@@ -2050,7 +2091,11 @@ export function Ledger() {
                     </div>
                 </CardHeader>
                 <CardContent className={cn(isDirectionSplitView ? "overflow-hidden" : "overflow-x-auto")}>
-                    {filteredEntries.length === 0 ? renderEntriesTable(
+                    {(isLoading || isDateLoading) ? (
+                        <div className="flex justify-center py-8">
+                            <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+                        </div>
+                    ) : filteredEntries.length === 0 ? renderEntriesTable(
                         visibleEntries,
                         t('ledger.table.noMatch', { defaultValue: 'No ledger entries match the current filters.' })
                     ) : isDirectionSplitView ? (
