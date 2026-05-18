@@ -27,7 +27,7 @@ import {
 } from '@/ui/components'
 import { useWorkspace } from '@/workspace'
 import { LoanPartyPickerDialog } from './LoanPartyPickerDialog'
-import { SaveBorrowerAsPartnerDialog, usePendingSavePartnerPrompt, type SaveBorrowerAsPartnerData } from './SaveBorrowerAsPartnerDialog'
+import { SaveBorrowerAsPartnerDialog, usePendingSavePartnerPrompt } from './SaveBorrowerAsPartnerDialog'
 import { PartnerAutocompleteInput } from '@/ui/components/crm/PartnerAutocompleteInput'
 import type { BusinessPartner } from '@/local-db'
 

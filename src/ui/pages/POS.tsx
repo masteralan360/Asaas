@@ -88,7 +88,7 @@ import { CheckoutSuccessModal, HeldSalesModal, type HeldSale, StorageSelector, C
 import { BarcodeScannerModal } from '@/ui/components/pos/BarcodeScannerModal'
 import { mapSaleToUniversal } from '@/lib/mappings'
 import { LoanRegistrationModal, type LoanRegistrationData } from '@/ui/components/pos/LoanRegistrationModal'
-import { SaveBorrowerAsPartnerDialog, usePendingSavePartnerPrompt, type SaveBorrowerAsPartnerData } from '@/ui/components/loans/SaveBorrowerAsPartnerDialog'
+import { SaveBorrowerAsPartnerDialog, usePendingSavePartnerPrompt } from '@/ui/components/loans/SaveBorrowerAsPartnerDialog'
 import { getRetriableActionToast, isRetriableWebRequestError, normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
 import { isOnline } from '@/lib/network'
 import { useWebHaptics } from 'web-haptics/react'

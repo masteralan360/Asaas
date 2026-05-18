@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { MapPin, Phone, SkipForward, UserPlus } from 'lucide-react'
+import { MapPin, Phone, UserPlus } from 'lucide-react'
 
 import { createBusinessPartner, linkLoanToBusinessPartner, type CurrencyCode } from '@/local-db'
 import { recalculateBusinessPartnerSummary } from '@/local-db/businessPartners'
@@ -110,7 +110,7 @@ export function SaveBorrowerAsPartnerDialog({
     const hasDetails = data.borrowerPhone || data.borrowerAddress
 
     return (
-        <Dialog open={isOpen} onOpenChange={() => {}}>
+        <Dialog open={isOpen} onOpenChange={() => { }}>
             <DialogContent
                 className="sm:max-w-md overflow-hidden [&>button:last-child]:hidden"
                 onPointerDownOutside={(e) => e.preventDefault()}
