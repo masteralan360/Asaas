@@ -11,7 +11,7 @@ import { formatLocalizedMonthYear } from '@/lib/monthDisplay'
 import { getLoanDetailsPath } from '@/lib/loanPresentation'
 import { getRetriableActionToast, isRetriableWebRequestError, normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
 
-import { adjustInventoryQuantity, commitStockBatchAllocations, db, resolveReturnStorageId, restoreStockBatchAllocations, splitStockBatchAllocationsForReturn, useLoanBySaleId, useLoanInstallments, useLoanPayments, useLoans, useSales, useSalesOrders, useTravelAgencySales, toUISale, toUISaleFromOrder, toUISaleFromTravelAgency, type Loan, type StockBatchAllocation } from '@/local-db'
+import { adjustInventoryQuantity, commitStockBatchAllocations, db, recordLoanPayment, resolveReturnStorageId, restoreStockBatchAllocations, splitStockBatchAllocationsForReturn, useLoanBySaleId, useLoanInstallments, useLoanPayments, useLoans, useSales, useSalesOrders, useTravelAgencySales, toUISale, toUISaleFromOrder, toUISaleFromTravelAgency, type Loan, type StockBatchAllocation } from '@/local-db'
 import { useWorkspace } from '@/workspace'
 import { isMobile } from '@/lib/platform'
 import { whatsappManager } from '@/lib/whatsappWebviewManager'
@@ -879,6 +879,25 @@ export function Sales() {
     const handleReturnConfirm = async (reason: string, quantity?: number) => {
         if (!saleToReturn) return
 
+        const recordReturnLoanPayment = async (amt: number) => {
+            if (saleToReturn.payment_method === 'loan' && amt > 0) {
+                try {
+                    const loan = await db.loans.where('saleId').equals(saleToReturn.id).first()
+                    if (loan) {
+                        await recordLoanPayment(saleToReturn.workspace_id, {
+                            loanId: loan.id,
+                            amount: amt,
+                            paymentMethod: 'loan_adjustment',
+                            note: `Return Credit (Reason: ${reason || 'Return'})`,
+                            createdBy: user?.id
+                        })
+                    }
+                } catch (e) {
+                    console.error('[Sales] Failed to apply loan return payment:', e)
+                }
+            }
+        }
+
         try {
             let error
             const isPartialReturn = (saleToReturn as any)._isPartialReturn
@@ -990,6 +1009,7 @@ export function Sales() {
                             description: t('pos.offlineDesc') || 'Sale saved locally and will sync when online.',
                         })
                     }
+                    await recordReturnLoanPayment(returnValue)
                 } else {
                     const itemsToReturn = saleToReturn.items || []
                     const quantities = itemsToReturn.map((item) => item.quantity - (item.returned_quantity || 0))
@@ -1072,6 +1092,7 @@ export function Sales() {
                             description: t('pos.offlineDesc') || 'Sale saved locally and will sync when online.',
                         })
                     }
+                    await recordReturnLoanPayment(saleToReturn.total_amount)
                 }
 
                 setReturnModalOpen(false)
@@ -1164,6 +1185,7 @@ export function Sales() {
                     if (selectedSale?.id === saleToReturn.id) {
                         setSelectedSale(updateSale(selectedSale))
                     }
+                    await recordReturnLoanPayment(returnValue)
                 }
             } else {
                 // Whole Sale Return
@@ -1243,6 +1265,7 @@ export function Sales() {
                     if (selectedSale?.id === saleToReturn.id) {
                         setSelectedSale(updateSale(selectedSale))
                     }
+                    await recordReturnLoanPayment(saleToReturn.total_amount)
                 }
             }
 

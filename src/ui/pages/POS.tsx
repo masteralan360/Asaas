@@ -2953,6 +2953,7 @@ export function POS() {
                 onOpenChange={setIsLoanRegistrationModalOpen}
                 workspaceId={user?.workspaceId ?? ''}
                 settlementCurrency={settlementCurrency as CurrencyCode}
+                principalAmount={totalAmount}
                 isSubmitting={isLoading}
                 onSubmit={(data) => handleCheckout(data)}
             />

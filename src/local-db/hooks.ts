@@ -4517,7 +4517,7 @@ export async function recordLoanPayment(workspaceId: string, input: LoanPaymentI
             sourceModule: 'loans',
             sourceType: (loan.loanCategory || 'standard') === 'simple'
                 ? 'simple_loan'
-                : (input.installmentId ? 'loan_installment' : 'loan_payment'),
+                : (loan.installmentCount > 1 || input.installmentId ? 'loan_installment' : 'loan_payment'),
             sourceRecordId: loan.id,
             sourceSubrecordId: input.installmentId || payment.id,
             direction: (loan.direction || 'lent') === 'borrowed' ? 'outgoing' : 'incoming',

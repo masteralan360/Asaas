@@ -2226,6 +2226,7 @@
         "noteLabel": "Note:",
         "installmentSchedule": "Installment Schedule",
         "installmentCount": "Installment Count",
+        "installmentPlannedAmount": "Per Installment Amount",
         "frequency": "Frequency",
         "firstDueDate": "First Due Date",
         "planned": "Planned",

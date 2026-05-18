@@ -1,6 +1,6 @@
 import { useDeferredValue, useEffect, useMemo, useState, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ArrowDownLeft, ArrowUpRight, Loader2, RotateCcw, Search, ShieldCheck, SlidersHorizontal, Wallet, TrendingUp, TrendingDown, DollarSign, Package, Percent, BarChart3, Clock } from 'lucide-react'
+import { ArrowDownLeft, ArrowUpRight, Loader2, RotateCcw, Search, ShieldCheck, SlidersHorizontal, Wallet, TrendingUp, TrendingDown, DollarSign, Package, Percent, BarChart3, Clock, ChevronUp, ChevronDown, ChevronsUp, ChevronsDown } from 'lucide-react'
 import { Area, AreaChart, Bar, BarChart, ResponsiveContainer, Tooltip as RechartsTooltip, XAxis } from 'recharts'
 import { useLocation } from 'wouter'
 
@@ -54,7 +54,11 @@ import {
     Tooltip,
     TooltipContent,
     TooltipProvider,
-    TooltipTrigger
+    TooltipTrigger,
+    ContextMenu,
+    ContextMenuTrigger,
+    ContextMenuContent,
+    ContextMenuItem
 } from '@/ui/components'
 import { useWorkspace } from '@/workspace'
 import { useTheme } from '@/ui/components/theme-provider'
@@ -99,6 +103,7 @@ interface LedgerEntry {
     relationRole?: LedgerRelationRole | null
     relationTitle?: string | null
     relationDescription?: string | null
+    relationIsCompleted?: boolean
 }
 
 type LedgerDirectionFilter = 'all' | LedgerDirection
@@ -677,11 +682,13 @@ function buildTransactionDescription(transaction: PaymentTransaction, t: any) {
 function buildLedgerRelationDescriptor(
     transaction: PaymentTransaction,
     context: LedgerBuildContext
-): Pick<LedgerEntry, 'relationKey' | 'relationRole' | 'relationTitle' | 'relationDescription'> {
+): Pick<LedgerEntry, 'relationKey' | 'relationRole' | 'relationTitle' | 'relationDescription' | 'relationIsCompleted'> {
     const reference = buildTransactionReference(transaction)
 
     switch (transaction.sourceType) {
         case 'loan_origination': {
+            const loan = context.loanById.get(transaction.sourceRecordId)
+            const relationIsCompleted = loan ? loan.balanceAmount <= 0 : false
             const movementLabel = transaction.direction === 'incoming'
                 ? 'Original loan cash receipt'
                 : 'Original loan cash disbursement'
@@ -690,7 +697,8 @@ function buildLedgerRelationDescriptor(
                 relationKey: `loan:${transaction.sourceRecordId}`,
                 relationRole: 'origin',
                 relationTitle: movementLabel,
-                relationDescription: `${reference} is the opening cash movement for this loan. Hover a linked repayment to trace the full chain.`
+                relationDescription: `${reference} is the opening cash movement for this loan. Hover a linked repayment to trace the full chain.`,
+                relationIsCompleted
             }
         }
 
@@ -698,6 +706,7 @@ function buildLedgerRelationDescriptor(
         case 'simple_loan':
         case 'loan_installment': {
             const loan = context.loanById.get(transaction.sourceRecordId)
+            const relationIsCompleted = loan ? loan.balanceAmount <= 0 : false
             const sourceLoanReference = loan?.loanNo || reference
             const hasManualOrigination = context.loanOriginationIds.has(transaction.sourceRecordId)
             const repaymentLabel = transaction.sourceType === 'loan_installment'
@@ -711,7 +720,8 @@ function buildLedgerRelationDescriptor(
                     relationKey: `loan:${transaction.sourceRecordId}`,
                     relationRole: 'repayment',
                     relationTitle: repaymentLabel,
-                    relationDescription: `Original source: ${(loan?.direction || 'lent') === 'borrowed' ? 'Loan Taken' : 'Loan Given'} ${sourceLoanReference}. The matching origination row links to this repayment when it is visible in the ledger.`
+                    relationDescription: `Original source: ${(loan?.direction || 'lent') === 'borrowed' ? 'Loan Taken' : 'Loan Given'} ${sourceLoanReference}. The matching origination row links to this repayment when it is visible in the ledger.`,
+                    relationIsCompleted
                 }
             }
 
@@ -725,7 +735,8 @@ function buildLedgerRelationDescriptor(
                     relationTitle: repaymentLabel,
                     relationDescription: saleReference
                         ? `Original source: ${saleReference} credit sale. This loan started from a sale, so there is no separate cash origination row in the ledger.`
-                        : 'Original source: POS credit sale. This loan started from a sale, so there is no separate cash origination row in the ledger.'
+                        : 'Original source: POS credit sale. This loan started from a sale, so there is no separate cash origination row in the ledger.',
+                    relationIsCompleted
                 }
             }
 
@@ -733,7 +744,8 @@ function buildLedgerRelationDescriptor(
                 relationKey: `loan:${transaction.sourceRecordId}`,
                 relationRole: 'repayment',
                 relationTitle: repaymentLabel,
-                relationDescription: `Original source: ${sourceLoanReference}.`
+                relationDescription: `Original source: ${sourceLoanReference}.`,
+                relationIsCompleted
             }
         }
 
@@ -791,6 +803,10 @@ function buildPaymentLedgerEntry(
     t: any
 ): LedgerEntry | null {
     if (transaction.isDeleted || transaction.reversalOfTransactionId) {
+        return null
+    }
+
+    if (transaction.paymentMethod === 'loan' || transaction.paymentMethod === 'loan_adjustment') {
         return null
     }
 
@@ -966,6 +982,19 @@ export function Ledger() {
     const { t, i18n } = useTranslation()
     const { dateRange, customDates } = useDateRange()
     const { exchangeData, eurRates, tryRates } = useExchangeRate()
+
+    const scrollToRow = (id: string) => {
+        const element = document.getElementById(`ledger-row-${id}`)
+        if (element) {
+            element.scrollIntoView({ behavior: 'smooth', block: 'center' })
+            element.classList.add('bg-accent/40', 'transition-colors', 'duration-500')
+            setTimeout(() => {
+                if (element) {
+                    element.classList.remove('bg-accent/40', 'transition-colors', 'duration-500')
+                }
+            }, 1500)
+        }
+    }
     const { features } = useWorkspace()
     const { style } = useTheme()
     const [, setLocation] = useLocation()
@@ -1478,6 +1507,9 @@ export function Ledger() {
                             const isRelationHovered = !!hoveredRelationKey && entry.relationKey === hoveredRelationKey
                             const relatedVisibleCount = entry.relationKey ? (relationCounts.get(entry.relationKey) || 0) : 0
                             const hasVisibleLinkedPeer = relatedVisibleCount > 1
+                            const hoveredRelationIsCompleted = hoveredRange && rows[hoveredRange.firstIndex]
+                                ? rows[hoveredRange.firstIndex].relationIsCompleted
+                                : undefined
                             const showHoverHierarchyLine = !!hoveredRange
                                 && hoveredRange.firstIndex !== hoveredRange.lastIndex
                                 && rowIndex >= hoveredRange.firstIndex
@@ -1494,8 +1526,18 @@ export function Ledger() {
                                     ? 'top-0 bottom-1/2'
                                     : 'top-0 bottom-0'
 
-                            return (
+                            const relatedRows = entry.relationKey ? rows.filter(r => r.relationKey === entry.relationKey) : []
+                            const currentIndex = entry.relationKey ? relatedRows.findIndex(r => r.id === entry.id) : -1
+                            const nextPayment = currentIndex > 0 ? relatedRows[currentIndex - 1] : null
+                            const previousPayment = currentIndex !== -1 && currentIndex < relatedRows.length - 1 ? relatedRows[currentIndex + 1] : null
+                            const latestPayment = currentIndex > 0 ? relatedRows[0] : null
+                            const firstPayment = currentIndex !== -1 && currentIndex < relatedRows.length - 1 ? relatedRows[relatedRows.length - 1] : null
+
+                            const hasContextMenu = Boolean(nextPayment || previousPayment || latestPayment || firstPayment)
+
+                            const rowContent = (
                                 <TableRow
+                                    id={`ledger-row-${entry.id}`}
                                     key={entry.id}
                                     className={cn(
                                         entry.relationKey && 'transition-colors duration-150',
@@ -1521,13 +1563,17 @@ export function Ledger() {
                                             <div className="pointer-events-none absolute inset-y-0 -start-6 w-5">
                                                 <span
                                                     className={cn(
-                                                        'absolute start-1.5 w-px bg-foreground/80',
+                                                        'absolute start-1.5 w-px',
+                                                        hoveredRelationIsCompleted === true ? 'bg-emerald-500' : hoveredRelationIsCompleted === false ? 'bg-amber-500' : 'bg-foreground/80',
                                                         hierarchyVerticalClass
                                                     )}
                                                 />
                                                 {showHoverHierarchyTurn ? (
                                                     <span
-                                                        className="absolute start-1.5 top-1/2 h-px w-3 -translate-y-1/2 bg-foreground/80"
+                                                        className={cn(
+                                                            "absolute start-1.5 top-1/2 h-px w-3 -translate-y-1/2",
+                                                            hoveredRelationIsCompleted === true ? 'bg-emerald-500' : hoveredRelationIsCompleted === false ? 'bg-amber-500' : 'bg-foreground/80'
+                                                        )}
                                                     />
                                                 ) : null}
                                             </div>
@@ -1624,6 +1670,42 @@ export function Ledger() {
                                         </TableCell>
                                     ) : null}
                                 </TableRow>
+                            )
+
+                            if (!hasContextMenu) return rowContent
+
+                            return (
+                                <ContextMenu key={entry.id}>
+                                    <ContextMenuTrigger asChild>
+                                        {rowContent}
+                                    </ContextMenuTrigger>
+                                    <ContextMenuContent className="w-48">
+                                        {latestPayment && (
+                                            <ContextMenuItem onClick={() => scrollToRow(latestPayment.id)}>
+                                                <ChevronsUp className="mr-2 h-4 w-4" />
+                                                {t('ledger.context.scrollToLatest', { defaultValue: 'Latest payment' })}
+                                            </ContextMenuItem>
+                                        )}
+                                        {nextPayment && (
+                                            <ContextMenuItem onClick={() => scrollToRow(nextPayment.id)}>
+                                                <ChevronUp className="mr-2 h-4 w-4" />
+                                                {t('ledger.context.scrollToNext', { defaultValue: 'Next payment' })}
+                                            </ContextMenuItem>
+                                        )}
+                                        {previousPayment && (
+                                            <ContextMenuItem onClick={() => scrollToRow(previousPayment.id)}>
+                                                <ChevronDown className="mr-2 h-4 w-4" />
+                                                {t('ledger.context.scrollToPrevious', { defaultValue: 'Previous payment' })}
+                                            </ContextMenuItem>
+                                        )}
+                                        {firstPayment && (
+                                            <ContextMenuItem onClick={() => scrollToRow(firstPayment.id)}>
+                                                <ChevronsDown className="mr-2 h-4 w-4" />
+                                                {t('ledger.context.scrollToFirst', { defaultValue: 'First payment' })}
+                                            </ContextMenuItem>
+                                        )}
+                                    </ContextMenuContent>
+                                </ContextMenu>
                             )
                         })}
                     </TableBody>

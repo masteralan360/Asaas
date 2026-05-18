@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Users, X } from 'lucide-react'
 import type { CurrencyCode, InstallmentFrequency } from '@/local-db'
 import { getLoanLinkedPartyTypeLabel, type LoanPartySelection } from '@/lib/loanParties'
-import { formatLocalDateValue, parseLocalDateValue } from '@/lib/utils'
+import { formatCurrency, formatLocalDateValue, parseLocalDateValue } from '@/lib/utils'
 import {
     Dialog,
     DialogContent,
@@ -46,6 +46,7 @@ interface LoanRegistrationModalProps {
     onSubmit: (data: LoanRegistrationData) => void
     workspaceId: string
     settlementCurrency: CurrencyCode
+    principalAmount: number
     isSubmitting?: boolean
 }
 
@@ -55,6 +56,7 @@ export function LoanRegistrationModal({
     onSubmit,
     workspaceId,
     settlementCurrency,
+    principalAmount,
     isSubmitting = false
 }: LoanRegistrationModalProps) {
     const { t } = useTranslation()
@@ -228,6 +230,11 @@ export function LoanRegistrationModal({
                                         value={form.installmentCount}
                                         onChange={e => setForm(prev => ({ ...prev, installmentCount: Math.max(1, Number(e.target.value || 1)) }))}
                                     />
+                                    {principalAmount > 0 && form.installmentCount > 0 && (
+                                        <p className="text-[11px] text-muted-foreground">
+                                            ≈ {formatCurrency(principalAmount / form.installmentCount, settlementCurrency)} / {t('loans.installmentCount') || 'installment'}
+                                        </p>
+                                    )}
                                 </div>
                                 <div className="grid gap-2">
                                     <Label>{t('loans.frequency') || 'Frequency'}</Label>

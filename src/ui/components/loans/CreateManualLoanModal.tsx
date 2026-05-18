@@ -6,7 +6,7 @@ import { useExchangeRate } from '@/context/ExchangeRateContext'
 import { createManualLoan, type CurrencyCode, type InstallmentFrequency } from '@/local-db'
 import { buildOrderExchangeRatesSnapshot } from '@/lib/orderCurrency'
 import { getLoanLinkedPartyTypeLabel, type LoanPartySelection } from '@/lib/loanParties'
-import { formatLocalDateValue, formatNumericInput, parseFormattedNumber, parseLocalDateValue, sanitizeNumericInput } from '@/lib/utils'
+import { formatCurrency, formatLocalDateValue, formatNumericInput, parseFormattedNumber, parseLocalDateValue, sanitizeNumericInput } from '@/lib/utils'
 import {
     Dialog,
     DialogContent,
@@ -288,6 +288,11 @@ export function CreateManualLoanModal({
                                         value={installmentCount}
                                         onChange={e => setInstallmentCount(Math.max(1, Number(e.target.value || 1)))}
                                     />
+                                    {parseFormattedNumber(principalAmount || '0') > 0 && installmentCount > 0 && (
+                                        <p className="text-[11px] text-muted-foreground">
+                                            ≈ {formatCurrency(parseFormattedNumber(principalAmount || '0') / installmentCount, selectedCurrency)} / {t('loans.installmentCount') || 'installment'}
+                                        </p>
+                                    )}
                                 </div>
                                 <div className="grid gap-2 xl:col-span-2">
                                     <Label>{t('loans.frequency') || 'Frequency'}</Label>
