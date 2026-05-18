@@ -641,6 +641,7 @@ export interface Invoice extends BaseEntity {
   // Local PDF Blob (pending upload)
   pdfBlobA4?: Blob;
   pdfBlobReceipt?: Blob;
+  fileSize?: number;
 }
 
 export interface Sale extends BaseEntity {
@@ -887,6 +888,7 @@ export interface Workspace extends BaseEntity {
   print_quality?: "low" | "high";
   thermal_printing?: boolean;
   subscription_expires_at?: string | null;
+  upload_limit_mb?: number | null;
   visibility?: WorkspaceVisibility;
   store_slug?: string | null;
   store_description?: string | null;

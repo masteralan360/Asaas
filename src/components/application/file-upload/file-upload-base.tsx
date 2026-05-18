@@ -9,12 +9,24 @@ import { Button } from '@/ui/components/button'
 import { Progress } from '@/ui/components/ui/progress'
 
 export const getReadableFileSize = (bytes: number) => {
-    if (bytes === 0) return '0 KB'
+    if (bytes === 0) return '0 B'
 
     const suffixes = ['B', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB']
-    const index = Math.floor(Math.log(bytes) / Math.log(1024))
+    const base = 1000
+    let index = 0
+    let value = bytes
 
-    return `${Math.floor(bytes / Math.pow(1024, index))} ${suffixes[index]}`
+    while (value >= base && index < suffixes.length - 1) {
+        value /= base
+        index++
+    }
+
+    if (index === 0) return `${bytes} B`
+
+    const formatted = value >= 100 ? Math.round(value)
+        : value >= 10 ? parseFloat(value.toFixed(1))
+        : parseFloat(value.toFixed(2))
+    return `${formatted} ${suffixes[index]}`
 }
 
 interface FileUploadDropZoneProps {

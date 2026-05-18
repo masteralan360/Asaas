@@ -317,13 +317,13 @@ export class AtlasDatabase extends Dexie {
   constructor() {
     super("AtlasDatabase");
 
-    this.version(37)
+    this.version(38)
       .stores({
         products:
           "id, sku, name, categoryId, storageId, workspaceId, currency, syncStatus, updatedAt, isDeleted, canBeReturned",
         categories: "id, name, workspaceId, syncStatus, updatedAt, isDeleted",
         invoices:
-          "id, invoiceid, orderId, customerId, status, workspaceId, syncStatus, updatedAt, isDeleted, origin, createdBy, cashierName, createdByName, sequenceId, printFormat, r2PathA4, r2PathReceipt",
+          "id, invoiceid, orderId, customerId, status, workspaceId, syncStatus, updatedAt, isDeleted, origin, createdBy, cashierName, createdByName, sequenceId, printFormat, r2PathA4, r2PathReceipt, fileSize",
 
         users:
           "id, email, role, workspaceId, syncStatus, updatedAt, isDeleted, monthlyTarget",

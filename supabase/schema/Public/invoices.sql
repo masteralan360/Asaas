@@ -19,5 +19,6 @@ CREATE TABLE public.invoices (
   settlement_currency text NULL,
   r2_path_a4 text NULL,
   r2_path_receipt text NULL,
+  file_size bigint NULL,
   PRIMARY KEY (id)
 );

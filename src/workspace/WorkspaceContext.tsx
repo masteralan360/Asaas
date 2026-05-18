@@ -84,6 +84,7 @@ export interface WorkspaceFeatures {
     print_quality: 'low' | 'high'
     thermal_printing: boolean
     subscription_expires_at: string | null
+    upload_limit_mb: number | null
     visibility: 'private' | 'public'
     store_slug: string | null
     store_description: string | null
@@ -161,6 +162,7 @@ const defaultFeatures: WorkspaceFeatures = {
     print_quality: 'low',
     thermal_printing: false,
     subscription_expires_at: null,
+    upload_limit_mb: null,
     visibility: 'private',
     store_slug: null,
     store_description: null
@@ -205,6 +207,7 @@ const WORKSPACE_FEATURE_COLUMNS = [
     'a4_template',
     'print_quality',
     'subscription_expires_at',
+    'upload_limit_mb',
     'visibility',
     'store_slug',
     'store_description'
@@ -265,6 +268,7 @@ function getFeaturesFromLocalWorkspace(localWorkspace: Workspace): WorkspaceFeat
         print_quality: localWorkspace.print_quality ?? 'low',
         thermal_printing: localWorkspace.thermal_printing ?? false,
         subscription_expires_at: localWorkspace.subscription_expires_at ?? null,
+        upload_limit_mb: localWorkspace.upload_limit_mb ?? null,
         visibility: localWorkspace.visibility ?? 'private',
         store_slug: localWorkspace.store_slug ?? null,
         store_description: localWorkspace.store_description ?? null
@@ -395,6 +399,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             print_quality: nextFeatures.print_quality,
             thermal_printing: nextFeatures.thermal_printing,
             subscription_expires_at: nextFeatures.subscription_expires_at,
+            upload_limit_bytes: nextFeatures.upload_limit_bytes,
             visibility: nextFeatures.visibility,
             store_slug: nextFeatures.store_slug,
             store_description: nextFeatures.store_description,
@@ -553,6 +558,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                 print_quality: workspaceRow.print_quality ?? currentFeatures.print_quality,
                 thermal_printing: localThermalPrinting,
                 subscription_expires_at: workspaceRow.subscription_expires_at ?? null,
+                upload_limit_mb: workspaceRow.upload_limit_mb ?? null,
                 visibility: workspaceRow.visibility ?? currentFeatures.visibility,
                 store_slug: workspaceRow.store_slug ?? currentFeatures.store_slug,
                 store_description: workspaceRow.store_description ?? currentFeatures.store_description
@@ -814,7 +820,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     }
 
     const updateSettings = async (
-        settings: Partial<Pick<WorkspaceFeatures, 'default_currency' | 'iqd_display_preference' | 'eur_conversion_enabled' | 'try_conversion_enabled' | 'allow_whatsapp' | 'kds_enabled' | 'logo_url' | 'coordination' | 'print_lang' | 'print_qr' | 'receipt_template' | 'a4_template' | 'print_quality' | 'thermal_printing' | 'ecommerce' | 'visibility' | 'store_slug' | 'store_description'>> & { name?: string }
+        settings: Partial<Pick<WorkspaceFeatures, 'default_currency' | 'iqd_display_preference' | 'eur_conversion_enabled' | 'try_conversion_enabled' | 'allow_whatsapp' | 'kds_enabled' | 'logo_url' | 'coordination' | 'print_lang' | 'print_qr' | 'receipt_template' | 'a4_template' | 'print_quality' | 'thermal_printing' | 'ecommerce' | 'visibility' | 'store_slug' | 'store_description' | 'upload_limit_mb'>> & { name?: string }
     ) => {
         const workspaceId = user?.workspaceId
         if (!workspaceId) return
@@ -907,6 +913,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                 print_quality: newFeatures.print_quality,
                 thermal_printing: newFeatures.thermal_printing,
                 subscription_expires_at: newFeatures.subscription_expires_at,
+                upload_limit_bytes: newFeatures.upload_limit_bytes,
                 visibility: newFeatures.visibility,
                 store_slug: newFeatures.store_slug,
                 store_description: newFeatures.store_description,
