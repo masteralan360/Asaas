@@ -3932,6 +3932,87 @@ export async function createLoanFromPosSale(
     return createLoanAggregate(workspaceId, { ...input, source: 'pos' })
 }
 
+export async function linkLoanToBusinessPartner(
+    loanId: string,
+    partnerId: string,
+    partnerName: string
+): Promise<Loan> {
+    const existing = await db.loans.get(loanId)
+    if (!existing || existing.isDeleted) {
+        throw new Error('Loan not found')
+    }
+
+    const now = new Date().toISOString()
+    const updatedLoan: Loan = {
+        ...existing,
+        linkedPartyType: 'business_partner',
+        linkedPartyId: partnerId,
+        linkedPartyName: partnerName,
+        updatedAt: now,
+        version: existing.version + 1,
+        syncStatus: 'pending',
+        lastSyncedAt: null
+    }
+
+    await db.loans.put(updatedLoan)
+
+    const enqueueMutation = async () => {
+        await addToOfflineMutations(
+            'loans',
+            updatedLoan.id,
+            'update',
+            updatedLoan as unknown as Record<string, unknown>,
+            existing.workspaceId
+        )
+    }
+
+    if (!isOnline()) {
+        await enqueueMutation()
+        await recalculateLoanLinkedBusinessPartnerSummary(existing.workspaceId, 'business_partner', partnerId)
+        return updatedLoan
+    }
+
+    try {
+        const { error } = await runMutation('loans.linkPartner.update', () =>
+            supabase
+                .from('loans')
+                .update(toSnakeCase({
+                    linkedPartyType: updatedLoan.linkedPartyType,
+                    linkedPartyId: updatedLoan.linkedPartyId,
+                    linkedPartyName: updatedLoan.linkedPartyName,
+                    updatedAt: updatedLoan.updatedAt,
+                    version: updatedLoan.version
+                }))
+                .eq('id', updatedLoan.id)
+        )
+        if (error) throw error
+
+        const syncedAt = new Date().toISOString()
+        await db.loans.update(updatedLoan.id, {
+            syncStatus: 'synced',
+            lastSyncedAt: syncedAt
+        })
+
+        await recalculateLoanLinkedBusinessPartnerSummary(existing.workspaceId, 'business_partner', partnerId)
+
+        return {
+            ...updatedLoan,
+            syncStatus: 'synced',
+            lastSyncedAt: syncedAt
+        }
+    } catch (error) {
+        if (shouldUseOfflineMutationFallback(error)) {
+            console.error('[Loans] Link partner sync failed, queued offline mutation:', error)
+            await enqueueMutation()
+            await recalculateLoanLinkedBusinessPartnerSummary(existing.workspaceId, 'business_partner', partnerId)
+            return updatedLoan
+        }
+
+        await db.loans.put(existing)
+        throw normalizeSupabaseActionError(error)
+    }
+}
+
 export async function updateLoanReminderSnooze(
     loanId: string,
     input: {

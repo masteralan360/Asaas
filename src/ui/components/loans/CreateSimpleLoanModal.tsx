@@ -30,6 +30,7 @@ import {
 } from '@/ui/components'
 import { useWorkspace } from '@/workspace'
 import { LoanPartyPickerDialog } from './LoanPartyPickerDialog'
+import { SaveBorrowerAsPartnerDialog, usePendingSavePartnerPrompt, type SaveBorrowerAsPartnerData } from './SaveBorrowerAsPartnerDialog'
 import { PartnerAutocompleteInput } from '@/ui/components/crm/PartnerAutocompleteInput'
 import type { BusinessPartner } from '@/local-db'
 
@@ -65,6 +66,7 @@ export function CreateSimpleLoanModal({
     const [principalAmount, setPrincipalAmount] = useState('')
     const [dueDate, setDueDate] = useState(formatLocalDateValue(new Date()))
     const [notes, setNotes] = useState('')
+    const [savePartnerData, setSavePartnerData] = usePendingSavePartnerPrompt()
 
     useEffect(() => {
         if (!isOpen) return
@@ -148,8 +150,19 @@ export function CreateSimpleLoanModal({
                 title: t('messages.success') || 'Success',
                 description: t('loans.messages.loanCreated') || 'Loan created successfully'
             })
-            onOpenChange(false)
-            onCreated?.(result.loan.id)
+
+            if (!selectedParty && borrowerName.trim()) {
+                setSavePartnerData({
+                    loanId: result.loan.id,
+                    borrowerName: borrowerName.trim(),
+                    borrowerPhone: borrowerPhone.trim(),
+                    borrowerAddress: borrowerAddress.trim(),
+                    settlementCurrency: selectedCurrency
+                })
+            } else {
+                onOpenChange(false)
+                onCreated?.(result.loan.id)
+            }
         } catch (error: any) {
             toast({
                 variant: 'destructive',
@@ -326,6 +339,19 @@ export function CreateSimpleLoanModal({
                 workspaceId={workspaceId}
                 selectedPartyId={selectedParty?.linkedPartyId}
                 onSelect={handlePartySelect}
+            />
+
+            <SaveBorrowerAsPartnerDialog
+                isOpen={savePartnerData !== null}
+                onOpenChange={(open) => { if (!open) setSavePartnerData(null) }}
+                workspaceId={workspaceId}
+                data={savePartnerData}
+                onComplete={() => {
+                    const loanId = savePartnerData?.loanId
+                    setSavePartnerData(null)
+                    onOpenChange(false)
+                    if (loanId) onCreated?.(loanId)
+                }}
             />
         </Dialog>
     )

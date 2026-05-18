@@ -88,6 +88,7 @@ import { CheckoutSuccessModal, HeldSalesModal, type HeldSale, StorageSelector, C
 import { BarcodeScannerModal } from '@/ui/components/pos/BarcodeScannerModal'
 import { mapSaleToUniversal } from '@/lib/mappings'
 import { LoanRegistrationModal, type LoanRegistrationData } from '@/ui/components/pos/LoanRegistrationModal'
+import { SaveBorrowerAsPartnerDialog, usePendingSavePartnerPrompt, type SaveBorrowerAsPartnerData } from '@/ui/components/loans/SaveBorrowerAsPartnerDialog'
 import { getRetriableActionToast, isRetriableWebRequestError, normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
 import { isOnline } from '@/lib/network'
 import { useWebHaptics } from 'web-haptics/react'
@@ -476,6 +477,7 @@ export function POS() {
     const [paymentType, setPaymentType] = useState<'cash' | 'digital' | 'loan'>('cash')
     const [digitalProvider, setDigitalProvider] = useState<'fib' | 'qicard' | 'zaincash' | 'fastpay'>('fib')
     const [isLoanRegistrationModalOpen, setIsLoanRegistrationModalOpen] = useState(false)
+    const [posLoanSavePartnerData, setPosLoanSavePartnerData] = usePendingSavePartnerPrompt()
 
     // Held Sales State
     const [heldSales, setHeldSales] = useState<HeldSale[]>(() => {
@@ -1737,7 +1739,7 @@ export function POS() {
 
             if (paymentType === 'loan' && validLoanRegistrationData) {
                 try {
-                    await createLoanFromPosSale(user.workspaceId, {
+                    const loanResult = await createLoanFromPosSale(user.workspaceId, {
                         saleId,
                         linkedPartyType: validLoanRegistrationData.linkedPartyType || null,
                         linkedPartyId: validLoanRegistrationData.linkedPartyId || null,
@@ -1755,6 +1757,16 @@ export function POS() {
                         notes: validLoanRegistrationData.notes,
                         createdBy: user.id
                     })
+
+                    if (!validLoanRegistrationData.linkedPartyType && validLoanRegistrationData.borrowerName.trim()) {
+                        setPosLoanSavePartnerData({
+                            loanId: loanResult.loan.id,
+                            borrowerName: validLoanRegistrationData.borrowerName.trim(),
+                            borrowerPhone: validLoanRegistrationData.borrowerPhone.trim(),
+                            borrowerAddress: validLoanRegistrationData.borrowerAddress.trim(),
+                            settlementCurrency: settlementCurrency as CurrencyCode
+                        })
+                    }
                 } catch (loanErr) {
                     console.error('[POS] Loan registration failed after checkout:', loanErr)
                     toast({
@@ -1909,7 +1921,7 @@ export function POS() {
 
                     if (paymentType === 'loan' && validLoanRegistrationData) {
                         try {
-                            await createLoanFromPosSale(user.workspaceId, {
+                            const loanResult = await createLoanFromPosSale(user.workspaceId, {
                                 saleId,
                                 linkedPartyType: validLoanRegistrationData.linkedPartyType || null,
                                 linkedPartyId: validLoanRegistrationData.linkedPartyId || null,
@@ -1927,6 +1939,16 @@ export function POS() {
                                 notes: validLoanRegistrationData.notes,
                                 createdBy: user.id
                             })
+
+                            if (!validLoanRegistrationData.linkedPartyType && validLoanRegistrationData.borrowerName.trim()) {
+                                setPosLoanSavePartnerData({
+                                    loanId: loanResult.loan.id,
+                                    borrowerName: validLoanRegistrationData.borrowerName.trim(),
+                                    borrowerPhone: validLoanRegistrationData.borrowerPhone.trim(),
+                                    borrowerAddress: validLoanRegistrationData.borrowerAddress.trim(),
+                                    settlementCurrency: settlementCurrency as CurrencyCode
+                                })
+                            }
                         } catch (loanErr) {
                             console.error('[POS] Offline loan registration failed:', loanErr)
                             toast({
@@ -2945,6 +2967,14 @@ export function POS() {
                 }}
                 saleData={completedSaleData}
                 features={features}
+            />
+
+            <SaveBorrowerAsPartnerDialog
+                isOpen={posLoanSavePartnerData !== null && !isSuccessModalOpen}
+                onOpenChange={(open) => { if (!open) setPosLoanSavePartnerData(null) }}
+                workspaceId={user?.workspaceId ?? ''}
+                data={posLoanSavePartnerData}
+                onComplete={() => setPosLoanSavePartnerData(null)}
             />
 
             <CrossStorageWarningModal
