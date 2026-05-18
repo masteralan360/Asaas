@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 
 import { db } from './database'
@@ -1297,52 +1297,78 @@ export function useInvoices(workspaceId: string | undefined) {
         [workspaceId]
     )
 
-    useEffect(() => {
-        async function fetchFromSupabase() {
-            if (isOnline && workspaceId && shouldUseCloudBusinessData(workspaceId)) {
-                const { data, error } = await supabase
-                    .from('invoices')
-                    .select('*')
-                    .eq('workspace_id', workspaceId)
-                    .eq('is_deleted', false)
+    const syncInvoicesFromSupabase = useCallback(async () => {
+        if (isOnline && workspaceId && shouldUseCloudBusinessData(workspaceId)) {
+            const { data, error } = await supabase
+                .from('invoices')
+                .select('*')
+                .eq('workspace_id', workspaceId)
+                .eq('is_deleted', false)
 
-                if (!data || error || !shouldUseCloudBusinessData(workspaceId)) {
-                    return
-                }
+            if (!data || error || !shouldUseCloudBusinessData(workspaceId)) {
+                return
+            }
 
-                if (data && !error) {
-                    await db.transaction('rw', db.invoices, async () => {
-                        const remoteIds = new Set(data.map(d => d.id))
-                        const localItems = await db.invoices.where('workspaceId').equals(workspaceId).toArray()
+            if (data && !error) {
+                await db.transaction('rw', [db.invoices, db.offline_mutations], async () => {
+                    const remoteIds = new Set(data.map(d => d.id))
+                    const localItems = await db.invoices.where('workspaceId').equals(workspaceId).toArray()
 
-                        // Delete local items that are 'synced' but missing from server
-                        for (const local of localItems) {
-                            if (!remoteIds.has(local.id) && local.syncStatus === 'synced') {
-                                await db.invoices.delete(local.id)
+                    // Delete local items that are missing from server (remotely deleted).
+                    // Handles 'synced', 'pending', and orphan items with no syncStatus.
+                    // Pending items also get their offline mutations cleaned up to prevent re-creation.
+                    for (const local of localItems) {
+                        if (!remoteIds.has(local.id)) {
+                            if (local.syncStatus === 'pending') {
+                                await db.offline_mutations
+                                    .where({ entityType: 'invoices', entityId: local.id, status: 'pending' })
+                                    .delete()
                             }
+                            await db.invoices.delete(local.id)
+                        }
+                    }
+
+                    for (const remoteItem of data) {
+                        const existing = await db.invoices.get(remoteItem.id)
+                        // If we have pending local changes (like PDF blobs waiting to upload), 
+                        // DO NOT overwrite with remote state yet.
+                        if (existing && existing.syncStatus === 'pending') {
+                            continue
                         }
 
-                        for (const remoteItem of data) {
-                            const existing = await db.invoices.get(remoteItem.id)
-                            // If we have pending local changes (like PDF blobs waiting to upload), 
-                            // DO NOT overwrite with remote state yet.
-                            if (existing && existing.syncStatus === 'pending') {
-                                continue
-                            }
-
-                            const localItem = toCamelCase(remoteItem as any) as unknown as Invoice
-                            localItem.syncStatus = 'synced'
-                            localItem.lastSyncedAt = new Date().toISOString()
-                            await db.invoices.put(localItem)
-                        }
-                    })
-                }
+                        const localItem = toCamelCase(remoteItem as any) as unknown as Invoice
+                        localItem.syncStatus = 'synced'
+                        localItem.lastSyncedAt = new Date().toISOString()
+                        await db.invoices.put(localItem)
+                    }
+                })
             }
         }
-        fetchFromSupabase()
     }, [isOnline, workspaceId])
 
-    return invoices ?? []
+    useEffect(() => {
+        syncInvoicesFromSupabase()
+    }, [syncInvoicesFromSupabase])
+
+    // Re-sync on window focus/visibility so deletions from another tab/client are reflected
+    useEffect(() => {
+        const handleFocus = () => {
+            syncInvoicesFromSupabase()
+        }
+        const handleVisibility = () => {
+            if (document.visibilityState === 'visible') {
+                syncInvoicesFromSupabase()
+            }
+        }
+        window.addEventListener('focus', handleFocus)
+        document.addEventListener('visibilitychange', handleVisibility)
+        return () => {
+            window.removeEventListener('focus', handleFocus)
+            document.removeEventListener('visibilitychange', handleVisibility)
+        }
+    }, [syncInvoicesFromSupabase])
+
+    return { invoices: invoices ?? [], refreshInvoices: syncInvoicesFromSupabase }
 }
 
 export function useInvoice(id: string | undefined) {

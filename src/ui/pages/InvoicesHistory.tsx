@@ -23,7 +23,7 @@ import {
     TabsTrigger,
     TabsContent,
 } from '@/ui/components'
-import { FileText, Search, Eye, Upload } from 'lucide-react'
+import { FileText, Search, Eye, Upload, RefreshCw } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/auth'
 import { useWorkspace } from '@/workspace'
@@ -38,7 +38,7 @@ const UPLOAD_FILES_ROUTE = '/invoices-history/upload-files'
 export function InvoicesHistory() {
     const [location, setLocation] = useLocation()
     const { user } = useAuth()
-    const invoices = useInvoices(user?.workspaceId)
+    const { invoices, refreshInvoices } = useInvoices(user?.workspaceId)
     const { features } = useWorkspace()
     const { t, i18n } = useTranslation()
     const { dateRange, customDates } = useDateRange()
@@ -214,15 +214,27 @@ export function InvoicesHistory() {
 
             <TabsContent value="history" className="mt-0 space-y-6">
                 <div className="flex flex-col items-start justify-between gap-4 md:flex-row md:items-center">
-                    <div className="relative w-full max-w-md">
-                        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                        <Input
+                    <div className="flex w-full max-w-md items-center gap-2">
+                        <div className="relative flex-1">
+                            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                            <Input
+                                allowViewer={true}
+                                placeholder={t('invoices.searchPlaceholder') || 'Search by ID...'}
+                                value={search}
+                                onChange={(event) => setSearch(event.target.value)}
+                                className="pl-10 rounded-xl"
+                            />
+                        </div>
+                        <Button
+                            variant="outline"
+                            size="icon"
                             allowViewer={true}
-                            placeholder={t('invoices.searchPlaceholder') || 'Search by ID...'}
-                            value={search}
-                            onChange={(event) => setSearch(event.target.value)}
-                            className="pl-10 rounded-xl"
-                        />
+                            className="shrink-0 rounded-xl"
+                            onClick={() => refreshInvoices()}
+                            title={t('common.refresh') || 'Refresh'}
+                        >
+                            <RefreshCw className="h-4 w-4" />
+                        </Button>
                     </div>
                     <DateRangeFilters />
                 </div>
