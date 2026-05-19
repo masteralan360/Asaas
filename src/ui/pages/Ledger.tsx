@@ -25,8 +25,7 @@ import {
     type PaymentTransaction,
     type Sale,
     type SalesOrder,
-    type PurchaseOrder,
-    type BusinessPartner
+    type PurchaseOrder
 } from '@/local-db'
 import { cn, formatCurrency, formatDate, formatDateTime } from '@/lib/utils'
 import {
@@ -525,7 +524,7 @@ function buildVisibleRelationMaps(entries: LedgerEntry[]) {
     return { counts, ranges }
 }
 
-function formatTransactionIdForDisplay(transactionId: string) {
+function formatTransactionIdForDisplay(transactionId: string, _compactTransactionId: boolean) {
     const dashIndex = transactionId.indexOf('-')
     if (dashIndex === -1) return transactionId
     return (
@@ -1649,7 +1648,7 @@ export function Ledger() {
                                                 ) : null}
                                             </div>
                                         ) : null}
-                                            <Tooltip>
+                                        <Tooltip>
                                             <TooltipTrigger asChild>
                                                 <span className="block truncate cursor-help">
                                                     {formatTransactionIdForDisplay(entry.transactionId, compactTransactionId)}

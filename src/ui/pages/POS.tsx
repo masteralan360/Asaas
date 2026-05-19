@@ -542,7 +542,7 @@ export function POS() {
     // Cart resizing state
     const [cartWidth, setCartWidth] = useState<number>(() => {
         const saved = localStorage.getItem('pos_cart_width')
-        return saved ? parseInt(saved, 10) : 384
+        return saved ? parseInt(saved, 10) : 502
     })
     const [isResizing, setIsResizing] = useState(false)
 
@@ -2300,7 +2300,7 @@ export function POS() {
                                     isRTL ? "right-0 translate-x-1/2" : "left-0 -translate-x-1/2"
                                 )}
                                 onMouseDown={handleMouseDown}
-                                onDoubleClick={() => setCartWidth(384)}
+                                onDoubleClick={() => setCartWidth(502)}
                                 title={t('pos.resetWidth') || "Double click to reset width"}
                             >
                                 <div className="w-0.5 h-8 rounded-full bg-border group-hover:bg-primary/50 transition-colors" />
