@@ -547,6 +547,24 @@ export function Revenue() {
         return stats.saleStats.slice(startIndex, startIndex + itemsPerPage)
     }, [stats.saleStats, currentPage, itemsPerPage])
 
+    if (isExportModalOpen) {
+        return (
+            <TooltipProvider>
+                <ExportPreviewModal
+                    isOpen={isExportModalOpen}
+                    onClose={() => setIsExportModalOpen(false)}
+                    type="revenue"
+                    filters={{
+                        dateRange,
+                        customDates,
+                        selectedCashier: 'all'
+                    }}
+                    records={stats.saleStats}
+                />
+            </TooltipProvider>
+        )
+    }
+
     return (
         <TooltipProvider>
             <div className="space-y-6">
@@ -1504,17 +1522,6 @@ export function Revenue() {
                 </div>
             </div>
 
-            <ExportPreviewModal
-                isOpen={isExportModalOpen}
-                onClose={() => setIsExportModalOpen(false)}
-                type="revenue"
-                filters={{
-                    dateRange,
-                    customDates,
-                    selectedCashier: 'all'
-                }}
-                records={stats.saleStats}
-            />
         </TooltipProvider >
     )
 }

@@ -61,6 +61,8 @@ import {
     ContextMenuTrigger,
     ContextMenuContent,
     ContextMenuItem,
+    ContextMenuLabel,
+    ContextMenuSeparator,
 } from '@/ui/components'
 import { LoanDetailsPrintTemplate, LoanReceiptPrintTemplate } from '@/ui/components/loans/LoanPrintTemplates'
 import { WhatsAppNumberInputModal } from '@/ui/components/modals/WhatsAppNumberInputModal'
@@ -1427,6 +1429,22 @@ export function Sales() {
     }
 
 
+    if (isExportModalOpen) {
+        return (
+            <TooltipProvider>
+                <ExportPreviewModal
+                    isOpen={isExportModalOpen}
+                    onClose={() => setIsExportModalOpen(false)}
+                    filters={{
+                        dateRange,
+                        customDates,
+                        selectedCashier: filters.cashier
+                    }}
+                />
+            </TooltipProvider>
+        )
+    }
+
     return (
         <TooltipProvider>
             <div className="space-y-6">
@@ -1600,176 +1618,184 @@ export function Sales() {
                                                         isFullyReturned ? 'bg-destructive/5 border-destructive/20' : hasAnyReturn ? 'bg-orange-500/5' : 'bg-card'
                                                     )}
                                                 >
-                                            <div className="flex justify-between items-start">
-                                                <div className="space-y-2">
-                                                    <div className="flex flex-col gap-1">
-                                                        <div className="flex items-center gap-2">
-                                                            <span className="text-[10px] font-mono font-bold text-muted-foreground uppercase tracking-wider">
-                                                                {formatCompactDateTime(sale.created_at)}
-                                                            </span>
-                                                            {sale.sequenceId ? (
-                                                                <span className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-primary/10 text-primary rounded border border-primary/20">
-                                                                    {sale.origin === 'sales_order' ? ((sale as any).orderNumber || sale._orderNumber || `#${sale.id.slice(0, 8)}`) : `#${String(sale.sequenceId).padStart(5, '0')}`}
-                                                                </span>
-                                                            ) : (
-                                                                <span className="text-[10px] text-muted-foreground/50 font-mono">
-                                                                    #{sale.id.slice(0, 8)}
-                                                                </span>
-                                                            )}
-                                                        </div>
-                                                        <div className="flex flex-wrap gap-1.5">
-                                                            {isFullyReturned && (
-                                                                <span className={cn(
-                                                                    "px-2 py-0.5 text-[9px] font-bold bg-destructive/10 text-destructive border border-destructive/20 uppercase",
-                                                                    style === 'neo-orange' ? "rounded-[var(--radius)]" : "rounded-full"
-                                                                )}>
-                                                                    {t('sales.return.returnedStatus') || 'RETURNED'}
-                                                                </span>
-                                                            )}
-                                                            {sale.system_review_status === 'flagged' && (
-                                                                <span className={cn(
-                                                                    "px-2 py-0.5 text-[9px] font-bold bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-400 border border-orange-200 dark:border-orange-500/30 uppercase flex items-center gap-1",
-                                                                    style === 'neo-orange' ? "rounded-[var(--radius)]" : "rounded-full"
-                                                                )}>
-                                                                    ⚠️ {t('sales.flagged') || 'FLAGGED'}
-                                                                </span>
-                                                            )}
-                                                            {hasAnyReturn && !isFullyReturned && (
-                                                                <span className={cn(
-                                                                    "px-2 py-0.5 text-[9px] font-bold bg-orange-500/10 text-orange-600 border border-orange-500/20 uppercase",
-                                                                    style === 'neo-orange' ? "rounded-[var(--radius)]" : "rounded-full"
-                                                                )}>
-                                                                    -{totalReturnedQuantity} {t('sales.return.returnedLabel') || 'returned'}
-                                                                </span>
-                                                            )}
-                                                            <span className={cn(
-                                                                "px-2 py-0.5 text-[9px] font-bold bg-secondary text-secondary-foreground uppercase",
-                                                                style === 'neo-orange' ? "rounded-[var(--radius)] border border-black dark:border-white" : "rounded-full"
-                                                            )}>
-                                                                {formatOriginLabel(sale.origin, (sale as any)._sourceChannel ?? null)}
-                                                            </span>
-                                                            {loanIndicator && (
-                                                                <Tooltip>
-                                                                    <TooltipTrigger asChild>
-                                                                        {loanIndicator.loan ? (
-                                                                            <button
-                                                                                type="button"
-                                                                                onClick={(e) => {
-                                                                                    e.stopPropagation()
-                                                                                    setLocation(getLoanDetailsPath(loanIndicator.loan!, loanIndicator.loan!.id))
-                                                                                }}
-                                                                                className={cn(
-                                                                                    "px-2 py-0.5 text-[9px] font-bold uppercase transition-colors hover:brightness-95",
-                                                                                    getLoanStatusChipClass(loanIndicator.status, style === 'neo-orange')
+                                                    <div className="flex justify-between items-start">
+                                                        <div className="space-y-2">
+                                                            <div className="flex flex-col gap-1">
+                                                                <div className="flex items-center gap-2">
+                                                                    <span className="text-[10px] font-mono font-bold text-muted-foreground uppercase tracking-wider">
+                                                                        {formatCompactDateTime(sale.created_at)}
+                                                                    </span>
+                                                                    {sale.sequenceId ? (
+                                                                        <span className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-primary/10 text-primary rounded border border-primary/20">
+                                                                            {sale.origin === 'sales_order' ? ((sale as any).orderNumber || sale._orderNumber || `#${sale.id.slice(0, 8)}`) : `#${String(sale.sequenceId).padStart(5, '0')}`}
+                                                                        </span>
+                                                                    ) : (
+                                                                        <span className="text-[10px] text-muted-foreground/50 font-mono">
+                                                                            #{sale.id.slice(0, 8)}
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                                <div className="flex flex-wrap gap-1.5">
+                                                                    {isFullyReturned && (
+                                                                        <span className={cn(
+                                                                            "px-2 py-0.5 text-[9px] font-bold bg-destructive/10 text-destructive border border-destructive/20 uppercase",
+                                                                            style === 'neo-orange' ? "rounded-[var(--radius)]" : "rounded-full"
+                                                                        )}>
+                                                                            {t('sales.return.returnedStatus') || 'RETURNED'}
+                                                                        </span>
+                                                                    )}
+                                                                    {sale.system_review_status === 'flagged' && (
+                                                                        <span className={cn(
+                                                                            "px-2 py-0.5 text-[9px] font-bold bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-400 border border-orange-200 dark:border-orange-500/30 uppercase flex items-center gap-1",
+                                                                            style === 'neo-orange' ? "rounded-[var(--radius)]" : "rounded-full"
+                                                                        )}>
+                                                                            ⚠️ {t('sales.flagged') || 'FLAGGED'}
+                                                                        </span>
+                                                                    )}
+                                                                    {hasAnyReturn && !isFullyReturned && (
+                                                                        <span className={cn(
+                                                                            "px-2 py-0.5 text-[9px] font-bold bg-orange-500/10 text-orange-600 border border-orange-500/20 uppercase",
+                                                                            style === 'neo-orange' ? "rounded-[var(--radius)]" : "rounded-full"
+                                                                        )}>
+                                                                            -{totalReturnedQuantity} {t('sales.return.returnedLabel') || 'returned'}
+                                                                        </span>
+                                                                    )}
+                                                                    <span className={cn(
+                                                                        "px-2 py-0.5 text-[9px] font-bold bg-secondary text-secondary-foreground uppercase",
+                                                                        style === 'neo-orange' ? "rounded-[var(--radius)] border border-black dark:border-white" : "rounded-full"
+                                                                    )}>
+                                                                        {formatOriginLabel(sale.origin, (sale as any)._sourceChannel ?? null)}
+                                                                    </span>
+                                                                    {loanIndicator && (
+                                                                        <Tooltip>
+                                                                            <TooltipTrigger asChild>
+                                                                                {loanIndicator.loan ? (
+                                                                                    <button
+                                                                                        type="button"
+                                                                                        onClick={(e) => {
+                                                                                            e.stopPropagation()
+                                                                                            setLocation(getLoanDetailsPath(loanIndicator.loan!, loanIndicator.loan!.id))
+                                                                                        }}
+                                                                                        className={cn(
+                                                                                            "px-2 py-0.5 text-[9px] font-bold uppercase transition-colors hover:brightness-95",
+                                                                                            getLoanStatusChipClass(loanIndicator.status, style === 'neo-orange')
+                                                                                        )}
+                                                                                    >
+                                                                                        {loanIndicator.label}
+                                                                                    </button>
+                                                                                ) : (
+                                                                                    <span
+                                                                                        className={cn(
+                                                                                            "px-2 py-0.5 text-[9px] font-bold uppercase",
+                                                                                            getLoanStatusChipClass(loanIndicator.status, style === 'neo-orange')
+                                                                                        )}
+                                                                                    >
+                                                                                        {loanIndicator.label}
+                                                                                    </span>
                                                                                 )}
-                                                                            >
-                                                                                {loanIndicator.label}
-                                                                            </button>
-                                                                        ) : (
-                                                                            <span
-                                                                                className={cn(
-                                                                                    "px-2 py-0.5 text-[9px] font-bold uppercase",
-                                                                                    getLoanStatusChipClass(loanIndicator.status, style === 'neo-orange')
-                                                                                )}
-                                                                            >
-                                                                                {loanIndicator.label}
-                                                                            </span>
-                                                                        )}
-                                                                    </TooltipTrigger>
-                                                                    <TooltipContent className="text-xs">
-                                                                        {loanIndicator.tooltipText}
-                                                                    </TooltipContent>
-                                                                </Tooltip>
-                                                            )}
+                                                                            </TooltipTrigger>
+                                                                            <TooltipContent className="text-xs">
+                                                                                {loanIndicator.tooltipText}
+                                                                            </TooltipContent>
+                                                                        </Tooltip>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                            <div className="text-sm font-bold text-foreground/80">
+                                                                {t('sales.cashier')}: <span className="text-primary font-black">{sale.cashier_name}</span>
+                                                            </div>
+                                                        </div>
+                                                        <div className="text-right">
+                                                            <div className="text-xl font-black text-primary leading-none">
+                                                                {formatCurrency(getEffectiveTotal(sale), sale.settlement_currency || 'usd', features.iqd_display_preference)}
+                                                            </div>
+                                                            <div className="text-[10px] font-bold text-primary/40 uppercase tracking-widest mt-1">
+                                                                {sale.settlement_currency || 'usd'}
+                                                            </div>
                                                         </div>
                                                     </div>
-                                                    <div className="text-sm font-bold text-foreground/80">
-                                                        {t('sales.cashier')}: <span className="text-primary font-black">{sale.cashier_name}</span>
-                                                    </div>
-                                                </div>
-                                                <div className="text-right">
-                                                    <div className="text-xl font-black text-primary leading-none">
-                                                        {formatCurrency(getEffectiveTotal(sale), sale.settlement_currency || 'usd', features.iqd_display_preference)}
-                                                    </div>
-                                                    <div className="text-[10px] font-bold text-primary/40 uppercase tracking-widest mt-1">
-                                                        {sale.settlement_currency || 'usd'}
-                                                    </div>
-                                                </div>
-                                            </div>
 
-                                            <div className="flex items-center justify-between pt-3 border-t border-border/50 gap-2">
-                                                <div className="flex gap-2">
-                                                    <Button
-                                                        variant="secondary"
-                                                        size="sm"
-                                                        allowViewer={true}
-                                                        className={cn(
-                                                            "h-10 px-4 font-bold flex gap-2",
-                                                            style === 'neo-orange' ? "rounded-[var(--radius)] neo-border shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]" : "rounded-xl"
-                                                        )}
-                                                        onClick={() => {
-                                                            if (sale.origin === 'sales_order') {
-                                                                setLocation(`/orders/${sale.id}`)
-                                                            } else if (sale.origin === 'travel_agency') {
-                                                                setLocation(`/travel-agency/${sale.id}/view`)
-                                                            } else {
-                                                                setSelectedSale(sale)
-                                                            }
-                                                        }}
-                                                    >
-                                                        <Eye className="w-4 h-4" />
-                                                        {t('common.view')}
-                                                    </Button>
-                                                    {sale.origin !== 'sales_order' && sale.origin !== 'travel_agency' && (
-                                                        <Button
-                                                            variant="outline"
-                                                            size="icon"
-                                                            className={cn(
-                                                                "h-10 w-10",
-                                                                style === 'neo-orange' ? "rounded-[var(--radius)] neo-border shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]" : "rounded-xl"
+                                                    <div className="flex items-center justify-between pt-3 border-t border-border/50 gap-2">
+                                                        <div className="flex gap-2">
+                                                            <Button
+                                                                variant="secondary"
+                                                                size="sm"
+                                                                allowViewer={true}
+                                                                className={cn(
+                                                                    "h-10 px-4 font-bold flex gap-2",
+                                                                    style === 'neo-orange' ? "rounded-[var(--radius)] neo-border shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]" : "rounded-xl"
+                                                                )}
+                                                                onClick={() => {
+                                                                    if (sale.origin === 'sales_order') {
+                                                                        setLocation(`/orders/${sale.id}`)
+                                                                    } else if (sale.origin === 'travel_agency') {
+                                                                        setLocation(`/travel-agency/${sale.id}/view`)
+                                                                    } else {
+                                                                        setSelectedSale(sale)
+                                                                    }
+                                                                }}
+                                                            >
+                                                                <Eye className="w-4 h-4" />
+                                                                {t('common.view')}
+                                                            </Button>
+                                                            {sale.origin !== 'sales_order' && sale.origin !== 'travel_agency' && (
+                                                                <Button
+                                                                    variant="outline"
+                                                                    size="icon"
+                                                                    className={cn(
+                                                                        "h-10 w-10",
+                                                                        style === 'neo-orange' ? "rounded-[var(--radius)] neo-border shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]" : "rounded-xl"
+                                                                    )}
+                                                                    onClick={() => onPrintClick(sale)}
+                                                                >
+                                                                    <Printer className="w-4 h-4" />
+                                                                </Button>
                                                             )}
-                                                            onClick={() => onPrintClick(sale)}
-                                                        >
-                                                            <Printer className="w-4 h-4" />
-                                                        </Button>
-                                                    )}
-                                                    {sale.origin !== 'sales_order' && sale.origin !== 'travel_agency' && (sale.notes || user?.role !== 'viewer') && (
-                                                        <Button
-                                                            variant="outline"
-                                                            size="icon"
-                                                            className={cn(
-                                                                "h-10 w-10",
-                                                                style === 'neo-orange' ? "rounded-[var(--radius)] neo-border shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]" : "rounded-xl",
-                                                                sale.notes && "text-primary bg-primary/5 border-primary/20"
+                                                            {sale.origin !== 'sales_order' && sale.origin !== 'travel_agency' && (sale.notes || user?.role !== 'viewer') && (
+                                                                <Button
+                                                                    variant="outline"
+                                                                    size="icon"
+                                                                    className={cn(
+                                                                        "h-10 w-10",
+                                                                        style === 'neo-orange' ? "rounded-[var(--radius)] neo-border shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]" : "rounded-xl",
+                                                                        sale.notes && "text-primary bg-primary/5 border-primary/20"
+                                                                    )}
+                                                                    onClick={() => {
+                                                                        setSelectedSaleForNote(sale)
+                                                                        setIsNoteModalOpen(true)
+                                                                    }}
+                                                                >
+                                                                    <StickyNote className={cn("w-4 h-4", sale.notes && "fill-primary/20")} />
+                                                                </Button>
                                                             )}
-                                                            onClick={() => {
-                                                                setSelectedSaleForNote(sale)
-                                                                setIsNoteModalOpen(true)
-                                                            }}
-                                                        >
-                                                            <StickyNote className={cn("w-4 h-4", sale.notes && "fill-primary/20")} />
-                                                        </Button>
-                                                    )}
+                                                        </div>
+                                                        <div className="flex gap-1">
+                                                            {!isFullyReturned && sale.origin !== 'sales_order' && sale.origin !== 'travel_agency' && (user?.role === 'admin' || user?.role === 'staff') && (
+                                                                <Button
+                                                                    variant="ghost"
+                                                                    size="icon"
+                                                                    className={cn(
+                                                                        "h-10 w-10 text-orange-600 hover:bg-orange-50",
+                                                                        style === 'neo-orange' ? "rounded-[var(--radius)] border-2 border-orange-600 shadow-[2px_2px_0px_0px_rgba(234,88,12,0.5)]" : "rounded-xl"
+                                                                    )}
+                                                                    onClick={() => handleReturnSale(sale)}
+                                                                >
+                                                                    <RotateCcw className="w-4 h-4" />
+                                                                </Button>
+                                                            )}
+                                                        </div>
+                                                    </div>
                                                 </div>
-                                                <div className="flex gap-1">
-                                                    {!isFullyReturned && sale.origin !== 'sales_order' && sale.origin !== 'travel_agency' && (user?.role === 'admin' || user?.role === 'staff') && (
-                                                        <Button
-                                                            variant="ghost"
-                                                            size="icon"
-                                                            className={cn(
-                                                                "h-10 w-10 text-orange-600 hover:bg-orange-50",
-                                                                style === 'neo-orange' ? "rounded-[var(--radius)] border-2 border-orange-600 shadow-[2px_2px_0px_0px_rgba(234,88,12,0.5)]" : "rounded-xl"
-                                                            )}
-                                                            onClick={() => handleReturnSale(sale)}
-                                                        >
-                                                            <RotateCcw className="w-4 h-4" />
-                                                        </Button>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        </div>
                                             </ContextMenuTrigger>
                                             <ContextMenuContent>
+                                                <ContextMenuLabel className="font-mono text-xs text-primary text-center">
+                                                    {sale.sequenceId ? (
+                                                        <span>{sale.origin === 'sales_order' ? ((sale as any).orderNumber || sale._orderNumber || `#${sale.id.slice(0, 8)}`) : `#${String(sale.sequenceId).padStart(5, '0')}`}</span>
+                                                    ) : (
+                                                        <span>#{sale.id.slice(0, 8)}</span>
+                                                    )}
+                                                </ContextMenuLabel>
+                                                <ContextMenuSeparator />
                                                 <ContextMenuItem
                                                     className="gap-2"
                                                     onSelect={() => {
@@ -1942,161 +1968,169 @@ export function Sales() {
                                                     <TableRow
                                                         className={isFullyReturned ? 'bg-destructive/10 border-destructive/20' : hasAnyReturn ? 'bg-orange-500/10 border-orange-500/20 dark:bg-orange-500/5 dark:border-orange-500/10' : ''}
                                                     >
-                                                <TableCell className="font-mono text-sm font-bold text-primary">
-                                                    {sale.sequenceId ? (
-                                                        <span>{sale.origin === 'sales_order' ? ((sale as any).orderNumber || sale._orderNumber || `#${sale.id.slice(0, 8)}`) : `#${String(sale.sequenceId).padStart(5, '0')}`}</span>
-                                                    ) : (
-                                                        <span className="text-muted-foreground/40 text-xs">#{sale.id.slice(0, 4)}...</span>
-                                                    )}
-                                                </TableCell>
-                                                <TableCell className="text-start font-mono text-sm">
-                                                    <div className="flex flex-col gap-1">
-                                                        <span className="text-muted-foreground">
-                                                            {formatDateTime(sale.created_at)}
-                                                        </span>
-                                                        <div className="flex items-center gap-2">
-                                                            {isFullyReturned && (
-                                                                <span className={cn(
-                                                                    "px-2 py-0.5 text-[10px] font-bold bg-destructive/20 text-destructive dark:bg-destructive/30 dark:text-destructive-foreground border border-destructive/30",
-                                                                    style === 'neo-orange' ? "rounded-[var(--radius)]" : "rounded-full"
-                                                                )}>
-                                                                    {(t('sales.return.returnedStatus') || 'RETURNED').toUpperCase()}
-                                                                </span>
+                                                        <TableCell className="font-mono text-sm font-bold text-primary">
+                                                            {sale.sequenceId ? (
+                                                                <span>{sale.origin === 'sales_order' ? ((sale as any).orderNumber || sale._orderNumber || `#${sale.id.slice(0, 8)}`) : `#${String(sale.sequenceId).padStart(5, '0')}`}</span>
+                                                            ) : (
+                                                                <span className="text-muted-foreground/40 text-xs">#{sale.id.slice(0, 4)}...</span>
                                                             )}
-                                                            {sale.system_review_status === 'flagged' && (
-                                                                <span className={cn(
-                                                                    "px-2 py-0.5 text-[10px] font-bold bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-400 border border-orange-200 dark:border-orange-500/30 flex items-center gap-1",
-                                                                    style === 'neo-orange' ? "rounded-[var(--radius)]" : "rounded-full"
-                                                                )} title={sale.system_review_reason || ''}>
-                                                                    ⚠️ {(t('sales.flagged') || 'FLAGGED').toUpperCase()}
+                                                        </TableCell>
+                                                        <TableCell className="text-start font-mono text-sm">
+                                                            <div className="flex flex-col gap-1">
+                                                                <span className="text-muted-foreground">
+                                                                    {formatDateTime(sale.created_at)}
                                                                 </span>
-                                                            )}
-                                                            {hasAnyReturn && !isFullyReturned && (
-                                                                <div className={cn(
-                                                                    "inline-flex items-center px-2.5 py-0.5 text-xs font-medium bg-orange-100 text-orange-800 dark:bg-orange-500/20 dark:text-orange-400 border border-orange-200 dark:border-orange-500/30",
-                                                                    style === 'neo-orange' ? "rounded-[var(--radius)]" : "rounded-full"
-                                                                )}>
-                                                                    -{totalReturnedQuantity} {t('sales.return.returnedLabel') || 'returned'}
+                                                                <div className="flex items-center gap-2">
+                                                                    {isFullyReturned && (
+                                                                        <span className={cn(
+                                                                            "px-2 py-0.5 text-[10px] font-bold bg-destructive/20 text-destructive dark:bg-destructive/30 dark:text-destructive-foreground border border-destructive/30",
+                                                                            style === 'neo-orange' ? "rounded-[var(--radius)]" : "rounded-full"
+                                                                        )}>
+                                                                            {(t('sales.return.returnedStatus') || 'RETURNED').toUpperCase()}
+                                                                        </span>
+                                                                    )}
+                                                                    {sale.system_review_status === 'flagged' && (
+                                                                        <span className={cn(
+                                                                            "px-2 py-0.5 text-[10px] font-bold bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-400 border border-orange-200 dark:border-orange-500/30 flex items-center gap-1",
+                                                                            style === 'neo-orange' ? "rounded-[var(--radius)]" : "rounded-full"
+                                                                        )} title={sale.system_review_reason || ''}>
+                                                                            ⚠️ {(t('sales.flagged') || 'FLAGGED').toUpperCase()}
+                                                                        </span>
+                                                                    )}
+                                                                    {hasAnyReturn && !isFullyReturned && (
+                                                                        <div className={cn(
+                                                                            "inline-flex items-center px-2.5 py-0.5 text-xs font-medium bg-orange-100 text-orange-800 dark:bg-orange-500/20 dark:text-orange-400 border border-orange-200 dark:border-orange-500/30",
+                                                                            style === 'neo-orange' ? "rounded-[var(--radius)]" : "rounded-full"
+                                                                        )}>
+                                                                            -{totalReturnedQuantity} {t('sales.return.returnedLabel') || 'returned'}
+                                                                        </div>
+                                                                    )}
+                                                                    {loanIndicator && (
+                                                                        <Tooltip>
+                                                                            <TooltipTrigger asChild>
+                                                                                {loanIndicator.loan ? (
+                                                                                    <button
+                                                                                        type="button"
+                                                                                        onClick={(e) => {
+                                                                                            e.stopPropagation()
+                                                                                            setLocation(getLoanDetailsPath(loanIndicator.loan!, loanIndicator.loan!.id))
+                                                                                        }}
+                                                                                        className={cn(
+                                                                                            "px-2 py-0.5 text-[10px] font-bold uppercase transition-colors hover:brightness-95",
+                                                                                            getLoanStatusChipClass(loanIndicator.status, style === 'neo-orange')
+                                                                                        )}
+                                                                                    >
+                                                                                        {loanIndicator.label}
+                                                                                    </button>
+                                                                                ) : (
+                                                                                    <span
+                                                                                        className={cn(
+                                                                                            "px-2 py-0.5 text-[10px] font-bold uppercase",
+                                                                                            getLoanStatusChipClass(loanIndicator.status, style === 'neo-orange')
+                                                                                        )}
+                                                                                    >
+                                                                                        {loanIndicator.label}
+                                                                                    </span>
+                                                                                )}
+                                                                            </TooltipTrigger>
+                                                                            <TooltipContent className="text-xs">
+                                                                                {loanIndicator.tooltipText}
+                                                                            </TooltipContent>
+                                                                        </Tooltip>
+                                                                    )}
                                                                 </div>
+                                                            </div>
+                                                        </TableCell>
+                                                        <TableCell className="text-start">
+                                                            {sale.cashier_name}
+                                                        </TableCell>
+                                                        <TableCell className="text-start">
+                                                            <span className={cn(
+                                                                "px-2 py-1 text-xs font-medium bg-secondary text-secondary-foreground uppercase",
+                                                                style === 'neo-orange' ? "rounded-[var(--radius)] border border-black dark:border-white" : "rounded-full"
+                                                            )}>
+                                                                {formatOriginLabel(sale.origin, (sale as any)._sourceChannel ?? null)}
+                                                            </span>
+                                                        </TableCell>
+                                                        <TableCell className="text-start">
+                                                            {sale.origin !== 'sales_order' && sale.origin !== 'travel_agency' && (
+                                                                <Button
+                                                                    variant="ghost"
+                                                                    size="sm"
+                                                                    onClick={() => {
+                                                                        setSelectedSaleForNote(sale)
+                                                                        setIsNoteModalOpen(true)
+                                                                    }}
+                                                                    className={cn(
+                                                                        "text-xs font-medium h-8 px-3 rounded-lg flex items-center gap-2 transition-all",
+                                                                        sale.notes
+                                                                            ? "bg-primary/5 text-primary hover:bg-primary/10 border border-primary/20"
+                                                                            : "text-muted-foreground hover:bg-muted"
+                                                                    )}
+                                                                >
+                                                                    <StickyNote className={cn("w-3.5 h-3.5", sale.notes ? "fill-primary/20" : "")} />
+                                                                    {sale.notes ? (t('sales.notes.viewNote') || 'View Notes..') : (user?.role !== 'viewer' && (t('sales.notes.addNote') || 'Add Note'))}
+                                                                </Button>
                                                             )}
-                                                            {loanIndicator && (
-                                                                <Tooltip>
-                                                                    <TooltipTrigger asChild>
-                                                                        {loanIndicator.loan ? (
-                                                                            <button
-                                                                                type="button"
-                                                                                onClick={(e) => {
-                                                                                    e.stopPropagation()
-                                                                                    setLocation(getLoanDetailsPath(loanIndicator.loan!, loanIndicator.loan!.id))
-                                                                                }}
-                                                                                className={cn(
-                                                                                    "px-2 py-0.5 text-[10px] font-bold uppercase transition-colors hover:brightness-95",
-                                                                                    getLoanStatusChipClass(loanIndicator.status, style === 'neo-orange')
-                                                                                )}
-                                                                            >
-                                                                                {loanIndicator.label}
-                                                                            </button>
-                                                                        ) : (
-                                                                            <span
-                                                                                className={cn(
-                                                                                    "px-2 py-0.5 text-[10px] font-bold uppercase",
-                                                                                    getLoanStatusChipClass(loanIndicator.status, style === 'neo-orange')
-                                                                                )}
-                                                                            >
-                                                                                {loanIndicator.label}
-                                                                            </span>
-                                                                        )}
-                                                                    </TooltipTrigger>
-                                                                    <TooltipContent className="text-xs">
-                                                                        {loanIndicator.tooltipText}
-                                                                    </TooltipContent>
-                                                                </Tooltip>
-                                                            )}
-                                                        </div>
-                                                    </div>
-                                                </TableCell>
-                                                <TableCell className="text-start">
-                                                    {sale.cashier_name}
-                                                </TableCell>
-                                                <TableCell className="text-start">
-                                                    <span className={cn(
-                                                        "px-2 py-1 text-xs font-medium bg-secondary text-secondary-foreground uppercase",
-                                                        style === 'neo-orange' ? "rounded-[var(--radius)] border border-black dark:border-white" : "rounded-full"
-                                                    )}>
-                                                        {formatOriginLabel(sale.origin, (sale as any)._sourceChannel ?? null)}
-                                                    </span>
-                                                </TableCell>
-                                                <TableCell className="text-start">
-                                                    {sale.origin !== 'sales_order' && sale.origin !== 'travel_agency' && (
-                                                        <Button
-                                                            variant="ghost"
-                                                            size="sm"
-                                                            onClick={() => {
-                                                                setSelectedSaleForNote(sale)
-                                                                setIsNoteModalOpen(true)
-                                                            }}
-                                                            className={cn(
-                                                                "text-xs font-medium h-8 px-3 rounded-lg flex items-center gap-2 transition-all",
-                                                                sale.notes
-                                                                    ? "bg-primary/5 text-primary hover:bg-primary/10 border border-primary/20"
-                                                                    : "text-muted-foreground hover:bg-muted"
-                                                            )}
-                                                        >
-                                                            <StickyNote className={cn("w-3.5 h-3.5", sale.notes ? "fill-primary/20" : "")} />
-                                                            {sale.notes ? (t('sales.notes.viewNote') || 'View Notes..') : (user?.role !== 'viewer' && (t('sales.notes.addNote') || 'Add Note'))}
-                                                        </Button>
-                                                    )}
-                                                </TableCell>
+                                                        </TableCell>
 
-                                                <TableCell className="text-end font-bold">
-                                                    {formatCurrency(getEffectiveTotal(sale), sale.settlement_currency || 'usd', features.iqd_display_preference)}
-                                                </TableCell>
-                                                <TableCell className="text-end">
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="icon"
-                                                        allowViewer={true}
-                                                        onClick={() => {
-                                                            if (sale.origin === 'sales_order') {
-                                                                setLocation(`/orders/${sale.id}`)
-                                                            } else if (sale.origin === 'travel_agency') {
-                                                                setLocation(`/travel-agency/${sale.id}/view`)
-                                                            } else {
-                                                                setSelectedSale(sale)
-                                                            }
-                                                        }}
-                                                        title={t('sales.details') || "View Details"}
-                                                    >
-                                                        <Eye className="w-4 h-4" />
-                                                    </Button>
-                                                    {sale.origin !== 'sales_order' && sale.origin !== 'travel_agency' && (
-                                                        <>
+                                                        <TableCell className="text-end font-bold">
+                                                            {formatCurrency(getEffectiveTotal(sale), sale.settlement_currency || 'usd', features.iqd_display_preference)}
+                                                        </TableCell>
+                                                        <TableCell className="text-end">
                                                             <Button
                                                                 variant="ghost"
                                                                 size="icon"
-                                                                onClick={() => { if (sale.origin === "sales_order") { console.log("order print blocked"); } else { onPrintClick(sale); } }}
-                                                                title={t('common.print') || "Print Receipt"}
+                                                                allowViewer={true}
+                                                                onClick={() => {
+                                                                    if (sale.origin === 'sales_order') {
+                                                                        setLocation(`/orders/${sale.id}`)
+                                                                    } else if (sale.origin === 'travel_agency') {
+                                                                        setLocation(`/travel-agency/${sale.id}/view`)
+                                                                    } else {
+                                                                        setSelectedSale(sale)
+                                                                    }
+                                                                }}
+                                                                title={t('sales.details') || "View Details"}
                                                             >
-                                                                <Printer className="w-4 h-4" />
+                                                                <Eye className="w-4 h-4" />
                                                             </Button>
-                                                            {!sale.is_returned && (user?.role === 'admin' || user?.role === 'staff') && (
-                                                                <Button
-                                                                    variant="ghost"
-                                                                    size="icon"
-                                                                    onClick={() => handleReturnSale(sale)}
-                                                                    title={t('sales.return') || "Return Sale"}
-                                                                    className="text-orange-600 hover:text-orange-700 hover:bg-orange-50"
-                                                                >
-                                                                    <RotateCcw className="w-4 h-4" />
-                                                                </Button>
+                                                            {sale.origin !== 'sales_order' && sale.origin !== 'travel_agency' && (
+                                                                <>
+                                                                    <Button
+                                                                        variant="ghost"
+                                                                        size="icon"
+                                                                        onClick={() => { if (sale.origin === "sales_order") { console.log("order print blocked"); } else { onPrintClick(sale); } }}
+                                                                        title={t('common.print') || "Print Receipt"}
+                                                                    >
+                                                                        <Printer className="w-4 h-4" />
+                                                                    </Button>
+                                                                    {!sale.is_returned && (user?.role === 'admin' || user?.role === 'staff') && (
+                                                                        <Button
+                                                                            variant="ghost"
+                                                                            size="icon"
+                                                                            onClick={() => handleReturnSale(sale)}
+                                                                            title={t('sales.return') || "Return Sale"}
+                                                                            className="text-orange-600 hover:text-orange-700 hover:bg-orange-50"
+                                                                        >
+                                                                            <RotateCcw className="w-4 h-4" />
+                                                                        </Button>
+                                                                    )}
+                                                                </>
                                                             )}
-                                                        </>
-                                                    )}
-                                                    {/* Return badge moved to date cell */}
-                                                </TableCell>
-                                                </TableRow>
+                                                            {/* Return badge moved to date cell */}
+                                                        </TableCell>
+                                                    </TableRow>
                                                 </ContextMenuTrigger>
                                                 <ContextMenuContent>
+                                                    <ContextMenuLabel className="font-mono text-xs text-primary text-center">
+                                                        {sale.sequenceId ? (
+                                                            <span>{sale.origin === 'sales_order' ? ((sale as any).orderNumber || sale._orderNumber || `#${sale.id.slice(0, 8)}`) : `#${String(sale.sequenceId).padStart(5, '0')}`}</span>
+                                                        ) : (
+                                                            <span>#{sale.id.slice(0, 8)}</span>
+                                                        )}
+                                                    </ContextMenuLabel>
+                                                    <ContextMenuSeparator />
                                                     <ContextMenuItem
                                                         className="gap-2"
                                                         onSelect={() => {
@@ -2224,16 +2258,6 @@ export function Sales() {
                     }}
                     sale={selectedSaleForNote}
                     onSave={handleSaveNote}
-                />
-
-                <ExportPreviewModal
-                    isOpen={isExportModalOpen}
-                    onClose={() => setIsExportModalOpen(false)}
-                    filters={{
-                        dateRange,
-                        customDates,
-                        selectedCashier: filters.cashier
-                    }}
                 />
 
                 <PrintSelectionModal

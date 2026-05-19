@@ -1,6 +1,6 @@
 import { useDeferredValue, useEffect, useMemo, useState, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ArrowDownLeft, ArrowUpRight, Loader2, RotateCcw, Search, ShieldCheck, SlidersHorizontal, Wallet, TrendingUp, TrendingDown, DollarSign, Package, Percent, BarChart3, Clock, ChevronUp, ChevronDown, ChevronsUp, ChevronsDown } from 'lucide-react'
+import { ArrowDownLeft, ArrowUpRight, FileSpreadsheet, Loader2, RotateCcw, Search, ShieldCheck, SlidersHorizontal, Wallet, TrendingUp, TrendingDown, DollarSign, Package, Percent, BarChart3, Clock, ChevronUp, ChevronDown, ChevronsUp, ChevronsDown } from 'lucide-react'
 import { Area, AreaChart, Bar, BarChart, ResponsiveContainer, Tooltip as RechartsTooltip, XAxis } from 'recharts'
 import { useLocation } from 'wouter'
 
@@ -58,7 +58,8 @@ import {
     ContextMenu,
     ContextMenuTrigger,
     ContextMenuContent,
-    ContextMenuItem
+    ContextMenuItem,
+    ExportPreviewModal
 } from '@/ui/components'
 import { useWorkspace } from '@/workspace'
 import { useTheme } from '@/ui/components/theme-provider'
@@ -320,9 +321,9 @@ function sourceModuleLabel(module: LedgerSourceModule, t: any) {
 function directionFilterLabel(direction: LedgerDirectionFilter, t: any) {
     switch (direction) {
         case 'incoming':
-            return t('ledger.directionFilter.incoming', { defaultValue: 'Inflow' })
+            return t('ledger.direction.inflow', { defaultValue: 'Inflow' })
         case 'outgoing':
-            return t('ledger.directionFilter.outgoing', { defaultValue: 'Outflow' })
+            return t('ledger.direction.outflow', { defaultValue: 'Outflow' })
         default:
             return t('ledger.directionFilter.all', { defaultValue: 'All Directions' })
     }
@@ -517,12 +518,15 @@ function buildVisibleRelationMaps(entries: LedgerEntry[]) {
     return { counts, ranges }
 }
 
-function formatTransactionIdForDisplay(transactionId: string, compact = false) {
-    if (!compact || transactionId.length <= 14) {
-        return transactionId
-    }
-
-    return `${transactionId.slice(0, 6)}...${transactionId.slice(-4)}`
+function formatTransactionIdForDisplay(transactionId: string) {
+    const dashIndex = transactionId.indexOf('-')
+    if (dashIndex === -1) return transactionId
+    return (
+        <span className="inline-flex items-center gap-0.5">
+            {transactionId.slice(0, dashIndex)}
+            <span className="text-muted-foreground/50 text-[10px] font-mono">...</span>
+        </span>
+    )
 }
 
 function shouldOpenSaleDetails(entry: LedgerEntry) {
@@ -1044,6 +1048,7 @@ export function Ledger() {
     const [draftFilters, setDraftFilters] = useState<LedgerFilterState>(DEFAULT_LEDGER_FILTERS)
     const [hoveredRelationKey, setHoveredRelationKey] = useState<string | null>(null)
     const [isDirectionSplitView, setIsDirectionSplitView] = useState(false)
+    const [isExportModalOpen, setIsExportModalOpen] = useState(false)
 
     const [currentPage, setCurrentPage] = useState(1)
     const [pageSize, setPageSize] = useState(() => {
@@ -1137,6 +1142,22 @@ export function Ledger() {
         () => applyLedgerFilters(dateScopedEntries, effectiveFilters),
         [dateScopedEntries, effectiveFilters]
     )
+    const ledgerExportData = useMemo(() => {
+        return filteredEntries.map(entry => ({
+            [t('ledger.table.date') || 'Date']: formatDateTime(entry.date),
+            [t('ledger.table.type') || 'Type']: ledgerTypeLabel(entry.type, t),
+            [t('ledger.table.direction') || 'Direction']: entry.direction === 'incoming'
+                ? t('ledger.direction.inflow', { defaultValue: 'Inflow' })
+                : t('ledger.direction.outflow', { defaultValue: 'Outflow' }),
+            [t('ledger.table.amount') || 'Amount']: entry.amount,
+            [t('common.currency') || 'Currency']: entry.currency?.toUpperCase() || '',
+            [t('ledger.table.partner') || 'Partner']: entry.partner || '',
+            [t('ledger.filters.paymentMethod') || 'Payment Method']: entry.paymentMethod || '',
+            [t('ledger.table.descriptionNotes') || 'Description / Notes']: [entry.notes, entry.description].filter(Boolean).join(' | '),
+            [t('ledger.table.sourceModule') || 'Source Module']: sourceModuleLabel(entry.sourceModule, t),
+            [t('ledger.table.transactionId') || 'Transaction ID']: entry.transactionId,
+        }))
+    }, [filteredEntries, t])
     const visibleEntries = useMemo(
         () => filteredEntries.slice((currentPage - 1) * pageSize, currentPage * pageSize),
         [currentPage, filteredEntries, pageSize]
@@ -1578,9 +1599,16 @@ export function Ledger() {
                                                 ) : null}
                                             </div>
                                         ) : null}
-                                        <span className="block truncate" title={entry.transactionId}>
-                                            {formatTransactionIdForDisplay(entry.transactionId, compactTransactionId)}
-                                        </span>
+                                            <Tooltip>
+                                            <TooltipTrigger asChild>
+                                                <span className="block truncate cursor-help">
+                                                    {formatTransactionIdForDisplay(entry.transactionId, compactTransactionId)}
+                                                </span>
+                                            </TooltipTrigger>
+                                            <TooltipContent side="bottom" align="start" className="font-mono text-xs">
+                                                {entry.transactionId}
+                                            </TooltipContent>
+                                        </Tooltip>
                                     </TableCell>
                                     <TableCell className={cn(compactColumns && 'align-top px-2 py-3')}>{formatDateTime(entry.date)}</TableCell>
                                     <TableCell className={cn("font-medium", compactColumns && "align-top px-2 py-3")}>
@@ -1725,6 +1753,19 @@ export function Ledger() {
                         {t('ledger.enableModules', { defaultValue: 'Enable POS, CRM, Loans, Accounting, or HR to use the central ledger.' })}
                     </CardContent>
                 </Card>
+            </div>
+        )
+    }
+
+    if (isExportModalOpen) {
+        return (
+            <div className="space-y-8 p-6">
+                <ExportPreviewModal
+                    isOpen={isExportModalOpen}
+                    onClose={() => setIsExportModalOpen(false)}
+                    type="finance"
+                    records={ledgerExportData}
+                />
             </div>
         )
     }
@@ -2150,6 +2191,23 @@ export function Ledger() {
                     </CardTitle>
                     <div className="flex flex-col sm:flex-row items-center gap-4">
                         <Button
+                            onClick={() => setIsExportModalOpen(true)}
+                            disabled={filteredEntries.length === 0}
+                            className={cn(
+                                "h-10 px-6 font-black transition-all flex gap-3 items-center group relative overflow-hidden",
+                                style === 'neo-orange'
+                                    ? "rounded-[var(--radius)] bg-emerald-500 text-black border-2 border-black dark:border-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-none translate-y-[-2px] active:translate-y-0"
+                                    : "rounded-full bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-100 dark:border-emerald-500/20 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-500/20 hover:shadow-[0_0_20px_-5px_rgba(16,185,129,0.3)] hover:scale-[1.02] active:scale-95",
+                                "uppercase tracking-widest text-[10px]"
+                            )}
+                        >
+                            <FileSpreadsheet className="w-4 h-4 transition-transform group-hover:rotate-12" />
+                            <span className="hidden sm:inline">
+                                {t('sales.export.button')}
+                            </span>
+                            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 dark:via-white/5 to-transparent -translate-x-full group-hover:animate-shimmer" />
+                        </Button>
+                        <Button
                             type="button"
                             variant={isDirectionSplitView ? 'default' : 'outline'}
                             onClick={() => setIsDirectionSplitView((current) => !current)}
@@ -2186,7 +2244,7 @@ export function Ledger() {
                                 <div className="flex items-center justify-between border-b border-emerald-500/15 px-5 py-4">
                                     <div>
                                         <div className="text-sm font-bold text-emerald-700">
-                                            {t('ledger.directionFilter.incoming', { defaultValue: 'Inflow' })}
+                                            {t('ledger.direction.inflow', { defaultValue: 'Inflow' })}
                                         </div>
                                         <p className="text-xs text-muted-foreground">
                                             {t('ledger.table.splitViewDescription', { defaultValue: 'Current page entries grouped by flow direction.' })}
@@ -2207,7 +2265,7 @@ export function Ledger() {
                                 <div className="flex items-center justify-between border-b border-amber-500/15 px-5 py-4">
                                     <div>
                                         <div className="text-sm font-bold text-amber-700">
-                                            {t('ledger.directionFilter.outgoing', { defaultValue: 'Outflow' })}
+                                            {t('ledger.direction.outflow', { defaultValue: 'Outflow' })}
                                         </div>
                                         <p className="text-xs text-muted-foreground">
                                             {t('ledger.table.splitViewDescription', { defaultValue: 'Current page entries grouped by flow direction.' })}
@@ -2471,6 +2529,7 @@ export function Ledger() {
                     </div>
                 </DialogContent>
             </Dialog>
+
         </div>
     )
 }

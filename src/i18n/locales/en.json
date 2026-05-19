@@ -1287,6 +1287,10 @@
             "in": "IN",
             "out": "OUT"
         },
+        "directionFilter": {
+            "incoming": "Inflow",
+            "outgoing": "Outflow"
+        },
         "sort": {
             "dateNewest": "Date: Newest First",
             "dateOldest": "Date: Oldest First",
@@ -1309,13 +1313,32 @@
             "installmentReceived": "Installment Received",
             "installmentPaid": "Installment Paid"
         },
+        "type": {
+            "posSale": "POS Sale",
+            "instantPosSale": "Instant POS Sale",
+            "ecommerceReceivable": "E-Commerce Receivable",
+            "ecommercePayment": "E-Commerce Payment",
+            "salesOrderPayment": "Sales Order Payment",
+            "purchaseOrderPayment": "Purchase Order Payment",
+            "expense": "Expense",
+            "payrollPayment": "Payroll Payment",
+            "loanGiven": "Loan Given",
+            "loanTaken": "Loan Taken",
+            "loanRepaymentReceived": "Loan Repayment Received",
+            "loanRepaymentPaid": "Loan Repayment Paid",
+            "installmentReceived": "Installment Received",
+            "installmentPaid": "Installment Paid",
+            "directInflow": "Direct Inflow",
+            "directOutflow": "Direct Outflow"
+        },
         "sourceModule": {
             "pos": "POS",
             "instantPos": "Instant POS",
             "orders": "Orders",
             "expenses": "Expenses",
             "payroll": "Payroll",
-            "loans": "Loans"
+            "loans": "Loans",
+            "manual": "Manual"
         },
         "paymentMethod": {
             "bankTransfer": "Bank Transfer",
