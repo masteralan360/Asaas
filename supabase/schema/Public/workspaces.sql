@@ -33,6 +33,7 @@ CREATE TABLE public.workspaces (
   store_slug text NULL,
   store_description text NULL,
   ecommerce boolean NOT NULL DEFAULT false,
+  real_estate boolean NOT NULL DEFAULT true,
   upload_limit_mb integer NULL,
   CONSTRAINT workspaces_data_mode_check CHECK ((data_mode::text) = ANY (ARRAY['cloud'::text, 'local'::text, 'hybrid'::text])),
   PRIMARY KEY (id)

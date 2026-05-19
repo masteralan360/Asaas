@@ -3,6 +3,7 @@ import {
   ArrowRightLeft,
   BarChart3,
   Boxes,
+  Building2,
   Calculator,
   Copy,
   CreditCard,
@@ -95,9 +96,10 @@ export function buildWorkspaceNavigation({
     features.crm ||
     features.budget ||
     features.hr ||
-    features.loans;
+    features.loans ||
+    features.real_estate;
   const hasPaymentsSurface =
-    features.loans || features.crm || features.budget || features.hr;
+    features.loans || features.crm || features.budget || features.hr || features.real_estate;
   const canUseEcommerce =
     features.data_mode !== "local" && hasFeature("ecommerce");
 
@@ -184,6 +186,15 @@ export function buildWorkspaceNavigation({
             name: t("nav.travelAgency", { defaultValue: "Travel Agency" }),
             href: "/travel-agency",
             icon: Plane,
+          },
+        ]
+      : []),
+    ...(isCoreRole && hasFeature("real_estate")
+      ? [
+          {
+            name: t("realEstate.title", { defaultValue: "Real Estate" }),
+            href: "/real-estate",
+            icon: Building2,
           },
         ]
       : []),

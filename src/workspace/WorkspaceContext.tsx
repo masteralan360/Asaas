@@ -28,6 +28,7 @@ export type ModuleFeatureKey =
     | 'crm'
     | 'ecommerce'
     | 'travel_agency'
+    | 'real_estate'
     | 'loans'
     | 'net_revenue'
     | 'budget'
@@ -52,6 +53,7 @@ export interface WorkspaceFeatures {
     crm: boolean
     ecommerce: boolean
     travel_agency: boolean
+    real_estate: boolean
     loans: boolean
     net_revenue: boolean
     budget: boolean
@@ -131,6 +133,7 @@ const defaultFeatures: WorkspaceFeatures = {
     crm: true,
     ecommerce: false,
     travel_agency: true,
+    real_estate: true,
     loans: true,
     net_revenue: true,
     budget: true,
@@ -177,6 +180,7 @@ const WORKSPACE_FEATURE_COLUMNS = [
     'crm',
     'ecommerce',
     'travel_agency',
+    'real_estate',
     'loans',
     'net_revenue',
     'budget',
@@ -237,6 +241,7 @@ function getFeaturesFromLocalWorkspace(localWorkspace: Workspace): WorkspaceFeat
         crm: localWorkspace.crm ?? true,
         ecommerce: localWorkspace.ecommerce ?? false,
         travel_agency: localWorkspace.travel_agency ?? true,
+        real_estate: localWorkspace.real_estate ?? true,
         loans: localWorkspace.loans ?? true,
         net_revenue: localWorkspace.net_revenue ?? true,
         budget: localWorkspace.budget ?? true,
@@ -369,6 +374,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             crm: nextFeatures.crm,
             ecommerce: nextFeatures.ecommerce,
             travel_agency: nextFeatures.travel_agency,
+            real_estate: nextFeatures.real_estate,
             loans: nextFeatures.loans,
             net_revenue: nextFeatures.net_revenue,
             budget: nextFeatures.budget,
@@ -527,6 +533,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                 crm: workspaceRow.crm ?? currentFeatures.crm,
                 ecommerce: workspaceRow.ecommerce ?? currentFeatures.ecommerce,
                 travel_agency: workspaceRow.travel_agency ?? currentFeatures.travel_agency,
+                real_estate: workspaceRow.real_estate ?? currentFeatures.real_estate,
                 loans: workspaceRow.loans ?? currentFeatures.loans,
                 net_revenue: workspaceRow.net_revenue ?? currentFeatures.net_revenue,
                 budget: workspaceRow.budget ?? currentFeatures.budget,
@@ -720,6 +727,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                             crm: data.crm ?? currentFeatures.crm,
                             ecommerce: data.ecommerce ?? currentFeatures.ecommerce,
                             travel_agency: data.travel_agency ?? currentFeatures.travel_agency,
+                            real_estate: data.real_estate ?? currentFeatures.real_estate,
                             loans: data.loans ?? currentFeatures.loans,
                             net_revenue: data.net_revenue ?? currentFeatures.net_revenue,
                             budget: data.budget ?? currentFeatures.budget,
@@ -883,6 +891,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                 crm: newFeatures.crm,
                 ecommerce: newFeatures.ecommerce,
                 travel_agency: newFeatures.travel_agency,
+                real_estate: newFeatures.real_estate,
                 loans: newFeatures.loans,
                 net_revenue: newFeatures.net_revenue,
                 budget: newFeatures.budget,

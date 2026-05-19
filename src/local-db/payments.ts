@@ -27,6 +27,8 @@ import type {
     PaymentTransactionSourceType,
     PayrollStatus,
     PurchaseOrder,
+    RealEstateInstallment,
+    RealEstateTransaction,
     SalesOrder,
     WorkspacePaymentMethod
 } from './models'
@@ -180,6 +182,10 @@ function getTransactionRoutePath(transaction: Pick<PaymentTransaction, 'sourceMo
         return transaction.sourceType === 'direct_transaction' ? '/direct-transactions' : '/payments'
     }
 
+    if (transaction.sourceModule === 'real_estate') {
+        return `/real-estate/${transaction.sourceRecordId}`
+    }
+
     if (transaction.sourceType === 'simple_loan') {
         return '/loans'
     }
@@ -316,6 +322,9 @@ async function hydratePaymentSourceTables(workspaceId: string) {
         fetchTableFromSupabase('payment_transactions', db.payment_transactions, workspaceId, { includeDeleted: true }),
         fetchTableFromSupabase('loans', db.loans, workspaceId, { includeDeleted: true }),
         fetchTableFromSupabase('loan_installments', db.loan_installments, workspaceId, { includeDeleted: true }),
+        fetchTableFromSupabase('real_estate_transactions', db.real_estate_transactions, workspaceId, { includeDeleted: true }),
+        fetchTableFromSupabase('real_estate_installments', db.real_estate_installments, workspaceId, { includeDeleted: true }),
+        fetchTableFromSupabase('real_estate_payments', db.real_estate_payments, workspaceId, { includeDeleted: true }),
         fetchTableFromSupabase('sales_orders', db.sales_orders, workspaceId, { includeDeleted: true }),
         fetchTableFromSupabase('purchase_orders', db.purchase_orders, workspaceId, { includeDeleted: true }),
         fetchTableFromSupabase('expense_series', db.expense_series, workspaceId, { includeDeleted: true }),
@@ -583,6 +592,57 @@ function buildSimpleLoanObligations(
     })
 }
 
+function buildRealEstateInstallmentObligations(
+    transactions: RealEstateTransaction[],
+    installments: RealEstateInstallment[],
+    todayKey: string
+) {
+    const transactionMap = new Map(
+        transactions
+            .filter((transaction) => !transaction.isDeleted && transaction.isInstallmentBased)
+            .map((transaction) => [transaction.id, transaction])
+    )
+
+    return installments.flatMap((installment) => {
+        const transaction = transactionMap.get(installment.transactionId)
+        if (!transaction || installment.isDeleted || installment.balanceAmount <= 0 || installment.status === 'paid') {
+            return []
+        }
+
+        const dueDate = normalizeDateKey(installment.dueDate)
+        const direction: PaymentTransactionDirection = transaction.transactionType === 'buy' ? 'outgoing' : 'incoming'
+        const installmentLabel = `Installment ${String(installment.installmentNo).padStart(2, '0')}`
+
+        return [{
+            id: `real-estate-installment:${installment.id}`,
+            workspaceId: transaction.workspaceId,
+            sourceModule: 'real_estate' as const,
+            sourceType: 'real_estate_installment' as const,
+            sourceRecordId: transaction.id,
+            sourceSubrecordId: installment.id,
+            direction,
+            amount: installment.balanceAmount,
+            currency: transaction.currency,
+            dueDate,
+            counterpartyName: transaction.transactionType === 'buy'
+                ? transaction.sellerName
+                : transaction.buyerName,
+            referenceLabel: `${transaction.transactionNo} / ${installmentLabel}`,
+            title: transaction.location,
+            subtitle: installmentLabel,
+            status: isDateOverdue(dueDate, todayKey) ? 'overdue' as const : 'open' as const,
+            routePath: `/real-estate/${transaction.id}`,
+            metadata: {
+                realEstateTransactionId: transaction.id,
+                installmentId: installment.id,
+                installmentNo: installment.installmentNo,
+                transactionType: transaction.transactionType,
+                propertyLocation: transaction.location
+            }
+        }]
+    })
+}
+
 function buildPayrollObligations(
     employees: Employee[],
     payrollStatuses: PayrollStatus[],
@@ -628,6 +688,8 @@ async function buildPaymentObligations(workspaceId: string, filters: PaymentObli
     const [
         loans,
         installments,
+        realEstateTransactions,
+        realEstateInstallments,
         salesOrders,
         purchaseOrders,
         expenseSeries,
@@ -637,6 +699,8 @@ async function buildPaymentObligations(workspaceId: string, filters: PaymentObli
     ] = await Promise.all([
         db.loans.where('workspaceId').equals(workspaceId).toArray(),
         db.loan_installments.where('workspaceId').equals(workspaceId).toArray(),
+        db.real_estate_transactions.where('workspaceId').equals(workspaceId).toArray(),
+        db.real_estate_installments.where('workspaceId').equals(workspaceId).toArray(),
         db.sales_orders.where('workspaceId').equals(workspaceId).toArray(),
         db.purchase_orders.where('workspaceId').equals(workspaceId).toArray(),
         db.expense_series.where('workspaceId').equals(workspaceId).toArray(),
@@ -654,6 +718,7 @@ async function buildPaymentObligations(workspaceId: string, filters: PaymentObli
     const obligations = [
         ...buildStandardLoanInstallmentObligations(loans, installments, todayKey),
         ...buildSimpleLoanObligations(loans, todayKey),
+        ...buildRealEstateInstallmentObligations(realEstateTransactions, realEstateInstallments, todayKey),
         ...salesOrders
             .map((order) => buildSalesOrderObligation(order, todayKey))
             .filter((item): item is PaymentObligation => !!item),
@@ -1262,6 +1327,21 @@ export async function recordObligationSettlement(
                 note: note || undefined,
                 paidAt,
                 createdBy: createdBy || undefined
+            })
+            return
+        }
+
+        case 'real_estate_installment': {
+            assertStandardSettlementPaymentMethod(input.paymentMethod)
+            const { recordRealEstatePayment } = await import('./realEstate')
+            await recordRealEstatePayment(workspaceId, {
+                transactionId: obligation.sourceRecordId,
+                installmentId: obligation.sourceSubrecordId || undefined,
+                amount: obligation.amount,
+                paymentMethod: input.paymentMethod,
+                note,
+                paidAt,
+                createdBy
             })
             return
         }

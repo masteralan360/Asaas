@@ -41,6 +41,9 @@ export const LOCAL_MODE_SQLITE_TABLES = [
   "sales_orders",
   "purchase_orders",
   "travel_agency_sales",
+  "real_estate_transactions",
+  "real_estate_installments",
+  "real_estate_payments",
 ] as const;
 
 export type LocalModeSqliteTableName =

@@ -15,6 +15,7 @@ import {
     getPaymentTransactionRoutePath,
     usePaymentTransactions,
     useLoans,
+    useRealEstateTransactions,
     useSales,
     useSalesOrders,
     usePurchaseOrders,
@@ -23,6 +24,7 @@ import {
     type IQDDisplayPreference,
     type Loan,
     type PaymentTransaction,
+    type RealEstateTransaction,
     type Sale,
     type SalesOrder,
     type PurchaseOrder
@@ -70,7 +72,7 @@ import { useWorkspace } from '@/workspace'
 import { useTheme } from '@/ui/components/theme-provider'
 
 type LedgerDirection = 'incoming' | 'outgoing'
-type LedgerSourceModule = 'pos' | 'instant_pos' | 'orders' | 'expenses' | 'payroll' | 'loans' | 'manual'
+type LedgerSourceModule = 'pos' | 'instant_pos' | 'orders' | 'expenses' | 'payroll' | 'loans' | 'real_estate' | 'manual'
 type LedgerRelationRole = 'origin' | 'repayment' | 'settlement'
 type LedgerEntryType =
     | 'pos_sale'
@@ -87,6 +89,8 @@ type LedgerEntryType =
     | 'loan_repayment_paid'
     | 'installment_received'
     | 'installment_paid'
+    | 'real_estate_payment_received'
+    | 'real_estate_payment_paid'
     | 'direct_inflow'
     | 'direct_outflow'
 
@@ -294,6 +298,10 @@ function ledgerTypeLabel(type: LedgerEntryType, t: any) {
             return t('ledger.type.installmentReceived', { defaultValue: 'Installment Received' })
         case 'installment_paid':
             return t('ledger.type.installmentPaid', { defaultValue: 'Installment Paid' })
+        case 'real_estate_payment_received':
+            return t('ledger.type.realEstatePaymentReceived', { defaultValue: 'Real Estate Payment Received' })
+        case 'real_estate_payment_paid':
+            return t('ledger.type.realEstatePaymentPaid', { defaultValue: 'Real Estate Payment Paid' })
         case 'direct_inflow':
             return t('ledger.type.directInflow', { defaultValue: 'Direct Inflow' })
         case 'direct_outflow':
@@ -317,6 +325,8 @@ function sourceModuleLabel(module: LedgerSourceModule, t: any) {
             return t('ledger.sourceModule.payroll', { defaultValue: 'Payroll' })
         case 'loans':
             return t('ledger.sourceModule.loans', { defaultValue: 'Loans' })
+        case 'real_estate':
+            return t('ledger.sourceModule.realEstate', { defaultValue: 'Real Estate' })
         case 'manual':
             return t('ledger.sourceModule.manual', { defaultValue: 'Manual' })
         default:
@@ -600,6 +610,7 @@ interface LedgerBuildContext {
     loanById: Map<string, Loan>
     saleById: Map<string, Sale>
     loanOriginationIds: Set<string>
+    realEstateTransactionById: Map<string, RealEstateTransaction>
     salesOrderById: Map<string, SalesOrder>
     purchaseOrderById: Map<string, PurchaseOrder>
     businessPartnerByName: Map<string, string>
@@ -759,6 +770,21 @@ function buildLedgerRelationDescriptor(
                 relationRole: 'repayment',
                 relationTitle: repaymentLabel,
                 relationDescription: `Original source: ${sourceLoanReference}.`,
+                relationIsCompleted
+            }
+        }
+
+        case 'real_estate_payment':
+        case 'real_estate_installment': {
+            const realEstateTransaction = context.realEstateTransactionById.get(transaction.sourceRecordId)
+            const relationIsCompleted = realEstateTransaction ? realEstateTransaction.balanceAmount <= 0 : false
+            return {
+                relationKey: `real-estate:${transaction.sourceRecordId}`,
+                relationRole: 'settlement',
+                relationTitle: transaction.sourceType === 'real_estate_installment'
+                    ? 'Real estate installment'
+                    : 'Real estate payment',
+                relationDescription: `Original source: ${realEstateTransaction?.transactionNo || reference}.`,
                 relationIsCompleted
             }
         }
@@ -960,6 +986,31 @@ function buildPaymentLedgerEntry(
                 routePath: getPaymentTransactionRoutePath(transaction),
                 ...relation
             }
+        case 'real_estate_payment':
+        case 'real_estate_installment': {
+            const realEstateTransaction = context.realEstateTransactionById.get(transaction.sourceRecordId)
+            const linkedPartnerId = transaction.direction === 'incoming'
+                ? realEstateTransaction?.buyerBusinessPartnerId
+                : realEstateTransaction?.sellerBusinessPartnerId
+            return {
+                id: `payment:${transaction.id}`,
+                transactionId: transaction.id,
+                date: transaction.paidAt,
+                type: transaction.direction === 'incoming' ? 'real_estate_payment_received' : 'real_estate_payment_paid',
+                direction: transaction.direction,
+                amount: transaction.amount,
+                currency: transaction.currency,
+                sourceModule: 'real_estate',
+                referenceId: buildTransactionReference(transaction),
+                partner: transaction.counterpartyName || null,
+                businessPartnerId: linkedPartnerId ?? context.businessPartnerByName.get(transaction.counterpartyName?.trim().toLowerCase() ?? '') ?? null,
+                paymentMethod: transaction.paymentMethod || 'unknown',
+                notes: transaction.note?.trim() || null,
+                description: buildTransactionDescription(transaction, t),
+                routePath: getPaymentTransactionRoutePath(transaction),
+                ...relation
+            }
+        }
         case 'loan_installment': {
             const installmentLoan = context.loanById.get(transaction.sourceRecordId)
             return {
@@ -1063,6 +1114,7 @@ export function Ledger() {
     }, [dateRange, customDates])
 
     const loans = useLoans(workspaceId)
+    const realEstateTransactions = useRealEstateTransactions(workspaceId)
     const sales = useSales(workspaceId, dateBounds.startDate, dateBounds.endDate)
     const paymentTransactions = usePaymentTransactions(workspaceId, { includeReversals: false })
     const salesOrders = useSalesOrders(workspaceId, dateBounds.startDate, dateBounds.endDate)
@@ -1093,6 +1145,10 @@ export function Ledger() {
     const loanById = useMemo(
         () => new Map(loans.map((loan) => [loan.id, loan])),
         [loans]
+    )
+    const realEstateTransactionById = useMemo(
+        () => new Map(realEstateTransactions.map((transaction) => [transaction.id, transaction])),
+        [realEstateTransactions]
     )
     const saleById = useMemo(
         () => new Map(sales.map((sale) => [sale.id, sale])),
@@ -1128,6 +1184,7 @@ export function Ledger() {
             loanById,
             saleById,
             loanOriginationIds,
+            realEstateTransactionById,
             salesOrderById,
             purchaseOrderById,
             businessPartnerByName
@@ -1140,7 +1197,7 @@ export function Ledger() {
         ]
 
         return rows.sort((left, right) => right.date.localeCompare(left.date) || right.transactionId.localeCompare(left.transactionId))
-    }, [loanById, loanOriginationIds, paymentTransactions, saleById, sales, salesOrderById, purchaseOrderById, businessPartnerByName])
+    }, [loanById, loanOriginationIds, paymentTransactions, realEstateTransactionById, saleById, sales, salesOrderById, purchaseOrderById, businessPartnerByName])
 
     const typeOptions = useMemo(
         () => Array.from(new Set(allEntries.map((entry) => entry.type))).sort((left, right) => ledgerTypeLabel(left, t).localeCompare(ledgerTypeLabel(right, t))),

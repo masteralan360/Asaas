@@ -156,6 +156,11 @@ export const moduleMetaByHref: Record<string, ModuleMeta> = {
     description: "Manage travel-related bookings and service sales.",
     badge: "Service",
   },
+  "/real-estate": {
+    section: "cash-and-control",
+    description: "Record property deals, parties, balances, and installment schedules.",
+    badge: "Property",
+  },
   "/products": {
     section: "stock-and-supply",
     description: "Maintain product catalog, stock rules, and pricing.",

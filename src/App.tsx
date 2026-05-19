@@ -233,6 +233,9 @@ const TravelAgencySaleView = lazy(() =>
     default: m.TravelAgencySaleView,
   })),
 );
+const RealEstate = lazy(() =>
+  import("@/ui/pages/RealEstate").then((m) => ({ default: m.RealEstate })),
+);
 
 const Ledger = lazy(() =>
   import("@/ui/pages/Ledger").then((m) => ({ default: m.Ledger })),
@@ -935,6 +938,26 @@ function App() {
                         >
                           <Layout>
                             <TravelAgencySaleEdit />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/real-estate">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="real_estate"
+                        >
+                          <Layout>
+                            <RealEstate />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/real-estate/:transactionId">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="real_estate"
+                        >
+                          <Layout>
+                            <RealEstate />
                           </Layout>
                         </ProtectedRoute>
                       </Route>

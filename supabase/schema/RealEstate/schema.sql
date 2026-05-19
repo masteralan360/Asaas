@@ -1,0 +1,69 @@
+CREATE SCHEMA IF NOT EXISTS real_estate;
+
+CREATE TABLE real_estate.real_estate_transactions (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL,
+  transaction_no text NOT NULL,
+  transaction_type text NOT NULL,
+  location text NOT NULL,
+  land_area_m2 numeric NOT NULL DEFAULT 0,
+  currency text NOT NULL DEFAULT 'usd',
+  total_amount numeric NOT NULL,
+  paid_amount numeric NOT NULL DEFAULT 0,
+  balance_amount numeric NOT NULL DEFAULT 0,
+  profit_amount numeric NOT NULL DEFAULT 0,
+  buyer_name text NOT NULL,
+  buyer_business_partner_id uuid NULL,
+  seller_name text NOT NULL,
+  seller_business_partner_id uuid NULL,
+  is_installment_based boolean NOT NULL DEFAULT false,
+  installment_count integer NOT NULL DEFAULT 0,
+  installment_frequency text NULL,
+  first_due_date date NULL,
+  next_due_date date NULL,
+  status text NOT NULL DEFAULT 'active',
+  exchange_rate_snapshot jsonb NULL,
+  notes text NULL,
+  created_by uuid NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  version bigint NOT NULL DEFAULT 1,
+  is_deleted boolean NOT NULL DEFAULT false,
+  PRIMARY KEY (id)
+);
+
+CREATE TABLE real_estate.real_estate_installments (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL,
+  transaction_id uuid NOT NULL,
+  installment_no integer NOT NULL,
+  due_date date NOT NULL,
+  planned_amount numeric NOT NULL,
+  paid_amount numeric NOT NULL DEFAULT 0,
+  balance_amount numeric NOT NULL,
+  status text NOT NULL DEFAULT 'unpaid',
+  paid_at timestamp with time zone NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  version bigint NOT NULL DEFAULT 1,
+  is_deleted boolean NOT NULL DEFAULT false,
+  PRIMARY KEY (id)
+);
+
+CREATE TABLE real_estate.real_estate_payments (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL,
+  transaction_id uuid NOT NULL,
+  installment_id uuid NULL,
+  amount numeric NOT NULL,
+  payment_method text NOT NULL,
+  payment_kind text NOT NULL DEFAULT 'manual',
+  paid_at timestamp with time zone NOT NULL DEFAULT now(),
+  note text NULL,
+  created_by uuid NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  version bigint NOT NULL DEFAULT 1,
+  is_deleted boolean NOT NULL DEFAULT false,
+  PRIMARY KEY (id)
+);

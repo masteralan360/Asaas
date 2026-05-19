@@ -12,6 +12,7 @@ export { Payments } from './Payments'
 export { DirectTransactions } from './DirectTransactions'
 export { ModuleLauncher } from './ModuleLauncher'
 export { TravelAgency } from './TravelAgency'
+export { RealEstate } from './RealEstate'
 
 export { InvoicesHistory } from './InvoicesHistory'
 export { Members } from './Members'

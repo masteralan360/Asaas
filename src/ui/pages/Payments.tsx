@@ -45,7 +45,7 @@ import { SettlementDialog } from '@/ui/components/payments/SettlementDialog'
 import { useWorkspace } from '@/workspace'
 
 type DirectionFilter = 'all' | 'incoming' | 'outgoing'
-type SourceFilter = 'all' | 'loans' | 'orders' | 'budget' | 'payments'
+type SourceFilter = 'all' | 'loans' | 'orders' | 'budget' | 'real_estate' | 'payments'
 type OpenStatusFilter = 'all' | 'open' | 'overdue'
 
 function sourceTypeLabel(value: PaymentObligation['sourceType'] | PaymentTransaction['sourceType'], t: any) {
@@ -58,6 +58,10 @@ function sourceTypeLabel(value: PaymentObligation['sourceType'] | PaymentTransac
             return t('payments.sourceType.simpleLoan', { defaultValue: 'Simple Loan' })
         case 'loan_payment':
             return t('payments.sourceType.loanPayment', { defaultValue: 'Loan Payment' })
+        case 'real_estate_payment':
+            return t('payments.sourceType.realEstatePayment', { defaultValue: 'Real Estate Payment' })
+        case 'real_estate_installment':
+            return t('payments.sourceType.realEstateInstallment', { defaultValue: 'Real Estate Installment' })
         case 'sales_order':
             return t('payments.sourceType.salesOrder', { defaultValue: 'Sales Order' })
         case 'purchase_order':
@@ -134,7 +138,7 @@ export function Payments() {
     const { features } = useWorkspace()
     const [, setLocation] = useLocation()
     const workspaceId = user?.workspaceId
-    const hasPaymentsSurface = features.loans || features.crm || features.budget || features.hr
+    const hasPaymentsSurface = features.loans || features.crm || features.budget || features.hr || features.real_estate
 
     const [activeTab, setActiveTab] = useState<'open-items' | 'transactions'>('open-items')
     const [search, setSearch] = useState('')
@@ -325,6 +329,7 @@ export function Payments() {
                                 <SelectItem value="loans">{t('payments.filters.loans', { defaultValue: 'Loans' })}</SelectItem>
                                 <SelectItem value="orders">{t('payments.filters.orders', { defaultValue: 'Orders' })}</SelectItem>
                                 <SelectItem value="budget">{t('payments.filters.accountingHr', { defaultValue: 'Accounting / HR' })}</SelectItem>
+                                <SelectItem value="real_estate">{t('payments.filters.realEstate', { defaultValue: 'Real Estate' })}</SelectItem>
                                 <SelectItem value="payments">{t('payments.filters.directManual', { defaultValue: 'Direct / Manual' })}</SelectItem>
                             </SelectContent>
                         </Select>

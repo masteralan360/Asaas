@@ -19,8 +19,15 @@ const crmTables = new Set([
     'travel_agency_sales'
 ])
 
+const realEstateTables = new Set([
+    'real_estate_transactions',
+    'real_estate_installments',
+    'real_estate_payments'
+])
+
 const budgetClient = supabase.schema('budget')
 const crmClient = supabase.schema('crm')
+const realEstateClient = supabase.schema('real_estate')
 
 export function isBudgetTable(tableName: string): boolean {
     return budgetTables.has(tableName)
@@ -30,6 +37,10 @@ export function isCrmTable(tableName: string): boolean {
     return crmTables.has(tableName)
 }
 
+export function isRealEstateTable(tableName: string): boolean {
+    return realEstateTables.has(tableName)
+}
+
 export function getSupabaseClientForTable(tableName: string) {
     if (isBudgetTable(tableName)) {
         return budgetClient
@@ -37,6 +48,10 @@ export function getSupabaseClientForTable(tableName: string) {
 
     if (isCrmTable(tableName)) {
         return crmClient
+    }
+
+    if (isRealEstateTable(tableName)) {
+        return realEstateClient
     }
 
     return supabase

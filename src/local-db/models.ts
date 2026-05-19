@@ -509,6 +509,60 @@ export interface TravelAgencySale extends BaseEntity {
   } | null;
 }
 
+export type RealEstateTransactionType = "sell" | "buy";
+export type RealEstateTransactionStatus = "active" | "overdue" | "completed";
+export type RealEstatePaymentKind =
+  | "down_payment"
+  | "installment"
+  | "manual";
+
+export interface RealEstateTransaction extends BaseEntity {
+  transactionNo: string;
+  transactionType: RealEstateTransactionType;
+  location: string;
+  landAreaM2: number;
+  currency: CurrencyCode;
+  totalAmount: number;
+  paidAmount: number;
+  balanceAmount: number;
+  profitAmount: number;
+  buyerName: string;
+  buyerBusinessPartnerId?: string | null;
+  sellerName: string;
+  sellerBusinessPartnerId?: string | null;
+  isInstallmentBased: boolean;
+  installmentCount: number;
+  installmentFrequency?: InstallmentFrequency | null;
+  firstDueDate?: string | null;
+  nextDueDate?: string | null;
+  status: RealEstateTransactionStatus;
+  exchangeRateSnapshot?: ExchangeRateSnapshot[] | null;
+  notes?: string | null;
+  createdBy?: string | null;
+}
+
+export interface RealEstateInstallment extends BaseEntity {
+  transactionId: string;
+  installmentNo: number;
+  dueDate: string;
+  plannedAmount: number;
+  paidAmount: number;
+  balanceAmount: number;
+  status: InstallmentStatus;
+  paidAt?: string | null;
+}
+
+export interface RealEstatePayment extends BaseEntity {
+  transactionId: string;
+  installmentId?: string | null;
+  amount: number;
+  paymentMethod: WorkspacePaymentMethod;
+  paymentKind: RealEstatePaymentKind;
+  paidAt: string;
+  note?: string | null;
+  createdBy?: string | null;
+}
+
 export interface Employee extends BaseEntity {
   name: string;
   email?: string;
@@ -746,12 +800,15 @@ export type PaymentTransactionSourceModule =
   | "loans"
   | "orders"
   | "budget"
+  | "real_estate"
   | "payments";
 export type PaymentTransactionSourceType =
   | "loan_origination"
   | "loan_payment"
   | "simple_loan"
   | "loan_installment"
+  | "real_estate_payment"
+  | "real_estate_installment"
   | "sales_order"
   | "purchase_order"
   | "expense_item"
@@ -833,7 +890,10 @@ export interface SyncQueueItem {
     | "business_partner_merge_candidates"
     | "sales_orders"
     | "purchase_orders"
-    | "travel_agency_sales";
+    | "travel_agency_sales"
+    | "real_estate_transactions"
+    | "real_estate_installments"
+    | "real_estate_payments";
   entityId: string;
   operation: "create" | "update" | "delete";
   data: Record<string, unknown>;
@@ -855,6 +915,7 @@ export interface Workspace extends BaseEntity {
   sales_history?: boolean;
   crm?: boolean;
   travel_agency?: boolean;
+  real_estate?: boolean;
   loans?: boolean;
   net_revenue?: boolean;
   budget?: boolean;
@@ -939,7 +1000,10 @@ export interface OfflineMutation {
     | "business_partner_merge_candidates"
     | "sales_orders"
     | "purchase_orders"
-    | "travel_agency_sales";
+    | "travel_agency_sales"
+    | "real_estate_transactions"
+    | "real_estate_installments"
+    | "real_estate_payments";
   entityId: string;
   operation: "create" | "update" | "delete";
   payload: Record<string, unknown>;

@@ -62,6 +62,10 @@ import {
     ContextMenuTrigger,
     ContextMenuContent,
     ContextMenuItem,
+    Tabs,
+    TabsContent,
+    TabsList,
+    TabsTrigger,
 } from '@/ui/components'
 import { Search, Plus, ArrowLeft, Printer, Trash2, List, LayoutGrid, MessageCircle, Receipt } from 'lucide-react'
 import { CreateManualLoanModal } from '@/ui/components/loans/CreateManualLoanModal'
@@ -69,6 +73,7 @@ import { LoanDetailsPrintTemplate, LoanListPrintTemplate } from '@/ui/components
 import { LoanNoDisplay } from '@/ui/components/loans/LoanNoDisplay'
 import { useLoanPaymentModal } from '@/ui/components/loans/LoanPaymentModalProvider'
 import { SimpleLoanListView } from '@/ui/components/loans/SimpleLoanListView'
+import { RealEstateInstallmentsMirror } from '@/ui/components/real-estate/RealEstateInstallmentsMirror'
 import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
 
 type LoanFilter = 'all' | 'active' | 'overdue' | 'completed'
@@ -1386,9 +1391,11 @@ export function Loans() {
 }
 
 export function Installments() {
+    const { t } = useTranslation()
     const { user } = useAuth()
     const [detailMatch, params] = useRoute('/installments/:loanId')
     const { openLoanPayment } = useLoanPaymentModal()
+    const { features } = useWorkspace()
     const workspaceId = user?.workspaceId
 
     const openPaymentForLoan = (loan: Loan, installment?: LoanInstallment | null) => {
@@ -1411,5 +1418,22 @@ export function Installments() {
         )
     }
 
-    return <LoanListView workspaceId={workspaceId} />
+    if (!features.real_estate) {
+        return <LoanListView workspaceId={workspaceId} />
+    }
+
+    return (
+        <Tabs defaultValue="loan-installments" className="space-y-4">
+            <TabsList>
+                <TabsTrigger value="loan-installments">{t('loans.title', { defaultValue: 'Loan Installments' })}</TabsTrigger>
+                <TabsTrigger value="real-estate">{t('realEstate.title', { defaultValue: 'Real Estate' })}</TabsTrigger>
+            </TabsList>
+            <TabsContent value="loan-installments">
+                <LoanListView workspaceId={workspaceId} />
+            </TabsContent>
+            <TabsContent value="real-estate">
+                <RealEstateInstallmentsMirror workspaceId={workspaceId} />
+            </TabsContent>
+        </Tabs>
+    )
 }

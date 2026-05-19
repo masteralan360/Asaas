@@ -38,6 +38,9 @@ import type {
   SalesOrder,
   PurchaseOrder,
   TravelAgencySale,
+  RealEstateTransaction,
+  RealEstateInstallment,
+  RealEstatePayment,
 } from "./models";
 import { isLocalWorkspaceMode } from "@/workspace/workspaceMode";
 import {
@@ -313,6 +316,9 @@ export class AtlasDatabase extends Dexie {
   sales_orders!: EntityTable<SalesOrder, "id">;
   purchase_orders!: EntityTable<PurchaseOrder, "id">;
   travel_agency_sales!: EntityTable<TravelAgencySale, "id">;
+  real_estate_transactions!: EntityTable<RealEstateTransaction, "id">;
+  real_estate_installments!: EntityTable<RealEstateInstallment, "id">;
+  real_estate_payments!: EntityTable<RealEstatePayment, "id">;
 
   constructor() {
     super("AtlasDatabase");
@@ -2088,6 +2094,15 @@ export class AtlasDatabase extends Dexie {
         await tx.table("stock_batches").bulkPut(batchRows);
       });
 
+    this.version(58).stores({
+      real_estate_transactions:
+        "id, workspaceId, transactionNo, transactionType, status, currency, buyerBusinessPartnerId, sellerBusinessPartnerId, createdAt, updatedAt, isDeleted, syncStatus, [workspaceId+status], [workspaceId+createdAt]",
+      real_estate_installments:
+        "id, transactionId, workspaceId, dueDate, status, syncStatus, updatedAt, isDeleted, [transactionId+installmentNo], [workspaceId+dueDate], [workspaceId+status]",
+      real_estate_payments:
+        "id, transactionId, workspaceId, paidAt, syncStatus, updatedAt, isDeleted",
+    });
+
     this.registerLocalModeSyncHooks();
   }
 
@@ -2122,6 +2137,9 @@ export class AtlasDatabase extends Dexie {
       "sales_orders",
       "purchase_orders",
       "travel_agency_sales",
+      "real_estate_transactions",
+      "real_estate_installments",
+      "real_estate_payments",
       "budget_settings",
       "budget_allocations",
       "expense_series",
@@ -2276,6 +2294,9 @@ export async function clearDatabase(): Promise<void> {
       db.categories,
       db.invoices,
       db.travel_agency_sales,
+      db.real_estate_transactions,
+      db.real_estate_installments,
+      db.real_estate_payments,
       db.payment_transactions,
       db.syncQueue,
     ],
@@ -2292,6 +2313,9 @@ export async function clearDatabase(): Promise<void> {
       await db.categories.clear();
       await db.invoices.clear();
       await db.travel_agency_sales.clear();
+      await db.real_estate_transactions.clear();
+      await db.real_estate_installments.clear();
+      await db.real_estate_payments.clear();
       await db.payment_transactions.clear();
       await db.syncQueue.clear();
     },
