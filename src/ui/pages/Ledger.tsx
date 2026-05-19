@@ -1,6 +1,6 @@
 import { useDeferredValue, useEffect, useMemo, useState, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ArrowDownLeft, ArrowUpRight, FileSpreadsheet, Loader2, RotateCcw, Search, ShieldCheck, SlidersHorizontal, Wallet, TrendingUp, TrendingDown, DollarSign, Package, Percent, BarChart3, Clock, ChevronUp, ChevronDown, ChevronsUp, ChevronsDown } from 'lucide-react'
+import { ArrowDownLeft, ArrowUpRight, FileSpreadsheet, Loader2, RotateCcw, Search, ShieldCheck, SlidersHorizontal, Wallet, TrendingUp, TrendingDown, DollarSign, Package, Percent, BarChart3, Clock, ChevronUp, ChevronDown, ChevronsUp, ChevronsDown, UsersRound } from 'lucide-react'
 import { Area, AreaChart, Bar, BarChart, ResponsiveContainer, Tooltip as RechartsTooltip, XAxis } from 'recharts'
 import { useLocation } from 'wouter'
 
@@ -16,11 +16,17 @@ import {
     usePaymentTransactions,
     useLoans,
     useSales,
+    useSalesOrders,
+    usePurchaseOrders,
+    useBusinessPartners,
     type CurrencyCode,
     type IQDDisplayPreference,
     type Loan,
     type PaymentTransaction,
-    type Sale
+    type Sale,
+    type SalesOrder,
+    type PurchaseOrder,
+    type BusinessPartner
 } from '@/local-db'
 import { cn, formatCurrency, formatDate, formatDateTime } from '@/lib/utils'
 import {
@@ -96,6 +102,7 @@ interface LedgerEntry {
     sourceModule: LedgerSourceModule
     referenceId: string
     partner: string | null
+    businessPartnerId: string | null
     paymentMethod: string | null
     notes: string | null
     description: string | null
@@ -594,6 +601,9 @@ interface LedgerBuildContext {
     loanById: Map<string, Loan>
     saleById: Map<string, Sale>
     loanOriginationIds: Set<string>
+    salesOrderById: Map<string, SalesOrder>
+    purchaseOrderById: Map<string, PurchaseOrder>
+    businessPartnerByName: Map<string, string>
 }
 
 function buildSaleLedgerEntry(sale: Sale, t: any): LedgerEntry | null {
@@ -628,6 +638,7 @@ function buildSaleLedgerEntry(sale: Sale, t: any): LedgerEntry | null {
         sourceModule: isInstantPos ? 'instant_pos' : 'pos',
         referenceId: buildSaleReferenceId(sale),
         partner: null,
+        businessPartnerId: null,
         paymentMethod,
         notes: sale.notes?.trim() || null,
         description: descriptionParts.length > 0 ? descriptionParts.join(' | ') : null,
@@ -831,6 +842,7 @@ function buildPaymentLedgerEntry(
             sourceModule: 'manual',
             referenceId: (transaction.referenceLabel || 'DIR').slice(0, 10).toUpperCase(),
             partner: transaction.counterpartyName || null,
+            businessPartnerId: context.businessPartnerByName.get(transaction.counterpartyName?.trim().toLowerCase() ?? '') ?? null,
             paymentMethod: transaction.paymentMethod,
             notes: transaction.note?.trim() || null,
             description: descriptionParts.length > 0 ? descriptionParts.join(' | ') : null,
@@ -841,7 +853,8 @@ function buildPaymentLedgerEntry(
     const relation = buildLedgerRelationDescriptor(transaction, context)
 
     switch (transaction.sourceType) {
-        case 'loan_origination':
+        case 'loan_origination': {
+            const originationLoan = context.loanById.get(transaction.sourceRecordId)
             return {
                 id: `payment:${transaction.id}`,
                 transactionId: transaction.id,
@@ -853,18 +866,21 @@ function buildPaymentLedgerEntry(
                 sourceModule: 'loans',
                 referenceId: buildTransactionReference(transaction),
                 partner: transaction.counterpartyName || null,
+                businessPartnerId: originationLoan?.linkedPartyId ?? context.businessPartnerByName.get(transaction.counterpartyName?.trim().toLowerCase() ?? '') ?? null,
                 paymentMethod: transaction.paymentMethod || 'unknown',
                 notes: transaction.note?.trim() || null,
                 description: buildTransactionDescription(transaction, t) || (transaction.direction === 'incoming' ? 'Loan received' : 'Loan disbursed'),
                 routePath: getPaymentTransactionRoutePath(transaction),
                 ...relation
             }
+        }
         case 'sales_order': {
             const sourceChannel = typeof transaction.metadata?.sourceChannel === 'string'
                 ? transaction.metadata.sourceChannel.trim().toLowerCase()
                 : null
             const isMarketplace = sourceChannel === 'marketplace'
             const isReceivable = Boolean(transaction.metadata?.receivable)
+            const salesOrder = context.salesOrderById.get(transaction.sourceRecordId)
             return {
                 id: `payment:${transaction.id}`,
                 transactionId: transaction.id,
@@ -878,6 +894,7 @@ function buildPaymentLedgerEntry(
                 sourceModule: 'orders',
                 referenceId: buildTransactionReference(transaction),
                 partner: transaction.counterpartyName || null,
+                businessPartnerId: salesOrder?.businessPartnerId ?? context.businessPartnerByName.get(transaction.counterpartyName?.trim().toLowerCase() ?? '') ?? null,
                 paymentMethod: transaction.paymentMethod || 'unknown',
                 notes: transaction.note?.trim() || null,
                 description: buildTransactionDescription(transaction, t),
@@ -885,7 +902,8 @@ function buildPaymentLedgerEntry(
                 ...relation
             }
         }
-        case 'purchase_order':
+        case 'purchase_order': {
+            const purchaseOrder = context.purchaseOrderById.get(transaction.sourceRecordId)
             return {
                 id: `payment:${transaction.id}`,
                 transactionId: transaction.id,
@@ -897,12 +915,14 @@ function buildPaymentLedgerEntry(
                 sourceModule: 'orders',
                 referenceId: buildTransactionReference(transaction),
                 partner: transaction.counterpartyName || null,
+                businessPartnerId: purchaseOrder?.businessPartnerId ?? context.businessPartnerByName.get(transaction.counterpartyName?.trim().toLowerCase() ?? '') ?? null,
                 paymentMethod: transaction.paymentMethod || 'unknown',
                 notes: transaction.note?.trim() || null,
                 description: buildTransactionDescription(transaction, t),
                 routePath: getPaymentTransactionRoutePath(transaction),
                 ...relation
             }
+        }
         case 'expense_item':
             return {
                 id: `payment:${transaction.id}`,
@@ -915,6 +935,7 @@ function buildPaymentLedgerEntry(
                 sourceModule: 'expenses',
                 referenceId: buildTransactionReference(transaction),
                 partner: transaction.counterpartyName || null,
+                businessPartnerId: context.businessPartnerByName.get(transaction.counterpartyName?.trim().toLowerCase() ?? '') ?? null,
                 paymentMethod: transaction.paymentMethod || 'unknown',
                 notes: transaction.note?.trim() || null,
                 description: buildTransactionDescription(transaction, t),
@@ -933,13 +954,15 @@ function buildPaymentLedgerEntry(
                 sourceModule: 'payroll',
                 referenceId: buildTransactionReference(transaction),
                 partner: transaction.counterpartyName || null,
+                businessPartnerId: context.businessPartnerByName.get(transaction.counterpartyName?.trim().toLowerCase() ?? '') ?? null,
                 paymentMethod: transaction.paymentMethod || 'unknown',
                 notes: transaction.note?.trim() || null,
                 description: buildTransactionDescription(transaction, t),
                 routePath: getPaymentTransactionRoutePath(transaction),
                 ...relation
             }
-        case 'loan_installment':
+        case 'loan_installment': {
+            const installmentLoan = context.loanById.get(transaction.sourceRecordId)
             return {
                 id: `payment:${transaction.id}`,
                 transactionId: transaction.id,
@@ -951,14 +974,17 @@ function buildPaymentLedgerEntry(
                 sourceModule: 'loans',
                 referenceId: buildTransactionReference(transaction),
                 partner: transaction.counterpartyName || null,
+                businessPartnerId: installmentLoan?.linkedPartyId ?? context.businessPartnerByName.get(transaction.counterpartyName?.trim().toLowerCase() ?? '') ?? null,
                 paymentMethod: transaction.paymentMethod || 'unknown',
                 notes: transaction.note?.trim() || null,
                 description: buildTransactionDescription(transaction, t),
                 routePath: getPaymentTransactionRoutePath(transaction),
                 ...relation
             }
+        }
         case 'loan_payment':
-        case 'simple_loan':
+        case 'simple_loan': {
+            const loanPaymentLoan = context.loanById.get(transaction.sourceRecordId)
             return {
                 id: `payment:${transaction.id}`,
                 transactionId: transaction.id,
@@ -970,12 +996,14 @@ function buildPaymentLedgerEntry(
                 sourceModule: 'loans',
                 referenceId: buildTransactionReference(transaction),
                 partner: transaction.counterpartyName || null,
+                businessPartnerId: loanPaymentLoan?.linkedPartyId ?? context.businessPartnerByName.get(transaction.counterpartyName?.trim().toLowerCase() ?? '') ?? null,
                 paymentMethod: transaction.paymentMethod || 'unknown',
                 notes: transaction.note?.trim() || null,
                 description: buildTransactionDescription(transaction, t),
                 routePath: getPaymentTransactionRoutePath(transaction),
                 ...relation
             }
+        }
         default:
             return null
     }
@@ -1038,6 +1066,9 @@ export function Ledger() {
     const loans = useLoans(workspaceId)
     const sales = useSales(workspaceId, dateBounds.startDate, dateBounds.endDate)
     const paymentTransactions = usePaymentTransactions(workspaceId, { includeReversals: false })
+    const salesOrders = useSalesOrders(workspaceId, dateBounds.startDate, dateBounds.endDate)
+    const purchaseOrders = usePurchaseOrders(workspaceId)
+    const businessPartners = useBusinessPartners(workspaceId)
     const rates = useMemo(
         () => buildConversionRates(exchangeData, eurRates, tryRates),
         [eurRates, exchangeData, tryRates]
@@ -1076,12 +1107,31 @@ export function Ledger() {
         ),
         [paymentTransactions]
     )
+    const salesOrderById = useMemo(
+        () => new Map(salesOrders.map((order) => [order.id, order])),
+        [salesOrders]
+    )
+    const purchaseOrderById = useMemo(
+        () => new Map(purchaseOrders.map((order) => [order.id, order])),
+        [purchaseOrders]
+    )
+    const businessPartnerByName = useMemo(
+        () => new Map(
+            businessPartners
+                .filter((bp) => bp.name?.trim())
+                .map((bp) => [bp.name.trim().toLowerCase(), bp.id])
+        ),
+        [businessPartners]
+    )
 
     const allEntries = useMemo(() => {
         const context: LedgerBuildContext = {
             loanById,
             saleById,
-            loanOriginationIds
+            loanOriginationIds,
+            salesOrderById,
+            purchaseOrderById,
+            businessPartnerByName
         }
         const rows = [
             ...sales.map(s => buildSaleLedgerEntry(s, t)).filter((entry): entry is LedgerEntry => !!entry),
@@ -1091,7 +1141,7 @@ export function Ledger() {
         ]
 
         return rows.sort((left, right) => right.date.localeCompare(left.date) || right.transactionId.localeCompare(left.transactionId))
-    }, [loanById, loanOriginationIds, paymentTransactions, saleById, sales])
+    }, [loanById, loanOriginationIds, paymentTransactions, saleById, sales, salesOrderById, purchaseOrderById, businessPartnerByName])
 
     const typeOptions = useMemo(
         () => Array.from(new Set(allEntries.map((entry) => entry.type))).sort((left, right) => ledgerTypeLabel(left, t).localeCompare(ledgerTypeLabel(right, t))),
@@ -1554,7 +1604,7 @@ export function Ledger() {
                             const latestPayment = currentIndex > 0 ? relatedRows[0] : null
                             const firstPayment = currentIndex !== -1 && currentIndex < relatedRows.length - 1 ? relatedRows[relatedRows.length - 1] : null
 
-                            const hasContextMenu = Boolean(nextPayment || previousPayment || latestPayment || firstPayment)
+                            const hasContextMenu = Boolean(nextPayment || previousPayment || latestPayment || firstPayment || entry.businessPartnerId)
 
                             const rowContent = (
                                 <TableRow
@@ -1730,6 +1780,12 @@ export function Ledger() {
                                             <ContextMenuItem onClick={() => scrollToRow(firstPayment.id)}>
                                                 <ChevronsDown className="mr-2 h-4 w-4" />
                                                 {t('ledger.context.scrollToFirst', { defaultValue: 'First payment' })}
+                                            </ContextMenuItem>
+                                        )}
+                                        {entry.businessPartnerId && (
+                                            <ContextMenuItem onClick={() => setLocation(`/business-partners/${entry.businessPartnerId}`)}>
+                                                <UsersRound className="mr-2 h-4 w-4" />
+                                                {t('ledger.context.viewBusinessPartner', { defaultValue: 'View Business Partner' })}
                                             </ContextMenuItem>
                                         )}
                                     </ContextMenuContent>
