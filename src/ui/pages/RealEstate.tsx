@@ -101,8 +101,9 @@ export function RealEstate() {
                 transaction.buyerName,
                 transaction.sellerName,
                 transaction.transactionType,
+                transaction.propertyType,
                 transaction.status
-            ].some((value) => value.toLowerCase().includes(query))
+            ].some((value) => value ? value.toLowerCase().includes(query) : false)
         })
     }, [filter, search, transactions])
 
@@ -186,6 +187,7 @@ export function RealEstate() {
                             <TableHeader>
                                 <TableRow>
                                     <TableHead>{t('realEstate.table.transaction', { defaultValue: 'Transaction' })}</TableHead>
+                                    <TableHead>{t('realEstate.propertyType', { defaultValue: 'Property' })}</TableHead>
                                     <TableHead>{t('realEstate.location', { defaultValue: 'Location' })}</TableHead>
                                     <TableHead>{t('realEstate.table.parties', { defaultValue: 'Parties' })}</TableHead>
                                     <TableHead className="text-end">{t('realEstate.total', { defaultValue: 'Total' })}</TableHead>
@@ -197,7 +199,7 @@ export function RealEstate() {
                             <TableBody>
                                 {filteredTransactions.length === 0 ? (
                                     <TableRow>
-                                        <TableCell colSpan={7} className="py-10 text-center text-muted-foreground">
+                                        <TableCell colSpan={8} className="py-10 text-center text-muted-foreground">
                                             {t('realEstate.empty', { defaultValue: 'No real estate transactions found.' })}
                                         </TableCell>
                                     </TableRow>
@@ -206,6 +208,13 @@ export function RealEstate() {
                                         <TableCell>
                                             <div className="font-semibold">{transaction.transactionNo}</div>
                                             <div className="text-xs uppercase text-muted-foreground">{t(`realEstate.types.${transaction.transactionType}`, { defaultValue: transaction.transactionType })}</div>
+                                        </TableCell>
+                                        <TableCell>
+                                            {transaction.propertyType ? (
+                                                <div className="text-sm">{t(`realEstate.propertyTypes.${transaction.propertyType}`, { defaultValue: transaction.propertyType })}</div>
+                                            ) : (
+                                                <div className="text-xs text-muted-foreground">-</div>
+                                            )}
                                         </TableCell>
                                         <TableCell>
                                             <div className="max-w-[18rem] truncate">{transaction.location}</div>
@@ -326,6 +335,9 @@ function RealEstateDetails({
                     </CardHeader>
                     <CardContent className="space-y-3 text-sm">
                         <InfoRow label={t('realEstate.transactionType', { defaultValue: 'Transaction Type' })} value={t(`realEstate.types.${transaction.transactionType}`, { defaultValue: transaction.transactionType })} />
+                        {transaction.propertyType ? (
+                            <InfoRow label={t('realEstate.propertyType', { defaultValue: 'Property Type' })} value={t(`realEstate.propertyTypes.${transaction.propertyType}`, { defaultValue: transaction.propertyType })} />
+                        ) : null}
                         <InfoRow label={t('realEstate.buyer', { defaultValue: 'Buyer' })} value={transaction.buyerName} />
                         <InfoRow label={t('realEstate.seller', { defaultValue: 'Seller' })} value={transaction.sellerName} />
                         <InfoRow label={t('realEstate.landArea', { defaultValue: 'Land Area (m2)' })} value={transaction.landAreaM2 > 0 ? `${transaction.landAreaM2.toLocaleString()} m2` : '-'} />

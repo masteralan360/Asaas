@@ -5,6 +5,7 @@ CREATE TABLE real_estate.real_estate_transactions (
   workspace_id uuid NOT NULL,
   transaction_no text NOT NULL,
   transaction_type text NOT NULL,
+  property_type text NULL,
   location text NOT NULL,
   land_area_m2 numeric NOT NULL DEFAULT 0,
   currency text NOT NULL DEFAULT 'usd',
@@ -29,6 +30,10 @@ CREATE TABLE real_estate.real_estate_transactions (
   updated_at timestamp with time zone NOT NULL DEFAULT now(),
   version bigint NOT NULL DEFAULT 1,
   is_deleted boolean NOT NULL DEFAULT false,
+  CONSTRAINT real_estate_transactions_type_check CHECK (transaction_type IN ('sell', 'buy', 'rent', 'lease', 'exchange')),
+  CONSTRAINT real_estate_transactions_property_type_check CHECK (
+    property_type IS NULL OR property_type IN ('house', 'apartment', 'land', 'commercial', 'villa', 'office', 'warehouse', 'other')
+  ),
   PRIMARY KEY (id)
 );
 

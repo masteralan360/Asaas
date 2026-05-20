@@ -509,7 +509,9 @@ export interface TravelAgencySale extends BaseEntity {
   } | null;
 }
 
-export type RealEstateTransactionType = "sell" | "buy";
+export type RealEstateTransactionType = "sell" | "buy" | "rent" | "lease" | "exchange";
+
+export type RealEstatePropertyType = "house" | "apartment" | "land" | "commercial" | "villa" | "office" | "warehouse" | "other";
 export type RealEstateTransactionStatus = "active" | "overdue" | "completed";
 export type RealEstatePaymentKind =
   | "down_payment"
@@ -519,6 +521,7 @@ export type RealEstatePaymentKind =
 export interface RealEstateTransaction extends BaseEntity {
   transactionNo: string;
   transactionType: RealEstateTransactionType;
+  propertyType?: RealEstatePropertyType | null;
   location: string;
   landAreaM2: number;
   currency: CurrencyCode;

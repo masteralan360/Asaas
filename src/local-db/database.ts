@@ -2094,9 +2094,9 @@ export class AtlasDatabase extends Dexie {
         await tx.table("stock_batches").bulkPut(batchRows);
       });
 
-    this.version(58).stores({
+    this.version(59).stores({
       real_estate_transactions:
-        "id, workspaceId, transactionNo, transactionType, status, currency, buyerBusinessPartnerId, sellerBusinessPartnerId, createdAt, updatedAt, isDeleted, syncStatus, [workspaceId+status], [workspaceId+createdAt]",
+        "id, workspaceId, transactionNo, transactionType, propertyType, status, currency, buyerBusinessPartnerId, sellerBusinessPartnerId, createdAt, updatedAt, isDeleted, syncStatus, [workspaceId+status], [workspaceId+createdAt]",
       real_estate_installments:
         "id, transactionId, workspaceId, dueDate, status, syncStatus, updatedAt, isDeleted, [transactionId+installmentNo], [workspaceId+dueDate], [workspaceId+status]",
       real_estate_payments:

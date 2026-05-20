@@ -1,12 +1,12 @@
 import { type FormEvent, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Building2, Users, X } from 'lucide-react'
+import { Building2, Plus, Users, X } from 'lucide-react'
 
 import { useAuth } from '@/auth'
 import { useExchangeRate } from '@/context/ExchangeRateContext'
 import { buildOrderExchangeRatesSnapshot } from '@/lib/orderCurrency'
 import { formatCurrency, formatLocalDateValue, formatNumericInput, parseFormattedNumber, parseLocalDateValue, sanitizeNumericInput } from '@/lib/utils'
-import { createRealEstateTransaction, type BusinessPartner, type CurrencyCode, type InstallmentFrequency } from '@/local-db'
+import { createBusinessPartner, createRealEstateTransaction, type BusinessPartner, type CurrencyCode, type InstallmentFrequency, type RealEstatePropertyType, type RealEstateTransactionType } from '@/local-db'
 import {
     Button,
     DateTimePicker,
@@ -28,6 +28,7 @@ import {
     useToast
 } from '@/ui/components'
 import { PartnerAutocompleteInput } from '@/ui/components/crm/PartnerAutocompleteInput'
+import { BusinessPartnerFormDialog, type BusinessPartnerFormPayload } from '@/ui/components/crm/BusinessPartnerFormDialog'
 import { useWorkspace } from '@/workspace'
 
 interface CreateRealEstateTransactionModalProps {
@@ -57,7 +58,8 @@ export function CreateRealEstateTransactionModal({
     const { exchangeData, eurRates, tryRates } = useExchangeRate()
     const [isSaving, setIsSaving] = useState(false)
     const [location, setLocation] = useState('')
-    const [transactionType, setTransactionType] = useState<'sell' | 'buy'>('sell')
+    const [transactionType, setTransactionType] = useState<RealEstateTransactionType>('sell')
+    const [propertyType, setPropertyType] = useState<RealEstatePropertyType | ''>('')
     const [buyerName, setBuyerName] = useState('')
     const [sellerName, setSellerName] = useState('')
     const [buyerLink, setBuyerLink] = useState<PartyLink>(null)
@@ -72,6 +74,10 @@ export function CreateRealEstateTransactionModal({
     const [installmentFrequency, setInstallmentFrequency] = useState<InstallmentFrequency>('monthly')
     const [firstDueDate, setFirstDueDate] = useState(formatLocalDateValue(new Date()))
     const [notes, setNotes] = useState('')
+    const [isCreateBuyerOpen, setIsCreateBuyerOpen] = useState(false)
+    const [isSavingBuyer, setIsSavingBuyer] = useState(false)
+    const [isCreateSellerOpen, setIsCreateSellerOpen] = useState(false)
+    const [isSavingSeller, setIsSavingSeller] = useState(false)
 
     useEffect(() => {
         if (!isOpen) {
@@ -81,6 +87,7 @@ export function CreateRealEstateTransactionModal({
         setIsSaving(false)
         setLocation('')
         setTransactionType('sell')
+        setPropertyType('')
         setBuyerName('')
         setSellerName('')
         setBuyerLink(null)
@@ -139,9 +146,45 @@ export function CreateRealEstateTransactionModal({
         setBuyerName(partner.name)
     }
 
+    const handleCreateBuyerPartner = async (payload: BusinessPartnerFormPayload) => {
+        setIsSavingBuyer(true)
+        try {
+            const partner = await createBusinessPartner(workspaceId, payload)
+            toast({ title: t('businessPartners.messages.addSuccess', { defaultValue: 'Business partner created successfully' }) })
+            setIsCreateBuyerOpen(false)
+            handleBuyerPartnerSelect(partner)
+        } catch (error: any) {
+            toast({
+                title: t('common.error', { defaultValue: 'Error' }),
+                description: error?.message || 'Failed to create business partner',
+                variant: 'destructive'
+            })
+        } finally {
+            setIsSavingBuyer(false)
+        }
+    }
+
     const handleSellerPartnerSelect = (partner: BusinessPartner) => {
         setSellerLink({ id: partner.id, name: partner.name })
         setSellerName(partner.name)
+    }
+
+    const handleCreateSellerPartner = async (payload: BusinessPartnerFormPayload) => {
+        setIsSavingSeller(true)
+        try {
+            const partner = await createBusinessPartner(workspaceId, payload)
+            toast({ title: t('businessPartners.messages.addSuccess', { defaultValue: 'Business partner created successfully' }) })
+            setIsCreateSellerOpen(false)
+            handleSellerPartnerSelect(partner)
+        } catch (error: any) {
+            toast({
+                title: t('common.error', { defaultValue: 'Error' }),
+                description: error?.message || 'Failed to create business partner',
+                variant: 'destructive'
+            })
+        } finally {
+            setIsSavingSeller(false)
+        }
     }
 
     const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -154,6 +197,7 @@ export function CreateRealEstateTransactionModal({
         try {
             const result = await createRealEstateTransaction(workspaceId, {
                 transactionType,
+                propertyType: (propertyType || null) as RealEstatePropertyType | null,
                 location: location.trim(),
                 landAreaM2: parseFormattedNumber(landAreaM2 || '0'),
                 currency,
@@ -217,11 +261,30 @@ export function CreateRealEstateTransactionModal({
                                 </div>
                                 <div className="grid gap-2">
                                     <Label>{t('realEstate.transactionType', { defaultValue: 'Transaction Type' })}</Label>
-                                    <Select value={transactionType} onValueChange={(value: 'sell' | 'buy') => setTransactionType(value)}>
+                                    <Select value={transactionType} onValueChange={(value: RealEstateTransactionType) => setTransactionType(value)}>
                                         <SelectTrigger><SelectValue /></SelectTrigger>
                                         <SelectContent>
                                             <SelectItem value="sell">{t('realEstate.types.sell', { defaultValue: 'Sell' })}</SelectItem>
                                             <SelectItem value="buy">{t('realEstate.types.buy', { defaultValue: 'Buy' })}</SelectItem>
+                                            <SelectItem value="rent">{t('realEstate.types.rent', { defaultValue: 'Rent' })}</SelectItem>
+                                            <SelectItem value="lease">{t('realEstate.types.lease', { defaultValue: 'Lease' })}</SelectItem>
+                                            <SelectItem value="exchange">{t('realEstate.types.exchange', { defaultValue: 'Exchange' })}</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div className="grid gap-2">
+                                    <Label>{t('realEstate.propertyType', { defaultValue: 'Property Type' })}</Label>
+                                    <Select value={propertyType} onValueChange={(value: RealEstatePropertyType | '') => setPropertyType(value)}>
+                                        <SelectTrigger><SelectValue placeholder={t('realEstate.propertyTypePlaceholder', { defaultValue: 'Select type' })} /></SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="house">{t('realEstate.propertyTypes.house', { defaultValue: 'House' })}</SelectItem>
+                                            <SelectItem value="apartment">{t('realEstate.propertyTypes.apartment', { defaultValue: 'Apartment' })}</SelectItem>
+                                            <SelectItem value="land">{t('realEstate.propertyTypes.land', { defaultValue: 'Land' })}</SelectItem>
+                                            <SelectItem value="commercial">{t('realEstate.propertyTypes.commercial', { defaultValue: 'Commercial' })}</SelectItem>
+                                            <SelectItem value="villa">{t('realEstate.propertyTypes.villa', { defaultValue: 'Villa' })}</SelectItem>
+                                            <SelectItem value="office">{t('realEstate.propertyTypes.office', { defaultValue: 'Office' })}</SelectItem>
+                                            <SelectItem value="warehouse">{t('realEstate.propertyTypes.warehouse', { defaultValue: 'Warehouse' })}</SelectItem>
+                                            <SelectItem value="other">{t('realEstate.propertyTypes.other', { defaultValue: 'Other' })}</SelectItem>
                                         </SelectContent>
                                     </Select>
                                 </div>
@@ -231,18 +294,24 @@ export function CreateRealEstateTransactionModal({
                                 <div className="grid gap-2">
                                     <Label>{t('realEstate.buyer', { defaultValue: 'Buyer' })} <span className="text-destructive">*</span></Label>
                                     <div className="flex flex-col gap-2">
-                                        <PartnerAutocompleteInput
-                                            value={buyerName}
-                                            onChange={(value) => {
-                                                setBuyerName(value)
-                                                if (buyerLink && value.trim() !== buyerLink.name) {
-                                                    setBuyerLink(null)
-                                                }
-                                            }}
-                                            onSelectPartner={handleBuyerPartnerSelect}
-                                            workspaceId={workspaceId}
-                                            placeholder={t('realEstate.buyerPlaceholder', { defaultValue: 'Search or enter buyer name' })}
-                                        />
+                                        <div className="flex gap-2">
+                                            <PartnerAutocompleteInput
+                                                value={buyerName}
+                                                onChange={(value) => {
+                                                    setBuyerName(value)
+                                                    if (buyerLink && value.trim() !== buyerLink.name) {
+                                                        setBuyerLink(null)
+                                                    }
+                                                }}
+                                                onSelectPartner={handleBuyerPartnerSelect}
+                                                workspaceId={workspaceId}
+                                                placeholder={t('realEstate.buyerPlaceholder', { defaultValue: 'Search or enter buyer name' })}
+                                                className="flex-1"
+                                            />
+                                            <Button type="button" size="icon" variant="outline" className="shrink-0" onClick={() => setIsCreateBuyerOpen(true)}>
+                                                <Plus className="h-4 w-4" />
+                                            </Button>
+                                        </div>
                                         {buyerLink ? (
                                             <LinkedPartyBadge label={t('realEstate.linkedBuyer', { defaultValue: 'Linked buyer' })} name={buyerLink.name} onClear={() => setBuyerLink(null)} />
                                         ) : null}
@@ -251,18 +320,24 @@ export function CreateRealEstateTransactionModal({
                                 <div className="grid gap-2">
                                     <Label>{t('realEstate.seller', { defaultValue: 'Seller' })} <span className="text-destructive">*</span></Label>
                                     <div className="flex flex-col gap-2">
-                                        <PartnerAutocompleteInput
-                                            value={sellerName}
-                                            onChange={(value) => {
-                                                setSellerName(value)
-                                                if (sellerLink && value.trim() !== sellerLink.name) {
-                                                    setSellerLink(null)
-                                                }
-                                            }}
-                                            onSelectPartner={handleSellerPartnerSelect}
-                                            workspaceId={workspaceId}
-                                            placeholder={t('realEstate.sellerPlaceholder', { defaultValue: 'Search or enter seller name' })}
-                                        />
+                                        <div className="flex gap-2">
+                                            <PartnerAutocompleteInput
+                                                value={sellerName}
+                                                onChange={(value) => {
+                                                    setSellerName(value)
+                                                    if (sellerLink && value.trim() !== sellerLink.name) {
+                                                        setSellerLink(null)
+                                                    }
+                                                }}
+                                                onSelectPartner={handleSellerPartnerSelect}
+                                                workspaceId={workspaceId}
+                                                placeholder={t('realEstate.sellerPlaceholder', { defaultValue: 'Search or enter seller name' })}
+                                                className="flex-1"
+                                            />
+                                            <Button type="button" size="icon" variant="outline" className="shrink-0" onClick={() => setIsCreateSellerOpen(true)}>
+                                                <Plus className="h-4 w-4" />
+                                            </Button>
+                                        </div>
                                         {sellerLink ? (
                                             <LinkedPartyBadge label={t('realEstate.linkedSeller', { defaultValue: 'Linked seller' })} name={sellerLink.name} onClear={() => setSellerLink(null)} />
                                         ) : null}
@@ -408,6 +483,23 @@ export function CreateRealEstateTransactionModal({
                         </Button>
                     </DialogFooter>
                 </form>
+
+            <BusinessPartnerFormDialog
+                isOpen={isCreateBuyerOpen}
+                onOpenChange={setIsCreateBuyerOpen}
+                defaultCurrency={features.default_currency}
+                availableCurrencies={availableCurrencies}
+                isSaving={isSavingBuyer}
+                onSubmit={handleCreateBuyerPartner}
+            />
+            <BusinessPartnerFormDialog
+                isOpen={isCreateSellerOpen}
+                onOpenChange={setIsCreateSellerOpen}
+                defaultCurrency={features.default_currency}
+                availableCurrencies={availableCurrencies}
+                isSaving={isSavingSeller}
+                onSubmit={handleCreateSellerPartner}
+            />
             </DialogContent>
         </Dialog>
     )

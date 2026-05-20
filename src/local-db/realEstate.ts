@@ -19,6 +19,7 @@ import type {
     RealEstateInstallment,
     RealEstatePayment,
     RealEstatePaymentKind,
+    RealEstatePropertyType,
     RealEstateTransaction,
     RealEstateTransactionStatus,
     RealEstateTransactionType,
@@ -316,6 +317,7 @@ async function appendRealEstatePaymentTransaction(
 
 export interface CreateRealEstateTransactionInput {
     transactionType: RealEstateTransactionType
+    propertyType?: RealEstatePropertyType | null
     location: string
     landAreaM2?: number
     currency: CurrencyCode
@@ -408,6 +410,7 @@ export async function createRealEstateTransaction(
         workspaceId,
         transactionNo,
         transactionType: input.transactionType,
+        propertyType: input.propertyType ?? null,
         location,
         landAreaM2: Math.max(0, Number(input.landAreaM2 || 0)),
         currency: input.currency,
