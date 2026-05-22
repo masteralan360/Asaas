@@ -123,9 +123,7 @@ export function BarcodeScannerToggleButton({
             if (event.ctrlKey || event.metaKey || event.altKey) return
             if (event.key === 'Shift' || event.key === 'CapsLock' || event.key === 'Escape') return
 
-            const activeElement = document.activeElement
             const focusedEditableElement = getFocusedEditableElement()
-            const targetInputIsFocused = Boolean(targetInputRef?.current && activeElement === targetInputRef.current)
 
             if (event.key === 'Enter' || event.key === 'Tab') {
                 if (scanBufferRef.current) {
