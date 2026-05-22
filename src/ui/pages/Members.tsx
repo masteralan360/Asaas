@@ -21,12 +21,14 @@ import {
     DialogDescription,
     Select,
     SelectContent,
+    SelectGroup,
+    SelectLabel,
     SelectItem,
     SelectTrigger,
     SelectValue,
     Switch
 } from '@/ui/components'
-import { UsersRound, UserMinus, Loader2, Shield, Eye, Briefcase, UserRound, KeyRound } from 'lucide-react'
+import { UsersRound, UserMinus, Loader2, Shield, Eye, Briefcase, UserRound, KeyRound, ShieldCheck } from 'lucide-react'
 import { ProfileCardModal } from '@/ui/components/ProfileCardModal'
 import { useTranslation } from 'react-i18next'
 import { formatDate } from '@/lib/utils'
@@ -38,6 +40,7 @@ import {
     isSupportedWorkspacePermissionKey,
     type WorkspacePermissionKey
 } from '@/permissions'
+import { launcherSections, launcherSectionOrder } from '@/ui/navigation/navigationMeta'
 
 interface Member {
     id: string
@@ -225,6 +228,16 @@ export function Members() {
     const selectedMemberPermissionKeys = permissionMember
         ? permissionsByUserId.get(permissionMember.id) || new Set<WorkspacePermissionKey>()
         : new Set<WorkspacePermissionKey>()
+
+    const groupedPermissions = useMemo(() => {
+        const groups: Record<string, typeof WORKSPACE_PERMISSION_DEFINITIONS[number][]> = {}
+        WORKSPACE_PERMISSION_DEFINITIONS.forEach((permission: any) => {
+            const section = permission.section || 'other'
+            if (!groups[section]) groups[section] = []
+            groups[section].push(permission)
+        })
+        return groups
+    }, [])
 
     const openPermissionModal = (member: Member) => {
         if (member.role === 'admin') return
@@ -445,14 +458,36 @@ export function Members() {
                         <div className="w-full max-w-[260px]">
                             <Select value={selectedPermissionModule} onValueChange={setSelectedPermissionModule}>
                                 <SelectTrigger>
-                                    <SelectValue placeholder={t('members.permissions.selectModule', { defaultValue: 'Select module' })} />
+                                    <div className="flex items-center gap-2">
+                                        {selectedPermissionDefinition && (
+                                            <selectedPermissionDefinition.icon className="h-4 w-4 text-primary" />
+                                        )}
+                                        <SelectValue placeholder={t('members.permissions.selectModule', { defaultValue: 'Select module' })} />
+                                    </div>
                                 </SelectTrigger>
                                 <SelectContent>
-                                    {WORKSPACE_PERMISSION_DEFINITIONS.map((permission) => (
-                                        <SelectItem key={permission.module} value={permission.module}>
-                                            {t(permission.labelKey, { defaultValue: permission.defaultLabel })}
-                                        </SelectItem>
-                                    ))}
+                                    {launcherSectionOrder.map((sectionKey) => {
+                                        const group = groupedPermissions[sectionKey]
+                                        if (!group || group.length === 0) return null
+                                        const sectionInfo = launcherSections[sectionKey]
+
+                                        return (
+                                            <SelectGroup key={sectionKey}>
+                                                <SelectLabel className="flex items-center gap-2 px-2 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider bg-muted/30 rounded-sm mb-1">
+                                                    {sectionInfo.icon && <sectionInfo.icon className="h-3 w-3" />}
+                                                    {sectionInfo.title}
+                                                </SelectLabel>
+                                                {group.map((permission) => (
+                                                    <SelectItem key={permission.module} value={permission.module}>
+                                                        <div className="flex items-center gap-2">
+                                                            <permission.icon className="h-4 w-4 text-muted-foreground" />
+                                                            {t(permission.labelKey, { defaultValue: permission.defaultLabel })}
+                                                        </div>
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectGroup>
+                                        )
+                                    })}
                                 </SelectContent>
                             </Select>
                         </div>
@@ -461,9 +496,12 @@ export function Members() {
                             <div className="rounded-lg border border-border/60 bg-background/60 p-4">
                                 <div className="flex items-start justify-between gap-4">
                                     <div className="min-w-0">
-                                        <p className="font-medium">
-                                            {t('members.permissions.access', { defaultValue: 'Access' })}
-                                        </p>
+                                        <div className="flex items-center gap-2">
+                                            <ShieldCheck className="h-4 w-4 text-primary" />
+                                            <p className="font-medium">
+                                                {t('members.permissions.access', { defaultValue: 'Access' })}
+                                            </p>
+                                        </div>
                                         <p className="mt-1 text-sm text-muted-foreground">
                                             {t(selectedPermissionDefinition.descriptionKey, {
                                                 defaultValue: selectedPermissionDefinition.defaultDescription

@@ -1,3 +1,24 @@
+import {
+  CreditCard,
+  ArrowRightLeft,
+  UsersRound,
+  Users,
+  Truck,
+  ShoppingCart,
+  Store,
+  FileSpreadsheet,
+  FileText,
+  HandCoins,
+  Copy,
+  Wallet,
+  Boxes,
+  History,
+  Warehouse,
+  Percent,
+  BarChart3,
+  TrendingUp,
+} from "lucide-react";
+
 export const WORKSPACE_PERMISSION_DEFINITIONS = [
   {
     key: "payment.access",
@@ -6,6 +27,8 @@ export const WORKSPACE_PERMISSION_DEFINITIONS = [
     defaultLabel: "Payment module",
     descriptionKey: "members.permissions.paymentAccessDescription",
     defaultDescription: "Access the central payments page.",
+    icon: CreditCard,
+    section: "cash-and-control",
   },
   {
     key: "directTransaction.access",
@@ -14,6 +37,8 @@ export const WORKSPACE_PERMISSION_DEFINITIONS = [
     defaultLabel: "Direct Transaction module",
     descriptionKey: "members.permissions.directTransactionAccessDescription",
     defaultDescription: "Access manual incoming and outgoing transactions.",
+    icon: ArrowRightLeft,
+    section: "cash-and-control",
   },
   {
     key: "businessPartners.access",
@@ -22,6 +47,8 @@ export const WORKSPACE_PERMISSION_DEFINITIONS = [
     defaultLabel: "Business Partners",
     descriptionKey: "members.permissions.businessPartnersAccessDescription",
     defaultDescription: "Access business partner records and balances.",
+    icon: UsersRound,
+    section: "partners-and-demand",
   },
   {
     key: "customers.access",
@@ -30,6 +57,8 @@ export const WORKSPACE_PERMISSION_DEFINITIONS = [
     defaultLabel: "Customers",
     descriptionKey: "members.permissions.customersAccessDescription",
     defaultDescription: "Access customer records and details.",
+    icon: Users,
+    section: "partners-and-demand",
   },
   {
     key: "suppliers.access",
@@ -38,6 +67,8 @@ export const WORKSPACE_PERMISSION_DEFINITIONS = [
     defaultLabel: "Suppliers",
     descriptionKey: "members.permissions.suppliersAccessDescription",
     defaultDescription: "Access supplier records and details.",
+    icon: Truck,
+    section: "partners-and-demand",
   },
   {
     key: "orders.access",
@@ -46,6 +77,8 @@ export const WORKSPACE_PERMISSION_DEFINITIONS = [
     defaultLabel: "Orders",
     descriptionKey: "members.permissions.ordersAccessDescription",
     defaultDescription: "Access purchase and sales orders.",
+    icon: ShoppingCart,
+    section: "partners-and-demand",
   },
   {
     key: "ecommerce.access",
@@ -54,6 +87,8 @@ export const WORKSPACE_PERMISSION_DEFINITIONS = [
     defaultLabel: "E-Commerce",
     descriptionKey: "members.permissions.ecommerceAccessDescription",
     defaultDescription: "Access marketplace orders and e-commerce operations.",
+    icon: Store,
+    section: "partners-and-demand",
   },
   {
     key: "accounting.access",
@@ -62,6 +97,8 @@ export const WORKSPACE_PERMISSION_DEFINITIONS = [
     defaultLabel: "Accounting",
     descriptionKey: "members.permissions.accountingAccessDescription",
     defaultDescription: "Access accounting records and budget controls.",
+    icon: FileSpreadsheet,
+    section: "cash-and-control",
   },
   {
     key: "invoiceHistory.access",
@@ -70,6 +107,8 @@ export const WORKSPACE_PERMISSION_DEFINITIONS = [
     defaultLabel: "Invoice History & Upload Files",
     descriptionKey: "members.permissions.invoiceHistoryAccessDescription",
     defaultDescription: "Access invoice history and uploaded invoice files.",
+    icon: FileText,
+    section: "cash-and-control",
   },
   {
     key: "loans.access",
@@ -78,6 +117,8 @@ export const WORKSPACE_PERMISSION_DEFINITIONS = [
     defaultLabel: "Loans",
     descriptionKey: "members.permissions.loansAccessDescription",
     defaultDescription: "Access loan records and histories.",
+    icon: HandCoins,
+    section: "cash-and-control",
   },
   {
     key: "installments.access",
@@ -86,6 +127,8 @@ export const WORKSPACE_PERMISSION_DEFINITIONS = [
     defaultLabel: "Installments",
     descriptionKey: "members.permissions.installmentsAccessDescription",
     defaultDescription: "Access installment schedules and collection flow.",
+    icon: Copy,
+    section: "cash-and-control",
   },
   {
     key: "ledger.access",
@@ -94,6 +137,8 @@ export const WORKSPACE_PERMISSION_DEFINITIONS = [
     defaultLabel: "Ledger",
     descriptionKey: "members.permissions.ledgerAccessDescription",
     defaultDescription: "Access ledger and cross-module financial trails.",
+    icon: Wallet,
+    section: "cash-and-control",
   },
   {
     key: "stockAdjustments.access",
@@ -102,6 +147,8 @@ export const WORKSPACE_PERMISSION_DEFINITIONS = [
     defaultLabel: "Stock Adjustments",
     descriptionKey: "members.permissions.stockAdjustmentsAccessDescription",
     defaultDescription: "Access stock adjustment records.",
+    icon: Boxes,
+    section: "stock-and-supply",
   },
   {
     key: "inventoryTransactions.access",
@@ -110,6 +157,8 @@ export const WORKSPACE_PERMISSION_DEFINITIONS = [
     defaultLabel: "Inventory Transactions",
     descriptionKey: "members.permissions.inventoryTransactionsAccessDescription",
     defaultDescription: "Access inventory movement and transaction logs.",
+    icon: History,
+    section: "stock-and-supply",
   },
   {
     key: "inventoryTransfer.access",
@@ -118,6 +167,8 @@ export const WORKSPACE_PERMISSION_DEFINITIONS = [
     defaultLabel: "Inventory Transfer",
     descriptionKey: "members.permissions.inventoryTransferAccessDescription",
     defaultDescription: "Access inventory transfer workflows.",
+    icon: ArrowRightLeft,
+    section: "stock-and-supply",
   },
   {
     key: "storages.access",
@@ -126,6 +177,8 @@ export const WORKSPACE_PERMISSION_DEFINITIONS = [
     defaultLabel: "Storages",
     descriptionKey: "members.permissions.storagesAccessDescription",
     defaultDescription: "Access warehouses and storage locations.",
+    icon: Warehouse,
+    section: "stock-and-supply",
   },
   {
     key: "discounts.access",
@@ -134,6 +187,8 @@ export const WORKSPACE_PERMISSION_DEFINITIONS = [
     defaultLabel: "Discounts",
     descriptionKey: "members.permissions.discountsAccessDescription",
     defaultDescription: "Access discount and promotion controls.",
+    icon: Percent,
+    section: "stock-and-supply",
   },
   {
     key: "revenueAnalytics.access",
@@ -142,6 +197,8 @@ export const WORKSPACE_PERMISSION_DEFINITIONS = [
     defaultLabel: "Revenue Analytics",
     descriptionKey: "members.permissions.revenueAnalyticsAccessDescription",
     defaultDescription: "Access revenue analytics and reporting.",
+    icon: BarChart3,
+    section: "insights-and-trends",
   },
   {
     key: "teamPerformance.access",
@@ -150,6 +207,8 @@ export const WORKSPACE_PERMISSION_DEFINITIONS = [
     defaultLabel: "Team Performance",
     descriptionKey: "members.permissions.teamPerformanceAccessDescription",
     defaultDescription: "Access team performance reporting.",
+    icon: TrendingUp,
+    section: "people-and-workspace",
   },
   {
     key: "hr.access",
@@ -158,6 +217,8 @@ export const WORKSPACE_PERMISSION_DEFINITIONS = [
     defaultLabel: "HR",
     descriptionKey: "members.permissions.hrAccessDescription",
     defaultDescription: "Access HR records and workflows.",
+    icon: UsersRound,
+    section: "people-and-workspace",
   },
 ] as const;
 
