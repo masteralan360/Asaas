@@ -211,6 +211,10 @@ export function PdfPreviewPage() {
 
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'p') {
+                e.preventDefault()
+                return
+            }
             if (e.ctrlKey || e.metaKey) {
                 if (e.key === '=' || e.key === '+') {
                     e.preventDefault()

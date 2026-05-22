@@ -489,6 +489,7 @@ export function CreateRealEstateTransactionModal({
                 onOpenChange={setIsCreateBuyerOpen}
                 defaultCurrency={features.default_currency}
                 availableCurrencies={availableCurrencies}
+                initialRole="customer"
                 isSaving={isSavingBuyer}
                 onSubmit={handleCreateBuyerPartner}
             />
@@ -497,6 +498,7 @@ export function CreateRealEstateTransactionModal({
                 onOpenChange={setIsCreateSellerOpen}
                 defaultCurrency={features.default_currency}
                 availableCurrencies={availableCurrencies}
+                initialRole="customer"
                 isSaving={isSavingSeller}
                 onSubmit={handleCreateSellerPartner}
             />

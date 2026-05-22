@@ -106,6 +106,18 @@ export function PrintPreviewModal({
     const htmlPrintRef = useRef<HTMLDivElement>(null)
     const templatePrintRef = useRef<HTMLDivElement>(null)
 
+    useEffect(() => {
+        if (!isOpen) return
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'p') {
+                e.preventDefault()
+                e.stopPropagation()
+            }
+        }
+        window.addEventListener('keydown', handleKeyDown, { capture: true })
+        return () => window.removeEventListener('keydown', handleKeyDown, { capture: true })
+    }, [isOpen])
+
     const hasPdfData = !!pdfBuilder || !!(pdfData && features)
     const printFormat: PrintFormat = (invoiceData?.printFormat || 'a4') as PrintFormat
     const usesLocalInvoiceStorage = shouldUseLocalInvoiceStorage(workspaceId)
