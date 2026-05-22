@@ -148,12 +148,6 @@ export function BarcodeScannerToggleButton({
                 return
             }
 
-            if (focusedEditableElement || targetInputIsFocused) {
-                event.preventDefault()
-                event.stopPropagation()
-                focusedEditableElement?.blur()
-            }
-
             const now = Date.now()
             const delta = now - lastKeyTimeRef.current
             lastKeyTimeRef.current = now

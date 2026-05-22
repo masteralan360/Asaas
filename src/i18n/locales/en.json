@@ -876,7 +876,8 @@
             "imageSource": "Image Source",
             "webUploadDesc": "Image will be securely uploaded and synced via cloud storage.",
             "productDetailsTitle": "Product Details",
-            "productDetailsDesc": "Capture the core identity, description, unit, category, and storage location for this product."
+            "productDetailsDesc": "Capture the core identity, description, unit, category, and storage location for this product.",
+            "mixedStorages": "Mixed Storages"
         },
         "messages": {
             "addSuccess": "Product added successfully",

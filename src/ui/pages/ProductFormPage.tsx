@@ -23,6 +23,7 @@ import {
     Warehouse
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { useLiveQuery } from 'dexie-react-hooks'
 
 import { useAuth } from '@/auth'
 import {
@@ -46,6 +47,7 @@ import { normalizeBarcodeDigits, normalizeBarcodeScannerText } from '@/lib/barco
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard'
 import { isTauri } from '@/lib/platform'
 import { cn, formatCurrency } from '@/lib/utils'
+import { getInventoryRowsForProduct } from '@/local-db/inventory'
 import { platformService } from '@/services/platformService'
 import { useWorkspace } from '@/workspace'
 import { BarcodeScannerToggleButton } from '@/ui/components/BarcodeScannerToggleButton'
@@ -71,6 +73,10 @@ import {
     SelectValue,
     Switch,
     Textarea,
+    Tooltip,
+    TooltipContent,
+    TooltipProvider,
+    TooltipTrigger,
     useToast
 } from '@/ui/components'
 
@@ -219,11 +225,35 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
     const persistedProductId = isEditing ? product?.id : undefined
     const productBarcodes = useProductBarcodes(persistedProductId)
 
+    const productInventoryRows = useLiveQuery(
+        async () => {
+            if (!persistedProductId) return []
+            return getInventoryRowsForProduct(persistedProductId)
+        },
+        [persistedProductId]
+    )
+
+    const productStorages = useMemo(() => {
+        if (!productInventoryRows || productInventoryRows.length === 0) return []
+        const map = new Map<string, number>()
+        for (const row of productInventoryRows) {
+            const storage = storages.find((s) => s.id === row.storageId)
+            if (!storage) continue
+            const current = map.get(storage.name) ?? 0
+            map.set(storage.name, current + row.quantity)
+        }
+        return Array.from(map.entries()).map(([name, quantity]) => ({ name, quantity })).sort((a, b) => b.quantity - a.quantity)
+    }, [productInventoryRows, storages])
+
     const [formData, setFormData] = useState<ProductFormData>(() =>
-        createInitialFormData(features.default_currency, getPrimaryStorageFromList(storages)?.id || '')
+        createInitialFormData(
+            features.default_currency,
+            mode === 'create' ? '' : (getPrimaryStorageFromList(storages)?.id || '')
+        )
     )
     const [isSaving, setIsSaving] = useState(false)
     const [imageError, setImageError] = useState(false)
+    const [storageError, setStorageError] = useState(false)
     const [returnRulesModalOpen, setReturnRulesModalOpen] = useState(false)
     const [missingProductStateVisible, setMissingProductStateVisible] = useState(false)
     const [newBarcodeValue, setNewBarcodeValue] = useState('')
@@ -233,6 +263,7 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
     const [isDeletingBarcode, setIsDeletingBarcode] = useState(false)
     const [activeScannerTarget, setActiveScannerTarget] = useState<ProductScannerTarget>(() => readStoredScannerTarget())
     const skuInputRef = useRef<HTMLInputElement>(null)
+    const storageTriggerRef = useRef<HTMLButtonElement>(null)
     const newBarcodeInputRef = useRef<HTMLInputElement>(null)
     const cameraInputRef = useRef<HTMLInputElement>(null)
     const imageUploadInputRef = useRef<HTMLInputElement>(null)
@@ -313,7 +344,7 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
         let nextFormData: ProductFormData
 
         if (mode === 'create') {
-            nextFormData = createInitialFormData(features.default_currency, getPrimaryStorageFromList(storages)?.id || '')
+            nextFormData = createInitialFormData(features.default_currency, '')
         } else {
             if (!product) {
                 return
@@ -628,6 +659,14 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
 
     const handleSubmit = async (event: React.FormEvent) => {
         event.preventDefault()
+
+        if (mode === 'create' && !formData.storageId) {
+            setStorageError(true)
+            storageTriggerRef.current?.focus()
+            storageTriggerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+            return
+        }
+
         await persistProduct()
     }
 
@@ -658,9 +697,32 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
     const selectedCategoryLabel = formData.categoryId
         ? categories.find((category) => category.id === formData.categoryId)?.name || (t('categories.noCategory') || 'No category')
         : (t('categories.noCategory') || 'No category')
-    const selectedStorageLabel = formData.storageId
-        ? storages.find((storage) => storage.id === formData.storageId)?.name || (t('storages.selectStorage') || 'Select Storage')
-        : (t('storages.selectStorage') || 'Select Storage')
+    const labelMixed = t('products.form.mixedStorages') || 'Mixed'
+    const selectedStorageLabel = isEditing
+        ? productStorages.length === 0
+            ? '—'
+            : productStorages.length === 1
+                ? productStorages[0].name
+                : (
+                    <TooltipProvider>
+                        <Tooltip delayDuration={200}>
+                            <TooltipTrigger asChild>
+                                <span className="cursor-help border-b-2 border-dotted border-foreground/30">{labelMixed}</span>
+                            </TooltipTrigger>
+                            <TooltipContent side="top" align="start" className="max-w-[240px] space-y-1.5 p-3">
+                                {productStorages.map((entry) => (
+                                    <div key={entry.name} className="flex items-center justify-between gap-4 text-sm">
+                                        <span>{entry.name}</span>
+                                        <span className="font-mono tabular-nums text-muted-foreground">{entry.quantity}</span>
+                                    </div>
+                                ))}
+                            </TooltipContent>
+                        </Tooltip>
+                    </TooltipProvider>
+                )
+        : formData.storageId
+            ? storages.find((storage) => storage.id === formData.storageId)?.name || (t('storages.selectStorage') || 'Select Storage')
+            : (t('storages.selectStorage') || 'Select Storage')
     const returnRulesPreview = formData.returnRules.trim() || (t('products.form.noReturnRules') || 'No custom return guidance yet.')
     const statusLabel = isClone
         ? (t('common.clone') || 'Clone')
@@ -902,36 +964,41 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                                         </SelectContent>
                                     </Select>
                                 </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="product-storage" className="flex items-center gap-2 font-bold">
-                                        <Warehouse className="h-4 w-4 text-primary/60" />
-                                        {t('storages.title') || 'Storage'}
-                                    </Label>
-                                    <Select
-                                        value={formData.storageId}
-                                        onValueChange={(value) => setFormData((current) => ({ ...current, storageId: value }))}
-                                        disabled={isReadOnly || !canEditStockAllocation}
-                                    >
-                                        <SelectTrigger id="product-storage" className="h-12 rounded-lg border-border/40 bg-muted/10" allowViewer={true}>
-                                            <SelectValue placeholder={t('storages.selectStorage') || 'Select Storage'} />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            {storages.map((storage) => (
-                                                <SelectItem key={storage.id} value={storage.id}>
-                                                    <div className="flex items-center gap-2">
-                                                        <div className={cn('h-1.5 w-1.5 rounded-full', storage.isSystem ? 'bg-primary' : 'bg-muted-foreground/30')} />
-                                                        {storage.isSystem ? (t(`storages.${storage.name.toLowerCase()}`) || storage.name) : storage.name}
-                                                    </div>
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                    {isEditing && (
-                                        <div className="rounded-xl border border-sky-500/20 bg-sky-500/10 px-3 py-2 text-xs font-semibold text-sky-700">
-                                            {t('products.form.stockAdjustmentStorageHint') || 'Storage is locked for existing products. Use Stock Adjustments to move stock between storages.'}
-                                        </div>
-                                    )}
-                                </div>
+                                {mode !== 'create' ? null : (
+                                    <div className="space-y-2">
+                                        <Label htmlFor="product-storage" className="flex items-center gap-2 font-bold">
+                                            <Warehouse className="h-4 w-4 text-primary/60" />
+                                            {t('storages.title') || 'Storage'}
+                                        </Label>
+                                        <Select
+                                            value={formData.storageId}
+                                            onValueChange={(value) => {
+                                                setFormData((current) => ({ ...current, storageId: value }))
+                                                setStorageError(false)
+                                            }}
+                                            disabled={isReadOnly || !canEditStockAllocation}
+                                        >
+                                            <SelectTrigger
+                                                ref={storageTriggerRef}
+                                                id="product-storage"
+                                                className={cn('h-12 rounded-lg bg-muted/10', storageError ? 'border-destructive ring-2 ring-destructive/50' : 'border-border/40')}
+                                                allowViewer={true}
+                                            >
+                                                <SelectValue placeholder={t('storages.selectStorage') || 'Select Storage'} />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {storages.map((storage) => (
+                                                    <SelectItem key={storage.id} value={storage.id}>
+                                                        <div className="flex items-center gap-2">
+                                                            <div className={cn('h-1.5 w-1.5 rounded-full', storage.isSystem ? 'bg-primary' : 'bg-muted-foreground/30')} />
+                                                            {storage.isSystem ? (t(`storages.${storage.name.toLowerCase()}`) || storage.name) : storage.name}
+                                                        </div>
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                )}
                             </div>
                             <div className="grid gap-3 sm:grid-cols-3">
                                 <div className="rounded-2xl border border-border/50 bg-background/80 p-4">
@@ -943,7 +1010,10 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                                     <div className="mt-1 text-sm font-semibold text-foreground">{unitLabel}</div>
                                 </div>
                                 <div className="rounded-2xl border border-border/50 bg-background/80 p-4">
-                                    <div className="text-[11px] font-black uppercase tracking-[0.18em] text-muted-foreground">{t('storages.title') || 'Storage'}</div>
+                                    <div className="flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.18em] text-muted-foreground">
+                                        <Warehouse className="h-4 w-4 text-primary/60" />
+                                        {t('storages.title') || 'Storage'}
+                                    </div>
                                     <div className="mt-1 text-sm font-semibold text-foreground">{selectedStorageLabel}</div>
                                 </div>
                             </div>

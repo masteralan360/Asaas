@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useLocation } from 'wouter'
 import { useTranslation } from 'react-i18next'
+import { useLiveQuery } from 'dexie-react-hooks'
 import { Copy, GitBranch, Info, LayoutGrid, List as ListIcon, Loader2, Package, Pencil, Plus, Search, Trash2 } from 'lucide-react'
 
 import { useAuth } from '@/auth'
@@ -17,6 +18,7 @@ import {
     type Product
 } from '@/local-db'
 import { isMobile } from '@/lib/platform'
+import { db } from '@/local-db/database'
 import {
     getRetriableActionToast,
     isRetriableWebRequestError,
@@ -54,6 +56,10 @@ import {
     TableHeader,
     TableRow,
     Textarea,
+    Tooltip,
+    TooltipContent,
+    TooltipProvider,
+    TooltipTrigger,
     AppPagination,
     useToast
 } from '@/ui/components'
@@ -84,6 +90,36 @@ export function Products() {
     const categories = useCategories(user?.workspaceId)
     const storages = useStorages(user?.workspaceId)
     const workspaceId = user?.workspaceId || ''
+
+    const inventoryRows = useLiveQuery(
+        () => workspaceId
+            ? db.inventory.where('workspaceId').equals(workspaceId).and((r) => !r.isDeleted).toArray()
+            : [],
+        [workspaceId]
+    )
+
+    const productStorageMap = useMemo(() => {
+        const map = new Map<string, { name: string; quantity: number }[]>()
+        if (!inventoryRows) return map
+        const temp = new Map<string, Map<string, number>>()
+        for (const row of inventoryRows) {
+            const storage = storages.find((s) => s.id === row.storageId)
+            if (!storage) continue
+            const productEntry = temp.get(row.productId) ?? new Map()
+            const currentQty = productEntry.get(storage.name) ?? 0
+            productEntry.set(storage.name, currentQty + row.quantity)
+            temp.set(row.productId, productEntry)
+        }
+        for (const [productId, storageMap] of temp) {
+            const entries: { name: string; quantity: number }[] = []
+            for (const [name, quantity] of storageMap) {
+                entries.push({ name, quantity })
+            }
+            map.set(productId, entries)
+        }
+        return map
+    }, [inventoryRows, storages])
+
     const canEdit = user?.role === 'admin' || user?.role === 'staff'
     const canDelete = user?.role === 'admin'
     const canCloneProducts = user?.role === 'admin'
@@ -322,6 +358,32 @@ export function Products() {
         if (!id) return ''
         const storage = storages.find((item) => item.id === id)
         return storage ? storage.name : ''
+    }
+
+    const renderStorage = (productId: string) => {
+        const entries = productStorageMap.get(productId)
+        if (!entries || entries.length === 0) return null
+        if (entries.length === 1) return <>{entries[0].name}</>
+        const sorted = [...entries].sort((a, b) => b.quantity - a.quantity)
+        return (
+            <TooltipProvider>
+                <Tooltip delayDuration={200}>
+                    <TooltipTrigger asChild>
+                            <span className="cursor-help border-b-2 border-dotted border-foreground/30 text-foreground/80">
+                                {t('products.form.mixedStorages') || 'Mixed'}
+                            </span>
+                    </TooltipTrigger>
+                    <TooltipContent side="top" align="start" className="max-w-[240px] space-y-1.5 p-3">
+                        {sorted.map((entry) => (
+                            <div key={entry.name} className="flex items-center justify-between gap-4 text-sm">
+                                <span>{entry.name}</span>
+                                <span className="font-mono tabular-nums text-muted-foreground">{entry.quantity}</span>
+                            </div>
+                        ))}
+                    </TooltipContent>
+                </Tooltip>
+            </TooltipProvider>
+        )
     }
 
     const filteredProducts = useMemo(() => products.filter((product) =>
@@ -752,7 +814,7 @@ export function Products() {
                                                         {getCategoryName(product.categoryId)}
                                                     </div>
                                                     <div className="mt-0.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">
-                                                        {getStorageName(product.storageId)}
+                                                        {renderStorage(product.id) ?? getStorageName(product.storageId)}
                                                     </div>
                                                 </div>
                                                 <div className="flex flex-col justify-center text-right">
@@ -850,7 +912,7 @@ export function Products() {
                                                         <div className="text-[10px] font-mono font-bold uppercase tracking-widest text-muted-foreground/60">{product.sku}</div>
                                                         <h3 className="line-clamp-2 text-sm font-bold leading-snug text-foreground transition-colors group-hover:text-primary">{product.name}</h3>
                                                         <div className="text-[11px] font-bold uppercase tracking-wide text-primary/70">{getCategoryName(product.categoryId)}</div>
-                                                        <div className="text-[10px] font-medium text-muted-foreground/80">{getStorageName(product.storageId)}</div>
+                                                        <div className="text-[10px] font-medium text-muted-foreground/80">{renderStorage(product.id) ?? getStorageName(product.storageId)}</div>
                                                     </div>
 
                                                     <div className="flex items-center justify-between border-t border-border/40 pt-3">
@@ -940,7 +1002,7 @@ export function Products() {
                                                         <TableCell className="font-mono text-sm">{product.sku}</TableCell>
                                                         <TableCell className="font-medium">{product.name}</TableCell>
                                                         <TableCell>{getCategoryName(product.categoryId)}</TableCell>
-                                                        <TableCell>{getStorageName(product.storageId)}</TableCell>
+                                                        <TableCell>{renderStorage(product.id) ?? getStorageName(product.storageId)}</TableCell>
                                                         <TableCell className="text-right">
                                                             {formatCurrency(product.price, product.currency, features.iqd_display_preference)}
                                                         </TableCell>
