@@ -1890,6 +1890,7 @@ function OrdersListView({ workspaceId }: { workspaceId: string }) {
                 onClose={() => setShowPrintPreview(false)}
                 onConfirm={() => setShowPrintPreview(false)}
                 title={activeTab === 'sales' ? (t('orders.tabs.sales') || 'Sales Orders') : (t('orders.tabs.purchase') || 'Purchase Orders')}
+                module="orders"
                 features={features}
                 workspaceName={workspaceName}
                 invoiceData={{

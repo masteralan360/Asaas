@@ -1469,6 +1469,7 @@ export function Revenue() {
                     <PrintPreviewModal
                         isOpen={showPrintPreview}
                         onClose={() => setShowPrintPreview(false)}
+                        module="revenue"
                         title={t('revenue.printList') || 'Print Revenue List'}
                         onConfirm={() => setShowPrintPreview(false)}
                     >

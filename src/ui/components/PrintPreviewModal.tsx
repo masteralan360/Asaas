@@ -32,6 +32,7 @@ import { type WorkspaceFeatures } from '@/workspace'
 import { supabase } from '@/auth/supabase'
 import { getRetriableActionToast, isRetriableWebRequestError, normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
 import { setInvoicePreviewSource, type TemplatePreview } from '@/lib/pdfPreviewStore'
+import { useWorkspacePermissions } from '@/permissions/WorkspacePermissionsContext'
 
 interface PrintPreviewModalProps {
     isOpen: boolean
@@ -49,6 +50,7 @@ interface PrintPreviewModalProps {
     templatePreview?: TemplatePreview
     features?: WorkspaceFeatures
     workspaceName?: string | null
+    module?: string
 }
 
 type WorkspaceContactPair = {
@@ -77,11 +79,13 @@ export function PrintPreviewModal({
     printTemplate,
     templatePreview: templatePreviewProp,
     features,
-    workspaceName
+    workspaceName,
+    module
 }: PrintPreviewModalProps) {
     const { t, i18n } = useTranslation()
     const { toast } = useToast()
     const { user } = useAuth()
+    const { hasPermission } = useWorkspacePermissions()
     const [, setLocation] = useLocation()
     const workspaceId = user?.workspaceId
     const workspaceContacts = useWorkspaceContacts(workspaceId)
@@ -127,6 +131,12 @@ export function PrintPreviewModal({
     )
     const printLang = printableFeatures?.print_lang && printableFeatures.print_lang !== 'auto' ? printableFeatures.print_lang : i18n.language
     const t_print = useMemo(() => i18n.getFixedT(printLang), [i18n, printLang])
+
+    const canPrint = useMemo(() => {
+        // Use module specific print permission or fallback to global logic handled by hasPermission
+        const permissionKey = `${module || 'global'}.print` as any
+        return hasPermission(permissionKey)
+    }, [hasPermission, module])
 
     const translations = useMemo(() => ({
         date: t_print('sales.print.date') || 'Date',
@@ -522,7 +532,11 @@ export function PrintPreviewModal({
                             <p className="text-sm text-muted-foreground">
                                 {t('print.openFullPreview') || 'Open the full PDF viewer to preview, zoom, and navigate the document.'}
                             </p>
-                            <Button onClick={handleOpenPreview} className="w-full">
+                            <Button 
+                                onClick={handleOpenPreview} 
+                                className="w-full"
+                                disabled={!canPrint}
+                            >
                                 <ExternalLink className="w-4 h-4 mr-2" />
                                 {t('print.openPreview') || 'Open Full Preview'}
                             </Button>
@@ -543,7 +557,10 @@ export function PrintPreviewModal({
                         {t('common.cancel')}
                     </Button>
                     {showSaveButton && (
-                        <Button onClick={() => handleSave()} disabled={isSaving}>
+                        <Button 
+                            onClick={() => handleSave()} 
+                            disabled={isSaving || !canPrint}
+                        >
                             {isSaving ? (
                                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                             ) : (

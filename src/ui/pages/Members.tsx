@@ -81,7 +81,7 @@ export function Members() {
     const [permissionMutationKey, setPermissionMutationKey] = useState<string | null>(null)
     const [memberToKick, setMemberToKick] = useState<Member | null>(null)
     const [permissionMember, setPermissionMember] = useState<Member | null>(null)
-    const [selectedPermissionModule, setSelectedPermissionModule] = useState<string>(WORKSPACE_PERMISSION_DEFINITIONS[0]?.module ?? 'payment')
+    const [selectedPermissionModule, setSelectedPermissionModule] = useState<string>('global')
     const [profileUserId, setProfileUserId] = useState<string | null>(null)
     const [error, setError] = useState<string | null>(null)
 
@@ -220,9 +220,8 @@ export function Members() {
         }
     }
 
-    const selectedPermissionDefinition = useMemo(() => (
-        WORKSPACE_PERMISSION_DEFINITIONS.find((permission) => permission.module === selectedPermissionModule)
-        || WORKSPACE_PERMISSION_DEFINITIONS[0]
+    const selectedModulePermissions = useMemo(() => (
+        WORKSPACE_PERMISSION_DEFINITIONS.filter((permission) => permission.module === selectedPermissionModule)
     ), [selectedPermissionModule])
 
     const selectedMemberPermissionKeys = permissionMember
@@ -241,7 +240,7 @@ export function Members() {
 
     const openPermissionModal = (member: Member) => {
         if (member.role === 'admin') return
-        setSelectedPermissionModule(WORKSPACE_PERMISSION_DEFINITIONS[0]?.module ?? 'payment')
+        setSelectedPermissionModule('global')
         setPermissionMember(member)
     }
 
@@ -459,32 +458,56 @@ export function Members() {
                             <Select value={selectedPermissionModule} onValueChange={setSelectedPermissionModule}>
                                 <SelectTrigger>
                                     <div className="flex items-center gap-2">
-                                        {selectedPermissionDefinition && (
-                                            <selectedPermissionDefinition.icon className="h-4 w-4 text-primary" />
+                                        {selectedModulePermissions[0] && (
+                                            (() => {
+                                                const Icon = selectedModulePermissions[0].icon
+                                                return <Icon className="h-4 w-4 text-primary" />
+                                            })()
                                         )}
                                         <SelectValue placeholder={t('members.permissions.selectModule', { defaultValue: 'Select module' })} />
                                     </div>
                                 </SelectTrigger>
                                 <SelectContent>
+                                    {/* Global module explicitly at the top and sectionless */}
+                                    {(() => {
+                                        const globalModule = WORKSPACE_PERMISSION_DEFINITIONS.find(p => p.module === 'global')
+                                        if (!globalModule) return null
+                                        const GlobalIcon = globalModule.icon
+                                        return (
+                                            <SelectItem value="global">
+                                                <div className="flex items-center gap-2">
+                                                    <GlobalIcon className="h-4 w-4 text-muted-foreground" />
+                                                    {t('members.permissions.global', { defaultValue: 'Global' })}
+                                                </div>
+                                            </SelectItem>
+                                        )
+                                    })()}
+
                                     {launcherSectionOrder.map((sectionKey) => {
+                                        if (sectionKey === 'global') return null
                                         const group = groupedPermissions[sectionKey]
                                         if (!group || group.length === 0) return null
                                         const sectionInfo = launcherSections[sectionKey]
+                                        const SectionIcon = sectionInfo.icon
 
                                         return (
                                             <SelectGroup key={sectionKey}>
-                                                <SelectLabel className="flex items-center gap-2 px-2 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider bg-muted/30 rounded-sm mb-1">
-                                                    {sectionInfo.icon && <sectionInfo.icon className="h-3 w-3" />}
+                                                <SelectLabel className="flex items-center gap-2 px-2 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider bg-muted/30 rounded-sm mb-1 mt-2 first:mt-0">
+                                                    {SectionIcon && <SectionIcon className="h-3 w-3" />}
                                                     {sectionInfo.title}
                                                 </SelectLabel>
-                                                {group.map((permission) => (
-                                                    <SelectItem key={permission.module} value={permission.module}>
-                                                        <div className="flex items-center gap-2">
-                                                            <permission.icon className="h-4 w-4 text-muted-foreground" />
-                                                            {t(permission.labelKey, { defaultValue: permission.defaultLabel })}
-                                                        </div>
-                                                    </SelectItem>
-                                                ))}
+                                                {group.map((permission) => {
+                                                    if (permission.module === 'global') return null
+                                                    const PermissionIcon = permission.icon
+                                                    return (
+                                                        <SelectItem key={permission.module} value={permission.module}>
+                                                            <div className="flex items-center gap-2">
+                                                                <PermissionIcon className="h-4 w-4 text-muted-foreground" />
+                                                                {t(permission.labelKey, { defaultValue: permission.defaultLabel })}
+                                                            </div>
+                                                        </SelectItem>
+                                                    )
+                                                })}
                                             </SelectGroup>
                                         )
                                     })}
@@ -492,38 +515,52 @@ export function Members() {
                             </Select>
                         </div>
 
-                        {selectedPermissionDefinition && permissionMember && (
-                            <div className="rounded-lg border border-border/60 bg-background/60 p-4">
-                                <div className="flex items-start justify-between gap-4">
-                                    <div className="min-w-0">
-                                        <div className="flex items-center gap-2">
-                                            <ShieldCheck className="h-4 w-4 text-primary" />
-                                            <p className="font-medium">
-                                                {t('members.permissions.access', { defaultValue: 'Access' })}
-                                            </p>
+                        <div className="space-y-4">
+                            {permissionMember && selectedModulePermissions.map((permission) => {
+                                const PermissionIcon = permission.icon
+                                return (
+                                    <div key={permission.key} className="rounded-lg border border-border/60 bg-background/60 p-4">
+                                        <div className="flex items-start justify-between gap-4">
+                                            <div className="min-w-0">
+                                                <div className="flex items-center gap-2">
+                                                    {permission.module === 'global' ? (
+                                                        <PermissionIcon className="h-4 w-4 text-primary" />
+                                                    ) : (
+                                                        <ShieldCheck className="h-4 w-4 text-primary" />
+                                                    )}
+                                                    <p className="font-medium">
+                                                        {permission.key.endsWith('.access')
+                                                            ? t('permissions.access', { defaultValue: 'Access' })
+                                                            : t(permission.labelKey, { defaultValue: permission.defaultLabel })}
+                                                    </p>
+                                                </div>
+                                                <p className="mt-1 text-sm text-muted-foreground">
+                                                    {t(permission.descriptionKey, {
+                                                        defaultValue: permission.defaultDescription
+                                                    })}
+                                                </p>
+                                                <p className="mt-1 text-[11px] text-muted-foreground">{permission.key}</p>
+                                            </div>
+                                            <Switch
+                                                checked={permission.key === 'global.NOprint' ? !selectedMemberPermissionKeys.has(permission.key) : selectedMemberPermissionKeys.has(permission.key)}
+                                                disabled={permissionMutationKey === `${permissionMember.id}:${permission.key}` || permissionsLoading}
+                                                onCheckedChange={(value) => {
+                                                    const shouldGrant = permission.key === 'global.NOprint' ? !value : value
+                                                    handlePermissionToggle(permissionMember, permission.key, shouldGrant)
+                                                }}
+                                                aria-label={t(permission.labelKey, { defaultValue: permission.defaultLabel })}
+                                            />
                                         </div>
-                                        <p className="mt-1 text-sm text-muted-foreground">
-                                            {t(selectedPermissionDefinition.descriptionKey, {
-                                                defaultValue: selectedPermissionDefinition.defaultDescription
-                                            })}
-                                        </p>
-                                        <p className="mt-1 text-[11px] text-muted-foreground">{selectedPermissionDefinition.key}</p>
+                                        {permissionMutationKey === `${permissionMember.id}:${permission.key}` && (
+                                            <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
+                                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                                {t('common.saving', { defaultValue: 'Saving...' })}
+                                            </div>
+                                        )}
                                     </div>
-                                    <Switch
-                                        checked={selectedMemberPermissionKeys.has(selectedPermissionDefinition.key)}
-                                        disabled={permissionMutationKey === `${permissionMember.id}:${selectedPermissionDefinition.key}` || permissionsLoading}
-                                        onCheckedChange={(value) => handlePermissionToggle(permissionMember, selectedPermissionDefinition.key, value)}
-                                        aria-label={t('members.permissions.access', { defaultValue: 'Access' })}
-                                    />
-                                </div>
-                                {permissionMutationKey === `${permissionMember.id}:${selectedPermissionDefinition.key}` && (
-                                    <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
-                                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                        {t('common.saving', { defaultValue: 'Saving...' })}
-                                    </div>
-                                )}
-                            </div>
-                        )}
+                                )
+                            })}
+                        </div>
                     </div>
                 </DialogContent>
             </Dialog>

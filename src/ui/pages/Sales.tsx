@@ -2288,6 +2288,7 @@ export function Sales() {
                             : (t('sales.print.receipt') || 'Receipt'))}
                     features={features}
                     workspaceName={workspaceName}
+                    module="sales"
                     pdfData={!shouldUseLoanPrint && printingSale ? mapSaleToUniversal(printingSale, { a4Variant }) : undefined}
                     invoiceData={printingSale ? {
                         sequenceId: printingSale.sequenceId,

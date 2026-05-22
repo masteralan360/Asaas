@@ -713,6 +713,7 @@ export function SimpleLoanListView({
                 isOpen={showPrintPreview}
                 onClose={() => setShowPrintPreview(false)}
                 onConfirm={() => setShowPrintPreview(false)}
+                module="loans"
                 title={getSimpleLoanModuleTitle(t)}
                 features={features}
                 workspaceName={workspaceName}
@@ -744,6 +745,7 @@ export function SimpleLoanListView({
                     setShowLoanPrintPreview(false)
                     setLoanToPrint(null)
                 }}
+                module="loans"
                 title={getLoanDetailsTitle(loanToPrint || ({} as Loan), t)}
                 features={features}
                 workspaceName={workspaceName}

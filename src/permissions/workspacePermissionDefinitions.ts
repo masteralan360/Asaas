@@ -17,6 +17,7 @@ import {
   Percent,
   BarChart3,
   TrendingUp,
+  Globe,
 } from "lucide-react";
 
 export const WORKSPACE_PERMISSION_DEFINITIONS = [
@@ -219,6 +220,16 @@ export const WORKSPACE_PERMISSION_DEFINITIONS = [
     defaultDescription: "Access HR records and workflows.",
     icon: UsersRound,
     section: "people-and-workspace",
+  },
+  {
+    key: "global.NOprint",
+    module: "global",
+    labelKey: "members.permissions.globalPrint",
+    defaultLabel: "Print",
+    descriptionKey: "members.permissions.globalPrintDescription",
+    defaultDescription: "Allow printing across all modules by default.",
+    icon: Globe,
+    section: "global",
   },
 ] as const;
 

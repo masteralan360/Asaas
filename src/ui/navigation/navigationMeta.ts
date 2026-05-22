@@ -5,6 +5,7 @@ import {
   UsersRound,
   Warehouse,
   Wallet,
+  Globe,
 } from "lucide-react";
 
 export interface LauncherSection {
@@ -28,6 +29,7 @@ export const launcherSectionOrder = [
   "partners-and-demand",
   "insights-and-trends",
   "people-and-workspace",
+  "global",
 ] as const;
 
 export type NavigationSectionKey = (typeof launcherSectionOrder)[number];
@@ -115,6 +117,20 @@ export const launcherSections: Record<NavigationSectionKey, LauncherSection> = {
       text: "text-slate-700 dark:text-slate-300",
       border: "border-slate-500/20 hover:border-slate-400/40",
       glow: "bg-slate-400/16",
+    },
+  },
+  global: {
+    title: "Global",
+    eyebrow: "Fallback settings",
+    description:
+      "Default permissions that apply across all modules unless overridden.",
+    icon: Globe,
+    theme: {
+      shell: "from-blue-500/18 via-indigo-500/10 to-transparent",
+      surface: "bg-blue-500/12 ring-1 ring-blue-500/20",
+      text: "text-blue-700 dark:text-blue-300",
+      border: "border-blue-500/20 hover:border-blue-400/40",
+      glow: "bg-blue-400/18",
     },
   },
 };

@@ -1461,6 +1461,7 @@ export function Budget() {
                 isOpen={showPrintPreview}
                 onClose={() => setShowPrintPreview(false)}
                 onConfirm={() => setShowPrintPreview(false)}
+                module="budget"
                 title={t('budget.print.title', { defaultValue: 'Accounting Report' })}
                 features={features}
                 workspaceName={workspaceName}

@@ -775,7 +775,7 @@ function LoanListView({
                 title={t('loans.confirmDelete')}
                 description={t('loans.deleteWarning')}
             />
-            <PrintPreviewModal
+            <PrintPreviewModal module="loans"
                 isOpen={showPrintPreview}
                 onClose={() => setShowPrintPreview(false)}
                 onConfirm={() => setShowPrintPreview(false)}
@@ -787,7 +787,7 @@ function LoanListView({
                 printTemplate={({ effectiveId }) => renderLoanListTemplate(effectiveId)}
                 templatePreview={loanListPreview}
             />
-            <PrintPreviewModal
+            <PrintPreviewModal module="loans"
                 isOpen={showLoanPrintPreview}
                 onClose={() => {
                     setShowLoanPrintPreview(false)
@@ -1339,7 +1339,7 @@ function LoanDetailsView({
                 title={t('loans.confirmDelete')}
                 description={getLoanDeleteWarning(loan, t)}
             />
-            <PrintPreviewModal
+            <PrintPreviewModal module="loans"
                 isOpen={showPrintPreview}
                 onClose={() => setShowPrintPreview(false)}
                 onConfirm={() => setShowPrintPreview(false)}

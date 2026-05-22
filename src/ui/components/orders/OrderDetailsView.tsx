@@ -797,6 +797,7 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                 onClose={() => setShowPrintPreview(false)}
                 onConfirm={() => setShowPrintPreview(false)}
                 title={isSales ? (t('orders.tabs.sales') || 'Sales Order') : (t('orders.tabs.purchase') || 'Purchase Order')}
+                module="orders"
                 features={features}
                 workspaceName={workspaceName}
                 invoiceData={{
