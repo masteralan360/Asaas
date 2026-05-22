@@ -151,31 +151,47 @@ export function buildWorkspaceNavigation({
       : []),
     ...(isCoreRole && hasFeature("crm")
       ? [
-          {
-            name: t("businessPartners.title", {
-              defaultValue: "Business Partners",
-            }),
-            href: "/business-partners",
-            icon: UsersRound,
-          },
-          {
-            name: t("nav.customers", { defaultValue: "Customers" }),
-            href: "/customers",
-            icon: Users,
-          },
-          {
-            name: t("nav.suppliers", { defaultValue: "Suppliers" }),
-            href: "/suppliers",
-            icon: Truck,
-          },
-          {
-            name: t("nav.orders", { defaultValue: "Orders" }),
-            href: "/orders",
-            icon: ShoppingCart,
-          },
+          ...(canAccessPermission("businessPartners.access")
+            ? [
+                {
+                  name: t("businessPartners.title", {
+                    defaultValue: "Business Partners",
+                  }),
+                  href: "/business-partners",
+                  icon: UsersRound,
+                },
+              ]
+            : []),
+          ...(canAccessPermission("customers.access")
+            ? [
+                {
+                  name: t("nav.customers", { defaultValue: "Customers" }),
+                  href: "/customers",
+                  icon: Users,
+                },
+              ]
+            : []),
+          ...(canAccessPermission("suppliers.access")
+            ? [
+                {
+                  name: t("nav.suppliers", { defaultValue: "Suppliers" }),
+                  href: "/suppliers",
+                  icon: Truck,
+                },
+              ]
+            : []),
+          ...(canAccessPermission("orders.access")
+            ? [
+                {
+                  name: t("nav.orders", { defaultValue: "Orders" }),
+                  href: "/orders",
+                  icon: ShoppingCart,
+                },
+              ]
+            : []),
         ]
       : []),
-    ...(isCoreRole && canUseEcommerce
+    ...(isCoreRole && canUseEcommerce && canAccessPermission("ecommerce.access")
       ? [
           {
             name: t("nav.ecommerce", { defaultValue: "E-Commerce" }),
@@ -204,23 +220,31 @@ export function buildWorkspaceNavigation({
       : []),
     ...(hasFeature("loans")
       ? [
-          {
-            name: t("nav.loans", { defaultValue: "Loans" }),
-            href: "/loans",
-            icon: HandCoins,
-          },
-          {
-            name: t("nav.installments", {
-              defaultValue: t("loans.title", { defaultValue: "Installments" }),
-            }),
-            href: "/installments",
-            icon: Copy,
-          },
+          ...(canAccessPermission("loans.access")
+            ? [
+                {
+                  name: t("nav.loans", { defaultValue: "Loans" }),
+                  href: "/loans",
+                  icon: HandCoins,
+                },
+              ]
+            : []),
+          ...(canAccessPermission("installments.access")
+            ? [
+                {
+                  name: t("nav.installments", {
+                    defaultValue: t("loans.title", { defaultValue: "Installments" }),
+                  }),
+                  href: "/installments",
+                  icon: Copy,
+                },
+              ]
+            : []),
         ]
       : []),
     ...(isCoreRole
       ? [
-          ...(hasLedgerSurface
+          ...(hasLedgerSurface && canAccessPermission("ledger.access")
             ? [
                 {
                   name: t("nav.ledger", { defaultValue: "Ledger" }),
@@ -249,7 +273,7 @@ export function buildWorkspaceNavigation({
                 },
               ]
             : []),
-          ...(hasFeature("net_revenue")
+          ...(hasFeature("net_revenue") && canAccessPermission("revenueAnalytics.access")
             ? [
                 {
                   name: t("nav.revenue", { defaultValue: "Revenue Analytics" }),
@@ -258,7 +282,7 @@ export function buildWorkspaceNavigation({
                 },
               ]
             : []),
-          ...(hasFeature("budget")
+          ...(hasFeature("budget") && canAccessPermission("accounting.access")
             ? [
                 {
                   name: t("nav.budget", { defaultValue: "Accounting" }),
@@ -278,7 +302,7 @@ export function buildWorkspaceNavigation({
                 },
               ]
             : []),
-          ...(hasFeature("team_performance")
+          ...(hasFeature("team_performance") && canAccessPermission("teamPerformance.access")
             ? [
                 {
                   name: t("nav.performance", {
@@ -316,7 +340,7 @@ export function buildWorkspaceNavigation({
           },
         ]
       : []),
-    ...(hasFeature("discounts")
+    ...(hasFeature("discounts") && canAccessPermission("discounts.access")
       ? [
           {
             name: t("nav.discounts", { defaultValue: "Discounts" }),
@@ -325,7 +349,7 @@ export function buildWorkspaceNavigation({
           },
         ]
       : []),
-    ...(hasFeature("storages")
+    ...(hasFeature("storages") && canAccessPermission("storages.access")
       ? [
           {
             name: t("nav.storages", { defaultValue: "Storages" }),
@@ -334,7 +358,7 @@ export function buildWorkspaceNavigation({
           },
         ]
       : []),
-    ...(hasFeature("inventory_transfer")
+    ...(hasFeature("inventory_transfer") && canAccessPermission("inventoryTransfer.access")
       ? [
           {
             name: t("nav.inventoryTransfer", {
@@ -345,7 +369,7 @@ export function buildWorkspaceNavigation({
           },
         ]
       : []),
-    ...(hasFeature("inventory_transfer")
+    ...(hasFeature("inventory_transfer") && canAccessPermission("inventoryTransactions.access")
       ? [
           {
             name: t("nav.inventoryTransactions", {
@@ -356,7 +380,7 @@ export function buildWorkspaceNavigation({
           },
         ]
       : []),
-    ...(hasFeature("stock_adjustments")
+    ...(hasFeature("stock_adjustments") && canAccessPermission("stockAdjustments.access")
       ? [
           {
             name: t("nav.stockAdjustments", {
@@ -367,7 +391,7 @@ export function buildWorkspaceNavigation({
           },
         ]
       : []),
-    ...(hasFeature("invoices_history")
+    ...(hasFeature("invoices_history") && canAccessPermission("invoiceHistory.access")
       ? [
           {
             name: t("nav.invoicesHistory", {
@@ -387,7 +411,7 @@ export function buildWorkspaceNavigation({
       : []),
     ...(isCoreRole
       ? [
-          ...(hasFeature("hr")
+          ...(hasFeature("hr") && canAccessPermission("hr.access")
             ? [
                 {
                   name: t("nav.hr", { defaultValue: "HR" }),
@@ -399,7 +423,7 @@ export function buildWorkspaceNavigation({
           ...(hasFeature("members")
             ? [
                 {
-                  name: t("members.title", { defaultValue: "Members" }),
+                  name: t("members.adminControlTitle", { defaultValue: "Members & Admin Control" }),
                   href: "/members",
                   icon: Users,
                 },

@@ -807,6 +807,7 @@ function App() {
                         <ProtectedRoute
                           allowedRoles={["admin", "staff", "viewer"]}
                           requiredFeature="crm"
+                          requiredPermission="businessPartners.access"
                         >
                           <Layout>
                             <BusinessPartners />
@@ -817,6 +818,7 @@ function App() {
                         <ProtectedRoute
                           allowedRoles={["admin", "staff", "viewer"]}
                           requiredFeature="crm"
+                          requiredPermission="businessPartners.access"
                         >
                           <Layout>
                             <BusinessPartnerDetails />
@@ -827,6 +829,7 @@ function App() {
                         <ProtectedRoute
                           allowedRoles={["admin", "staff", "viewer"]}
                           requiredFeature="crm"
+                          requiredPermission="customers.access"
                         >
                           <Layout>
                             <Customers />
@@ -837,6 +840,7 @@ function App() {
                         <ProtectedRoute
                           allowedRoles={["admin", "staff", "viewer"]}
                           requiredFeature="crm"
+                          requiredPermission="customers.access"
                         >
                           <Layout>
                             <CustomerDetails />
@@ -847,6 +851,7 @@ function App() {
                         <ProtectedRoute
                           allowedRoles={["admin", "staff", "viewer"]}
                           requiredFeature="crm"
+                          requiredPermission="suppliers.access"
                         >
                           <Layout>
                             <Suppliers />
@@ -857,6 +862,7 @@ function App() {
                         <ProtectedRoute
                           allowedRoles={["admin", "staff", "viewer"]}
                           requiredFeature="crm"
+                          requiredPermission="suppliers.access"
                         >
                           <Layout>
                             <SupplierDetails />
@@ -867,6 +873,7 @@ function App() {
                         <ProtectedRoute
                           allowedRoles={["admin", "staff", "viewer"]}
                           requiredFeature="crm"
+                          requiredPermission="orders.access"
                         >
                           <Layout>
                             <Orders />
@@ -877,6 +884,7 @@ function App() {
                         <ProtectedRoute
                           allowedRoles={["admin", "staff", "viewer"]}
                           requiredFeature="crm"
+                          requiredPermission="orders.access"
                         >
                           <Layout>
                             <Orders />
@@ -887,6 +895,7 @@ function App() {
                         <ProtectedRoute
                           allowedRoles={["admin", "staff"]}
                           requiredFeature="ecommerce"
+                          requiredPermission="ecommerce.access"
                         >
                           <Layout>
                             <Ecommerce />
@@ -897,6 +906,7 @@ function App() {
                         <ProtectedRoute
                           allowedRoles={["admin", "staff"]}
                           requiredFeature="ecommerce"
+                          requiredPermission="ecommerce.access"
                         >
                           <Layout>
                             <Ecommerce />
@@ -967,6 +977,7 @@ function App() {
                       <Route path="/ledger">
                         <ProtectedRoute
                           allowedRoles={["admin", "staff", "viewer"]}
+                          requiredPermission="ledger.access"
                         >
                           <Layout>
                             <Ledger />
@@ -1004,6 +1015,7 @@ function App() {
                         <ProtectedRoute
                           allowedRoles={["admin", "staff", "viewer"]}
                           requiredFeature="net_revenue"
+                          requiredPermission="revenueAnalytics.access"
                         >
                           <Layout>
                             <Revenue />
@@ -1014,6 +1026,7 @@ function App() {
                         <ProtectedRoute
                           allowedRoles={["admin", "staff", "viewer"]}
                           requiredFeature="budget"
+                          requiredPermission="accounting.access"
                         >
                           <Layout>
                             <Budget />
@@ -1034,6 +1047,7 @@ function App() {
                         <ProtectedRoute
                           allowedRoles={["admin", "staff", "viewer"]}
                           requiredFeature="team_performance"
+                          requiredPermission="teamPerformance.access"
                         >
                           <Layout>
                             <TeamPerformance />
@@ -1082,6 +1096,7 @@ function App() {
                         <ProtectedRoute
                           allowedRoles={["admin", "staff"]}
                           requiredFeature="discounts"
+                          requiredPermission="discounts.access"
                         >
                           <Layout>
                             <Discounts />
@@ -1089,28 +1104,28 @@ function App() {
                         </ProtectedRoute>
                       </Route>
                       <Route path="/storages">
-                        <ProtectedRoute requiredFeature="storages">
+                        <ProtectedRoute requiredFeature="storages" requiredPermission="storages.access">
                           <Layout>
                             <Storages />
                           </Layout>
                         </ProtectedRoute>
                       </Route>
                       <Route path="/inventory-transfer">
-                        <ProtectedRoute requiredFeature="inventory_transfer">
+                        <ProtectedRoute requiredFeature="inventory_transfer" requiredPermission="inventoryTransfer.access">
                           <Layout>
                             <InventoryTransfer />
                           </Layout>
                         </ProtectedRoute>
                       </Route>
                       <Route path="/inventory-transactions">
-                        <ProtectedRoute requiredFeature="inventory_transfer">
+                        <ProtectedRoute requiredFeature="inventory_transfer" requiredPermission="inventoryTransactions.access">
                           <Layout>
                             <InventoryTransactions />
                           </Layout>
                         </ProtectedRoute>
                       </Route>
                       <Route path="/stock-adjustments">
-                        <ProtectedRoute requiredFeature="stock_adjustments">
+                        <ProtectedRoute requiredFeature="stock_adjustments" requiredPermission="stockAdjustments.access">
                           <Layout>
                             <StockAdjustments />
                           </Layout>
@@ -1120,6 +1135,7 @@ function App() {
                         <ProtectedRoute
                           allowedRoles={["admin", "staff", "viewer"]}
                           requiredFeature="hr"
+                          requiredPermission="hr.access"
                         >
                           <Layout>
                             <HR />
@@ -1130,6 +1146,7 @@ function App() {
                         <ProtectedRoute
                           allowedRoles={["admin", "staff", "viewer"]}
                           requiredFeature="loans"
+                          requiredPermission="loans.access"
                         >
                           <Layout>
                             <Loans />
@@ -1140,6 +1157,7 @@ function App() {
                         <ProtectedRoute
                           allowedRoles={["admin", "staff", "viewer"]}
                           requiredFeature="loans"
+                          requiredPermission="loans.access"
                         >
                           <Layout>
                             <Loans />
@@ -1150,6 +1168,7 @@ function App() {
                         <ProtectedRoute
                           allowedRoles={["admin", "staff", "viewer"]}
                           requiredFeature="loans"
+                          requiredPermission="installments.access"
                         >
                           <Layout>
                             <Installments />
@@ -1160,6 +1179,7 @@ function App() {
                         <ProtectedRoute
                           allowedRoles={["admin", "staff", "viewer"]}
                           requiredFeature="loans"
+                          requiredPermission="installments.access"
                         >
                           <Layout>
                             <Installments />
@@ -1167,14 +1187,14 @@ function App() {
                         </ProtectedRoute>
                       </Route>
                       <Route path="/invoices-history/upload-files">
-                        <ProtectedRoute requiredFeature="invoices_history">
+                        <ProtectedRoute requiredFeature="invoices_history" requiredPermission="invoiceHistory.access">
                           <Layout>
                             <InvoicesHistory />
                           </Layout>
                         </ProtectedRoute>
                       </Route>
                       <Route path="/invoices-history">
-                        <ProtectedRoute requiredFeature="invoices_history">
+                        <ProtectedRoute requiredFeature="invoices_history" requiredPermission="invoiceHistory.access">
                           <Layout>
                             <InvoicesHistory />
                           </Layout>
