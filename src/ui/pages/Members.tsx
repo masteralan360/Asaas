@@ -20,7 +20,8 @@ import {
     DialogFooter,
     DialogDescription
 } from '@/ui/components'
-import { UsersRound, UserMinus, Loader2, Shield, Eye, Briefcase } from 'lucide-react'
+import { UsersRound, UserMinus, Loader2, Shield, Eye, Briefcase, UserRound } from 'lucide-react'
+import { ProfileCardModal } from '@/ui/components/ProfileCardModal'
 import { useTranslation } from 'react-i18next'
 import { formatDate } from '@/lib/utils'
 import { platformService } from '@/services/platformService'
@@ -53,6 +54,7 @@ export function Members() {
     const [isLoading, setIsLoading] = useState(true)
     const [kickingMemberId, setKickingMemberId] = useState<string | null>(null)
     const [memberToKick, setMemberToKick] = useState<Member | null>(null)
+    const [profileUserId, setProfileUserId] = useState<string | null>(null)
     const [error, setError] = useState<string | null>(null)
 
     const getErrorMessage = (err: unknown) => {
@@ -206,15 +208,26 @@ export function Members() {
                                                             member.name?.charAt(0).toUpperCase() || 'M'
                                                         )}
                                                     </div>
-                                                    <div>
-                                                        <p className="font-medium">
-                                                            {member.name}
-                                                            {member.id === user?.id && (
-                                                                <span className="ms-2 text-xs text-muted-foreground">
-                                                                    ({t('members.you')})
-                                                                </span>
-                                                            )}
-                                                        </p>
+                                                    <div className="flex items-center gap-1.5">
+                                                        <div>
+                                                            <p className="font-medium">
+                                                                {member.name}
+                                                                {member.id === user?.id && (
+                                                                    <span className="ms-2 text-xs text-muted-foreground">
+                                                                        ({t('members.you')})
+                                                                    </span>
+                                                                )}
+                                                            </p>
+                                                        </div>
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            className="h-6 w-6 text-muted-foreground hover:text-foreground"
+                                                            onClick={() => setProfileUserId(member.id)}
+                                                            aria-label={t('profileCard.viewProfile')}
+                                                        >
+                                                            <UserRound className="h-3.5 w-3.5" />
+                                                        </Button>
                                                     </div>
                                                 </div>
                                             </TableCell>
@@ -263,8 +276,7 @@ export function Members() {
             </Card >
 
             {/* Kick Confirmation Dialog */}
-            < Dialog open={!!memberToKick
-            } onOpenChange={() => setMemberToKick(null)}>
+            <Dialog open={!!memberToKick} onOpenChange={() => setMemberToKick(null)}>
                 <DialogContent>
                     <DialogHeader>
                         <DialogTitle>{t('members.kickTitle')}</DialogTitle>
@@ -297,7 +309,14 @@ export function Members() {
                         </Button>
                     </DialogFooter>
                 </DialogContent>
-            </Dialog >
+            </Dialog>
+
+            {/* Profile Card Modal */}
+            <ProfileCardModal
+                open={!!profileUserId}
+                onOpenChange={(open) => { if (!open) setProfileUserId(null) }}
+                userId={profileUserId}
+            />
         </div >
     )
 }

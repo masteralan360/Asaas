@@ -131,3 +131,4 @@ export { Popover, PopoverTrigger, PopoverContent, PopoverAnchor } from './ui/pop
 export { Calendar } from './ui/calendar'
 export { DateTimePicker } from './ui/date-time-picker'
 export { NumericInput } from './ui/numeric-input'
+export { ProfileCardModal } from './ProfileCardModal'

@@ -1831,6 +1831,29 @@
         "cannotKickAdmin": "Cannot kick other admins",
         "you": "You"
     },
+    "profileCard": {
+        "title": "Profile Card",
+        "viewProfile": "View Profile Card",
+        "close": "Close",
+        "currentUser": "Current User",
+        "notFound": "User profile not found",
+        "loading": "Loading profile...",
+        "noContactInfo": "No contact information available",
+        "memberSince": "Member since {{date}}",
+        "sections": {
+            "basicInfo": "Basic Information",
+            "account": "Account Details",
+            "roles": "Roles & Permissions",
+            "contact": "Contact Information",
+            "activity": "Activity & Metadata"
+        },
+        "fields": {
+            "userId": "User ID",
+            "joinedAt": "Joined",
+            "updatedAt": "Last Updated",
+            "role": "Role"
+        }
+    },
     "branches": {
         "title": "Branches",
         "create": "Create Branch",
