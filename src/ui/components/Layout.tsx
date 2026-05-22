@@ -4,6 +4,7 @@ import { cn } from '@/lib/utils'
 import { useAuth } from '@/auth'
 import { useReorderTransferRules } from '@/local-db'
 import { useWorkspace } from '@/workspace'
+import { useWorkspacePermissions } from '@/permissions'
 import { SyncStatusIndicator } from './SyncStatusIndicator'
 import { ExchangeRateIndicator } from './ExchangeRateIndicator'
 import { GlobalSearch } from './GlobalSearch'
@@ -117,6 +118,7 @@ export function Layout({ children }: LayoutProps) {
     const [location, setLocation] = useLocation()
     const { user, signOut } = useAuth()
     const { hasFeature, workspaceName, isFullscreen, features, activeWorkspace } = useWorkspace()
+    const { hasPermission } = useWorkspacePermissions()
     const {
         branchInfo,
         branches,
@@ -302,6 +304,7 @@ export function Layout({ children }: LayoutProps) {
         t,
         role: user?.role,
         hasFeature,
+        hasPermission,
         features,
         isDesktopDevice: isDesktop(),
         whatsappStatus

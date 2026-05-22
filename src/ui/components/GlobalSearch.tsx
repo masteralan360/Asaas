@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next'
 import { useTheme } from '@/ui/components/theme-provider'
 import { useAuth } from '@/auth'
 import { useWorkspace } from '@/workspace'
+import { useWorkspacePermissions } from '@/permissions'
 
 interface GlobalSearchProps {
     className?: string
@@ -30,6 +31,7 @@ export function GlobalSearch({ className, placeholder }: GlobalSearchProps) {
     const { theme, setTheme, style } = useTheme()
     const { signOut } = useAuth()
     const { features } = useWorkspace()
+    const { hasPermission } = useWorkspacePermissions()
     const inputRef = useRef<HTMLInputElement>(null)
     const containerRef = useRef<HTMLDivElement>(null)
 
@@ -46,8 +48,8 @@ export function GlobalSearch({ className, placeholder }: GlobalSearchProps) {
         { id: 'nav-settings', title: t('nav.settings'), category: 'Navigation', icon: SettingsIcon, action: () => setLocation('/settings') },
 
         ...(hasLedgerSurface ? [{ id: 'nav-ledger', title: t('nav.ledger', { defaultValue: 'Ledger' }), category: 'Navigation' as const, icon: Wallet, action: () => setLocation('/ledger') }] : []),
-        ...(hasPaymentsSurface ? [{ id: 'nav-payments', title: t('nav.payments', { defaultValue: 'Payments' }), category: 'Navigation' as const, icon: Wallet, action: () => setLocation('/payments') }] : []),
-        ...(hasPaymentsSurface ? [{ id: 'nav-direct-transactions', title: t('nav.directTransactions', { defaultValue: 'Direct Transactions' }), category: 'Navigation' as const, icon: ArrowRightLeft, action: () => setLocation('/direct-transactions') }] : []),
+        ...(hasPaymentsSurface && hasPermission('payment.access') ? [{ id: 'nav-payments', title: t('nav.payments', { defaultValue: 'Payments' }), category: 'Navigation' as const, icon: Wallet, action: () => setLocation('/payments') }] : []),
+        ...(hasPaymentsSurface && hasPermission('directTransaction.access') ? [{ id: 'nav-direct-transactions', title: t('nav.directTransactions', { defaultValue: 'Direct Transactions' }), category: 'Navigation' as const, icon: ArrowRightLeft, action: () => setLocation('/direct-transactions') }] : []),
         { id: 'nav-revenue', title: t('nav.revenue'), category: 'Navigation', icon: BarChart3, action: () => setLocation('/revenue') },
         { id: 'nav-budget', title: t('nav.budget', { defaultValue: 'Accounting' }), category: 'Navigation', icon: FileSpreadsheet, action: () => setLocation('/budget') },
         { id: 'nav-monthly-comparison', title: t('monthlyComparison.title'), category: 'Navigation', icon: ArrowRightLeft, action: () => setLocation('/monthly-comparison') },

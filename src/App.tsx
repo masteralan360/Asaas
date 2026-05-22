@@ -12,6 +12,7 @@ import { useWorkspace } from "@/workspace";
 import { ExchangeRateProvider } from "@/context/ExchangeRateContext";
 import { DateRangeProvider } from "@/context/DateRangeContext";
 import { UiAccessProvider } from "@/context/UiAccessContext";
+import { WorkspacePermissionsProvider } from "@/permissions";
 import { AutoSyncOverlay } from "@/ui/components/AutoSyncOverlay";
 import {
   isBackendConfigurationRequired,
@@ -706,25 +707,26 @@ function App() {
     <AuthProvider>
       <DeviceTokenBootstrap />
       <WorkspaceProvider>
-        <UiAccessProvider>
-          <DateRangeProvider>
-            <KdsStreamAutostart />
-          <UpdateHandler />
-          <FaviconHandler />
-          <AutoSyncOverlay />
-          {!isMobile() && <TitleBar />}
-          {isTauri &&
-          isBackendConfigurationRequired &&
-          !isSupabaseConfigured ? (
-            <Suspense fallback={<LoadingState />}>
-              <ConnectionConfiguration />
-            </Suspense>
-          ) : (
-            <ExchangeRateProvider>
-              <KdsSecurityGuard>
+        <WorkspacePermissionsProvider>
+          <UiAccessProvider>
+            <DateRangeProvider>
+              <KdsStreamAutostart />
+              <UpdateHandler />
+              <FaviconHandler />
+              <AutoSyncOverlay />
+              {!isMobile() && <TitleBar />}
+              {isTauri &&
+              isBackendConfigurationRequired &&
+              !isSupabaseConfigured ? (
                 <Suspense fallback={<LoadingState />}>
-                  <Router hook={useHashLocation}>
-                    <Switch>
+                  <ConnectionConfiguration />
+                </Suspense>
+              ) : (
+                <ExchangeRateProvider>
+                  <KdsSecurityGuard>
+                    <Suspense fallback={<LoadingState />}>
+                      <Router hook={useHashLocation}>
+                        <Switch>
                       {/* Guest Routes */}
                       <Route path="/login">
                         <GuestRoute>
@@ -974,6 +976,7 @@ function App() {
                       <Route path="/payments">
                         <ProtectedRoute
                           allowedRoles={["admin", "staff", "viewer"]}
+                          requiredPermission="payment.access"
                         >
                           <Layout>
                             <Payments />
@@ -983,6 +986,7 @@ function App() {
                       <Route path="/direct-transactions">
                         <ProtectedRoute
                           allowedRoles={["admin", "staff", "viewer"]}
+                          requiredPermission="directTransaction.access"
                         >
                           <Layout>
                             <DirectTransactions />
@@ -1256,20 +1260,21 @@ function App() {
                 </Suspense>
               </KdsSecurityGuard>
             </ExchangeRateProvider>
-          )}
-          <Toaster />
-          {isTauri && currentPatch && (
-            <PatchNoteModal
-              isOpen={showModal}
-              onClose={dismissModal}
-              version={version}
-              date={currentPatch.date}
-              highlights={currentPatch.highlights}
-              teamMessages={currentPatch.teamMessages}
-            />
-          )}
-        </DateRangeProvider>
-        </UiAccessProvider>
+              )}
+              <Toaster />
+              {isTauri && currentPatch && (
+                <PatchNoteModal
+                  isOpen={showModal}
+                  onClose={dismissModal}
+                  version={version}
+                  date={currentPatch.date}
+                  highlights={currentPatch.highlights}
+                  teamMessages={currentPatch.teamMessages}
+                />
+              )}
+            </DateRangeProvider>
+          </UiAccessProvider>
+        </WorkspacePermissionsProvider>
       </WorkspaceProvider>
     </AuthProvider>
   );

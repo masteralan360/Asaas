@@ -3,6 +3,7 @@ import { useAuth } from './AuthContext'
 import { Redirect, useLocation, Link } from 'wouter'
 import type { UserRole } from '@/local-db/models'
 import { useWorkspace, type ModuleFeatureKey } from '@/workspace/WorkspaceContext'
+import { useWorkspacePermissions, type WorkspacePermissionKey } from '@/permissions'
 import { BiometricLock } from '@/ui/components'
 
 interface ProtectedRouteProps {
@@ -11,6 +12,7 @@ interface ProtectedRouteProps {
     redirectTo?: string
     allowKicked?: boolean
     requiredFeature?: ModuleFeatureKey
+    requiredPermission?: WorkspacePermissionKey
 }
 
 export function ProtectedRoute({
@@ -18,13 +20,15 @@ export function ProtectedRoute({
     allowedRoles,
     redirectTo = '/login',
     allowKicked = false,
-    requiredFeature
+    requiredFeature,
+    requiredPermission
 }: ProtectedRouteProps) {
     const { isAuthenticated, isLoading, hasRole, isKicked, user } = useAuth()
     const { hasFeature, features, isLoading: featuresLoading, isLocked } = useWorkspace()
+    const { hasPermission, isLoading: permissionsLoading } = useWorkspacePermissions()
     const [location] = useLocation()
 
-    if (isLoading || featuresLoading) {
+    if (isLoading || featuresLoading || (requiredPermission && permissionsLoading)) {
         return (
             <div className="min-h-screen flex items-center justify-center bg-background">
                 <div className="flex flex-col items-center gap-4">
@@ -90,6 +94,18 @@ export function ProtectedRoute({
                 <div className="text-center">
                     <h1 className="text-4xl font-bold text-amber-500 mb-4">Feature Disabled</h1>
                     <p className="text-muted-foreground mb-4">This feature is not enabled for your workspace.</p>
+                    <Link href="/" className="text-primary hover:underline">Return to Dashboard</Link>
+                </div>
+            </div>
+        )
+    }
+
+    if (requiredPermission && !hasPermission(requiredPermission)) {
+        return (
+            <div className="min-h-screen flex items-center justify-center bg-background">
+                <div className="text-center">
+                    <h1 className="text-4xl font-bold text-destructive mb-4">403</h1>
+                    <p className="text-muted-foreground">You don't have permission to access this module.</p>
                     <Link href="/" className="text-primary hover:underline">Return to Dashboard</Link>
                 </div>
             </div>

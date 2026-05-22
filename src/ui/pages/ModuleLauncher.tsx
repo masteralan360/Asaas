@@ -12,6 +12,7 @@ import {
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/auth'
 import { useWorkspace } from '@/workspace'
+import { useWorkspacePermissions } from '@/permissions'
 import { isDesktop, isMobile } from '@/lib/platform'
 import { Input } from '@/ui/components/input'
 import { ThemeAwareLogo } from '@/ui/components/ThemeAwareLogo'
@@ -26,6 +27,7 @@ export function ModuleLauncher() {
     const { t } = useTranslation()
     const { user } = useAuth()
     const { workspaceName, hasFeature, features } = useWorkspace()
+    const { hasPermission } = useWorkspacePermissions()
     const [query, setQuery] = useState('')
     const [viewMode, setViewMode] = useState<'detail' | 'grid'>(() => (isMobile() ? 'grid' : 'detail'))
 
@@ -33,9 +35,10 @@ export function ModuleLauncher() {
         t,
         role: user?.role,
         hasFeature,
+        hasPermission,
         features,
         isDesktopDevice: isDesktop()
-    }), [features, hasFeature, t, user?.role])
+    }), [features, hasFeature, hasPermission, t, user?.role])
 
     const sections = useMemo(() => {
         const visibleSidebarItems = flattenWorkspaceNavigation(navigation).filter((item) => !item.mobileOnly || isMobile())

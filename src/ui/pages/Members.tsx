@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useAuth } from '@/auth'
 import { supabase } from '@/auth/supabase'
 import {
@@ -18,14 +18,26 @@ import {
     DialogHeader,
     DialogTitle,
     DialogFooter,
-    DialogDescription
+    DialogDescription,
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+    Switch
 } from '@/ui/components'
-import { UsersRound, UserMinus, Loader2, Shield, Eye, Briefcase, UserRound } from 'lucide-react'
+import { UsersRound, UserMinus, Loader2, Shield, Eye, Briefcase, UserRound, KeyRound } from 'lucide-react'
 import { ProfileCardModal } from '@/ui/components/ProfileCardModal'
 import { useTranslation } from 'react-i18next'
 import { formatDate } from '@/lib/utils'
 import { platformService } from '@/services/platformService'
 import { getRetriableActionToast, isRetriableWebRequestError, normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
+import {
+    WORKSPACE_PERMISSION_DEFINITIONS,
+    getWorkspacePermissionModule,
+    isSupportedWorkspacePermissionKey,
+    type WorkspacePermissionKey
+} from '@/permissions'
 
 interface Member {
     id: string
@@ -33,6 +45,14 @@ interface Member {
     role: string
     profile_url?: string
     created_at: string
+}
+
+interface WorkspacePermission {
+    id: string
+    workspace_id: string
+    user_uuid: string
+    key: string
+    module: string
 }
 
 const roleIcons: Record<string, typeof Shield> = {
@@ -51,9 +71,14 @@ export function Members() {
     const { user, session } = useAuth()
     const { t } = useTranslation()
     const [members, setMembers] = useState<Member[]>([])
+    const [permissions, setPermissions] = useState<WorkspacePermission[]>([])
     const [isLoading, setIsLoading] = useState(true)
+    const [permissionsLoading, setPermissionsLoading] = useState(false)
     const [kickingMemberId, setKickingMemberId] = useState<string | null>(null)
+    const [permissionMutationKey, setPermissionMutationKey] = useState<string | null>(null)
     const [memberToKick, setMemberToKick] = useState<Member | null>(null)
+    const [permissionMember, setPermissionMember] = useState<Member | null>(null)
+    const [selectedPermissionModule, setSelectedPermissionModule] = useState<string>(WORKSPACE_PERMISSION_DEFINITIONS[0]?.module ?? 'payment')
     const [profileUserId, setProfileUserId] = useState<string | null>(null)
     const [error, setError] = useState<string | null>(null)
 
@@ -65,10 +90,37 @@ export function Members() {
         return normalized.message || t('common.error')
     }
 
+    const fetchPermissions = async () => {
+        if (user?.role !== 'admin' || !user?.workspaceId) {
+            setPermissions([])
+            return
+        }
+
+        setPermissionsLoading(true)
+        try {
+            const { data, error } = await runSupabaseAction('members.permissions.fetch', () =>
+                supabase
+                    .from('workspace_permissions')
+                    .select('id, workspace_id, user_uuid, key, module')
+                    .eq('workspace_id', user.workspaceId)
+                    .order('module', { ascending: true })
+            )
+
+            if (error) throw normalizeSupabaseActionError(error)
+            setPermissions((data || []) as WorkspacePermission[])
+        } catch (err) {
+            console.error('Error fetching member permissions:', err)
+            setError(getErrorMessage(err))
+        } finally {
+            setPermissionsLoading(false)
+        }
+    }
+
     const fetchMembers = async () => {
         if (!user?.workspaceId) return
 
         setIsLoading(true)
+        setError(null)
         try {
             const { data, error } = await runSupabaseAction('members.fetch', () =>
                 supabase
@@ -80,6 +132,11 @@ export function Members() {
 
             if (error) throw normalizeSupabaseActionError(error)
             setMembers(data || [])
+            if (user.role === 'admin') {
+                await fetchPermissions()
+            } else {
+                setPermissions([])
+            }
         } catch (err) {
             console.error('Error fetching members:', err)
             setError(getErrorMessage(err))
@@ -90,7 +147,90 @@ export function Members() {
 
     useEffect(() => {
         fetchMembers()
-    }, [user?.workspaceId])
+    }, [user?.workspaceId, user?.role])
+
+    const permissionsByUserId = useMemo(() => {
+        const next = new Map<string, Set<WorkspacePermissionKey>>()
+
+        permissions.forEach((permission) => {
+            if (!isSupportedWorkspacePermissionKey(permission.key)) {
+                return
+            }
+
+            const existing = next.get(permission.user_uuid) || new Set<WorkspacePermissionKey>()
+            existing.add(permission.key)
+            next.set(permission.user_uuid, existing)
+        })
+
+        return next
+    }, [permissions])
+
+    const handlePermissionToggle = async (
+        member: Member,
+        permissionKey: WorkspacePermissionKey,
+        shouldGrant: boolean
+    ) => {
+        if (user?.role !== 'admin' || !user.workspaceId || member.role === 'admin') {
+            return
+        }
+
+        const mutationKey = `${member.id}:${permissionKey}`
+        setPermissionMutationKey(mutationKey)
+        setError(null)
+
+        try {
+            if (shouldGrant) {
+                const payload = {
+                    workspace_id: user.workspaceId,
+                    user_uuid: member.id,
+                    key: permissionKey,
+                    module: getWorkspacePermissionModule(permissionKey)
+                }
+
+                const { error } = await runSupabaseAction('members.permissions.grant', () =>
+                    supabase
+                        .from('workspace_permissions')
+                        .upsert(payload, { onConflict: 'workspace_id,user_uuid,key' })
+                )
+
+                if (error) throw normalizeSupabaseActionError(error)
+            } else {
+                const { error } = await runSupabaseAction('members.permissions.revoke', () =>
+                    supabase
+                        .from('workspace_permissions')
+                        .delete()
+                        .eq('workspace_id', user.workspaceId)
+                        .eq('user_uuid', member.id)
+                        .eq('key', permissionKey)
+                )
+
+                if (error) throw normalizeSupabaseActionError(error)
+            }
+
+            await fetchPermissions()
+            window.dispatchEvent(new CustomEvent('workspace-permissions:changed'))
+        } catch (err) {
+            console.error('Error updating member permission:', err)
+            setError(getErrorMessage(err))
+        } finally {
+            setPermissionMutationKey(null)
+        }
+    }
+
+    const selectedPermissionDefinition = useMemo(() => (
+        WORKSPACE_PERMISSION_DEFINITIONS.find((permission) => permission.module === selectedPermissionModule)
+        || WORKSPACE_PERMISSION_DEFINITIONS[0]
+    ), [selectedPermissionModule])
+
+    const selectedMemberPermissionKeys = permissionMember
+        ? permissionsByUserId.get(permissionMember.id) || new Set<WorkspacePermissionKey>()
+        : new Set<WorkspacePermissionKey>()
+
+    const openPermissionModal = (member: Member) => {
+        if (member.role === 'admin') return
+        setSelectedPermissionModule(WORKSPACE_PERMISSION_DEFINITIONS[0]?.module ?? 'payment')
+        setPermissionMember(member)
+    }
 
     const handleKick = async () => {
         if (!memberToKick) return
@@ -228,6 +368,17 @@ export function Members() {
                                                         >
                                                             <UserRound className="h-3.5 w-3.5" />
                                                         </Button>
+                                                        {user?.role === 'admin' && member.role !== 'admin' && (
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="icon"
+                                                                className="h-6 w-6 text-muted-foreground hover:text-foreground"
+                                                                onClick={() => openPermissionModal(member)}
+                                                                aria-label={t('members.permissions.manage', { defaultValue: 'Manage permissions' })}
+                                                            >
+                                                                <KeyRound className="h-3.5 w-3.5" />
+                                                            </Button>
+                                                        )}
                                                     </div>
                                                 </div>
                                             </TableCell>
@@ -274,6 +425,70 @@ export function Members() {
                     )}
                 </CardContent>
             </Card >
+
+            <Dialog open={!!permissionMember} onOpenChange={(open) => { if (!open) setPermissionMember(null) }}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                            <KeyRound className="h-5 w-5 text-primary" />
+                            {t('members.permissions.manageTitle', { defaultValue: 'Manage Permissions' })}
+                        </DialogTitle>
+                        <DialogDescription>
+                            {t('members.permissions.manageDescription', {
+                                name: permissionMember?.name,
+                                defaultValue: 'Choose a module and grant the available permissions for this member.'
+                            })}
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="space-y-4">
+                        <div className="w-full max-w-[260px]">
+                            <Select value={selectedPermissionModule} onValueChange={setSelectedPermissionModule}>
+                                <SelectTrigger>
+                                    <SelectValue placeholder={t('members.permissions.selectModule', { defaultValue: 'Select module' })} />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {WORKSPACE_PERMISSION_DEFINITIONS.map((permission) => (
+                                        <SelectItem key={permission.module} value={permission.module}>
+                                            {t(permission.labelKey, { defaultValue: permission.defaultLabel })}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        {selectedPermissionDefinition && permissionMember && (
+                            <div className="rounded-lg border border-border/60 bg-background/60 p-4">
+                                <div className="flex items-start justify-between gap-4">
+                                    <div className="min-w-0">
+                                        <p className="font-medium">
+                                            {t('members.permissions.access', { defaultValue: 'Access' })}
+                                        </p>
+                                        <p className="mt-1 text-sm text-muted-foreground">
+                                            {t(selectedPermissionDefinition.descriptionKey, {
+                                                defaultValue: selectedPermissionDefinition.defaultDescription
+                                            })}
+                                        </p>
+                                        <p className="mt-1 text-[11px] text-muted-foreground">{selectedPermissionDefinition.key}</p>
+                                    </div>
+                                    <Switch
+                                        checked={selectedMemberPermissionKeys.has(selectedPermissionDefinition.key)}
+                                        disabled={permissionMutationKey === `${permissionMember.id}:${selectedPermissionDefinition.key}` || permissionsLoading}
+                                        onCheckedChange={(value) => handlePermissionToggle(permissionMember, selectedPermissionDefinition.key, value)}
+                                        aria-label={t('members.permissions.access', { defaultValue: 'Access' })}
+                                    />
+                                </div>
+                                {permissionMutationKey === `${permissionMember.id}:${selectedPermissionDefinition.key}` && (
+                                    <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
+                                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                        {t('common.saving', { defaultValue: 'Saving...' })}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                </DialogContent>
+            </Dialog>
 
             {/* Kick Confirmation Dialog */}
             <Dialog open={!!memberToKick} onOpenChange={() => setMemberToKick(null)}>

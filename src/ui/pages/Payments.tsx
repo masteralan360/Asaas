@@ -43,6 +43,7 @@ import {
 } from '@/ui/components'
 import { SettlementDialog } from '@/ui/components/payments/SettlementDialog'
 import { useWorkspace } from '@/workspace'
+import { useWorkspacePermissions } from '@/permissions'
 
 type DirectionFilter = 'all' | 'incoming' | 'outgoing'
 type SourceFilter = 'all' | 'loans' | 'orders' | 'budget' | 'real_estate' | 'payments'
@@ -136,6 +137,7 @@ export function Payments() {
     const { user } = useAuth()
     const { toast } = useToast()
     const { features } = useWorkspace()
+    const { hasPermission } = useWorkspacePermissions()
     const [, setLocation] = useLocation()
     const workspaceId = user?.workspaceId
     const hasPaymentsSurface = features.loans || features.crm || features.budget || features.hr || features.real_estate
@@ -265,9 +267,11 @@ export function Payments() {
                     <p className="text-sm text-muted-foreground">
                         {t('payments.subtitle', { defaultValue: 'Unified open obligations and central transaction history across loans, orders, payroll, and expenses.' })}
                     </p>
-                    <Button type="button" variant="outline" onClick={() => setLocation('/direct-transactions')} className="w-fit">
-                        {t('payments.directTransactions', { defaultValue: 'Direct Transactions' })}
-                    </Button>
+                    {hasPermission('directTransaction.access') && (
+                        <Button type="button" variant="outline" onClick={() => setLocation('/direct-transactions')} className="w-fit">
+                            {t('payments.directTransactions', { defaultValue: 'Direct Transactions' })}
+                        </Button>
+                    )}
                 </div>
 
                 <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">

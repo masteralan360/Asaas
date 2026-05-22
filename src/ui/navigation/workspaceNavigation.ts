@@ -33,6 +33,7 @@ import {
 } from "lucide-react";
 import type { WorkspaceFeatures } from "@/workspace";
 import type { ModuleFeatureKey } from "@/workspace/WorkspaceContext";
+import type { WorkspacePermissionKey } from "@/permissions";
 
 export interface WorkspaceNavigationChild {
   name: string;
@@ -68,6 +69,7 @@ interface BuildWorkspaceNavigationOptions {
   t: TFunction;
   role?: string;
   hasFeature: (feature: ModuleFeatureKey) => boolean;
+  hasPermission?: (permission: WorkspacePermissionKey) => boolean;
   features: WorkspaceFeatures;
   isDesktopDevice: boolean;
   whatsappStatus?: "live" | "off";
@@ -84,11 +86,13 @@ export function buildWorkspaceNavigation({
   t,
   role,
   hasFeature,
+  hasPermission,
   features,
   isDesktopDevice,
   whatsappStatus,
 }: BuildWorkspaceNavigationOptions): WorkspaceNavigationGroup[] {
   const isCoreRole = role === "admin" || role === "staff" || role === "viewer";
+  const canAccessPermission = hasPermission ?? (() => true);
   const hasLedgerSurface =
     features.pos ||
     features.instant_pos ||
@@ -225,7 +229,7 @@ export function buildWorkspaceNavigation({
                 },
               ]
             : []),
-          ...(hasPaymentsSurface
+          ...(hasPaymentsSurface && canAccessPermission("payment.access")
             ? [
                 {
                   name: t("nav.payments", { defaultValue: "Payments" }),
@@ -234,7 +238,7 @@ export function buildWorkspaceNavigation({
                 },
               ]
             : []),
-          ...(hasPaymentsSurface
+          ...(hasPaymentsSurface && canAccessPermission("directTransaction.access")
             ? [
                 {
                   name: t("nav.directTransactions", {
