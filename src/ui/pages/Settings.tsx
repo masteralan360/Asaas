@@ -10,7 +10,7 @@ import type { IQDDisplayPreference, CurrencyCode } from '@/local-db/models'
 import { Settings as SettingsIcon, Database, Cloud, Trash2, RefreshCw, User, Copy, Check, CreditCard, Globe, Download, AlertCircle, Printer, Contact, Fingerprint, Store, ExternalLink } from 'lucide-react'
 import { formatDate, formatDateTime, formatTime, cn, getHourDisplayPreference, setHourDisplayPreference, type HourDisplayPreference } from '@/lib/utils'
 import { useTheme } from '@/ui/components/theme-provider'
-import { Moon, Sun, Monitor, Unlock, Server, MessageSquare, Bell, MonitorPlay, Wifi } from 'lucide-react'
+import { Moon, Sun, Monitor, Unlock, Server, MessageSquare, Bell, MonitorPlay, Wifi, Zap } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import { isMobile, isDesktop, isTauri } from '@/lib/platform'
 import { useExchangeRate } from '@/context/ExchangeRateContext'
@@ -2055,7 +2055,7 @@ export function Settings() {
                                     )}
                                 </div>
 
-                                {canUseA4Invoices && (
+                                {canUseA4Invoices && (<>
                                 <div className="flex flex-col gap-2 max-w-sm">
                                     <Label className="text-xs text-slate-500 uppercase font-semibold">{t('settings.printing.language') || 'Print Language'}</Label>
                                     <Select
@@ -2096,10 +2096,10 @@ export function Settings() {
                                         {t('settings.printing.qualityDesc') || 'HIGH quality increases clarity but results in larger PDF files. QR codes are always high quality.'}
                                     </p>
                                 </div>
-                                )}
+                                </>)}
 
                                 <div className="grid gap-4 md:grid-cols-2 max-w-3xl">
-                                    {canUseThermalPrinter && (
+                                    {canUseThermalPrinter && (<>
                                     <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg border border-border">
                                         <div className="space-y-0.5 pr-4">
                                             <Label className="text-sm font-medium">{t('settings.printing.qrTitle') || 'Generate QR Code'}</Label>
@@ -2141,22 +2141,21 @@ export function Settings() {
                                             onCheckedChange={openThermalPrinterDialog}
                                         />
                                     </div>
-                                    )}
+                                    </>)}
                                 </div>
                             </div>
                         </CardContent>
                     </Card>
 
-                    {/* KDS Streaming */}
-                    {features.kds_enabled && (
+                    {/* Instant POS & KDS */}
                     <Card>
                         <CardHeader>
                             <CardTitle className="flex items-center gap-2">
-                                <MonitorPlay className="w-5 h-5" />
-                                {t('settings.kds.title') || 'KDS Settings'}
+                                <Zap className="w-5 h-5" />
+                                {t('settings.instantPos.title') || 'Instant POS'}
                             </CardTitle>
                             <CardDescription>
-                                {t('settings.kds.desc') || 'Manage your KDS settings'}
+                                {t('settings.instantPos.desc') || 'Manage Instant POS and KDS settings'}
                             </CardDescription>
                         </CardHeader>
                         <CardContent>
@@ -2164,7 +2163,25 @@ export function Settings() {
                                 <div className="space-y-2">
                                     <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg border border-border">
                                         <div className="space-y-0.5 pr-4">
-                                            <Label className="text-sm font-medium">{t('settings.kds.enable') || 'Enable KDS'}</Label>
+                                            <Label className="text-sm font-medium">{t('settings.instantPos.enable') || 'Enable Instant POS'}</Label>
+                                            <p className="text-xs text-muted-foreground max-w-md">
+                                                {t('settings.instantPos.enableDesc') || 'Enable instant point of sale for quick transactions'}
+                                            </p>
+                                        </div>
+                                        <Switch
+                                            checked={features.instant_pos}
+                                            onCheckedChange={(val) => {
+                                                updateSettings({ instant_pos: val })
+                                            }}
+                                        />
+                                    </div>
+
+                                    <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg border border-border">
+                                        <div className="space-y-0.5 pr-4">
+                                            <Label className="text-sm font-medium">
+                                                <MonitorPlay className="w-4 h-4 inline mr-1.5 -mt-0.5" />
+                                                {t('settings.kds.enable') || 'Enable KDS'}
+                                            </Label>
                                             <p className="text-xs text-muted-foreground max-w-md">
                                                 {t('settings.kds.enableDesc') || 'Enable KDS for your workspace'}
                                             </p>
@@ -2231,7 +2248,6 @@ export function Settings() {
                             </div>
                         </CardContent>
                     </Card>
-                    )}
 
                     {/* Currency Settings (Admin Only) */}
                     {user?.role === 'admin' && canUseMultiCurrency && (

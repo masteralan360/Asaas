@@ -121,7 +121,7 @@ async function getWorkspaceAccessToken(forceRefresh: boolean, fallbackAccessToke
     if (forceRefresh || shouldRefreshSession(session)) {
         const refreshedSession = await refreshCurrentSession()
         if (refreshedSession?.access_token) {
-            session = refreshedSession
+            session = refreshedSession as typeof session
         }
     }
 

@@ -274,7 +274,7 @@ BEGIN
   NEW.invoices_history := public.workspace_plan_has_module(NEW.plan, 'invoice_history');
   NEW.hr := public.workspace_plan_has_module(NEW.plan, 'hr');
 
-  IF NOT public.workspace_plan_allows_currency(NEW.plan, NEW.default_currency) THEN
+  IF NOT public.workspace_plan_allows_currency(NEW.plan, NEW.default_currency::text) THEN
     NEW.default_currency := 'usd';
   END IF;
 
@@ -479,7 +479,7 @@ BEGIN
   END IF;
 
   IF NEW.settlement_currency IS NOT NULL
-    AND NOT public.workspace_plan_allows_currency(v_plan, NEW.settlement_currency) THEN
+    AND NOT public.workspace_plan_allows_currency(v_plan, NEW.settlement_currency::text) THEN
     RAISE EXCEPTION 'Currency % is not included in the current workspace plan', NEW.settlement_currency
       USING ERRCODE = '42501';
   END IF;

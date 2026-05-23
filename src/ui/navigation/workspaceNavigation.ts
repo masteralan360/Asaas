@@ -124,7 +124,7 @@ export function buildWorkspaceNavigation({
           },
         ]
       : []),
-    ...(isCoreRole && hasFeature("instant_pos")
+    ...(isCoreRole && hasFeature("instant_pos") && features.instant_pos
       ? [
           {
             name: t("nav.instantPos", { defaultValue: "Instant POS" }),

@@ -121,7 +121,8 @@ export const PLAN_DEFINITIONS: Record<WorkspacePlan, WorkspacePlanDefinition> = 
             'members'
         ],
         capabilities: [
-            'receiptPrinting'
+            'receiptPrinting',
+            'kds'
         ],
         allowedCurrencies: ['usd'],
         limits: {

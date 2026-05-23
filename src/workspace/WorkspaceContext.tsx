@@ -115,7 +115,7 @@ interface WorkspaceContextType {
     hasFeature: (feature: ModuleFeatureKey) => boolean
     hasCapability: (capability: PlanCapabilityKey) => boolean
     refreshFeatures: () => Promise<void>
-    updateSettings: (settings: Partial<Pick<WorkspaceFeatures, 'default_currency' | 'iqd_display_preference' | 'eur_conversion_enabled' | 'try_conversion_enabled' | 'allow_whatsapp' | 'kds_enabled' | 'logo_url' | 'coordination' | 'print_lang' | 'print_qr' | 'receipt_template' | 'a4_template' | 'print_quality' | 'thermal_printing' | 'ecommerce' | 'visibility' | 'store_slug' | 'store_description' | 'upload_limit_mb'>> & { name?: string }) => Promise<void>
+    updateSettings: (settings: Partial<Pick<WorkspaceFeatures, 'default_currency' | 'iqd_display_preference' | 'eur_conversion_enabled' | 'try_conversion_enabled' | 'allow_whatsapp' | 'kds_enabled' | 'instant_pos' | 'logo_url' | 'coordination' | 'print_lang' | 'print_qr' | 'receipt_template' | 'a4_template' | 'print_quality' | 'thermal_printing' | 'ecommerce' | 'visibility' | 'store_slug' | 'store_description' | 'upload_limit_mb'>> & { name?: string }) => Promise<void>
     switchDataMode: (newMode: 'cloud' | 'hybrid') => Promise<{ error: string | null }>
     activeWorkspace: { id: string } | undefined
 }
@@ -154,7 +154,7 @@ function getPlanFeatureFlags(plan: WorkspacePlan) {
 const defaultPlan = normalizeWorkspacePlan('basic')
 
 const PLAN_CONTROLLED_SETTINGS = new Set<string>([
-    ...PLAN_DERIVED_FEATURE_KEYS,
+    ...PLAN_DERIVED_FEATURE_KEYS.filter(k => k !== 'instant_pos'),
     'eur_conversion_enabled',
     'try_conversion_enabled',
     'allow_whatsapp',
@@ -272,7 +272,12 @@ function mergeWorkspaceFeatures(features?: Partial<WorkspaceFeatures> | null): W
         print_quality: planHasCapability(plan, 'a4PdfInvoices')
             ? features?.print_quality ?? defaultFeatures.print_quality
             : 'low',
-        kds_enabled: false
+        instant_pos: planHasWorkspaceFeature(plan, 'instant_pos')
+            ? features?.instant_pos ?? defaultFeatures.instant_pos
+            : false,
+        kds_enabled: planHasCapability(plan, 'kds') && features?.instant_pos !== false
+            ? features?.kds_enabled ?? defaultFeatures.kds_enabled
+            : false
     }
 }
 
@@ -891,7 +896,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     }
 
     const updateSettings = async (
-        settings: Partial<Pick<WorkspaceFeatures, 'default_currency' | 'iqd_display_preference' | 'eur_conversion_enabled' | 'try_conversion_enabled' | 'allow_whatsapp' | 'kds_enabled' | 'logo_url' | 'coordination' | 'print_lang' | 'print_qr' | 'receipt_template' | 'a4_template' | 'print_quality' | 'thermal_printing' | 'ecommerce' | 'visibility' | 'store_slug' | 'store_description' | 'upload_limit_mb'>> & { name?: string }
+        settings: Partial<Pick<WorkspaceFeatures, 'default_currency' | 'iqd_display_preference' | 'eur_conversion_enabled' | 'try_conversion_enabled' | 'allow_whatsapp' | 'kds_enabled' | 'instant_pos' | 'logo_url' | 'coordination' | 'print_lang' | 'print_qr' | 'receipt_template' | 'a4_template' | 'print_quality' | 'thermal_printing' | 'ecommerce' | 'visibility' | 'store_slug' | 'store_description' | 'upload_limit_mb'>> & { name?: string }
     ) => {
         const workspaceId = user?.workspaceId
         if (!workspaceId) return
@@ -1007,10 +1012,12 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         }
 
         if (navigator.onLine) {
-            const { error } = await supabase
+            const { data: updatedRow, error } = await supabase
                 .from('workspaces')
                 .update(supabaseUpdate)
                 .eq('id', workspaceId)
+                .select('kds_enabled, instant_pos')
+                .maybeSingle()
 
             if (error) {
                 console.error('Error updating workspace settings on Supabase:', error)
@@ -1042,6 +1049,25 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                     if (branchError) {
                         console.error('Error updating branch settings on Supabase:', branchError)
                         await addToOfflineMutations('workspace_branches', currentBranchInfo.relationId, 'update', branchUpdatePayload, workspaceId)
+                    }
+                }
+
+                if (updatedRow) {
+                    const patched: Record<string, unknown> = {}
+                    if ('instant_pos' in supabaseUpdate && typeof updatedRow.instant_pos === 'boolean') {
+                        patched.instant_pos = updatedRow.instant_pos
+                    }
+                    if ('kds_enabled' in supabaseUpdate && typeof updatedRow.kds_enabled === 'boolean') {
+                        patched.kds_enabled = updatedRow.kds_enabled
+                    }
+                    if (Object.keys(patched).length > 0) {
+                        const corrected = mergeWorkspaceFeatures({ ...featuresRef.current, ...patched })
+                        setFeatures(corrected)
+                        writeWorkspaceCache({
+                            workspaceId,
+                            features: corrected,
+                            workspaceName: workspaceNameRef.current || nextWorkspaceName
+                        })
                     }
                 }
 
