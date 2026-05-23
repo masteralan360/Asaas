@@ -36,6 +36,27 @@ type UpdateWorkspaceSubscriptionRequest = {
     newExpiry?: string
 }
 
+type ListOverridesRequest = {
+    action: 'listOverrides'
+    passkey?: string
+    workspaceId?: string
+}
+
+type UpsertOverrideRequest = {
+    action: 'upsertOverride'
+    passkey?: string
+    workspaceId?: string
+    type?: string
+    key?: string
+    value?: string | null
+}
+
+type DeleteOverrideRequest = {
+    action: 'deleteOverride'
+    passkey?: string
+    overrideId?: string
+}
+
 type AdminConsoleRequest =
     | VerifyRequest
     | ListUsersRequest
@@ -43,6 +64,9 @@ type AdminConsoleRequest =
     | DeleteUserRequest
     | UpdateWorkspaceFeaturesRequest
     | UpdateWorkspaceSubscriptionRequest
+    | ListOverridesRequest
+    | UpsertOverrideRequest
+    | DeleteOverrideRequest
 
 async function isValidAdminPasskey(adminClient: ReturnType<typeof createAdminClient>, passkey: string) {
     const { data, error } = await adminClient
@@ -268,6 +292,70 @@ async function updateWorkspaceSubscription(
     return jsonResponse({ success: true })
 }
 
+async function listOverrides(
+    adminClient: ReturnType<typeof createAdminClient>,
+    body: ListOverridesRequest
+) {
+    const workspaceId = body.workspaceId?.trim() ?? ''
+    if (!workspaceId) return errorResponse('Workspace is required')
+
+    const { data, error } = await adminClient
+        .from('workspace_access_overrides')
+        .select('id, workspace_id, type, key, value, created_by, created_at')
+        .eq('workspace_id', workspaceId)
+        .order('type', { ascending: true })
+
+    if (error) return errorResponse(error.message, 500)
+    return jsonResponse(data ?? [])
+}
+
+async function upsertOverride(
+    adminClient: ReturnType<typeof createAdminClient>,
+    body: UpsertOverrideRequest
+) {
+    const workspaceId = body.workspaceId?.trim() ?? ''
+    const type = body.type?.trim() ?? ''
+    const key = body.key?.trim() ?? ''
+
+    if (!workspaceId || !type || !key) {
+        return errorResponse('workspaceId, type, and key are required')
+    }
+
+    if (!['module', 'capability', 'currency', 'limit'].includes(type)) {
+        return errorResponse('Invalid type. Must be module, capability, currency, or limit')
+    }
+
+    const { data, error } = await adminClient
+        .from('workspace_access_overrides')
+        .upsert({
+            workspace_id: workspaceId,
+            type,
+            key,
+            value: body.value ?? null
+        }, { onConflict: 'workspace_id,type,key' })
+        .select('id, workspace_id, type, key, value, created_by, created_at')
+        .maybeSingle()
+
+    if (error) return errorResponse(error.message, 500)
+    return jsonResponse(data ?? {})
+}
+
+async function deleteOverride(
+    adminClient: ReturnType<typeof createAdminClient>,
+    body: DeleteOverrideRequest
+) {
+    const overrideId = body.overrideId?.trim() ?? ''
+    if (!overrideId) return errorResponse('overrideId is required')
+
+    const { error } = await adminClient
+        .from('workspace_access_overrides')
+        .delete()
+        .eq('id', overrideId)
+
+    if (error) return errorResponse(error.message, 500)
+    return jsonResponse({ success: true })
+}
+
 Deno.serve(async (req) => {
     if (req.method === 'OPTIONS') {
         return new Response('ok', { headers: corsHeaders })
@@ -313,6 +401,18 @@ Deno.serve(async (req) => {
 
         if (body.action === 'updateWorkspaceSubscription') {
             return await updateWorkspaceSubscription(adminClient, body)
+        }
+
+        if (body.action === 'listOverrides') {
+            return await listOverrides(adminClient, body)
+        }
+
+        if (body.action === 'upsertOverride') {
+            return await upsertOverride(adminClient, body)
+        }
+
+        if (body.action === 'deleteOverride') {
+            return await deleteOverride(adminClient, body)
         }
 
         return errorResponse('Unsupported action', 400)

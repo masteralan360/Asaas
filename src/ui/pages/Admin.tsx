@@ -15,7 +15,36 @@ import {
     Phone,
     Search,
     AlertCircle,
-    MapPin
+    MapPin,
+    KeyRound,
+    Loader2,
+    Plus,
+    MinusCircle,
+    CreditCard,
+    Zap,
+    Receipt,
+    Package,
+    Warehouse,
+    ArrowRightLeft,
+    History,
+    Boxes,
+    Wallet,
+    Users,
+    UsersRound,
+    Truck,
+    ShoppingCart,
+    Store,
+    HandCoins,
+    Copy,
+    Percent,
+    BarChart3,
+    TrendingUp,
+    FileText,
+    FileSpreadsheet,
+    MessageSquare,
+    DollarSign,
+    Globe,
+    type LucideIcon
 } from 'lucide-react'
 import {
     Button,
@@ -28,6 +57,12 @@ import {
     Switch,
     useToast,
     DeleteConfirmationModal,
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+    DialogDescription,
+    DialogFooter,
     Map,
     MapMarker,
     MarkerContent,
@@ -39,6 +74,7 @@ import { useTranslation } from 'react-i18next'
 import { formatDate, cn } from '@/lib/utils'
 import { getRetriableActionToast, isRetriableWebRequestError, normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
 import { r2Service } from '@/services/r2Service'
+import { getPlanCapabilities, type PlanModuleKey, type PlanCapabilityKey, type WorkspaceCurrencyCode, type WorkspacePlan } from '@/plans/workspacePlans'
 
 const SESSION_DURATION = 150 // seconds
 
@@ -90,6 +126,74 @@ export function Admin() {
     const [searchTerm, setSearchTerm] = useState('')
     const [customExpiries, setCustomExpiries] = useState<Record<string, string>>({})
     const canEdit = isAuthenticated
+
+    // Access override state
+    const [accessWorkspace, setAccessWorkspace] = useState<AdminWorkspace | null>(null)
+    const [accessOverrides, setAccessOverrides] = useState<Record<string, { id: string; value: string | null }>>({})
+    const [draftOverrides, setDraftOverrides] = useState<Record<string, string | null>>({})
+    const [isSavingOverrides, setIsSavingOverrides] = useState(false)
+    const [accessLoading, setAccessLoading] = useState(false)
+
+    const ALL_MODULES: PlanModuleKey[] = [
+        'pos', 'instant_pos', 'sales_history', 'products', 'storages',
+        'inventory_transfer', 'inventory_transactions', 'stock_adjustments',
+        'ledger', 'payments', 'direct_transactions', 'members',
+        'business_partners', 'customers', 'suppliers', 'orders',
+        'ecommerce', 'loans', 'installments', 'discounts',
+        'revenue_analytics', 'team_performance', 'invoice_history',
+        'accounting', 'hr', 'expenses', 'payroll', 'whatsapp'
+    ]
+
+    const MODULE_ICONS: Record<string, LucideIcon> = {
+        pos: CreditCard,
+        instant_pos: Zap,
+        sales_history: Receipt,
+        products: Package,
+        storages: Warehouse,
+        inventory_transfer: ArrowRightLeft,
+        inventory_transactions: History,
+        stock_adjustments: Boxes,
+        ledger: Wallet,
+        payments: CreditCard,
+        direct_transactions: ArrowRightLeft,
+        members: Users,
+        business_partners: UsersRound,
+        customers: Users,
+        suppliers: Truck,
+        orders: ShoppingCart,
+        ecommerce: Store,
+        loans: HandCoins,
+        installments: Copy,
+        discounts: Percent,
+        revenue_analytics: BarChart3,
+        team_performance: TrendingUp,
+        invoice_history: FileText,
+        accounting: FileSpreadsheet,
+        hr: UsersRound,
+        expenses: Wallet,
+        payroll: DollarSign,
+        whatsapp: MessageSquare
+    }
+
+    const ALL_CAPABILITIES: PlanCapabilityKey[] = [
+        'receiptPrinting', 'a4PdfInvoices', 'pdfInvoiceGeneration',
+        'barcodeScanner', 'thermalPrinter', 'multipleWorkspaceContacts',
+        'marketplaceInquiries', 'marketplaceStorefronts', 'loanInstallmentInvoices',
+        'multiCurrency', 'excelExportSales', 'excelExportLedger',
+        'excelExportRevenue', 'workspaceStorageUploads', 'workspacePdfUploads',
+        'workspaceImageUploads', 'workspaceAudioUploads',
+        'workspaceManagementPermissions', 'whatsappIntegration', 'whatsappSharing',
+        'stockBatches', 'kds'
+    ]
+
+    const ALL_CURRENCIES: WorkspaceCurrencyCode[] = ['usd', 'eur', 'iqd', 'try']
+
+    const LIMIT_KEYS: { key: string; label: string }[] = [
+        { key: 'maxMembers', label: 'Max Members' },
+        { key: 'maxBranches', label: 'Max Branches' },
+        { key: 'maxWorkspaceContacts', label: 'Max Contacts' },
+        { key: 'maxUploadSizeMb', label: 'Upload Size (MB)' }
+    ]
 
     const showActionError = (err: unknown, fallbackTitle: string) => {
         const normalized = normalizeSupabaseActionError(err)
@@ -311,6 +415,121 @@ export function Admin() {
         return { label: t('admin.active') || 'Active', color: 'text-green-600 bg-green-50', icon: CheckCircle2 }
     }
 
+    const openAccessModal = async (ws: AdminWorkspace) => {
+        setAccessWorkspace(ws)
+        setAccessLoading(true)
+        setAccessOverrides({})
+        setDraftOverrides({})
+        try {
+            const data = await invokeAdminAction<Array<{ id: string; type: string; key: string; value: string | null }>>('listOverrides', { workspaceId: ws.id })
+            const overridesByKey: Record<string, { id: string; value: string | null }> = {}
+            for (const ov of data ?? []) {
+                overridesByKey[`${ov.type}:${ov.key}`] = { id: ov.id, value: ov.value }
+            }
+            setAccessOverrides(overridesByKey)
+        } catch (err) {
+            showActionError(err, 'Failed to load overrides')
+        } finally {
+            setAccessLoading(false)
+        }
+    }
+
+    const closeAccessModal = () => {
+        setAccessWorkspace(null)
+        setAccessOverrides({})
+        setDraftOverrides({})
+        setIsSavingOverrides(false)
+    }
+
+    const getEffectiveValue = (type: string, key: string): string | null => {
+        const mapKey = `${type}:${key}`
+        if (mapKey in draftOverrides) return draftOverrides[mapKey]
+        return accessOverrides[mapKey]?.value ?? null
+    }
+
+    const getOverrideState = (type: string, key: string): 'grant' | 'revoke' | 'default' => {
+        const effective = getEffectiveValue(type, key)
+        if (effective === null) return 'default'
+        return effective === 'grant' ? 'grant' : 'revoke'
+    }
+
+    const handleGrantRevoke = (type: string, key: string, targetValue: 'grant' | 'revoke') => {
+        const mapKey = `${type}:${key}`
+        const current = getEffectiveValue(type, key)
+
+        if (current === targetValue) {
+            if (mapKey in draftOverrides) {
+                setDraftOverrides(prev => {
+                    const next = { ...prev }
+                    delete next[mapKey]
+                    return next
+                })
+            } else if (accessOverrides[mapKey]) {
+                setDraftOverrides(prev => ({ ...prev, [mapKey]: null }))
+            }
+        } else {
+            setDraftOverrides(prev => ({ ...prev, [mapKey]: targetValue }))
+        }
+    }
+
+    const handleLimitChange = (key: string, val: string) => {
+        const mapKey = `limit:${key}`
+        if (val === '') {
+            if (mapKey in draftOverrides) {
+                setDraftOverrides(prev => {
+                    const next = { ...prev }
+                    delete next[mapKey]
+                    return next
+                })
+            } else if (accessOverrides[mapKey]) {
+                setDraftOverrides(prev => ({ ...prev, [mapKey]: null }))
+            }
+        } else {
+            const num = parseInt(val, 10)
+            if (!isNaN(num)) {
+                setDraftOverrides(prev => ({ ...prev, [mapKey]: String(num) }))
+            }
+        }
+    }
+
+    const handleSaveOverrides = async () => {
+        const ws = accessWorkspace
+        if (!ws) return
+
+        setIsSavingOverrides(true)
+        try {
+            const entries = Object.entries(draftOverrides)
+            const newOverrides = { ...accessOverrides }
+
+            for (const [mapKey, value] of entries) {
+                const colonIdx = mapKey.indexOf(':')
+                const type = mapKey.substring(0, colonIdx)
+                const key = mapKey.substring(colonIdx + 1)
+
+                if (value === null) {
+                    const existing = newOverrides[mapKey]
+                    if (existing) {
+                        await invokeAdminAction<{ success: boolean }>('deleteOverride', { overrideId: existing.id })
+                        delete newOverrides[mapKey]
+                    }
+                } else {
+                    const result = await invokeAdminAction<{ id: string }>('upsertOverride', {
+                        workspaceId: ws.id, type, key, value
+                    })
+                    newOverrides[mapKey] = { id: result.id, value }
+                }
+            }
+
+            setAccessOverrides(newOverrides)
+            setDraftOverrides({})
+            toast({ title: 'Overrides saved successfully' })
+        } catch (err) {
+            showActionError(err, 'Failed to save overrides')
+        } finally {
+            setIsSavingOverrides(false)
+        }
+    }
+
     // Filter workspaces based on showDeleted toggle
     const filteredWorkspaces = workspaces.filter(ws => showDeleted ? true : !ws.deleted_at)
 
@@ -396,9 +615,10 @@ export function Admin() {
                 </div>
 
                 <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-                    <TabsList className="grid w-full grid-cols-4">
+                    <TabsList className="grid w-full grid-cols-5">
                         <TabsTrigger value="users">{t('admin.users') || 'Registered Users'}</TabsTrigger>
                         <TabsTrigger value="workspaces">{t('admin.workspaces') || 'Workspace Configuration'}</TabsTrigger>
+                        <TabsTrigger value="access">Access</TabsTrigger>
                         <TabsTrigger value="subscriptions">{t('admin.subscriptions') || 'Subscriptions'}</TabsTrigger>
                         <TabsTrigger value="geolocation">{t('admin.geolocation') || 'Workspace Geolocation'}</TabsTrigger>
                     </TabsList>
@@ -609,6 +829,68 @@ export function Admin() {
                         </div>
                     </TabsContent>
 
+                    {/* ACCESS TAB */}
+                    <TabsContent value="access" className="space-y-4">
+                        <div className="bg-card rounded-2xl border border-border shadow-sm overflow-hidden">
+                            <div className="p-6 border-b border-border bg-muted/5">
+                                <h2 className="text-lg font-semibold flex items-center gap-2">
+                                    <KeyRound className="w-5 h-5" />
+                                    Workspace Access Overrides
+                                </h2>
+                                <p className="text-sm text-muted-foreground mt-1">
+                                    Manage plan overrides for each workspace. Overrides take final priority over plan definitions.
+                                </p>
+                            </div>
+                            <div className="overflow-x-auto">
+                                <table className="w-full border-collapse">
+                                    <thead>
+                                        <tr className="bg-muted/30">
+                                            <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">{t('admin.workspace')}</th>
+                                            <th className="px-6 py-4 text-center text-xs font-semibold text-muted-foreground uppercase tracking-wider">Plan</th>
+                                            <th className="px-6 py-4 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wider">{t('common.actions')}</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-border">
+                                        {filteredWorkspaces.map((ws) => (
+                                            <tr key={ws.id} className="hover:bg-muted/10 transition-colors group">
+                                                <td className="px-6 py-4">
+                                                    <div className="font-medium">{ws.name}</div>
+                                                    <div className="text-xs text-muted-foreground font-mono">{ws.code}</div>
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <div className="flex justify-center">
+                                                        <span className={cn('px-2 py-0.5 rounded-full text-[10px] font-bold uppercase border', ws.plan === 'enterprise' ? 'border-purple-500/20 bg-purple-500/10 text-purple-700' : ws.plan === 'business' ? 'border-blue-500/20 bg-blue-500/10 text-blue-700' : 'border-muted-foreground/20 bg-muted/30 text-muted-foreground')}>
+                                                            {ws.plan}
+                                                        </span>
+                                                    </div>
+                                                </td>
+                                                <td className="px-6 py-4 text-right">
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        className="h-8 w-8 text-muted-foreground hover:text-primary hover:bg-primary/10"
+                                                        onClick={() => openAccessModal(ws)}
+                                                        disabled={!canEdit}
+                                                        title="Manage Access"
+                                                    >
+                                                        <KeyRound className="h-4 w-4" />
+                                                    </Button>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                        {filteredWorkspaces.length === 0 && !isLoading && (
+                                            <tr>
+                                                <td colSpan={3} className="px-6 py-12 text-center text-muted-foreground">
+                                                    No workspaces found.
+                                                </td>
+                                            </tr>
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </TabsContent>
+
                     {/* SUBSCRIPTIONS TAB */}
                     <TabsContent value="subscriptions" className="space-y-4">
                         <div className="space-y-4">
@@ -804,6 +1086,200 @@ export function Admin() {
                     </TabsContent>
                 </Tabs>
             </div>
+
+            <Dialog open={!!accessWorkspace} onOpenChange={() => {}}>
+                <DialogContent
+                    onInteractOutside={(e) => e.preventDefault()}
+                    className="top-[calc(50%+var(--titlebar-height)/2+var(--safe-area-top)/2)] flex max-h-[calc(100dvh-var(--titlebar-height)-var(--safe-area-top)-var(--safe-area-bottom)-0.75rem)] w-[calc(100vw-0.75rem)] max-w-5xl flex-col overflow-hidden rounded-[1.25rem] border-border/60 p-0"
+                >
+                    <DialogHeader className="border-b bg-muted/30 px-4 py-4 pr-14 text-left">
+                        <DialogTitle className="flex items-center gap-2">
+                            <KeyRound className="h-5 w-5 text-primary" />
+                            Manage Access &mdash; {accessWorkspace?.name}
+                        </DialogTitle>
+                        <DialogDescription>
+                            Override plan-derived entitlements for this workspace. Overrides are absolute and always win over plan defaults.
+                            Plan: <span className="font-semibold capitalize">{accessWorkspace?.plan}</span>
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    {accessLoading ? (
+                        <div className="flex min-h-0 flex-1 items-center justify-center py-12">
+                            <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+                        </div>
+                    ) : accessWorkspace ? (
+                        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+                            <div className="space-y-6">
+                                {/* Unified table for Modules / Capabilities / Currencies */}
+                                <div className="overflow-x-auto rounded-lg border border-border">
+                                    <table className="w-full border-collapse">
+                                        <thead>
+                                            <tr className="bg-muted/30 text-left">
+                                                <th className="px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider w-[35%]">Key</th>
+                                                <th className="px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider w-[18%]">Type</th>
+                                                <th className="px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider w-[18%]">Plan</th>
+                                                <th className="px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider text-center w-[14%]">Grant</th>
+                                                <th className="px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider text-center w-[15%]">Revoke</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-border text-sm">
+                                            {(() => {
+                                                const planCaps = getPlanCapabilities(accessWorkspace.plan as WorkspacePlan)
+                                                const rows: { type: string; key: string; label: string; inPlan: boolean }[] = [
+                                                    ...ALL_MODULES.map(m => ({ type: 'module', key: m, label: m.replace(/_/g, ' '), inPlan: planCaps.modules.includes(m) })),
+                                                    ...ALL_CAPABILITIES.map(c => ({ type: 'capability', key: c, label: c, inPlan: planCaps.capabilities.includes(c) })),
+                                                    ...ALL_CURRENCIES.map(c => ({ type: 'currency', key: c, label: c.toUpperCase(), inPlan: planCaps.allowedCurrencies.includes(c) }))
+                                                ]
+                                                return rows.map(({ type, key, label, inPlan }) => {
+                                                    const state = getOverrideState(type, key)
+                                                    const mapKey = `${type}:${key}`
+                                                    const isPending = mapKey in draftOverrides
+                                                    const ModuleIcon = type === 'module' ? MODULE_ICONS[key] : null
+                                                    return (
+                                                        <tr key={mapKey} className="hover:bg-muted/10 transition-colors">
+                                                            <td className="px-4 py-2.5">
+                                                                <div className="flex items-center gap-2.5">
+                                                                    {ModuleIcon && (
+                                                                        <ModuleIcon className="w-4 h-4 text-primary/70 shrink-0" />
+                                                                    )}
+                                                                    <span className="font-medium capitalize">{label}</span>
+                                                                    {isPending && <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />}
+                                                                </div>
+                                                            </td>
+                                                            <td className="px-4 py-2.5 text-xs text-muted-foreground">{type}</td>
+                                                            <td className="px-4 py-2.5">
+                                                                <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-medium ${inPlan ? 'bg-green-500/10 text-green-600' : 'bg-muted/50 text-muted-foreground'}`}>
+                                                                    {inPlan ? 'Included' : '—'}
+                                                                </span>
+                                                            </td>
+                                                            <td className="px-4 py-2.5 text-center">
+                                                                <button
+                                                                    onClick={() => handleGrantRevoke(type, key, 'grant')}
+                                                                    disabled={inPlan && state !== 'grant'}
+                                                                    className={`inline-flex items-center justify-center w-8 h-8 rounded-md text-xs font-bold transition-all ${state === 'grant' ? 'bg-green-500/15 text-green-600 border border-green-500/30 shadow-sm' : isPending ? 'bg-amber-500/15 text-amber-600 border border-amber-500/30' : inPlan ? 'bg-transparent text-muted-foreground/20 border border-transparent cursor-not-allowed' : 'bg-transparent text-muted-foreground/40 border border-transparent hover:bg-green-500/5 hover:text-green-500/70'}`}
+                                                                    title={state === 'grant' ? 'Remove override' : inPlan ? 'Already in plan' : 'Grant'}
+                                                                >
+                                                                    {state === 'grant' ? '✓' : '+'}
+                                                                </button>
+                                                            </td>
+                                                            <td className="px-4 py-2.5 text-center">
+                                                                <button
+                                                                    onClick={() => handleGrantRevoke(type, key, 'revoke')}
+                                                                    disabled={!inPlan && state !== 'revoke'}
+                                                                    className={`inline-flex items-center justify-center w-8 h-8 rounded-md text-xs font-bold transition-all ${state === 'revoke' ? 'bg-red-500/15 text-red-600 border border-red-500/30 shadow-sm' : isPending ? 'bg-amber-500/15 text-amber-600 border border-amber-500/30' : !inPlan ? 'bg-transparent text-muted-foreground/20 border border-transparent cursor-not-allowed' : 'bg-transparent text-muted-foreground/40 border border-transparent hover:bg-red-500/5 hover:text-red-500/70'}`}
+                                                                    title={state === 'revoke' ? 'Remove override' : !inPlan ? 'Not in plan' : 'Revoke'}
+                                                                >
+                                                                    {state === 'revoke' ? '✕' : '−'}
+                                                                </button>
+                                                            </td>
+                                                        </tr>
+                                                    )
+                                                })
+                                            })()}
+                                        </tbody>
+                                    </table>
+                                </div>
+
+                                {/* Limits */}
+                                <div>
+                                    <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">Limits</h3>
+                                    <div className="overflow-x-auto rounded-lg border border-border">
+                                        <table className="w-full border-collapse">
+                                            <thead>
+                                                <tr className="bg-muted/30 text-left">
+                                                    <th className="px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider w-[35%]">Limit</th>
+                                                    <th className="px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider w-[20%]">Plan Value</th>
+                                                    <th className="px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider w-[30%]">Override</th>
+                                                    <th className="px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider w-[15%]"></th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-border text-sm">
+                                                {LIMIT_KEYS.map(({ key, label }) => {
+                                                    const planLimits = getPlanCapabilities(accessWorkspace.plan as WorkspacePlan).limits
+                                                    const planValue = (planLimits as any)[key]
+                                                    const mapKey = `limit:${key}`
+                                                    const currentValue = getEffectiveValue('limit', key) ?? ''
+                                                    const serverOverride = accessOverrides[mapKey]
+                                                    const hasPending = mapKey in draftOverrides
+                                                    return (
+                                                        <tr key={key} className="hover:bg-muted/10 transition-colors">
+                                                            <td className="px-4 py-2.5 font-medium">{label}</td>
+                                                            <td className="px-4 py-2.5">
+                                                                <span className="px-2 py-0.5 rounded text-xs font-medium bg-muted/50 text-muted-foreground">
+                                                                    {planValue != null ? planValue : '∞'}
+                                                                </span>
+                                                            </td>
+                                                            <td className="px-4 py-2.5">
+                                                                <input
+                                                                    type="number"
+                                                                    className={`w-24 px-2 py-1 rounded border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 ${hasPending ? 'border-amber-500/50 bg-amber-500/5' : 'border-border bg-background'}`}
+                                                                    placeholder={String(planValue ?? '')}
+                                                                    value={currentValue}
+                                                                    onChange={(e) => handleLimitChange(key, e.target.value)}
+                                                                />
+                                                                {hasPending && <span className="ml-1.5 w-1.5 h-1.5 rounded-full bg-amber-500 inline-block align-middle shrink-0" />}
+                                                            </td>
+                                                            <td className="px-4 py-2.5 text-center">
+                                                                {(serverOverride || hasPending) && (
+                                                                    <button
+                                                                        onClick={() => {
+                                                                            if (mapKey in draftOverrides) {
+                                                                                setDraftOverrides(prev => {
+                                                                                    const next = { ...prev }
+                                                                                    delete next[mapKey]
+                                                                                    return next
+                                                                                })
+                                                                            } else if (serverOverride) {
+                                                                                setDraftOverrides(prev => ({ ...prev, [mapKey]: null }))
+                                                                            }
+                                                                        }}
+                                                                        className="p-1 text-muted-foreground hover:text-destructive rounded transition-colors"
+                                                                        title="Reset to plan default"
+                                                                    >
+                                                                        <MinusCircle className="w-4 h-4" />
+                                                                    </button>
+                                                                )}
+                                                            </td>
+                                                        </tr>
+                                                    )
+                                                })}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    ) : null}
+
+                    <DialogFooter className="border-t bg-muted/20 px-4 py-4">
+                        <div className="flex w-full items-center justify-between">
+                            <div>
+                                {Object.keys(draftOverrides).length > 0 && (
+                                    <span className="text-xs text-amber-600 font-medium">
+                                        {Object.keys(draftOverrides).length} pending change{Object.keys(draftOverrides).length !== 1 ? 's' : ''}
+                                    </span>
+                                )}
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <Button
+                                    variant="default"
+                                    onClick={handleSaveOverrides}
+                                    disabled={Object.keys(draftOverrides).length === 0 || isSavingOverrides}
+                                >
+                                    {isSavingOverrides ? (
+                                        <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Saving...</>
+                                    ) : (
+                                        'Save Changes'
+                                    )}
+                                </Button>
+                                <Button variant="outline" onClick={closeAccessModal}>
+                                    Done
+                                </Button>
+                            </div>
+                        </div>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
 
             <DeleteConfirmationModal
                 isOpen={deleteModalOpen}
