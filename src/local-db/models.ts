@@ -7,6 +7,7 @@ export type UserRole = "admin" | "staff" | "viewer";
 
 export type CurrencyCode = "usd" | "eur" | "iqd" | "try";
 export type WorkspaceDataMode = "cloud" | "local" | "hybrid";
+export type WorkspacePlan = "basic" | "business" | "enterprise";
 
 export type PaymentMethod =
   | "cash"
@@ -699,6 +700,7 @@ export interface Invoice extends BaseEntity {
   pdfBlobA4?: Blob;
   pdfBlobReceipt?: Blob;
   fileSize?: number;
+  fileMimeType?: string | null;
 }
 
 export interface Sale extends BaseEntity {
@@ -910,6 +912,7 @@ export type MutationStatus = "pending" | "syncing" | "failed" | "synced";
 export interface Workspace extends BaseEntity {
   name: string;
   code: string;
+  plan?: WorkspacePlan;
   data_mode: WorkspaceDataMode;
   is_configured?: boolean;
   // Module toggles

@@ -1,6 +1,8 @@
+import { useEffect } from 'react'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './select'
 import { Label } from './label'
 import type { CurrencyCode } from '@/local-db/models'
+import { useWorkspace } from '@/workspace'
 
 interface CurrencySelectorProps {
     value: CurrencyCode
@@ -11,6 +13,20 @@ interface CurrencySelectorProps {
 }
 
 export function CurrencySelector({ value, onChange, label, iqdDisplayPreference = 'IQD', disabled }: CurrencySelectorProps) {
+    const { features, hasCapability } = useWorkspace()
+    const canUseMultiCurrency = hasCapability('multiCurrency')
+    const defaultCurrency = features.default_currency || 'usd'
+
+    useEffect(() => {
+        if (!canUseMultiCurrency && value !== defaultCurrency) {
+            onChange(defaultCurrency)
+        }
+    }, [canUseMultiCurrency, defaultCurrency, onChange, value])
+
+    if (!canUseMultiCurrency) {
+        return null
+    }
+
     return (
         <div className="space-y-2">
             {label && <Label>{label}</Label>}

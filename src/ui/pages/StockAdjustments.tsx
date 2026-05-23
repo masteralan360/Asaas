@@ -12,6 +12,7 @@ import {
 import { useTranslation } from "react-i18next";
 
 import { useAuth } from "@/auth";
+import { useWorkspace } from "@/workspace";
 import {
   createStockAdjustment,
   createStockBatch,
@@ -169,9 +170,11 @@ function mapTransactionLabel(transaction: InventoryTransaction) {
 export function StockAdjustments() {
   const { t } = useTranslation();
   const { user } = useAuth();
+  const { hasCapability } = useWorkspace();
   const { toast } = useToast();
   const workspaceId = user?.workspaceId;
   const canEdit = user?.role === "admin" || user?.role === "staff";
+  const canManageStockBatches = hasCapability("stockBatches");
 
   const products = useProducts(workspaceId);
   const storages = useStorages(workspaceId);
@@ -205,6 +208,12 @@ export function StockAdjustments() {
   const [batchToDelete, setBatchToDelete] = useState<StockBatch | null>(null);
   const [isDeletingBatch, setIsDeletingBatch] = useState(false);
   const adjustmentSeededSelectionKeyRef = useRef("");
+
+  useEffect(() => {
+    if (!canManageStockBatches && activeTab === "batches") {
+      setActiveTab("adjustments");
+    }
+  }, [activeTab, canManageStockBatches]);
 
   const productsById = useMemo(
     () => new Map(products.map((product) => [product.id, product] as const)),
@@ -532,7 +541,7 @@ export function StockAdjustments() {
   };
 
   const handleSaveBatch = async () => {
-    if (!workspaceId) return;
+    if (!workspaceId || !canManageStockBatches) return;
     setIsSavingBatch(true);
     try {
       const payload = {
@@ -576,7 +585,7 @@ export function StockAdjustments() {
   };
 
   const handleDeleteBatch = async () => {
-    if (!batchToDelete) return;
+    if (!batchToDelete || !canManageStockBatches) return;
     setIsDeletingBatch(true);
     try {
       await deleteStockBatch(batchToDelete.id);
@@ -616,8 +625,9 @@ export function StockAdjustments() {
             {t("nav.stockAdjustments", { defaultValue: "Stock Adjustments" })}
           </h1>
           <p className="max-w-3xl text-muted-foreground">
-            Record manual stock changes, manage product batches, and review the
-            unified inventory log.
+            {canManageStockBatches
+              ? "Record manual stock changes, manage product batches, and review the unified inventory log."
+              : "Record manual stock changes and review the unified inventory log."}
           </p>
         </div>
         {canEdit && (
@@ -632,33 +642,43 @@ export function StockAdjustments() {
               <Plus className="h-4 w-4" />
               New Stock Adjustment
             </Button>
-            <Button
-              variant="outline"
-              className="gap-2 rounded-xl"
-              onClick={() => {
-                resetBatchForm();
-                setBatchDialogOpen(true);
-              }}
-            >
-              <Plus className="h-4 w-4" />
-              New Stock Batch
-            </Button>
+            {canManageStockBatches && (
+              <Button
+                variant="outline"
+                className="gap-2 rounded-xl"
+                onClick={() => {
+                  resetBatchForm();
+                  setBatchDialogOpen(true);
+                }}
+              >
+                <Plus className="h-4 w-4" />
+                New Stock Batch
+              </Button>
+            )}
           </div>
         )}
       </div>
 
       <Tabs
         value={activeTab}
-        onValueChange={(value) => setActiveTab(value as ActiveTab)}
+        onValueChange={(value) => {
+          if (value === "batches" && !canManageStockBatches) return;
+          setActiveTab(value as ActiveTab);
+        }}
         className="space-y-6"
       >
-        <TabsList className="grid h-auto min-h-12 w-full max-w-xl grid-cols-2 rounded-2xl items-stretch">
+        <TabsList className={cn(
+          "grid h-auto min-h-12 w-full rounded-2xl items-stretch",
+          canManageStockBatches ? "max-w-xl grid-cols-2" : "max-w-xs grid-cols-1",
+        )}>
           <TabsTrigger value="adjustments" className="min-h-10">
             Stock Adjustments
           </TabsTrigger>
-          <TabsTrigger value="batches" className="min-h-10">
-            Stock Batches
-          </TabsTrigger>
+          {canManageStockBatches && (
+            <TabsTrigger value="batches" className="min-h-10">
+              Stock Batches
+            </TabsTrigger>
+          )}
         </TabsList>
 
         <TabsContent value="adjustments" className="space-y-6">
@@ -902,6 +922,7 @@ export function StockAdjustments() {
           </Card>
         </TabsContent>
 
+        {canManageStockBatches && (
         <TabsContent value="batches" className="space-y-6">
           <Card className="border-border/60 shadow-sm">
             <CardHeader>
@@ -1088,6 +1109,7 @@ export function StockAdjustments() {
             </CardContent>
           </Card>
         </TabsContent>
+        )}
       </Tabs>
 
       <Dialog

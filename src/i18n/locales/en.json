@@ -1816,7 +1816,7 @@
         "discardError": "Failed to discard changes."
     },
     "members": {
-        "title": "Members",
+        "title": "Members & Admin Control",
         "subtitle": "Manage workspace members",
         "table": {
             "name": "Name",

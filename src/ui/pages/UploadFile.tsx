@@ -27,14 +27,36 @@ import {
     DeleteConfirmationModal,
 } from '@/ui/components'
 
-const MAX_UPLOAD_SIZE_BYTES = 2 * 1024 * 1024
+function getFileMimeType(file: File) {
+    if (file.type) return file.type
+    const name = file.name.toLowerCase()
+    if (name.endsWith('.pdf')) return 'application/pdf'
+    if (name.endsWith('.png')) return 'image/png'
+    if (name.endsWith('.jpg') || name.endsWith('.jpeg')) return 'image/jpeg'
+    if (name.endsWith('.mp3')) return 'audio/mpeg'
+    return 'application/octet-stream'
+}
 
-function isPdfFile(file: File) {
-    return file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')
+function isPlanAcceptedFile(file: File, allowedMimeTypes: string[]) {
+    return allowedMimeTypes.includes(getFileMimeType(file))
 }
 
 function getBaseName(fileName: string) {
-    return fileName.replace(/\.pdf$/i, '').trim()
+    return fileName.replace(/\.(pdf|png|jpe?g|mp3)$/i, '').trim()
+}
+
+function getUploadExtension(file: File) {
+    const name = file.name.toLowerCase()
+    const match = name.match(/\.(pdf|png|jpe?g|mp3)$/i)
+    if (match?.[1]) {
+        return match[1].toLowerCase() === 'jpg' ? 'jpeg' : match[1].toLowerCase()
+    }
+
+    const mimeType = getFileMimeType(file)
+    if (mimeType === 'image/png') return 'png'
+    if (mimeType === 'image/jpeg') return 'jpeg'
+    if (mimeType === 'audio/mpeg') return 'mp3'
+    return 'pdf'
 }
 
 function sanitizeStorageSegment(value: string) {
@@ -55,7 +77,7 @@ export function UploadFilesTab({ invoices, onPreview }: UploadFilesTabProps) {
     const { t } = useTranslation()
     const { toast } = useToast()
     const { user } = useAuth()
-    const { activeWorkspace, features, branchInfo } = useWorkspace()
+    const { activeWorkspace, features, branchInfo, planCapabilities } = useWorkspace()
     const [documentName, setDocumentName] = useState('')
     const [selectedFile, setSelectedFile] = useState<File | null>(null)
     const [uploadProgress, setUploadProgress] = useState(0)
@@ -78,6 +100,7 @@ export function UploadFilesTab({ invoices, onPreview }: UploadFilesTabProps) {
         [uploadRecords]
     )
 
+    const allowedUploadMimeTypes = planCapabilities.limits.allowedUploadMimeTypes
     const limitMb = features.upload_limit_mb
     const effectiveLimitBytes = limitMb != null ? limitMb * 1024 * 1024 : null
 
@@ -103,6 +126,15 @@ export function UploadFilesTab({ invoices, onPreview }: UploadFilesTabProps) {
     const displayUsedBytes = useBranchTotal ? branchTotalUsedBytes : totalUsedBytes
 
     const exceededLimit = effectiveLimitBytes !== null && displayUsedBytes >= effectiveLimitBytes
+    const uploadAccept = allowedUploadMimeTypes.length > 0
+        ? allowedUploadMimeTypes.join(',')
+        : ''
+    const uploadHint = effectiveLimitBytes
+        ? t('uploadFile.dropHintPlan', {
+            defaultValue: 'Allowed by plan. Maximum file size is {{limit}}.',
+            limit: getReadableFileSize(effectiveLimitBytes)
+        })
+        : t('uploadFile.uploadUnavailable', { defaultValue: 'Workspace uploads are not included in this plan.' })
 
     const filteredUploadRecords = useMemo(() => {
         const normalizedSearch = search.trim().toLowerCase()
@@ -122,19 +154,19 @@ export function UploadFilesTab({ invoices, onPreview }: UploadFilesTabProps) {
     const handleFileSelected = (file: File | null) => {
         if (!file) return
 
-        if (!isPdfFile(file)) {
+        if (!isPlanAcceptedFile(file, allowedUploadMimeTypes)) {
             toast({
                 title: t('common.error', { defaultValue: 'Error' }),
-                description: t('uploadFile.pdfOnly', { defaultValue: 'Only PDF files are allowed.' }),
+                description: t('uploadFile.fileTypeNotAllowed', { defaultValue: 'This file type is not included in your workspace plan.' }),
                 variant: 'destructive',
             })
             return
         }
 
-        if (file.size > MAX_UPLOAD_SIZE_BYTES) {
+        if (effectiveLimitBytes === null || file.size > effectiveLimitBytes) {
             toast({
                 title: t('common.error', { defaultValue: 'Error' }),
-                description: t('uploadFile.maxSizeError', { defaultValue: 'The selected file exceeds the 2 MB limit.' }),
+                description: t('uploadFile.maxSizeError', { defaultValue: 'The selected file exceeds the plan upload limit.' }),
                 variant: 'destructive',
             })
             return
@@ -176,25 +208,25 @@ export function UploadFilesTab({ invoices, onPreview }: UploadFilesTabProps) {
         if (!selectedFile) {
             toast({
                 title: t('common.error', { defaultValue: 'Error' }),
-                description: t('uploadFile.selectFile', { defaultValue: 'Please select a PDF file to upload.' }),
+                description: t('uploadFile.selectFile', { defaultValue: 'Please select a file to upload.' }),
                 variant: 'destructive',
             })
             return
         }
 
-        if (!isPdfFile(selectedFile)) {
+        if (!isPlanAcceptedFile(selectedFile, allowedUploadMimeTypes)) {
             toast({
                 title: t('common.error', { defaultValue: 'Error' }),
-                description: t('uploadFile.pdfOnly', { defaultValue: 'Only PDF files are allowed.' }),
+                description: t('uploadFile.fileTypeNotAllowed', { defaultValue: 'This file type is not included in your workspace plan.' }),
                 variant: 'destructive',
             })
             return
         }
 
-        if (selectedFile.size > MAX_UPLOAD_SIZE_BYTES) {
+        if (effectiveLimitBytes === null || selectedFile.size > effectiveLimitBytes) {
             toast({
                 title: t('common.error', { defaultValue: 'Error' }),
-                description: t('uploadFile.maxSizeError', { defaultValue: 'The selected file exceeds the 2 MB limit.' }),
+                description: t('uploadFile.maxSizeError', { defaultValue: 'The selected file exceeds the plan upload limit.' }),
                 variant: 'destructive',
             })
             return
@@ -228,14 +260,16 @@ export function UploadFilesTab({ invoices, onPreview }: UploadFilesTabProps) {
         }
 
         const invoiceId = generateId()
-        const storagePath = `${activeWorkspace.id}/uploads/${invoiceId}-${sanitizeStorageSegment(trimmedName)}.pdf`
+        const uploadExtension = getUploadExtension(selectedFile)
+        const uploadMimeType = getFileMimeType(selectedFile)
+        const storagePath = `${activeWorkspace.id}/uploads/${invoiceId}-${sanitizeStorageSegment(trimmedName)}.${uploadExtension}`
         let uploaded = false
 
         setIsUploading(true)
         setUploadProgress(15)
 
         try {
-            await r2Service.upload(storagePath, selectedFile, 'application/pdf')
+            await r2Service.upload(storagePath, selectedFile, uploadMimeType)
             uploaded = true
             setUploadProgress(78)
 
@@ -250,6 +284,7 @@ export function UploadFilesTab({ invoices, onPreview }: UploadFilesTabProps) {
                 printFormat: 'a4',
                 r2PathA4: storagePath,
                 fileSize: selectedFile.size,
+                fileMimeType: uploadMimeType,
             }, invoiceId)
 
             setUploadProgress(100)
@@ -337,7 +372,7 @@ export function UploadFilesTab({ invoices, onPreview }: UploadFilesTabProps) {
                         {t('uploadFile.title', { defaultValue: 'Upload Files' })}
                     </CardTitle>
                     <p className="text-sm text-muted-foreground">
-                        {t('uploadFile.subtitle', { defaultValue: 'Upload PDF files to workspace R2 storage and track them from the invoices module.' })}
+                        {t('uploadFile.subtitle', { defaultValue: 'Upload files included in your workspace plan and track them from the invoices module.' })}
                     </p>
                 </CardHeader>
                 <CardContent className="space-y-6 p-6">
@@ -363,23 +398,23 @@ export function UploadFilesTab({ invoices, onPreview }: UploadFilesTabProps) {
 
                         <FileUpload.Root>
                             <FileUpload.DropZone
-                                accept=".pdf,application/pdf"
+                                accept={uploadAccept}
                                 allowsMultiple={false}
-                                maxSize={MAX_UPLOAD_SIZE_BYTES}
-                                isDisabled={isUploading}
-                                hint={t('uploadFile.dropHint', { defaultValue: 'PDF files only. Maximum file size is 2 MB.' })}
+                                maxSize={effectiveLimitBytes ?? 0}
+                                isDisabled={isUploading || allowedUploadMimeTypes.length === 0}
+                                hint={uploadHint}
                                 onDropFiles={(files) => handleFileSelected(files[0] ?? null)}
                                 onDropUnacceptedFiles={() => {
                                     toast({
                                         title: t('common.error', { defaultValue: 'Error' }),
-                                        description: t('uploadFile.pdfOnly', { defaultValue: 'Only PDF files are allowed.' }),
+                                        description: t('uploadFile.fileTypeNotAllowed', { defaultValue: 'This file type is not included in your workspace plan.' }),
                                         variant: 'destructive',
                                     })
                                 }}
                                 onSizeLimitExceed={() => {
                                     toast({
                                         title: t('common.error', { defaultValue: 'Error' }),
-                                        description: t('uploadFile.maxSizeError', { defaultValue: 'The selected file exceeds the 2 MB limit.' }),
+                                        description: t('uploadFile.maxSizeError', { defaultValue: 'The selected file exceeds the plan upload limit.' }),
                                         variant: 'destructive',
                                     })
                                 }}
@@ -390,7 +425,7 @@ export function UploadFilesTab({ invoices, onPreview }: UploadFilesTabProps) {
                                     <FileUpload.ListItemProgressBar
                                         name={selectedFile.name}
                                         size={selectedFile.size}
-                                        type="pdf"
+                                        type={getUploadExtension(selectedFile) === 'pdf' ? 'pdf' : undefined}
                                         progress={isUploading ? uploadProgress : 0}
                                         onDelete={isUploading ? undefined : () => {
                                             setSelectedFile(null)
@@ -414,9 +449,9 @@ export function UploadFilesTab({ invoices, onPreview }: UploadFilesTabProps) {
                             <Button
                                 type="submit"
                                 allowViewer={true}
-                                disabled={isUploading || !selectedFile || !documentName.trim() || !r2Service.isConfigured()}
+                                disabled={isUploading || !selectedFile || !documentName.trim() || !r2Service.isConfigured() || allowedUploadMimeTypes.length === 0}
                             >
-                                {isUploading ? t('uploadFile.uploading', { defaultValue: 'Uploading...' }) : t('uploadFile.uploadPdf', { defaultValue: 'Upload PDF' })}
+                                {isUploading ? t('uploadFile.uploading', { defaultValue: 'Uploading...' }) : t('uploadFile.uploadPdf', { defaultValue: 'Upload File' })}
                             </Button>
                         </div>
                     </form>
@@ -486,7 +521,7 @@ export function UploadFilesTab({ invoices, onPreview }: UploadFilesTabProps) {
                                         : t('uploadFile.noMatch', { defaultValue: 'No files match your search' })}
                                 </p>
                                 <p className="mt-1 text-sm text-muted-foreground">
-                                    {t('uploadFile.dragHint', { defaultValue: 'Drag a PDF into the uploader above to create the first record.' })}
+                                    {t('uploadFile.dragHint', { defaultValue: 'Drag a plan-supported file into the uploader above to create the first record.' })}
                                 </p>
                             </div>
                         </div>

@@ -681,6 +681,30 @@ function KdsStreamAutostart() {
   return null;
 }
 
+function WhatsAppPlanGuard() {
+  const { hasCapability } = useWorkspace();
+  const canUseWhatsApp = hasCapability("whatsappIntegration");
+
+  useEffect(() => {
+    if (!isTauri || isMobile()) return;
+
+    if (!canUseWhatsApp) {
+      whatsappManager.setEnabled(false);
+      return;
+    }
+
+    const autoLaunch = localStorage.getItem("whatsapp_auto_launch") === "true";
+    if (autoLaunch) {
+      console.log("[WhatsApp Startup] Auto-launching WhatsApp in background...");
+      whatsappManager.getOrCreate(0, 0, 0, 0).catch((err) => {
+        console.error("[WhatsApp Startup] Failed to auto-launch:", err);
+      });
+    }
+  }, [canUseWhatsApp]);
+
+  return null;
+}
+
 function App() {
   const { showModal, currentPatch, version, dismissModal } = usePatchNotes();
 
@@ -689,17 +713,6 @@ function App() {
       document.documentElement.setAttribute("data-mobile", "true");
     } else {
       document.documentElement.removeAttribute("data-mobile");
-    }
-
-    // WhatsApp Auto Launch Logic
-    const autoLaunch = localStorage.getItem("whatsapp_auto_launch") === "true";
-    if (autoLaunch && isTauri && !isMobile()) {
-      console.log(
-        "[WhatsApp Startup] Auto-launching WhatsApp in background...",
-      );
-      whatsappManager.getOrCreate(0, 0, 0, 0).catch((err) => {
-        console.error("[WhatsApp Startup] Failed to auto-launch:", err);
-      });
     }
   }, []);
 
@@ -711,6 +724,7 @@ function App() {
           <UiAccessProvider>
             <DateRangeProvider>
               <KdsStreamAutostart />
+              <WhatsAppPlanGuard />
               <UpdateHandler />
               <FaviconHandler />
               <AutoSyncOverlay />
@@ -784,7 +798,7 @@ function App() {
                       <Route path="/kds">
                         <ProtectedRoute
                           allowedRoles={["admin", "staff", "viewer"]}
-                          requiredFeature="pos"
+                          requiredCapability="kds"
                         >
                           <Layout>
                             <KDSDashboard />
@@ -1210,6 +1224,7 @@ function App() {
                       <Route path="/currency-converter">
                         <ProtectedRoute
                           allowedRoles={["admin", "staff", "viewer"]}
+                          requiredCapability="multiCurrency"
                         >
                           <Layout>
                             <CurrencyConverter />

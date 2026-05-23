@@ -35,6 +35,7 @@ import { formatDate } from '@/lib/utils'
 import { platformService } from '@/services/platformService'
 import { getRetriableActionToast, isRetriableWebRequestError, normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
 import { invokeWorkspaceAccess } from '@/lib/workspaceAccess'
+import { useWorkspace } from '@/workspace'
 import {
     WORKSPACE_PERMISSION_DEFINITIONS,
     getWorkspacePermissionModule,
@@ -73,6 +74,7 @@ const roleColors: Record<string, string> = {
 
 export function Members() {
     const { user, session } = useAuth()
+    const { hasCapability } = useWorkspace()
     const { t } = useTranslation()
     const [members, setMembers] = useState<Member[]>([])
     const [permissions, setPermissions] = useState<WorkspacePermission[]>([])
@@ -85,6 +87,7 @@ export function Members() {
     const [selectedPermissionModule, setSelectedPermissionModule] = useState<string>('global')
     const [profileUserId, setProfileUserId] = useState<string | null>(null)
     const [error, setError] = useState<string | null>(null)
+    const canManageWorkspacePermissions = hasCapability('workspaceManagementPermissions')
 
     const getErrorMessage = (err: unknown) => {
         const normalized = normalizeSupabaseActionError(err)
@@ -95,7 +98,7 @@ export function Members() {
     }
 
     const fetchPermissions = async () => {
-        if (user?.role !== 'admin' || !user?.workspaceId) {
+        if (user?.role !== 'admin' || !user?.workspaceId || !canManageWorkspacePermissions) {
             setPermissions([])
             return
         }
@@ -151,7 +154,7 @@ export function Members() {
 
     useEffect(() => {
         fetchMembers()
-    }, [user?.workspaceId, user?.role])
+    }, [canManageWorkspacePermissions, user?.workspaceId, user?.role])
 
     const permissionsByUserId = useMemo(() => {
         const next = new Map<string, Set<WorkspacePermissionKey>>()
@@ -174,7 +177,7 @@ export function Members() {
         permissionKey: WorkspacePermissionKey,
         shouldGrant: boolean
     ) => {
-        if (user?.role !== 'admin' || !user.workspaceId || member.role === 'admin') {
+        if (user?.role !== 'admin' || !user.workspaceId || member.role === 'admin' || !canManageWorkspacePermissions) {
             return
         }
 
@@ -240,7 +243,7 @@ export function Members() {
     }, [])
 
     const openPermissionModal = (member: Member) => {
-        if (member.role === 'admin') return
+        if (member.role === 'admin' || !canManageWorkspacePermissions) return
         setSelectedPermissionModule('global')
         setPermissionMember(member)
     }
@@ -370,7 +373,7 @@ export function Members() {
                                                         >
                                                             <UserRound className="h-3.5 w-3.5" />
                                                         </Button>
-                                                        {user?.role === 'admin' && member.role !== 'admin' && (
+                                                        {canManageWorkspacePermissions && user?.role === 'admin' && member.role !== 'admin' && (
                                                             <Button
                                                                 variant="ghost"
                                                                 size="icon"

@@ -130,13 +130,13 @@ export function buildWorkspaceNavigation({
             name: t("nav.instantPos", { defaultValue: "Instant POS" }),
             href: "/instant-pos",
             icon: Zap,
-            children: [
+            children: features.kds_enabled ? [
               {
                 name: t("nav.kdsDashboard", { defaultValue: "KDS Dashboard" }),
                 href: "/kds",
                 icon: Monitor,
               },
-            ],
+            ] : undefined,
           },
         ]
       : []),
@@ -315,12 +315,16 @@ export function buildWorkspaceNavigation({
             : []),
         ]
       : []),
-    {
-      name: t("nav.currencyConverter", { defaultValue: "Currency Converter" }),
-      href: "/currency-converter",
-      icon: Calculator,
-      mobileOnly: true,
-    },
+    ...(features.eur_conversion_enabled || features.try_conversion_enabled
+      ? [
+          {
+            name: t("nav.currencyConverter", { defaultValue: "Currency Converter" }),
+            href: "/currency-converter",
+            icon: Calculator,
+            mobileOnly: true,
+          },
+        ]
+      : []),
     ...(isCoreRole && hasFeature("allow_whatsapp") && isDesktopDevice
       ? [
           {

@@ -20,31 +20,23 @@ import {
 } from './workspaceCache'
 import { writeWorkspaceModeSnapshot } from './workspaceMode'
 import { runSupabaseAction, normalizeSupabaseActionError } from '@/lib/supabaseRequest'
+import {
+    getPlanAllowedCurrencies,
+    getPlanCapabilities,
+    getPrimaryCurrencyForPlan,
+    normalizeWorkspacePlan,
+    planHasCapability,
+    planHasWorkspaceFeature,
+    type PlanCapabilityKey,
+    type ResolvedWorkspacePlan,
+    type WorkspaceFeatureKey,
+    type WorkspacePlan
+} from '@/plans/workspacePlans'
 
-export type ModuleFeatureKey =
-    | 'pos'
-    | 'instant_pos'
-    | 'sales_history'
-    | 'crm'
-    | 'ecommerce'
-    | 'travel_agency'
-    | 'real_estate'
-    | 'loans'
-    | 'net_revenue'
-    | 'budget'
-    | 'monthly_comparison'
-    | 'team_performance'
-    | 'products'
-    | 'discounts'
-    | 'storages'
-    | 'inventory_transfer'
-    | 'stock_adjustments'
-    | 'invoices_history'
-    | 'hr'
-    | 'members'
-    | 'allow_whatsapp'
+export type ModuleFeatureKey = WorkspaceFeatureKey
 
 export interface WorkspaceFeatures {
+    plan: WorkspacePlan
     data_mode: WorkspaceDataMode
     // Module toggles
     pos: boolean
@@ -108,6 +100,8 @@ export interface BranchInfo {
 
 interface WorkspaceContextType {
     features: WorkspaceFeatures
+    plan: WorkspacePlan
+    planCapabilities: ResolvedWorkspacePlan
     workspaceName: string | null
     branchInfo: BranchInfo | null
     isLoading: boolean
@@ -119,34 +113,58 @@ interface WorkspaceContextType {
     isCloudMode: boolean
     isHybridMode: boolean
     hasFeature: (feature: ModuleFeatureKey) => boolean
+    hasCapability: (capability: PlanCapabilityKey) => boolean
     refreshFeatures: () => Promise<void>
-    updateSettings: (settings: Partial<Pick<WorkspaceFeatures, 'default_currency' | 'iqd_display_preference' | 'eur_conversion_enabled' | 'try_conversion_enabled' | 'allow_whatsapp' | 'kds_enabled' | 'logo_url' | 'coordination' | 'print_lang' | 'print_qr' | 'receipt_template' | 'a4_template' | 'print_quality' | 'thermal_printing' | 'ecommerce' | 'visibility' | 'store_slug' | 'store_description'>> & { name?: string }) => Promise<void>
+    updateSettings: (settings: Partial<Pick<WorkspaceFeatures, 'default_currency' | 'iqd_display_preference' | 'eur_conversion_enabled' | 'try_conversion_enabled' | 'allow_whatsapp' | 'kds_enabled' | 'logo_url' | 'coordination' | 'print_lang' | 'print_qr' | 'receipt_template' | 'a4_template' | 'print_quality' | 'thermal_printing' | 'ecommerce' | 'visibility' | 'store_slug' | 'store_description' | 'upload_limit_mb'>> & { name?: string }) => Promise<void>
     switchDataMode: (newMode: 'cloud' | 'hybrid') => Promise<{ error: string | null }>
     activeWorkspace: { id: string } | undefined
 }
 
+const PLAN_DERIVED_FEATURE_KEYS: ModuleFeatureKey[] = [
+    'pos',
+    'instant_pos',
+    'sales_history',
+    'crm',
+    'ecommerce',
+    'travel_agency',
+    'real_estate',
+    'loans',
+    'net_revenue',
+    'budget',
+    'monthly_comparison',
+    'team_performance',
+    'products',
+    'discounts',
+    'storages',
+    'inventory_transfer',
+    'stock_adjustments',
+    'invoices_history',
+    'hr',
+    'members',
+    'allow_whatsapp'
+]
+
+function getPlanFeatureFlags(plan: WorkspacePlan) {
+    return PLAN_DERIVED_FEATURE_KEYS.reduce((flags, key) => {
+        flags[key] = planHasWorkspaceFeature(plan, key)
+        return flags
+    }, {} as Record<ModuleFeatureKey, boolean>)
+}
+
+const defaultPlan = normalizeWorkspacePlan('basic')
+
+const PLAN_CONTROLLED_SETTINGS = new Set<string>([
+    ...PLAN_DERIVED_FEATURE_KEYS,
+    'eur_conversion_enabled',
+    'try_conversion_enabled',
+    'allow_whatsapp',
+    'upload_limit_mb'
+])
+
 const defaultFeatures: WorkspaceFeatures = {
+    plan: defaultPlan,
     data_mode: 'cloud',
-    pos: true,
-    instant_pos: true,
-    sales_history: true,
-    crm: true,
-    ecommerce: false,
-    travel_agency: true,
-    real_estate: true,
-    loans: true,
-    net_revenue: true,
-    budget: true,
-    monthly_comparison: true,
-    team_performance: true,
-    products: true,
-    discounts: true,
-    storages: true,
-    inventory_transfer: true,
-    stock_adjustments: true,
-    invoices_history: true,
-    hr: true,
-    members: true,
+    ...getPlanFeatureFlags(defaultPlan),
     is_configured: true,
     default_currency: 'usd',
     iqd_display_preference: 'IQD',
@@ -173,6 +191,7 @@ const defaultFeatures: WorkspaceFeatures = {
 
 const WORKSPACE_FEATURE_COLUMNS = [
     'name',
+    'plan',
     'data_mode',
     'pos',
     'instant_pos',
@@ -218,7 +237,43 @@ const WORKSPACE_FEATURE_COLUMNS = [
 ].join(', ')
 
 function mergeWorkspaceFeatures(features?: Partial<WorkspaceFeatures> | null): WorkspaceFeatures {
-    return { ...defaultFeatures, ...(features ?? {}) }
+    const plan = normalizeWorkspacePlan(features?.plan ?? defaultFeatures.plan)
+    const planCapabilities = getPlanCapabilities(plan)
+    const allowedCurrencies = getPlanAllowedCurrencies(plan)
+    const requestedCurrency = String(features?.default_currency ?? defaultFeatures.default_currency).toLowerCase()
+    const defaultCurrency = allowedCurrencies.includes(requestedCurrency as CurrencyCode)
+        ? requestedCurrency as CurrencyCode
+        : getPrimaryCurrencyForPlan(plan) as CurrencyCode
+    const supportsMultiCurrency = planHasCapability(plan, 'multiCurrency')
+    const supportsUploads = planHasCapability(plan, 'workspaceStorageUploads')
+
+    return {
+        ...defaultFeatures,
+        ...(features ?? {}),
+        ...getPlanFeatureFlags(plan),
+        plan,
+        default_currency: defaultCurrency,
+        eur_conversion_enabled: supportsMultiCurrency,
+        try_conversion_enabled: supportsMultiCurrency,
+        allow_whatsapp: planHasCapability(plan, 'whatsappIntegration'),
+        upload_limit_mb: supportsUploads ? planCapabilities.limits.maxUploadSizeMb : null,
+        visibility: planHasCapability(plan, 'marketplaceStorefronts')
+            ? features?.visibility ?? defaultFeatures.visibility
+            : 'private',
+        store_slug: planHasCapability(plan, 'marketplaceStorefronts')
+            ? features?.store_slug ?? defaultFeatures.store_slug
+            : null,
+        store_description: planHasCapability(plan, 'marketplaceStorefronts')
+            ? features?.store_description ?? defaultFeatures.store_description
+            : null,
+        thermal_printing: planHasCapability(plan, 'thermalPrinter')
+            ? features?.thermal_printing ?? defaultFeatures.thermal_printing
+            : false,
+        print_quality: planHasCapability(plan, 'a4PdfInvoices')
+            ? features?.print_quality ?? defaultFeatures.print_quality
+            : 'low',
+        kds_enabled: false
+    }
 }
 
 function isWorkspaceCurrentlyLocked(
@@ -234,6 +289,7 @@ function getFeaturesFromLocalWorkspace(localWorkspace: Workspace): WorkspaceFeat
     }
 
     return mergeWorkspaceFeatures({
+        plan: normalizeWorkspacePlan(localWorkspace.plan),
         data_mode: localWorkspace.data_mode ?? 'cloud',
         pos: localWorkspace.pos ?? true,
         instant_pos: localWorkspace.instant_pos ?? true,
@@ -366,6 +422,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             workspaceId,
             name: nextWorkspaceName || existing?.name || user?.workspaceName || 'My Workspace',
             code: existing?.code || user?.workspaceCode || 'LOADED',
+            plan: nextFeatures.plan,
             data_mode: nextFeatures.data_mode,
             is_configured: nextFeatures.is_configured,
             pos: nextFeatures.pos,
@@ -526,6 +583,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                 ?? currentFeatures.thermal_printing
                 ?? false
             const fetchedFeatures = mergeWorkspaceFeatures({
+                plan: normalizeWorkspacePlan(workspaceRow.plan),
                 data_mode: workspaceRow.data_mode ?? currentFeatures.data_mode,
                 pos: workspaceRow.pos ?? currentFeatures.pos,
                 instant_pos: workspaceRow.instant_pos ?? currentFeatures.instant_pos,
@@ -720,6 +778,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                         const currentFeatures = featuresRef.current
                         const updatedFeatures = mergeWorkspaceFeatures({
                             ...currentFeatures,
+                            plan: normalizeWorkspacePlan(data.plan ?? currentFeatures.plan),
                             data_mode: data.data_mode ?? currentFeatures.data_mode,
                             pos: data.pos ?? currentFeatures.pos,
                             instant_pos: data.instant_pos ?? currentFeatures.instant_pos,
@@ -810,9 +869,13 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 
     const hasFeature = (feature: ModuleFeatureKey): boolean => {
         if (feature === 'ecommerce') {
-            return features.data_mode !== 'local' && features[feature] === true
+            return features.data_mode !== 'local' && planHasWorkspaceFeature(features.plan, feature)
         }
-        return features[feature] === true
+        return planHasWorkspaceFeature(features.plan, feature)
+    }
+
+    const hasCapability = (capability: PlanCapabilityKey): boolean => {
+        return planHasCapability(features.plan, capability)
     }
 
     const refreshFeatures = async () => {
@@ -833,11 +896,14 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         const workspaceId = user?.workspaceId
         if (!workspaceId) return
 
-        const { name, ...featureSettings } = settings
+        const { name, ...rawFeatureSettings } = settings
+        const featureSettings = Object.fromEntries(
+            Object.entries(rawFeatureSettings).filter(([key]) => !PLAN_CONTROLLED_SETTINGS.has(key))
+        ) as typeof rawFeatureSettings
         const currentFeatures = featuresRef.current
         const currentBranchInfo = branchInfo
         const nextWorkspaceName = name ?? workspaceNameRef.current ?? user?.workspaceName ?? 'My Workspace'
-        const newFeatures = { ...currentFeatures, ...featureSettings }
+        const newFeatures = mergeWorkspaceFeatures({ ...currentFeatures, ...featureSettings })
         const now = new Date().toISOString()
 
         if (name) {
@@ -883,6 +949,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                 workspaceId,
                 name: nextWorkspaceName,
                 code: user?.workspaceCode || 'LOCAL',
+                plan: newFeatures.plan,
                 data_mode: newFeatures.data_mode,
                 is_configured: newFeatures.is_configured,
                 pos: newFeatures.pos,
@@ -1038,7 +1105,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             }
 
             // Update local state
-            const updatedFeatures = { ...featuresRef.current, data_mode: newMode }
+            const updatedFeatures = mergeWorkspaceFeatures({ ...featuresRef.current, data_mode: newMode })
             setFeatures(updatedFeatures)
             writeWorkspaceCache({
                 workspaceId,
@@ -1091,10 +1158,13 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     const isCloudMode = features.data_mode === 'cloud'
     const isHybridMode = features.data_mode === 'hybrid'
     const isLocked = isWorkspaceCurrentlyLocked(features)
+    const planCapabilities = getPlanCapabilities(features.plan)
 
     return (
         <WorkspaceContext.Provider value={{
             features,
+            plan: features.plan,
+            planCapabilities,
             workspaceName,
             branchInfo,
             isLoading,
@@ -1105,6 +1175,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             isCloudMode,
             isHybridMode,
             hasFeature,
+            hasCapability,
             isFullscreen,
             refreshFeatures,
             updateSettings,

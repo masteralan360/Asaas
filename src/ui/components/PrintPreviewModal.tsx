@@ -28,7 +28,7 @@ import {
     saveInvoicePdfToLocalAppData,
     shouldUseLocalInvoiceStorage
 } from '@/services/localInvoiceStorage'
-import { type WorkspaceFeatures } from '@/workspace'
+import { useWorkspace, type WorkspaceFeatures } from '@/workspace'
 import { supabase } from '@/auth/supabase'
 import { getRetriableActionToast, isRetriableWebRequestError, normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
 import { setInvoicePreviewSource, type TemplatePreview } from '@/lib/pdfPreviewStore'
@@ -85,6 +85,7 @@ export function PrintPreviewModal({
     const { t, i18n } = useTranslation()
     const { toast } = useToast()
     const { user } = useAuth()
+    const { hasCapability } = useWorkspace()
     const { hasPermission } = useWorkspacePermissions()
     const [, setLocation] = useLocation()
     const workspaceId = user?.workspaceId
@@ -123,7 +124,10 @@ export function PrintPreviewModal({
     }, [isOpen])
 
     const hasPdfData = !!pdfBuilder || !!(pdfData && features)
-    const printFormat: PrintFormat = (invoiceData?.printFormat || 'a4') as PrintFormat
+    const requestedPrintFormat: PrintFormat = (invoiceData?.printFormat || 'a4') as PrintFormat
+    const printFormat: PrintFormat = requestedPrintFormat === 'a4' && !hasCapability('a4PdfInvoices')
+        ? 'receipt'
+        : requestedPrintFormat
     const usesLocalInvoiceStorage = shouldUseLocalInvoiceStorage(workspaceId)
     const printableFeatures = useMemo(
         () => disableInvoiceQrInLocalMode(workspaceId, features),

@@ -1077,7 +1077,7 @@ export function Ledger() {
             }, 1500)
         }
     }
-    const { features } = useWorkspace()
+    const { features, hasCapability } = useWorkspace()
     const { style } = useTheme()
     const [, setLocation] = useLocation()
     const workspaceId = user?.workspaceId
@@ -2302,23 +2302,25 @@ export function Ledger() {
                         )}
                     </CardTitle>
                     <div className="flex flex-col sm:flex-row items-center gap-4">
-                        <Button
-                            onClick={() => setIsExportModalOpen(true)}
-                            disabled={filteredEntries.length === 0}
-                            className={cn(
-                                "h-10 px-6 font-black transition-all flex gap-3 items-center group relative overflow-hidden",
-                                style === 'neo-orange'
-                                    ? "rounded-[var(--radius)] bg-emerald-500 text-black border-2 border-black dark:border-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-none translate-y-[-2px] active:translate-y-0"
-                                    : "rounded-full bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-100 dark:border-emerald-500/20 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-500/20 hover:shadow-[0_0_20px_-5px_rgba(16,185,129,0.3)] hover:scale-[1.02] active:scale-95",
-                                "uppercase tracking-widest text-[10px]"
-                            )}
-                        >
-                            <FileSpreadsheet className="w-4 h-4 transition-transform group-hover:rotate-12" />
-                            <span className="hidden sm:inline">
-                                {t('sales.export.button')}
-                            </span>
-                            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 dark:via-white/5 to-transparent -translate-x-full group-hover:animate-shimmer" />
-                        </Button>
+                        {hasCapability('excelExportLedger') && (
+                            <Button
+                                onClick={() => setIsExportModalOpen(true)}
+                                disabled={filteredEntries.length === 0}
+                                className={cn(
+                                    "h-10 px-6 font-black transition-all flex gap-3 items-center group relative overflow-hidden",
+                                    style === 'neo-orange'
+                                        ? "rounded-[var(--radius)] bg-emerald-500 text-black border-2 border-black dark:border-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-none translate-y-[-2px] active:translate-y-0"
+                                        : "rounded-full bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-100 dark:border-emerald-500/20 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-500/20 hover:shadow-[0_0_20px_-5px_rgba(16,185,129,0.3)] hover:scale-[1.02] active:scale-95",
+                                    "uppercase tracking-widest text-[10px]"
+                                )}
+                            >
+                                <FileSpreadsheet className="w-4 h-4 transition-transform group-hover:rotate-12" />
+                                <span className="hidden sm:inline">
+                                    {t('sales.export.button')}
+                                </span>
+                                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 dark:via-white/5 to-transparent -translate-x-full group-hover:animate-shimmer" />
+                            </Button>
+                        )}
                         <Button
                             type="button"
                             variant={isDirectionSplitView ? 'default' : 'outline'}

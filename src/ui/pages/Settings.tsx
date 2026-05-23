@@ -36,7 +36,7 @@ export function Settings() {
     const { user, signOut, isSupabaseConfigured, updateUser } = useAuth()
     const { syncState, pendingCount, lastSyncTime, sync, isSyncing, isOnline } = useSyncStatus()
     const { theme, setTheme, style, setStyle } = useTheme()
-    const { features, updateSettings, refreshFeatures, workspaceName, isLocked, isLocalMode } = useWorkspace()
+    const { features, updateSettings, refreshFeatures, workspaceName, isLocked, isLocalMode, hasCapability, planCapabilities } = useWorkspace()
     const { streamUrl, status: kdsStatus, startStream } = useKdsStream(true)
 
     useEffect(() => {
@@ -98,6 +98,14 @@ export function Settings() {
     const [marketplaceDescription, setMarketplaceDescription] = useState(features.store_description || '')
     const [marketplaceSlugStatus, setMarketplaceSlugStatus] = useState<'idle' | 'checking' | 'available' | 'taken' | 'invalid'>('idle')
     const [isSavingMarketplace, setIsSavingMarketplace] = useState(false)
+    const canUseBarcodeScanner = hasCapability('barcodeScanner')
+    const canUseThermalPrinter = hasCapability('thermalPrinter')
+    const canUseA4Invoices = hasCapability('a4PdfInvoices')
+    const canUseMultiCurrency = hasCapability('multiCurrency')
+    const canUseMarketplace = hasCapability('marketplaceStorefronts')
+    const canUseWhatsapp = hasCapability('whatsappIntegration')
+    const canUseMultipleContacts = hasCapability('multipleWorkspaceContacts')
+    const canUseBranches = planCapabilities.limits.maxBranches > 0
 
     const activeSupabaseUrl = isBackendConfigurationRequired
         ? (customUrl || '')
@@ -1611,18 +1619,20 @@ export function Settings() {
                                 </p>
                             </div>
 
-                            <div className="space-y-2">
-                                <Label>{t('settings.pos.barcodeHotkey')}</Label>
-                                <Input
-                                    value={barcodeHotkey}
-                                    onChange={handleBarcodeHotkeyChange}
-                                    maxLength={1}
-                                    className="w-20 text-center font-mono uppercase"
-                                />
-                                <p className="text-sm text-muted-foreground">
-                                    {t('settings.pos.barcodeHotkeyDesc')}
-                                </p>
-                            </div>
+                            {canUseBarcodeScanner && (
+                                <div className="space-y-2">
+                                    <Label>{t('settings.pos.barcodeHotkey')}</Label>
+                                    <Input
+                                        value={barcodeHotkey}
+                                        onChange={handleBarcodeHotkeyChange}
+                                        maxLength={1}
+                                        className="w-20 text-center font-mono uppercase"
+                                    />
+                                    <p className="text-sm text-muted-foreground">
+                                        {t('settings.pos.barcodeHotkeyDesc')}
+                                    </p>
+                                </div>
+                            )}
                         </CardContent>
                     </Card>
 
@@ -1703,7 +1713,7 @@ export function Settings() {
                                             </span>
                                         </div>
                                     </div>
-                                    {user?.role === 'admin' && (
+                                    {user?.role === 'admin' && (canUseMultipleContacts || workspaceContacts.length === 0) && (
                                         <div className="space-y-1">
                                             <Label className="text-xs text-muted-foreground">{t('workspaceConfig.contacts.title', 'Workspace Contacts')}</Label>
                                             <Button
@@ -1798,6 +1808,7 @@ export function Settings() {
                                         </div>
                                     </div>
 
+                                    {canUseMarketplace && (
                                     <div className="pt-6 border-t border-border/50 space-y-4">
                                         <div className="flex flex-col gap-1">
                                             <Label className="text-sm font-bold uppercase tracking-wider text-muted-foreground">
@@ -1910,12 +1921,13 @@ export function Settings() {
                                             </Button>
                                         </div>
                                     </div>
+                                    )}
                                 </div>
                             )}
                         </CardContent>
                     </Card>
 
-                    {user?.role === 'admin' && !isLocalMode && (
+                    {user?.role === 'admin' && !isLocalMode && canUseBranches && (
                         <BranchManager />
                     )}
 
@@ -1927,14 +1939,17 @@ export function Settings() {
                             contacts={workspaceContacts.map(p => ({ type: p.type, value: p.value, label: p.label || '', isPrimary: p.isPrimary }))}
                             onContactsChange={async (newContacts) => {
                                 if (!user?.workspaceId) return
+                                const planContacts = canUseMultipleContacts
+                                    ? newContacts
+                                    : newContacts.slice(0, 1).map((contact) => ({ ...contact, isPrimary: true }))
                                 try {
                                     const { error: deleteError } = await runSupabaseAction('settings.replaceWorkspaceContacts.delete', () =>
                                         supabase.from('workspace_contacts').delete().eq('workspace_id', user.workspaceId)
                                     )
                                     if (deleteError) throw normalizeSupabaseActionError(deleteError)
 
-                                    if (newContacts.length > 0) {
-                                        const payload = newContacts.map(p => ({
+                                    if (planContacts.length > 0) {
+                                        const payload = planContacts.map(p => ({
                                             workspace_id: user.workspaceId,
                                             type: p.type,
                                             value: p.value,
@@ -2018,6 +2033,7 @@ export function Settings() {
                                         </p>
                                     </div>
 
+                                    {canUseA4Invoices && (
                                     <div className="flex flex-col gap-2">
                                         <Label className="text-xs text-slate-500 uppercase font-semibold">{t('settings.printing.a4Template') || 'A4 Invoice Template'}</Label>
                                         <Select
@@ -2036,8 +2052,10 @@ export function Settings() {
                                             {t('settings.printing.templateDesc') || 'Full page A4 invoice design.'}
                                         </p>
                                     </div>
+                                    )}
                                 </div>
 
+                                {canUseA4Invoices && (
                                 <div className="flex flex-col gap-2 max-w-sm">
                                     <Label className="text-xs text-slate-500 uppercase font-semibold">{t('settings.printing.language') || 'Print Language'}</Label>
                                     <Select
@@ -2078,8 +2096,10 @@ export function Settings() {
                                         {t('settings.printing.qualityDesc') || 'HIGH quality increases clarity but results in larger PDF files. QR codes are always high quality.'}
                                     </p>
                                 </div>
+                                )}
 
                                 <div className="grid gap-4 md:grid-cols-2 max-w-3xl">
+                                    {canUseThermalPrinter && (
                                     <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg border border-border">
                                         <div className="space-y-0.5 pr-4">
                                             <Label className="text-sm font-medium">{t('settings.printing.qrTitle') || 'Generate QR Code'}</Label>
@@ -2121,12 +2141,14 @@ export function Settings() {
                                             onCheckedChange={openThermalPrinterDialog}
                                         />
                                     </div>
+                                    )}
                                 </div>
                             </div>
                         </CardContent>
                     </Card>
 
                     {/* KDS Streaming */}
+                    {features.kds_enabled && (
                     <Card>
                         <CardHeader>
                             <CardTitle className="flex items-center gap-2">
@@ -2209,9 +2231,10 @@ export function Settings() {
                             </div>
                         </CardContent>
                     </Card>
+                    )}
 
                     {/* Currency Settings (Admin Only) */}
-                    {user?.role === 'admin' && (
+                    {user?.role === 'admin' && canUseMultiCurrency && (
                         <Card>
                             <CardHeader>
                                 <CardTitle className="flex items-center gap-2">
@@ -2254,7 +2277,7 @@ export function Settings() {
                     )}
 
                     {/* Exchange Rate Settings (Admin Only) */}
-                    {user?.role === 'admin' && (
+                    {user?.role === 'admin' && canUseMultiCurrency && (
                         <Card>
                             <CardHeader>
                                 <CardTitle className="flex items-center gap-2">
@@ -2310,25 +2333,53 @@ export function Settings() {
                                     </div>
 
                                     <div className="pt-2 space-y-4 border-t border-border/50">
-                                        <div className="flex items-center justify-between">
-                                            <div className="space-y-0.5">
-                                                <Label className="text-base">{t('settings.exchangeRate.eurEnable') || 'Enable Euro Support'}</Label>
-                                                <p className="text-sm text-muted-foreground">
-                                                    {t('settings.exchangeRate.eurEnableDesc') || 'Allow POS to handle EUR products and conversions.'}
-                                                </p>
+                                        <div className="space-y-2 animate-in fade-in slide-in-from-top-1">
+                                            <Label>{t('settings.exchangeRate.eurSource') || 'Euro Exchange Source'}</Label>
+                                            <div className="flex items-center gap-2">
+                                                <Select value={eurExchangeRateSource} onValueChange={handleEurExchangeRateSourceChange}>
+                                                    <SelectTrigger className="flex-1">
+                                                        <SelectValue />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        <Button
+                                                            variant="ghost"
+                                                            className="w-full justify-start font-bold text-emerald-600 border-b rounded-none px-2 mb-1"
+                                                            onClick={() => openManualEditor('EUR')}
+                                                        >
+                                                            + {t('settings.exchangeRate.addManual')}
+                                                        </Button>
+                                                        <SelectItem value="manual">
+                                                            {t('settings.exchangeRate.manual')}
+                                                        </SelectItem>
+                                                        <SelectItem value="forexfy">
+                                                            {t('settings.exchangeRate.forexfy_eur')}
+                                                        </SelectItem>
+                                                        <SelectItem value="dolardinar">
+                                                            {t('settings.exchangeRate.dolardinar_eur')}
+                                                        </SelectItem>
+                                                    </SelectContent>
+                                                </Select>
+                                                {alerts.snoozedPairs.includes('EUR/IQD') && (
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        className="text-yellow-500 animate-pulse shrink-0 h-10 w-10"
+                                                        onClick={() => forceAlert('EUR/IQD')}
+                                                    >
+                                                        <Bell className="w-5 h-5 fill-yellow-500" />
+                                                    </Button>
+                                                )}
                                             </div>
-                                            <Switch
-                                                checked={features.eur_conversion_enabled}
-                                                onCheckedChange={(val: boolean) => updateSettings({ eur_conversion_enabled: val })}
-                                                disabled={user?.role !== 'admin'}
-                                            />
+                                            <p className="text-[11px] text-muted-foreground italic">
+                                                {t('settings.exchangeRate.eurSourceAdminOnly') || 'Forexfy and DolarDinar are currently the supported sources for Euro rates.'}
+                                            </p>
                                         </div>
 
-                                        {features.eur_conversion_enabled && (
+                                        <div className="pt-2 space-y-4 border-t border-border/50">
                                             <div className="space-y-2 animate-in fade-in slide-in-from-top-1">
-                                                <Label>{t('settings.exchangeRate.eurSource') || 'Euro Exchange Source'}</Label>
+                                                <Label>{t('settings.exchangeRate.trySource') || 'TRY Exchange Source'}</Label>
                                                 <div className="flex items-center gap-2">
-                                                    <Select value={eurExchangeRateSource} onValueChange={handleEurExchangeRateSourceChange}>
+                                                    <Select value={tryExchangeRateSource} onValueChange={handleTryExchangeRateSourceChange}>
                                                         <SelectTrigger className="flex-1">
                                                             <SelectValue />
                                                         </SelectTrigger>
@@ -2336,7 +2387,7 @@ export function Settings() {
                                                             <Button
                                                                 variant="ghost"
                                                                 className="w-full justify-start font-bold text-emerald-600 border-b rounded-none px-2 mb-1"
-                                                                onClick={() => openManualEditor('EUR')}
+                                                                onClick={() => openManualEditor('TRY')}
                                                             >
                                                                 + {t('settings.exchangeRate.addManual')}
                                                             </Button>
@@ -2344,87 +2395,25 @@ export function Settings() {
                                                                 {t('settings.exchangeRate.manual')}
                                                             </SelectItem>
                                                             <SelectItem value="forexfy">
-                                                                {t('settings.exchangeRate.forexfy_eur')}
+                                                                {t('settings.exchangeRate.forexfy_try')}
                                                             </SelectItem>
                                                             <SelectItem value="dolardinar">
-                                                                {t('settings.exchangeRate.dolardinar_eur')}
+                                                                {t('settings.exchangeRate.dolardinar_try')}
                                                             </SelectItem>
                                                         </SelectContent>
                                                     </Select>
-                                                    {alerts.snoozedPairs.includes('EUR/IQD') && (
+                                                    {alerts.snoozedPairs.includes('TRY/IQD') && (
                                                         <Button
                                                             variant="ghost"
                                                             size="icon"
                                                             className="text-yellow-500 animate-pulse shrink-0 h-10 w-10"
-                                                            onClick={() => forceAlert('EUR/IQD')}
+                                                            onClick={() => forceAlert('TRY/IQD')}
                                                         >
                                                             <Bell className="w-5 h-5 fill-yellow-500" />
                                                         </Button>
                                                     )}
                                                 </div>
-                                                <p className="text-[11px] text-muted-foreground italic">
-                                                    {t('settings.exchangeRate.eurSourceAdminOnly') || 'Forexfy and DolarDinar are currently the supported sources for Euro rates.'}
-                                                </p>
                                             </div>
-                                        )}
-
-                                        <div className="pt-2 space-y-4 border-t border-border/50">
-                                            <div className="flex items-center justify-between">
-                                                <div className="space-y-0.5">
-                                                    <Label className="text-base">{t('settings.exchangeRate.tryEnable') || 'Enable TRY Support'}</Label>
-                                                    <p className="text-sm text-muted-foreground">
-                                                        {t('settings.exchangeRate.tryEnableDesc') || 'Allow POS to handle TRY products and conversions.'}
-                                                    </p>
-                                                </div>
-                                                <div className="space-y-2">
-                                                    <Switch
-                                                        checked={features.try_conversion_enabled}
-                                                        onCheckedChange={(val: boolean) => updateSettings({ try_conversion_enabled: val })}
-                                                        disabled={user?.role !== 'admin'}
-                                                    />
-                                                </div>
-                                            </div>
-
-                                            {features.try_conversion_enabled && (
-                                                <div className="space-y-2 animate-in fade-in slide-in-from-top-1">
-                                                    <Label>{t('settings.exchangeRate.trySource') || 'TRY Exchange Source'}</Label>
-                                                    <div className="flex items-center gap-2">
-                                                        <Select value={tryExchangeRateSource} onValueChange={handleTryExchangeRateSourceChange}>
-                                                            <SelectTrigger className="flex-1">
-                                                                <SelectValue />
-                                                            </SelectTrigger>
-                                                            <SelectContent>
-                                                                <Button
-                                                                    variant="ghost"
-                                                                    className="w-full justify-start font-bold text-emerald-600 border-b rounded-none px-2 mb-1"
-                                                                    onClick={() => openManualEditor('TRY')}
-                                                                >
-                                                                    + {t('settings.exchangeRate.addManual')}
-                                                                </Button>
-                                                                <SelectItem value="manual">
-                                                                    {t('settings.exchangeRate.manual')}
-                                                                </SelectItem>
-                                                                <SelectItem value="forexfy">
-                                                                    {t('settings.exchangeRate.forexfy_try')}
-                                                                </SelectItem>
-                                                                <SelectItem value="dolardinar">
-                                                                    {t('settings.exchangeRate.dolardinar_try')}
-                                                                </SelectItem>
-                                                            </SelectContent>
-                                                        </Select>
-                                                        {alerts.snoozedPairs.includes('TRY/IQD') && (
-                                                            <Button
-                                                                variant="ghost"
-                                                                size="icon"
-                                                                className="text-yellow-500 animate-pulse shrink-0 h-10 w-10"
-                                                                onClick={() => forceAlert('TRY/IQD')}
-                                                            >
-                                                                <Bell className="w-5 h-5 fill-yellow-500" />
-                                                            </Button>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                            )}
                                         </div>
 
                                         <div className="pt-4 mt-4 border-t border-border/50 space-y-2">
@@ -2453,6 +2442,7 @@ export function Settings() {
                     {user?.role === 'admin' && (
                         <>
                             {/* WhatsApp Integration Setting */}
+                            {canUseWhatsapp && (
                             <Card className="border-primary/20 bg-primary/5">
                                 <CardHeader>
                                     <CardTitle className="flex items-center gap-2">
@@ -2466,33 +2456,28 @@ export function Settings() {
                                 <CardContent>
                                     <div className="flex items-center justify-between">
                                         <div className="space-y-0.5">
-                                            <Label className="text-base text-primary">Enable WhatsApp Feature</Label>
+                                            <Label className="text-base text-primary">WhatsApp Feature Included</Label>
                                             <p className="text-sm text-muted-foreground max-w-md">
-                                                Allow text-only communication with customers. Staff will inherit this setting.
+                                                WhatsApp chat is available for this Enterprise workspace.
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex items-center justify-between pt-4 border-t border-primary/10 mt-4">
+                                        <div className="space-y-0.5">
+                                            <Label className="text-base text-primary">Auto Launch on Startup</Label>
+                                            <p className="text-sm text-muted-foreground max-w-md">
+                                                Automatically initialize WhatsApp in the background when the application starts.
                                             </p>
                                         </div>
                                         <Switch
-                                            checked={features.allow_whatsapp}
-                                            onCheckedChange={(val: boolean) => updateSettings({ allow_whatsapp: val })}
+                                            checked={whatsappAutoLaunch}
+                                            onCheckedChange={handleWhatsappAutoLaunchChange}
                                         />
                                     </div>
-
-                                    {features.allow_whatsapp && (
-                                        <div className="flex items-center justify-between pt-4 border-t border-primary/10 mt-4">
-                                            <div className="space-y-0.5">
-                                                <Label className="text-base text-primary">Auto Launch on Startup</Label>
-                                                <p className="text-sm text-muted-foreground max-w-md">
-                                                    Automatically initialize WhatsApp in the background when the application starts.
-                                                </p>
-                                            </div>
-                                            <Switch
-                                                checked={whatsappAutoLaunch}
-                                                onCheckedChange={handleWhatsappAutoLaunchChange}
-                                            />
-                                        </div>
-                                    )}
                                 </CardContent>
                             </Card>
+                            )}
 
                             {/* User Info */}
                             <Card>

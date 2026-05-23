@@ -164,7 +164,7 @@ export function Sales() {
     const { user } = useAuth()
     const { t, i18n } = useTranslation()
     const [, setLocation] = useLocation()
-    const { features, workspaceName, activeWorkspace, isLocalMode } = useWorkspace()
+    const { features, workspaceName, activeWorkspace, isLocalMode, hasCapability } = useWorkspace()
     const { style } = useTheme()
     const { toast } = useToast()
     const { dateRange, customDates } = useDateRange()
@@ -1558,24 +1558,26 @@ export function Sales() {
                                 }}
                                 className="w-auto"
                             />
-                            <Button
-                                onClick={() => setIsExportModalOpen(true)}
-                                allowViewer={true}
-                                disabled={sales.length === 0}
-                                className={cn(
-                                    "h-10 px-6 font-black transition-all flex gap-3 items-center group relative overflow-hidden",
-                                    style === 'neo-orange'
-                                        ? "rounded-[var(--radius)] bg-emerald-500 text-black border-2 border-black dark:border-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-none translate-y-[-2px] active:translate-y-0"
-                                        : "rounded-full bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-100 dark:border-emerald-500/20 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-500/20 hover:shadow-[0_0_20px_-5px_rgba(16,185,129,0.3)] hover:scale-[1.02] active:scale-95",
-                                    "uppercase tracking-widest text-[10px]"
-                                )}
-                            >
-                                <FileSpreadsheet className="w-4 h-4 transition-transform group-hover:rotate-12" />
-                                <span className="hidden sm:inline">
-                                    {t('sales.export.button')}
-                                </span>
-                                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 dark:via-white/5 to-transparent -translate-x-full group-hover:animate-shimmer" />
-                            </Button>
+                            {hasCapability('excelExportSales') && (
+                                <Button
+                                    onClick={() => setIsExportModalOpen(true)}
+                                    allowViewer={true}
+                                    disabled={sales.length === 0}
+                                    className={cn(
+                                        "h-10 px-6 font-black transition-all flex gap-3 items-center group relative overflow-hidden",
+                                        style === 'neo-orange'
+                                            ? "rounded-[var(--radius)] bg-emerald-500 text-black border-2 border-black dark:border-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-none translate-y-[-2px] active:translate-y-0"
+                                            : "rounded-full bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-100 dark:border-emerald-500/20 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-500/20 hover:shadow-[0_0_20px_-5px_rgba(16,185,129,0.3)] hover:scale-[1.02] active:scale-95",
+                                        "uppercase tracking-widest text-[10px]"
+                                    )}
+                                >
+                                    <FileSpreadsheet className="w-4 h-4 transition-transform group-hover:rotate-12" />
+                                    <span className="hidden sm:inline">
+                                        {t('sales.export.button')}
+                                    </span>
+                                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 dark:via-white/5 to-transparent -translate-x-full group-hover:animate-shimmer" />
+                                </Button>
+                            )}
                         </div>
                     </CardHeader>
                     <CardContent>
@@ -1841,16 +1843,18 @@ export function Sales() {
                                                         {sale.notes ? (t('sales.notes.viewNote') || 'View Notes..') : (t('sales.notes.addNote') || 'Add Note')}
                                                     </ContextMenuItem>
                                                 )}
-                                                <ContextMenuItem
-                                                    className="gap-2"
-                                                    onSelect={() => {
-                                                        setSaleForWhatsApp(sale)
-                                                        setShowWhatsAppModal(true)
-                                                    }}
-                                                >
-                                                    <MessageCircle className="w-4 h-4 text-emerald-600" />
-                                                    {t('sales.share.whatsapp')}
-                                                </ContextMenuItem>
+                                                {features.allow_whatsapp && (
+                                                    <ContextMenuItem
+                                                        className="gap-2"
+                                                        onSelect={() => {
+                                                            setSaleForWhatsApp(sale)
+                                                            setShowWhatsAppModal(true)
+                                                        }}
+                                                    >
+                                                        <MessageCircle className="w-4 h-4 text-emerald-600" />
+                                                        {t('sales.share.whatsapp')}
+                                                    </ContextMenuItem>
+                                                )}
                                             </ContextMenuContent>
                                         </ContextMenu>
                                     )
@@ -2176,16 +2180,18 @@ export function Sales() {
                                                             {sale.notes ? (t('sales.notes.viewNote') || 'View Notes..') : (t('sales.notes.addNote') || 'Add Note')}
                                                         </ContextMenuItem>
                                                     )}
-                                                    <ContextMenuItem
-                                                        className="gap-2"
-                                                        onSelect={() => {
-                                                            setSaleForWhatsApp(sale)
-                                                            setShowWhatsAppModal(true)
-                                                        }}
-                                                    >
-                                                        <MessageCircle className="w-4 h-4 text-emerald-600" />
-                                                        {t('sales.share.whatsapp') || 'Share to WhatsApp'}
-                                                    </ContextMenuItem>
+                                                    {features.allow_whatsapp && (
+                                                        <ContextMenuItem
+                                                            className="gap-2"
+                                                            onSelect={() => {
+                                                                setSaleForWhatsApp(sale)
+                                                                setShowWhatsAppModal(true)
+                                                            }}
+                                                        >
+                                                            <MessageCircle className="w-4 h-4 text-emerald-600" />
+                                                            {t('sales.share.whatsapp') || 'Share to WhatsApp'}
+                                                        </ContextMenuItem>
+                                                    )}
                                                 </ContextMenuContent>
                                             </ContextMenu>
                                         )

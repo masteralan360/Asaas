@@ -4,6 +4,7 @@ import { Redirect, useLocation, Link } from 'wouter'
 import type { UserRole } from '@/local-db/models'
 import { useWorkspace, type ModuleFeatureKey } from '@/workspace/WorkspaceContext'
 import { useWorkspacePermissions, type WorkspacePermissionKey } from '@/permissions'
+import type { PlanCapabilityKey } from '@/plans/workspacePlans'
 import { BiometricLock } from '@/ui/components'
 
 interface ProtectedRouteProps {
@@ -12,6 +13,7 @@ interface ProtectedRouteProps {
     redirectTo?: string
     allowKicked?: boolean
     requiredFeature?: ModuleFeatureKey
+    requiredCapability?: PlanCapabilityKey
     requiredPermission?: WorkspacePermissionKey
 }
 
@@ -21,10 +23,11 @@ export function ProtectedRoute({
     redirectTo = '/login',
     allowKicked = false,
     requiredFeature,
+    requiredCapability,
     requiredPermission
 }: ProtectedRouteProps) {
     const { isAuthenticated, isLoading, hasRole, isKicked, user } = useAuth()
-    const { hasFeature, features, isLoading: featuresLoading, isLocked } = useWorkspace()
+    const { hasFeature, hasCapability, features, isLoading: featuresLoading, isLocked } = useWorkspace()
     const { hasPermission, isLoading: permissionsLoading } = useWorkspacePermissions()
     const [location] = useLocation()
 
@@ -88,12 +91,12 @@ export function ProtectedRoute({
 
     // Check if required feature is enabled
     // 1. Check Workspace Level
-    if (requiredFeature && !hasFeature(requiredFeature)) {
+    if ((requiredFeature && !hasFeature(requiredFeature)) || (requiredCapability && !hasCapability(requiredCapability))) {
         return (
             <div className="min-h-screen flex items-center justify-center bg-background">
                 <div className="text-center">
-                    <h1 className="text-4xl font-bold text-amber-500 mb-4">Feature Disabled</h1>
-                    <p className="text-muted-foreground mb-4">This feature is not enabled for your workspace.</p>
+                    <h1 className="text-4xl font-bold text-amber-500 mb-4">Plan Restricted</h1>
+                    <p className="text-muted-foreground mb-4">This feature is not included in your workspace plan.</p>
                     <Link href="/" className="text-primary hover:underline">Return to Dashboard</Link>
                 </div>
             </div>

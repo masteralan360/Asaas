@@ -117,7 +117,7 @@ function prefetchRoute(href: string) {
 export function Layout({ children }: LayoutProps) {
     const [location, setLocation] = useLocation()
     const { user, signOut } = useAuth()
-    const { hasFeature, workspaceName, isFullscreen, features, activeWorkspace } = useWorkspace()
+    const { hasFeature, hasCapability, workspaceName, isFullscreen, features, activeWorkspace } = useWorkspace()
     const { hasPermission } = useWorkspacePermissions()
     const {
         branchInfo,
@@ -360,11 +360,11 @@ export function Layout({ children }: LayoutProps) {
             <LoanPaymentModalProvider>
                 <div className="h-screen overflow-hidden bg-transparent">
                     <ResourceSyncOverlay />
-                    <ManualRateModals />
-                    <GlobalExchangeRateReminders />
-                    <GlobalBudgetReminders />
-                    <GlobalLoanReminders />
-                    <GlobalMarketplaceOrderReminders />
+                    {hasCapability('multiCurrency') && <ManualRateModals />}
+                    {hasCapability('multiCurrency') && <GlobalExchangeRateReminders />}
+                    {hasFeature('budget') && <GlobalBudgetReminders />}
+                    {hasFeature('loans') && <GlobalLoanReminders />}
+                    {hasFeature('ecommerce') && <GlobalMarketplaceOrderReminders />}
                     {/* Mobile sidebar backdrop */}
                     {mobileSidebarOpen && (
                         <div
@@ -1046,7 +1046,7 @@ export function Layout({ children }: LayoutProps) {
                                         isModuleLauncherRoute && "text-primary"
                                     )} />
                                 </button>
-                                {isTauri && location === '/whatsapp' && (
+                                {hasCapability('whatsappIntegration') && isTauri && location === '/whatsapp' && (
                                     <Button
                                         variant="outline"
                                         size="sm"
@@ -1068,7 +1068,7 @@ export function Layout({ children }: LayoutProps) {
                                     </Button>
                                 )}
                                 <P2PSyncIndicator />
-                                <ExchangeRateIndicator />
+                                {hasCapability('multiCurrency') && <ExchangeRateIndicator />}
                                 <div className="w-px h-4 bg-border mx-1" />
                                 {(!isTauri || isMobile()) && <NotificationCenter />}
                                 <UnifiedSnoozedRemindersBell />

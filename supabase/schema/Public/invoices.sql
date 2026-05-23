@@ -20,5 +20,6 @@ CREATE TABLE public.invoices (
   r2_path_a4 text NULL,
   r2_path_receipt text NULL,
   file_size bigint NULL,
+  file_mime_type text NULL,
   PRIMARY KEY (id)
 );

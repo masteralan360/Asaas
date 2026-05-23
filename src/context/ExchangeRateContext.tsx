@@ -52,7 +52,8 @@ interface ExchangeRateContextType {
 const ExchangeRateContext = createContext<ExchangeRateContextType | undefined>(undefined)
 
 export function ExchangeRateProvider({ children }: { children: React.ReactNode }) {
-    const { features } = useWorkspace()
+    const { features, hasCapability } = useWorkspace()
+    const multiCurrencyEnabled = hasCapability('multiCurrency')
     const [exchangeData, setExchangeData] = useState<ExchangeRateResult | null>(null)
     const [eurRates, setEurRates] = useState<ExchangeRateContextType['eurRates']>({
         usd_eur: null,
@@ -92,6 +93,22 @@ export function ExchangeRateProvider({ children }: { children: React.ReactNode }
     }, [exchangeData, eurRates, tryRates])
 
     const refresh = useCallback(async () => {
+        if (!multiCurrencyEnabled) {
+            setExchangeData(null)
+            setEurRates({ usd_eur: null, eur_iqd: null })
+            setTryRates({ usd_try: null, try_iqd: null })
+            setAllRates(null)
+            setAlert({
+                hasDiscrepancy: false,
+                discrepancyData: null,
+                snoozedPairs: [],
+                allDiscrepancies: {}
+            })
+            setCurrencyStatus({ usd: 'live', eur: 'live', try: 'live' })
+            setStatus('live')
+            return
+        }
+
         // Optimization: Strictly disable fetching for remote KDS clients
         // Check both port 4004 and the specific route to be absolutely sure
         // @ts-ignore
@@ -321,7 +338,7 @@ export function ExchangeRateProvider({ children }: { children: React.ReactNode }
             setStatus('error')
         }
         setLastUpdated(formatTime(new Date()))
-    }, [features.eur_conversion_enabled, features.try_conversion_enabled])
+    }, [features.eur_conversion_enabled, features.try_conversion_enabled, multiCurrencyEnabled])
 
     useEffect(() => {
         refresh()

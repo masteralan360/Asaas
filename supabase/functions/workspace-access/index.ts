@@ -1,6 +1,7 @@
 import type { User } from 'jsr:@supabase/supabase-js@2'
 import { createAdminClient, getAuthenticatedUser } from '../_shared/supabase.ts'
 import { corsHeaders, errorResponse, jsonResponse, readJson } from '../_shared/http.ts'
+import { getPlanCapabilities, normalizeWorkspacePlan, planHasModule, type PlanModuleKey } from '../../../src/plans/workspacePlans.ts'
 
 type CreateWorkspaceRequest = {
     action: 'create'
@@ -174,6 +175,7 @@ type WorkspaceMetadataRow = {
     name: string
     code: string
     data_mode?: string | null
+    plan?: string | null
 }
 
 type WorkspaceMetadataOptions = {
@@ -227,6 +229,7 @@ const BRANCH_SOURCE_SELECT_COLUMNS = [
     'id',
     'name',
     'code',
+    'plan',
     'data_mode',
     'pos',
     'instant_pos',
@@ -278,6 +281,7 @@ function buildWorkspaceMetadata(
         workspace_id: workspace.id,
         workspace_code: workspace.code,
         workspace_name: workspace.name,
+        workspace_plan: normalizeWorkspacePlan(workspace.plan),
         data_mode: workspace.data_mode ?? 'cloud'
     }
 
@@ -352,10 +356,59 @@ function hasInventoryTransferRole(role: string | null | undefined) {
     return role === 'admin' || role === 'staff'
 }
 
+async function countWorkspaceMembers(adminClient: AdminClient, workspaceId: string, excludeUserId?: string) {
+    let query = adminClient
+        .from('profiles')
+        .select('id', { count: 'exact', head: true })
+        .eq('workspace_id', workspaceId)
+
+    if (excludeUserId) {
+        query = query.neq('id', excludeUserId)
+    }
+
+    const { count, error } = await query
+    if (error) {
+        throw error
+    }
+
+    return count ?? 0
+}
+
+async function countWorkspaceBranches(adminClient: AdminClient, sourceWorkspaceId: string) {
+    const { count, error } = await adminClient
+        .from('workspace_branches')
+        .select('id', { count: 'exact', head: true })
+        .eq('source_workspace_id', sourceWorkspaceId)
+
+    if (error) {
+        throw error
+    }
+
+    return count ?? 0
+}
+
+async function requireWorkspaceModule(
+    adminClient: AdminClient,
+    workspaceId: string,
+    module: PlanModuleKey,
+    message = 'This module is not included in the current workspace plan.'
+) {
+    const workspace = await getWorkspaceById(adminClient, workspaceId, 'id, name, code, data_mode, plan')
+    if (!workspace) {
+        return { response: errorResponse('Workspace not found', 404), workspace: null }
+    }
+
+    if (!planHasModule(workspace.plan, module)) {
+        return { response: errorResponse(message, 403), workspace: null }
+    }
+
+    return { response: null, workspace }
+}
+
 async function getWorkspaceById(
     adminClient: AdminClient,
     workspaceId: string,
-    columns = 'id, name, code, data_mode'
+    columns = 'id, name, code, data_mode, plan'
 ) {
     const { data, error } = await adminClient
         .from('workspaces')
@@ -527,6 +580,7 @@ async function clearUserWorkspaceMetadata(
     delete nextMetadata.workspace_id
     delete nextMetadata.workspace_code
     delete nextMetadata.workspace_name
+    delete nextMetadata.workspace_plan
     delete nextMetadata.data_mode
     delete nextMetadata.branch_source_workspace_id
     delete nextMetadata.branch_workspace_id
@@ -576,10 +630,11 @@ async function handleCreateWorkspace(adminClient: AdminClient, body: CreateWorks
         .from('workspaces')
         .insert({
             name: workspaceName,
+            plan: 'basic',
             subscription_expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
             locked_workspace: false
         })
-        .select('id, name, code')
+        .select('id, name, code, data_mode, plan')
         .single()
 
     if (error || !data) {
@@ -601,7 +656,7 @@ async function handleJoinWorkspace(
 
     const { data: joinedWorkspace, error: workspaceError } = await adminClient
         .from('workspaces')
-        .select('id, name, code, data_mode')
+        .select('id, name, code, data_mode, plan')
         .eq('code', workspaceCode)
         .is('deleted_at', null)
         .maybeSingle()
@@ -612,6 +667,12 @@ async function handleJoinWorkspace(
 
     if (!joinedWorkspace) {
         return errorResponse('Invalid workspace code', 400)
+    }
+
+    const joinedPlan = getPlanCapabilities(joinedWorkspace.plan)
+    const memberCount = await countWorkspaceMembers(adminClient, joinedWorkspace.id, user.id)
+    if (memberCount >= joinedPlan.limits.maxMembers) {
+        return errorResponse('Workspace member limit reached for current plan', 403)
     }
 
     const { error: profileError } = await adminClient
@@ -657,6 +718,7 @@ async function handleJoinWorkspace(
         workspace_id: joinedWorkspace.id,
         workspace_code: joinedWorkspace.code,
         workspace_name: joinedWorkspace.name,
+        workspace_plan: joinedPlan.plan,
         data_mode: joinedWorkspace.data_mode ?? 'cloud',
         branch_source_workspace_id: null,
         branch_workspace_id: joinedBranchRelation ? joinedWorkspace.id : null
@@ -772,8 +834,19 @@ async function handleCreateBranch(
         return errorResponse('Branches are unavailable for local workspaces.', 400)
     }
 
+    const sourcePlan = getPlanCapabilities(sourceWorkspace.plan)
+    if (sourcePlan.limits.maxBranches <= 0) {
+        return errorResponse('Branches are not included in the current workspace plan.', 403)
+    }
+
+    const branchCount = await countWorkspaceBranches(adminClient, sourceWorkspaceId)
+    if (branchCount >= sourcePlan.limits.maxBranches) {
+        return errorResponse('Workspace branch limit reached for current plan', 403)
+    }
+
     const branchInsert = {
         name: branchName,
+        plan: sourcePlan.plan,
         data_mode: sourceWorkspace.data_mode ?? 'cloud',
         pos: sourceWorkspace.pos ?? true,
         instant_pos: sourceWorkspace.instant_pos ?? true,
@@ -818,7 +891,7 @@ async function handleCreateBranch(
     const { data: branchWorkspace, error: branchWorkspaceError } = await adminClient
         .from('workspaces')
         .insert(branchInsert)
-        .select('id, name, code, data_mode')
+        .select('id, name, code, data_mode, plan')
         .single()
 
     if (branchWorkspaceError || !branchWorkspace) {
@@ -845,6 +918,7 @@ async function handleCreateBranch(
         ...branchRelation,
         workspace_code: branchWorkspace.code,
         workspace_name: branchWorkspace.name,
+        workspace_plan: normalizeWorkspacePlan(branchWorkspace.plan),
         data_mode: branchWorkspace.data_mode ?? 'cloud'
     })
 }
@@ -958,6 +1032,7 @@ async function handleSwitchBranch(
         workspace_id: targetWorkspace.id,
         workspace_code: targetWorkspace.code,
         workspace_name: targetWorkspace.name,
+        workspace_plan: normalizeWorkspacePlan(targetWorkspace.plan),
         data_mode: targetWorkspace.data_mode ?? 'cloud',
         branch_source_workspace_id: isForwardSwitch ? currentWorkspaceId : null,
         branch_workspace_id: isForwardSwitch ? targetWorkspaceId : null
@@ -1185,6 +1260,11 @@ async function handleListInventoryTransferTargets(
     }
 
     const currentWorkspaceId = callerResult.profile.workspace_id!
+    const moduleResult = await requireWorkspaceModule(adminClient, currentWorkspaceId, 'inventory_transfer')
+    if (moduleResult.response) {
+        return moduleResult.response
+    }
+
     const targets = await getInventoryTransferTargets(adminClient, currentWorkspaceId)
 
     const { data: storageRows, error: storageRowsError } = await adminClient
@@ -1252,6 +1332,11 @@ async function handleListInventoryTransferSourceProducts(
     }
 
     const currentWorkspaceId = callerResult.profile.workspace_id!
+    const moduleResult = await requireWorkspaceModule(adminClient, currentWorkspaceId, 'inventory_transfer')
+    if (moduleResult.response) {
+        return moduleResult.response
+    }
+
     const targets = await getInventoryTransferTargets(adminClient, currentWorkspaceId)
     const allowedWorkspaceIds = new Set(targets.map((target) => target.workspaceId))
     if (!allowedWorkspaceIds.has(sourceWorkspaceId)) {
@@ -1392,6 +1477,11 @@ async function handleTransferInventoryBetweenWorkspaces(
     }
 
     const currentWorkspaceId = callerResult.profile.workspace_id!
+    const moduleResult = await requireWorkspaceModule(adminClient, currentWorkspaceId, 'inventory_transfer')
+    if (moduleResult.response) {
+        return moduleResult.response
+    }
+
     const targets = await getInventoryTransferTargets(adminClient, currentWorkspaceId)
     const targetMap = new Map(targets.map((target) => [target.workspaceId, target] as const))
 

@@ -69,10 +69,11 @@ export function SimpleLoanListView({
 }) {
     const { t, i18n } = useTranslation()
     const [, navigate] = useLocation()
-    const { features, workspaceName } = useWorkspace()
+    const { features, workspaceName, hasCapability } = useWorkspace()
     const { user } = useAuth()
     const { toast } = useToast()
     const isReadOnly = user?.role === 'viewer'
+    const canUseWhatsApp = hasCapability('whatsappSharing')
     const [search, setSearch] = useState('')
     const [filter, setFilter] = useState<SimpleLoanFilter>('all')
     const [currentPage, setCurrentPage] = useState(1)
@@ -549,16 +550,18 @@ export function SimpleLoanListView({
                                                 <Printer className="w-4 h-4" />
                                                 {t('common.print') || 'Print'}
                                             </ContextMenuItem>
-                                            <ContextMenuItem
-                                                className="gap-2"
-                                                onSelect={() => {
-                                                    setLoanForWhatsApp(loan)
-                                                    setShowWhatsAppModal(true)
-                                                }}
-                                            >
-                                                <MessageCircle className="w-4 h-4 text-emerald-600" />
-                                                {t('sales.share.whatsapp') || 'Share to WhatsApp'}
-                                            </ContextMenuItem>
+                                            {canUseWhatsApp && (
+                                                <ContextMenuItem
+                                                    className="gap-2"
+                                                    onSelect={() => {
+                                                        setLoanForWhatsApp(loan)
+                                                        setShowWhatsAppModal(true)
+                                                    }}
+                                                >
+                                                    <MessageCircle className="w-4 h-4 text-emerald-600" />
+                                                    {t('sales.share.whatsapp') || 'Share to WhatsApp'}
+                                                </ContextMenuItem>
+                                            )}
                                         {!isReadOnly && canDeleteLoanRecord(loan) && (
                                             <ContextMenuItem
                                                 className="gap-2"
@@ -667,16 +670,18 @@ export function SimpleLoanListView({
                                                     <Printer className="w-4 h-4" />
                                                     {t('common.print') || 'Print'}
                                                 </ContextMenuItem>
-                                                <ContextMenuItem
-                                                    className="gap-2"
-                                                    onSelect={() => {
-                                                        setLoanForWhatsApp(loan)
-                                                        setShowWhatsAppModal(true)
-                                                    }}
-                                                >
-                                                    <MessageCircle className="w-4 h-4 text-emerald-600" />
-                                                    {t('sales.share.whatsapp') || 'Share to WhatsApp'}
-                                                </ContextMenuItem>
+                                                {canUseWhatsApp && (
+                                                    <ContextMenuItem
+                                                        className="gap-2"
+                                                        onSelect={() => {
+                                                            setLoanForWhatsApp(loan)
+                                                            setShowWhatsAppModal(true)
+                                                        }}
+                                                    >
+                                                        <MessageCircle className="w-4 h-4 text-emerald-600" />
+                                                        {t('sales.share.whatsapp') || 'Share to WhatsApp'}
+                                                    </ContextMenuItem>
+                                                )}
                                                     {!isReadOnly && canDeleteLoanRecord(loan) && (
                                                         <ContextMenuItem
                                                             className="gap-2"

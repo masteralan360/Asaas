@@ -29,6 +29,10 @@ CREATE POLICY workspace_permissions_select
   TO authenticated
   USING (
     workspace_id = public.current_workspace_id()
+    AND public.workspace_plan_has_capability(
+      (SELECT w.plan FROM public.workspaces w WHERE w.id = workspace_permissions.workspace_id),
+      'workspaceManagementPermissions'
+    )
     AND (
       user_uuid = auth.uid()
       OR public.current_user_role() = 'admin'
@@ -43,6 +47,10 @@ CREATE POLICY workspace_permissions_insert
   WITH CHECK (
     workspace_id = public.current_workspace_id()
     AND public.current_user_role() = 'admin'
+    AND public.workspace_plan_has_capability(
+      (SELECT w.plan FROM public.workspaces w WHERE w.id = workspace_permissions.workspace_id),
+      'workspaceManagementPermissions'
+    )
     AND module = split_part(key, '.', 1)
     AND EXISTS (
       SELECT 1
@@ -61,10 +69,18 @@ CREATE POLICY workspace_permissions_update
   USING (
     workspace_id = public.current_workspace_id()
     AND public.current_user_role() = 'admin'
+    AND public.workspace_plan_has_capability(
+      (SELECT w.plan FROM public.workspaces w WHERE w.id = workspace_permissions.workspace_id),
+      'workspaceManagementPermissions'
+    )
   )
   WITH CHECK (
     workspace_id = public.current_workspace_id()
     AND public.current_user_role() = 'admin'
+    AND public.workspace_plan_has_capability(
+      (SELECT w.plan FROM public.workspaces w WHERE w.id = workspace_permissions.workspace_id),
+      'workspaceManagementPermissions'
+    )
     AND module = split_part(key, '.', 1)
     AND EXISTS (
       SELECT 1
@@ -83,6 +99,10 @@ CREATE POLICY workspace_permissions_delete
   USING (
     workspace_id = public.current_workspace_id()
     AND public.current_user_role() = 'admin'
+    AND public.workspace_plan_has_capability(
+      (SELECT w.plan FROM public.workspaces w WHERE w.id = workspace_permissions.workspace_id),
+      'workspaceManagementPermissions'
+    )
   );
 
 CREATE OR REPLACE FUNCTION public.cleanup_workspace_permissions_on_profile_workspace_change()

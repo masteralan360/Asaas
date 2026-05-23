@@ -1,0 +1,293 @@
+export const WORKSPACE_PLANS = ['basic', 'business', 'enterprise'] as const
+
+export type WorkspacePlan = typeof WORKSPACE_PLANS[number]
+export type WorkspaceCurrencyCode = 'usd' | 'eur' | 'iqd' | 'try'
+
+export type PlanModuleKey =
+    | 'pos'
+    | 'instant_pos'
+    | 'sales_history'
+    | 'products'
+    | 'storages'
+    | 'inventory_transfer'
+    | 'inventory_transactions'
+    | 'stock_adjustments'
+    | 'ledger'
+    | 'payments'
+    | 'direct_transactions'
+    | 'members'
+    | 'business_partners'
+    | 'customers'
+    | 'suppliers'
+    | 'orders'
+    | 'ecommerce'
+    | 'loans'
+    | 'installments'
+    | 'discounts'
+    | 'revenue_analytics'
+    | 'team_performance'
+    | 'invoice_history'
+    | 'accounting'
+    | 'hr'
+    | 'expenses'
+    | 'payroll'
+    | 'whatsapp'
+
+export type WorkspaceFeatureKey =
+    | 'pos'
+    | 'instant_pos'
+    | 'sales_history'
+    | 'crm'
+    | 'ecommerce'
+    | 'travel_agency'
+    | 'real_estate'
+    | 'loans'
+    | 'net_revenue'
+    | 'budget'
+    | 'monthly_comparison'
+    | 'team_performance'
+    | 'products'
+    | 'discounts'
+    | 'storages'
+    | 'inventory_transfer'
+    | 'stock_adjustments'
+    | 'invoices_history'
+    | 'hr'
+    | 'members'
+    | 'allow_whatsapp'
+
+export type PlanCapabilityKey =
+    | 'receiptPrinting'
+    | 'a4PdfInvoices'
+    | 'pdfInvoiceGeneration'
+    | 'barcodeScanner'
+    | 'thermalPrinter'
+    | 'multipleWorkspaceContacts'
+    | 'marketplaceInquiries'
+    | 'marketplaceStorefronts'
+    | 'loanInstallmentInvoices'
+    | 'multiCurrency'
+    | 'excelExportSales'
+    | 'excelExportLedger'
+    | 'excelExportRevenue'
+    | 'workspaceStorageUploads'
+    | 'workspacePdfUploads'
+    | 'workspaceImageUploads'
+    | 'workspaceAudioUploads'
+    | 'workspaceManagementPermissions'
+    | 'whatsappIntegration'
+    | 'whatsappSharing'
+    | 'stockBatches'
+    | 'kds'
+
+export interface WorkspacePlanLimits {
+    maxMembers: number
+    maxBranches: number
+    maxWorkspaceContacts: number | null
+    maxUploadSizeMb: number
+    allowedUploadMimeTypes: string[]
+}
+
+interface WorkspacePlanDefinition {
+    inherits?: WorkspacePlan
+    modules: PlanModuleKey[]
+    capabilities: PlanCapabilityKey[]
+    allowedCurrencies: WorkspaceCurrencyCode[]
+    limits: WorkspacePlanLimits
+}
+
+export interface ResolvedWorkspacePlan {
+    plan: WorkspacePlan
+    modules: PlanModuleKey[]
+    capabilities: PlanCapabilityKey[]
+    allowedCurrencies: WorkspaceCurrencyCode[]
+    limits: WorkspacePlanLimits
+}
+
+export const PLAN_DEFINITIONS: Record<WorkspacePlan, WorkspacePlanDefinition> = {
+    basic: {
+        modules: [
+            'pos',
+            'instant_pos',
+            'sales_history',
+            'products',
+            'storages',
+            'inventory_transfer',
+            'inventory_transactions',
+            'stock_adjustments',
+            'ledger',
+            'payments',
+            'direct_transactions',
+            'members'
+        ],
+        capabilities: [
+            'receiptPrinting'
+        ],
+        allowedCurrencies: ['usd'],
+        limits: {
+            maxMembers: 3,
+            maxBranches: 0,
+            maxWorkspaceContacts: 1,
+            maxUploadSizeMb: 0,
+            allowedUploadMimeTypes: []
+        }
+    },
+    business: {
+        inherits: 'basic',
+        modules: [
+            'business_partners',
+            'customers',
+            'suppliers',
+            'orders',
+            'ecommerce',
+            'loans',
+            'installments',
+            'discounts',
+            'revenue_analytics',
+            'team_performance',
+            'invoice_history'
+        ],
+        capabilities: [
+            'a4PdfInvoices',
+            'pdfInvoiceGeneration',
+            'barcodeScanner',
+            'thermalPrinter',
+            'multipleWorkspaceContacts',
+            'marketplaceInquiries',
+            'marketplaceStorefronts',
+            'loanInstallmentInvoices',
+            'multiCurrency',
+            'excelExportSales',
+            'excelExportLedger',
+            'excelExportRevenue',
+            'workspaceStorageUploads',
+            'workspacePdfUploads'
+        ],
+        allowedCurrencies: ['iqd', 'usd', 'eur', 'try'],
+        limits: {
+            maxMembers: 10,
+            maxBranches: 2,
+            maxWorkspaceContacts: null,
+            maxUploadSizeMb: 100,
+            allowedUploadMimeTypes: ['application/pdf']
+        }
+    },
+    enterprise: {
+        inherits: 'business',
+        modules: [
+            'accounting',
+            'hr',
+            'expenses',
+            'payroll',
+            'whatsapp'
+        ],
+        capabilities: [
+            'workspaceManagementPermissions',
+            'whatsappIntegration',
+            'whatsappSharing',
+            'stockBatches',
+            'workspaceImageUploads',
+            'workspaceAudioUploads'
+        ],
+        allowedCurrencies: ['iqd', 'usd', 'eur', 'try'],
+        limits: {
+            maxMembers: 20,
+            maxBranches: 5,
+            maxWorkspaceContacts: null,
+            maxUploadSizeMb: 1024,
+            allowedUploadMimeTypes: [
+                'application/pdf',
+                'image/png',
+                'image/jpeg',
+                'audio/mpeg'
+            ]
+        }
+    }
+}
+
+const WORKSPACE_FEATURE_MODULE_MAP: Record<WorkspaceFeatureKey, PlanModuleKey | null> = {
+    pos: 'pos',
+    instant_pos: 'instant_pos',
+    sales_history: 'sales_history',
+    crm: 'customers',
+    ecommerce: 'ecommerce',
+    travel_agency: null,
+    real_estate: null,
+    loans: 'loans',
+    net_revenue: 'revenue_analytics',
+    budget: 'accounting',
+    monthly_comparison: null,
+    team_performance: 'team_performance',
+    products: 'products',
+    discounts: 'discounts',
+    storages: 'storages',
+    inventory_transfer: 'inventory_transfer',
+    stock_adjustments: 'stock_adjustments',
+    invoices_history: 'invoice_history',
+    hr: 'hr',
+    members: 'members',
+    allow_whatsapp: 'whatsapp'
+}
+
+function mergeUnique<T>(base: T[], next: T[]) {
+    return Array.from(new Set([...base, ...next]))
+}
+
+export function normalizeWorkspacePlan(plan: unknown): WorkspacePlan {
+    return WORKSPACE_PLANS.includes(plan as WorkspacePlan)
+        ? plan as WorkspacePlan
+        : 'basic'
+}
+
+export function getPlanCapabilities(planInput: unknown): ResolvedWorkspacePlan {
+    const plan = normalizeWorkspacePlan(planInput)
+    const definition = PLAN_DEFINITIONS[plan]
+
+    if (!definition.inherits) {
+        return {
+            plan,
+            modules: definition.modules,
+            capabilities: definition.capabilities,
+            allowedCurrencies: definition.allowedCurrencies,
+            limits: definition.limits
+        }
+    }
+
+    const inherited = getPlanCapabilities(definition.inherits)
+
+    return {
+        plan,
+        modules: mergeUnique(inherited.modules, definition.modules),
+        capabilities: mergeUnique(inherited.capabilities, definition.capabilities),
+        allowedCurrencies: mergeUnique(inherited.allowedCurrencies, definition.allowedCurrencies),
+        limits: {
+            ...inherited.limits,
+            ...definition.limits
+        }
+    }
+}
+
+export function planHasModule(plan: unknown, module: PlanModuleKey) {
+    return getPlanCapabilities(plan).modules.includes(module)
+}
+
+export function planHasCapability(plan: unknown, capability: PlanCapabilityKey) {
+    return getPlanCapabilities(plan).capabilities.includes(capability)
+}
+
+export function planHasWorkspaceFeature(plan: unknown, feature: WorkspaceFeatureKey) {
+    const module = WORKSPACE_FEATURE_MODULE_MAP[feature]
+    return module ? planHasModule(plan, module) : false
+}
+
+export function getPlanAllowedCurrencies(plan: unknown) {
+    return getPlanCapabilities(plan).allowedCurrencies
+}
+
+export function isCurrencyAllowedForPlan(plan: unknown, currency: unknown) {
+    return getPlanAllowedCurrencies(plan).includes(String(currency).toLowerCase() as WorkspaceCurrencyCode)
+}
+
+export function getPrimaryCurrencyForPlan(plan: unknown): WorkspaceCurrencyCode {
+    return getPlanAllowedCurrencies(plan)[0] ?? 'usd'
+}

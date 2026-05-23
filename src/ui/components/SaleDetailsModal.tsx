@@ -75,11 +75,14 @@ interface SaleDetailsModalProps {
 export function SaleDetailsModal({ sale, isOpen, onClose, onReturnItem, onReturnSale, onDownloadInvoice }: SaleDetailsModalProps) {
     const { t, i18n } = useTranslation()
     const { user } = useAuth()
-    const { features } = useWorkspace()
+    const { features, hasCapability } = useWorkspace()
     const [showWhatsAppModal, setShowWhatsAppModal] = useState(false)
     const [, setLocation] = useLocation()
     const { style } = useTheme()
     const linkedLoan = useLoanBySaleId(sale?.id, user?.workspaceId)
+    const canUseMultiCurrency = hasCapability('multiCurrency')
+    const canUseWhatsApp = hasCapability('whatsappSharing')
+    const canDownloadInvoice = hasCapability('pdfInvoiceGeneration')
 
     const handleShareOnWhatsApp = (phone: string, dialogLanguage: string) => {
         if (!sale) return
@@ -171,9 +174,11 @@ export function SaleDetailsModal({ sale, isOpen, onClose, onReturnItem, onReturn
                             )}>
                                 {t('sales.details') || 'Sale Details'}
                             </DialogTitle>
-                            <p className="text-xs text-muted-foreground mt-0.5">
-                                {t('sales.multiCurrencyTransaction') || 'Multi-Currency Transaction'}
-                            </p>
+                            {canUseMultiCurrency && hasExchange && (
+                                <p className="text-xs text-muted-foreground mt-0.5">
+                                    {t('sales.multiCurrencyTransaction') || 'Multi-Currency Transaction'}
+                                </p>
+                            )}
                         </div>
                     </div>
                 </DialogHeader>
@@ -373,7 +378,7 @@ export function SaleDetailsModal({ sale, isOpen, onClose, onReturnItem, onReturn
                     </div>
 
                     {/* ─── Market Rates Snapshot ─── */}
-                    {hasExchange && (sale.exchange_rates && sale.exchange_rates.length > 0 ? (
+                    {canUseMultiCurrency && hasExchange && (sale.exchange_rates && sale.exchange_rates.length > 0 ? (
                         <div className={cn(
                             "border border-primary/10 rounded-md p-4 space-y-3 bg-primary/5",
                             style === 'neo-orange' && "snapshot-neo"
@@ -869,23 +874,27 @@ export function SaleDetailsModal({ sale, isOpen, onClose, onReturnItem, onReturn
                         )}
                     </div>
                     <div className="flex items-center gap-2">
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            className="gap-2 text-emerald-600 border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-300 dark:border-emerald-800 dark:hover:bg-emerald-500/10"
-                            onClick={() => setShowWhatsAppModal(true)}
-                        >
-                            <MessageCircle className="w-4 h-4" />
-                        </Button>
-                        <Button
-                            size="sm"
-                            className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm"
-                            onClick={() => onDownloadInvoice?.(sale)}
-                            disabled={!onDownloadInvoice}
-                        >
-                            <Download className="w-4 h-4" />
-                            {t('sales.downloadInvoice') || 'Download Invoice'}
-                        </Button>
+                        {canUseWhatsApp && (
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                className="gap-2 text-emerald-600 border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-300 dark:border-emerald-800 dark:hover:bg-emerald-500/10"
+                                onClick={() => setShowWhatsAppModal(true)}
+                            >
+                                <MessageCircle className="w-4 h-4" />
+                            </Button>
+                        )}
+                        {canDownloadInvoice && (
+                            <Button
+                                size="sm"
+                                className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm"
+                                onClick={() => onDownloadInvoice?.(sale)}
+                                disabled={!onDownloadInvoice}
+                            >
+                                <Download className="w-4 h-4" />
+                                {t('sales.downloadInvoice') || 'Download Invoice'}
+                            </Button>
+                        )}
                     </div>
                 </div>
             </DialogContent>

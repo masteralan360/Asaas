@@ -10,6 +10,7 @@ import {
 
 import { useAuth } from "@/auth";
 import { isSupabaseConfigured, supabase } from "@/auth/supabase";
+import { useWorkspace } from "@/workspace";
 import {
   isSupportedWorkspacePermissionKey,
   WORKSPACE_PERMISSION_DEFINITIONS,
@@ -75,6 +76,7 @@ export function WorkspacePermissionsProvider({
   children: ReactNode;
 }) {
   const { user, isAuthenticated } = useAuth();
+  const { hasCapability } = useWorkspace();
   const [permissionKeys, setPermissionKeys] = useState<WorkspacePermissionKey[]>(
     [],
   );
@@ -83,9 +85,10 @@ export function WorkspacePermissionsProvider({
   const workspaceId = user?.workspaceId ?? "";
   const userId = user?.id ?? "";
   const userRole = user?.role;
+  const permissionsEnabled = hasCapability("workspaceManagementPermissions");
 
   const refreshPermissions = useCallback(async () => {
-    if (!isAuthenticated || !workspaceId || !userId) {
+    if (!isAuthenticated || !workspaceId || !userId || !permissionsEnabled) {
       setPermissionKeys([]);
       setIsLoading(false);
       return;
@@ -142,7 +145,7 @@ export function WorkspacePermissionsProvider({
     } finally {
       setIsLoading(false);
     }
-  }, [isAuthenticated, userId, userRole, workspaceId]);
+  }, [isAuthenticated, permissionsEnabled, userId, userRole, workspaceId]);
 
   useEffect(() => {
     void refreshPermissions();
@@ -154,6 +157,7 @@ export function WorkspacePermissionsProvider({
       !isAuthenticated ||
       !workspaceId ||
       !userId ||
+      !permissionsEnabled ||
       userRole === "admin"
     ) {
       return;
@@ -191,7 +195,7 @@ export function WorkspacePermissionsProvider({
         handlePermissionsChanged,
       );
     };
-  }, [isAuthenticated, refreshPermissions, userId, userRole, workspaceId]);
+  }, [isAuthenticated, permissionsEnabled, refreshPermissions, userId, userRole, workspaceId]);
 
   const permissionSet = useMemo(
     () => new Set<WorkspacePermissionKey>(permissionKeys),
@@ -222,6 +226,10 @@ export function WorkspacePermissionsProvider({
       }
 
       if (userRole === "admin") {
+        return true;
+      }
+
+      if (!permissionsEnabled) {
         return true;
       }
 
@@ -257,7 +265,7 @@ export function WorkspacePermissionsProvider({
 
       return false;
     },
-    [permissionSet, userRole],
+    [permissionSet, permissionsEnabled, userRole],
   );
 
   return (
@@ -283,4 +291,3 @@ export function useWorkspacePermissions() {
   }
   return context;
 }
-

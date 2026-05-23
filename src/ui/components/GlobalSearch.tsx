@@ -41,10 +41,10 @@ export function GlobalSearch({ className, placeholder }: GlobalSearchProps) {
     const commands: CommandItem[] = [
         // Navigation (Matches Layout.tsx paths)
         { id: 'nav-dashboard', title: t('nav.dashboard'), category: 'Navigation', icon: LayoutDashboard, action: () => setLocation('/') },
-        { id: 'nav-pos', title: t('nav.pos'), category: 'Navigation', icon: ShoppingCart, action: () => setLocation('/pos') },
-        { id: 'nav-instant-pos', title: t('nav.instantPos') || 'Instant POS', category: 'Navigation', icon: Zap, action: () => setLocation('/instant-pos') },
-        { id: 'nav-products', title: t('nav.products'), category: 'Navigation', icon: Package, action: () => setLocation('/products') },
-        { id: 'nav-sales', title: t('nav.sales'), category: 'Navigation', icon: ListOrdered, action: () => setLocation('/sales') },
+        ...(features.pos ? [{ id: 'nav-pos', title: t('nav.pos'), category: 'Navigation' as const, icon: ShoppingCart, action: () => setLocation('/pos') }] : []),
+        ...(features.instant_pos ? [{ id: 'nav-instant-pos', title: t('nav.instantPos') || 'Instant POS', category: 'Navigation' as const, icon: Zap, action: () => setLocation('/instant-pos') }] : []),
+        ...(features.products ? [{ id: 'nav-products', title: t('nav.products'), category: 'Navigation' as const, icon: Package, action: () => setLocation('/products') }] : []),
+        ...(features.sales_history ? [{ id: 'nav-sales', title: t('nav.sales'), category: 'Navigation' as const, icon: ListOrdered, action: () => setLocation('/sales') }] : []),
         { id: 'nav-settings', title: t('nav.settings'), category: 'Navigation', icon: SettingsIcon, action: () => setLocation('/settings') },
 
         ...(hasLedgerSurface && hasPermission('ledger.access') ? [{ id: 'nav-ledger', title: t('nav.ledger', { defaultValue: 'Ledger' }), category: 'Navigation' as const, icon: Wallet, action: () => setLocation('/ledger') }] : []),
@@ -52,13 +52,13 @@ export function GlobalSearch({ className, placeholder }: GlobalSearchProps) {
         ...(hasPaymentsSurface && hasPermission('directTransaction.access') ? [{ id: 'nav-direct-transactions', title: t('nav.directTransactions', { defaultValue: 'Direct Transactions' }), category: 'Navigation' as const, icon: ArrowRightLeft, action: () => setLocation('/direct-transactions') }] : []),
         ...(features.net_revenue && hasPermission('revenueAnalytics.access') ? [{ id: 'nav-revenue', title: t('nav.revenue'), category: 'Navigation' as const, icon: BarChart3, action: () => setLocation('/revenue') }] : []),
         ...(features.budget && hasPermission('accounting.access') ? [{ id: 'nav-budget', title: t('nav.budget', { defaultValue: 'Accounting' }), category: 'Navigation' as const, icon: FileSpreadsheet, action: () => setLocation('/budget') }] : []),
-        { id: 'nav-monthly-comparison', title: t('monthlyComparison.title'), category: 'Navigation', icon: ArrowRightLeft, action: () => setLocation('/monthly-comparison') },
+        ...(features.monthly_comparison ? [{ id: 'nav-monthly-comparison', title: t('monthlyComparison.title'), category: 'Navigation' as const, icon: ArrowRightLeft, action: () => setLocation('/monthly-comparison') }] : []),
         ...(features.team_performance && hasPermission('teamPerformance.access') ? [{ id: 'nav-performance', title: t('nav.performance'), category: 'Navigation' as const, icon: Users2, action: () => setLocation('/performance') }] : []),
 
         // Tools
-        { id: 'tool-currency', title: t('nav.currencyConverter'), category: 'Tools', icon: Globe, action: () => setLocation('/currency-converter') },
+        ...(features.eur_conversion_enabled || features.try_conversion_enabled ? [{ id: 'tool-currency', title: t('nav.currencyConverter'), category: 'Tools' as const, icon: Globe, action: () => setLocation('/currency-converter') }] : []),
         { id: 'tool-notebook', title: t('notebook.label') || 'Notebook', category: 'Tools', icon: NotebookPen, action: () => setLocation('/notebook') },
-        { id: 'tool-whatsapp', title: t('nav.whatsapp'), category: 'Tools', icon: MessageSquare, action: () => setLocation('/whatsapp') },
+        ...(features.allow_whatsapp ? [{ id: 'tool-whatsapp', title: t('nav.whatsapp'), category: 'Tools' as const, icon: MessageSquare, action: () => setLocation('/whatsapp') }] : []),
 
         // Actions
         {

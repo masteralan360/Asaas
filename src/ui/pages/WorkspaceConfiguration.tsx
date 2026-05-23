@@ -20,8 +20,6 @@ import {
     useToast
 } from '@/ui/components'
 import {
-    CreditCard,
-    FileText,
     Loader2,
     Check,
     ArrowRight,
@@ -34,13 +32,6 @@ import { platformService } from '@/services/platformService'
 import { assetManager } from '@/lib/assetManager'
 import { getRetriableActionToast, isRetriableWebRequestError, normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
 import type { WorkspaceDataMode } from '@/local-db/models'
-
-interface FeatureToggle {
-    key: 'pos' | 'invoices_history'
-    label: string
-    description: string
-    icon: React.ElementType
-}
 
 export function WorkspaceConfiguration() {
     const { user } = useAuth()
@@ -66,30 +57,6 @@ export function WorkspaceConfiguration() {
     useEffect(() => {
         setCoordination(currentFeatures.coordination || '')
     }, [currentFeatures.coordination])
-
-    const [features, setFeatures] = useState({
-        pos: currentFeatures.pos,
-        invoices_history: currentFeatures.invoices_history
-    })
-
-    const featureToggles: FeatureToggle[] = [
-        {
-            key: 'pos',
-            label: t('workspaceConfig.features.pos') || 'Point of Sale (POS)',
-            description: t('workspaceConfig.features.posDesc') || 'Enable quick sales and checkout functionality',
-            icon: CreditCard
-        },
-        {
-            key: 'invoices_history',
-            label: t('workspaceConfig.features.invoices') || 'Invoicing',
-            description: t('workspaceConfig.features.invoicesDesc') || 'Generate and manage invoices',
-            icon: FileText
-        }
-    ]
-
-    const toggleFeature = (key: keyof typeof features) => {
-        setFeatures(prev => ({ ...prev, [key]: !prev[key] }))
-    }
 
     const handleImageUpload = async () => {
         if (!isTauri) return;
@@ -182,9 +149,6 @@ export function WorkspaceConfiguration() {
                     .from('workspaces')
                     .update({
                         data_mode: dataMode,
-                        pos: features.pos,
-                        crm: currentFeatures.crm,
-                        invoices_history: features.invoices_history,
                         logo_url: logoUrl || null,
                         is_configured: true
                     })
@@ -342,49 +306,6 @@ export function WorkspaceConfiguration() {
                                         ? (t('workspaceConfig.mode.hybridHint') || 'Hybrid Mode keeps business data in the cloud (source of truth) and also saves a local backup to the device for offline access.')
                                         : (t('workspaceConfig.mode.cloudHint') || 'Cloud Mode keeps business data in the cloud and uses the existing sync flow.')}
                             </p>
-                        </div>
-
-                        {/* Feature Toggles */}
-                        <div className="space-y-3">
-                            {featureToggles.map((feature) => {
-                                const Icon = feature.icon
-                                const isEnabled = features[feature.key as keyof typeof features]
-
-                                return (
-                                    <button
-                                        key={feature.key}
-                                        onClick={() => toggleFeature(feature.key as keyof typeof features)}
-                                        className={`
-                                        w-full p-4 rounded-xl border-2 transition-all duration-200 text-left
-                                        flex items-center gap-4 group
-                                        ${isEnabled
-                                                ? 'border-primary bg-primary/5 hover:bg-primary/10'
-                                                : 'border-border bg-card hover:border-muted-foreground/30'
-                                            }
-                                    `}
-                                    >
-                                        <div className={`
-                                        w-12 h-12 rounded-lg flex items-center justify-center transition-colors
-                                        ${isEnabled ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}
-                                    `}>
-                                            <Icon className="w-6 h-6" />
-                                        </div>
-                                        <div className="flex-1">
-                                            <div className="font-medium">{feature.label}</div>
-                                            <div className="text-sm text-muted-foreground">{feature.description}</div>
-                                        </div>
-                                        <div className={`
-                                        w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all
-                                        ${isEnabled
-                                                ? 'border-primary bg-primary text-primary-foreground'
-                                                : 'border-muted-foreground/30'
-                                            }
-                                    `}>
-                                            {isEnabled && <Check className="w-4 h-4" />}
-                                        </div>
-                                    </button>
-                                )
-                            })}
                         </div>
 
                         {/* Info Note */}

@@ -7,6 +7,7 @@ import {
 } from '@/ui/components'
 import { Receipt, FileText, Printer } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { useWorkspace } from '@/workspace'
 
 interface PrintSelectionModalProps {
     isOpen: boolean
@@ -17,6 +18,8 @@ interface PrintSelectionModalProps {
 
 export function PrintSelectionModal({ isOpen, onClose, onSelect, a4Variant }: PrintSelectionModalProps) {
     const { t } = useTranslation()
+    const { hasCapability } = useWorkspace()
+    const canUseA4Invoices = hasCapability('a4PdfInvoices')
 
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
@@ -27,7 +30,7 @@ export function PrintSelectionModal({ isOpen, onClose, onSelect, a4Variant }: Pr
                         {t('common.print') || 'Select Print Format'}
                     </DialogTitle>
                 </DialogHeader>
-                <div className="grid grid-cols-2 gap-4 py-4">
+                <div className={canUseA4Invoices ? 'grid grid-cols-2 gap-4 py-4' : 'grid grid-cols-1 gap-4 py-4'}>
                     <Button
                         variant="outline"
                         className="h-32 flex flex-col gap-3 hover:border-primary hover:bg-primary/5 transition-all text-center"
@@ -42,27 +45,29 @@ export function PrintSelectionModal({ isOpen, onClose, onSelect, a4Variant }: Pr
                         </div>
                     </Button>
 
-                    <Button
-                        variant="outline"
-                        className="h-32 flex flex-col gap-3 hover:border-primary hover:bg-primary/5 transition-all text-center"
-                        onClick={() => onSelect('a4')}
-                    >
-                        <div className="w-12 h-12 rounded-full bg-secondary flex items-center justify-center">
-                            <FileText className="w-6 h-6 text-foreground" />
-                        </div>
-                        <div className="space-y-1">
-                            <div className="font-bold">
-                                {a4Variant === 'refund'
-                                    ? (t('sales.print.a4Refund') || 'A4 Refund Invoice')
-                                    : (t('sales.print.a4') || 'A4 Invoice')}
+                    {canUseA4Invoices && (
+                        <Button
+                            variant="outline"
+                            className="h-32 flex flex-col gap-3 hover:border-primary hover:bg-primary/5 transition-all text-center"
+                            onClick={() => onSelect('a4')}
+                        >
+                            <div className="w-12 h-12 rounded-full bg-secondary flex items-center justify-center">
+                                <FileText className="w-6 h-6 text-foreground" />
                             </div>
-                            <div className="text-xs text-muted-foreground">
-                                {a4Variant === 'refund'
-                                    ? (t('sales.print.a4RefundDesc') || 'Refund-focused full-page A4')
-                                    : (t('sales.print.a4desc') || 'Detailed full-page document')}
+                            <div className="space-y-1">
+                                <div className="font-bold">
+                                    {a4Variant === 'refund'
+                                        ? (t('sales.print.a4Refund') || 'A4 Refund Invoice')
+                                        : (t('sales.print.a4') || 'A4 Invoice')}
+                                </div>
+                                <div className="text-xs text-muted-foreground">
+                                    {a4Variant === 'refund'
+                                        ? (t('sales.print.a4RefundDesc') || 'Refund-focused full-page A4')
+                                        : (t('sales.print.a4desc') || 'Detailed full-page document')}
+                                </div>
                             </div>
-                        </div>
-                    </Button>
+                        </Button>
+                    )}
                 </div>
             </DialogContent>
         </Dialog>

@@ -569,6 +569,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         let workspaceId = ''
         let resolvedWorkspaceName = workspaceName
+        let resolvedWorkspacePlan = 'basic'
         const normalizedPasskey = passkey.trim()
 
         try {
@@ -594,6 +595,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 workspaceId = wsData.id
                 workspaceCode = wsData.code || workspaceCode
                 resolvedWorkspaceName = wsData.name || workspaceName
+                resolvedWorkspacePlan = wsData.plan || resolvedWorkspacePlan
 
             } else {
                 if (!workspaceCode) throw new Error('Workspace code is required to join')
@@ -608,6 +610,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
                 workspaceId = wsData.id
                 resolvedWorkspaceName = wsData.name
+                resolvedWorkspacePlan = wsData.plan || resolvedWorkspacePlan
             }
 
             const resolvedWorkspaceCode = workspaceCode
@@ -622,19 +625,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                         passkey: normalizedPasskey,
                         workspace_id: workspaceId,
                         workspace_code: resolvedWorkspaceCode,
-                        workspace_name: resolvedWorkspaceName
+                        workspace_name: resolvedWorkspaceName,
+                        workspace_plan: resolvedWorkspacePlan
                     }
                 }
             })
 
             // Insert workspace contacts AFTER signUp so the session is active for RLS
             if (!error && role === 'admin' && workspaceId && adminContacts && adminContacts.length > 0) {
-                const contactsPayload = adminContacts.map(p => ({
+                const contactsPayload = adminContacts.slice(0, 1).map(p => ({
                     workspace_id: workspaceId,
                     type: p.type,
                     value: p.value,
                     label: p.label || null,
-                    is_primary: p.isPrimary
+                    is_primary: true
                 }))
                 const { error: contactsErr } = await supabase.from('workspace_contacts').insert(contactsPayload)
                 if (contactsErr) console.error('[Auth] Failed to insert workspace contacts:', contactsErr)

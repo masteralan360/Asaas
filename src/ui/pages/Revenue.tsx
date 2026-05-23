@@ -75,7 +75,7 @@ export function Revenue() {
     const { user } = useAuth()
     const { t, i18n } = useTranslation()
     const [, setLocation] = useLocation()
-    const { features } = useWorkspace()
+    const { features, hasCapability } = useWorkspace()
     const { dateRange, customDates } = useDateRange()
     const { style } = useTheme()
 
@@ -1101,22 +1101,24 @@ export function Revenue() {
                                     className="w-auto"
                                 />
                                 <div className="flex items-center gap-2">
-                                    <Button
-                                        onClick={() => setIsExportModalOpen(true)}
-                                        disabled={stats.saleStats.length === 0}
-                                        className={cn(
-                                            "h-10 px-6 rounded-full font-black transition-all flex gap-3 items-center group relative overflow-hidden",
-                                            "bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-100 dark:border-emerald-500/20 text-emerald-700 dark:text-emerald-400",
-                                            "hover:bg-emerald-100 dark:hover:bg-emerald-500/20 hover:shadow-[0_0_20px_-5px_rgba(16,185,129,0.3)] hover:scale-[1.02] active:scale-95",
-                                            "uppercase tracking-widest text-[10px]"
-                                        )}
-                                    >
-                                        <FileSpreadsheet className="w-4 h-4 transition-transform group-hover:rotate-12" />
-                                        <span className="hidden sm:inline">
-                                            {t('sales.export.button')}
-                                        </span>
-                                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 dark:via-white/5 to-transparent -translate-x-full group-hover:animate-shimmer" />
-                                    </Button>
+                                    {hasCapability('excelExportRevenue') && (
+                                        <Button
+                                            onClick={() => setIsExportModalOpen(true)}
+                                            disabled={stats.saleStats.length === 0}
+                                            className={cn(
+                                                "h-10 px-6 rounded-full font-black transition-all flex gap-3 items-center group relative overflow-hidden",
+                                                "bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-100 dark:border-emerald-500/20 text-emerald-700 dark:text-emerald-400",
+                                                "hover:bg-emerald-100 dark:hover:bg-emerald-500/20 hover:shadow-[0_0_20px_-5px_rgba(16,185,129,0.3)] hover:scale-[1.02] active:scale-95",
+                                                "uppercase tracking-widest text-[10px]"
+                                            )}
+                                        >
+                                            <FileSpreadsheet className="w-4 h-4 transition-transform group-hover:rotate-12" />
+                                            <span className="hidden sm:inline">
+                                                {t('sales.export.button')}
+                                            </span>
+                                            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 dark:via-white/5 to-transparent -translate-x-full group-hover:animate-shimmer" />
+                                        </Button>
+                                    )}
 
                                     <Button
                                         variant="outline"
