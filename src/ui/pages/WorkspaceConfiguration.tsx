@@ -4,6 +4,7 @@ import { supabase } from '@/auth/supabase'
 import { useLocation } from 'wouter'
 import { useTranslation } from 'react-i18next'
 import { useWorkspace } from '@/workspace'
+import { cn } from '@/lib/utils'
 import {
     Card,
     CardContent,
@@ -25,13 +26,17 @@ import {
     ArrowRight,
     ImagePlus,
     Package,
-    MapPin
+    MapPin,
+    Zap,
+    Star
 } from 'lucide-react'
 import { isTauri as isTauriCheck } from '@/lib/platform'
 import { platformService } from '@/services/platformService'
 import { assetManager } from '@/lib/assetManager'
 import { getRetriableActionToast, isRetriableWebRequestError, normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
 import type { WorkspaceDataMode } from '@/local-db/models'
+import { WORKSPACE_PLANS, getPlanCapabilities } from '@/plans/workspacePlans'
+import type { WorkspacePlan } from '@/plans/workspacePlans'
 
 export function WorkspaceConfiguration() {
     const { user } = useAuth()
@@ -45,6 +50,7 @@ export function WorkspaceConfiguration() {
     const [logoUrl, setLogoUrl] = useState(currentFeatures.logo_url || '')
     const [coordination, setCoordination] = useState(currentFeatures.coordination || '')
     const [dataMode, setDataMode] = useState<WorkspaceDataMode>(currentFeatures.data_mode)
+    const [plan, setPlan] = useState<WorkspacePlan>(currentFeatures.plan)
     const isTauri = isTauriCheck()
     const workspaceId = user?.workspaceId || ''
 
@@ -149,6 +155,7 @@ export function WorkspaceConfiguration() {
                     .from('workspaces')
                     .update({
                         data_mode: dataMode,
+                        plan: plan,
                         logo_url: logoUrl || null,
                         is_configured: true
                     })
@@ -306,6 +313,58 @@ export function WorkspaceConfiguration() {
                                         ? (t('workspaceConfig.mode.hybridHint') || 'Hybrid Mode keeps business data in the cloud (source of truth) and also saves a local backup to the device for offline access.')
                                         : (t('workspaceConfig.mode.cloudHint') || 'Cloud Mode keeps business data in the cloud and uses the existing sync flow.')}
                             </p>
+                        </div>
+
+                        {/* Plan Selection */}
+                        <div className="space-y-3">
+                            <div className="space-y-1">
+                                <Label>{t('workspaceConfig.plan.title') || 'Workspace Plan'}</Label>
+                                <p className="text-sm text-muted-foreground">
+                                    {t('workspaceConfig.plan.description') || 'Choose a plan that fits your business needs.'}
+                                </p>
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                {WORKSPACE_PLANS.map((p) => {
+                                    const caps = getPlanCapabilities(p)
+                                    const isSelected = plan === p
+                                    const features = caps.modules.length
+                                    const planIcons: Record<string, typeof Zap> = { basic: Package, business: Zap, enterprise: Star }
+                                    const PlanIcon = planIcons[p] || Package
+                                    return (
+                                        <button
+                                            key={p}
+                                            type="button"
+                                            onClick={() => setPlan(p)}
+                                            className={cn(
+                                                'relative rounded-lg border-2 p-4 text-left transition-all cursor-pointer',
+                                                isSelected
+                                                    ? 'border-primary bg-primary/5 shadow-sm'
+                                                    : 'border-border bg-muted/30 hover:border-primary/50'
+                                            )}
+                                        >
+                                            <div className="flex items-center gap-2 mb-2">
+                                                <PlanIcon className={cn(
+                                                    'w-5 h-5',
+                                                    isSelected ? 'text-primary' : 'text-muted-foreground'
+                                                )} />
+                                                <span className="font-semibold text-sm capitalize">{p}</span>
+                                            </div>
+                                            <div className="text-xs text-muted-foreground space-y-0.5">
+                                                <p>{features} {t('workspaceConfig.plan.modules') || 'modules'}</p>
+                                                <p>{caps.limits.maxMembers} {t('workspaceConfig.plan.members') || 'members'}</p>
+                                                <p>{caps.limits.maxBranches > 0
+                                                    ? `${caps.limits.maxBranches} ${t('workspaceConfig.plan.branches') || 'branches'}`
+                                                    : (t('workspaceConfig.plan.noBranches') || 'No branches')}</p>
+                                            </div>
+                                            {isSelected && (
+                                                <div className="absolute top-2 right-2 w-5 h-5 rounded-full bg-primary flex items-center justify-center">
+                                                    <Check className="w-3 h-3 text-primary-foreground" />
+                                                </div>
+                                            )}
+                                        </button>
+                                    )
+                                })}
+                            </div>
                         </div>
 
                         {/* Info Note */}
