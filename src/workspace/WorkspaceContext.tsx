@@ -58,7 +58,6 @@ export interface WorkspaceFeatures {
     stock_adjustments: boolean
     invoices_history: boolean
     hr: boolean
-    members: boolean
     // Other settings
     is_configured: boolean
     default_currency: CurrencyCode
@@ -126,8 +125,6 @@ const PLAN_DERIVED_FEATURE_KEYS: ModuleFeatureKey[] = [
     'sales_history',
     'crm',
     'ecommerce',
-    'travel_agency',
-    'real_estate',
     'loans',
     'net_revenue',
     'budget',
@@ -140,7 +137,6 @@ const PLAN_DERIVED_FEATURE_KEYS: ModuleFeatureKey[] = [
     'stock_adjustments',
     'invoices_history',
     'hr',
-    'members',
     'allow_whatsapp'
 ]
 
@@ -175,6 +171,8 @@ const defaultFeatures: WorkspaceFeatures = {
     coordination: null,
     max_discount_percent: 100,
     allow_whatsapp: false,
+    travel_agency: false,
+    real_estate: false,
     kds_enabled: false,
     print_lang: 'auto',
     print_qr: false,
@@ -196,7 +194,6 @@ const WORKSPACE_FEATURE_COLUMNS = [
     'instant_pos',
     'travel_agency',
     'real_estate',
-    'members',
     'is_configured',
     'default_currency',
     'iqd_display_preference',
@@ -239,8 +236,12 @@ function mergeWorkspaceFeatures(features?: Partial<WorkspaceFeatures> | null): W
         default_currency: defaultCurrency,
         eur_conversion_enabled: supportsMultiCurrency,
         try_conversion_enabled: supportsMultiCurrency,
-        allow_whatsapp: planHasCapability(plan, 'whatsappIntegration'),
-        upload_limit_mb: supportsUploads ? planCapabilities.limits.maxUploadSizeMb : null,
+        allow_whatsapp: planHasCapability(plan, 'whatsappIntegration')
+            ? features?.allow_whatsapp ?? false
+            : false,
+        upload_limit_mb: supportsUploads
+            ? features?.upload_limit_mb ?? planCapabilities.limits.maxUploadSizeMb
+            : null,
         visibility: planHasCapability(plan, 'marketplaceStorefronts')
             ? features?.visibility ?? defaultFeatures.visibility
             : 'private',
@@ -283,7 +284,6 @@ function getFeaturesFromLocalWorkspace(localWorkspace: Workspace): WorkspaceFeat
         instant_pos: localWorkspace.instant_pos ?? true,
         travel_agency: localWorkspace.travel_agency ?? true,
         real_estate: localWorkspace.real_estate ?? true,
-        members: localWorkspace.members ?? true,
         is_configured: localWorkspace.is_configured,
         default_currency: localWorkspace.default_currency,
         iqd_display_preference: localWorkspace.iqd_display_preference,
@@ -417,7 +417,6 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             stock_adjustments: nextFeatures.stock_adjustments,
             invoices_history: nextFeatures.invoices_history,
             hr: nextFeatures.hr,
-            members: nextFeatures.members,
             default_currency: nextFeatures.default_currency,
             iqd_display_preference: nextFeatures.iqd_display_preference,
             eur_conversion_enabled: nextFeatures.eur_conversion_enabled,
@@ -561,7 +560,6 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                 instant_pos: workspaceRow.instant_pos ?? currentFeatures.instant_pos,
                 travel_agency: workspaceRow.travel_agency ?? currentFeatures.travel_agency,
                 real_estate: workspaceRow.real_estate ?? currentFeatures.real_estate,
-                members: workspaceRow.members ?? currentFeatures.members,
                 is_configured: workspaceRow.is_configured ?? currentFeatures.is_configured,
                 default_currency: workspaceRow.default_currency ?? currentFeatures.default_currency,
                 iqd_display_preference: workspaceRow.iqd_display_preference ?? currentFeatures.iqd_display_preference,
@@ -740,7 +738,6 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                             instant_pos: data.instant_pos ?? currentFeatures.instant_pos,
                             travel_agency: data.travel_agency ?? currentFeatures.travel_agency,
                             real_estate: data.real_estate ?? currentFeatures.real_estate,
-                            members: data.members ?? currentFeatures.members,
                             is_configured: data.is_configured ?? currentFeatures.is_configured,
                             default_currency: data.default_currency || currentFeatures.default_currency,
                             iqd_display_preference: data.iqd_display_preference || currentFeatures.iqd_display_preference,
@@ -811,6 +808,12 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     const hasFeature = (feature: ModuleFeatureKey): boolean => {
         if (feature === 'ecommerce') {
             return features.data_mode !== 'local' && planHasWorkspaceFeature(features.plan, feature)
+        }
+        if (feature === 'travel_agency' || feature === 'real_estate') {
+            return features[feature]
+        }
+        if (feature === 'allow_whatsapp') {
+            return features.allow_whatsapp && planHasCapability(features.plan, 'whatsappIntegration')
         }
         return planHasWorkspaceFeature(features.plan, feature)
     }
@@ -896,7 +899,6 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                 instant_pos: newFeatures.instant_pos,
                 travel_agency: newFeatures.travel_agency,
                 real_estate: newFeatures.real_estate,
-                members: newFeatures.members,
                 default_currency: newFeatures.default_currency,
                 iqd_display_preference: newFeatures.iqd_display_preference,
                 eur_conversion_enabled: newFeatures.eur_conversion_enabled,

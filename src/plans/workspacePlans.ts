@@ -200,7 +200,8 @@ export const PLAN_DEFINITIONS: Record<WorkspacePlan, WorkspacePlanDefinition> = 
                 'application/pdf',
                 'image/png',
                 'image/jpeg',
-                'audio/mpeg'
+                'audio/mpeg',
+                'text/plain'
             ]
         }
     }
@@ -217,7 +218,7 @@ const WORKSPACE_FEATURE_MODULE_MAP: Record<WorkspaceFeatureKey, PlanModuleKey | 
     loans: 'loans',
     net_revenue: 'revenue_analytics',
     budget: 'accounting',
-    monthly_comparison: null,
+    monthly_comparison: 'revenue_analytics',
     team_performance: 'team_performance',
     products: 'products',
     discounts: 'discounts',

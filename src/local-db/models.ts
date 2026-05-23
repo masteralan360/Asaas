@@ -934,7 +934,6 @@ export interface Workspace extends BaseEntity {
   stock_adjustments?: boolean;
   invoices_history?: boolean;
   hr?: boolean;
-  members?: boolean;
   ecommerce?: boolean;
   // Settings
   default_currency: CurrencyCode;
