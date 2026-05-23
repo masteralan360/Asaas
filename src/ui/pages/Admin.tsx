@@ -36,7 +36,7 @@ import {
 import { supabase, isSupabaseConfigured } from '@/auth/supabase'
 import { useLocation } from 'wouter'
 import { useTranslation } from 'react-i18next'
-import { formatDate } from '@/lib/utils'
+import { formatDate, cn } from '@/lib/utils'
 import { getRetriableActionToast, isRetriableWebRequestError, normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
 import { r2Service } from '@/services/r2Service'
 
@@ -59,9 +59,7 @@ interface AdminWorkspace {
     code: string
     created_at: string
     data_mode: 'cloud' | 'local' | 'hybrid'
-    pos: boolean
-    crm: boolean
-    invoices_history: boolean
+    plan: string
     is_configured: boolean
     locked_workspace: boolean
     subscription_expires_at: string | null
@@ -233,7 +231,7 @@ export function Admin() {
 
     const handleToggleWorkspaceFeature = async (
         workspaceId: string,
-        feature: 'pos' | 'crm' | 'invoices_history' | 'locked_workspace',
+        feature: 'locked_workspace',
         currentValue: boolean
     ) => {
         // Optimistic update
@@ -244,21 +242,10 @@ export function Admin() {
         const workspace = workspaces.find(w => w.id === workspaceId)
         if (!workspace) return
 
-        // Prepare new values (toggling the specific feature)
-        const newValues = {
-            pos: feature === 'pos' ? !workspace.pos : workspace.pos,
-            crm: feature === 'crm' ? !workspace.crm : workspace.crm,
-            invoices_history: feature === 'invoices_history' ? !workspace.invoices_history : workspace.invoices_history,
-            locked_workspace: feature === 'locked_workspace' ? !workspace.locked_workspace : workspace.locked_workspace,
-        }
-
         try {
             await invokeAdminAction<{ success: boolean }>('updateWorkspaceFeatures', {
                 workspaceId,
-                pos: newValues.pos,
-                crm: newValues.crm,
-                invoices_history: newValues.invoices_history,
-                locked_workspace: newValues.locked_workspace
+                locked_workspace: !currentValue
             })
 
             // Success toast optional to avoid spamming, but good for confirmation
@@ -543,9 +530,7 @@ export function Admin() {
                                     <thead>
                                         <tr className="bg-muted/30">
                                             <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider w-[30%]">{t('admin.workspace')}</th>
-                                            <th className="px-6 py-4 text-center text-xs font-semibold text-muted-foreground uppercase tracking-wider">{t('admin.pos')}</th>
-                                            <th className="px-6 py-4 text-center text-xs font-semibold text-muted-foreground uppercase tracking-wider">CRM</th>
-                                            <th className="px-6 py-4 text-center text-xs font-semibold text-muted-foreground uppercase tracking-wider">{t('admin.invoices')}</th>
+                                            <th className="px-6 py-4 text-center text-xs font-semibold text-muted-foreground uppercase tracking-wider">Plan</th>
                                             <th className="px-6 py-4 text-center text-xs font-semibold text-amber-500 uppercase tracking-wider"><Lock className="w-4 h-4 inline" /></th>
                                             <th className="px-6 py-4 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wider">{t('admin.configured')}</th>
                                         </tr>
@@ -579,29 +564,16 @@ export function Admin() {
                                                 </td>
                                                 <td className="px-6 py-4">
                                                     <div className="flex justify-center">
-                                                        <Switch
-                                                            checked={ws.pos}
-                                                            onCheckedChange={() => handleToggleWorkspaceFeature(ws.id, 'pos', ws.pos)}
-                                                            disabled={!!ws.deleted_at || !canEdit}
-                                                        />
-                                                    </div>
-                                                </td>
-                                                <td className="px-6 py-4">
-                                                    <div className="flex justify-center">
-                                                        <Switch
-                                                            checked={ws.crm}
-                                                            onCheckedChange={() => handleToggleWorkspaceFeature(ws.id, 'crm', ws.crm)}
-                                                            disabled={!!ws.deleted_at || !canEdit}
-                                                        />
-                                                    </div>
-                                                </td>
-                                                <td className="px-6 py-4">
-                                                    <div className="flex justify-center">
-                                                        <Switch
-                                                            checked={ws.invoices_history}
-                                                            onCheckedChange={() => handleToggleWorkspaceFeature(ws.id, 'invoices_history', ws.invoices_history)}
-                                                            disabled={!!ws.deleted_at || !canEdit}
-                                                        />
+                                                        <span className={cn(
+                                                            'px-2 py-0.5 rounded-full text-[10px] font-bold uppercase border',
+                                                            ws.plan === 'enterprise'
+                                                                ? 'border-purple-500/20 bg-purple-500/10 text-purple-700'
+                                                                : ws.plan === 'business'
+                                                                    ? 'border-blue-500/20 bg-blue-500/10 text-blue-700'
+                                                                    : 'border-muted-foreground/20 bg-muted/30 text-muted-foreground'
+                                                        )}>
+                                                            {ws.plan}
+                                                        </span>
                                                     </div>
                                                 </td>
                                                 <td className="px-6 py-4">

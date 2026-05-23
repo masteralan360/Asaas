@@ -26,9 +26,6 @@ type UpdateWorkspaceFeaturesRequest = {
     action: 'updateWorkspaceFeatures'
     passkey?: string
     workspaceId?: string
-    pos?: boolean
-    crm?: boolean
-    invoices_history?: boolean
     locked_workspace?: boolean
 }
 
@@ -149,7 +146,7 @@ async function listUsers(adminClient: ReturnType<typeof createAdminClient>) {
 async function listWorkspaces(adminClient: ReturnType<typeof createAdminClient>) {
     const { data, error } = await adminClient
         .from('workspaces')
-        .select('id, name, code, created_at, data_mode, pos, crm, invoices_history, is_configured, locked_workspace, deleted_at, coordination, logo_url, subscription_expires_at')
+        .select('id, name, code, created_at, data_mode, plan, is_configured, locked_workspace, deleted_at, coordination, logo_url, subscription_expires_at')
         .order('created_at', { ascending: false })
 
     if (error) {
@@ -213,29 +210,12 @@ async function updateWorkspaceFeatures(
     }
 
     if (
-        typeof body.pos !== 'boolean'
-        || typeof body.crm !== 'boolean'
-        || typeof body.invoices_history !== 'boolean'
-        || typeof body.locked_workspace !== 'boolean'
+        typeof body.locked_workspace !== 'boolean'
     ) {
         return errorResponse('Workspace feature payload is invalid')
     }
 
     const statusOwnerWorkspaceId = await resolveWorkspaceStatusOwnerId(adminClient, workspaceId)
-
-    const { error: featureError } = await adminClient
-        .from('workspaces')
-        .update({
-            pos: body.pos,
-            crm: body.crm,
-            invoices_history: body.invoices_history,
-            is_configured: true
-        })
-        .eq('id', workspaceId)
-
-    if (featureError) {
-        return errorResponse(featureError.message, 500)
-    }
 
     const { error: statusError } = await adminClient
         .from('workspaces')
