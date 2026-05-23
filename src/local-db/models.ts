@@ -916,7 +916,7 @@ export interface Workspace extends BaseEntity {
   data_mode: WorkspaceDataMode;
   is_configured?: boolean;
   // Module toggles
-  pos: boolean;
+  pos?: boolean;
   instant_pos?: boolean;
   sales_history?: boolean;
   crm?: boolean;
@@ -932,7 +932,7 @@ export interface Workspace extends BaseEntity {
   storages?: boolean;
   inventory_transfer?: boolean;
   stock_adjustments?: boolean;
-  invoices_history: boolean;
+  invoices_history?: boolean;
   hr?: boolean;
   members?: boolean;
   ecommerce?: boolean;

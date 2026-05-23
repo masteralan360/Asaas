@@ -1064,8 +1064,7 @@ export function Settings() {
             const payload = {
                 visibility: marketplaceVisibility,
                 store_slug: normalizedMarketplaceSlug || null,
-                store_description: marketplaceDescription.trim() || null,
-                ecommerce: marketplaceVisibility === 'public' ? true : features.ecommerce
+                store_description: marketplaceDescription.trim() || null
             }
 
             const { error } = await runSupabaseAction('settings.updateMarketplace', () =>
