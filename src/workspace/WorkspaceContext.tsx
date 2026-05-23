@@ -21,14 +21,15 @@ import {
 import { writeWorkspaceModeSnapshot } from './workspaceMode'
 import { runSupabaseAction, normalizeSupabaseActionError } from '@/lib/supabaseRequest'
 import {
+    applyWorkspaceOverrides,
     getPlanAllowedCurrencies,
     getPlanCapabilities,
     getPrimaryCurrencyForPlan,
     normalizeWorkspacePlan,
-    planHasCapability,
     planHasWorkspaceFeature,
     type PlanCapabilityKey,
     type ResolvedWorkspacePlan,
+    type WorkspaceAccessOverride,
     type WorkspaceFeatureKey,
     type WorkspacePlan
 } from '@/plans/workspacePlans'
@@ -147,6 +148,30 @@ function getPlanFeatureFlags(plan: WorkspacePlan) {
     }, {} as Record<ModuleFeatureKey, boolean>)
 }
 
+function getResolvedFeatureFlags(resolved: ResolvedWorkspacePlan) {
+    const moduleSet = new Set(resolved.modules)
+    const capabilitySet = new Set(resolved.capabilities)
+    return PLAN_DERIVED_FEATURE_KEYS.reduce((flags, key) => {
+        switch (key) {
+            case 'travel_agency':
+            case 'real_estate':
+            case 'monthly_comparison':
+                flags[key] = false
+                break
+            case 'allow_whatsapp':
+                flags[key] = capabilitySet.has('whatsappIntegration')
+                break
+            case 'crm':
+                flags[key] = moduleSet.has('customers')
+                break
+            default:
+                flags[key] = moduleSet.has(key as any)
+                break
+        }
+        return flags
+    }, {} as Record<ModuleFeatureKey, boolean>)
+}
+
 const defaultPlan = normalizeWorkspacePlan('basic')
 
 const PLAN_CONTROLLED_SETTINGS = new Set<string>([
@@ -217,50 +242,58 @@ const WORKSPACE_FEATURE_COLUMNS = [
     'store_description'
 ].join(', ')
 
-function mergeWorkspaceFeatures(features?: Partial<WorkspaceFeatures> | null): WorkspaceFeatures {
+function mergeWorkspaceFeatures(
+    features?: Partial<WorkspaceFeatures> | null,
+    overrides?: WorkspaceAccessOverride[] | null
+): WorkspaceFeatures {
     const plan = normalizeWorkspacePlan(features?.plan ?? defaultFeatures.plan)
     const planCapabilities = getPlanCapabilities(plan)
-    const allowedCurrencies = getPlanAllowedCurrencies(plan)
+    const resolvedCapabilities = overrides?.length
+        ? applyWorkspaceOverrides(planCapabilities, overrides)
+        : planCapabilities
+    const allowedCurrencies = resolvedCapabilities.allowedCurrencies
     const requestedCurrency = String(features?.default_currency ?? defaultFeatures.default_currency).toLowerCase()
     const defaultCurrency = allowedCurrencies.includes(requestedCurrency as CurrencyCode)
         ? requestedCurrency as CurrencyCode
         : getPrimaryCurrencyForPlan(plan) as CurrencyCode
-    const supportsMultiCurrency = planHasCapability(plan, 'multiCurrency')
-    const supportsUploads = planHasCapability(plan, 'workspaceStorageUploads')
+    const supportsMultiCurrency = resolvedCapabilities.capabilities.includes('multiCurrency' as PlanCapabilityKey)
+    const supportsUploads = resolvedCapabilities.capabilities.includes('workspaceStorageUploads' as PlanCapabilityKey)
+
+    const capSet = new Set(resolvedCapabilities.capabilities)
 
     return {
         ...defaultFeatures,
         ...(features ?? {}),
-        ...getPlanFeatureFlags(plan),
+        ...getResolvedFeatureFlags(resolvedCapabilities),
         plan,
         default_currency: defaultCurrency,
         eur_conversion_enabled: supportsMultiCurrency,
         try_conversion_enabled: supportsMultiCurrency,
-        allow_whatsapp: planHasCapability(plan, 'whatsappIntegration')
+        allow_whatsapp: capSet.has('whatsappIntegration')
             ? features?.allow_whatsapp ?? false
             : false,
         upload_limit_mb: supportsUploads
-            ? features?.upload_limit_mb ?? planCapabilities.limits.maxUploadSizeMb
+            ? features?.upload_limit_mb ?? resolvedCapabilities.limits.maxUploadSizeMb
             : null,
-        visibility: planHasCapability(plan, 'marketplaceStorefronts')
+        visibility: capSet.has('marketplaceStorefronts')
             ? features?.visibility ?? defaultFeatures.visibility
             : 'private',
-        store_slug: planHasCapability(plan, 'marketplaceStorefronts')
+        store_slug: capSet.has('marketplaceStorefronts')
             ? features?.store_slug ?? defaultFeatures.store_slug
             : null,
-        store_description: planHasCapability(plan, 'marketplaceStorefronts')
+        store_description: capSet.has('marketplaceStorefronts')
             ? features?.store_description ?? defaultFeatures.store_description
             : null,
-        thermal_printing: planHasCapability(plan, 'thermalPrinter')
+        thermal_printing: capSet.has('thermalPrinter')
             ? features?.thermal_printing ?? defaultFeatures.thermal_printing
             : false,
-        print_quality: planHasCapability(plan, 'a4PdfInvoices')
+        print_quality: capSet.has('a4PdfInvoices')
             ? features?.print_quality ?? defaultFeatures.print_quality
             : 'low',
-        instant_pos: planHasWorkspaceFeature(plan, 'instant_pos')
+        instant_pos: resolvedCapabilities.modules.includes('instant_pos')
             ? features?.instant_pos ?? defaultFeatures.instant_pos
             : false,
-        kds_enabled: planHasCapability(plan, 'kds') && features?.instant_pos !== false
+        kds_enabled: capSet.has('kds') && features?.instant_pos !== false
             ? features?.kds_enabled ?? defaultFeatures.kds_enabled
             : false
     }
@@ -324,16 +357,22 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     const [isLoading, setIsLoading] = useState(true)
     const [pendingUpdate, setPendingUpdate] = useState<UpdateInfo | null>(null)
     const [isFullscreen, setIsFullscreen] = useState(false)
+    const [overrides, setOverrides] = useState<WorkspaceAccessOverride[]>([])
     const realtimeChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null)
     const currentWorkspaceIdRef = useRef<string | null>(null)
     const fetchRequestRef = useRef(0)
     const branchFetchRequestRef = useRef(0)
     const featuresRef = useRef(defaultFeatures)
+    const overridesRef = useRef<WorkspaceAccessOverride[]>([])
     const workspaceNameRef = useRef<string | null>(null)
 
     useEffect(() => {
         featuresRef.current = features
     }, [features])
+
+    useEffect(() => {
+        overridesRef.current = overrides
+    }, [overrides])
 
     useEffect(() => {
         workspaceNameRef.current = workspaceName
@@ -522,11 +561,19 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         }
 
         try {
-            const { data, error } = await runSupabaseAction(
-                'workspace.getFeatures',
-                () => supabase.from('workspaces').select(WORKSPACE_FEATURE_COLUMNS).eq('id', workspaceId).maybeSingle(),
-                { timeoutMs: 12000, platform: 'all' }
-            ) as any
+            const [workspaceResult, overridesResult] = await Promise.all([
+                runSupabaseAction(
+                    'workspace.getFeatures',
+                    () => supabase.from('workspaces').select(WORKSPACE_FEATURE_COLUMNS).eq('id', workspaceId).maybeSingle(),
+                    { timeoutMs: 12000, platform: 'all' }
+                ),
+                supabase
+                    .from('workspace_access_overrides')
+                    .select('id, workspace_id, type, key, value, created_by, created_at')
+                    .eq('workspace_id', workspaceId)
+            ]) as any
+
+            const { data, error } = workspaceResult
 
             if (error) {
                 throw error
@@ -549,6 +596,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             }
 
             const workspaceRow = data as any
+            const fetchedOverrides = (overridesResult?.data ?? []) as WorkspaceAccessOverride[]
             const currentFeatures = featuresRef.current
             const localThermalPrinting = cachedSnapshot?.features?.thermal_printing
                 ?? (await db.workspaces.get(workspaceId))?.thermal_printing
@@ -582,13 +630,14 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                 visibility: workspaceRow.visibility ?? currentFeatures.visibility,
                 store_slug: workspaceRow.store_slug ?? currentFeatures.store_slug,
                 store_description: workspaceRow.store_description ?? currentFeatures.store_description
-            })
+            }, fetchedOverrides)
             const nextWorkspaceName = workspaceRow.name || user?.workspaceName || 'My Workspace'
 
             if (!isCurrentWorkspaceRequest(workspaceId, requestId)) {
                 return
             }
 
+            setOverrides(fetchedOverrides)
             setFeatures(fetchedFeatures)
             setWorkspaceName(nextWorkspaceName)
             writeWorkspaceCache({
@@ -759,7 +808,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                             visibility: data.visibility ?? currentFeatures.visibility,
                             store_slug: data.store_slug ?? currentFeatures.store_slug,
                             store_description: data.store_description ?? currentFeatures.store_description
-                        })
+                        }, overridesRef.current)
                         const nextWorkspaceName = data.name || workspaceNameRef.current || user.workspaceName || 'My Workspace'
 
                         setFeatures(updatedFeatures)
@@ -772,6 +821,38 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                         await persistWorkspaceState(user.workspaceId, updatedFeatures, nextWorkspaceName)
                     } catch (error) {
                         console.error('[Workspace] Failed to apply realtime update:', error)
+                    }
+                }
+            )
+            .on(
+                'postgres_changes',
+                {
+                    event: '*',
+                    schema: 'public',
+                    table: 'workspace_access_overrides',
+                    filter: `workspace_id=eq.${user.workspaceId}`
+                },
+                async () => {
+                    try {
+                        const { data: freshOverrides } = await supabase
+                            .from('workspace_access_overrides')
+                            .select('id, workspace_id, type, key, value, created_by, created_at')
+                            .eq('workspace_id', user.workspaceId)
+
+                        const nextOverrides = (freshOverrides ?? []) as WorkspaceAccessOverride[]
+                        setOverrides(nextOverrides)
+
+                        const currentFeatures = featuresRef.current
+                        const updatedFeatures = mergeWorkspaceFeatures(currentFeatures, nextOverrides)
+                        setFeatures(updatedFeatures)
+                        writeWorkspaceCache({
+                            workspaceId: user.workspaceId,
+                            features: updatedFeatures,
+                            workspaceName: workspaceNameRef.current ?? user.workspaceName ?? 'My Workspace'
+                        })
+                        await persistWorkspaceState(user.workspaceId, updatedFeatures, workspaceNameRef.current ?? user.workspaceName ?? 'My Workspace')
+                    } catch (error) {
+                        console.error('[Workspace] Failed to apply override change:', error)
                     }
                 }
             )
@@ -807,19 +888,19 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 
     const hasFeature = (feature: ModuleFeatureKey): boolean => {
         if (feature === 'ecommerce') {
-            return features.data_mode !== 'local' && planHasWorkspaceFeature(features.plan, feature)
+            return features.data_mode !== 'local' && planCapabilities.modules.includes('ecommerce')
         }
         if (feature === 'travel_agency' || feature === 'real_estate') {
             return features[feature]
         }
         if (feature === 'allow_whatsapp') {
-            return features.allow_whatsapp && planHasCapability(features.plan, 'whatsappIntegration')
+            return features.allow_whatsapp && planCapabilities.capabilities.includes('whatsappIntegration')
         }
-        return planHasWorkspaceFeature(features.plan, feature)
+        return planCapabilities.modules.includes(feature as any)
     }
 
     const hasCapability = (capability: PlanCapabilityKey): boolean => {
-        return planHasCapability(features.plan, capability)
+        return planCapabilities.capabilities.includes(capability)
     }
 
     const refreshFeatures = async () => {
@@ -847,7 +928,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         const currentFeatures = featuresRef.current
         const currentBranchInfo = branchInfo
         const nextWorkspaceName = name ?? workspaceNameRef.current ?? user?.workspaceName ?? 'My Workspace'
-        const newFeatures = mergeWorkspaceFeatures({ ...currentFeatures, ...featureSettings })
+        const newFeatures = mergeWorkspaceFeatures({ ...currentFeatures, ...featureSettings }, overridesRef.current)
         const now = new Date().toISOString()
 
         if (name) {
@@ -983,7 +1064,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                         patched.kds_enabled = updatedRow.kds_enabled
                     }
                     if (Object.keys(patched).length > 0) {
-                        const corrected = mergeWorkspaceFeatures({ ...featuresRef.current, ...patched })
+                        const corrected = mergeWorkspaceFeatures({ ...featuresRef.current, ...patched }, overridesRef.current)
                         setFeatures(corrected)
                         writeWorkspaceCache({
                             workspaceId,
@@ -1053,7 +1134,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             }
 
             // Update local state
-            const updatedFeatures = mergeWorkspaceFeatures({ ...featuresRef.current, data_mode: newMode })
+            const updatedFeatures = mergeWorkspaceFeatures({ ...featuresRef.current, data_mode: newMode }, overridesRef.current)
             setFeatures(updatedFeatures)
             writeWorkspaceCache({
                 workspaceId,
@@ -1106,7 +1187,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     const isCloudMode = features.data_mode === 'cloud'
     const isHybridMode = features.data_mode === 'hybrid'
     const isLocked = isWorkspaceCurrentlyLocked(features)
-    const planCapabilities = getPlanCapabilities(features.plan)
+    const planCapabilities = overrides.length
+        ? applyWorkspaceOverrides(getPlanCapabilities(features.plan), overrides)
+        : getPlanCapabilities(features.plan)
 
     return (
         <WorkspaceContext.Provider value={{

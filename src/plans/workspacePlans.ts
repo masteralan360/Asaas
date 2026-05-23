@@ -293,3 +293,79 @@ export function isCurrencyAllowedForPlan(plan: unknown, currency: unknown) {
 export function getPrimaryCurrencyForPlan(plan: unknown): WorkspaceCurrencyCode {
     return getPlanAllowedCurrencies(plan)[0] ?? 'usd'
 }
+
+export type WorkspaceAccessOverrideType = 'module' | 'capability' | 'currency' | 'limit'
+
+export interface WorkspaceAccessOverride {
+    id: string
+    workspace_id: string
+    type: WorkspaceAccessOverrideType
+    key: string
+    value: string | null
+    created_by: string | null
+    created_at: string
+}
+
+export function applyWorkspaceOverrides(
+    resolved: ResolvedWorkspacePlan,
+    overrides: WorkspaceAccessOverride[]
+): ResolvedWorkspacePlan {
+    if (!overrides || overrides.length === 0) return resolved
+
+    let modules = [...resolved.modules]
+    let capabilities = [...resolved.capabilities]
+    let allowedCurrencies = [...resolved.allowedCurrencies]
+    let limits = { ...resolved.limits }
+
+    for (const override of overrides) {
+        const val = override.value ?? 'grant'
+        switch (override.type) {
+            case 'module': {
+                const key = override.key as PlanModuleKey
+                if (val === 'grant') {
+                    if (!modules.includes(key)) modules.push(key)
+                } else if (val === 'revoke') {
+                    modules = modules.filter(m => m !== key)
+                }
+                break
+            }
+            case 'capability': {
+                const key = override.key as PlanCapabilityKey
+                if (val === 'grant') {
+                    if (!capabilities.includes(key)) capabilities.push(key)
+                } else if (val === 'revoke') {
+                    capabilities = capabilities.filter(c => c !== key)
+                }
+                break
+            }
+            case 'currency': {
+                const key = override.key.toLowerCase() as WorkspaceCurrencyCode
+                if (val === 'grant') {
+                    if (!allowedCurrencies.includes(key)) allowedCurrencies.push(key)
+                } else if (val === 'revoke') {
+                    allowedCurrencies = allowedCurrencies.filter(c => c !== key)
+                }
+                break
+            }
+            case 'limit': {
+                const numVal = parseInt(val, 10)
+                if (isNaN(numVal)) break
+                switch (override.key) {
+                    case 'maxMembers': limits.maxMembers = numVal; break
+                    case 'maxBranches': limits.maxBranches = numVal; break
+                    case 'maxWorkspaceContacts': limits.maxWorkspaceContacts = numVal; break
+                    case 'maxUploadSizeMb': limits.maxUploadSizeMb = numVal; break
+                }
+                break
+            }
+        }
+    }
+
+    return {
+        plan: resolved.plan,
+        modules,
+        capabilities,
+        allowedCurrencies,
+        limits
+    }
+}
