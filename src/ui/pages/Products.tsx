@@ -5,7 +5,6 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { Copy, GitBranch, Info, LayoutGrid, List as ListIcon, Loader2, Package, Pencil, Plus, Search, Trash2 } from 'lucide-react'
 
 import { useAuth } from '@/auth'
-import { supabase } from '@/auth/supabase'
 import {
     createCategory,
     deleteCategory,
@@ -22,9 +21,9 @@ import { db } from '@/local-db/database'
 import {
     getRetriableActionToast,
     isRetriableWebRequestError,
-    normalizeSupabaseActionError,
-    runSupabaseAction
+    normalizeSupabaseActionError
 } from '@/lib/supabaseRequest'
+import { invokeWorkspaceAccess } from '@/lib/workspaceAccess'
 import { cn, formatCurrency } from '@/lib/utils'
 import { platformService } from '@/services/platformService'
 import { useWorkspace } from '@/workspace'
@@ -208,26 +207,14 @@ export function Products() {
 
         const loadCloneTargets = async () => {
             try {
-                const accessToken = await getAccessToken()
-                if (!accessToken) {
-                    throw new Error('Authentication required')
-                }
-
-                const { data, error } = await runSupabaseAction(
-                    'products.cloneTargets',
-                    () => supabase.functions.invoke('workspace-access', {
-                        headers: {
-                            Authorization: `Bearer ${accessToken}`
-                        },
-                        body: {
-                            action: 'list-product-clone-targets'
-                        }
-                    }),
-                    { timeoutMs: 20000, platform: 'all' }
-                ) as {
-                    data: { targets?: ProductCloneTarget[] } | null
-                    error?: unknown
-                }
+                const { data, error } = await invokeWorkspaceAccess<{ targets?: ProductCloneTarget[] }>({
+                    label: 'products.cloneTargets',
+                    fallbackAccessToken: session?.access_token,
+                    timeoutMs: 20000,
+                    body: {
+                        action: 'list-product-clone-targets'
+                    }
+                })
 
                 if (error) {
                     throw error
@@ -514,11 +501,6 @@ export function Products() {
         setBranchCloneDialogOpen(false)
     }
 
-    const getAccessToken = async () => {
-        const { data } = await supabase.auth.getSession()
-        return data.session?.access_token ?? session?.access_token ?? ''
-    }
-
     const getCloneTargetLabel = (target: ProductCloneTarget) => {
         const relationLabel = target.relationType === 'source'
             ? t('products.branchClone.sourceWorkspaceTag', { defaultValue: 'Source Workspace' })
@@ -554,29 +536,17 @@ export function Products() {
         setIsBranchCloning(true)
 
         try {
-            const accessToken = await getAccessToken()
-            if (!accessToken) {
-                throw new Error('Authentication required')
-            }
-
-            const { data, error } = await runSupabaseAction(
-                'products.cloneToBranch',
-                () => supabase.functions.invoke('workspace-access', {
-                    headers: {
-                        Authorization: `Bearer ${accessToken}`
-                    },
-                    body: {
-                        action: 'clone-products-to-branch',
-                        targetWorkspaceId: selectedCloneTargetWorkspaceId,
-                        targetStorageId: selectedCloneTargetStorageId,
-                        productIds: Array.from(selectedProductIds)
-                    }
-                }),
-                { timeoutMs: 40000, platform: 'all' }
-            ) as {
-                data: { cloned_products_count?: number } | null
-                error?: unknown
-            }
+            const { data, error } = await invokeWorkspaceAccess<{ cloned_products_count?: number }>({
+                label: 'products.cloneToBranch',
+                fallbackAccessToken: session?.access_token,
+                timeoutMs: 40000,
+                body: {
+                    action: 'clone-products-to-branch',
+                    targetWorkspaceId: selectedCloneTargetWorkspaceId,
+                    targetStorageId: selectedCloneTargetStorageId,
+                    productIds: Array.from(selectedProductIds)
+                }
+            })
 
             if (error) {
                 throw error

@@ -1,11 +1,11 @@
 import { useState } from 'react'
 import { useLocation } from 'wouter'
 import { useAuth } from '@/auth'
-import { supabase } from '@/auth/supabase'
 import { Button, Input, Label, Card, CardContent, CardHeader, CardTitle, CardDescription, LanguageSwitcher, ThemeToggle } from '@/ui/components'
 import { Boxes, Key, Loader2, LogOut } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { getRetriableActionToast, isRetriableWebRequestError, normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
+import { getRetriableActionToast, isRetriableWebRequestError, normalizeSupabaseActionError } from '@/lib/supabaseRequest'
+import { invokeWorkspaceAccess } from '@/lib/workspaceAccess'
 
 export function WorkspaceRegistration() {
     const [, setLocation] = useLocation()
@@ -21,26 +21,22 @@ export function WorkspaceRegistration() {
         setIsLoading(true)
 
         try {
-            const { data: sessionData } = await supabase.auth.getSession()
-            const accessToken = sessionData.session?.access_token ?? session?.access_token
-
-            if (!accessToken) {
-                throw new Error('Authentication required')
-            }
-
-            const { data, error: rpcError } = await runSupabaseAction(
-                'workspace.join',
-                () => supabase.functions.invoke('workspace-access', {
-                    headers: {
-                        Authorization: `Bearer ${accessToken}`
-                    },
-                    body: {
-                        action: 'join',
-                        workspaceCode: workspaceCode.toUpperCase()
-                    }
-                }),
-                { timeoutMs: 12000, platform: 'all' }
-            ) as any
+            const { data, error: rpcError } = await invokeWorkspaceAccess<{
+                workspace_id: string
+                workspace_code: string
+                workspace_name: string
+                data_mode?: string | null
+                branch_source_workspace_id?: string | null
+                branch_workspace_id?: string | null
+            }>({
+                label: 'workspace.join',
+                fallbackAccessToken: session?.access_token,
+                timeoutMs: 12000,
+                body: {
+                    action: 'join',
+                    workspaceCode: workspaceCode.toUpperCase()
+                }
+            })
 
             if (rpcError) {
                 const normalizedRpcError = normalizeSupabaseActionError(rpcError)

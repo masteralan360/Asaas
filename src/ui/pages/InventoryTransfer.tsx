@@ -15,13 +15,12 @@ import {
 import type { Product, ReorderTransferRule } from "@/local-db";
 import { useWorkspace } from "@/workspace";
 import { useAuth } from "@/auth";
-import { supabase } from "@/auth/supabase";
 import {
   getRetriableActionToast,
   isRetriableWebRequestError,
   normalizeSupabaseActionError,
-  runSupabaseAction,
 } from "@/lib/supabaseRequest";
+import { invokeWorkspaceAccess } from "@/lib/workspaceAccess";
 import { Button } from "@/ui/components/button";
 import {
   ArrowRightLeft,
@@ -473,11 +472,6 @@ export default function InventoryTransfer() {
       ? "99+"
       : String(automationStats.activeCount);
 
-  const getAccessToken = async () => {
-    const { data } = await supabase.auth.getSession();
-    return data.session?.access_token ?? session?.access_token ?? "";
-  };
-
   const showTransferActionError = (
     error: unknown,
     fallbackDescription: string,
@@ -540,27 +534,14 @@ export default function InventoryTransfer() {
       setIsLoadingTransferTargets(true);
 
       try {
-        const accessToken = await getAccessToken();
-        if (!accessToken) {
-          throw new Error("Authentication required");
-        }
-
-        const { data, error } = (await runSupabaseAction(
-          "inventoryTransfer.targets",
-          () =>
-            supabase.functions.invoke("workspace-access", {
-              headers: {
-                Authorization: `Bearer ${accessToken}`,
-              },
-              body: {
-                action: "list-inventory-transfer-targets",
-              },
-            }),
-          { timeoutMs: 20000, platform: "all" },
-        )) as {
-          data: { targets?: TransferWorkspaceOption[] } | null;
-          error?: unknown;
-        };
+        const { data, error } = await invokeWorkspaceAccess<{ targets?: TransferWorkspaceOption[] }>({
+          label: "inventoryTransfer.targets",
+          fallbackAccessToken: session?.access_token,
+          timeoutMs: 20000,
+          body: {
+            action: "list-inventory-transfer-targets",
+          },
+        });
 
         if (error) {
           throw error;
@@ -764,35 +745,22 @@ export default function InventoryTransfer() {
         );
         movedCount = result.movedCount;
       } else {
-        const accessToken = await getAccessToken();
-        if (!accessToken) {
-          throw new Error("Authentication required");
-        }
-
-        const { data, error } = (await runSupabaseAction(
-          "inventoryTransfer.crossWorkspaceTransfer",
-          () =>
-            supabase.functions.invoke("workspace-access", {
-              headers: {
-                Authorization: `Bearer ${accessToken}`,
-              },
-              body: {
-                action: "transfer-inventory-between-workspaces",
-                sourceWorkspaceId,
-                sourceStorageId,
-                destinationWorkspaceId: targetWorkspaceId,
-                destinationStorageId: targetStorageId,
-                items: selectedTransferItems.map((item) => ({
-                  productId: item.productId,
-                  quantity: item.quantity,
-                })),
-              },
-            }),
-          { timeoutMs: 40000, platform: "all" },
-        )) as {
-          data: { moved_products_count?: number } | null;
-          error?: unknown;
-        };
+        const { data, error } = await invokeWorkspaceAccess<{ moved_products_count?: number }>({
+          label: "inventoryTransfer.crossWorkspaceTransfer",
+          fallbackAccessToken: session?.access_token,
+          timeoutMs: 40000,
+          body: {
+            action: "transfer-inventory-between-workspaces",
+            sourceWorkspaceId,
+            sourceStorageId,
+            destinationWorkspaceId: targetWorkspaceId,
+            destinationStorageId: targetStorageId,
+            items: selectedTransferItems.map((item) => ({
+              productId: item.productId,
+              quantity: item.quantity,
+            })),
+          },
+        });
 
         if (error) {
           throw error;

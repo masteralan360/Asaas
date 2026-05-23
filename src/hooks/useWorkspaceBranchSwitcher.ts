@@ -11,6 +11,7 @@ import {
     normalizeSupabaseActionError,
     runSupabaseAction
 } from '@/lib/supabaseRequest'
+import { invokeWorkspaceAccess } from '@/lib/workspaceAccess'
 
 export type BranchListItem = {
     id: string
@@ -52,11 +53,6 @@ export function useWorkspaceBranchSwitcher(options: UseWorkspaceBranchSwitcherOp
             description: fallbackDescription || normalized.message,
             variant: 'destructive'
         })
-    }
-
-    const getAccessToken = async () => {
-        const { data } = await supabase.auth.getSession()
-        return data.session?.access_token ?? session?.access_token ?? ''
     }
 
     const loadBranches = async () => {
@@ -157,34 +153,22 @@ export function useWorkspaceBranchSwitcher(options: UseWorkspaceBranchSwitcherOp
         setSwitchingWorkspaceId(targetWorkspaceId)
 
         try {
-            const accessToken = await getAccessToken()
-            if (!accessToken) {
-                throw new Error('Authentication required')
-            }
-
-            const { data, error } = await runSupabaseAction(
-                'branches.switchWorkspace',
-                () => supabase.functions.invoke('workspace-access', {
-                    headers: {
-                        Authorization: `Bearer ${accessToken}`
-                    },
-                    body: {
-                        action: 'switch-branch',
-                        targetWorkspaceId
-                    }
-                }),
-                { timeoutMs: 20000, platform: 'all' }
-            ) as {
-                data: {
-                    workspace_id: string
-                    workspace_code: string
-                    workspace_name: string
-                    data_mode?: string | null
-                    branch_source_workspace_id?: string | null
-                    branch_workspace_id?: string | null
-                } | null
-                error?: unknown
-            }
+            const { data, error } = await invokeWorkspaceAccess<{
+                workspace_id: string
+                workspace_code: string
+                workspace_name: string
+                data_mode?: string | null
+                branch_source_workspace_id?: string | null
+                branch_workspace_id?: string | null
+            }>({
+                label: 'branches.switchWorkspace',
+                fallbackAccessToken: session?.access_token,
+                timeoutMs: 20000,
+                body: {
+                    action: 'switch-branch',
+                    targetWorkspaceId
+                }
+            })
 
             if (error || !data) {
                 throw error ?? new Error('Workspace switch failed')
@@ -223,16 +207,10 @@ export function useWorkspaceBranchSwitcher(options: UseWorkspaceBranchSwitcherOp
     }
 
     const currentWorkspaceLabel = workspaceName || branchInfo?.branchName || 'Atlas'
-    const hasTrackedBranchEntry = Boolean(user?.branchSourceWorkspaceId || user?.branchWorkspaceId)
     const canReturnToSource = Boolean(
         branchInfo?.sourceWorkspaceId
-        && (
-            !hasTrackedBranchEntry
-            || (
-                user?.branchSourceWorkspaceId === branchInfo.sourceWorkspaceId
-                && user?.branchWorkspaceId === user.workspaceId
-            )
-        )
+        && user?.branchSourceWorkspaceId === branchInfo.sourceWorkspaceId
+        && user?.branchWorkspaceId === user.workspaceId
     )
 
     return {

@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft, GitBranch, Loader2, Plus, Trash2 } from 'lucide-react'
 import { useAuth } from '@/auth'
-import { supabase } from '@/auth/supabase'
 import { useWorkspaceBranchSwitcher, type BranchListItem } from '@/hooks/useWorkspaceBranchSwitcher'
 import {
     Button,
@@ -26,8 +25,8 @@ import {
     getRetriableActionToast,
     isRetriableWebRequestError,
     normalizeSupabaseActionError,
-    runSupabaseAction
 } from '@/lib/supabaseRequest'
+import { invokeWorkspaceAccess } from '@/lib/workspaceAccess'
 
 export function BranchManager() {
     const { t } = useTranslation()
@@ -67,11 +66,6 @@ export function BranchManager() {
         })
     }
 
-    const getAccessToken = async () => {
-        const { data } = await supabase.auth.getSession()
-        return data.session?.access_token ?? session?.access_token ?? ''
-    }
-
     const handleCreateBranch = async () => {
         const branchName = createName.trim()
         if (!branchName) {
@@ -81,24 +75,15 @@ export function BranchManager() {
         setIsCreating(true)
 
         try {
-            const accessToken = await getAccessToken()
-            if (!accessToken) {
-                throw new Error('Authentication required')
-            }
-
-            const { error } = await runSupabaseAction(
-                'branches.create',
-                () => supabase.functions.invoke('workspace-access', {
-                    headers: {
-                        Authorization: `Bearer ${accessToken}`
-                    },
-                    body: {
-                        action: 'create-branch',
-                        name: branchName
-                    }
-                }),
-                { timeoutMs: 20000, platform: 'all' }
-            ) as { data: unknown; error?: unknown }
+            const { error } = await invokeWorkspaceAccess({
+                label: 'branches.create',
+                fallbackAccessToken: session?.access_token,
+                timeoutMs: 20000,
+                body: {
+                    action: 'create-branch',
+                    name: branchName
+                }
+            })
 
             if (error) {
                 const normalized = normalizeSupabaseActionError(error)
@@ -133,24 +118,15 @@ export function BranchManager() {
         setIsDeleting(true)
 
         try {
-            const accessToken = await getAccessToken()
-            if (!accessToken) {
-                throw new Error('Authentication required')
-            }
-
-            const { error } = await runSupabaseAction(
-                'branches.delete',
-                () => supabase.functions.invoke('workspace-access', {
-                    headers: {
-                        Authorization: `Bearer ${accessToken}`
-                    },
-                    body: {
-                        action: 'delete-branch',
-                        targetWorkspaceId: branchToDelete.branchWorkspaceId
-                    }
-                }),
-                { timeoutMs: 20000, platform: 'all' }
-            ) as { data: unknown; error?: unknown }
+            const { error } = await invokeWorkspaceAccess({
+                label: 'branches.delete',
+                fallbackAccessToken: session?.access_token,
+                timeoutMs: 20000,
+                body: {
+                    action: 'delete-branch',
+                    targetWorkspaceId: branchToDelete.branchWorkspaceId
+                }
+            })
 
             if (error) {
                 throw error

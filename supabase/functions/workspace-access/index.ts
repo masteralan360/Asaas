@@ -297,20 +297,6 @@ function buildWorkspaceMetadata(
     return nextMetadata
 }
 
-function readBranchEntryMode(metadata: Record<string, unknown> | null | undefined) {
-    return typeof metadata?.branch_entry_mode === 'string'
-        ? metadata.branch_entry_mode
-        : null
-}
-
-function hasAnyBranchMetadata(metadata: Record<string, unknown> | null | undefined) {
-    return Boolean(
-        typeof metadata?.branch_source_workspace_id === 'string'
-        || typeof metadata?.branch_workspace_id === 'string'
-        || typeof metadata?.branch_entry_mode === 'string'
-    )
-}
-
 function resolveBranchSwitchOrigin(
     metadata: Record<string, unknown> | null | undefined,
     sourceWorkspaceId: string,
@@ -928,22 +914,7 @@ async function handleSwitchBranch(
     const userMetadata = (user.user_metadata ?? {}) as Record<string, unknown>
 
     if (isReverseSwitch) {
-        const branchEntryMode = readBranchEntryMode(userMetadata)
-        const metadataExists = hasAnyBranchMetadata(userMetadata)
-
-        if (
-            branchEntryMode === 'direct'
-            && typeof userMetadata.branch_workspace_id === 'string'
-            && userMetadata.branch_workspace_id === currentWorkspaceId
-        ) {
-            return errorResponse('Branch switch denied: this branch session did not originate from the source workspace', 403)
-        }
-
-        if (branchEntryMode === 'switch') {
-            if (!resolveBranchSwitchOrigin(userMetadata, targetWorkspaceId, currentWorkspaceId)) {
-                return errorResponse('Branch switch denied: this branch session did not originate from the source workspace', 403)
-            }
-        } else if (metadataExists) {
+        if (!resolveBranchSwitchOrigin(userMetadata, targetWorkspaceId, currentWorkspaceId)) {
             return errorResponse('Branch switch denied: this branch session did not originate from the source workspace', 403)
         }
     }

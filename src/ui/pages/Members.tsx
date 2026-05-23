@@ -34,6 +34,7 @@ import { useTranslation } from 'react-i18next'
 import { formatDate } from '@/lib/utils'
 import { platformService } from '@/services/platformService'
 import { getRetriableActionToast, isRetriableWebRequestError, normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
+import { invokeWorkspaceAccess } from '@/lib/workspaceAccess'
 import {
     WORKSPACE_PERMISSION_DEFINITIONS,
     getWorkspacePermissionModule,
@@ -251,26 +252,15 @@ export function Members() {
         setError(null)
 
         try {
-            const { data: sessionData } = await supabase.auth.getSession()
-            const accessToken = sessionData.session?.access_token ?? session?.access_token
-
-            if (!accessToken) {
-                throw new Error('Authentication required')
-            }
-
-            const { error } = await runSupabaseAction(
-                'members.kick',
-                () => supabase.functions.invoke('workspace-access', {
-                    headers: {
-                        Authorization: `Bearer ${accessToken}`
-                    },
-                    body: {
-                        action: 'kick',
-                        targetUserId: memberToKick.id
-                    }
-                }),
-                { timeoutMs: 12000, platform: 'all' }
-            ) as any
+            const { error } = await invokeWorkspaceAccess({
+                label: 'members.kick',
+                fallbackAccessToken: session?.access_token,
+                timeoutMs: 12000,
+                body: {
+                    action: 'kick',
+                    targetUserId: memberToKick.id
+                }
+            })
 
             if (error) throw normalizeSupabaseActionError(error)
 
