@@ -18,7 +18,6 @@ import {
     MapPin,
     KeyRound,
     Loader2,
-    Plus,
     MinusCircle,
     CreditCard,
     Zap,
@@ -43,7 +42,6 @@ import {
     FileSpreadsheet,
     MessageSquare,
     DollarSign,
-    Globe,
     type LucideIcon
 } from 'lucide-react'
 import {
@@ -1087,7 +1085,7 @@ export function Admin() {
                 </Tabs>
             </div>
 
-            <Dialog open={!!accessWorkspace} onOpenChange={() => {}}>
+            <Dialog open={!!accessWorkspace} onOpenChange={() => { }}>
                 <DialogContent
                     onInteractOutside={(e) => e.preventDefault()}
                     className="top-[calc(50%+var(--titlebar-height)/2+var(--safe-area-top)/2)] flex max-h-[calc(100dvh-var(--titlebar-height)-var(--safe-area-top)-var(--safe-area-bottom)-0.75rem)] w-[calc(100vw-0.75rem)] max-w-5xl flex-col overflow-hidden rounded-[1.25rem] border-border/60 p-0"

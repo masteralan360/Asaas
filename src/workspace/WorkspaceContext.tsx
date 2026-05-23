@@ -22,7 +22,6 @@ import { writeWorkspaceModeSnapshot } from './workspaceMode'
 import { runSupabaseAction, normalizeSupabaseActionError } from '@/lib/supabaseRequest'
 import {
     applyWorkspaceOverrides,
-    getPlanAllowedCurrencies,
     getPlanCapabilities,
     getPrimaryCurrencyForPlan,
     normalizeWorkspacePlan,
