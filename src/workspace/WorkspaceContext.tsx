@@ -62,8 +62,7 @@ export interface WorkspaceFeatures {
     is_configured: boolean
     default_currency: CurrencyCode
     iqd_display_preference: IQDDisplayPreference
-    eur_conversion_enabled: boolean
-    try_conversion_enabled: boolean
+    allowed_currencies: CurrencyCode[]
     locked_workspace: boolean
     logo_url: string | null
     coordination: string | null
@@ -114,7 +113,7 @@ interface WorkspaceContextType {
     hasFeature: (feature: ModuleFeatureKey) => boolean
     hasCapability: (capability: PlanCapabilityKey) => boolean
     refreshFeatures: () => Promise<void>
-    updateSettings: (settings: Partial<Pick<WorkspaceFeatures, 'default_currency' | 'iqd_display_preference' | 'eur_conversion_enabled' | 'try_conversion_enabled' | 'allow_whatsapp' | 'kds_enabled' | 'instant_pos' | 'logo_url' | 'coordination' | 'print_lang' | 'print_qr' | 'receipt_template' | 'a4_template' | 'print_quality' | 'thermal_printing' | 'visibility' | 'store_slug' | 'store_description' | 'upload_limit_mb'>> & { name?: string }) => Promise<void>
+    updateSettings: (settings: Partial<Pick<WorkspaceFeatures, 'default_currency' | 'iqd_display_preference' | 'allow_whatsapp' | 'kds_enabled' | 'instant_pos' | 'logo_url' | 'coordination' | 'print_lang' | 'print_qr' | 'receipt_template' | 'a4_template' | 'print_quality' | 'thermal_printing' | 'visibility' | 'store_slug' | 'store_description' | 'upload_limit_mb'>> & { name?: string }) => Promise<void>
     switchDataMode: (newMode: 'cloud' | 'hybrid') => Promise<{ error: string | null }>
     activeWorkspace: { id: string } | undefined
 }
@@ -175,8 +174,6 @@ const defaultPlan = normalizeWorkspacePlan('basic')
 
 const PLAN_CONTROLLED_SETTINGS = new Set<string>([
     ...PLAN_DERIVED_FEATURE_KEYS.filter(k => k !== 'instant_pos'),
-    'eur_conversion_enabled',
-    'try_conversion_enabled',
     'allow_whatsapp',
     'upload_limit_mb'
 ])
@@ -188,8 +185,7 @@ const defaultFeatures: WorkspaceFeatures = {
     is_configured: true,
     default_currency: 'usd',
     iqd_display_preference: 'IQD',
-    eur_conversion_enabled: false,
-    try_conversion_enabled: false,
+    allowed_currencies: ['usd', 'iqd'],
     locked_workspace: false,
     logo_url: null,
     coordination: null,
@@ -221,8 +217,6 @@ const WORKSPACE_FEATURE_COLUMNS = [
     'is_configured',
     'default_currency',
     'iqd_display_preference',
-    'eur_conversion_enabled',
-    'try_conversion_enabled',
     'locked_workspace',
     'logo_url',
     'coordination',
@@ -255,7 +249,6 @@ function mergeWorkspaceFeatures(
     const defaultCurrency = allowedCurrencies.includes(requestedCurrency as CurrencyCode)
         ? requestedCurrency as CurrencyCode
         : getPrimaryCurrencyForPlan(plan) as CurrencyCode
-    const supportsMultiCurrency = resolvedCapabilities.capabilities.includes('multiCurrency' as PlanCapabilityKey)
     const supportsUploads = resolvedCapabilities.capabilities.includes('workspaceStorageUploads' as PlanCapabilityKey)
 
     const capSet = new Set(resolvedCapabilities.capabilities)
@@ -266,8 +259,7 @@ function mergeWorkspaceFeatures(
         ...getResolvedFeatureFlags(resolvedCapabilities),
         plan,
         default_currency: defaultCurrency,
-        eur_conversion_enabled: supportsMultiCurrency,
-        try_conversion_enabled: supportsMultiCurrency,
+        allowed_currencies: allowedCurrencies,
         allow_whatsapp: capSet.has('whatsappIntegration')
             ? features?.allow_whatsapp ?? false
             : false,
@@ -319,8 +311,6 @@ function getFeaturesFromLocalWorkspace(localWorkspace: Workspace): WorkspaceFeat
         is_configured: localWorkspace.is_configured,
         default_currency: localWorkspace.default_currency,
         iqd_display_preference: localWorkspace.iqd_display_preference,
-        eur_conversion_enabled: localWorkspace.eur_conversion_enabled ?? false,
-        try_conversion_enabled: localWorkspace.try_conversion_enabled ?? false,
         locked_workspace: localWorkspace.locked_workspace ?? false,
         logo_url: localWorkspace.logo_url ?? null,
         coordination: localWorkspace.coordination ?? null,
@@ -457,8 +447,6 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             hr: nextFeatures.hr,
             default_currency: nextFeatures.default_currency,
             iqd_display_preference: nextFeatures.iqd_display_preference,
-            eur_conversion_enabled: nextFeatures.eur_conversion_enabled,
-            try_conversion_enabled: nextFeatures.try_conversion_enabled,
             locked_workspace: nextFeatures.locked_workspace,
             allow_whatsapp: nextFeatures.allow_whatsapp,
             kds_enabled: nextFeatures.kds_enabled,
@@ -610,8 +598,6 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                 is_configured: workspaceRow.is_configured ?? currentFeatures.is_configured,
                 default_currency: workspaceRow.default_currency ?? currentFeatures.default_currency,
                 iqd_display_preference: workspaceRow.iqd_display_preference ?? currentFeatures.iqd_display_preference,
-                eur_conversion_enabled: workspaceRow.eur_conversion_enabled ?? currentFeatures.eur_conversion_enabled,
-                try_conversion_enabled: workspaceRow.try_conversion_enabled ?? currentFeatures.try_conversion_enabled,
                 locked_workspace: workspaceRow.locked_workspace ?? currentFeatures.locked_workspace,
                 logo_url: workspaceRow.logo_url ?? null,
                 coordination: workspaceRow.coordination ?? null,
@@ -789,8 +775,6 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                             is_configured: data.is_configured ?? currentFeatures.is_configured,
                             default_currency: data.default_currency || currentFeatures.default_currency,
                             iqd_display_preference: data.iqd_display_preference || currentFeatures.iqd_display_preference,
-                            eur_conversion_enabled: data.eur_conversion_enabled ?? currentFeatures.eur_conversion_enabled,
-                            try_conversion_enabled: data.try_conversion_enabled ?? currentFeatures.try_conversion_enabled,
                             locked_workspace: data.locked_workspace ?? currentFeatures.locked_workspace,
                             logo_url: data.logo_url ?? currentFeatures.logo_url,
                             coordination: data.coordination ?? currentFeatures.coordination,
@@ -915,7 +899,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     }
 
     const updateSettings = async (
-        settings: Partial<Pick<WorkspaceFeatures, 'default_currency' | 'iqd_display_preference' | 'eur_conversion_enabled' | 'try_conversion_enabled' | 'allow_whatsapp' | 'kds_enabled' | 'instant_pos' | 'logo_url' | 'coordination' | 'print_lang' | 'print_qr' | 'receipt_template' | 'a4_template' | 'print_quality' | 'thermal_printing' | 'visibility' | 'store_slug' | 'store_description' | 'upload_limit_mb'>> & { name?: string }
+        settings: Partial<Pick<WorkspaceFeatures, 'default_currency' | 'iqd_display_preference' | 'allow_whatsapp' | 'kds_enabled' | 'instant_pos' | 'logo_url' | 'coordination' | 'print_lang' | 'print_qr' | 'receipt_template' | 'a4_template' | 'print_quality' | 'thermal_printing' | 'visibility' | 'store_slug' | 'store_description' | 'upload_limit_mb'>> & { name?: string }
     ) => {
         const workspaceId = user?.workspaceId
         if (!workspaceId) return
@@ -981,8 +965,6 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                 real_estate: newFeatures.real_estate,
                 default_currency: newFeatures.default_currency,
                 iqd_display_preference: newFeatures.iqd_display_preference,
-                eur_conversion_enabled: newFeatures.eur_conversion_enabled,
-                try_conversion_enabled: newFeatures.try_conversion_enabled,
                 locked_workspace: newFeatures.locked_workspace,
                 allow_whatsapp: newFeatures.allow_whatsapp,
                 kds_enabled: newFeatures.kds_enabled,

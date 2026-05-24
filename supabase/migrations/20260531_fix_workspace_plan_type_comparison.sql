@@ -1,3 +1,14 @@
+CREATE OR REPLACE FUNCTION public.workspace_plan_allows_currency(p_plan text, p_currency text)
+RETURNS boolean
+LANGUAGE sql
+IMMUTABLE
+AS $function$
+  SELECT CASE public.normalize_workspace_plan(p_plan)
+    WHEN 'basic' THEN lower(coalesce(p_currency, '')) = 'iqd'
+    ELSE lower(coalesce(p_currency, '')) IN ('iqd', 'usd', 'eur', 'try')
+  END;
+$function$;
+
 CREATE OR REPLACE FUNCTION public.apply_workspace_plan_access()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -62,11 +73,9 @@ BEGIN
   END IF;
 
   IF NOT public.workspace_currency_allowed(NEW.id, NEW.plan::text, NEW.default_currency::text) THEN
-    NEW.default_currency := 'usd';
+    NEW.default_currency := 'iqd';
   END IF;
 
-  NEW.eur_conversion_enabled := public.workspace_capability_allowed(NEW.id, NEW.plan::text, 'multiCurrency');
-  NEW.try_conversion_enabled := public.workspace_capability_allowed(NEW.id, NEW.plan::text, 'multiCurrency');
   NEW.kds_enabled := public.workspace_capability_allowed(NEW.id, NEW.plan::text, 'kds')
     AND COALESCE(NEW.instant_pos, true)
     AND COALESCE(NEW.kds_enabled, true);

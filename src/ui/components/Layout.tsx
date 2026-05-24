@@ -360,8 +360,8 @@ export function Layout({ children }: LayoutProps) {
             <LoanPaymentModalProvider>
                 <div className="h-screen overflow-hidden bg-transparent">
                     <ResourceSyncOverlay />
-                    {hasCapability('multiCurrency') && <ManualRateModals />}
-                    {hasCapability('multiCurrency') && <GlobalExchangeRateReminders />}
+                    {features.allowed_currencies.length > 1 && <ManualRateModals />}
+                    {features.allowed_currencies.length > 1 && <GlobalExchangeRateReminders />}
                     {hasFeature('budget') && <GlobalBudgetReminders />}
                     {hasFeature('loans') && <GlobalLoanReminders />}
                     {hasFeature('ecommerce') && <GlobalMarketplaceOrderReminders />}
@@ -1068,7 +1068,7 @@ export function Layout({ children }: LayoutProps) {
                                     </Button>
                                 )}
                                 <P2PSyncIndicator />
-                                {hasCapability('multiCurrency') && <ExchangeRateIndicator />}
+                                {features.allowed_currencies.length > 1 && <ExchangeRateIndicator />}
                                 <div className="w-px h-4 bg-border mx-1" />
                                 {(!isTauri || isMobile()) && <NotificationCenter />}
                                 <UnifiedSnoozedRemindersBell />

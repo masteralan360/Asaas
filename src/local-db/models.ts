@@ -938,8 +938,6 @@ export interface Workspace extends BaseEntity {
   // Settings
   default_currency: CurrencyCode;
   iqd_display_preference: IQDDisplayPreference;
-  eur_conversion_enabled?: boolean;
-  try_conversion_enabled?: boolean;
   locked_workspace: boolean;
   allow_whatsapp?: boolean;
   kds_enabled?: boolean;

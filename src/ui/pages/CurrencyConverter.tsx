@@ -106,9 +106,7 @@ export function CurrencyConverter() {
         setToCurrency(fromCurrency)
     }
 
-    const availableCurrencies: CurrencyCode[] = ['usd', 'iqd']
-    if (features.eur_conversion_enabled) availableCurrencies.push('eur')
-    if (features.try_conversion_enabled) availableCurrencies.push('try')
+    const availableCurrencies: CurrencyCode[] = features.allowed_currencies
 
     return (
         <div className="min-h-[calc(100vh-4rem)] flex flex-col gap-6 p-6 max-w-4xl mx-auto">
@@ -234,13 +232,13 @@ export function CurrencyConverter() {
                                 <span className="text-muted-foreground font-medium">USD/IQD</span>
                                 <span className="font-bold uppercase text-primary">{exchangeData?.source || 'N/A'}</span>
                             </div>
-                            {features.eur_conversion_enabled && eurRates.eur_iqd && (
+                            {features.allowed_currencies.includes('eur') && eurRates.eur_iqd && (
                                 <div className="flex justify-between items-center text-sm border-t border-border/50 pt-2">
                                     <span className="text-muted-foreground font-medium">EUR/IQD</span>
                                     <span className="font-bold uppercase text-primary">{eurRates.eur_iqd.source}</span>
                                 </div>
                             )}
-                            {features.try_conversion_enabled && tryRates.try_iqd && (
+                            {features.allowed_currencies.includes('try') && tryRates.try_iqd && (
                                 <div className="flex justify-between items-center text-sm border-t border-border/50 pt-2">
                                     <span className="text-muted-foreground font-medium">TRY/IQD</span>
                                     <span className="font-bold uppercase text-primary">{tryRates.try_iqd.source}</span>

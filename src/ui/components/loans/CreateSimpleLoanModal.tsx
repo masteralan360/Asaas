@@ -98,11 +98,9 @@ export function CreateSimpleLoanModal({
         [direction, t]
     )
     const availableCurrencies = useMemo(() => {
-        const currencies: CurrencyCode[] = Array.from(new Set([settlementCurrency, 'usd', 'iqd'])) as CurrencyCode[]
-        if (features.eur_conversion_enabled && !currencies.includes('eur')) currencies.push('eur')
-        if (features.try_conversion_enabled && !currencies.includes('try')) currencies.push('try')
+        const currencies: CurrencyCode[] = Array.from(new Set([settlementCurrency, ...features.allowed_currencies])) as CurrencyCode[]
         return currencies
-    }, [features.eur_conversion_enabled, features.try_conversion_enabled, settlementCurrency])
+    }, [features.allowed_currencies, settlementCurrency])
     const exchangeRateSnapshot = useMemo(() => {
         const snapshot = buildOrderExchangeRatesSnapshot({
             exchangeData,

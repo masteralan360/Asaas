@@ -49,11 +49,8 @@ export function Customers() {
     const [showEcommerceCustomers, setShowEcommerceCustomers] = useState(true)
 
     const availableCurrencies = useMemo(() => {
-        const currencies: CurrencyCode[] = ['usd', 'iqd']
-        if (features.eur_conversion_enabled) currencies.push('eur')
-        if (features.try_conversion_enabled) currencies.push('try')
-        return currencies
-    }, [features.eur_conversion_enabled, features.try_conversion_enabled])
+        return Array.from(new Set([features.default_currency, ...features.allowed_currencies])) as CurrencyCode[]
+    }, [features.allowed_currencies, features.default_currency])
 
     const visibleCustomers = useMemo(() => {
         if (showEcommerceCustomers) {

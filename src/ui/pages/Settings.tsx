@@ -101,7 +101,7 @@ export function Settings() {
     const canUseBarcodeScanner = hasCapability('barcodeScanner')
     const canUseThermalPrinter = hasCapability('thermalPrinter')
     const canUseA4Invoices = hasCapability('a4PdfInvoices')
-    const canUseMultiCurrency = hasCapability('multiCurrency')
+    const canUseMultiCurrency = features.allowed_currencies.length > 1
     const canUseMarketplace = hasCapability('marketplaceStorefronts')
     const canUseWhatsapp = hasCapability('whatsappIntegration')
     const canUseMultipleContacts = hasCapability('multipleWorkspaceContacts')

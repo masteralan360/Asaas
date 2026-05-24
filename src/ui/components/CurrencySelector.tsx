@@ -12,18 +12,24 @@ interface CurrencySelectorProps {
     disabled?: boolean
 }
 
+const CURRENCY_LABELS: Record<string, { label: string; symbol: string }> = {
+    usd: { label: 'USD', symbol: '$' },
+    eur: { label: 'EUR', symbol: '€' },
+    try: { label: 'TRY', symbol: '₺' },
+    iqd: { label: 'IQD', symbol: '' }
+}
+
 export function CurrencySelector({ value, onChange, label, iqdDisplayPreference = 'IQD', disabled }: CurrencySelectorProps) {
-    const { features, hasCapability } = useWorkspace()
-    const canUseMultiCurrency = hasCapability('multiCurrency')
+    const { features } = useWorkspace()
     const defaultCurrency = features.default_currency || 'usd'
 
     useEffect(() => {
-        if (!canUseMultiCurrency && value !== defaultCurrency) {
+        if (features.allowed_currencies.length <= 1 && value !== defaultCurrency) {
             onChange(defaultCurrency)
         }
-    }, [canUseMultiCurrency, defaultCurrency, onChange, value])
+    }, [features.allowed_currencies, defaultCurrency, onChange, value])
 
-    if (!canUseMultiCurrency) {
+    if (features.allowed_currencies.length <= 1) {
         return null
     }
 
@@ -35,12 +41,21 @@ export function CurrencySelector({ value, onChange, label, iqdDisplayPreference 
                     <SelectValue placeholder="Select Currency" />
                 </SelectTrigger>
                 <SelectContent>
-                    <SelectItem value="usd">USD ($)</SelectItem>
-                    <SelectItem value="eur">EUR (€)</SelectItem>
-                    <SelectItem value="try">TRY (₺)</SelectItem>
-                    <SelectItem value="iqd">
-                        {iqdDisplayPreference === 'IQD' ? 'IQD' : 'د.ع (IQD)'}
-                    </SelectItem>
+                    {features.allowed_currencies.map((code) => {
+                        const info = CURRENCY_LABELS[code]
+                        if (code === 'iqd') {
+                            return (
+                                <SelectItem key="iqd" value="iqd">
+                                    {iqdDisplayPreference === 'IQD' ? 'IQD' : 'د.ع (IQD)'}
+                                </SelectItem>
+                            )
+                        }
+                        return (
+                            <SelectItem key={code} value={code}>
+                                {info ? `${info.label} (${info.symbol})` : code.toUpperCase()}
+                            </SelectItem>
+                        )
+                    })}
                 </SelectContent>
             </Select>
         </div>

@@ -56,7 +56,7 @@ export function GlobalSearch({ className, placeholder }: GlobalSearchProps) {
         ...(features.team_performance && hasPermission('teamPerformance.access') ? [{ id: 'nav-performance', title: t('nav.performance'), category: 'Navigation' as const, icon: Users2, action: () => setLocation('/performance') }] : []),
 
         // Tools
-        ...(features.eur_conversion_enabled || features.try_conversion_enabled ? [{ id: 'tool-currency', title: t('nav.currencyConverter'), category: 'Tools' as const, icon: Globe, action: () => setLocation('/currency-converter') }] : []),
+        ...(features.allowed_currencies.length > 1 ? [{ id: 'tool-currency', title: t('nav.currencyConverter'), category: 'Tools' as const, icon: Globe, action: () => setLocation('/currency-converter') }] : []),
         { id: 'tool-notebook', title: t('notebook.label') || 'Notebook', category: 'Tools', icon: NotebookPen, action: () => setLocation('/notebook') },
         ...(features.allow_whatsapp ? [{ id: 'tool-whatsapp', title: t('nav.whatsapp'), category: 'Tools' as const, icon: MessageSquare, action: () => setLocation('/whatsapp') }] : []),
 

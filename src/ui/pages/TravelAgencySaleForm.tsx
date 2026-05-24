@@ -548,11 +548,8 @@ function TravelAgencySaleEditor({ saleId, readOnly = false }: { saleId?: string;
     const { showGuard, confirmNavigation, cancelNavigation, requestNavigation } = useUnsavedChangesGuard(isDirty)
 
     const availableCurrencies = useMemo(() => {
-        const currencies: CurrencyCode[] = ['usd', 'iqd']
-        if (features.eur_conversion_enabled) currencies.push('eur')
-        if (features.try_conversion_enabled) currencies.push('try')
-        return currencies
-    }, [features.eur_conversion_enabled, features.try_conversion_enabled])
+        return Array.from(new Set([features.default_currency, ...features.allowed_currencies])) as CurrencyCode[]
+    }, [features.allowed_currencies, features.default_currency])
 
     const supplierOptions = useMemo(() => {
         if (!formState.supplierId || suppliers.some((supplier) => supplier.id === formState.supplierId)) {

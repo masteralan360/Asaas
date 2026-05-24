@@ -1013,7 +1013,7 @@ export function POS() {
         const activeDiscount = activeDiscountMap.get(product.id)
 
         // Check EUR support
-        if (product.currency === 'eur' && !features.eur_conversion_enabled) {
+        if (product.currency === 'eur' && !features.allowed_currencies.includes('eur')) {
             toast({
                 variant: 'destructive',
                 title: t('messages.error'),
@@ -1022,7 +1022,7 @@ export function POS() {
             return
         }
 
-        if (product.currency === 'try' && !features.try_conversion_enabled) {
+        if (product.currency === 'try' && !features.allowed_currencies.includes('try')) {
             toast({
                 variant: 'destructive',
                 title: t('messages.error'),
@@ -2478,7 +2478,7 @@ export function POS() {
                         <div className="p-4 border-t border-border bg-muted/10 space-y-3">
                             {/* Exchange Rate Info */}
                             {/* Exchange Rate Info */}
-                            {(exchangeData || (features.eur_conversion_enabled && eurRates.eur_iqd)) && (
+                            {(exchangeData || (features.allowed_currencies.includes('eur') && eurRates.eur_iqd)) && (
                                 <div
                                     className="bg-primary/5 rounded-lg border border-primary/10 overflow-hidden cursor-pointer transition-all hover:bg-primary/[0.07] active:scale-[0.98]"
                                     onClick={() => setShowExchangeTicker(!showExchangeTicker)}
@@ -2515,7 +2515,7 @@ export function POS() {
                                             )}
 
                                             {/* EUR Rate (Conditional) */}
-                                            {features.eur_conversion_enabled && eurRates.eur_iqd && (
+                                            {features.allowed_currencies.includes('eur') && eurRates.eur_iqd && (
                                                 <div className={cn(
                                                     "flex justify-between items-center text-[11px]",
                                                     exchangeData && "pt-1.5 border-t border-primary/5"
@@ -2537,10 +2537,10 @@ export function POS() {
                                             )}
 
                                             {/* TRY Rate (Conditional) */}
-                                            {features.try_conversion_enabled && tryRates.try_iqd && (
+                                            {features.allowed_currencies.includes('try') && tryRates.try_iqd && (
                                                 <div className={cn(
                                                     "flex justify-between items-center text-[11px]",
-                                                    (exchangeData || (features.eur_conversion_enabled && eurRates.eur_iqd)) && "pt-1.5 border-t border-primary/5"
+                                                    (exchangeData || (features.allowed_currencies.includes('eur') && eurRates.eur_iqd)) && "pt-1.5 border-t border-primary/5"
                                                 )}>
                                                     <div className="flex items-center gap-2">
                                                         <span className="font-bold text-primary/80 uppercase">TRY/IQD</span>
@@ -3028,7 +3028,7 @@ const ExchangeTicker = ({
                             </div>
                         )}
                         {/* EUR */}
-                        {features.eur_conversion_enabled && eurRates.eur_iqd && (
+                        {features.allowed_currencies.includes('eur') && eurRates.eur_iqd && (
                             <div className="flex items-center gap-2 px-6 border-l border-primary/10">
                                 <div className={cn(
                                     "w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]",
@@ -3041,7 +3041,7 @@ const ExchangeTicker = ({
                             </div>
                         )}
                         {/* TRY */}
-                        {features.try_conversion_enabled && tryRates.try_iqd && (
+                        {features.allowed_currencies.includes('try') && tryRates.try_iqd && (
                             <div className="flex items-center gap-2 px-6 border-l border-primary/10">
                                 <div className={cn(
                                     "w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]",

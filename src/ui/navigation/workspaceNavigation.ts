@@ -315,7 +315,7 @@ export function buildWorkspaceNavigation({
             : []),
         ]
       : []),
-    ...(features.eur_conversion_enabled || features.try_conversion_enabled
+    ...(features.allowed_currencies.length > 1
       ? [
           {
             name: t("nav.currencyConverter", { defaultValue: "Currency Converter" }),

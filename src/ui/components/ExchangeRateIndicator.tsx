@@ -76,8 +76,8 @@ export function ExchangeRateList({ isMobile = false }: { isMobile?: boolean }) {
     const usdWorks = currencyStatus.usd !== 'error' && !!exchangeData
     const isLoading = status === 'loading'
     const allFailed = currencyStatus.usd === 'error' &&
-        (!features.eur_conversion_enabled || currencyStatus.eur === 'error') &&
-        (!features.try_conversion_enabled || currencyStatus.try === 'error')
+        (!features.allowed_currencies.includes('eur') || currencyStatus.eur === 'error') &&
+        (!features.allowed_currencies.includes('try') || currencyStatus.try === 'error')
 
     return (
         <div className={cn(
@@ -146,7 +146,7 @@ export function ExchangeRateList({ isMobile = false }: { isMobile?: boolean }) {
                         )}
 
                         {/* EUR/IQD Section */}
-                        {features.eur_conversion_enabled && (
+                        {features.allowed_currencies.includes('eur') && (
                             currencyStatus.eur === 'error' ? (
                                 <CurrencyOfflineRow currency="EUR" isMobile={isMobile} />
                             ) : eurRates.eur_iqd && (
@@ -181,7 +181,7 @@ export function ExchangeRateList({ isMobile = false }: { isMobile?: boolean }) {
                         )}
 
                         {/* TRY/IQD Section */}
-                        {features.try_conversion_enabled && (
+                        {features.allowed_currencies.includes('try') && (
                             currencyStatus.try === 'error' ? (
                                 <CurrencyOfflineRow currency="TRY" isMobile={isMobile} />
                             ) : tryRates.try_iqd && (

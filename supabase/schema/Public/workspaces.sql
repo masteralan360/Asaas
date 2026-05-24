@@ -14,8 +14,6 @@ CREATE TABLE public.workspaces (
   deleted_at timestamp with time zone NULL,
   default_currency text NOT NULL DEFAULT 'usd'::text,
   iqd_display_preference text NOT NULL DEFAULT 'IQD'::text,
-  eur_conversion_enabled boolean NULL DEFAULT false,
-  try_conversion_enabled boolean NULL DEFAULT false,
   locked_workspace boolean NULL DEFAULT false,
   max_discount_percent integer NULL DEFAULT 100,
   logo_url text NULL,

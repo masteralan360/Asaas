@@ -52,8 +52,8 @@ interface ExchangeRateContextType {
 const ExchangeRateContext = createContext<ExchangeRateContextType | undefined>(undefined)
 
 export function ExchangeRateProvider({ children }: { children: React.ReactNode }) {
-    const { features, hasCapability } = useWorkspace()
-    const multiCurrencyEnabled = hasCapability('multiCurrency')
+    const { features } = useWorkspace()
+    const multiCurrencyEnabled = features.allowed_currencies.length > 1
     const [exchangeData, setExchangeData] = useState<ExchangeRateResult | null>(null)
     const [eurRates, setEurRates] = useState<ExchangeRateContextType['eurRates']>({
         usd_eur: null,
@@ -175,7 +175,7 @@ export function ExchangeRateProvider({ children }: { children: React.ReactNode }
         }
 
         // 2. Fetch EUR rates if enabled
-        if (features.eur_conversion_enabled) {
+        if (features.allowed_currencies.includes('eur')) {
             try {
                 const eurSource = localStorage.getItem('primary_eur_exchange_rate_source')
                 if (eurSource === 'manual') {
@@ -217,7 +217,7 @@ export function ExchangeRateProvider({ children }: { children: React.ReactNode }
         }
 
         // 3. Fetch TRY rates if enabled
-        if (features.try_conversion_enabled) {
+        if (features.allowed_currencies.includes('try')) {
             try {
                 const trySource = localStorage.getItem('primary_try_exchange_rate_source')
                 if (trySource === 'manual') {
@@ -338,7 +338,7 @@ export function ExchangeRateProvider({ children }: { children: React.ReactNode }
             setStatus('error')
         }
         setLastUpdated(formatTime(new Date()))
-    }, [features.eur_conversion_enabled, features.try_conversion_enabled, multiCurrencyEnabled])
+    }, [features.allowed_currencies, multiCurrencyEnabled])
 
     useEffect(() => {
         refresh()
