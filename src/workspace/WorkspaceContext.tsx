@@ -26,6 +26,7 @@ import {
     getPrimaryCurrencyForPlan,
     normalizeWorkspacePlan,
     planHasWorkspaceFeature,
+    WORKSPACE_FEATURE_MODULE_MAP,
     type PlanCapabilityKey,
     type ResolvedWorkspacePlan,
     type WorkspaceAccessOverride,
@@ -153,8 +154,10 @@ function getResolvedFeatureFlags(resolved: ResolvedWorkspacePlan) {
         switch (key) {
             case 'travel_agency':
             case 'real_estate':
-            case 'monthly_comparison':
                 flags[key] = false
+                break
+            case 'monthly_comparison':
+                flags[key] = moduleSet.has('revenue_analytics')
                 break
             case 'allow_whatsapp':
                 flags[key] = capabilitySet.has('whatsappIntegration')
@@ -162,9 +165,11 @@ function getResolvedFeatureFlags(resolved: ResolvedWorkspacePlan) {
             case 'crm':
                 flags[key] = moduleSet.has('customers')
                 break
-            default:
-                flags[key] = moduleSet.has(key as any)
+            default: {
+                const mappedModule = WORKSPACE_FEATURE_MODULE_MAP[key]
+                flags[key] = mappedModule ? moduleSet.has(mappedModule) : moduleSet.has(key as any)
                 break
+            }
         }
         return flags
     }, {} as Record<ModuleFeatureKey, boolean>)
@@ -878,6 +883,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         }
         if (feature === 'allow_whatsapp') {
             return features.allow_whatsapp && planCapabilities.capabilities.includes('whatsappIntegration')
+        }
+        const mappedModule = WORKSPACE_FEATURE_MODULE_MAP[feature]
+        if (mappedModule) {
+            return planCapabilities.modules.includes(mappedModule)
         }
         return planCapabilities.modules.includes(feature as any)
     }

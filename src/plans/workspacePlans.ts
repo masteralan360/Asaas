@@ -207,7 +207,7 @@ export const PLAN_DEFINITIONS: Record<WorkspacePlan, WorkspacePlanDefinition> = 
     }
 }
 
-const WORKSPACE_FEATURE_MODULE_MAP: Record<WorkspaceFeatureKey, PlanModuleKey | null> = {
+export const WORKSPACE_FEATURE_MODULE_MAP: Record<WorkspaceFeatureKey, PlanModuleKey | null> = {
     pos: 'pos',
     instant_pos: 'instant_pos',
     sales_history: 'sales_history',
