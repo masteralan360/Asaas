@@ -40,6 +40,7 @@ DECLARE
     v_batch_remaining INTEGER := 0;
     v_allocated_quantity INTEGER := 0;
     v_batch_allocations JSONB := '[]'::jsonb;
+    v_plan TEXT;
 BEGIN
     SELECT workspace_id INTO p_workspace_id
     FROM public.profiles
@@ -49,10 +50,12 @@ BEGIN
         RAISE EXCEPTION 'User does not belong to a workspace';
     END IF;
 
-    SELECT pos, COALESCE(max_discount_percent, 100)
-    INTO v_pos, v_max_discount_percent
+    SELECT plan, COALESCE(max_discount_percent, 100)
+    INTO v_plan, v_max_discount_percent
     FROM public.workspaces
     WHERE id = p_workspace_id;
+
+    v_pos := public.workspace_module_allowed(p_workspace_id, v_plan, 'pos');
 
     IF NOT COALESCE(v_pos, false) THEN
         RAISE EXCEPTION 'POS feature is not enabled for this workspace';
@@ -358,4 +361,4 @@ BEGIN
         'system_review_reason', v_system_review_reason
     );
 END;
-$function$
+$function$;

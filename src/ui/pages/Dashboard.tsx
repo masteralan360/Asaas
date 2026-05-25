@@ -1,19 +1,118 @@
-import { useDashboardStats, useSales } from '@/local-db'
+import { useMemo } from 'react'
+import { useDashboardStats, useSales, usePaymentTransactions, usePaymentObligations, useBusinessPartners } from '@/local-db'
 import { Card, CardContent, CardHeader, CardTitle } from '@/ui/components'
-import { formatCurrency, formatDate, formatOriginLabel } from '@/lib/utils'
-import { Package, FileText, DollarSign, AlertTriangle, Receipt } from 'lucide-react'
+import { cn, formatCurrency, formatDate, formatOriginLabel } from '@/lib/utils'
+import { Package, FileText, DollarSign, AlertTriangle, Receipt, ArrowUpRight, Wallet, ClipboardCheck } from 'lucide-react'
 import { Link } from 'wouter'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/auth'
 import { useWorkspace } from '@/workspace/WorkspaceContext'
 import { DashboardSalesOverview } from '@/ui/components/DashboardSalesOverview'
+import { useDateRange } from '@/context/DateRangeContext'
+
+function getStartOfToday(now: Date) {
+    return new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0)
+}
+
+function getStartOfMonth(now: Date) {
+    return new Date(now.getFullYear(), now.getMonth(), 1)
+}
+
+function isEntryInDateRange(
+    date: string,
+    dateRange: 'today' | 'month' | 'allTime' | 'custom',
+    customDates: { start: string; end: string },
+    now = new Date()
+) {
+    const value = new Date(date)
+
+    if (dateRange === 'today') {
+        return value >= getStartOfToday(now)
+    }
+
+    if (dateRange === 'month') {
+        return value >= getStartOfMonth(now)
+    }
+
+    if (dateRange === 'custom' && (customDates.start || customDates.end)) {
+        const start = customDates.start ? new Date(customDates.start) : null
+        if (start) start.setHours(0, 0, 0, 0)
+        const end = customDates.end ? new Date(customDates.end) : null
+        if (end) end.setHours(23, 59, 59, 999)
+        if (start && value < start) return false
+        if (end && value > end) return false
+        return true
+    }
+
+    return true
+}
 
 export function Dashboard() {
     const { user } = useAuth()
     const { features } = useWorkspace()
-    useSales(user?.workspaceId) // Background sync for sales
-    const stats = useDashboardStats(user?.workspaceId)
+    const sales = useSales(user?.workspaceId)
+    const { dateRange, customDates } = useDateRange()
     const { t } = useTranslation()
+    const workspaceId = user?.workspaceId
+
+    // Additional data for Money Overview (Mobile)
+    const transactions = usePaymentTransactions(workspaceId, { includeReversals: false })
+    const obligations = usePaymentObligations(workspaceId)
+    const partners = useBusinessPartners(workspaceId)
+
+    const totalOutstanding = useMemo(() => {
+        if (!partners) return {}
+        const totals: Record<string, number> = {}
+        partners.forEach(p => {
+            const amount = (p.receivableBalance || 0) + (p.loanOutstandingBalance || 0)
+            const curr = p.defaultCurrency || 'usd'
+            totals[curr] = (totals[curr] || 0) + amount
+        })
+        return totals
+    }, [partners])
+
+    const netFlow = useMemo(() => {
+        const totals: Record<string, number> = {}
+        const now = new Date()
+
+        // 1. Add POS Sales (Incoming)
+        if (sales) {
+            sales.forEach(sale => {
+                if (sale.isDeleted || sale.isReturned) return
+                if (sale.origin !== 'pos' && sale.origin !== 'instant_pos') return
+                
+                // Exclude loan sales
+                const method = sale.payment_method || (sale as any).paymentMethod
+                if (method === 'loan') return
+
+                // Date Filter
+                if (!isEntryInDateRange(sale.createdAt, dateRange, customDates, now)) return
+
+                const amount = sale.totalAmount
+                const curr = sale.settlementCurrency
+                totals[curr] = (totals[curr] || 0) + amount
+            })
+        }
+
+        // 2. Add Payment Transactions
+        if (transactions) {
+            transactions.forEach(tx => {
+                // Exclude loans and adjustments as Ledger does
+                if (tx.paymentMethod === 'loan' || tx.paymentMethod === 'loan_adjustment') return
+
+                // Date Filter
+                if (!isEntryInDateRange(tx.paidAt, dateRange, customDates, now)) return
+                
+                const amount = tx.direction === 'incoming' ? tx.amount : -tx.amount
+                totals[tx.currency] = (totals[tx.currency] || 0) + amount
+            })
+        }
+
+        return totals
+    }, [sales, transactions, dateRange, customDates])
+
+    const pendingPaymentsCount = obligations?.filter(o => o.status === 'open' || o.status === 'overdue').length || 0
+    const stats = useDashboardStats(workspaceId)
 
     if (!stats) return null
 
@@ -37,15 +136,105 @@ export function Dashboard() {
         }
     ]
 
+    const firstName = user?.name?.split(' ')[0] || ''
+
     return (
         <div className="space-y-6 pb-12">
-            {/* Page Header */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div>
-                    <h1 className="text-3xl font-black tracking-tight">{t('dashboard.title')}</h1>
-                    <p className="text-muted-foreground font-medium">{t('dashboard.subtitle') || 'Overview of your business metrics'}</p>
+            {/* Mobile Hero Header — visually linked to the sticky bar */}
+            {firstName && (
+                <div className="block md:hidden -mx-4 -mt-6 px-5 pt-8 pb-6 bg-primary rounded-b-[2rem] shadow-lg shadow-primary/20 dark:shadow-primary/10">
+                    <h1 className="text-3xl font-black tracking-tight text-primary-foreground">
+                        {t('dashboard.greeting', { name: firstName })}
+                    </h1>
+                    <p className="text-sm font-medium text-primary-foreground/70 mt-1">
+                        {t('dashboard.greetingSubtitle')}
+                    </p>
+                </div>
+            )}
+
+            {/* Money Overview Section - Mobile Only */}
+            <div className="block md:hidden space-y-4 px-1 pb-4">
+                <h2 className="text-xl font-black tracking-tight">{t('dashboard.moneyOverview') || 'Money Overview'}</h2>
+                
+                <div className="grid grid-cols-1 gap-4">
+                    {/* Net Flow Card */}
+                    <Card className="bg-card/50 backdrop-blur-sm rounded-[1.5rem] border-border/50 shadow-sm overflow-hidden">
+                        <CardContent className="p-5 flex items-center gap-4">
+                            <div className="p-3 rounded-2xl bg-emerald-500/10 text-emerald-500">
+                                <Wallet className="w-6 h-6" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                                <p className="text-[10px] font-black uppercase tracking-[0.1em] text-muted-foreground/60 mb-0.5">
+                                    {t('ledger.netFlow') || 'Net Flow'}
+                                </p>
+                                <div className="space-y-0.5">
+                                    {Object.keys(netFlow).length > 0 ? (
+                                        Object.entries(netFlow).map(([curr, val]) => (
+                                            <p key={curr} className={cn(
+                                                "text-lg font-black tracking-tight tabular-nums truncate",
+                                                val >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"
+                                            )}>
+                                                {formatCurrency(val, curr as any, features.iqd_display_preference)}
+                                            </p>
+                                        ))
+                                    ) : (
+                                        <p className="text-lg font-black tracking-tight tabular-nums text-muted-foreground/40">
+                                            {formatCurrency(0, 'usd')}
+                                        </p>
+                                    )}
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    {/* Outstanding Card */}
+                    <Card className="bg-card/50 backdrop-blur-sm rounded-[1.5rem] border-border/50 shadow-sm overflow-hidden">
+                        <CardContent className="p-5 flex items-center gap-4">
+                            <div className="p-3 rounded-2xl bg-amber-500/10 text-amber-500">
+                                <ArrowUpRight className="w-6 h-6" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                                <p className="text-[10px] font-black uppercase tracking-[0.1em] text-muted-foreground/60 mb-0.5">
+                                    {t('dashboard.outstanding') || 'Outstanding'}
+                                </p>
+                                <div className="space-y-0.5">
+                                    {Object.keys(totalOutstanding).length > 0 ? (
+                                        Object.entries(totalOutstanding).map(([curr, val]) => (
+                                            <p key={curr} className="text-lg font-black tracking-tight tabular-nums text-primary truncate">
+                                                {formatCurrency(val, curr as any, features.iqd_display_preference)}
+                                            </p>
+                                        ))
+                                    ) : (
+                                        <p className="text-lg font-black tracking-tight tabular-nums text-muted-foreground/40">
+                                            {formatCurrency(0, 'usd')}
+                                        </p>
+                                    )}
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    {/* Pending Payments Card */}
+                    <Card className="bg-card/50 backdrop-blur-sm rounded-[1.5rem] border-border/50 shadow-sm overflow-hidden">
+                        <CardContent className="p-5 flex items-center gap-4">
+                            <div className="p-3 rounded-2xl bg-blue-500/10 text-blue-500">
+                                <ClipboardCheck className="w-6 h-6" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                                <p className="text-[10px] font-black uppercase tracking-[0.1em] text-muted-foreground/60 mb-0.5">
+                                    {t('dashboard.pendingPayments') || 'Pending Payments'}
+                                </p>
+                                <p className="text-lg font-black tracking-tight tabular-nums text-blue-600 dark:text-blue-400 truncate">
+                                    {pendingPaymentsCount} {pendingPaymentsCount === 1 ? t('payments.payment') || 'Payment' : t('payments.payments') || 'Payments'}
+                                </p>
+                            </div>
+                        </CardContent>
+                    </Card>
                 </div>
             </div>
+
+            {/* Desktop-only content */}
+            <div className="hidden md:contents">
 
             {/* Stats Grid */}
             <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-2">
@@ -251,6 +440,7 @@ export function Dashboard() {
                 data={stats.statsByCurrency}
                 iqdPreference={features.iqd_display_preference}
             />
+            </div>
         </div>
     )
 }
