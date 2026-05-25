@@ -52,6 +52,7 @@ function isEntryInDateRange(
 
 export function Dashboard() {
     const { user } = useAuth()
+    const firstName = user?.name?.split(' ')[0] || ''
     const { features, hasFeature } = useWorkspace()
     const { hasPermission } = useWorkspacePermissions()
     const sales = useSales(user?.workspaceId)
@@ -200,7 +201,6 @@ export function Dashboard() {
         }
     ]
 
-    const firstName = user?.name?.split(' ')[0] || ''
 
     return (
         <div className="space-y-6 md:space-y-12 pb-12">
