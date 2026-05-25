@@ -203,7 +203,7 @@ export function Dashboard() {
     const firstName = user?.name?.split(' ')[0] || ''
 
     return (
-        <div className="space-y-6 pb-12">
+        <div className="space-y-6 md:space-y-12 pb-12">
             {/* Mobile Hero Header — visually linked to the sticky bar */}
             {firstName && (
                 <div className="block md:hidden -mx-4 -mt-6 px-5 pt-8 pb-6 bg-primary rounded-b-[2rem] shadow-lg shadow-primary/20 dark:shadow-primary/10">
@@ -322,10 +322,10 @@ export function Dashboard() {
             </div>
 
             {/* Desktop-only content */}
-            <div className="hidden md:contents">
+            <div className="hidden md:flex md:flex-col md:gap-12">
 
             {/* Stats Grid */}
-            <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-2">
+            <div className="grid gap-4 md:gap-10 grid-cols-1 sm:grid-cols-2 lg:grid-cols-2">
                 {statCards.map((stat) => (
                     <Link key={stat.title} href={stat.href}>
                         <Card className="cursor-pointer card-hover border-border/50 bg-card/50 backdrop-blur-sm rounded-[1.5rem] overflow-hidden">
@@ -360,7 +360,7 @@ export function Dashboard() {
                 ))}
             </div>
 
-            <div className="grid gap-6 lg:grid-cols-3">
+            <div className="grid gap-6 md:gap-10 lg:grid-cols-3">
                 {/* Recent Sales (Replaces Recent Orders) */}
                 <Card className="bg-card/40 border-border/30 backdrop-blur-md rounded-[2rem] overflow-hidden">
                     <CardHeader className="pb-3">
