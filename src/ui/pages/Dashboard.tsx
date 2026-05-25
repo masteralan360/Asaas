@@ -155,7 +155,30 @@ export function Dashboard() {
     const pendingPaymentsCount = obligations?.filter(o => o.status === 'open' || o.status === 'overdue').length || 0
     const stats = useDashboardStats(workspaceId)
 
+    const showNetFlow = hasPermission('ledger.access')
+    const showOutstanding = hasFeature('budget') && hasPermission('accounting.access')
+    const showPendingPayments = hasPermission('payment.access')
+    const visibleCardsCount = [showNetFlow, showOutstanding, showPendingPayments].filter(Boolean).length
+
     if (!stats) return null
+
+    if (visibleCardsCount === 0) return (
+        <div className="space-y-6 pb-12">
+            {firstName && (
+                <div className="block md:hidden -mx-4 -mt-6 px-5 pt-8 pb-6 bg-primary rounded-b-[2rem] shadow-lg shadow-primary/20 dark:shadow-primary/10">
+                    <h1 className="text-3xl font-black tracking-tight text-primary-foreground">
+                        {t('dashboard.greeting', { name: firstName })}
+                    </h1>
+                    <p className="text-sm font-medium text-primary-foreground/70 mt-1">
+                        {t('dashboard.greetingSubtitle')}
+                    </p>
+                </div>
+            )}
+            <div className="hidden md:contents">
+                {/* Desktop-only content rendering... */}
+            </div>
+        </div>
+    )
 
     const statCards = [
         {
@@ -205,9 +228,14 @@ export function Dashboard() {
                     </div>
                 </div>
                 
-                <div className="grid grid-cols-3 gap-3.5">
+                <div className={cn(
+                    "grid gap-3.5",
+                    visibleCardsCount === 3 && "grid-cols-3",
+                    visibleCardsCount === 2 && "grid-cols-2",
+                    visibleCardsCount === 1 && "grid-cols-1"
+                )}>
                     {/* Net Flow Card */}
-                    {hasPermission('ledger.access') && (
+                    {showNetFlow && (
                         <Link href="/ledger">
                             <Card className="bg-card/40 backdrop-blur-xl rounded-3xl border-border/40 shadow-xl shadow-black/5 overflow-hidden h-48 flex flex-col items-center justify-between p-5 transition-all active:scale-95 text-center cursor-pointer">
                                 <div className="flex flex-col items-center gap-3">
@@ -239,7 +267,7 @@ export function Dashboard() {
                     )}
 
                     {/* Outstanding Card */}
-                    {hasFeature('budget') && hasPermission('accounting.access') && (
+                    {showOutstanding && (
                         <Link href="/budget">
                             <Card className="bg-card/40 backdrop-blur-xl rounded-3xl border-border/40 shadow-xl shadow-black/5 overflow-hidden h-48 flex flex-col items-center justify-between p-5 transition-all active:scale-95 text-center cursor-pointer">
                                 <div className="flex flex-col items-center gap-3">
@@ -268,7 +296,7 @@ export function Dashboard() {
                     )}
 
                     {/* Pending Payments Card */}
-                    {hasPermission('payment.access') && (
+                    {showPendingPayments && (
                         <Link href="/payments">
                             <Card className="bg-card/40 backdrop-blur-xl rounded-3xl border-border/40 shadow-xl shadow-black/5 overflow-hidden h-48 flex flex-col items-center justify-between p-5 transition-all active:scale-95 text-center cursor-pointer">
                                 <div className="flex flex-col items-center gap-3">

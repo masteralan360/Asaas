@@ -882,7 +882,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             return features[feature]
         }
         if (feature === 'allow_whatsapp') {
-            return features.allow_whatsapp && planCapabilities.capabilities.includes('whatsappIntegration')
+            return features.allow_whatsapp
+                && planCapabilities.capabilities.includes('whatsappIntegration')
+                && planCapabilities.modules.includes('whatsapp')
         }
         const mappedModule = WORKSPACE_FEATURE_MODULE_MAP[feature]
         if (mappedModule) {
