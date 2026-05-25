@@ -1,5 +1,7 @@
 import { useMemo } from 'react'
-import { useDashboardStats, useSales, usePaymentTransactions, usePaymentObligations, useBusinessPartners } from '@/local-db'
+import { useDashboardStats, useSales, usePaymentTransactions, usePaymentObligations, useExpenseItems, useEmployees, usePayrollStatuses, useDividendStatuses } from '@/local-db'
+import { convertToStoreBase } from '@/lib/currency'
+import { calculateNetProfitForMonth, buildPayrollItems, buildDividendItems } from '@/lib/budget'
 import { Card, CardContent, CardHeader, CardTitle } from '@/ui/components'
 import { cn, formatCurrency, formatDate, formatOriginLabel } from '@/lib/utils'
 import { Package, FileText, DollarSign, AlertTriangle, Receipt, ArrowUpRight, Wallet, ClipboardCheck } from 'lucide-react'
@@ -9,6 +11,7 @@ import { useAuth } from '@/auth'
 import { useWorkspace } from '@/workspace/WorkspaceContext'
 import { DashboardSalesOverview } from '@/ui/components/DashboardSalesOverview'
 import { useDateRange } from '@/context/DateRangeContext'
+import { useWorkspacePermissions } from '@/permissions'
 
 function getStartOfToday(now: Date) {
     return new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0)
@@ -49,27 +52,65 @@ function isEntryInDateRange(
 
 export function Dashboard() {
     const { user } = useAuth()
-    const { features } = useWorkspace()
+    const { features, hasFeature } = useWorkspace()
+    const { hasPermission } = useWorkspacePermissions()
     const sales = useSales(user?.workspaceId)
     const { dateRange, customDates } = useDateRange()
     const { t } = useTranslation()
     const workspaceId = user?.workspaceId
+    
+    // Budget & Outstanding data
+    const currentMonth = useMemo(() => {
+        const d = new Date()
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+    }, [])
+
+    const expenseItems = useExpenseItems(workspaceId, currentMonth)
+    const employees = useEmployees(workspaceId)
+    const payrollStatuses = usePayrollStatuses(workspaceId)
+    const dividendStatuses = useDividendStatuses(workspaceId)
 
     // Additional data for Money Overview (Mobile)
     const transactions = usePaymentTransactions(workspaceId, { includeReversals: false })
     const obligations = usePaymentObligations(workspaceId)
-    const partners = useBusinessPartners(workspaceId)
 
     const totalOutstanding = useMemo(() => {
-        if (!partners) return {}
-        const totals: Record<string, number> = {}
-        partners.forEach(p => {
-            const amount = (p.receivableBalance || 0) + (p.loanOutstandingBalance || 0)
-            const curr = p.defaultCurrency || 'usd'
-            totals[curr] = (totals[curr] || 0) + amount
+        if (!workspaceId) return {}
+        
+        // Match MonthlyComparison/Accounting Outstanding logic
+        const baseCurrency = 'iqd' // Usually the store base
+        const rates = { usd_iqd: 1500, eur_iqd: 1600, try_iqd: 50 } // Fallback rates if snapshot missing
+        
+        const payrollItems = buildPayrollItems(employees || [], payrollStatuses || [], currentMonth as any)
+        const netProfitBase = calculateNetProfitForMonth(sales as any || [], currentMonth as any, baseCurrency as any, rates)
+        
+        let operationalTotal = 0
+        let operationalPaid = 0
+        expenseItems?.forEach(item => {
+            const base = convertToStoreBase(item.amount, item.currency, baseCurrency, rates)
+            operationalTotal += base
+            if (item.status === 'paid') operationalPaid += base
         })
-        return totals
-    }, [partners])
+
+        let payrollTotal = 0
+        let payrollPaid = 0
+        payrollItems.forEach(item => {
+            const base = convertToStoreBase(item.amount, item.currency, baseCurrency, rates)
+            payrollTotal += base
+            if (item.status === 'paid') payrollPaid += base
+        })
+
+        const surplusPoolBase = netProfitBase - operationalTotal - payrollTotal
+        const dividendResult = buildDividendItems(employees || [], dividendStatuses || [], currentMonth as any, baseCurrency as any, rates, surplusPoolBase)
+        const dividendsTotal = dividendResult.totalBase
+        const dividendsPaid = dividendResult.items.reduce((sum, item) => item.status === 'paid' ? sum + item.baseAmount : sum, 0)
+
+        const totalAllocated = operationalTotal + payrollTotal
+        const paid = operationalPaid + payrollPaid + dividendsPaid
+        const outstanding = (totalAllocated + dividendsTotal) - paid
+        
+        return { [baseCurrency]: Math.max(0, outstanding) }
+    }, [workspaceId, expenseItems, employees, payrollStatuses, dividendStatuses, sales, currentMonth])
 
     const netFlow = useMemo(() => {
         const totals: Record<string, number> = {}
@@ -96,7 +137,7 @@ export function Dashboard() {
 
         // 2. Add Payment Transactions
         if (transactions) {
-            transactions.forEach(tx => {
+            transactions.forEach((tx: any) => {
                 // Exclude loans and adjustments as Ledger does
                 if (tx.paymentMethod === 'loan' || tx.paymentMethod === 'loan_adjustment') return
 
@@ -153,83 +194,102 @@ export function Dashboard() {
             )}
 
             {/* Money Overview Section - Mobile Only */}
-            <div className="block md:hidden space-y-4 px-1 pb-4">
-                <h2 className="text-xl font-black tracking-tight">{t('dashboard.moneyOverview') || 'Money Overview'}</h2>
+            <div className="block md:hidden space-y-4 px-2 pb-8">
+                <div className="flex items-center justify-between px-1">
+                    <h2 className="text-xl font-black tracking-tight">{t('dashboard.moneyOverview')}</h2>
+                    <div className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/10 border border-emerald-500/20 rounded-full">
+                        <Package className="w-3.5 h-3.5 text-emerald-600" />
+                        <span className="text-[10px] font-black uppercase tracking-wider text-emerald-700 dark:text-emerald-400">
+                            {dateRange === 'month' ? t('common.thisMonth') || 'This Month' : t(`common.${dateRange}`)}
+                        </span>
+                    </div>
+                </div>
                 
-                <div className="grid grid-cols-1 gap-4">
+                <div className="grid grid-cols-3 gap-3.5">
                     {/* Net Flow Card */}
-                    <Card className="bg-card/50 backdrop-blur-sm rounded-[1.5rem] border-border/50 shadow-sm overflow-hidden">
-                        <CardContent className="p-5 flex items-center gap-4">
-                            <div className="p-3 rounded-2xl bg-emerald-500/10 text-emerald-500">
-                                <Wallet className="w-6 h-6" />
-                            </div>
-                            <div className="flex-1 min-w-0">
-                                <p className="text-[10px] font-black uppercase tracking-[0.1em] text-muted-foreground/60 mb-0.5">
-                                    {t('ledger.netFlow') || 'Net Flow'}
-                                </p>
-                                <div className="space-y-0.5">
+                    {hasPermission('ledger.access') && (
+                        <Link href="/ledger">
+                            <Card className="bg-card/40 backdrop-blur-xl rounded-3xl border-border/40 shadow-xl shadow-black/5 overflow-hidden h-48 flex flex-col items-center justify-between p-5 transition-all active:scale-95 text-center cursor-pointer">
+                                <div className="flex flex-col items-center gap-3">
+                                    <div className="text-emerald-500 bg-emerald-500/10 w-9 h-9 rounded-xl flex items-center justify-center shadow-inner">
+                                        <Wallet className="w-4.5 h-4.5" />
+                                    </div>
+                                    <p className="text-[10px] font-black tracking-tight text-muted-foreground/70 leading-tight uppercase">
+                                        {t('ledger.netFlow')}
+                                    </p>
+                                </div>
+                                <div className="w-full space-y-0.5">
                                     {Object.keys(netFlow).length > 0 ? (
                                         Object.entries(netFlow).map(([curr, val]) => (
                                             <p key={curr} className={cn(
-                                                "text-lg font-black tracking-tight tabular-nums truncate",
+                                                "text-lg font-black tracking-tighter tabular-nums truncate",
                                                 val >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"
                                             )}>
                                                 {formatCurrency(val, curr as any, features.iqd_display_preference)}
                                             </p>
                                         ))
                                     ) : (
-                                        <p className="text-lg font-black tracking-tight tabular-nums text-muted-foreground/40">
+                                        <p className="text-lg font-black tracking-tighter tabular-nums text-muted-foreground/30">
                                             {formatCurrency(0, 'usd')}
                                         </p>
                                     )}
                                 </div>
-                            </div>
-                        </CardContent>
-                    </Card>
+                            </Card>
+                        </Link>
+                    )}
 
                     {/* Outstanding Card */}
-                    <Card className="bg-card/50 backdrop-blur-sm rounded-[1.5rem] border-border/50 shadow-sm overflow-hidden">
-                        <CardContent className="p-5 flex items-center gap-4">
-                            <div className="p-3 rounded-2xl bg-amber-500/10 text-amber-500">
-                                <ArrowUpRight className="w-6 h-6" />
-                            </div>
-                            <div className="flex-1 min-w-0">
-                                <p className="text-[10px] font-black uppercase tracking-[0.1em] text-muted-foreground/60 mb-0.5">
-                                    {t('dashboard.outstanding') || 'Outstanding'}
-                                </p>
-                                <div className="space-y-0.5">
+                    {hasFeature('budget') && hasPermission('accounting.access') && (
+                        <Link href="/budget">
+                            <Card className="bg-card/40 backdrop-blur-xl rounded-3xl border-border/40 shadow-xl shadow-black/5 overflow-hidden h-48 flex flex-col items-center justify-between p-5 transition-all active:scale-95 text-center cursor-pointer">
+                                <div className="flex flex-col items-center gap-3">
+                                    <div className="text-amber-500 bg-amber-500/10 w-9 h-9 rounded-xl flex items-center justify-center shadow-inner">
+                                        <ArrowUpRight className="w-4.5 h-4.5" />
+                                    </div>
+                                    <p className="text-[10px] font-black tracking-tight text-muted-foreground/70 leading-tight uppercase">
+                                        {t('dashboard.outstanding')}
+                                    </p>
+                                </div>
+                                <div className="w-full space-y-0.5">
                                     {Object.keys(totalOutstanding).length > 0 ? (
                                         Object.entries(totalOutstanding).map(([curr, val]) => (
-                                            <p key={curr} className="text-lg font-black tracking-tight tabular-nums text-primary truncate">
+                                            <p key={curr} className="text-lg font-black tracking-tighter tabular-nums text-foreground/90 truncate">
                                                 {formatCurrency(val, curr as any, features.iqd_display_preference)}
                                             </p>
                                         ))
                                     ) : (
-                                        <p className="text-lg font-black tracking-tight tabular-nums text-muted-foreground/40">
+                                        <p className="text-lg font-black tracking-tighter tabular-nums text-muted-foreground/30">
                                             {formatCurrency(0, 'usd')}
                                         </p>
                                     )}
                                 </div>
-                            </div>
-                        </CardContent>
-                    </Card>
+                            </Card>
+                        </Link>
+                    )}
 
                     {/* Pending Payments Card */}
-                    <Card className="bg-card/50 backdrop-blur-sm rounded-[1.5rem] border-border/50 shadow-sm overflow-hidden">
-                        <CardContent className="p-5 flex items-center gap-4">
-                            <div className="p-3 rounded-2xl bg-blue-500/10 text-blue-500">
-                                <ClipboardCheck className="w-6 h-6" />
-                            </div>
-                            <div className="flex-1 min-w-0">
-                                <p className="text-[10px] font-black uppercase tracking-[0.1em] text-muted-foreground/60 mb-0.5">
-                                    {t('dashboard.pendingPayments') || 'Pending Payments'}
-                                </p>
-                                <p className="text-lg font-black tracking-tight tabular-nums text-blue-600 dark:text-blue-400 truncate">
-                                    {pendingPaymentsCount} {pendingPaymentsCount === 1 ? t('payments.payment') || 'Payment' : t('payments.payments') || 'Payments'}
-                                </p>
-                            </div>
-                        </CardContent>
-                    </Card>
+                    {hasPermission('payment.access') && (
+                        <Link href="/payments">
+                            <Card className="bg-card/40 backdrop-blur-xl rounded-3xl border-border/40 shadow-xl shadow-black/5 overflow-hidden h-48 flex flex-col items-center justify-between p-5 transition-all active:scale-95 text-center cursor-pointer">
+                                <div className="flex flex-col items-center gap-3">
+                                    <div className="text-blue-500 bg-blue-500/10 w-9 h-9 rounded-xl flex items-center justify-center shadow-inner">
+                                        <ClipboardCheck className="w-4.5 h-4.5" />
+                                    </div>
+                                    <p className="text-[10px] font-black tracking-tight text-muted-foreground/70 leading-tight uppercase">
+                                        {t('dashboard.pendingPayments')}
+                                    </p>
+                                </div>
+                                <div className="w-full space-y-0.5">
+                                    <p className="text-lg font-black tracking-tighter tabular-nums text-blue-600 dark:text-blue-400 truncate">
+                                        {pendingPaymentsCount}
+                                    </p>
+                                    <p className="text-[9px] font-bold text-muted-foreground/40 uppercase tracking-widest">
+                                        {pendingPaymentsCount === 1 ? t('payments.payment') : t('payments.payments')}
+                                    </p>
+                                </div>
+                            </Card>
+                        </Link>
+                    )}
                 </div>
             </div>
 

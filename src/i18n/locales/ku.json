@@ -1115,7 +1115,10 @@
     "dailyTrends": "ڕەوتەکانی ڕۆژانە",
     "noInvoicesAlt": "هیچ پسوڵەیەک نییە",
     "greeting": "سڵاو، {{name}}!",
-    "greetingSubtitle": "بەخێربێیتەوە بۆ داشبۆردەکەت"
+    "greetingSubtitle": "ئەوەی ئەمڕۆ ڕوو دەدات.",
+    "moneyOverview": "کورتەی پارە",
+    "outstanding": "قەرزی ماوە",
+    "pendingPayments": "پێدانی چاوەڕوانکراو"
   },
   "settings": {
     "title": "ڕێکخستنەکان",

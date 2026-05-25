@@ -70,6 +70,7 @@
     "next": "Next",
     "refresh": "Refresh",
     "view": "View",
+    "thisMonth": "This Month",
     "all": "All",
     "print": "Print",
     "snoozedItems": "Snoozed Items",
@@ -138,7 +139,6 @@
       "6h": "6 Hours",
       "24h": "Until Tomorrow (24h)"
     },
-    "enterNumber": "Enter a Number",
     "averagePlaceholder": "Average: {{rate}}"
   },
   "nav": {
@@ -1190,7 +1190,9 @@
       "reversed": "Reversed",
       "posted": "Posted",
       "locked": "Locked"
-    }
+    },
+    "payment": "Payment",
+    "payments": "Payments"
   },
   "ledger": {
     "title": "General Ledger",
@@ -1375,7 +1377,8 @@
       "actions": "Actions",
       "open": "Open",
       "noMatch": "No ledger entries match the current filters."
-    }
+    },
+    "netFlow": "Net Flow"
   },
   "orders": {
     "title": "Orders",
@@ -1595,7 +1598,10 @@
     "dailyTrends": "Daily Trends",
     "noInvoicesAlt": "No Invoices",
     "greeting": "Hi, {{name}}!",
-    "greetingSubtitle": "Welcome back to your dashboard"
+    "greetingSubtitle": "Here's what's happening today.",
+    "moneyOverview": "Money Overview",
+    "outstanding": "Outstanding",
+    "pendingPayments": "Pending Payments"
   },
   "settings": {
     "title": "Settings",

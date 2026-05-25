@@ -1116,7 +1116,10 @@
     "dailyTrends": "الاتجاهات اليومية",
     "noInvoicesAlt": "لا توجد فواتير",
     "greeting": "مرحباً، {{name}}!",
-    "greetingSubtitle": "مرحباً بعودتك إلى لوحة التحكم"
+    "greetingSubtitle": "إليك ما يحدث اليوم.",
+    "moneyOverview": "نظرة عامة على الأموال",
+    "outstanding": "المبالغ المستحقة",
+    "pendingPayments": "المدفوعات المعلقة"
   },
   "settings": {
     "title": "الإعدادات",
