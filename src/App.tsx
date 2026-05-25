@@ -991,6 +991,7 @@ function App() {
                       <Route path="/ledger">
                         <ProtectedRoute
                           allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="ledger"
                           requiredPermission="ledger.access"
                         >
                           <Layout>
@@ -1001,6 +1002,7 @@ function App() {
                       <Route path="/payments">
                         <ProtectedRoute
                           allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="payments"
                           requiredPermission="payment.access"
                         >
                           <Layout>
@@ -1011,6 +1013,7 @@ function App() {
                       <Route path="/direct-transactions">
                         <ProtectedRoute
                           allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="direct_transactions"
                           requiredPermission="directTransaction.access"
                         >
                           <Layout>

@@ -93,17 +93,7 @@ export function buildWorkspaceNavigation({
 }: BuildWorkspaceNavigationOptions): WorkspaceNavigationGroup[] {
   const isCoreRole = role === "admin" || role === "staff" || role === "viewer";
   const canAccessPermission = hasPermission ?? (() => true);
-  const hasLedgerSurface =
-    features.pos ||
-    features.instant_pos ||
-    features.sales_history ||
-    features.crm ||
-    features.budget ||
-    features.hr ||
-    features.loans ||
-    features.real_estate;
-  const hasPaymentsSurface =
-    features.loans || features.crm || features.budget || features.hr || features.real_estate;
+
   const canUseEcommerce =
     features.data_mode !== "local" && hasFeature("ecommerce");
 
@@ -244,7 +234,7 @@ export function buildWorkspaceNavigation({
       : []),
     ...(isCoreRole
       ? [
-          ...(hasLedgerSurface && canAccessPermission("ledger.access")
+          ...(hasFeature("ledger") && canAccessPermission("ledger.access")
             ? [
                 {
                   name: t("nav.ledger", { defaultValue: "Ledger" }),
@@ -253,7 +243,7 @@ export function buildWorkspaceNavigation({
                 },
               ]
             : []),
-          ...(hasPaymentsSurface && canAccessPermission("payment.access")
+          ...(hasFeature("payments") && canAccessPermission("payment.access")
             ? [
                 {
                   name: t("nav.payments", { defaultValue: "Payments" }),
@@ -262,7 +252,7 @@ export function buildWorkspaceNavigation({
                 },
               ]
             : []),
-          ...(hasPaymentsSurface && canAccessPermission("directTransaction.access")
+          ...(hasFeature("direct_transactions") && canAccessPermission("directTransaction.access")
             ? [
                 {
                   name: t("nav.directTransactions", {

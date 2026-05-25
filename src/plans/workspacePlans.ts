@@ -55,6 +55,9 @@ export type WorkspaceFeatureKey =
     | 'hr'
     | 'members'
     | 'allow_whatsapp'
+    | 'payments'
+    | 'ledger'
+    | 'direct_transactions'
 
 export type PlanCapabilityKey =
     | 'receiptPrinting'
@@ -228,7 +231,10 @@ export const WORKSPACE_FEATURE_MODULE_MAP: Record<WorkspaceFeatureKey, PlanModul
     invoices_history: 'invoice_history',
     hr: 'hr',
     members: 'members',
-    allow_whatsapp: 'whatsapp'
+    allow_whatsapp: 'whatsapp',
+    payments: 'payments',
+    ledger: 'ledger',
+    direct_transactions: 'direct_transactions'
 }
 
 function mergeUnique<T>(base: T[], next: T[]) {
