@@ -7,6 +7,11 @@ import {
     Button,
     Input,
     Label,
+    Select,
+    SelectTrigger,
+    SelectValue,
+    SelectContent,
+    SelectItem,
 } from '@/ui/components'
 import {
     ArrowLeft,
@@ -108,6 +113,16 @@ export function CurrencyConverter() {
 
     const availableCurrencies: CurrencyCode[] = features.allowed_currencies
 
+    const getCurrencySign = (code: string) => {
+        switch (code.toLowerCase()) {
+            case 'usd': return '$'
+            case 'iqd': return features.iqd_display_preference === 'د.ع' ? 'د.ع' : 'IQD'
+            case 'eur': return '€'
+            case 'try': return '₺'
+            default: return ''
+        }
+    }
+
     return (
         <div className="min-h-[calc(100vh-4rem)] flex flex-col gap-6 p-6 max-w-4xl mx-auto">
             {/* Header */}
@@ -159,18 +174,31 @@ export function CurrencyConverter() {
                                     type="text"
                                     value={amount}
                                     onChange={(e) => handleAmountChange(e.target.value)}
-                                    className="h-16 text-2xl font-bold pl-4 pr-24 rounded-xl border-2 focus-visible:ring-primary/20 transition-all"
+                                    className="h-16 text-2xl font-bold pl-4 pr-36 rounded-xl border-2 focus-visible:ring-primary/20 transition-all font-mono"
                                     placeholder="0.00"
                                 />
-                                <select
-                                    value={fromCurrency}
-                                    onChange={(e) => setFromCurrency(e.target.value as CurrencyCode)}
-                                    className="absolute right-2 top-1/2 -translate-y-1/2 h-12 bg-muted border-none rounded-lg px-3 font-bold uppercase text-sm focus:ring-2 focus:ring-primary/20 appearance-none cursor-pointer hover:bg-muted/80 transition-colors min-w-[80px] text-center"
-                                >
-                                    {availableCurrencies.map(c => (
-                                        <option key={c} value={c}>{c}</option>
-                                    ))}
-                                </select>
+                                <div className="absolute right-[115px] top-1/2 -translate-y-1/2 flex items-center gap-2 pointer-events-none">
+                                    <span className="text-lg font-bold text-muted-foreground/50 border-r border-border pr-3">
+                                        {getCurrencySign(fromCurrency)}
+                                    </span>
+                                </div>
+                                <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                                    <Select value={fromCurrency} onValueChange={(v) => setFromCurrency(v as CurrencyCode)}>
+                                        <SelectTrigger className="h-12 bg-muted border-none rounded-lg px-3 font-bold uppercase text-sm focus:ring-2 focus:ring-primary/20 hover:bg-muted/80 transition-colors min-w-[100px] text-center shadow-none">
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {availableCurrencies.map(c => (
+                                                <SelectItem key={c} value={c}>
+                                                    <span className="font-bold">{c.toUpperCase()}</span>
+                                                    <span className="ml-2 text-muted-foreground font-normal">
+                                                        ({getCurrencySign(c)})
+                                                    </span>
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
                             </div>
                         </div>
 
@@ -193,18 +221,26 @@ export function CurrencyConverter() {
                                 {t('pos.to') || 'To'}
                             </Label>
                             <div className="relative group">
-                                <div className="h-16 w-full bg-muted/30 border-2 border-border rounded-xl flex items-center pl-4 pr-24 text-2xl font-bold text-primary transition-all">
+                                <div className="h-16 w-full bg-muted/30 border-2 border-border rounded-xl flex items-center pl-4 pr-32 text-2xl font-bold text-primary transition-all">
                                     {formatCurrency(result, toCurrency, features.iqd_display_preference)}
                                 </div>
-                                <select
-                                    value={toCurrency}
-                                    onChange={(e) => setToCurrency(e.target.value as CurrencyCode)}
-                                    className="absolute right-2 top-1/2 -translate-y-1/2 h-12 bg-muted border-none rounded-lg px-3 font-bold uppercase text-sm focus:ring-2 focus:ring-primary/20 appearance-none cursor-pointer hover:bg-muted/80 transition-colors min-w-[80px] text-center"
-                                >
-                                    {availableCurrencies.map(c => (
-                                        <option key={c} value={c}>{c}</option>
-                                    ))}
-                                </select>
+                                <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                                    <Select value={toCurrency} onValueChange={(v) => setToCurrency(v as CurrencyCode)}>
+                                        <SelectTrigger className="h-12 bg-muted border-none rounded-lg px-3 font-bold uppercase text-sm focus:ring-2 focus:ring-primary/20 hover:bg-muted/80 transition-colors min-w-[100px] text-center shadow-none">
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {availableCurrencies.map(c => (
+                                                <SelectItem key={c} value={c}>
+                                                    <span className="font-bold">{c.toUpperCase()}</span>
+                                                    <span className="ml-2 text-muted-foreground font-normal">
+                                                        ({getCurrencySign(c)})
+                                                    </span>
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
                             </div>
                         </div>
                     </div>
