@@ -1,10 +1,39 @@
 import { StrictMode, type ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
+import { registerSW } from 'virtual:pwa-register'
 
 const isMarketplaceHost =
     typeof window !== 'undefined'
     && window.location.hostname === 'marketplace-atlas.vercel.app'
 
+const registerAppServiceWorker = () => {
+    registerSW({
+        immediate: true,
+        onRegisteredSW: (_swUrl, registration) => {
+            if (!registration) return
+
+            const checkForUpdate = () => {
+                if (document.visibilityState === 'hidden') return
+
+                registration.update().catch((error) => {
+                    console.error('Failed to check for service worker updates:', error)
+                })
+            }
+
+            checkForUpdate()
+            window.setInterval(checkForUpdate, 30 * 60 * 1000)
+            window.addEventListener('focus', checkForUpdate)
+            document.addEventListener('visibilitychange', () => {
+                if (document.visibilityState === 'visible') {
+                    checkForUpdate()
+                }
+            })
+        },
+        onRegisterError: (error) => {
+            console.error('Failed to register service worker:', error)
+        }
+    })
+}
 
 if (
     import.meta.env.PROD
@@ -28,9 +57,7 @@ if (
             return
         }
 
-        navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch((error) => {
-            console.error('Failed to register service worker:', error)
-        })
+        registerAppServiceWorker()
     })
 }
 

@@ -17,6 +17,51 @@ export interface SyncResult {
   errors: string[];
 }
 
+const PULL_PAGE_SIZE = 1000;
+const SALE_ITEM_PARENT_BATCH_SIZE = 250;
+
+const SYNC_PULL_TABLES = [
+  "products",
+  "product_barcodes",
+  "inventory",
+  "inventory_transactions",
+  "stock_batches",
+  "storages",
+  "product_discounts",
+  "category_discounts",
+  "inventory_transfer_transactions",
+  "reorder_transfer_rules",
+  "categories",
+  "customers",
+  "suppliers",
+  "business_partners",
+  "business_partner_merge_candidates",
+  "invoices",
+  "workspaces",
+  "employees",
+  "workspace_contacts",
+  "sales",
+  "sale_items",
+  "sales_orders",
+  "purchase_orders",
+  "travel_agency_sales",
+  "real_estate_transactions",
+  "real_estate_installments",
+  "real_estate_payments",
+  "budget_settings",
+  "budget_allocations",
+  "expense_series",
+  "expense_items",
+  "payroll_statuses",
+  "dividend_statuses",
+  "loans",
+  "loan_installments",
+  "loan_payments",
+  "payment_transactions",
+] as const;
+
+const TABLES_WITHOUT_VERSION = new Set<string>(["sale_items"]);
+
 // Convert camelCase to snake_case
 function toSnakeCase(obj: Record<string, unknown>): Record<string, unknown> {
   const result: Record<string, unknown> = {};
@@ -52,13 +97,172 @@ function getTableName(entityType: string): string {
 
 // Timeout helper
 async function withTimeout<T>(
-  promise: Promise<T>,
+  promise: PromiseLike<T>,
   ms: number = 15000,
 ): Promise<T> {
   return runSupabaseAction("sync.request", () => promise, {
     timeoutMs: ms,
     platform: "all",
   });
+}
+
+async function fetchPullRows(
+  table: (typeof SYNC_PULL_TABLES)[number],
+  workspaceId: string,
+  since: string,
+): Promise<Array<Record<string, unknown>>> {
+  const client = getSupabaseClientForTable(table);
+
+  if (table === "workspaces") {
+    const { data, error } = (await withTimeout(
+      client.from(table).select("*").eq("id", workspaceId),
+      30000,
+    )) as any;
+
+    if (error) {
+      throw error;
+    }
+
+    return (data ?? []) as Array<Record<string, unknown>>;
+  }
+
+  if (table === "sale_items") {
+    return fetchSaleItemsForWorkspace(workspaceId, since);
+  }
+
+  const rows: Array<Record<string, unknown>> = [];
+  let from = 0;
+
+  while (true) {
+    const to = from + PULL_PAGE_SIZE - 1;
+    const { data, error } = (await withTimeout(
+      (client
+        .from(table)
+        .select("*")
+        .eq("workspace_id", workspaceId)
+        .gt("updated_at", since)
+        .order("updated_at", { ascending: true })
+        .range(from, to) as any),
+      30000,
+    )) as any;
+
+    if (error) {
+      throw error;
+    }
+
+    const page = (data ?? []) as Array<Record<string, unknown>>;
+    rows.push(...page);
+
+    if (page.length < PULL_PAGE_SIZE) {
+      break;
+    }
+
+    from += PULL_PAGE_SIZE;
+  }
+
+  return rows;
+}
+
+async function fetchSaleIdsForWorkspace(
+  workspaceId: string,
+  since: string,
+): Promise<string[]> {
+  const saleIds: string[] = [];
+  let from = 0;
+
+  while (true) {
+    const to = from + PULL_PAGE_SIZE - 1;
+    const { data, error } = (await withTimeout(
+      supabase
+        .from("sales")
+        .select("id")
+        .eq("workspace_id", workspaceId)
+        .gt("updated_at", since)
+        .order("updated_at", { ascending: true })
+        .range(from, to),
+      30000,
+    )) as any;
+
+    if (error) {
+      throw error;
+    }
+
+    const page = (data ?? []) as Array<{ id?: unknown }>;
+    saleIds.push(
+      ...page
+        .map((row) => row.id)
+        .filter((id): id is string => typeof id === "string"),
+    );
+
+    if (page.length < PULL_PAGE_SIZE) {
+      break;
+    }
+
+    from += PULL_PAGE_SIZE;
+  }
+
+  return saleIds;
+}
+
+async function fetchSaleItemsForWorkspace(
+  workspaceId: string,
+  since: string,
+): Promise<Array<Record<string, unknown>>> {
+  const saleIds = await fetchSaleIdsForWorkspace(workspaceId, since);
+  const rows: Array<Record<string, unknown>> = [];
+
+  for (
+    let index = 0;
+    index < saleIds.length;
+    index += SALE_ITEM_PARENT_BATCH_SIZE
+  ) {
+    const saleIdBatch = saleIds.slice(index, index + SALE_ITEM_PARENT_BATCH_SIZE);
+    let from = 0;
+
+    while (true) {
+      const to = from + PULL_PAGE_SIZE - 1;
+      const { data, error } = (await withTimeout(
+        supabase
+          .from("sale_items")
+          .select("*")
+          .in("sale_id", saleIdBatch)
+          .order("id", { ascending: true })
+          .range(from, to),
+        30000,
+      )) as any;
+
+      if (error) {
+        throw error;
+      }
+
+      const page = (data ?? []) as Array<Record<string, unknown>>;
+      rows.push(...page);
+
+      if (page.length < PULL_PAGE_SIZE) {
+        break;
+      }
+
+      from += PULL_PAGE_SIZE;
+    }
+  }
+
+  return rows;
+}
+
+function shouldApplyRemoteItem(
+  table: (typeof SYNC_PULL_TABLES)[number],
+  localItem: unknown,
+  remoteData: Record<string, unknown>,
+) {
+  if (!localItem) {
+    return true;
+  }
+
+  if (TABLES_WITHOUT_VERSION.has(table)) {
+    return true;
+  }
+
+  return (localItem as any).version < (remoteData as any).version;
 }
 
 // Process offline mutation queue
@@ -353,64 +557,11 @@ export async function pullChanges(
 
   let totalPulled = 0;
 
-  const tables = [
-    "products",
-    "product_barcodes",
-    "inventory",
-    "inventory_transactions",
-    "stock_batches",
-    "product_discounts",
-    "category_discounts",
-    "inventory_transfer_transactions",
-    "reorder_transfer_rules",
-    "categories",
-    "customers",
-    "suppliers",
-    "business_partners",
-    "business_partner_merge_candidates",
-    "invoices",
-    "workspaces",
-    "sales",
-    "sales_orders",
-    "purchase_orders",
-    "travel_agency_sales",
-    "real_estate_transactions",
-    "real_estate_installments",
-    "real_estate_payments",
-    "budget_settings",
-    "budget_allocations",
-    "expense_series",
-    "expense_items",
-    "payroll_statuses",
-    "dividend_statuses",
-    "loans",
-    "loan_installments",
-    "loan_payments",
-    "payment_transactions",
-  ];
-
-  for (const table of tables) {
+  for (const table of SYNC_PULL_TABLES) {
     try {
-      const client = getSupabaseClientForTable(table);
       const affectedInventoryProducts = new Set<string>();
       // console.log(`[Sync] pullChanges: Fetching ${table}...`)
-      const { data, error } = (await withTimeout(
-        table === "workspaces"
-          ? // Workspaces syncs a single current row, and some live schemas still do not
-            // expose updated_at on this table. Pull it directly instead of filtering by timestamp.
-            client.from(table).select("*").eq("id", workspaceId)
-          : (client
-              .from(table)
-              .select("*")
-              .eq("workspace_id", workspaceId)
-              .gt("updated_at", since) as any),
-        30000,
-      )) as any;
-
-      if (error) {
-        console.error(`[Sync] pullChanges: Error fetching ${table}:`, error);
-        continue;
-      }
+      const data = await fetchPullRows(table, workspaceId, since);
 
       if (data && data.length > 0) {
         console.log(
@@ -436,7 +587,7 @@ export async function pullChanges(
           // When we push, we will re-apply the mutation to server and then server will send back the final state.
           // So it is SAFE to overwrite Entity table because `offline_mutations` is the intent source of truth for "My Pending Changes".
 
-          if (!localItem || localItem.version < (remoteData as any).version) {
+          if (shouldApplyRemoteItem(table, localItem, remoteData)) {
             const localThermalPrinting =
               table === "workspaces"
                 ? (localItem as any)?.thermal_printing

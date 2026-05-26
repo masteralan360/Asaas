@@ -2,6 +2,7 @@ import { Route, Switch, Router, Link } from "wouter";
 import { useHashLocation } from "@/hooks/useHashLocation";
 import { AuthProvider, ProtectedRoute, GuestRoute } from "@/auth";
 import { WorkspaceProvider } from "@/workspace";
+import { WorkspaceWarmup } from "@/workspace/WorkspaceWarmup";
 import { Layout, Toaster, TitleBar, PatchNoteModal } from "@/ui/components";
 import { DeviceTokenBootstrap } from "@/ui/components/DeviceTokenBootstrap";
 import { lazy, Suspense, useEffect, useCallback, useState } from "react";
@@ -726,6 +727,7 @@ function App() {
               <KdsStreamAutostart />
               <WhatsAppPlanGuard />
               <UpdateHandler />
+              <WorkspaceWarmup />
               <FaviconHandler />
               <AutoSyncOverlay />
               {!isMobile() && <TitleBar />}

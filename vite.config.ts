@@ -57,9 +57,32 @@ export default defineConfig(({ mode }) => {
                 workbox: {
                     maximumFileSizeToCacheInBytes: 5 * 1024 * 1024, // 5MB limit
                     globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
-                    // Keep the public marketplace on its own HTML entrypoint.
-                    // If the service worker serves index.html here, refreshes jump into the ERP shell.
-                    navigateFallbackDenylist: [/^\/marketplace(?:\/.*)?$/, /^\/s(?:\/.*)?$/]
+                    cleanupOutdatedCaches: true,
+                    clientsClaim: true,
+                    skipWaiting: true,
+                    navigateFallback: null,
+                    runtimeCaching: [
+                        {
+                            urlPattern: ({ request, url }) =>
+                                request.mode === 'navigate'
+                                && !/^\/marketplace(?:\/.*)?$/.test(url.pathname)
+                                && !/^\/s(?:\/.*)?$/.test(url.pathname),
+                            handler: 'NetworkFirst',
+                            options: {
+                                cacheName: 'atlas-navigation',
+                                expiration: {
+                                    maxEntries: 20,
+                                    maxAgeSeconds: 24 * 60 * 60
+                                },
+                                cacheableResponse: {
+                                    statuses: [200]
+                                },
+                                precacheFallback: {
+                                    fallbackURL: 'index.html'
+                                }
+                            }
+                        }
+                    ]
                 }
             })
         ],
