@@ -42,6 +42,7 @@ import {
     FileSpreadsheet,
     MessageSquare,
     DollarSign,
+    GitBranch,
     type LucideIcon
 } from 'lucide-react'
 import {
@@ -100,6 +101,55 @@ interface AdminWorkspace {
     deleted_at?: string | null
     coordination?: string
     logo_url?: string
+    is_branch?: boolean
+    source_workspace_id?: string | null
+    source_workspace_name?: string | null
+    branch_name?: string | null
+}
+
+interface AdminWorkspaceGroup {
+    source: AdminWorkspace
+    branches: AdminWorkspace[]
+}
+
+function groupAdminWorkspaces(rows: AdminWorkspace[]): AdminWorkspaceGroup[] {
+    const visibleWorkspaceIds = new Set(rows.map((workspace) => workspace.id))
+    const branchesBySourceId = new globalThis.Map<string, AdminWorkspace[]>()
+    const nestedBranchIds = new Set<string>()
+
+    for (const workspace of rows) {
+        if (!workspace.is_branch || !workspace.source_workspace_id || !visibleWorkspaceIds.has(workspace.source_workspace_id)) {
+            continue
+        }
+
+        const branches = branchesBySourceId.get(workspace.source_workspace_id) ?? []
+        branches.push(workspace)
+        branchesBySourceId.set(workspace.source_workspace_id, branches)
+        nestedBranchIds.add(workspace.id)
+    }
+
+    return rows.flatMap((workspace) => {
+        if (nestedBranchIds.has(workspace.id)) {
+            return []
+        }
+
+        return [{
+            source: workspace,
+            branches: branchesBySourceId.get(workspace.id) ?? []
+        }]
+    })
+}
+
+function workspaceMatchesSearch(workspace: AdminWorkspace, query: string) {
+    const normalizedQuery = query.trim().toLowerCase()
+    if (!normalizedQuery) return true
+
+    return [
+        workspace.name,
+        workspace.code,
+        workspace.branch_name,
+        workspace.source_workspace_name
+    ].some((value) => value?.toLowerCase().includes(normalizedQuery))
 }
 
 export function Admin() {
@@ -337,13 +387,22 @@ export function Admin() {
         feature: 'locked_workspace',
         currentValue: boolean
     ) => {
-        // Optimistic update
-        setWorkspaces(prev => prev.map(ws =>
-            ws.id === workspaceId ? { ...ws, [feature]: !currentValue } : ws
-        ))
-
         const workspace = workspaces.find(w => w.id === workspaceId)
         if (!workspace) return
+
+        const affectedWorkspaceIds = new Set([workspaceId])
+        if (!workspace.is_branch) {
+            workspaces.forEach((candidate) => {
+                if (candidate.source_workspace_id === workspaceId) {
+                    affectedWorkspaceIds.add(candidate.id)
+                }
+            })
+        }
+
+        // Optimistic update
+        setWorkspaces(prev => prev.map(ws =>
+            affectedWorkspaceIds.has(ws.id) ? { ...ws, [feature]: !currentValue } : ws
+        ))
 
         try {
             await invokeAdminAction<{ success: boolean }>('updateWorkspaceFeatures', {
@@ -357,7 +416,7 @@ export function Admin() {
             console.error('Failed to update workspace:', err)
             // Revert on failure
             setWorkspaces(prev => prev.map(ws =>
-                ws.id === workspaceId ? { ...ws, [feature]: currentValue } : ws
+                affectedWorkspaceIds.has(ws.id) ? { ...ws, [feature]: currentValue } : ws
             ))
             showActionError(err, 'Update failed')
         }
@@ -413,6 +472,74 @@ export function Admin() {
 
         return { label: t('admin.active') || 'Active', color: 'text-green-600 bg-green-50', icon: CheckCircle2 }
     }
+
+    const renderWorkspaceIdentity = (
+        ws: AdminWorkspace,
+        options: { isBranch?: boolean; showMode?: boolean; showCreatedAt?: boolean } = {}
+    ) => {
+        const isBranch = options.isBranch ?? Boolean(ws.is_branch)
+        const label = isBranch ? (ws.branch_name || ws.name) : ws.name
+
+        return (
+            <div className={cn('flex min-w-0 items-start gap-3', isBranch && 'pl-5')}>
+                {isBranch && (
+                    <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-border bg-muted/40 text-muted-foreground">
+                        <GitBranch className="h-3.5 w-3.5" />
+                    </div>
+                )}
+                <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2 font-medium">
+                        <span className="truncate">{label}</span>
+                        {isBranch && (
+                            <span className="px-1.5 py-0.5 rounded bg-primary/10 text-primary text-[10px] font-bold uppercase border border-primary/15">
+                                {t('branches.title', { defaultValue: 'Branch' })}
+                            </span>
+                        )}
+                        <span className="px-1.5 py-0.5 rounded bg-muted text-[10px] font-mono text-muted-foreground border border-border">
+                            {ws.code}
+                        </span>
+                        {ws.deleted_at && (
+                            <span className="px-1.5 py-0.5 rounded bg-destructive/10 text-destructive text-[10px] font-bold uppercase border border-destructive/20">
+                                Deleted
+                            </span>
+                        )}
+                    </div>
+                    {options.showMode && (
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase border ${ws.data_mode === 'local' ? 'border-sky-500/20 bg-sky-500/10 text-sky-700' : ws.data_mode === 'hybrid' ? 'border-amber-500/20 bg-amber-500/10 text-amber-700' : 'border-emerald-500/20 bg-emerald-500/10 text-emerald-700'}`}>
+                                {ws.data_mode === 'local' ? 'Local' : ws.data_mode === 'hybrid' ? 'Hybrid' : 'Cloud'}
+                            </span>
+                        </div>
+                    )}
+                    {options.showCreatedAt && (
+                        <div className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
+                            <Calendar className="w-3 h-3" />
+                            {formatDate(ws.created_at)}
+                        </div>
+                    )}
+                </div>
+            </div>
+        )
+    }
+
+    const renderPlanBadge = (plan: string) => (
+        <span className={cn(
+            'px-2 py-0.5 rounded-full text-[10px] font-bold uppercase border',
+            plan === 'enterprise'
+                ? 'border-purple-500/20 bg-purple-500/10 text-purple-700'
+                : plan === 'business'
+                    ? 'border-blue-500/20 bg-blue-500/10 text-blue-700'
+                    : 'border-muted-foreground/20 bg-muted/30 text-muted-foreground'
+        )}>
+            {plan}
+        </span>
+    )
+
+    const getWorkspaceRowClass = (ws: AdminWorkspace, isBranch = false) => cn(
+        'hover:bg-muted/10 transition-colors group',
+        isBranch && 'bg-muted/[0.03]',
+        ws.deleted_at && 'opacity-50 grayscale'
+    )
 
     const openAccessModal = async (ws: AdminWorkspace) => {
         setAccessWorkspace(ws)
@@ -530,7 +657,27 @@ export function Admin() {
     }
 
     // Filter workspaces based on showDeleted toggle
-    const filteredWorkspaces = workspaces.filter(ws => showDeleted ? true : !ws.deleted_at)
+    const filteredWorkspaceCandidates = workspaces.filter(ws => showDeleted ? true : !ws.deleted_at)
+    const filteredWorkspaceIds = new Set(filteredWorkspaceCandidates.map((ws) => ws.id))
+    const filteredWorkspaces = filteredWorkspaceCandidates.filter((ws) => {
+        return !ws.is_branch || !ws.source_workspace_id || filteredWorkspaceIds.has(ws.source_workspace_id)
+    })
+    const workspaceGroups = groupAdminWorkspaces(filteredWorkspaces)
+    const subscriptionWorkspaceGroups = groupAdminWorkspaces(workspaces).flatMap((group) => {
+        const sourceMatches = workspaceMatchesSearch(group.source, searchTerm)
+        const matchingBranches = sourceMatches
+            ? group.branches
+            : group.branches.filter((branch) => workspaceMatchesSearch(branch, searchTerm))
+
+        if (!sourceMatches && matchingBranches.length === 0) {
+            return []
+        }
+
+        return [{
+            source: group.source,
+            branches: matchingBranches
+        }]
+    })
 
     if (!isAuthenticated) {
         return (
@@ -755,69 +902,47 @@ export function Admin() {
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-border">
-                                        {filteredWorkspaces.map((ws) => (
-                                            <tr key={ws.id} className={`hover:bg-muted/10 transition-colors ${ws.deleted_at ? 'opacity-50 grayscale' : ''}`}>
-                                                <td className="px-6 py-4">
-                                                    <div>
-                                                        <div className="font-medium flex items-center gap-2">
-                                                            {ws.name}
-                                                            <span className="px-1.5 py-0.5 rounded bg-muted text-[10px] font-mono text-muted-foreground border border-border">
-                                                                {ws.code}
-                                                            </span>
-                                                            {ws.deleted_at && (
-                                                                <span className="px-1.5 py-0.5 rounded bg-destructive/10 text-destructive text-[10px] font-bold uppercase border border-destructive/20">
-                                                                    Deleted
-                                                                </span>
-                                                            )}
-                                                        </div>
-                                                        <div className="mt-2 flex flex-wrap items-center gap-2">
-                                                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase border ${ws.data_mode === 'local' ? 'border-sky-500/20 bg-sky-500/10 text-sky-700' : ws.data_mode === 'hybrid' ? 'border-amber-500/20 bg-amber-500/10 text-amber-700' : 'border-emerald-500/20 bg-emerald-500/10 text-emerald-700'}`}>
-                                                                {ws.data_mode === 'local' ? 'Local' : ws.data_mode === 'hybrid' ? 'Hybrid' : 'Cloud'}
-                                                            </span>
-                                                        </div>
-                                                        <div className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
-                                                            <Calendar className="w-3 h-3" />
-                                                            {formatDate(ws.created_at)}
-                                                        </div>
-                                                    </div>
-                                                </td>
-                                                <td className="px-6 py-4">
-                                                    <div className="flex justify-center">
-                                                        <span className={cn(
-                                                            'px-2 py-0.5 rounded-full text-[10px] font-bold uppercase border',
-                                                            ws.plan === 'enterprise'
-                                                                ? 'border-purple-500/20 bg-purple-500/10 text-purple-700'
-                                                                : ws.plan === 'business'
-                                                                    ? 'border-blue-500/20 bg-blue-500/10 text-blue-700'
-                                                                    : 'border-muted-foreground/20 bg-muted/30 text-muted-foreground'
-                                                        )}>
-                                                            {ws.plan}
-                                                        </span>
-                                                    </div>
-                                                </td>
-                                                <td className="px-6 py-4">
-                                                    <div className="flex justify-center">
-                                                        <Switch
-                                                            checked={ws.locked_workspace}
-                                                            onCheckedChange={() => handleToggleWorkspaceFeature(ws.id, 'locked_workspace', ws.locked_workspace)}
-                                                            disabled={!!ws.deleted_at || !canEdit}
-                                                        />
-                                                    </div>
-                                                </td>
-                                                <td className="px-6 py-4">
-                                                    <div className="flex justify-end pr-2">
-                                                        {ws.is_configured ? (
-                                                            <CheckCircle2 className="w-4 h-4 text-green-500" />
-                                                        ) : (
-                                                            <XCircle className="w-4 h-4 text-amber-500" />
-                                                        )}
-                                                    </div>
-                                                </td>
-                                            </tr>
+                                        {workspaceGroups.map((group) => (
+                                            <React.Fragment key={group.source.id}>
+                                                {[group.source, ...group.branches].map((ws, index) => {
+                                                    const isBranch = index > 0 || Boolean(ws.is_branch)
+
+                                                    return (
+                                                        <tr key={ws.id} className={getWorkspaceRowClass(ws, isBranch)}>
+                                                            <td className="px-6 py-4">
+                                                                {renderWorkspaceIdentity(ws, { isBranch, showMode: true, showCreatedAt: true })}
+                                                            </td>
+                                                            <td className="px-6 py-4">
+                                                                <div className="flex justify-center">
+                                                                    {renderPlanBadge(ws.plan)}
+                                                                </div>
+                                                            </td>
+                                                            <td className="px-6 py-4">
+                                                                <div className="flex justify-center">
+                                                                    <Switch
+                                                                        checked={ws.locked_workspace}
+                                                                        onCheckedChange={() => handleToggleWorkspaceFeature(ws.id, 'locked_workspace', ws.locked_workspace)}
+                                                                        disabled={!!ws.deleted_at || !canEdit}
+                                                                    />
+                                                                </div>
+                                                            </td>
+                                                            <td className="px-6 py-4">
+                                                                <div className="flex justify-end pr-2">
+                                                                    {ws.is_configured ? (
+                                                                        <CheckCircle2 className="w-4 h-4 text-green-500" />
+                                                                    ) : (
+                                                                        <XCircle className="w-4 h-4 text-amber-500" />
+                                                                    )}
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+                                                    )
+                                                })}
+                                            </React.Fragment>
                                         ))}
-                                        {filteredWorkspaces.length === 0 && !isLoading && (
+                                        {workspaceGroups.length === 0 && !isLoading && (
                                             <tr>
-                                                <td colSpan={6} className="px-6 py-12 text-center text-muted-foreground">
+                                                <td colSpan={4} className="px-6 py-12 text-center text-muted-foreground">
                                                     {showDeleted ? t('admin.noWorkspaces') : t('admin.noActiveWorkspaces')}
                                                 </td>
                                             </tr>
@@ -850,34 +975,39 @@ export function Admin() {
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-border">
-                                        {filteredWorkspaces.map((ws) => (
-                                            <tr key={ws.id} className="hover:bg-muted/10 transition-colors group">
-                                                <td className="px-6 py-4">
-                                                    <div className="font-medium">{ws.name}</div>
-                                                    <div className="text-xs text-muted-foreground font-mono">{ws.code}</div>
-                                                </td>
-                                                <td className="px-6 py-4">
-                                                    <div className="flex justify-center">
-                                                        <span className={cn('px-2 py-0.5 rounded-full text-[10px] font-bold uppercase border', ws.plan === 'enterprise' ? 'border-purple-500/20 bg-purple-500/10 text-purple-700' : ws.plan === 'business' ? 'border-blue-500/20 bg-blue-500/10 text-blue-700' : 'border-muted-foreground/20 bg-muted/30 text-muted-foreground')}>
-                                                            {ws.plan}
-                                                        </span>
-                                                    </div>
-                                                </td>
-                                                <td className="px-6 py-4 text-right">
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="icon"
-                                                        className="h-8 w-8 text-muted-foreground hover:text-primary hover:bg-primary/10"
-                                                        onClick={() => openAccessModal(ws)}
-                                                        disabled={!canEdit}
-                                                        title="Manage Access"
-                                                    >
-                                                        <KeyRound className="h-4 w-4" />
-                                                    </Button>
-                                                </td>
-                                            </tr>
+                                        {workspaceGroups.map((group) => (
+                                            <React.Fragment key={group.source.id}>
+                                                {[group.source, ...group.branches].map((ws, index) => {
+                                                    const isBranch = index > 0 || Boolean(ws.is_branch)
+
+                                                    return (
+                                                        <tr key={ws.id} className={getWorkspaceRowClass(ws, isBranch)}>
+                                                            <td className="px-6 py-4">
+                                                                {renderWorkspaceIdentity(ws, { isBranch })}
+                                                            </td>
+                                                            <td className="px-6 py-4">
+                                                                <div className="flex justify-center">
+                                                                    {renderPlanBadge(ws.plan)}
+                                                                </div>
+                                                            </td>
+                                                            <td className="px-6 py-4 text-right">
+                                                                <Button
+                                                                    variant="ghost"
+                                                                    size="icon"
+                                                                    className="h-8 w-8 text-muted-foreground hover:text-primary hover:bg-primary/10"
+                                                                    onClick={() => openAccessModal(ws)}
+                                                                    disabled={!canEdit}
+                                                                    title="Manage Access"
+                                                                >
+                                                                    <KeyRound className="h-4 w-4" />
+                                                                </Button>
+                                                            </td>
+                                                        </tr>
+                                                    )
+                                                })}
+                                            </React.Fragment>
                                         ))}
-                                        {filteredWorkspaces.length === 0 && !isLoading && (
+                                        {workspaceGroups.length === 0 && !isLoading && (
                                             <tr>
                                                 <td colSpan={3} className="px-6 py-12 text-center text-muted-foreground">
                                                     No workspaces found.
@@ -927,71 +1057,77 @@ export function Admin() {
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-border">
-                                            {workspaces
-                                                .filter(ws =>
-                                                    ws.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                                                    ws.code.toLowerCase().includes(searchTerm.toLowerCase())
-                                                )
-                                                .map((ws) => {
-                                                    const status = getSubscriptionStatus(ws)
-                                                    const StatusIcon = status.icon
+                                            {subscriptionWorkspaceGroups.map((group) => (
+                                                <React.Fragment key={group.source.id}>
+                                                    {[group.source, ...group.branches].map((ws, index) => {
+                                                        const isBranch = index > 0 || Boolean(ws.is_branch)
+                                                        const status = getSubscriptionStatus(ws)
+                                                        const StatusIcon = status.icon
 
-                                                    return (
-                                                        <tr key={ws.id} className="hover:bg-muted/10 transition-colors group">
-                                                            <td className="px-6 py-4">
-                                                                <div className="font-medium">{ws.name}</div>
-                                                                <div className="text-xs text-muted-foreground font-mono">{ws.code}</div>
-                                                            </td>
-                                                            <td className="px-6 py-4">
-                                                                <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${status.color}`}>
-                                                                    <StatusIcon className="w-3.5 h-3.5" />
-                                                                    {status.label}
-                                                                </span>
-                                                            </td>
-                                                            <td className="px-6 py-4">
-                                                                {ws.subscription_expires_at ? (
-                                                                    <div className="text-sm flex items-center gap-1.5 text-muted-foreground">
-                                                                        <Calendar className="w-3.5 h-3.5" />
-                                                                        {formatDate(ws.subscription_expires_at)}
-                                                                    </div>
-                                                                ) : (
-                                                                    <span className="text-xs text-muted-foreground italic">Lifetime</span>
-                                                                )}
-                                                            </td>
-                                                            <td className="px-6 py-4 text-right">
-                                                                <div className="flex justify-end items-center gap-2">
-                                                                    <div className="flex items-center gap-1 bg-background border border-border rounded-lg p-1">
-                                                                        <input
-                                                                            type="date"
-                                                                            className="bg-transparent border-none text-[11px] focus:outline-none px-1"
-                                                                            value={customExpiries[ws.id] || ''}
-                                                                            onChange={(e) => setCustomExpiries(prev => ({ ...prev, [ws.id]: e.target.value }))}
-                                                                        />
+                                                        return (
+                                                            <tr key={ws.id} className={getWorkspaceRowClass(ws, isBranch)}>
+                                                                <td className="px-6 py-4">
+                                                                    {renderWorkspaceIdentity(ws, { isBranch })}
+                                                                </td>
+                                                                <td className="px-6 py-4">
+                                                                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${status.color}`}>
+                                                                        <StatusIcon className="w-3.5 h-3.5" />
+                                                                        {status.label}
+                                                                    </span>
+                                                                </td>
+                                                                <td className="px-6 py-4">
+                                                                    {ws.subscription_expires_at ? (
+                                                                        <div className="text-sm flex items-center gap-1.5 text-muted-foreground">
+                                                                            <Calendar className="w-3.5 h-3.5" />
+                                                                            {formatDate(ws.subscription_expires_at)}
+                                                                        </div>
+                                                                    ) : (
+                                                                        <span className="text-xs text-muted-foreground italic">Lifetime</span>
+                                                                    )}
+                                                                </td>
+                                                                <td className="px-6 py-4 text-right">
+                                                                    <div className="flex justify-end items-center gap-2">
+                                                                        <div className="flex items-center gap-1 bg-background border border-border rounded-lg p-1">
+                                                                            <input
+                                                                                type="date"
+                                                                                className="bg-transparent border-none text-[11px] focus:outline-none px-1"
+                                                                                value={customExpiries[ws.id] || ''}
+                                                                                onChange={(e) => setCustomExpiries(prev => ({ ...prev, [ws.id]: e.target.value }))}
+                                                                            />
+                                                                            <Button
+                                                                                size="sm"
+                                                                                variant="ghost"
+                                                                                className="h-6 px-2 text-[10px] hover:bg-primary/10 hover:text-primary"
+                                                                                onClick={() => handleExtendSubscription(ws.id, customExpiries[ws.id])}
+                                                                                disabled={isLoading || !customExpiries[ws.id]}
+                                                                            >
+                                                                                {t('admin.setExpiry')}
+                                                                            </Button>
+                                                                        </div>
+                                                                        <div className="h-4 w-[1px] bg-border mx-1" />
                                                                         <Button
                                                                             size="sm"
-                                                                            variant="ghost"
-                                                                            className="h-6 px-2 text-[10px] hover:bg-primary/10 hover:text-primary"
-                                                                            onClick={() => handleExtendSubscription(ws.id, customExpiries[ws.id])}
-                                                                            disabled={isLoading || !customExpiries[ws.id]}
+                                                                            variant="outline"
+                                                                            className="h-8 rounded-lg text-[11px]"
+                                                                            onClick={() => handleExtendSubscription(ws.id)}
+                                                                            disabled={isLoading}
                                                                         >
-                                                                            {t('admin.setExpiry')}
+                                                                            {t('admin.extend')}
                                                                         </Button>
                                                                     </div>
-                                                                    <div className="h-4 w-[1px] bg-border mx-1" />
-                                                                    <Button
-                                                                        size="sm"
-                                                                        variant="outline"
-                                                                        className="h-8 rounded-lg text-[11px]"
-                                                                        onClick={() => handleExtendSubscription(ws.id)}
-                                                                        disabled={isLoading}
-                                                                    >
-                                                                        {t('admin.extend')}
-                                                                    </Button>
-                                                                </div>
-                                                            </td>
-                                                        </tr>
-                                                    )
-                                                })}
+                                                                </td>
+                                                            </tr>
+                                                        )
+                                                    })}
+                                                </React.Fragment>
+                                            ))}
+                                            {subscriptionWorkspaceGroups.length === 0 && !isLoading && (
+                                                <tr>
+                                                    <td colSpan={4} className="px-6 py-12 text-center text-muted-foreground">
+                                                        No workspaces found.
+                                                    </td>
+                                                </tr>
+                                            )}
                                         </tbody>
                                     </table>
                                 </div>

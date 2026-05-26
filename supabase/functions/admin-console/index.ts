@@ -160,7 +160,33 @@ async function listWorkspaces(adminClient: ReturnType<typeof createAdminClient>)
         return errorResponse(error.message, 500)
     }
 
-    return jsonResponse(data ?? [])
+    const { data: branchRows, error: branchError } = await adminClient
+        .from('workspace_branches')
+        .select('source_workspace_id, branch_workspace_id, name')
+
+    if (branchError) {
+        return errorResponse(branchError.message, 500)
+    }
+
+    const workspaceNamesById = new Map(
+        (data ?? []).map((workspace) => [String(workspace.id), String(workspace.name)])
+    )
+    const branchesByWorkspaceId = new Map(
+        (branchRows ?? []).map((branch) => [String(branch.branch_workspace_id), branch])
+    )
+
+    return jsonResponse((data ?? []).map((workspace) => {
+        const branch = branchesByWorkspaceId.get(String(workspace.id))
+        return {
+            ...workspace,
+            is_branch: Boolean(branch),
+            source_workspace_id: branch?.source_workspace_id ?? null,
+            source_workspace_name: branch?.source_workspace_id
+                ? workspaceNamesById.get(String(branch.source_workspace_id)) ?? null
+                : null,
+            branch_name: branch?.name ?? null
+        }
+    }))
 }
 
 async function deleteUser(adminClient: ReturnType<typeof createAdminClient>, body: DeleteUserRequest) {
