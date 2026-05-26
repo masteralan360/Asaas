@@ -96,23 +96,6 @@ async function requireValidPasskey(adminClient: ReturnType<typeof createAdminCli
     return { ok: true, response: null }
 }
 
-async function resolveWorkspaceStatusOwnerId(
-    adminClient: ReturnType<typeof createAdminClient>,
-    workspaceId: string
-) {
-    const { data, error } = await adminClient
-        .from('workspace_branches')
-        .select('source_workspace_id')
-        .eq('branch_workspace_id', workspaceId)
-        .maybeSingle()
-
-    if (error) {
-        throw error
-    }
-
-    return String(data?.source_workspace_id ?? workspaceId)
-}
-
 async function listUsers(adminClient: ReturnType<typeof createAdminClient>) {
     const { data: authData, error: authError } = await adminClient.auth.admin.listUsers({
         page: 1,
@@ -239,14 +222,12 @@ async function updateWorkspaceFeatures(
         return errorResponse('Workspace feature payload is invalid')
     }
 
-    const statusOwnerWorkspaceId = await resolveWorkspaceStatusOwnerId(adminClient, workspaceId)
-
     const { error: statusError } = await adminClient
         .from('workspaces')
         .update({
             locked_workspace: body.locked_workspace
         })
-        .eq('id', statusOwnerWorkspaceId)
+        .eq('id', workspaceId)
 
     if (statusError) {
         return errorResponse(statusError.message, 500)
@@ -275,15 +256,13 @@ async function updateWorkspaceSubscription(
         return errorResponse('Invalid expiry date')
     }
 
-    const statusOwnerWorkspaceId = await resolveWorkspaceStatusOwnerId(adminClient, workspaceId)
-
     const { error } = await adminClient
         .from('workspaces')
         .update({
             subscription_expires_at: parsedExpiry.toISOString(),
             locked_workspace: parsedExpiry.getTime() < Date.now()
         })
-        .eq('id', statusOwnerWorkspaceId)
+        .eq('id', workspaceId)
 
     if (error) {
         return errorResponse(error.message, 500)
