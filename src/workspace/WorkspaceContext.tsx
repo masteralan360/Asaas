@@ -125,6 +125,7 @@ const PLAN_DERIVED_FEATURE_KEYS: ModuleFeatureKey[] = [
     'sales_history',
     'crm',
     'ecommerce',
+    'real_estate',
     'loans',
     'net_revenue',
     'budget',
@@ -153,7 +154,6 @@ function getResolvedFeatureFlags(resolved: ResolvedWorkspacePlan) {
     return PLAN_DERIVED_FEATURE_KEYS.reduce((flags, key) => {
         switch (key) {
             case 'travel_agency':
-            case 'real_estate':
                 flags[key] = false
                 break
             case 'monthly_comparison':
@@ -878,7 +878,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         if (feature === 'ecommerce') {
             return features.data_mode !== 'local' && planCapabilities.modules.includes('ecommerce')
         }
-        if (feature === 'travel_agency' || feature === 'real_estate') {
+        if (feature === 'travel_agency') {
             return features[feature]
         }
         if (feature === 'allow_whatsapp') {

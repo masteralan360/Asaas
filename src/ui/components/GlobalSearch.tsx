@@ -1,4 +1,4 @@
-import { Search, Command, LayoutDashboard, ShoppingCart, Package, ListOrdered, Settings as SettingsIcon, BarChart3, Users2, Globe, MessageSquare, Moon, Sun, LogOut, ChevronRight, ArrowRightLeft, NotebookPen, Wallet, Zap, FileSpreadsheet } from 'lucide-react'
+import { Search, Command, LayoutDashboard, ShoppingCart, Package, ListOrdered, Settings as SettingsIcon, BarChart3, Users2, Globe, MessageSquare, Moon, Sun, LogOut, ChevronRight, ArrowRightLeft, NotebookPen, Wallet, Zap, FileSpreadsheet, Building2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useState, useEffect, useRef } from 'react'
 import { useHashLocation } from '@/hooks/useHashLocation'
@@ -52,6 +52,7 @@ export function GlobalSearch({ className, placeholder }: GlobalSearchProps) {
         ...(hasPaymentsSurface && hasPermission('directTransaction.access') ? [{ id: 'nav-direct-transactions', title: t('nav.directTransactions', { defaultValue: 'Direct Transactions' }), category: 'Navigation' as const, icon: ArrowRightLeft, action: () => setLocation('/direct-transactions') }] : []),
         ...(features.net_revenue && hasPermission('revenueAnalytics.access') ? [{ id: 'nav-revenue', title: t('nav.revenue'), category: 'Navigation' as const, icon: BarChart3, action: () => setLocation('/revenue') }] : []),
         ...(features.budget && hasPermission('accounting.access') ? [{ id: 'nav-budget', title: t('nav.budget', { defaultValue: 'Accounting' }), category: 'Navigation' as const, icon: FileSpreadsheet, action: () => setLocation('/budget') }] : []),
+        ...(features.real_estate && hasPermission('realEstate.access') ? [{ id: 'nav-real-estate', title: t('realEstate.title', { defaultValue: 'Real Estate' }), category: 'Navigation' as const, icon: Building2, action: () => setLocation('/real-estate') }] : []),
         ...(features.monthly_comparison ? [{ id: 'nav-monthly-comparison', title: t('monthlyComparison.title'), category: 'Navigation' as const, icon: ArrowRightLeft, action: () => setLocation('/monthly-comparison') }] : []),
         ...(features.team_performance && hasPermission('teamPerformance.access') ? [{ id: 'nav-performance', title: t('nav.performance'), category: 'Navigation' as const, icon: Users2, action: () => setLocation('/performance') }] : []),
 

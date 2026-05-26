@@ -21,6 +21,7 @@ export type PlanModuleKey =
     | 'suppliers'
     | 'orders'
     | 'ecommerce'
+    | 'real_estate'
     | 'loans'
     | 'installments'
     | 'discounts'
@@ -217,7 +218,7 @@ export const WORKSPACE_FEATURE_MODULE_MAP: Record<WorkspaceFeatureKey, PlanModul
     crm: 'customers',
     ecommerce: 'ecommerce',
     travel_agency: null,
-    real_estate: null,
+    real_estate: 'real_estate',
     loans: 'loans',
     net_revenue: 'revenue_analytics',
     budget: 'accounting',

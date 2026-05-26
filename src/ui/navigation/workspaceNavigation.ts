@@ -199,7 +199,7 @@ export function buildWorkspaceNavigation({
           },
         ]
       : []),
-    ...(isCoreRole && hasFeature("real_estate")
+    ...(isCoreRole && hasFeature("real_estate") && canAccessPermission("realEstate.access")
       ? [
           {
             name: t("realEstate.title", { defaultValue: "Real Estate" }),

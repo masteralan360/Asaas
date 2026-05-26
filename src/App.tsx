@@ -973,6 +973,7 @@ function App() {
                         <ProtectedRoute
                           allowedRoles={["admin", "staff", "viewer"]}
                           requiredFeature="real_estate"
+                          requiredPermission="realEstate.access"
                         >
                           <Layout>
                             <RealEstate />
@@ -983,6 +984,7 @@ function App() {
                         <ProtectedRoute
                           allowedRoles={["admin", "staff", "viewer"]}
                           requiredFeature="real_estate"
+                          requiredPermission="realEstate.access"
                         >
                           <Layout>
                             <RealEstate />

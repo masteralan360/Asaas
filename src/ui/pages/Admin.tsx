@@ -137,7 +137,7 @@ export function Admin() {
         'inventory_transfer', 'inventory_transactions', 'stock_adjustments',
         'ledger', 'payments', 'direct_transactions', 'members',
         'business_partners', 'customers', 'suppliers', 'orders',
-        'ecommerce', 'loans', 'installments', 'discounts',
+        'ecommerce', 'real_estate', 'loans', 'installments', 'discounts',
         'revenue_analytics', 'team_performance', 'invoice_history',
         'accounting', 'hr', 'expenses', 'payroll', 'whatsapp'
     ]
@@ -160,6 +160,7 @@ export function Admin() {
         suppliers: Truck,
         orders: ShoppingCart,
         ecommerce: Store,
+        real_estate: Building2,
         loans: HandCoins,
         installments: Copy,
         discounts: Percent,
