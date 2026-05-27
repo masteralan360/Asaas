@@ -190,6 +190,11 @@
         "eyebrow": "Finance operations",
         "description": "Money movement, finance records, and payment follow-up organized for faster scanning."
       },
+      "real-estate": {
+        "title": "Real Estate",
+        "eyebrow": "Property operations",
+        "description": "Property deals, installment schedules, and real estate balances grouped apart from general finance."
+      },
       "partners-and-demand": {
         "title": "Partners & Demand",
         "eyebrow": "Relationship management",

@@ -1,5 +1,6 @@
 import {
   BarChart3,
+  Building2,
   CreditCard,
   type LucideIcon,
   UsersRound,
@@ -26,6 +27,7 @@ export const launcherSectionOrder = [
   "sell-and-serve",
   "stock-and-supply",
   "cash-and-control",
+  "real-estate",
   "partners-and-demand",
   "insights-and-trends",
   "people-and-workspace",
@@ -75,6 +77,20 @@ export const launcherSections: Record<NavigationSectionKey, LauncherSection> = {
       text: "text-sky-700 dark:text-sky-300",
       border: "border-sky-500/20 hover:border-sky-400/40",
       glow: "bg-sky-400/18",
+    },
+  },
+  "real-estate": {
+    title: "Real Estate",
+    eyebrow: "Property operations",
+    description:
+      "Property deals, installment schedules, and real estate balances grouped apart from general finance.",
+    icon: Building2,
+    theme: {
+      shell: "from-lime-500/18 via-emerald-500/10 to-transparent",
+      surface: "bg-lime-500/12 ring-1 ring-lime-500/20",
+      text: "text-lime-700 dark:text-lime-300",
+      border: "border-lime-500/20 hover:border-lime-400/40",
+      glow: "bg-lime-400/18",
     },
   },
   "partners-and-demand": {
@@ -173,7 +189,7 @@ export const moduleMetaByHref: Record<string, ModuleMeta> = {
     badge: "Service",
   },
   "/real-estate": {
-    section: "cash-and-control",
+    section: "real-estate",
     description: "Record property deals, parties, balances, and installment schedules.",
     badge: "Property",
   },

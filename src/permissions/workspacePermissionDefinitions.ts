@@ -130,7 +130,7 @@ export const WORKSPACE_PERMISSION_DEFINITIONS = [
     descriptionKey: "members.permissions.realEstateAccessDescription",
     defaultDescription: "Access property transactions, balances, and installment schedules.",
     icon: Building2,
-    section: "cash-and-control",
+    section: "real-estate",
   },
   {
     key: "installments.access",

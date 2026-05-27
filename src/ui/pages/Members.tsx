@@ -43,6 +43,7 @@ import {
     type WorkspacePermissionKey
 } from '@/permissions'
 import { launcherSections, launcherSectionOrder } from '@/ui/navigation/navigationMeta'
+import type { PlanModuleKey } from '@/plans/workspacePlans'
 
 interface Member {
     id: string
@@ -72,9 +73,36 @@ const roleColors: Record<string, string> = {
     viewer: 'bg-slate-500/10 text-slate-500'
 }
 
+type WorkspacePermissionDefinition = typeof WORKSPACE_PERMISSION_DEFINITIONS[number]
+type WorkspacePermissionModule = WorkspacePermissionDefinition['module']
+
+const PERMISSION_MODULE_PLAN_MODULES: Partial<Record<WorkspacePermissionModule, PlanModuleKey>> = {
+    payment: 'payments',
+    directTransaction: 'direct_transactions',
+    businessPartners: 'business_partners',
+    customers: 'customers',
+    suppliers: 'suppliers',
+    orders: 'orders',
+    ecommerce: 'ecommerce',
+    accounting: 'accounting',
+    invoiceHistory: 'invoice_history',
+    loans: 'loans',
+    realEstate: 'real_estate',
+    installments: 'installments',
+    ledger: 'ledger',
+    stockAdjustments: 'stock_adjustments',
+    inventoryTransactions: 'inventory_transactions',
+    inventoryTransfer: 'inventory_transfer',
+    storages: 'storages',
+    discounts: 'discounts',
+    revenueAnalytics: 'revenue_analytics',
+    teamPerformance: 'team_performance',
+    hr: 'hr'
+}
+
 export function Members() {
     const { user, session } = useAuth()
-    const { hasCapability } = useWorkspace()
+    const { hasCapability, planCapabilities } = useWorkspace()
     const { t } = useTranslation()
     const [members, setMembers] = useState<Member[]>([])
     const [permissions, setPermissions] = useState<WorkspacePermission[]>([])
@@ -224,9 +252,18 @@ export function Members() {
         }
     }
 
+    const visiblePermissionDefinitions = useMemo(() => {
+        const availableModules = new Set(planCapabilities.modules)
+        return WORKSPACE_PERMISSION_DEFINITIONS.filter((permission) => {
+            if (permission.module === 'global') return true
+            const planModule = PERMISSION_MODULE_PLAN_MODULES[permission.module]
+            return planModule ? availableModules.has(planModule) : false
+        })
+    }, [planCapabilities.modules])
+
     const selectedModulePermissions = useMemo(() => (
-        WORKSPACE_PERMISSION_DEFINITIONS.filter((permission) => permission.module === selectedPermissionModule)
-    ), [selectedPermissionModule])
+        visiblePermissionDefinitions.filter((permission) => permission.module === selectedPermissionModule)
+    ), [selectedPermissionModule, visiblePermissionDefinitions])
 
     const selectedMemberPermissionKeys = permissionMember
         ? permissionsByUserId.get(permissionMember.id) || new Set<WorkspacePermissionKey>()
@@ -234,13 +271,19 @@ export function Members() {
 
     const groupedPermissions = useMemo(() => {
         const groups: Record<string, typeof WORKSPACE_PERMISSION_DEFINITIONS[number][]> = {}
-        WORKSPACE_PERMISSION_DEFINITIONS.forEach((permission: any) => {
+        visiblePermissionDefinitions.forEach((permission) => {
             const section = permission.section || 'other'
             if (!groups[section]) groups[section] = []
             groups[section].push(permission)
         })
         return groups
-    }, [])
+    }, [visiblePermissionDefinitions])
+
+    useEffect(() => {
+        if (!permissionMember) return
+        if (visiblePermissionDefinitions.some((permission) => permission.module === selectedPermissionModule)) return
+        setSelectedPermissionModule('global')
+    }, [permissionMember, selectedPermissionModule, visiblePermissionDefinitions])
 
     const openPermissionModal = (member: Member) => {
         if (member.role === 'admin' || !canManageWorkspacePermissions) return
@@ -463,7 +506,7 @@ export function Members() {
                                 <SelectContent>
                                     {/* Global module explicitly at the top and sectionless */}
                                     {(() => {
-                                        const globalModule = WORKSPACE_PERMISSION_DEFINITIONS.find(p => p.module === 'global')
+                                        const globalModule = visiblePermissionDefinitions.find(p => p.module === 'global')
                                         if (!globalModule) return null
                                         const GlobalIcon = globalModule.icon
                                         return (
