@@ -256,7 +256,19 @@ export interface Customer extends BaseEntity {
   isEcommerce?: boolean;
 }
 
-export type BusinessPartnerRole = "customer" | "supplier" | "both";
+export type RealEstateBusinessPartnerRole = "buyer" | "seller";
+export type BusinessPartnerRole = "customer" | "supplier" | "both" | RealEstateBusinessPartnerRole;
+
+export const REAL_ESTATE_BUSINESS_PARTNER_ROLES: readonly RealEstateBusinessPartnerRole[] = [
+  "buyer",
+  "seller",
+];
+
+export function isRealEstateBusinessPartnerRole(
+  role: BusinessPartnerRole | string | null | undefined,
+): role is RealEstateBusinessPartnerRole {
+  return role === "buyer" || role === "seller";
+}
 
 export interface BusinessPartner extends BaseEntity {
   name: string;
@@ -532,8 +544,14 @@ export interface RealEstateTransaction extends BaseEntity {
   profitAmount: number;
   buyerName: string;
   buyerBusinessPartnerId?: string | null;
+  buyerWitnessName?: string | null;
+  buyerWitnessAddress?: string | null;
+  buyerWitnessPhone?: string | null;
   sellerName: string;
   sellerBusinessPartnerId?: string | null;
+  sellerWitnessName?: string | null;
+  sellerWitnessAddress?: string | null;
+  sellerWitnessPhone?: string | null;
   isInstallmentBased: boolean;
   installmentCount: number;
   installmentFrequency?: InstallmentFrequency | null;

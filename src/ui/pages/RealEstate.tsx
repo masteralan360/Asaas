@@ -70,6 +70,14 @@ function currencySummary(
         .join(' / ')
 }
 
+function formatWitnessDetails(name?: string | null, address?: string | null, phone?: string | null) {
+    const parts = [name, address, phone]
+        .map((value) => value?.trim())
+        .filter((value): value is string => Boolean(value))
+
+    return parts.length > 0 ? parts.join(' / ') : null
+}
+
 export function RealEstate() {
     const { t } = useTranslation()
     const { user } = useAuth()
@@ -305,6 +313,8 @@ function RealEstateDetails({
     const paidPercent = transaction.totalAmount > 0
         ? Math.min(100, (transaction.paidAmount / transaction.totalAmount) * 100)
         : 0
+    const buyerWitnessDetails = formatWitnessDetails(transaction.buyerWitnessName, transaction.buyerWitnessAddress, transaction.buyerWitnessPhone)
+    const sellerWitnessDetails = formatWitnessDetails(transaction.sellerWitnessName, transaction.sellerWitnessAddress, transaction.sellerWitnessPhone)
 
     return (
         <div className="space-y-4">
@@ -339,7 +349,19 @@ function RealEstateDetails({
                             <InfoRow label={t('realEstate.propertyType', { defaultValue: 'Property Type' })} value={t(`realEstate.propertyTypes.${transaction.propertyType}`, { defaultValue: transaction.propertyType })} />
                         ) : null}
                         <InfoRow label={t('realEstate.buyer', { defaultValue: 'Buyer' })} value={transaction.buyerName} />
+                        {buyerWitnessDetails ? (
+                            <InfoRow
+                                label={t('realEstate.buyerWitness', { defaultValue: 'Buyer Witness' })}
+                                value={buyerWitnessDetails}
+                            />
+                        ) : null}
                         <InfoRow label={t('realEstate.seller', { defaultValue: 'Seller' })} value={transaction.sellerName} />
+                        {sellerWitnessDetails ? (
+                            <InfoRow
+                                label={t('realEstate.sellerWitness', { defaultValue: 'Seller Witness' })}
+                                value={sellerWitnessDetails}
+                            />
+                        ) : null}
                         <InfoRow label={t('realEstate.landArea', { defaultValue: 'Land Area (m2)' })} value={transaction.landAreaM2 > 0 ? `${transaction.landAreaM2.toLocaleString()} m2` : '-'} />
                         <InfoRow label={t('realEstate.profitAmount', { defaultValue: 'Profit Amount' })} value={formatCurrency(transaction.profitAmount, transaction.currency, features.iqd_display_preference)} />
                         {transaction.notes ? (

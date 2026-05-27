@@ -25,6 +25,7 @@ import type {
     Supplier,
     TravelAgencySale
 } from './models'
+import { isRealEstateBusinessPartnerRole } from './models'
 
 type PartnerTableName = 'business_partners' | 'business_partner_merge_candidates' | 'customers' | 'suppliers'
 type PartnerFacetType = 'customer' | 'supplier'
@@ -32,6 +33,10 @@ type SyncEntity = { id: string; version: number } & Record<string, unknown>
 type PartnerFilterOptions = {
     roles?: BusinessPartnerRole[]
     includeMerged?: boolean
+    includeRealEstateRoles?: boolean
+}
+type BusinessPartnerRoleAccessOptions = {
+    allowRealEstateRoles?: boolean
 }
 
 type BaseEntityPayload = {
@@ -523,6 +528,20 @@ async function getPartnerLoans(partner: BusinessPartner) {
     return rows as Loan[]
 }
 
+function assertBusinessPartnerRoleAllowed(role: BusinessPartnerRole, options?: BusinessPartnerRoleAccessOptions) {
+    if (isRemovedBusinessPartnerRole(role)) {
+        throw new Error('Witness is not a supported business partner role')
+    }
+
+    if (isRealEstateBusinessPartnerRole(role) && !options?.allowRealEstateRoles) {
+        throw new Error('Real Estate partner roles require workspace Real Estate access')
+    }
+}
+
+function isRemovedBusinessPartnerRole(role: unknown) {
+    return role === 'witness'
+}
+
 function convertLoanAmountForPartner(loan: Pick<Loan, 'balanceAmount' | 'settlementCurrency' | 'exchangeRateSnapshot'>, currency: CurrencyCode) {
     const converted = convertCurrencyAmountWithAvailableSnapshot(
         loan.balanceAmount,
@@ -885,6 +904,14 @@ export function useBusinessPartners(workspaceId: string | undefined, filters?: P
                     return false
                 }
 
+                if (isRemovedBusinessPartnerRole(item.role)) {
+                    return false
+                }
+
+                if (!filters?.includeRealEstateRoles && isRealEstateBusinessPartnerRole(item.role)) {
+                    return false
+                }
+
                 if (filters?.roles?.length) {
                     return filters.roles.some((role) => item.role === role || (item.role === 'both' && (role === 'customer' || role === 'supplier')))
                 }
@@ -965,8 +992,11 @@ export function useBusinessPartnerMergeCandidates(workspaceId: string | undefine
 
 export async function createBusinessPartner(
     workspaceId: string,
-    data: Omit<BusinessPartner, 'id' | 'workspaceId' | 'createdAt' | 'updatedAt' | 'syncStatus' | 'lastSyncedAt' | 'version' | 'isDeleted' | 'customerFacetId' | 'supplierFacetId' | 'totalSalesOrders' | 'totalSalesValue' | 'receivableBalance' | 'totalPurchaseOrders' | 'totalPurchaseValue' | 'payableBalance' | 'totalLoanCount' | 'loanOutstandingBalance' | 'netExposure' | 'mergedIntoBusinessPartnerId'>
+    data: Omit<BusinessPartner, 'id' | 'workspaceId' | 'createdAt' | 'updatedAt' | 'syncStatus' | 'lastSyncedAt' | 'version' | 'isDeleted' | 'customerFacetId' | 'supplierFacetId' | 'totalSalesOrders' | 'totalSalesValue' | 'receivableBalance' | 'totalPurchaseOrders' | 'totalPurchaseValue' | 'payableBalance' | 'totalLoanCount' | 'loanOutstandingBalance' | 'netExposure' | 'mergedIntoBusinessPartnerId'>,
+    options?: BusinessPartnerRoleAccessOptions
 ) {
+    assertBusinessPartnerRoleAllowed(data.role, options)
+
     const partner = buildBaseEntity(workspaceId, {
         ...data,
         isEcommerce: data.isEcommerce ?? false,
@@ -1019,13 +1049,14 @@ export async function createBusinessPartner(
     return workingPartner
 }
 
-export async function updateBusinessPartner(id: string, data: Partial<BusinessPartner>) {
+export async function updateBusinessPartner(id: string, data: Partial<BusinessPartner>, options?: BusinessPartnerRoleAccessOptions) {
     const existing = await getPartnerByAnyId(id)
     if (!existing || existing.isDeleted) {
         throw new Error('Business partner not found')
     }
 
     const nextRole = (data.role || existing.role) as BusinessPartnerRole
+    assertBusinessPartnerRoleAllowed(nextRole, options)
     await assertRoleRemovalAllowed(existing, nextRole)
 
     const now = new Date().toISOString()

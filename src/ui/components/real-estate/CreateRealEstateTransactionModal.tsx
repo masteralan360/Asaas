@@ -64,6 +64,12 @@ export function CreateRealEstateTransactionModal({
     const [sellerName, setSellerName] = useState('')
     const [buyerLink, setBuyerLink] = useState<PartyLink>(null)
     const [sellerLink, setSellerLink] = useState<PartyLink>(null)
+    const [buyerWitnessName, setBuyerWitnessName] = useState('')
+    const [buyerWitnessAddress, setBuyerWitnessAddress] = useState('')
+    const [buyerWitnessPhone, setBuyerWitnessPhone] = useState('')
+    const [sellerWitnessName, setSellerWitnessName] = useState('')
+    const [sellerWitnessAddress, setSellerWitnessAddress] = useState('')
+    const [sellerWitnessPhone, setSellerWitnessPhone] = useState('')
     const [landAreaM2, setLandAreaM2] = useState('')
     const [currency, setCurrency] = useState<CurrencyCode>(settlementCurrency)
     const [totalAmount, setTotalAmount] = useState('')
@@ -92,6 +98,12 @@ export function CreateRealEstateTransactionModal({
         setSellerName('')
         setBuyerLink(null)
         setSellerLink(null)
+        setBuyerWitnessName('')
+        setBuyerWitnessAddress('')
+        setBuyerWitnessPhone('')
+        setSellerWitnessName('')
+        setSellerWitnessAddress('')
+        setSellerWitnessPhone('')
         setLandAreaM2('')
         setCurrency(settlementCurrency)
         setTotalAmount('')
@@ -143,7 +155,7 @@ export function CreateRealEstateTransactionModal({
     const handleCreateBuyerPartner = async (payload: BusinessPartnerFormPayload) => {
         setIsSavingBuyer(true)
         try {
-            const partner = await createBusinessPartner(workspaceId, payload)
+            const partner = await createBusinessPartner(workspaceId, payload, { allowRealEstateRoles: features.real_estate })
             toast({ title: t('businessPartners.messages.addSuccess', { defaultValue: 'Business partner created successfully' }) })
             setIsCreateBuyerOpen(false)
             handleBuyerPartnerSelect(partner)
@@ -166,7 +178,7 @@ export function CreateRealEstateTransactionModal({
     const handleCreateSellerPartner = async (payload: BusinessPartnerFormPayload) => {
         setIsSavingSeller(true)
         try {
-            const partner = await createBusinessPartner(workspaceId, payload)
+            const partner = await createBusinessPartner(workspaceId, payload, { allowRealEstateRoles: features.real_estate })
             toast({ title: t('businessPartners.messages.addSuccess', { defaultValue: 'Business partner created successfully' }) })
             setIsCreateSellerOpen(false)
             handleSellerPartnerSelect(partner)
@@ -200,8 +212,14 @@ export function CreateRealEstateTransactionModal({
                 profitAmount: parseFormattedNumber(profitAmount || '0'),
                 buyerName: buyerName.trim(),
                 buyerBusinessPartnerId: buyerLink?.id ?? null,
+                buyerWitnessName,
+                buyerWitnessAddress,
+                buyerWitnessPhone,
                 sellerName: sellerName.trim(),
                 sellerBusinessPartnerId: sellerLink?.id ?? null,
+                sellerWitnessName,
+                sellerWitnessAddress,
+                sellerWitnessPhone,
                 isInstallmentBased,
                 installmentCount,
                 installmentFrequency,
@@ -301,6 +319,7 @@ export function CreateRealEstateTransactionModal({
                                                 workspaceId={workspaceId}
                                                 placeholder={t('realEstate.buyerPlaceholder', { defaultValue: 'Search or enter buyer name' })}
                                                 className="flex-1"
+                                                includeRealEstateRoles={features.real_estate}
                                             />
                                             <Button type="button" size="icon" variant="outline" className="shrink-0" onClick={() => setIsCreateBuyerOpen(true)}>
                                                 <Plus className="h-4 w-4" />
@@ -327,6 +346,7 @@ export function CreateRealEstateTransactionModal({
                                                 workspaceId={workspaceId}
                                                 placeholder={t('realEstate.sellerPlaceholder', { defaultValue: 'Search or enter seller name' })}
                                                 className="flex-1"
+                                                includeRealEstateRoles={features.real_estate}
                                             />
                                             <Button type="button" size="icon" variant="outline" className="shrink-0" onClick={() => setIsCreateSellerOpen(true)}>
                                                 <Plus className="h-4 w-4" />
@@ -337,6 +357,27 @@ export function CreateRealEstateTransactionModal({
                                         ) : null}
                                     </div>
                                 </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                                <WitnessFields
+                                    title={t('realEstate.buyerWitness', { defaultValue: 'Buyer Witness' })}
+                                    name={buyerWitnessName}
+                                    address={buyerWitnessAddress}
+                                    phone={buyerWitnessPhone}
+                                    onNameChange={setBuyerWitnessName}
+                                    onAddressChange={setBuyerWitnessAddress}
+                                    onPhoneChange={setBuyerWitnessPhone}
+                                />
+                                <WitnessFields
+                                    title={t('realEstate.sellerWitness', { defaultValue: 'Seller Witness' })}
+                                    name={sellerWitnessName}
+                                    address={sellerWitnessAddress}
+                                    phone={sellerWitnessPhone}
+                                    onNameChange={setSellerWitnessName}
+                                    onAddressChange={setSellerWitnessAddress}
+                                    onPhoneChange={setSellerWitnessPhone}
+                                />
                             </div>
 
                             <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
@@ -483,7 +524,8 @@ export function CreateRealEstateTransactionModal({
                 onOpenChange={setIsCreateBuyerOpen}
                 defaultCurrency={features.default_currency}
                 availableCurrencies={availableCurrencies}
-                initialRole="customer"
+                initialRole={features.real_estate ? 'buyer' : 'customer'}
+                enableRealEstateRoles={features.real_estate}
                 isSaving={isSavingBuyer}
                 onSubmit={handleCreateBuyerPartner}
             />
@@ -492,12 +534,51 @@ export function CreateRealEstateTransactionModal({
                 onOpenChange={setIsCreateSellerOpen}
                 defaultCurrency={features.default_currency}
                 availableCurrencies={availableCurrencies}
-                initialRole="customer"
+                initialRole={features.real_estate ? 'seller' : 'customer'}
+                enableRealEstateRoles={features.real_estate}
                 isSaving={isSavingSeller}
                 onSubmit={handleCreateSellerPartner}
             />
             </DialogContent>
         </Dialog>
+    )
+}
+
+function WitnessFields({
+    title,
+    name,
+    address,
+    phone,
+    onNameChange,
+    onAddressChange,
+    onPhoneChange
+}: {
+    title: string
+    name: string
+    address: string
+    phone: string
+    onNameChange: (value: string) => void
+    onAddressChange: (value: string) => void
+    onPhoneChange: (value: string) => void
+}) {
+    const { t } = useTranslation()
+
+    return (
+        <div className="grid gap-3 rounded-2xl border bg-muted/20 p-4">
+            <div className="text-sm font-semibold">{title}</div>
+            <div className="grid gap-2">
+                <Label>{t('common.name', { defaultValue: 'Name' })}</Label>
+                <Input value={name} onChange={(event) => onNameChange(event.target.value)} />
+            </div>
+            <div className="grid gap-2">
+                <Label>{t('customers.form.address', { defaultValue: 'Address' })}</Label>
+                <Input value={address} onChange={(event) => onAddressChange(event.target.value)} />
+            </div>
+            <div className="grid gap-2">
+                <Label>{t('realEstate.witnessPhone', { defaultValue: 'Phone Number' })}</Label>
+                <Input value={phone} onChange={(event) => onPhoneChange(event.target.value)} />
+            </div>
+        </div>
     )
 }
 

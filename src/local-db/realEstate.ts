@@ -275,6 +275,11 @@ function getRealEstatePaymentCounterparty(transaction: Pick<RealEstateTransactio
     return transaction.transactionType === 'buy' ? transaction.sellerName : transaction.buyerName
 }
 
+function normalizeOptionalText(value?: string | null) {
+    const text = String(value || '').trim()
+    return text || null
+}
+
 async function appendRealEstatePaymentTransaction(
     transaction: RealEstateTransaction,
     payment: RealEstatePayment,
@@ -326,8 +331,14 @@ export interface CreateRealEstateTransactionInput {
     profitAmount?: number
     buyerName: string
     buyerBusinessPartnerId?: string | null
+    buyerWitnessName?: string | null
+    buyerWitnessAddress?: string | null
+    buyerWitnessPhone?: string | null
     sellerName: string
     sellerBusinessPartnerId?: string | null
+    sellerWitnessName?: string | null
+    sellerWitnessAddress?: string | null
+    sellerWitnessPhone?: string | null
     isInstallmentBased?: boolean
     installmentCount?: number
     installmentFrequency?: InstallmentFrequency
@@ -420,8 +431,14 @@ export async function createRealEstateTransaction(
         profitAmount,
         buyerName,
         buyerBusinessPartnerId,
+        buyerWitnessName: normalizeOptionalText(input.buyerWitnessName),
+        buyerWitnessAddress: normalizeOptionalText(input.buyerWitnessAddress),
+        buyerWitnessPhone: normalizeOptionalText(input.buyerWitnessPhone),
         sellerName,
         sellerBusinessPartnerId,
+        sellerWitnessName: normalizeOptionalText(input.sellerWitnessName),
+        sellerWitnessAddress: normalizeOptionalText(input.sellerWitnessAddress),
+        sellerWitnessPhone: normalizeOptionalText(input.sellerWitnessPhone),
         isInstallmentBased: shouldCreateInstallments,
         installmentCount: installments.length,
         installmentFrequency,

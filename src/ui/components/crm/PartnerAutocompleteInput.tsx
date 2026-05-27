@@ -14,6 +14,7 @@ interface PartnerAutocompleteInputProps {
     placeholder?: string
     className?: string
     disabled?: boolean
+    includeRealEstateRoles?: boolean
 }
 
 export function PartnerAutocompleteInput({
@@ -23,10 +24,11 @@ export function PartnerAutocompleteInput({
     workspaceId,
     placeholder,
     className,
-    disabled
+    disabled,
+    includeRealEstateRoles = false
 }: PartnerAutocompleteInputProps) {
     const { t } = useTranslation()
-    const partners = useBusinessPartners(workspaceId) || []
+    const partners = useBusinessPartners(workspaceId, { includeRealEstateRoles }) || []
     const [isFocused, setIsFocused] = useState(false)
     const [justSelected, setJustSelected] = useState(false)
     const containerRef = useRef<HTMLDivElement>(null)
@@ -102,7 +104,11 @@ export function PartnerAutocompleteInput({
                                     ? t('businessPartners.roles.both', { defaultValue: 'Both' })
                                     : partner.role === 'supplier'
                                         ? t('suppliers.title', { defaultValue: 'Supplier' })
-                                        : t('customers.title', { defaultValue: 'Customer' })}
+                                        : partner.role === 'buyer'
+                                            ? t('businessPartners.roles.buyer', { defaultValue: 'Buyer' })
+                                            : partner.role === 'seller'
+                                                ? t('businessPartners.roles.seller', { defaultValue: 'Seller' })
+                                                : t('customers.title', { defaultValue: 'Customer' })}
                             </span>
                         </button>
                     ))}

@@ -1098,6 +1098,7 @@ export function PdfPreviewPage() {
                                         type={f.type}
                                         className="text-sm"
                                         inputClassName="w-full"
+                                        placeholder={f.placeholder}
                                     />
                                 </div>
                             ))}

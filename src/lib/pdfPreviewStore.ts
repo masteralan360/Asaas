@@ -8,6 +8,7 @@ export type TemplatePreviewField = {
     label: string
     value: string
     type: 'text' | 'number' | 'date'
+    placeholder?: string
 }
 
 export type TemplatePreviewRenderOptions = {

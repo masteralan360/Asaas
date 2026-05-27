@@ -58,6 +58,21 @@ type CustomTemplatePreviewOptions = {
     workspaceFooterContacts?: WorkspaceFooterContacts
 }
 
+const REAL_ESTATE_BUY_FIELD_PLACEHOLDERS = {
+    sellerWitnessName: 'ناوی شاهیدی فرۆشیار بنووسە',
+    sellerWitnessAddress: 'ناونیشانی شاهیدی فرۆشیار بنووسە',
+    sellerWitnessPhone: 'ژمارەی تەلەفۆنی شاهیدی فرۆشیار بنووسە',
+    sellerSignatureName: 'ناوی فرۆشیار بنووسە',
+    sellerSignatureAddress: 'ناونیشانی فرۆشیار بنووسە',
+    sellerSignaturePhone: 'ژمارەی تەلەفۆنی فرۆشیار بنووسە',
+    buyerSignatureName: 'ناوی کڕیار بنووسە',
+    buyerSignatureAddress: 'ناونیشانی کڕیار بنووسە',
+    buyerSignaturePhone: 'ژمارەی تەلەفۆنی کڕیار بنووسە',
+    buyerWitnessName: 'ناوی شاهیدی کڕیار بنووسە',
+    buyerWitnessAddress: 'ناونیشانی شاهیدی کڕیار بنووسە',
+    buyerWitnessPhone: 'ژمارەی تەلەفۆنی شاهیدی کڕیار بنووسە'
+}
+
 const REAL_ESTATE_BUY_FIELDS = [
     { key: 'receiptNumber', label: 'ژمارەی وصل', value: '3', type: 'text' as const },
     { key: 'sellerName', label: 'ناوی فرۆشیار', value: '', type: 'text' as const },
@@ -75,18 +90,18 @@ const REAL_ESTATE_BUY_FIELDS = [
     { key: 'contractRow9', label: 'Row 9', value: '', type: 'text' as const },
     { key: 'contractRow10', label: 'Row 10', value: '', type: 'text' as const },
     { key: 'contractRow11', label: 'Row 11', value: '', type: 'text' as const },
-    { key: 'sellerWitnessName', label: 'شاهیدی فرۆشیار', value: 'چیوار ئەسعد احمد', type: 'text' as const },
-    { key: 'sellerWitnessRole', label: 'کاری شاهیدی فرۆشیار', value: 'قەفازی', type: 'text' as const },
-    { key: 'sellerWitnessPhone', label: 'ژمارەی شاهیدی فرۆشیار', value: '07501114345', type: 'text' as const },
-    { key: 'sellerSignatureName', label: 'واژۆی فرۆشیار', value: '', type: 'text' as const },
-    { key: 'sellerSignatureRole', label: 'کاری فرۆشیار', value: 'ڕایە', type: 'text' as const },
-    { key: 'sellerSignaturePhone', label: 'ژمارەی فرۆشیار', value: '07571112545', type: 'text' as const },
-    { key: 'buyerSignatureName', label: 'واژۆی کڕیار', value: '', type: 'text' as const },
-    { key: 'buyerSignatureRole', label: 'کاری کڕیار', value: 'ڕایە', type: 'text' as const },
-    { key: 'buyerSignaturePhone', label: 'ژمارەی کڕیار', value: '07501199745', type: 'text' as const },
-    { key: 'buyerWitnessName', label: 'شاهیدی کڕیار', value: 'ئه‌حمه‌د حه‌سه‌ن عه‌لی', type: 'text' as const },
-    { key: 'buyerWitnessRole', label: 'کاری شاهیدی کڕیار', value: 'قەفازی', type: 'text' as const },
-    { key: 'buyerWitnessPhone', label: 'ژمارەی شاهیدی کڕیار', value: '07501112345', type: 'text' as const },
+    { key: 'sellerWitnessName', label: 'شاهیدی فرۆشیار', value: '', type: 'text' as const, placeholder: REAL_ESTATE_BUY_FIELD_PLACEHOLDERS.sellerWitnessName },
+    { key: 'sellerWitnessAddress', label: 'ناونیشانی شاهیدی فرۆشیار', value: '', type: 'text' as const, placeholder: REAL_ESTATE_BUY_FIELD_PLACEHOLDERS.sellerWitnessAddress },
+    { key: 'sellerWitnessPhone', label: 'ژمارەی شاهیدی فرۆشیار', value: '', type: 'text' as const, placeholder: REAL_ESTATE_BUY_FIELD_PLACEHOLDERS.sellerWitnessPhone },
+    { key: 'sellerSignatureName', label: 'واژۆی فرۆشیار', value: '', type: 'text' as const, placeholder: REAL_ESTATE_BUY_FIELD_PLACEHOLDERS.sellerSignatureName },
+    { key: 'sellerSignatureAddress', label: 'ناونیشانی فرۆشیار', value: '', type: 'text' as const, placeholder: REAL_ESTATE_BUY_FIELD_PLACEHOLDERS.sellerSignatureAddress },
+    { key: 'sellerSignaturePhone', label: 'ژمارەی فرۆشیار', value: '', type: 'text' as const, placeholder: REAL_ESTATE_BUY_FIELD_PLACEHOLDERS.sellerSignaturePhone },
+    { key: 'buyerSignatureName', label: 'واژۆی کڕیار', value: '', type: 'text' as const, placeholder: REAL_ESTATE_BUY_FIELD_PLACEHOLDERS.buyerSignatureName },
+    { key: 'buyerSignatureAddress', label: 'ناونیشانی کڕیار', value: '', type: 'text' as const, placeholder: REAL_ESTATE_BUY_FIELD_PLACEHOLDERS.buyerSignatureAddress },
+    { key: 'buyerSignaturePhone', label: 'ژمارەی کڕیار', value: '', type: 'text' as const, placeholder: REAL_ESTATE_BUY_FIELD_PLACEHOLDERS.buyerSignaturePhone },
+    { key: 'buyerWitnessName', label: 'شاهیدی کڕیار', value: '', type: 'text' as const, placeholder: REAL_ESTATE_BUY_FIELD_PLACEHOLDERS.buyerWitnessName },
+    { key: 'buyerWitnessAddress', label: 'ناونیشانی شاهیدی کڕیار', value: '', type: 'text' as const, placeholder: REAL_ESTATE_BUY_FIELD_PLACEHOLDERS.buyerWitnessAddress },
+    { key: 'buyerWitnessPhone', label: 'ژمارەی شاهیدی کڕیار', value: '', type: 'text' as const, placeholder: REAL_ESTATE_BUY_FIELD_PLACEHOLDERS.buyerWitnessPhone },
     { key: 'note', label: 'تێبینی', value: 'Note', type: 'text' as const }
 ]
 
@@ -115,6 +130,7 @@ function createRealEstateBuyPreview(options: CustomTemplatePreviewOptions): Temp
                 workspaceFooterContacts={options.workspaceFooterContacts}
                 editableFields={renderOptions?.editableFields}
                 fieldTypes={REAL_ESTATE_BUY_FIELD_TYPES}
+                fieldPlaceholders={REAL_ESTATE_BUY_FIELD_PLACEHOLDERS}
                 onFieldChange={renderOptions?.onFieldChange}
             />
         ),

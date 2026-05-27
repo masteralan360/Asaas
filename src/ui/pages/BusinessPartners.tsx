@@ -48,6 +48,10 @@ function roleLabel(role: BusinessPartnerRole, t: (key: string, options?: Record<
             return t('customers.title') || 'Customer'
         case 'supplier':
             return t('suppliers.title') || 'Supplier'
+        case 'buyer':
+            return t('businessPartners.roles.buyer', { defaultValue: 'Buyer' })
+        case 'seller':
+            return t('businessPartners.roles.seller', { defaultValue: 'Seller' })
         default:
             return t('businessPartners.roles.both') || 'Both'
     }
@@ -79,7 +83,7 @@ export function BusinessPartners() {
     const { features } = useWorkspace()
     const { toast } = useToast()
     const [, navigate] = useLocation()
-    const partners = useBusinessPartners(user?.workspaceId)
+    const partners = useBusinessPartners(user?.workspaceId, { includeRealEstateRoles: features.real_estate })
     const mergeCandidates = useBusinessPartnerMergeCandidates(user?.workspaceId)
     const [search, setSearch] = useState('')
     const [activeTab, setActiveTab] = useState<'partners' | 'merge-review'>('partners')
@@ -166,10 +170,10 @@ export function BusinessPartners() {
         setIsSaving(true)
         try {
             if (editingPartner) {
-                await updateBusinessPartner(editingPartner.id, payload)
+                await updateBusinessPartner(editingPartner.id, payload, { allowRealEstateRoles: features.real_estate })
                 toast({ title: t('businessPartners.messages.updateSuccess') || 'Business partner updated successfully' })
             } else {
-                await createBusinessPartner(user.workspaceId, payload)
+                await createBusinessPartner(user.workspaceId, payload, { allowRealEstateRoles: features.real_estate })
                 toast({ title: t('businessPartners.messages.addSuccess') || 'Business partner created successfully' })
             }
 
@@ -377,7 +381,9 @@ export function BusinessPartners() {
                                                         ? 'inline-flex rounded-full border border-primary/20 bg-primary/10 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-primary'
                                                         : partner.role === 'customer'
                                                             ? 'inline-flex rounded-full border border-secondary bg-secondary px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-secondary-foreground'
-                                                            : 'inline-flex rounded-full border border-border bg-background px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-foreground'}>
+                                                            : partner.role === 'supplier'
+                                                                ? 'inline-flex rounded-full border border-border bg-background px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-foreground'
+                                                                : 'inline-flex rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-emerald-700 dark:text-emerald-300'}>
                                                         {roleLabel(partner.role, t)}
                                                     </span>
                                                 </TableCell>
@@ -475,6 +481,7 @@ export function BusinessPartners() {
                 partner={editingPartner}
                 defaultCurrency={features.default_currency}
                 availableCurrencies={availableCurrencies}
+                enableRealEstateRoles={features.real_estate}
                 isSaving={isSaving}
                 onSubmit={handleSubmit}
             />

@@ -1,7 +1,13 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import type { BusinessPartner, BusinessPartnerRole, CurrencyCode } from '@/local-db'
+import {
+    REAL_ESTATE_BUSINESS_PARTNER_ROLES,
+    isRealEstateBusinessPartnerRole,
+    type BusinessPartner,
+    type BusinessPartnerRole,
+    type CurrencyCode
+} from '@/local-db'
 import {
     Button,
     Dialog,
@@ -88,6 +94,7 @@ interface BusinessPartnerFormDialogProps {
     defaultCurrency: CurrencyCode
     availableCurrencies: CurrencyCode[]
     initialRole?: BusinessPartnerRole
+    enableRealEstateRoles?: boolean
     isSaving?: boolean
     title?: string
     submitLabel?: string
@@ -101,6 +108,7 @@ export function BusinessPartnerFormDialog({
     defaultCurrency,
     availableCurrencies,
     initialRole = DEFAULT_ROLE,
+    enableRealEstateRoles = false,
     isSaving = false,
     title,
     submitLabel,
@@ -108,18 +116,50 @@ export function BusinessPartnerFormDialog({
 }: BusinessPartnerFormDialogProps) {
     const { t } = useTranslation()
     const [formState, setFormState] = useState<BusinessPartnerFormState>(() => createEmptyState(defaultCurrency, initialRole))
+    const roleOptions = useMemo<Array<{ value: BusinessPartnerRole; label: string }>>(() => {
+        const options: Array<{ value: BusinessPartnerRole; label: string }> = [
+            { value: 'both', label: t('businessPartners.roles.both') || 'Both' },
+            { value: 'customer', label: t('customers.title') || 'Customer' },
+            { value: 'supplier', label: t('suppliers.title') || 'Supplier' }
+        ]
+
+        if (enableRealEstateRoles) {
+            const labels = {
+                buyer: t('businessPartners.roles.buyer', { defaultValue: 'Buyer' }),
+                seller: t('businessPartners.roles.seller', { defaultValue: 'Seller' })
+            } satisfies Record<(typeof REAL_ESTATE_BUSINESS_PARTNER_ROLES)[number], string>
+            options.push(...REAL_ESTATE_BUSINESS_PARTNER_ROLES.map((role) => ({
+                value: role,
+                label: labels[role]
+            })))
+        }
+
+        return options
+    }, [enableRealEstateRoles, t])
+
+    const normalizeAllowedRole = (role: BusinessPartnerRole): BusinessPartnerRole => {
+        if (enableRealEstateRoles || !isRealEstateBusinessPartnerRole(role)) {
+            return role
+        }
+
+        return DEFAULT_ROLE
+    }
 
     useEffect(() => {
         if (!isOpen) {
             return
         }
 
-        setFormState(
+        const nextState =
             partner
                 ? mapPartnerToState(partner)
                 : createEmptyState(defaultCurrency, initialRole)
-        )
-    }, [defaultCurrency, initialRole, isOpen, partner])
+
+        setFormState({
+            ...nextState,
+            role: normalizeAllowedRole(nextState.role)
+        })
+    }, [defaultCurrency, enableRealEstateRoles, initialRole, isOpen, partner])
 
     async function handleSubmit(event: FormEvent) {
         event.preventDefault()
@@ -193,9 +233,9 @@ export function BusinessPartnerFormDialog({
                                         <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="both">{t('businessPartners.roles.both') || 'Both'}</SelectItem>
-                                        <SelectItem value="customer">{t('customers.title') || 'Customer'}</SelectItem>
-                                        <SelectItem value="supplier">{t('suppliers.title') || 'Supplier'}</SelectItem>
+                                        {roleOptions.map((role) => (
+                                            <SelectItem key={role.value} value={role.value}>{role.label}</SelectItem>
+                                        ))}
                                     </SelectContent>
                                 </Select>
                             </div>

@@ -31,7 +31,7 @@ CREATE TABLE crm.business_partners (
   version bigint NULL DEFAULT 1,
   is_deleted boolean NULL DEFAULT false,
   CONSTRAINT business_partners_role_check CHECK (
-    role IN ('customer', 'supplier', 'both')
+    role IN ('customer', 'supplier', 'both', 'buyer', 'seller')
   ),
   PRIMARY KEY (id)
 );

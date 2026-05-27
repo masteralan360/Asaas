@@ -17,6 +17,7 @@ import {
     usePaymentTransactions,
     useSupplierPurchaseOrders,
     useSupplierTravelAgencySales,
+    type BusinessPartnerRole,
     type Loan,
     type PurchaseOrder,
     type PaymentTransaction,
@@ -62,20 +63,24 @@ type RelatedTransaction = {
 }
 type TranslationFn = (key: string, options?: Record<string, unknown>) => string
 
-function roleIncludesCustomer(role: 'customer' | 'supplier' | 'both') {
+function roleIncludesCustomer(role: BusinessPartnerRole) {
     return role === 'customer' || role === 'both'
 }
 
-function roleIncludesSupplier(role: 'customer' | 'supplier' | 'both') {
+function roleIncludesSupplier(role: BusinessPartnerRole) {
     return role === 'supplier' || role === 'both'
 }
 
-function roleBadgeLabel(role: 'customer' | 'supplier' | 'both', t: TranslationFn) {
+function roleBadgeLabel(role: BusinessPartnerRole, t: TranslationFn) {
     switch (role) {
         case 'customer':
             return t('customers.title', { defaultValue: 'Customer' })
         case 'supplier':
             return t('suppliers.title', { defaultValue: 'Supplier' })
+        case 'buyer':
+            return t('businessPartners.roles.buyer', { defaultValue: 'Buyer' })
+        case 'seller':
+            return t('businessPartners.roles.seller', { defaultValue: 'Seller' })
         default:
             return t('businessPartners.roles.both', { defaultValue: 'Both' })
     }

@@ -27,6 +27,7 @@ type RealEstateBuyPrintTemplateProps = {
     workspaceFooterContacts?: WorkspaceFooterContacts
     editableFields?: boolean
     fieldTypes?: Record<string, RealEstateBuyFieldType>
+    fieldPlaceholders?: Record<string, string>
     onFieldChange?: (key: string, value: string) => void
 }
 
@@ -51,6 +52,7 @@ function TemplateField({
     values,
     fieldKey,
     fallback,
+    placeholder,
     editable,
     type = 'text',
     onFieldChange
@@ -58,6 +60,7 @@ function TemplateField({
     values: RealEstateBuyTemplateValues
     fieldKey: string
     fallback?: string
+    placeholder?: string
     editable?: boolean
     type?: RealEstateBuyFieldType
     onFieldChange?: (key: string, value: string) => void
@@ -74,6 +77,7 @@ function TemplateField({
             inputMode={type === 'number' ? 'decimal' : undefined}
             value={currentValue}
             aria-label={fieldKey}
+            placeholder={placeholder}
             onPointerDown={(event) => event.stopPropagation()}
             onClick={(event) => {
                 event.stopPropagation()
@@ -122,7 +126,8 @@ function FreeWriteTermRow({
     const showIndex = index === 1 || text.trim().length > 0
 
     return (
-        <div className="grid min-h-[11.8mm] grid-cols-[1fr_auto] gap-1 border-b border-dotted border-zinc-300 py-[1.6mm] leading-[1.8]">
+        <div className="grid min-h-[11.8mm] grid-cols-[auto_1fr] gap-1 border-b border-dotted border-zinc-300 py-[1.6mm] leading-[1.8]">
+            <div dir="ltr" className={showIndex ? 'min-w-[7mm] text-right font-bold' : 'min-w-[7mm] text-right font-bold opacity-0'}>{index} -</div>
             <div className="min-w-0">
                 {editable ? (
                     <textarea
@@ -139,7 +144,6 @@ function FreeWriteTermRow({
                     <div className="min-h-[8.4mm] whitespace-pre-wrap text-right">{text}</div>
                 )}
             </div>
-            <div className={showIndex ? 'font-bold' : 'font-bold opacity-0'}>{index} -</div>
         </div>
     )
 }
@@ -147,19 +151,19 @@ function FreeWriteTermRow({
 function SignatureBox({
     title,
     name,
-    role,
+    address,
     phone
 }: {
     title: string
     name: ReactNode
-    role: ReactNode
+    address: ReactNode
     phone: ReactNode
 }) {
     return (
         <div className="flex min-h-[29mm] flex-col items-center justify-center gap-[2mm] px-2 text-center">
             <div className="text-[8.5px] font-bold">{title}</div>
             <UnderlineValue width="34mm">{name}</UnderlineValue>
-            <UnderlineValue width="34mm">{role}</UnderlineValue>
+            <UnderlineValue width="34mm">{address}</UnderlineValue>
             <div className="min-w-[34mm] text-[8px] font-bold" dir="ltr">{phone}</div>
         </div>
     )
@@ -173,6 +177,7 @@ export function RealEstateBuyPrintTemplate({
     workspaceFooterContacts,
     editableFields,
     fieldTypes,
+    fieldPlaceholders,
     onFieldChange
 }: RealEstateBuyPrintTemplateProps) {
     const logoSrc = resolveLogoSrc(logoUrl)
@@ -184,6 +189,18 @@ export function RealEstateBuyPrintTemplate({
             values={values}
             fieldKey={fieldKey}
             fallback={fallback}
+            placeholder={fieldPlaceholders?.[fieldKey]}
+            editable={editableFields}
+            type={fieldTypes?.[fieldKey] || 'text'}
+            onFieldChange={onFieldChange}
+        />
+    )
+    const fieldWithLegacyFallback = (fieldKey: string, legacyFieldKey: string, fallback = '') => (
+        <TemplateField
+            values={values}
+            fieldKey={fieldKey}
+            fallback={String(values[fieldKey]?.trim() ? values[fieldKey] : values[legacyFieldKey] ?? fallback)}
+            placeholder={fieldPlaceholders?.[fieldKey]}
             editable={editableFields}
             type={fieldTypes?.[fieldKey] || 'text'}
             onFieldChange={onFieldChange}
@@ -269,15 +286,15 @@ export function RealEstateBuyPrintTemplate({
                 <section className="px-[2mm] py-[4mm]">
                     <div className="grid grid-cols-2 gap-x-[12mm] text-[8.5px] font-bold">
                         <div className="grid grid-cols-[auto_1fr_auto_1fr] items-center gap-x-1 border-b border-black py-[1.5mm]">
-                            <span>لەیەنی یەکەم / فرۆشیار :</span>
+                            <span>لایەنی یەکەم / فرۆشیار :</span>
                             <UnderlineValue>{field('sellerName', '')}</UnderlineValue>
-                            <span>پەیاس :</span>
+                            <span>پێناس :</span>
                             <UnderlineValue>{field('sellerPhone', 'ناسراوه')}</UnderlineValue>
                         </div>
                         <div className="grid grid-cols-[auto_1fr_auto_1fr] items-center gap-x-1 border-b border-black py-[1.5mm]">
-                            <span>لەیەنی دووەم / کڕیار :</span>
+                            <span>لایەنی دووەم / کڕیار :</span>
                             <UnderlineValue>{field('buyerName', '')}</UnderlineValue>
-                            <span>پەیاس :</span>
+                            <span>پێناس :</span>
                             <UnderlineValue>{field('buyerPhone', 'ناسراوه')}</UnderlineValue>
                         </div>
                     </div>
@@ -300,27 +317,27 @@ export function RealEstateBuyPrintTemplate({
                     <div className="grid grid-cols-4 divide-x divide-zinc-400 divide-x-reverse">
                         <SignatureBox
                             title="شاهید:"
-                            name={field('sellerWitnessName', 'چیوار ئەسعد احمد')}
-                            role={field('sellerWitnessRole', 'قەفازی')}
-                            phone={field('sellerWitnessPhone', '07501114345')}
+                            name={field('sellerWitnessName', '')}
+                            address={fieldWithLegacyFallback('sellerWitnessAddress', 'sellerWitnessRole')}
+                            phone={field('sellerWitnessPhone', '')}
                         />
                         <SignatureBox
-                            title="لەیەنی یەکەم (فرۆشیار):"
+                            title="لایەنی یەکەم (فرۆشیار):"
                             name={field('sellerSignatureName', '')}
-                            role={field('sellerSignatureRole', 'ڕایە')}
-                            phone={field('sellerSignaturePhone', '07571112545')}
+                            address={fieldWithLegacyFallback('sellerSignatureAddress', 'sellerSignatureRole')}
+                            phone={field('sellerSignaturePhone', '')}
                         />
                         <SignatureBox
-                            title="لەیەنی دووەم (کڕیار):"
+                            title="لایەنی دووەم (کڕیار):"
                             name={field('buyerSignatureName', '')}
-                            role={field('buyerSignatureRole', 'ڕایە')}
-                            phone={field('buyerSignaturePhone', '07501199745')}
+                            address={fieldWithLegacyFallback('buyerSignatureAddress', 'buyerSignatureRole')}
+                            phone={field('buyerSignaturePhone', '')}
                         />
                         <SignatureBox
                             title="شاهید:"
-                            name={field('buyerWitnessName', 'ئه‌حمه‌د حه‌سه‌ن عه‌لی')}
-                            role={field('buyerWitnessRole', 'قەفازی')}
-                            phone={field('buyerWitnessPhone', '07501112345')}
+                            name={field('buyerWitnessName', '')}
+                            address={fieldWithLegacyFallback('buyerWitnessAddress', 'buyerWitnessRole')}
+                            phone={field('buyerWitnessPhone', '')}
                         />
                     </div>
                     <div className="flex justify-start border-t border-zinc-300 px-[2mm] py-[2mm]">
