@@ -55,7 +55,7 @@ const LanguageSelector = ({ value, onChange }: { value: string, onChange: (val: 
                 <Languages className="h-3.5 w-3.5" />
                 <span className="text-[11px] font-bold whitespace-nowrap">{currentLabel}</span>
             </button>
-            
+
             {isOpen && (
                 <div className="absolute top-full left-0 mt-1.5 w-32 bg-card border rounded-lg shadow-xl py-1 z-50 animate-in fade-in zoom-in duration-100">
                     {languages.map((lang) => (
@@ -583,126 +583,126 @@ export function PdfPreviewPage() {
                             >
                                 <Hand className="h-3.5 w-3.5" />
                             </button>
-                        <div className="w-px h-3 bg-border mx-0.5" />
-                        {isAdmin && (
-                            <>
-                                <div className="relative group/tool">
-                                    <button
-                                        onClick={() => {
-                                            setDrawingMode(prev => prev === 'pen' ? 'none' : 'pen')
-                                            setBrushSize(2)
-                                        }}
-                                        className={cn(
-                                            "h-7 w-7 inline-flex items-center justify-center rounded transition-colors",
-                                            drawingMode === 'pen' ? "bg-primary text-primary-foreground" : "hover:bg-accent text-muted-foreground"
-                                        )}
-                                        title="Pen Tool"
-                                    >
-                                        <PenTool className="h-3.5 w-3.5" />
-                                    </button>
-                                    <div className="absolute top-full left-1/2 -translate-x-1/2 pt-1.5 opacity-0 pointer-events-none group-hover/tool:opacity-100 group-hover/tool:pointer-events-auto transition-all z-50">
-                                        <div className="bg-card border rounded-lg shadow-xl p-1 flex flex-col gap-0.5 min-w-[40px] items-center">
-                                            {[1, 2, 3, 5].map(size => (
-                                                <button
-                                                    key={size}
-                                                    onClick={() => {
-                                                        setBrushSize(size)
-                                                        setDrawingMode('pen')
-                                                    }}
-                                                    className={cn(
-                                                        "w-8 h-6 flex items-center justify-center rounded hover:bg-accent text-[10px] font-bold transition-colors",
-                                                        brushSize === size && drawingMode === 'pen' ? "text-primary" : "text-muted-foreground"
-                                                    )}
-                                                >
-                                                    {size}px
-                                                </button>
-                                            ))}
+                            <div className="w-px h-3 bg-border mx-0.5" />
+                            {isAdmin && (
+                                <>
+                                    <div className="relative group/tool">
+                                        <button
+                                            onClick={() => {
+                                                setDrawingMode(prev => prev === 'pen' ? 'none' : 'pen')
+                                                setBrushSize(2)
+                                            }}
+                                            className={cn(
+                                                "h-7 w-7 inline-flex items-center justify-center rounded transition-colors",
+                                                drawingMode === 'pen' ? "bg-primary text-primary-foreground" : "hover:bg-accent text-muted-foreground"
+                                            )}
+                                            title="Pen Tool"
+                                        >
+                                            <PenTool className="h-3.5 w-3.5" />
+                                        </button>
+                                        <div className="absolute top-full left-1/2 -translate-x-1/2 pt-1.5 opacity-0 pointer-events-none group-hover/tool:opacity-100 group-hover/tool:pointer-events-auto transition-all z-50">
+                                            <div className="bg-card border rounded-lg shadow-xl p-1 flex flex-col gap-0.5 min-w-[40px] items-center">
+                                                {[1, 2, 3, 5].map(size => (
+                                                    <button
+                                                        key={size}
+                                                        onClick={() => {
+                                                            setBrushSize(size)
+                                                            setDrawingMode('pen')
+                                                        }}
+                                                        className={cn(
+                                                            "w-8 h-6 flex items-center justify-center rounded hover:bg-accent text-[10px] font-bold transition-colors",
+                                                            brushSize === size && drawingMode === 'pen' ? "text-primary" : "text-muted-foreground"
+                                                        )}
+                                                    >
+                                                        {size}px
+                                                    </button>
+                                                ))}
+                                            </div>
                                         </div>
                                     </div>
-                                </div>
 
-                                <div className="relative group/tool">
-                                    <button
-                                        onClick={() => {
-                                            setDrawingMode(prev => prev === 'brush' ? 'none' : 'brush')
-                                            setBrushSize(10)
-                                        }}
-                                        className={cn(
-                                            "h-7 w-7 inline-flex items-center justify-center rounded transition-colors",
-                                            drawingMode === 'brush' ? "bg-primary text-primary-foreground" : "hover:bg-accent text-muted-foreground"
-                                        )}
-                                        title="Brush Tool"
-                                    >
-                                        <Brush className="h-3.5 w-3.5" />
-                                    </button>
-                                    <div className="absolute top-full left-1/2 -translate-x-1/2 pt-1.5 opacity-0 pointer-events-none group-hover/tool:opacity-100 group-hover/tool:pointer-events-auto transition-all z-50">
-                                        <div className="bg-card border rounded-lg shadow-xl p-1 flex flex-col gap-0.5 min-w-[40px] items-center">
-                                            {[8, 12, 16, 24].map(size => (
-                                                <button
-                                                    key={size}
-                                                    onClick={() => {
-                                                        setBrushSize(size)
-                                                        setDrawingMode('brush')
-                                                    }}
-                                                    className={cn(
-                                                        "w-8 h-6 flex items-center justify-center rounded hover:bg-accent text-[10px] font-bold transition-colors",
-                                                        brushSize === size && drawingMode === 'brush' ? "text-primary" : "text-muted-foreground"
-                                                    )}
-                                                >
-                                                    {size}px
-                                                </button>
-                                            ))}
+                                    <div className="relative group/tool">
+                                        <button
+                                            onClick={() => {
+                                                setDrawingMode(prev => prev === 'brush' ? 'none' : 'brush')
+                                                setBrushSize(10)
+                                            }}
+                                            className={cn(
+                                                "h-7 w-7 inline-flex items-center justify-center rounded transition-colors",
+                                                drawingMode === 'brush' ? "bg-primary text-primary-foreground" : "hover:bg-accent text-muted-foreground"
+                                            )}
+                                            title="Brush Tool"
+                                        >
+                                            <Brush className="h-3.5 w-3.5" />
+                                        </button>
+                                        <div className="absolute top-full left-1/2 -translate-x-1/2 pt-1.5 opacity-0 pointer-events-none group-hover/tool:opacity-100 group-hover/tool:pointer-events-auto transition-all z-50">
+                                            <div className="bg-card border rounded-lg shadow-xl p-1 flex flex-col gap-0.5 min-w-[40px] items-center">
+                                                {[8, 12, 16, 24].map(size => (
+                                                    <button
+                                                        key={size}
+                                                        onClick={() => {
+                                                            setBrushSize(size)
+                                                            setDrawingMode('brush')
+                                                        }}
+                                                        className={cn(
+                                                            "w-8 h-6 flex items-center justify-center rounded hover:bg-accent text-[10px] font-bold transition-colors",
+                                                            brushSize === size && drawingMode === 'brush' ? "text-primary" : "text-muted-foreground"
+                                                        )}
+                                                    >
+                                                        {size}px
+                                                    </button>
+                                                ))}
+                                            </div>
                                         </div>
                                     </div>
-                                </div>
 
-                                <div className="relative group">
-                                    <button className="h-7 w-7 inline-flex items-center justify-center rounded hover:bg-accent text-muted-foreground transition-colors group-hover:bg-accent">
-                                        <Palette className="h-3.5 w-3.5" style={{ color: brushColor }} />
-                                    </button>
-                                    <div className="absolute top-full left-0 pt-1.5 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-all z-50">
-                                        <div className="p-2 bg-card border rounded-md shadow-lg flex gap-1 items-center">
-                                            {['#ef4444', '#22c55e', '#3b82f6', '#f59e0b', '#000000'].map(c => (
-                                                <button
-                                                    key={c}
-                                                    onClick={() => setBrushColor(c)}
-                                                    className="w-5 h-5 rounded-full border border-border hover:scale-110 transition-transform"
-                                                    style={{ backgroundColor: c }}
+                                    <div className="relative group">
+                                        <button className="h-7 w-7 inline-flex items-center justify-center rounded hover:bg-accent text-muted-foreground transition-colors group-hover:bg-accent">
+                                            <Palette className="h-3.5 w-3.5" style={{ color: brushColor }} />
+                                        </button>
+                                        <div className="absolute top-full left-0 pt-1.5 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-all z-50">
+                                            <div className="p-2 bg-card border rounded-md shadow-lg flex gap-1 items-center">
+                                                {['#ef4444', '#22c55e', '#3b82f6', '#f59e0b', '#000000'].map(c => (
+                                                    <button
+                                                        key={c}
+                                                        onClick={() => setBrushColor(c)}
+                                                        className="w-5 h-5 rounded-full border border-border hover:scale-110 transition-transform"
+                                                        style={{ backgroundColor: c }}
+                                                    />
+                                                ))}
+                                                <div className="w-px h-4 bg-border mx-1" />
+                                                <input
+                                                    type="color"
+                                                    value={brushColor}
+                                                    onChange={(e) => setBrushColor(e.target.value)}
+                                                    className="w-5 h-5 border-none p-0 cursor-pointer bg-transparent"
                                                 />
-                                            ))}
-                                            <div className="w-px h-4 bg-border mx-1" />
-                                            <input 
-                                                type="color" 
-                                                value={brushColor} 
-                                                onChange={(e) => setBrushColor(e.target.value)} 
-                                                className="w-5 h-5 border-none p-0 cursor-pointer bg-transparent"
-                                            />
+                                            </div>
                                         </div>
                                     </div>
-                                </div>
-                                <div className="relative group/tool">
+                                    <div className="relative group/tool">
+                                        <button
+                                            onClick={() => {
+                                                setDrawingMode(prev => prev === 'eraser' ? 'none' : 'eraser')
+                                            }}
+                                            className={cn(
+                                                "h-7 w-7 inline-flex items-center justify-center rounded transition-colors",
+                                                drawingMode === 'eraser' ? "bg-primary text-primary-foreground" : "hover:bg-accent text-muted-foreground"
+                                            )}
+                                            title="Eraser Tool"
+                                        >
+                                            <Eraser className="h-3.5 w-3.5" />
+                                        </button>
+                                    </div>
                                     <button
-                                        onClick={() => {
-                                            setDrawingMode(prev => prev === 'eraser' ? 'none' : 'eraser')
-                                        }}
-                                        className={cn(
-                                            "h-7 w-7 inline-flex items-center justify-center rounded transition-colors",
-                                            drawingMode === 'eraser' ? "bg-primary text-primary-foreground" : "hover:bg-accent text-muted-foreground"
-                                        )}
-                                        title="Eraser Tool"
+                                        onClick={() => setIsClearConfirmOpen(true)}
+                                        className="h-7 w-7 inline-flex items-center justify-center rounded hover:bg-accent text-muted-foreground hover:text-destructive"
+                                        title="Clear All Annotations"
                                     >
-                                        <Eraser className="h-3.5 w-3.5" />
+                                        <Trash2 className="h-3.5 w-3.5" />
                                     </button>
-                                </div>
-                                <button
-                                    onClick={() => setIsClearConfirmOpen(true)}
-                                    className="h-7 w-7 inline-flex items-center justify-center rounded hover:bg-accent text-muted-foreground hover:text-destructive"
-                                    title="Clear All Annotations"
-                                >
-                                    <Trash2 className="h-3.5 w-3.5" />
-                                </button>
-                            </>
-                        )}
+                                </>
+                            )}
                         </div>
                     </div>
 
@@ -713,7 +713,7 @@ export function PdfPreviewPage() {
                                 onClick={() => setEditPanelOpen(o => !o)}
                             >
                                 <Edit3 className="h-3.5 w-3.5" />
-                                {editPanelOpen ? (t('common.close') || 'Close') : (t('common.fields') || 'Fields')}
+                                {editPanelOpen ? (t('common.close') || 'Close') : (t('common.fields') || 'Editable Fields')}
                             </button>
                         )}
                         <button
@@ -729,360 +729,360 @@ export function PdfPreviewPage() {
                     </div>
                 </header>
                 <div className="flex flex-1 overflow-hidden">
-                <div className="flex-1 overflow-hidden light" style={{ colorScheme: 'light' }}>
-                    <div className="h-full w-full overflow-auto p-6 bg-slate-100/50 flex flex-col items-center">
-                        <div 
-                            className={cn(
-                                "mx-auto transition-all duration-200 ease-in-out origin-top relative group",
-                                isFitToWidth ? "w-full" : "w-fit"
-                            )}
-                            style={{
-                                transform: isFitToWidth ? 'none' : `scale(${zoom / 100})`,
-                            }}
-                        >
-                            {/* Drawing Overlay for templatePreview */}
-                            <svg 
+                    <div className="flex-1 overflow-hidden light" style={{ colorScheme: 'light' }}>
+                        <div className="h-full w-full overflow-auto p-6 bg-slate-100/50 flex flex-col items-center">
+                            <div
                                 className={cn(
-                                    "absolute inset-0 z-[40] touch-none",
-                                    drawingMode !== 'none' ? "cursor-crosshair" : "pointer-events-none"
+                                    "mx-auto transition-all duration-200 ease-in-out origin-top relative group",
+                                    isFitToWidth ? "w-full" : "w-fit"
                                 )}
-                                viewBox="0 0 210 297"
-                                onPointerDown={handlePointerDown}
-                                onPointerMove={handlePointerMove}
-                                onPointerUp={() => {
-                                    if (!isDrawing || !currentPath) return
-                                    setIsDrawing(false)
-                                    setTemplateAnnotations(prev => [...prev, {
-                                        type: drawingMode as 'pen' | 'brush',
-                                        points: currentPath,
-                                        color: brushColor,
-                                        brushSize: brushSize
-                                    }])
-                                    setCurrentPath(null)
-                                }}
-                                onPointerLeave={() => {
-                                    if (!isDrawing || !currentPath) return
-                                    setIsDrawing(false)
-                                    setTemplateAnnotations(prev => [...prev, {
-                                        type: drawingMode as 'pen' | 'brush',
-                                        points: currentPath,
-                                        color: brushColor,
-                                        brushSize: brushSize
-                                    }])
-                                    setCurrentPath(null)
+                                style={{
+                                    transform: isFitToWidth ? 'none' : `scale(${zoom / 100})`,
                                 }}
                             >
-                                {/* Saved annotations */}
-                                {templateAnnotations.map((ann, idx) => (
-                                    <path
-                                        key={idx}
-                                        d={`M ${ann.points.map(p => `${p.x},${p.y}`).join(' L ')}`}
-                                        stroke={ann.color}
-                                        strokeWidth={ann.brushSize}
-                                        fill="none"
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                        opacity={ann.type === 'brush' ? 0.5 : 1}
-                                        onPointerDown={(e) => {
-                                            if (drawingMode === 'eraser') {
-                                                e.stopPropagation();
-                                                setTemplateAnnotations(prev => prev.filter((_, i) => i !== idx));
-                                            }
-                                        }}
-                                        className={cn(drawingMode === 'eraser' && "cursor-pointer hover:stroke-destructive transition-colors")}
-                                        style={{ pointerEvents: drawingMode === 'eraser' ? 'all' : 'auto' }}
-                                    />
-                                ))}
-                                {/* Current active path preview */}
-                                {currentPath && (
-                                    <path 
-                                        d={`M ${currentPath.map(p => `${p.x},${p.y}`).join(' L ')}`}
-                                        stroke={brushColor}
-                                        strokeWidth={brushSize}
-                                        fill="none"
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                        opacity={drawingMode === 'brush' ? 0.5 : 1}
-                                        style={{ pointerEvents: 'none' }}
-                                    />
-                                )}
-                            </svg>
-
-                            {/* Attached images overlay */}
-                            {templateImages.map((img, idx) => (
-                                <div
-                                    key={`timg-${idx}`}
-                                    className="absolute z-[35] cursor-move group/img"
-                                    style={{
-                                        left: `${(img.x / 210) * 100}%`,
-                                        top: `${(img.y / 297) * 100}%`,
-                                        width: `${(img.width / 210) * 100}%`,
-                                        transform: `rotate(${img.rotation || 0}deg)`,
-                                        transformOrigin: 'top left',
-                                        zIndex: 50 + idx,
+                                {/* Drawing Overlay for templatePreview */}
+                                <svg
+                                    className={cn(
+                                        "absolute inset-0 z-[40] touch-none",
+                                        drawingMode !== 'none' ? "cursor-crosshair" : "pointer-events-none"
+                                    )}
+                                    viewBox="0 0 210 297"
+                                    onPointerDown={handlePointerDown}
+                                    onPointerMove={handlePointerMove}
+                                    onPointerUp={() => {
+                                        if (!isDrawing || !currentPath) return
+                                        setIsDrawing(false)
+                                        setTemplateAnnotations(prev => [...prev, {
+                                            type: drawingMode as 'pen' | 'brush',
+                                            points: currentPath,
+                                            color: brushColor,
+                                            brushSize: brushSize
+                                        }])
+                                        setCurrentPath(null)
                                     }}
-                                    onPointerDown={(e) => {
-                                        if (drawingMode !== 'none') return
-                                        e.preventDefault()
-                                        e.stopPropagation()
-                                        const startX = e.clientX
-                                        const startY = e.clientY
-                                        const origX = img.x
-                                        const origY = img.y
-                                        const container = (e.currentTarget.parentElement as HTMLElement)
-                                        const cRect = container.getBoundingClientRect()
-                                        const scaleX = 210 / cRect.width
-                                        const scaleY = 297 / cRect.height
-                                        const onMove = (ev: PointerEvent) => {
-                                            const dx = (ev.clientX - startX) * scaleX
-                                            const dy = (ev.clientY - startY) * scaleY
-                                            setTemplateImages(prev => prev.map((im, i) => i === idx ? { ...im, x: origX + dx, y: origY + dy } : im))
-                                        }
-                                        const onUp = () => {
-                                            window.removeEventListener('pointermove', onMove)
-                                            window.removeEventListener('pointerup', onUp)
-                                        }
-                                        window.addEventListener('pointermove', onMove)
-                                        window.addEventListener('pointerup', onUp)
+                                    onPointerLeave={() => {
+                                        if (!isDrawing || !currentPath) return
+                                        setIsDrawing(false)
+                                        setTemplateAnnotations(prev => [...prev, {
+                                            type: drawingMode as 'pen' | 'brush',
+                                            points: currentPath,
+                                            color: brushColor,
+                                            brushSize: brushSize
+                                        }])
+                                        setCurrentPath(null)
                                     }}
                                 >
-                                    <img
-                                        src={platformService.convertFileSrc(img.path)}
-                                        alt=""
-                                    className="w-full h-auto block select-none pointer-events-none ring-1 ring-transparent group-hover/img:ring-primary transition-shadow"
-                                        draggable={false}
-                                    />
-                                    {/* Rotation Handle */}
-                                    <div 
-                                        className="absolute -top-8 left-1/2 -translate-x-1/2 w-6 h-6 bg-white border border-slate-200 rounded-full shadow-sm flex items-center justify-center cursor-alias opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity hover:bg-slate-50 active:bg-slate-100"
-                                        onPointerDown={(e) => {
-                                            e.stopPropagation()
-                                            e.preventDefault()
-                                            const rect = e.currentTarget.parentElement?.getBoundingClientRect()
-                                            if (!rect) return
-                                            const centerX = rect.left + rect.width / 2
-                                            const centerY = rect.top + rect.height / 2
-                                            const startAngle = Math.atan2(e.clientY - centerY, e.clientX - centerX)
-                                            const initialRotation = img.rotation || 0
-                                            const onPointerMove = (mE: PointerEvent) => {
-                                                const currentAngle = Math.atan2(mE.clientY - centerY, mE.clientX - centerX)
-                                                const delta = (currentAngle - startAngle) * (180 / Math.PI)
-                                                setTemplateImages(prev => prev.map((im, i) => i === idx ? { ...im, rotation: initialRotation + delta } : im))
-                                            }
-                                            const onPointerUp = () => {
-                                                window.removeEventListener('pointermove', onPointerMove)
-                                                window.removeEventListener('pointerup', onPointerUp)
-                                            }
-                                            window.addEventListener('pointermove', onPointerMove)
-                                            window.addEventListener('pointerup', onPointerUp)
-                                        }}
-                                    >
-                                        <RotateCw className="w-3 h-3 text-primary" />
-                                    </div>
-                                    {/* Resize Handle */}
-                                    <div 
-                                        className="absolute -bottom-2 -right-2 w-5 h-5 bg-white border border-slate-200 rounded shadow-sm flex items-center justify-center cursor-nwse-resize opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity hover:bg-slate-50 active:bg-slate-100"
-                                        onPointerDown={(e) => {
-                                            e.stopPropagation()
-                                            e.preventDefault()
-                                            const startX = e.clientX
-                                            const initialWidth = img.width
-                                            const container = (e.currentTarget.parentElement?.parentElement as HTMLElement)
-                                            const cRect = container.getBoundingClientRect()
-                                            const scaleX = 210 / cRect.width
-                                            const onPointerMove = (mE: PointerEvent) => {
-                                                const dx = (mE.clientX - startX) * scaleX
-                                                const newWidth = Math.max(10, initialWidth + dx)
-                                                setTemplateImages(prev => prev.map((im, i) => i === idx ? { ...im, width: newWidth } : im))
-                                            }
-                                            const onPointerUp = () => {
-                                                window.removeEventListener('pointermove', onPointerMove)
-                                                window.removeEventListener('pointerup', onPointerUp)
-                                            }
-                                            window.addEventListener('pointermove', onPointerMove)
-                                            window.addEventListener('pointerup', onPointerUp)
-                                        }}
-                                    >
-                                        <Scaling className="w-3 h-3 text-primary" />
-                                    </div>
-                                    {/* Delete Handle */}
-                                    <button
-                                        onClick={(e) => {
-                                            e.stopPropagation()
-                                            setTemplateImages(prev => prev.filter((_, i) => i !== idx))
-                                        }}
-                                        className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity shadow-md hover:bg-red-600 active:scale-95 z-10"
-                                    >
-                                        <X className="w-3 h-3" />
-                                    </button>
-                                </div>
-                            ))}
-
-                            {/* Attached texts overlay */}
-                            {templateTexts.map((txt, idx) => (
-                                <div
-                                    key={`ttxt-${txt.id}`}
-                                    className="absolute z-[35] group/txt"
-                                    style={{
-                                        left: `${(txt.x / 210) * 100}%`,
-                                        top: `${(txt.y / 297) * 100}%`,
-                                        width: `${(txt.width / 210) * 100}%`,
-                                        transform: `rotate(${txt.rotation}deg)`,
-                                        transformOrigin: 'top left',
-                                        zIndex: 100 + idx,
-                                    }}
-                                >
-                                    <textarea
-                                        value={txt.text}
-                                        onChange={(e) => setTemplateTexts(prev => prev.map((t, i) => i === idx ? { ...t, text: e.target.value } : t))}
-                                        onBlur={() => {
-                                            if (!txt.text.trim()) {
-                                                setTemplateTexts(prev => prev.filter((_, i) => i !== idx))
-                                            }
-                                        }}
-                                        className="w-full bg-transparent border-none outline-none resize-none p-1 block ring-1 ring-transparent group-hover/txt:ring-primary transition-shadow text-inherit font-bold overflow-hidden"
-                                        style={{
-                                            height: 'auto',
-                                            fontSize: `${txt.fontSize || 16}px`,
-                                            color: txt.color,
-                                            lineHeight: 1.3,
-                                        }}
-                                        rows={1}
-                                        spellCheck={false}
-                                    />
-                                    {/* Font Size Handle */}
-                                    <div 
-                                        className="absolute -top-16 left-1/2 -translate-x-1/2 h-7 bg-white border border-slate-200 rounded-md shadow-sm flex items-center justify-center opacity-0 group-hover/txt:opacity-100 group-focus-within:opacity-100 transition-opacity z-10 px-1"
-                                        onPointerDown={(e) => e.stopPropagation()}
-                                    >
-                                        <input
-                                            type="number"
-                                            min="8"
-                                            max="72"
-                                            value={txt.fontSize === '' ? '' : (txt.fontSize ?? 16)}
-                                            onChange={(e) => {
-                                                const newTexts = [...templateTexts]
-                                                const val = e.target.value
-                                                newTexts[idx] = { ...txt, fontSize: val === '' ? '' : parseInt(val) }
-                                                setTemplateTexts(newTexts)
+                                    {/* Saved annotations */}
+                                    {templateAnnotations.map((ann, idx) => (
+                                        <path
+                                            key={idx}
+                                            d={`M ${ann.points.map(p => `${p.x},${p.y}`).join(' L ')}`}
+                                            stroke={ann.color}
+                                            strokeWidth={ann.brushSize}
+                                            fill="none"
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                            opacity={ann.type === 'brush' ? 0.5 : 1}
+                                            onPointerDown={(e) => {
+                                                if (drawingMode === 'eraser') {
+                                                    e.stopPropagation();
+                                                    setTemplateAnnotations(prev => prev.filter((_, i) => i !== idx));
+                                                }
                                             }}
-                                            className="w-12 h-5 text-center text-xs outline-none font-medium text-slate-700 bg-transparent"
+                                            className={cn(drawingMode === 'eraser' && "cursor-pointer hover:stroke-destructive transition-colors")}
+                                            style={{ pointerEvents: drawingMode === 'eraser' ? 'all' : 'auto' }}
                                         />
-                                        <span className="text-[10px] text-slate-400 font-medium pr-1 select-none pointer-events-none">px</span>
-                                    </div>
-                                    {/* Move Handle */}
-                                    <div 
-                                        className="absolute -bottom-7 left-1/2 -translate-x-1/2 w-6 h-6 bg-white border border-slate-200 rounded-full shadow-sm flex items-center justify-center cursor-move opacity-0 group-hover/txt:opacity-100 group-focus-within:opacity-100 transition-opacity hover:bg-slate-50 active:bg-slate-100"
+                                    ))}
+                                    {/* Current active path preview */}
+                                    {currentPath && (
+                                        <path
+                                            d={`M ${currentPath.map(p => `${p.x},${p.y}`).join(' L ')}`}
+                                            stroke={brushColor}
+                                            strokeWidth={brushSize}
+                                            fill="none"
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                            opacity={drawingMode === 'brush' ? 0.5 : 1}
+                                            style={{ pointerEvents: 'none' }}
+                                        />
+                                    )}
+                                </svg>
+
+                                {/* Attached images overlay */}
+                                {templateImages.map((img, idx) => (
+                                    <div
+                                        key={`timg-${idx}`}
+                                        className="absolute z-[35] cursor-move group/img"
+                                        style={{
+                                            left: `${(img.x / 210) * 100}%`,
+                                            top: `${(img.y / 297) * 100}%`,
+                                            width: `${(img.width / 210) * 100}%`,
+                                            transform: `rotate(${img.rotation || 0}deg)`,
+                                            transformOrigin: 'top left',
+                                            zIndex: 50 + idx,
+                                        }}
                                         onPointerDown={(e) => {
                                             if (drawingMode !== 'none') return
                                             e.preventDefault()
                                             e.stopPropagation()
                                             const startX = e.clientX
                                             const startY = e.clientY
-                                            const origX = txt.x
-                                            const origY = txt.y
-                                            const container = (e.currentTarget.parentElement?.parentElement as HTMLElement)
+                                            const origX = img.x
+                                            const origY = img.y
+                                            const container = (e.currentTarget.parentElement as HTMLElement)
                                             const cRect = container.getBoundingClientRect()
                                             const scaleX = 210 / cRect.width
                                             const scaleY = 297 / cRect.height
-                                            const onMoveEv = (ev: PointerEvent) => {
+                                            const onMove = (ev: PointerEvent) => {
                                                 const dx = (ev.clientX - startX) * scaleX
                                                 const dy = (ev.clientY - startY) * scaleY
-                                                setTemplateTexts(prev => prev.map((t, i) => i === idx ? { ...t, x: origX + dx, y: origY + dy } : t))
+                                                setTemplateImages(prev => prev.map((im, i) => i === idx ? { ...im, x: origX + dx, y: origY + dy } : im))
                                             }
                                             const onUp = () => {
-                                                window.removeEventListener('pointermove', onMoveEv)
+                                                window.removeEventListener('pointermove', onMove)
                                                 window.removeEventListener('pointerup', onUp)
                                             }
-                                            window.addEventListener('pointermove', onMoveEv)
+                                            window.addEventListener('pointermove', onMove)
                                             window.addEventListener('pointerup', onUp)
                                         }}
                                     >
-                                        <Move className="w-3 h-3 text-primary" />
+                                        <img
+                                            src={platformService.convertFileSrc(img.path)}
+                                            alt=""
+                                            className="w-full h-auto block select-none pointer-events-none ring-1 ring-transparent group-hover/img:ring-primary transition-shadow"
+                                            draggable={false}
+                                        />
+                                        {/* Rotation Handle */}
+                                        <div
+                                            className="absolute -top-8 left-1/2 -translate-x-1/2 w-6 h-6 bg-white border border-slate-200 rounded-full shadow-sm flex items-center justify-center cursor-alias opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity hover:bg-slate-50 active:bg-slate-100"
+                                            onPointerDown={(e) => {
+                                                e.stopPropagation()
+                                                e.preventDefault()
+                                                const rect = e.currentTarget.parentElement?.getBoundingClientRect()
+                                                if (!rect) return
+                                                const centerX = rect.left + rect.width / 2
+                                                const centerY = rect.top + rect.height / 2
+                                                const startAngle = Math.atan2(e.clientY - centerY, e.clientX - centerX)
+                                                const initialRotation = img.rotation || 0
+                                                const onPointerMove = (mE: PointerEvent) => {
+                                                    const currentAngle = Math.atan2(mE.clientY - centerY, mE.clientX - centerX)
+                                                    const delta = (currentAngle - startAngle) * (180 / Math.PI)
+                                                    setTemplateImages(prev => prev.map((im, i) => i === idx ? { ...im, rotation: initialRotation + delta } : im))
+                                                }
+                                                const onPointerUp = () => {
+                                                    window.removeEventListener('pointermove', onPointerMove)
+                                                    window.removeEventListener('pointerup', onPointerUp)
+                                                }
+                                                window.addEventListener('pointermove', onPointerMove)
+                                                window.addEventListener('pointerup', onPointerUp)
+                                            }}
+                                        >
+                                            <RotateCw className="w-3 h-3 text-primary" />
+                                        </div>
+                                        {/* Resize Handle */}
+                                        <div
+                                            className="absolute -bottom-2 -right-2 w-5 h-5 bg-white border border-slate-200 rounded shadow-sm flex items-center justify-center cursor-nwse-resize opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity hover:bg-slate-50 active:bg-slate-100"
+                                            onPointerDown={(e) => {
+                                                e.stopPropagation()
+                                                e.preventDefault()
+                                                const startX = e.clientX
+                                                const initialWidth = img.width
+                                                const container = (e.currentTarget.parentElement?.parentElement as HTMLElement)
+                                                const cRect = container.getBoundingClientRect()
+                                                const scaleX = 210 / cRect.width
+                                                const onPointerMove = (mE: PointerEvent) => {
+                                                    const dx = (mE.clientX - startX) * scaleX
+                                                    const newWidth = Math.max(10, initialWidth + dx)
+                                                    setTemplateImages(prev => prev.map((im, i) => i === idx ? { ...im, width: newWidth } : im))
+                                                }
+                                                const onPointerUp = () => {
+                                                    window.removeEventListener('pointermove', onPointerMove)
+                                                    window.removeEventListener('pointerup', onPointerUp)
+                                                }
+                                                window.addEventListener('pointermove', onPointerMove)
+                                                window.addEventListener('pointerup', onPointerUp)
+                                            }}
+                                        >
+                                            <Scaling className="w-3 h-3 text-primary" />
+                                        </div>
+                                        {/* Delete Handle */}
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation()
+                                                setTemplateImages(prev => prev.filter((_, i) => i !== idx))
+                                            }}
+                                            className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity shadow-md hover:bg-red-600 active:scale-95 z-10"
+                                        >
+                                            <X className="w-3 h-3" />
+                                        </button>
                                     </div>
-                                    {/* Rotation Handle */}
-                                    <div 
-                                        className="absolute -top-8 left-1/2 -translate-x-1/2 w-6 h-6 bg-white border border-slate-200 rounded-full shadow-sm flex items-center justify-center cursor-alias opacity-0 group-hover/txt:opacity-100 transition-opacity hover:bg-slate-50 active:bg-slate-100"
-                                        onPointerDown={(e) => {
-                                            e.stopPropagation()
-                                            e.preventDefault()
-                                            const rect = e.currentTarget.parentElement?.getBoundingClientRect()
-                                            if (!rect) return
-                                            const centerX = rect.left + rect.width / 2
-                                            const centerY = rect.top + rect.height / 2
-                                            const startAngle = Math.atan2(e.clientY - centerY, e.clientX - centerX)
-                                            const initialRotation = txt.rotation || 0
-                                            const onPointerMove = (mE: PointerEvent) => {
-                                                const currentAngle = Math.atan2(mE.clientY - centerY, mE.clientX - centerX)
-                                                const delta = (currentAngle - startAngle) * (180 / Math.PI)
-                                                setTemplateTexts(prev => prev.map((t, i) => i === idx ? { ...t, rotation: initialRotation + delta } : t))
-                                            }
-                                            const onPointerUp = () => {
-                                                window.removeEventListener('pointermove', onPointerMove)
-                                                window.removeEventListener('pointerup', onPointerUp)
-                                            }
-                                            window.addEventListener('pointermove', onPointerMove)
-                                            window.addEventListener('pointerup', onPointerUp)
-                                        }}
-                                    >
-                                        <RotateCw className="w-3 h-3 text-primary" />
-                                    </div>
-                                    {/* Resize Handle */}
-                                    <div 
-                                        className="absolute -bottom-2 -right-2 w-5 h-5 bg-white border border-slate-200 rounded shadow-sm flex items-center justify-center cursor-nwse-resize opacity-0 group-hover/txt:opacity-100 transition-opacity hover:bg-slate-50 active:bg-slate-100"
-                                        onPointerDown={(e) => {
-                                            e.stopPropagation()
-                                            e.preventDefault()
-                                            const startX = e.clientX
-                                            const initialWidth = txt.width
-                                            const container = (e.currentTarget.parentElement?.parentElement as HTMLElement)
-                                            const cRect = container.getBoundingClientRect()
-                                            const scaleX = 210 / cRect.width
-                                            const onPointerMove = (mE: PointerEvent) => {
-                                                const dx = (mE.clientX - startX) * scaleX
-                                                const newWidth = Math.max(20, initialWidth + dx)
-                                                setTemplateTexts(prev => prev.map((t, i) => i === idx ? { ...t, width: newWidth } : t))
-                                            }
-                                            const onPointerUp = () => {
-                                                window.removeEventListener('pointermove', onPointerMove)
-                                                window.removeEventListener('pointerup', onPointerUp)
-                                            }
-                                            window.addEventListener('pointermove', onPointerMove)
-                                            window.addEventListener('pointerup', onPointerUp)
-                                        }}
-                                    >
-                                        <Scaling className="w-3 h-3 text-primary" />
-                                    </div>
-                                    {/* Delete Handle */}
-                                    <button
-                                        onClick={(e) => {
-                                            e.stopPropagation()
-                                            setTemplateTexts(prev => prev.filter((_, i) => i !== idx))
-                                        }}
-                                        className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover/txt:opacity-100 transition-opacity shadow-md hover:bg-red-600 active:scale-95"
-                                    >
-                                        <X className="w-3 h-3" />
-                                    </button>
-                                </div>
-                            ))}
+                                ))}
 
-                            {templatePreview.createElement(
-                                fieldValues,
-                                source.effectiveId,
-                                fixedTemplatePrintLang || (tempPrintLang !== 'auto' ? tempPrintLang : undefined),
-                                {
-                                    editableFields: isAdmin && drawingMode === 'none',
-                                    dataKeys: templatePreview.dataKeys,
-                                    onFieldChange: handleFieldChange
-                                }
-                            )}
+                                {/* Attached texts overlay */}
+                                {templateTexts.map((txt, idx) => (
+                                    <div
+                                        key={`ttxt-${txt.id}`}
+                                        className="absolute z-[35] group/txt"
+                                        style={{
+                                            left: `${(txt.x / 210) * 100}%`,
+                                            top: `${(txt.y / 297) * 100}%`,
+                                            width: `${(txt.width / 210) * 100}%`,
+                                            transform: `rotate(${txt.rotation}deg)`,
+                                            transformOrigin: 'top left',
+                                            zIndex: 100 + idx,
+                                        }}
+                                    >
+                                        <textarea
+                                            value={txt.text}
+                                            onChange={(e) => setTemplateTexts(prev => prev.map((t, i) => i === idx ? { ...t, text: e.target.value } : t))}
+                                            onBlur={() => {
+                                                if (!txt.text.trim()) {
+                                                    setTemplateTexts(prev => prev.filter((_, i) => i !== idx))
+                                                }
+                                            }}
+                                            className="w-full bg-transparent border-none outline-none resize-none p-1 block ring-1 ring-transparent group-hover/txt:ring-primary transition-shadow text-inherit font-bold overflow-hidden"
+                                            style={{
+                                                height: 'auto',
+                                                fontSize: `${txt.fontSize || 16}px`,
+                                                color: txt.color,
+                                                lineHeight: 1.3,
+                                            }}
+                                            rows={1}
+                                            spellCheck={false}
+                                        />
+                                        {/* Font Size Handle */}
+                                        <div
+                                            className="absolute -top-16 left-1/2 -translate-x-1/2 h-7 bg-white border border-slate-200 rounded-md shadow-sm flex items-center justify-center opacity-0 group-hover/txt:opacity-100 group-focus-within:opacity-100 transition-opacity z-10 px-1"
+                                            onPointerDown={(e) => e.stopPropagation()}
+                                        >
+                                            <input
+                                                type="number"
+                                                min="8"
+                                                max="72"
+                                                value={txt.fontSize === '' ? '' : (txt.fontSize ?? 16)}
+                                                onChange={(e) => {
+                                                    const newTexts = [...templateTexts]
+                                                    const val = e.target.value
+                                                    newTexts[idx] = { ...txt, fontSize: val === '' ? '' : parseInt(val) }
+                                                    setTemplateTexts(newTexts)
+                                                }}
+                                                className="w-12 h-5 text-center text-xs outline-none font-medium text-slate-700 bg-transparent"
+                                            />
+                                            <span className="text-[10px] text-slate-400 font-medium pr-1 select-none pointer-events-none">px</span>
+                                        </div>
+                                        {/* Move Handle */}
+                                        <div
+                                            className="absolute -bottom-7 left-1/2 -translate-x-1/2 w-6 h-6 bg-white border border-slate-200 rounded-full shadow-sm flex items-center justify-center cursor-move opacity-0 group-hover/txt:opacity-100 group-focus-within:opacity-100 transition-opacity hover:bg-slate-50 active:bg-slate-100"
+                                            onPointerDown={(e) => {
+                                                if (drawingMode !== 'none') return
+                                                e.preventDefault()
+                                                e.stopPropagation()
+                                                const startX = e.clientX
+                                                const startY = e.clientY
+                                                const origX = txt.x
+                                                const origY = txt.y
+                                                const container = (e.currentTarget.parentElement?.parentElement as HTMLElement)
+                                                const cRect = container.getBoundingClientRect()
+                                                const scaleX = 210 / cRect.width
+                                                const scaleY = 297 / cRect.height
+                                                const onMoveEv = (ev: PointerEvent) => {
+                                                    const dx = (ev.clientX - startX) * scaleX
+                                                    const dy = (ev.clientY - startY) * scaleY
+                                                    setTemplateTexts(prev => prev.map((t, i) => i === idx ? { ...t, x: origX + dx, y: origY + dy } : t))
+                                                }
+                                                const onUp = () => {
+                                                    window.removeEventListener('pointermove', onMoveEv)
+                                                    window.removeEventListener('pointerup', onUp)
+                                                }
+                                                window.addEventListener('pointermove', onMoveEv)
+                                                window.addEventListener('pointerup', onUp)
+                                            }}
+                                        >
+                                            <Move className="w-3 h-3 text-primary" />
+                                        </div>
+                                        {/* Rotation Handle */}
+                                        <div
+                                            className="absolute -top-8 left-1/2 -translate-x-1/2 w-6 h-6 bg-white border border-slate-200 rounded-full shadow-sm flex items-center justify-center cursor-alias opacity-0 group-hover/txt:opacity-100 transition-opacity hover:bg-slate-50 active:bg-slate-100"
+                                            onPointerDown={(e) => {
+                                                e.stopPropagation()
+                                                e.preventDefault()
+                                                const rect = e.currentTarget.parentElement?.getBoundingClientRect()
+                                                if (!rect) return
+                                                const centerX = rect.left + rect.width / 2
+                                                const centerY = rect.top + rect.height / 2
+                                                const startAngle = Math.atan2(e.clientY - centerY, e.clientX - centerX)
+                                                const initialRotation = txt.rotation || 0
+                                                const onPointerMove = (mE: PointerEvent) => {
+                                                    const currentAngle = Math.atan2(mE.clientY - centerY, mE.clientX - centerX)
+                                                    const delta = (currentAngle - startAngle) * (180 / Math.PI)
+                                                    setTemplateTexts(prev => prev.map((t, i) => i === idx ? { ...t, rotation: initialRotation + delta } : t))
+                                                }
+                                                const onPointerUp = () => {
+                                                    window.removeEventListener('pointermove', onPointerMove)
+                                                    window.removeEventListener('pointerup', onPointerUp)
+                                                }
+                                                window.addEventListener('pointermove', onPointerMove)
+                                                window.addEventListener('pointerup', onPointerUp)
+                                            }}
+                                        >
+                                            <RotateCw className="w-3 h-3 text-primary" />
+                                        </div>
+                                        {/* Resize Handle */}
+                                        <div
+                                            className="absolute -bottom-2 -right-2 w-5 h-5 bg-white border border-slate-200 rounded shadow-sm flex items-center justify-center cursor-nwse-resize opacity-0 group-hover/txt:opacity-100 transition-opacity hover:bg-slate-50 active:bg-slate-100"
+                                            onPointerDown={(e) => {
+                                                e.stopPropagation()
+                                                e.preventDefault()
+                                                const startX = e.clientX
+                                                const initialWidth = txt.width
+                                                const container = (e.currentTarget.parentElement?.parentElement as HTMLElement)
+                                                const cRect = container.getBoundingClientRect()
+                                                const scaleX = 210 / cRect.width
+                                                const onPointerMove = (mE: PointerEvent) => {
+                                                    const dx = (mE.clientX - startX) * scaleX
+                                                    const newWidth = Math.max(20, initialWidth + dx)
+                                                    setTemplateTexts(prev => prev.map((t, i) => i === idx ? { ...t, width: newWidth } : t))
+                                                }
+                                                const onPointerUp = () => {
+                                                    window.removeEventListener('pointermove', onPointerMove)
+                                                    window.removeEventListener('pointerup', onPointerUp)
+                                                }
+                                                window.addEventListener('pointermove', onPointerMove)
+                                                window.addEventListener('pointerup', onPointerUp)
+                                            }}
+                                        >
+                                            <Scaling className="w-3 h-3 text-primary" />
+                                        </div>
+                                        {/* Delete Handle */}
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation()
+                                                setTemplateTexts(prev => prev.filter((_, i) => i !== idx))
+                                            }}
+                                            className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover/txt:opacity-100 transition-opacity shadow-md hover:bg-red-600 active:scale-95"
+                                        >
+                                            <X className="w-3 h-3" />
+                                        </button>
+                                    </div>
+                                ))}
+
+                                {templatePreview.createElement(
+                                    fieldValues,
+                                    source.effectiveId,
+                                    fixedTemplatePrintLang || (tempPrintLang !== 'auto' ? tempPrintLang : undefined),
+                                    {
+                                        editableFields: isAdmin && drawingMode === 'none',
+                                        dataKeys: templatePreview.dataKeys,
+                                        onFieldChange: handleFieldChange
+                                    }
+                                )}
+                            </div>
                         </div>
                     </div>
-                </div>
                     {editPanelOpen && (
                         <div className="w-72 shrink-0 border-l bg-card overflow-y-auto p-4 space-y-4">
                             <div className="flex items-center justify-between">
-                                <h3 className="text-sm font-semibold">{t('common.fields') || 'Fields'}</h3>
+                                <h3 className="text-sm font-semibold">{t('common.fields') || 'Editable Fields'}</h3>
                                 <button
                                     className="inline-flex items-center justify-center rounded-md h-6 w-6 hover:bg-accent transition-colors"
                                     onClick={() => setEditPanelOpen(false)}
@@ -1335,10 +1335,10 @@ export function PdfPreviewPage() {
                                                 />
                                             ))}
                                             <div className="w-px h-4 bg-border mx-1" />
-                                            <input 
-                                                type="color" 
-                                                value={brushColor} 
-                                                onChange={(e) => setBrushColor(e.target.value)} 
+                                            <input
+                                                type="color"
+                                                value={brushColor}
+                                                onChange={(e) => setBrushColor(e.target.value)}
                                                 className="w-5 h-5 border-none p-0 cursor-pointer bg-transparent"
                                             />
                                         </div>
@@ -1392,64 +1392,64 @@ export function PdfPreviewPage() {
             </header>
             <div className="flex flex-1 overflow-hidden light" style={{ colorScheme: 'light' }}>
                 <div className="flex-1 overflow-auto p-6 bg-slate-100/50 flex flex-col items-center">
-                        <div 
-                            className={cn(
-                                "mx-auto transition-all duration-200 ease-in-out origin-top relative group",
-                                isFitToWidth ? "w-full" : "w-fit"
-                            )}
-                            style={{
-                                transform: isFitToWidth ? 'none' : `scale(${zoom / 100})`,
-                            }}
-                        >
-                            {/* Drawing Overlay */}
-                            {source.printFormat === 'a4' && (
-                                <svg 
-                                    className={cn(
-                                        "absolute inset-0 z-[40] touch-none",
-                                        drawingMode === 'eraser' ? "pointer-events-none cursor-crosshair" : 
+                    <div
+                        className={cn(
+                            "mx-auto transition-all duration-200 ease-in-out origin-top relative group",
+                            isFitToWidth ? "w-full" : "w-fit"
+                        )}
+                        style={{
+                            transform: isFitToWidth ? 'none' : `scale(${zoom / 100})`,
+                        }}
+                    >
+                        {/* Drawing Overlay */}
+                        {source.printFormat === 'a4' && (
+                            <svg
+                                className={cn(
+                                    "absolute inset-0 z-[40] touch-none",
+                                    drawingMode === 'eraser' ? "pointer-events-none cursor-crosshair" :
                                         drawingMode !== 'none' ? "cursor-crosshair" : "pointer-events-none"
-                                    )}
-                                    viewBox="0 0 210 297"
-                                    onPointerDown={handlePointerDown}
-                                    onPointerMove={handlePointerMove}
-                                    onPointerUp={handlePointerUp}
-                                    onPointerLeave={handlePointerUp}
-                                >
-                                    {/* Current active path preview */}
-                                    {currentPath && (
-                                        <path 
-                                            d={`M ${currentPath.map(p => `${p.x},${p.y}`).join(' L ')}`}
-                                            stroke={brushColor}
-                                            strokeWidth={brushSize}
-                                            fill="none"
-                                            strokeLinecap="round"
-                                            strokeLinejoin="round"
-                                        />
-                                    )}
-                                </svg>
-                            )}
+                                )}
+                                viewBox="0 0 210 297"
+                                onPointerDown={handlePointerDown}
+                                onPointerMove={handlePointerMove}
+                                onPointerUp={handlePointerUp}
+                                onPointerLeave={handlePointerUp}
+                            >
+                                {/* Current active path preview */}
+                                {currentPath && (
+                                    <path
+                                        d={`M ${currentPath.map(p => `${p.x},${p.y}`).join(' L ')}`}
+                                        stroke={brushColor}
+                                        strokeWidth={brushSize}
+                                        fill="none"
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                    />
+                                )}
+                            </svg>
+                        )}
 
-                            {editableData && source.features && source.printFormat && (
-                                <EditableInvoicePreview
-                                    data={editableData}
-                                    features={{
-                                        ...source.features,
-                                        print_lang: tempPrintLang !== 'auto' ? tempPrintLang : source.features.print_lang
-                                    }}
-                                    workspaceId={source.workspaceId}
-                                    workspaceName={source.workspaceName}
-                                    workspaceFooterContacts={source.workspaceFooterContacts}
-                                    printFormat={source.printFormat}
-                                    onDataChange={isAdmin ? setEditableData : undefined}
-                                    drawingMode={drawingMode}
-                                />
-                            )}
-                        </div>
+                        {editableData && source.features && source.printFormat && (
+                            <EditableInvoicePreview
+                                data={editableData}
+                                features={{
+                                    ...source.features,
+                                    print_lang: tempPrintLang !== 'auto' ? tempPrintLang : source.features.print_lang
+                                }}
+                                workspaceId={source.workspaceId}
+                                workspaceName={source.workspaceName}
+                                workspaceFooterContacts={source.workspaceFooterContacts}
+                                printFormat={source.printFormat}
+                                onDataChange={isAdmin ? setEditableData : undefined}
+                                drawingMode={drawingMode}
+                            />
+                        )}
+                    </div>
                 </div>
                 {editPanelOpen && editableData && (
                     <div className="w-72 shrink-0 border-l bg-card overflow-y-auto p-4 space-y-4">
                         <div className="flex items-center justify-between z-10 sticky top-0 bg-card pb-2">
-                            <h3 className="text-sm font-semibold">{t('common.fields') || 'Common Fields'}</h3>
+                            <h3 className="text-sm font-semibold">{t('common.fields') || 'Editable Fields'}</h3>
                             <button
                                 className="inline-flex items-center justify-center rounded-md h-6 w-6 hover:bg-accent transition-colors"
                                 onClick={() => setEditPanelOpen(false)}
