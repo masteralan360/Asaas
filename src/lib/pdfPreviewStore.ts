@@ -10,10 +10,68 @@ export type TemplatePreviewField = {
     type: 'text' | 'number' | 'date'
 }
 
+export type TemplatePreviewRenderOptions = {
+    editableFields?: boolean
+    onFieldChange?: (key: string, value: string) => void
+}
+
 export type TemplatePreview = {
     fields: TemplatePreviewField[]
-    createElement: (data: Record<string, string>, effectiveId?: string, printLangOverride?: string) => ReactElement
+    createElement: (
+        data: Record<string, string>,
+        effectiveId?: string,
+        printLangOverride?: string,
+        renderOptions?: TemplatePreviewRenderOptions
+    ) => ReactElement
     buildPdf: (element: ReactElement, printLangOverride?: string) => Promise<Blob>
+    fixedPrintLang?: 'en' | 'ar' | 'ku'
+}
+
+export type CustomTemplateAnnotation = {
+    type: 'pen' | 'brush'
+    points: { x: number; y: number }[]
+    color: string
+    brushSize: number
+}
+
+export type CustomTemplateText = {
+    id: string
+    text: string
+    x: number
+    y: number
+    width: number
+    rotation: number
+    fontSize?: number | ''
+    color?: string
+}
+
+export type CustomTemplateImage = {
+    path: string
+    x: number
+    y: number
+    width: number
+    rotation?: number
+}
+
+export type CustomTemplateLayout = {
+    version: 1
+    moduleTypeKey: string
+    nativeTemplateKey?: string
+    page: {
+        widthMm: number
+        heightMm: number
+    }
+    fields: Record<string, string>
+    annotations: CustomTemplateAnnotation[]
+    texts: CustomTemplateText[]
+    images: CustomTemplateImage[]
+    updatedAt: string
+}
+
+export type CustomTemplatePreviewTarget = {
+    moduleTypeKey: string
+    nativeTemplateKey?: string
+    templateId?: string
 }
 
 export type InvoicePreviewSource = {
@@ -32,6 +90,9 @@ export type InvoicePreviewSource = {
     url?: string
     /** Template preview mode for editable inline preview of custom templates (loans, orders, budget) */
     templatePreview?: TemplatePreview
+    customTemplate?: CustomTemplatePreviewTarget
+    initialTemplateLayout?: CustomTemplateLayout | null
+    onSaveTemplateLayout?: (layout: CustomTemplateLayout) => Promise<void>
 }
 
 let _source: InvoicePreviewSource | null = null

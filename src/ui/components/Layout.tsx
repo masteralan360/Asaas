@@ -81,6 +81,7 @@ const routePrefetchMap: Record<string, () => Promise<unknown>> = {
     '/suppliers': () => import('@/ui/pages/Suppliers'),
     '/orders': () => import('@/ui/pages/Orders'),
     '/travel-agency': () => import('@/ui/pages/TravelAgency'),
+    '/real-estate': () => import('@/ui/pages/RealEstate'),
 
     '/ledger': () => import('@/ui/pages/Ledger'),
     '/payments': () => import('@/ui/pages/Payments'),
@@ -100,6 +101,7 @@ const routePrefetchMap: Record<string, () => Promise<unknown>> = {
     '/invoices-history/upload-files': () => import('@/ui/pages/InvoicesHistory'),
     '/hr': () => import('@/ui/pages/HR'),
     '/members': () => import('@/ui/pages/Members'),
+    '/custom-templates': () => import('@/ui/pages/CustomTemplates'),
     '/settings': () => import('@/ui/pages/Settings'),
 }
 

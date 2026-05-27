@@ -143,6 +143,11 @@ const PdfPreviewPage = lazy(() =>
     default: m.PdfPreviewPage,
   })),
 );
+const CustomTemplates = lazy(() =>
+  import("@/ui/pages/CustomTemplates").then((m) => ({
+    default: m.CustomTemplates,
+  })),
+);
 const ConnectionConfiguration = lazy(() =>
   import("@/ui/pages/ConnectionConfiguration").then((m) => ({
     default: m.ConnectionConfiguration,
@@ -1252,6 +1257,13 @@ function App() {
                         >
                           <Layout>
                             <Members />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/custom-templates">
+                        <ProtectedRoute allowedRoles={["admin"]}>
+                          <Layout>
+                            <CustomTemplates />
                           </Layout>
                         </ProtectedRoute>
                       </Route>

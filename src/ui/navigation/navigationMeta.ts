@@ -324,6 +324,11 @@ export const moduleMetaByHref: Record<string, ModuleMeta> = {
     description: "Review workspace members and role visibility.",
     badge: "Access",
   },
+  "/custom-templates": {
+    section: "people-and-workspace",
+    description: "Manage workspace-specific custom print layouts.",
+    badge: "Print",
+  },
   "/settings": {
     section: "people-and-workspace",
     description:

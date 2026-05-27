@@ -1,4 +1,4 @@
-import { Search, Command, LayoutDashboard, ShoppingCart, Package, ListOrdered, Settings as SettingsIcon, BarChart3, Users2, Globe, MessageSquare, Moon, Sun, LogOut, ChevronRight, ArrowRightLeft, NotebookPen, Wallet, Zap, FileSpreadsheet, Building2 } from 'lucide-react'
+import { Search, Command, LayoutDashboard, ShoppingCart, Package, ListOrdered, Settings as SettingsIcon, BarChart3, Users2, Globe, MessageSquare, Moon, Sun, LogOut, ChevronRight, ArrowRightLeft, NotebookPen, Wallet, Zap, FileSpreadsheet, Building2, FileText } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useState, useEffect, useRef } from 'react'
 import { useHashLocation } from '@/hooks/useHashLocation'
@@ -29,7 +29,7 @@ export function GlobalSearch({ className, placeholder }: GlobalSearchProps) {
     const [, setLocation] = useHashLocation()
     const { t } = useTranslation()
     const { theme, setTheme, style } = useTheme()
-    const { signOut } = useAuth()
+    const { signOut, user } = useAuth()
     const { features } = useWorkspace()
     const { hasPermission } = useWorkspacePermissions()
     const inputRef = useRef<HTMLInputElement>(null)
@@ -53,6 +53,7 @@ export function GlobalSearch({ className, placeholder }: GlobalSearchProps) {
         ...(features.net_revenue && hasPermission('revenueAnalytics.access') ? [{ id: 'nav-revenue', title: t('nav.revenue'), category: 'Navigation' as const, icon: BarChart3, action: () => setLocation('/revenue') }] : []),
         ...(features.budget && hasPermission('accounting.access') ? [{ id: 'nav-budget', title: t('nav.budget', { defaultValue: 'Accounting' }), category: 'Navigation' as const, icon: FileSpreadsheet, action: () => setLocation('/budget') }] : []),
         ...(features.real_estate && hasPermission('realEstate.access') ? [{ id: 'nav-real-estate', title: t('realEstate.title', { defaultValue: 'Real Estate' }), category: 'Navigation' as const, icon: Building2, action: () => setLocation('/real-estate') }] : []),
+        ...(user?.role === 'admin' ? [{ id: 'nav-custom-templates', title: t('customTemplates.title', { defaultValue: 'Custom Templates' }), category: 'Navigation' as const, icon: FileText, action: () => setLocation('/custom-templates') }] : []),
         ...(features.monthly_comparison ? [{ id: 'nav-monthly-comparison', title: t('monthlyComparison.title'), category: 'Navigation' as const, icon: ArrowRightLeft, action: () => setLocation('/monthly-comparison') }] : []),
         ...(features.team_performance && hasPermission('teamPerformance.access') ? [{ id: 'nav-performance', title: t('nav.performance'), category: 'Navigation' as const, icon: Users2, action: () => setLocation('/performance') }] : []),
 

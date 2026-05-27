@@ -1,7 +1,14 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft, Printer, Loader2, Edit3, X, ZoomIn, ZoomOut, Maximize, ImagePlus, Trash2, PenTool, Brush, Palette, Eraser, Hand, Type, RotateCw, Scaling, Move, Languages, Check } from 'lucide-react'
-import { getInvoicePreviewSource, clearInvoicePreviewSource } from '@/lib/pdfPreviewStore'
+import {
+    getInvoicePreviewSource,
+    clearInvoicePreviewSource,
+    type CustomTemplateAnnotation,
+    type CustomTemplateImage,
+    type CustomTemplateLayout,
+    type CustomTemplateText
+} from '@/lib/pdfPreviewStore'
 import { platformService } from '@/services/platformService'
 import { EditableField } from '@/ui/components/EditableField'
 import { A4InvoiceTemplate, ModernA4InvoiceTemplate, RefundA4InvoiceTemplate, RefundPrimaryA4InvoiceTemplate } from '@/ui/components'
@@ -257,15 +264,22 @@ export function PdfPreviewPage() {
 
     // Template preview mode (loans, orders, budget)
     const templatePreview = source?.templatePreview
+    const fixedTemplatePrintLang = templatePreview?.fixedPrintLang
+    const initialTemplateLayout = source?.initialTemplateLayout
     const [fieldValues, setFieldValues] = useState<Record<string, string> | null>(
-        () => templatePreview ? Object.fromEntries(templatePreview.fields.map(f => [f.key, f.value])) : null
+        () => {
+            if (!templatePreview) return null
+            return {
+                ...Object.fromEntries(templatePreview.fields.map(f => [f.key, f.value])),
+                ...(initialTemplateLayout?.fields || {})
+            }
+        }
     )
     const [editPanelOpen, setEditPanelOpen] = useState(false)
 
-    // Session-local annotation state for templatePreview (not persisted to DB)
-    const [templateAnnotations, setTemplateAnnotations] = useState<{ type: 'pen' | 'brush'; points: { x: number; y: number }[]; color: string; brushSize: number }[]>([])
-    const [templateTexts, setTemplateTexts] = useState<{ id: string; text: string; x: number; y: number; width: number; rotation: number; fontSize?: number | ''; color?: string }[]>([])
-    const [templateImages, setTemplateImages] = useState<{ path: string; x: number; y: number; width: number; rotation?: number }[]>([])
+    const [templateAnnotations, setTemplateAnnotations] = useState<CustomTemplateAnnotation[]>(() => initialTemplateLayout?.annotations || [])
+    const [templateTexts, setTemplateTexts] = useState<CustomTemplateText[]>(() => initialTemplateLayout?.texts || [])
+    const [templateImages, setTemplateImages] = useState<CustomTemplateImage[]>(() => initialTemplateLayout?.images || [])
 
     const showNativePdf = source?.url && !source?.data
 
@@ -321,10 +335,35 @@ export function PdfPreviewPage() {
         if (!source || !templatePreview || !fieldValues || isSaving) return
         setIsSaving(true)
         try {
-            const overrideLang = tempPrintLang !== 'auto' ? tempPrintLang : undefined
-            const element = templatePreview.createElement(fieldValues, source.effectiveId, overrideLang)
-            const blob = await templatePreview.buildPdf(element, overrideLang)
-            await source.onSave?.(blob)
+            if (source.onSaveTemplateLayout) {
+                if (!source.customTemplate?.moduleTypeKey) {
+                    throw new Error('Missing custom template module/type key.')
+                }
+
+                const layout: CustomTemplateLayout = {
+                    version: 1,
+                    moduleTypeKey: source.customTemplate.moduleTypeKey,
+                    nativeTemplateKey: source.customTemplate.nativeTemplateKey,
+                    page: {
+                        widthMm: 210,
+                        heightMm: 297
+                    },
+                    fields: fieldValues,
+                    annotations: templateAnnotations,
+                    texts: templateTexts,
+                    images: templateImages,
+                    updatedAt: new Date().toISOString()
+                }
+
+                await source.onSaveTemplateLayout(layout)
+            }
+
+            if (source.onSave) {
+                const overrideLang = fixedTemplatePrintLang || (tempPrintLang !== 'auto' ? tempPrintLang : undefined)
+                const element = templatePreview.createElement(fieldValues, source.effectiveId, overrideLang)
+                const blob = await templatePreview.buildPdf(element, overrideLang)
+                await source.onSave(blob)
+            }
         } catch (err) {
             console.error('Failed to save template preview:', err)
         } finally {
@@ -332,7 +371,7 @@ export function PdfPreviewPage() {
             clearInvoicePreviewSource()
             window.history.back()
         }
-    }, [source, templatePreview, fieldValues, isSaving, tempPrintLang])
+    }, [source, templatePreview, fieldValues, isSaving, fixedTemplatePrintLang, tempPrintLang, templateAnnotations, templateTexts, templateImages])
 
     const handleFieldChange = useCallback((key: string, value: string) => {
         setFieldValues(prev => prev ? { ...prev, [key]: value } : null)
@@ -471,13 +510,15 @@ export function PdfPreviewPage() {
                     <div className="flex items-center gap-1 bg-secondary/50 rounded-md p-0.5 border border-border">
                         {isAdmin && (
                             <>
-                                <UiAccessGate>
-                                    <LanguageSelector
-                                        value={tempPrintLang}
-                                        onChange={(val) => setTempPrintLang(val)}
-                                    />
-                                    <div className="w-px h-4 bg-border mx-0.5" />
-                                </UiAccessGate>
+                                {!fixedTemplatePrintLang && (
+                                    <UiAccessGate>
+                                        <LanguageSelector
+                                            value={tempPrintLang}
+                                            onChange={(val) => setTempPrintLang(val)}
+                                        />
+                                        <div className="w-px h-4 bg-border mx-0.5" />
+                                    </UiAccessGate>
+                                )}
                                 <button
                                     onClick={handleAddTemplateImage}
                                     className="h-7 px-2 inline-flex items-center gap-1.5 rounded hover:bg-accent text-primary text-[11px] font-bold"
@@ -672,7 +713,7 @@ export function PdfPreviewPage() {
                                 onClick={() => setEditPanelOpen(o => !o)}
                             >
                                 <Edit3 className="h-3.5 w-3.5" />
-                                {editPanelOpen ? (t('common.close') || 'Close') : (t('common.edit') || 'Edit')}
+                                {editPanelOpen ? (t('common.close') || 'Close') : (t('common.fields') || 'Fields')}
                             </button>
                         )}
                         <button
@@ -680,8 +721,10 @@ export function PdfPreviewPage() {
                             onClick={handleTemplatePreviewSave}
                             disabled={isSaving}
                         >
-                            {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Printer className="h-3.5 w-3.5" />}
-                            {t('print.printAndSave') || 'Print & Save'}
+                            {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : source.onSaveTemplateLayout ? <Check className="h-3.5 w-3.5" /> : <Printer className="h-3.5 w-3.5" />}
+                            {source.onSaveTemplateLayout
+                                ? t('customTemplates.saveLayout', { defaultValue: 'Save Layout' })
+                                : t('print.printAndSave') || 'Print & Save'}
                         </button>
                     </div>
                 </header>
@@ -1023,7 +1066,15 @@ export function PdfPreviewPage() {
                                 </div>
                             ))}
 
-                            {templatePreview.createElement(fieldValues, source.effectiveId, tempPrintLang !== 'auto' ? tempPrintLang : undefined)}
+                            {templatePreview.createElement(
+                                fieldValues,
+                                source.effectiveId,
+                                fixedTemplatePrintLang || (tempPrintLang !== 'auto' ? tempPrintLang : undefined),
+                                {
+                                    editableFields: isAdmin && drawingMode === 'none',
+                                    onFieldChange: handleFieldChange
+                                }
+                            )}
                         </div>
                     </div>
                 </div>

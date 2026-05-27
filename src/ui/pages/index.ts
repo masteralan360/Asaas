@@ -16,6 +16,7 @@ export { RealEstate } from './RealEstate'
 
 export { InvoicesHistory } from './InvoicesHistory'
 export { Members } from './Members'
+export { CustomTemplates } from './CustomTemplates'
 export { Settings } from './Settings'
 export { Admin } from './Admin'
 export { WorkspaceRegistration } from './WorkspaceRegistration'

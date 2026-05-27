@@ -423,6 +423,15 @@ export function buildWorkspaceNavigation({
                 },
               ]
             : []),
+          ...(role === "admin"
+            ? [
+                {
+                  name: t("customTemplates.title", { defaultValue: "Custom Templates" }),
+                  href: "/custom-templates",
+                  icon: FileText,
+                },
+              ]
+            : []),
           {
             name: t("nav.settings", { defaultValue: "Settings" }),
             href: "/settings",
