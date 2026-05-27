@@ -1,8 +1,11 @@
-import type { ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { Phone } from 'lucide-react'
 import { ReactQRCode } from '@lglab/react-qr-code'
 
+import type { TemplatePreviewDataKey } from '@/lib/pdfPreviewStore'
 import { platformService } from '@/services/platformService'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/ui/components/dialog'
+import { Input } from '@/ui/components/input'
 
 export type RealEstateBuyTemplateValues = Record<string, string>
 
@@ -28,7 +31,112 @@ type RealEstateBuyPrintTemplateProps = {
     editableFields?: boolean
     fieldTypes?: Record<string, RealEstateBuyFieldType>
     fieldPlaceholders?: Record<string, string>
+    transactionKeys?: TemplatePreviewDataKey[]
     onFieldChange?: (key: string, value: string) => void
+}
+
+function dataKeyToken(key: TemplatePreviewDataKey) {
+    return key.token || `{{${key.key}}}`
+}
+
+function resolveDataKeyTokens(text: string, values: RealEstateBuyTemplateValues) {
+    return text.replace(/\{\{\s*([A-Za-z][A-Za-z0-9_.]*)\s*\}\}/g, (match, key) => {
+        const replacement = values[key]?.trim()
+        return replacement || match
+    })
+}
+
+function TransactionKeyPickerDialog({
+    open,
+    dataKeys,
+    onOpenChange,
+    onInsert
+}: {
+    open: boolean
+    dataKeys: TemplatePreviewDataKey[]
+    onOpenChange: (open: boolean) => void
+    onInsert: (key: TemplatePreviewDataKey) => void
+}) {
+    const [query, setQuery] = useState('')
+
+    useEffect(() => {
+        if (open) {
+            setQuery('')
+        }
+    }, [open])
+
+    const groupedKeys = useMemo(() => {
+        const normalizedQuery = query.trim().toLowerCase()
+        const filteredKeys = dataKeys.filter((key) => {
+            if (!normalizedQuery) return true
+            return [
+                key.key,
+                key.label,
+                key.group,
+                key.description
+            ].some((value) => value?.toLowerCase().includes(normalizedQuery))
+        })
+
+        return filteredKeys.reduce<Array<{ group: string; keys: TemplatePreviewDataKey[] }>>((groups, key) => {
+            const group = key.group || 'Transaction'
+            const existing = groups.find((item) => item.group === group)
+            if (existing) {
+                existing.keys.push(key)
+            } else {
+                groups.push({ group, keys: [key] })
+            }
+            return groups
+        }, [])
+    }, [dataKeys, query])
+
+    return (
+        <Dialog open={open} onOpenChange={onOpenChange}>
+            <DialogContent className="max-w-lg overflow-hidden p-0">
+                <DialogHeader className="border-b px-5 py-4 text-left">
+                    <DialogTitle>Transaction keys</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-3 p-4">
+                    <Input
+                        autoFocus
+                        value={query}
+                        onChange={(event) => setQuery(event.target.value)}
+                        placeholder="Search transaction keys"
+                    />
+                    <div className="max-h-[360px] overflow-y-auto rounded-md border">
+                        {groupedKeys.length > 0 ? groupedKeys.map((group) => (
+                            <div key={group.group} className="border-b last:border-b-0">
+                                <div className="bg-muted/50 px-3 py-2 text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
+                                    {group.group}
+                                </div>
+                                {group.keys.map((key) => (
+                                    <button
+                                        key={key.key}
+                                        type="button"
+                                        className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm transition-colors hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground focus:outline-none"
+                                        onClick={() => onInsert(key)}
+                                    >
+                                        <span className="min-w-0">
+                                            <span className="block truncate font-medium">{key.label}</span>
+                                            {key.description ? (
+                                                <span className="block truncate text-xs text-muted-foreground">{key.description}</span>
+                                            ) : null}
+                                        </span>
+                                        <code className="shrink-0 rounded bg-muted px-2 py-1 text-[11px]" dir="ltr">
+                                            {dataKeyToken(key)}
+                                        </code>
+                                    </button>
+                                ))}
+                            </div>
+                        )) : (
+                            <div className="px-3 py-6 text-center text-sm text-muted-foreground">
+                                No keys found.
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </DialogContent>
+        </Dialog>
+    )
 }
 
 function value(values: RealEstateBuyTemplateValues, key: string, fallback = '') {
@@ -114,34 +222,84 @@ function FreeWriteTermRow({
     values,
     fieldKey,
     editable,
+    transactionKeys = [],
     onFieldChange
 }: {
     index: number
     values: RealEstateBuyTemplateValues
     fieldKey: string
     editable?: boolean
+    transactionKeys?: TemplatePreviewDataKey[]
     onFieldChange?: (key: string, value: string) => void
 }) {
     const text = values[fieldKey] || ''
     const showIndex = index === 1 || text.trim().length > 0
+    const textareaRef = useRef<HTMLTextAreaElement>(null)
+    const insertionRangeRef = useRef({ start: text.length, end: text.length })
+    const [isKeyPickerOpen, setIsKeyPickerOpen] = useState(false)
+
+    const openKeyPicker = () => {
+        if (transactionKeys.length === 0) return
+        const textarea = textareaRef.current
+        insertionRangeRef.current = {
+            start: textarea?.selectionStart ?? text.length,
+            end: textarea?.selectionEnd ?? text.length
+        }
+        setIsKeyPickerOpen(true)
+    }
+
+    const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+        if (event.ctrlKey && (event.key === ' ' || event.code === 'Space')) {
+            event.preventDefault()
+            event.stopPropagation()
+            openKeyPicker()
+        }
+    }
+
+    const handleInsertKey = (dataKey: TemplatePreviewDataKey) => {
+        const token = dataKeyToken(dataKey)
+        const range = insertionRangeRef.current
+        const nextValue = `${text.slice(0, range.start)}${token}${text.slice(range.end)}`
+
+        onFieldChange?.(fieldKey, nextValue)
+        setIsKeyPickerOpen(false)
+
+        window.setTimeout(() => {
+            const textarea = textareaRef.current
+            if (!textarea) return
+            const cursor = range.start + token.length
+            textarea.focus()
+            textarea.setSelectionRange(cursor, cursor)
+        }, 0)
+    }
 
     return (
         <div className="grid min-h-[11.8mm] grid-cols-[auto_1fr] gap-1 border-b border-dotted border-zinc-300 py-[1.6mm] leading-[1.8]">
             <div dir="ltr" className={showIndex ? 'min-w-[7mm] text-right font-bold' : 'min-w-[7mm] text-right font-bold opacity-0'}>{index} -</div>
             <div className="min-w-0">
                 {editable ? (
-                    <textarea
-                        value={text}
-                        aria-label={`contract row ${index}`}
-                        onPointerDown={(event) => event.stopPropagation()}
-                        onClick={(event) => event.stopPropagation()}
-                        onChange={(event) => onFieldChange?.(fieldKey, event.target.value)}
-                        className="block h-[8.4mm] w-full resize-none bg-transparent p-0 text-right font-semibold leading-[1.8] text-black outline-none ring-1 ring-transparent transition-shadow hover:ring-primary/30 focus:ring-2 focus:ring-primary print:ring-0"
-                        dir="rtl"
-                        rows={1}
-                    />
+                    <>
+                        <textarea
+                            ref={textareaRef}
+                            value={text}
+                            aria-label={`contract row ${index}`}
+                            onPointerDown={(event) => event.stopPropagation()}
+                            onClick={(event) => event.stopPropagation()}
+                            onKeyDown={handleKeyDown}
+                            onChange={(event) => onFieldChange?.(fieldKey, event.target.value)}
+                            className="block h-[8.4mm] w-full resize-none bg-transparent p-0 text-right font-semibold leading-[1.8] text-black outline-none ring-1 ring-transparent transition-shadow hover:ring-primary/30 focus:ring-2 focus:ring-primary print:ring-0"
+                            dir="rtl"
+                            rows={1}
+                        />
+                        <TransactionKeyPickerDialog
+                            open={isKeyPickerOpen}
+                            dataKeys={transactionKeys}
+                            onOpenChange={setIsKeyPickerOpen}
+                            onInsert={handleInsertKey}
+                        />
+                    </>
                 ) : (
-                    <div className="min-h-[8.4mm] whitespace-pre-wrap text-right">{text}</div>
+                    <div className="min-h-[8.4mm] whitespace-pre-wrap text-right">{resolveDataKeyTokens(text, values)}</div>
                 )}
             </div>
         </div>
@@ -178,6 +336,7 @@ export function RealEstateBuyPrintTemplate({
     editableFields,
     fieldTypes,
     fieldPlaceholders,
+    transactionKeys,
     onFieldChange
 }: RealEstateBuyPrintTemplateProps) {
     const logoSrc = resolveLogoSrc(logoUrl)
@@ -308,6 +467,7 @@ export function RealEstateBuyPrintTemplate({
                             values={values}
                             fieldKey={`contractRow${rowIndex + 1}`}
                             editable={editableFields}
+                            transactionKeys={transactionKeys}
                             onFieldChange={onFieldChange}
                         />
                     ))}

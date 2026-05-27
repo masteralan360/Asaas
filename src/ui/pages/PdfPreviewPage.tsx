@@ -1072,6 +1072,7 @@ export function PdfPreviewPage() {
                                 fixedTemplatePrintLang || (tempPrintLang !== 'auto' ? tempPrintLang : undefined),
                                 {
                                     editableFields: isAdmin && drawingMode === 'none',
+                                    dataKeys: templatePreview.dataKeys,
                                     onFieldChange: handleFieldChange
                                 }
                             )}

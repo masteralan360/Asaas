@@ -1,5 +1,5 @@
 import { generateTemplatePdf } from '@/services/pdfGenerator'
-import type { TemplatePreview } from '@/lib/pdfPreviewStore'
+import type { TemplatePreview, TemplatePreviewDataKey } from '@/lib/pdfPreviewStore'
 import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
 import {
     RealEstateBuyPrintTemplate,
@@ -73,6 +73,40 @@ const REAL_ESTATE_BUY_FIELD_PLACEHOLDERS = {
     buyerWitnessPhone: 'ژمارەی تەلەفۆنی شاهیدی کڕیار بنووسە'
 }
 
+export const REAL_ESTATE_BUY_TRANSACTION_KEYS: TemplatePreviewDataKey[] = [
+    { key: 'transactionNo', label: 'Transaction number', group: 'Deal' },
+    { key: 'transactionType', label: 'Transaction type', group: 'Deal' },
+    { key: 'status', label: 'Transaction status', group: 'Deal' },
+    { key: 'location', label: 'Property location', group: 'Property' },
+    { key: 'propertyType', label: 'Property type', group: 'Property' },
+    { key: 'landAreaM2', label: 'Property area (m²)', group: 'Property' },
+    { key: 'currency', label: 'Currency', group: 'Amounts' },
+    { key: 'totalAmount', label: 'Total amount', group: 'Amounts' },
+    { key: 'paidAmount', label: 'Paid amount', group: 'Amounts' },
+    { key: 'balanceAmount', label: 'Balance amount', group: 'Amounts' },
+    { key: 'profitAmount', label: 'Profit amount', group: 'Amounts' },
+    { key: 'buyerName', label: 'Buyer name', group: 'Buyer' },
+    { key: 'buyerPhone', label: 'Buyer phone number', group: 'Buyer' },
+    { key: 'buyerBusinessPartnerId', label: 'Buyer business partner ID', group: 'Buyer' },
+    { key: 'buyerWitnessName', label: 'Buyer witness name', group: 'Buyer' },
+    { key: 'buyerWitnessAddress', label: 'Buyer witness address', group: 'Buyer' },
+    { key: 'buyerWitnessPhone', label: 'Buyer witness phone number', group: 'Buyer' },
+    { key: 'sellerName', label: 'Seller name', group: 'Seller' },
+    { key: 'sellerPhone', label: 'Seller phone number', group: 'Seller' },
+    { key: 'sellerBusinessPartnerId', label: 'Seller business partner ID', group: 'Seller' },
+    { key: 'sellerWitnessName', label: 'Seller witness name', group: 'Seller' },
+    { key: 'sellerWitnessAddress', label: 'Seller witness address', group: 'Seller' },
+    { key: 'sellerWitnessPhone', label: 'Seller witness phone number', group: 'Seller' },
+    { key: 'isInstallmentBased', label: 'Installment-based deal', group: 'Installments' },
+    { key: 'installmentCount', label: 'Installment count', group: 'Installments' },
+    { key: 'installmentFrequency', label: 'Installment frequency', group: 'Installments' },
+    { key: 'firstDueDate', label: 'First due date', group: 'Installments' },
+    { key: 'nextDueDate', label: 'Next due date', group: 'Installments' },
+    { key: 'notes', label: 'Notes', group: 'Deal' },
+    { key: 'createdAt', label: 'Created date', group: 'System' },
+    { key: 'updatedAt', label: 'Updated date', group: 'System' }
+]
+
 const REAL_ESTATE_BUY_FIELDS = [
     { key: 'receiptNumber', label: 'ژمارەی وصل', value: '3', type: 'text' as const },
     { key: 'sellerName', label: 'ناوی فرۆشیار', value: '', type: 'text' as const },
@@ -120,6 +154,7 @@ function buildQrValue(workspaceId?: string, effectiveId?: string, features?: Wor
 function createRealEstateBuyPreview(options: CustomTemplatePreviewOptions): TemplatePreview {
     return {
         fields: REAL_ESTATE_BUY_FIELDS,
+        dataKeys: REAL_ESTATE_BUY_TRANSACTION_KEYS,
         fixedPrintLang: 'ku',
         createElement: (data, effectiveId, _printLangOverride, renderOptions) => (
             <RealEstateBuyPrintTemplate
@@ -131,6 +166,7 @@ function createRealEstateBuyPreview(options: CustomTemplatePreviewOptions): Temp
                 editableFields={renderOptions?.editableFields}
                 fieldTypes={REAL_ESTATE_BUY_FIELD_TYPES}
                 fieldPlaceholders={REAL_ESTATE_BUY_FIELD_PLACEHOLDERS}
+                transactionKeys={renderOptions?.dataKeys || REAL_ESTATE_BUY_TRANSACTION_KEYS}
                 onFieldChange={renderOptions?.onFieldChange}
             />
         ),

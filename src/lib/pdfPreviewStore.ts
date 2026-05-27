@@ -11,13 +11,23 @@ export type TemplatePreviewField = {
     placeholder?: string
 }
 
+export type TemplatePreviewDataKey = {
+    key: string
+    label: string
+    group?: string
+    token?: string
+    description?: string
+}
+
 export type TemplatePreviewRenderOptions = {
     editableFields?: boolean
+    dataKeys?: TemplatePreviewDataKey[]
     onFieldChange?: (key: string, value: string) => void
 }
 
 export type TemplatePreview = {
     fields: TemplatePreviewField[]
+    dataKeys?: TemplatePreviewDataKey[]
     createElement: (
         data: Record<string, string>,
         effectiveId?: string,
