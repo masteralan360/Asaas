@@ -7,11 +7,15 @@ import { useAuth } from '@/auth'
 import { cn, formatCurrency, formatDate, formatDateTime } from '@/lib/utils'
 import {
     type RealEstateInstallment,
+    type PaymentObligation,
+    type PaymentTransaction,
     type RealEstateTransaction,
+    recordObligationSettlement,
     useRealEstateInstallments,
     useRealEstatePayments,
     useRealEstateTransaction,
-    useRealEstateTransactions
+    useRealEstateTransactions,
+    usePaymentTransactions
 } from '@/local-db'
 import {
     Button,
@@ -29,10 +33,12 @@ import {
     Tabs,
     TabsContent,
     TabsList,
-    TabsTrigger
+    TabsTrigger,
+    useToast
 } from '@/ui/components'
 import { CreateRealEstateTransactionModal } from '@/ui/components/real-estate/CreateRealEstateTransactionModal'
 import { RecordRealEstatePaymentModal } from '@/ui/components/real-estate/RecordRealEstatePaymentModal'
+import { SettlementDialog } from '@/ui/components/payments/SettlementDialog'
 import { useWorkspace } from '@/workspace'
 
 type RealEstateFilter = 'all' | 'active' | 'overdue' | 'completed' | 'installments'
@@ -76,6 +82,24 @@ function formatWitnessDetails(name?: string | null, address?: string | null, pho
         .filter((value): value is string => Boolean(value))
 
     return parts.length > 0 ? parts.join(' / ') : null
+}
+
+function sumTransactions(rows: PaymentTransaction[]) {
+    return rows.reduce((sum, row) => sum + Math.max(0, Number(row.amount || 0)), 0)
+}
+
+function filterActiveTransactions(rows: PaymentTransaction[]) {
+    const reversedIds = new Set(
+        rows
+            .filter((row) => !row.isDeleted && !!row.reversalOfTransactionId)
+            .map((row) => row.reversalOfTransactionId as string)
+    )
+
+    return rows.filter((row) =>
+        !row.isDeleted
+        && !row.reversalOfTransactionId
+        && !reversedIds.has(row.id)
+    )
 }
 
 export function RealEstate() {
@@ -163,7 +187,7 @@ export function RealEstate() {
                 <MetricCard title={t('realEstate.metrics.total', { defaultValue: 'Transactions' })} value={String(metrics.totalCount)} />
                 <MetricCard title={t('realEstate.metrics.active', { defaultValue: 'Active Deals' })} value={String(metrics.activeCount)} />
                 <MetricCard title={t('realEstate.metrics.openBalance', { defaultValue: 'Open Balance' })} value={metrics.openBalance} />
-                <MetricCard title={t('realEstate.metrics.profit', { defaultValue: 'Profit' })} value={metrics.profit} />
+                <MetricCard title={t('realEstate.metrics.profit', { defaultValue: 'Commission' })} value={metrics.profit} />
                 <MetricCard title={t('realEstate.metrics.installments', { defaultValue: 'Installment Deals' })} value={String(metrics.installmentCount)} />
             </div>
 
@@ -245,7 +269,7 @@ export function RealEstate() {
                                             <div className="flex justify-end gap-2">
                                                 {transaction.balanceAmount > 0 && user?.role !== 'viewer' ? (
                                                     <Button variant="ghost" size="sm" onClick={() => setPaymentTarget({ transaction, installment: null })}>
-                                                        {t('loans.pay', { defaultValue: 'Pay' })}
+                                                        {t('realEstate.recordContractPayment', { defaultValue: 'Record Payment' })}
                                                     </Button>
                                                 ) : null}
                                                 <Button variant="outline" size="sm" onClick={() => navigate(`/real-estate/${transaction.id}`)}>
@@ -295,10 +319,96 @@ function RealEstateDetails({
 }) {
     const { t } = useTranslation()
     const { features } = useWorkspace()
+    const { toast } = useToast()
     const { user } = useAuth()
     const transaction = useRealEstateTransaction(transactionId)
     const installments = useRealEstateInstallments(transactionId, transaction?.workspaceId)
     const payments = useRealEstatePayments(transactionId, transaction?.workspaceId)
+    const commissionTransactions = usePaymentTransactions(transaction?.workspaceId, {
+        sourceModule: 'real_estate',
+        sourceType: 'real_estate_commission',
+        includeReversals: true
+    })
+    const [isCommissionOpen, setIsCommissionOpen] = useState(false)
+    const [isSubmittingCommission, setIsSubmittingCommission] = useState(false)
+
+    const transactionCommissionPayments = useMemo(
+        () => filterActiveTransactions(commissionTransactions.filter((payment) => payment.sourceRecordId === transactionId)),
+        [commissionTransactions, transactionId]
+    )
+    const commissionPaid = useMemo(
+        () => sumTransactions(transactionCommissionPayments),
+        [transactionCommissionPayments]
+    )
+    const commissionBalance = transaction ? Math.max((transaction.profitAmount || 0) - commissionPaid, 0) : 0
+    const commissionObligation = useMemo<PaymentObligation | null>(() => {
+        if (!transaction || commissionBalance <= 0) {
+            return null
+        }
+
+        const businessPartnerId = transaction.buyerBusinessPartnerId || transaction.sellerBusinessPartnerId || null
+        return {
+            id: `real-estate-commission:${transaction.id}`,
+            workspaceId: transaction.workspaceId,
+            sourceModule: 'real_estate',
+            sourceType: 'real_estate_commission',
+            sourceRecordId: transaction.id,
+            sourceSubrecordId: null,
+            direction: 'incoming',
+            amount: commissionBalance,
+            currency: transaction.currency,
+            dueDate: transaction.createdAt.slice(0, 10),
+            counterpartyName: transaction.buyerName || transaction.sellerName,
+            referenceLabel: `${transaction.transactionNo} / Commission`,
+            title: transaction.location,
+            subtitle: t('realEstate.mediatorCommission', { defaultValue: 'Mediator commission' }),
+            status: 'open',
+            routePath: `/real-estate/${transaction.id}`,
+            metadata: {
+                realEstateTransactionId: transaction.id,
+                transactionType: transaction.transactionType,
+                propertyLocation: transaction.location,
+                businessPartnerId
+            }
+        }
+    }, [commissionBalance, t, transaction])
+
+    const handleCommissionSettle = async (input: {
+        paymentMethod: PaymentTransaction['paymentMethod']
+        paidAt: string
+        note?: string
+        counterpartyName?: string
+        businessPartnerId?: string | null
+    }) => {
+        if (!commissionObligation) {
+            return
+        }
+
+        setIsSubmittingCommission(true)
+        try {
+            await recordObligationSettlement(commissionObligation.workspaceId, commissionObligation, {
+                paymentMethod: input.paymentMethod,
+                paidAt: input.paidAt,
+                note: input.note,
+                counterpartyName: input.counterpartyName,
+                businessPartnerId: input.businessPartnerId,
+                createdBy: user?.id ?? null
+            })
+            toast({
+                title: t('common.success', { defaultValue: 'Success' }),
+                description: t('realEstate.messages.commissionRecorded', { defaultValue: 'Commission payment recorded.' })
+            })
+            setIsCommissionOpen(false)
+        } catch (error: any) {
+            toast({
+                title: t('common.error', { defaultValue: 'Error' }),
+                description: error?.message || t('realEstate.messages.commissionFailed', { defaultValue: 'Failed to record commission payment.' }),
+                variant: 'destructive'
+            })
+        } finally {
+            setIsSubmittingCommission(false)
+        }
+    }
 
     if (!transaction || transaction.isDeleted) {
         return (
@@ -327,12 +437,20 @@ function RealEstateDetails({
                     <span>/</span>
                     <span className="font-semibold text-foreground">{transaction.transactionNo}</span>
                 </div>
-                {transaction.balanceAmount > 0 && user?.role !== 'viewer' ? (
-                    <Button className="gap-2" onClick={() => onOpenPayment(transaction, null)}>
-                        <HandCoins className="h-4 w-4" />
-                        {t('realEstate.recordPayment', { defaultValue: 'Record Payment' })}
-                    </Button>
-                ) : null}
+                <div className="flex flex-col gap-2 sm:flex-row">
+                    {commissionBalance > 0 && user?.role !== 'viewer' ? (
+                        <Button className="gap-2" onClick={() => setIsCommissionOpen(true)}>
+                            <HandCoins className="h-4 w-4" />
+                            {t('realEstate.recordCommission', { defaultValue: 'Record Commission' })}
+                        </Button>
+                    ) : null}
+                    {transaction.balanceAmount > 0 && user?.role !== 'viewer' ? (
+                        <Button variant="outline" className="gap-2" onClick={() => onOpenPayment(transaction, null)}>
+                            <HandCoins className="h-4 w-4" />
+                            {t('realEstate.recordContractPayment', { defaultValue: 'Record Contract Payment' })}
+                        </Button>
+                    ) : null}
+                </div>
             </div>
 
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
@@ -363,7 +481,7 @@ function RealEstateDetails({
                             />
                         ) : null}
                         <InfoRow label={t('realEstate.landArea', { defaultValue: 'Land Area (m2)' })} value={transaction.landAreaM2 > 0 ? `${transaction.landAreaM2.toLocaleString()} m2` : '-'} />
-                        <InfoRow label={t('realEstate.profitAmount', { defaultValue: 'Profit Amount' })} value={formatCurrency(transaction.profitAmount, transaction.currency, features.iqd_display_preference)} />
+                        <InfoRow label={t('realEstate.profitAmount', { defaultValue: 'Commission Amount' })} value={formatCurrency(transaction.profitAmount, transaction.currency, features.iqd_display_preference)} />
                         {transaction.notes ? (
                             <div className="rounded-xl border bg-muted/20 p-3 text-muted-foreground">{transaction.notes}</div>
                         ) : null}
@@ -377,8 +495,10 @@ function RealEstateDetails({
                     <CardContent className="space-y-4">
                         <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                             <MetricCard title={t('realEstate.total', { defaultValue: 'Total' })} value={formatCurrency(transaction.totalAmount, transaction.currency, features.iqd_display_preference)} />
-                            <MetricCard title={t('realEstate.paid', { defaultValue: 'Paid' })} value={formatCurrency(transaction.paidAmount, transaction.currency, features.iqd_display_preference)} />
+                            <MetricCard title={t('realEstate.contractPaid', { defaultValue: 'Contract Paid' })} value={formatCurrency(transaction.paidAmount, transaction.currency, features.iqd_display_preference)} />
                             <MetricCard title={t('loans.balance', { defaultValue: 'Balance' })} value={formatCurrency(transaction.balanceAmount, transaction.currency, features.iqd_display_preference)} />
+                            <MetricCard title={t('realEstate.commissionPaid', { defaultValue: 'Commission Paid' })} value={formatCurrency(commissionPaid, transaction.currency, features.iqd_display_preference)} />
+                            <MetricCard title={t('realEstate.remainingCommission', { defaultValue: 'Remaining Commission' })} value={formatCurrency(commissionBalance, transaction.currency, features.iqd_display_preference)} />
                         </div>
                         <div className="h-2 overflow-hidden rounded-full bg-muted">
                             <div className="h-full bg-emerald-500 transition-all" style={{ width: `${paidPercent}%` }} />
@@ -393,7 +513,8 @@ function RealEstateDetails({
             <Tabs defaultValue="installments" className="space-y-4">
                 <TabsList>
                     <TabsTrigger value="installments">{t('realEstate.installments', { defaultValue: 'Installments' })}</TabsTrigger>
-                    <TabsTrigger value="payments">{t('payments.tabs.transactions', { defaultValue: 'Transactions' })}</TabsTrigger>
+                    <TabsTrigger value="payments">{t('realEstate.contractPayments', { defaultValue: 'Contract Payments' })}</TabsTrigger>
+                    <TabsTrigger value="commission">{t('realEstate.commission', { defaultValue: 'Commission' })}</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="installments">
@@ -440,7 +561,7 @@ function RealEstateDetails({
                                                 <TableCell className="text-end">
                                                     {installment.balanceAmount > 0 && user?.role !== 'viewer' ? (
                                                         <Button variant="ghost" size="sm" onClick={() => onOpenPayment(transaction, installment)}>
-                                                            {t('loans.pay', { defaultValue: 'Pay' })}
+                                                            {t('realEstate.recordContractPayment', { defaultValue: 'Record Payment' })}
                                                         </Button>
                                                     ) : null}
                                                 </TableCell>
@@ -487,6 +608,56 @@ function RealEstateDetails({
                         </CardContent>
                     </Card>
                 </TabsContent>
+
+                <TabsContent value="commission">
+                    <Card>
+                        <CardHeader>
+                            <CardTitle className="flex items-center justify-between gap-3">
+                                <span>{t('realEstate.commission', { defaultValue: 'Commission' })}</span>
+                                {commissionBalance > 0 && user?.role !== 'viewer' ? (
+                                    <Button size="sm" onClick={() => setIsCommissionOpen(true)}>
+                                        {t('realEstate.recordCommission', { defaultValue: 'Record Commission' })}
+                                    </Button>
+                                ) : null}
+                            </CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                                <MetricCard title={t('realEstate.profitAmount', { defaultValue: 'Commission Amount' })} value={formatCurrency(transaction.profitAmount, transaction.currency, features.iqd_display_preference)} />
+                                <MetricCard title={t('realEstate.commissionPaid', { defaultValue: 'Commission Paid' })} value={formatCurrency(commissionPaid, transaction.currency, features.iqd_display_preference)} />
+                                <MetricCard title={t('realEstate.remainingCommission', { defaultValue: 'Remaining Commission' })} value={formatCurrency(commissionBalance, transaction.currency, features.iqd_display_preference)} />
+                            </div>
+                            <div className="rounded-md border">
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow>
+                                            <TableHead>{t('payments.table.time', { defaultValue: 'Time' })}</TableHead>
+                                            <TableHead>{t('payments.table.counterparty', { defaultValue: 'Counterparty' })}</TableHead>
+                                            <TableHead className="text-end">{t('payments.table.amount', { defaultValue: 'Amount' })}</TableHead>
+                                            <TableHead>{t('payments.table.note', { defaultValue: 'Note' })}</TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {transactionCommissionPayments.length === 0 ? (
+                                            <TableRow>
+                                                <TableCell colSpan={4} className="py-8 text-center text-muted-foreground">
+                                                    {t('payments.noTransactions', { defaultValue: 'No transactions match the current filters.' })}
+                                                </TableCell>
+                                            </TableRow>
+                                        ) : transactionCommissionPayments.map((payment) => (
+                                            <TableRow key={payment.id}>
+                                                <TableCell>{formatDateTime(payment.paidAt)}</TableCell>
+                                                <TableCell>{payment.counterpartyName || '-'}</TableCell>
+                                                <TableCell className="text-end font-semibold">{formatCurrency(payment.amount, transaction.currency, features.iqd_display_preference)}</TableCell>
+                                                <TableCell>{payment.note || '-'}</TableCell>
+                                            </TableRow>
+                                        ))}
+                                    </TableBody>
+                                </Table>
+                            </div>
+                        </CardContent>
+                    </Card>
+                </TabsContent>
             </Tabs>
 
             <RecordRealEstatePaymentModal
@@ -498,6 +669,13 @@ function RealEstateDetails({
                 }}
                 transaction={paymentTarget?.transaction ?? null}
                 installment={paymentTarget?.installment ?? null}
+            />
+            <SettlementDialog
+                open={isCommissionOpen}
+                onOpenChange={setIsCommissionOpen}
+                obligation={commissionObligation}
+                isSubmitting={isSubmittingCommission}
+                onSubmit={handleCommissionSettle}
             />
         </div>
     )

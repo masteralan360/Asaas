@@ -89,8 +89,7 @@ type LedgerEntryType =
     | 'loan_repayment_paid'
     | 'installment_received'
     | 'installment_paid'
-    | 'real_estate_payment_received'
-    | 'real_estate_payment_paid'
+    | 'real_estate_commission'
     | 'direct_inflow'
     | 'direct_outflow'
 
@@ -298,10 +297,8 @@ function ledgerTypeLabel(type: LedgerEntryType, t: any) {
             return t('ledger.type.installmentReceived', { defaultValue: 'Installment Received' })
         case 'installment_paid':
             return t('ledger.type.installmentPaid', { defaultValue: 'Installment Paid' })
-        case 'real_estate_payment_received':
-            return t('ledger.type.realEstatePaymentReceived', { defaultValue: 'Real Estate Payment Received' })
-        case 'real_estate_payment_paid':
-            return t('ledger.type.realEstatePaymentPaid', { defaultValue: 'Real Estate Payment Paid' })
+        case 'real_estate_commission':
+            return t('ledger.type.realEstateCommission', { defaultValue: 'Real Estate Commission' })
         case 'direct_inflow':
             return t('ledger.type.directInflow', { defaultValue: 'Direct Inflow' })
         case 'direct_outflow':
@@ -670,6 +667,8 @@ function buildTransactionReference(transaction: PaymentTransaction) {
             return buildReferenceId('EXP', transaction.sourceRecordId)
         case 'payroll_status':
             return buildReferenceId('PAY', transaction.sourceRecordId)
+        case 'real_estate_commission':
+            return buildReferenceId('RE', transaction.sourceRecordId)
         default:
             return buildReferenceId('LOAN', transaction.sourceRecordId)
     }
@@ -698,6 +697,13 @@ function buildTransactionDescription(transaction: PaymentTransaction, t: any) {
         const month = typeof transaction.metadata?.month === 'string' ? transaction.metadata.month : null
         if (month) {
             details.push(`Payroll ${month}`)
+        }
+    }
+
+    if (transaction.sourceType === 'real_estate_commission') {
+        const location = typeof transaction.metadata?.propertyLocation === 'string' ? transaction.metadata.propertyLocation : null
+        if (location) {
+            details.push(location)
         }
     }
 
@@ -774,18 +780,14 @@ function buildLedgerRelationDescriptor(
             }
         }
 
-        case 'real_estate_payment':
-        case 'real_estate_installment': {
+        case 'real_estate_commission': {
             const realEstateTransaction = context.realEstateTransactionById.get(transaction.sourceRecordId)
-            const relationIsCompleted = realEstateTransaction ? realEstateTransaction.balanceAmount <= 0 : false
             return {
                 relationKey: `real-estate:${transaction.sourceRecordId}`,
                 relationRole: 'settlement',
-                relationTitle: transaction.sourceType === 'real_estate_installment'
-                    ? 'Real estate installment'
-                    : 'Real estate payment',
+                relationTitle: 'Real estate commission',
                 relationDescription: `Original source: ${realEstateTransaction?.transactionNo || reference}.`,
-                relationIsCompleted
+                relationIsCompleted: false
             }
         }
 
@@ -987,23 +989,29 @@ function buildPaymentLedgerEntry(
                 ...relation
             }
         case 'real_estate_payment':
-        case 'real_estate_installment': {
+        case 'real_estate_installment':
+            return null
+        case 'real_estate_commission': {
             const realEstateTransaction = context.realEstateTransactionById.get(transaction.sourceRecordId)
-            const linkedPartnerId = transaction.direction === 'incoming'
-                ? realEstateTransaction?.buyerBusinessPartnerId
-                : realEstateTransaction?.sellerBusinessPartnerId
+            const linkedBusinessPartnerId = typeof transaction.metadata?.businessPartnerId === 'string' && transaction.metadata.businessPartnerId
+                ? transaction.metadata.businessPartnerId
+                : null
             return {
                 id: `payment:${transaction.id}`,
                 transactionId: transaction.id,
                 date: transaction.paidAt,
-                type: transaction.direction === 'incoming' ? 'real_estate_payment_received' : 'real_estate_payment_paid',
-                direction: transaction.direction,
+                type: 'real_estate_commission',
+                direction: 'incoming',
                 amount: transaction.amount,
                 currency: transaction.currency,
                 sourceModule: 'real_estate',
                 referenceId: buildTransactionReference(transaction),
                 partner: transaction.counterpartyName || null,
-                businessPartnerId: linkedPartnerId ?? context.businessPartnerByName.get(transaction.counterpartyName?.trim().toLowerCase() ?? '') ?? null,
+                businessPartnerId: linkedBusinessPartnerId
+                    ?? realEstateTransaction?.buyerBusinessPartnerId
+                    ?? realEstateTransaction?.sellerBusinessPartnerId
+                    ?? context.businessPartnerByName.get(transaction.counterpartyName?.trim().toLowerCase() ?? '')
+                    ?? null,
                 paymentMethod: transaction.paymentMethod || 'unknown',
                 notes: transaction.note?.trim() || null,
                 description: buildTransactionDescription(transaction, t),
@@ -1089,6 +1097,7 @@ export function Ledger() {
         || features.budget
         || features.hr
         || features.loans
+        || features.real_estate
 
     const dateBounds = useMemo<{ startDate?: string; endDate?: string }>(() => {
         const now = new Date()

@@ -130,7 +130,7 @@ export function RecordRealEstatePaymentModal({
         <Dialog open={isOpen} onOpenChange={onOpenChange}>
             <DialogContent className="top-[calc(50%+var(--titlebar-height)/2+var(--safe-area-top)/2)] w-[calc(100vw-0.75rem)] max-w-lg rounded-[1.25rem] border-border/60 p-0 sm:w-full sm:rounded-[1.5rem]">
                 <DialogHeader className="border-b bg-muted/30 px-4 py-4 pr-14 text-left sm:px-6">
-                    <DialogTitle>{t('realEstate.recordPayment', { defaultValue: 'Record Real Estate Payment' })}</DialogTitle>
+                    <DialogTitle>{t('realEstate.recordContractPayment', { defaultValue: 'Record Contract Payment' })}</DialogTitle>
                     <DialogDescription>
                         {transaction ? `${transaction.transactionNo} / ${transaction.location}` : ''}
                     </DialogDescription>
@@ -139,7 +139,7 @@ export function RecordRealEstatePaymentModal({
                 <form onSubmit={handleSubmit}>
                     <div className="space-y-4 px-4 py-4 sm:px-6">
                         <div className="rounded-xl border bg-muted/20 p-3 text-sm">
-                            <div className="text-muted-foreground">{t('loans.balance', { defaultValue: 'Balance' })}</div>
+                            <div className="text-muted-foreground">{t('realEstate.contractBalance', { defaultValue: 'Contract Balance' })}</div>
                             <div className="text-xl font-bold">
                                 {transaction ? formatCurrency(maxAmount, transaction.currency, features.iqd_display_preference) : '-'}
                             </div>
@@ -178,7 +178,7 @@ export function RecordRealEstatePaymentModal({
                             {t('common.cancel') || 'Cancel'}
                         </Button>
                         <Button type="submit" className="w-full sm:w-auto" disabled={!canSubmit || isSaving}>
-                            {t('loans.pay', { defaultValue: 'Pay' })}
+                            {t('common.record', { defaultValue: 'Record' })}
                         </Button>
                     </DialogFooter>
                 </form>

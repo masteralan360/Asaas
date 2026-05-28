@@ -416,7 +416,7 @@ export function CreateRealEstateTransactionModal({
 
                             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                                 <div className="grid gap-2">
-                                    <Label>{t('realEstate.paid', { defaultValue: 'Paid' })}</Label>
+                                    <Label>{t('realEstate.contractPaid', { defaultValue: 'Contract Paid' })}</Label>
                                     <Input
                                         type="text"
                                         inputMode={currency === 'iqd' ? 'numeric' : 'decimal'}
@@ -426,7 +426,7 @@ export function CreateRealEstateTransactionModal({
                                     />
                                 </div>
                                 <div className="grid gap-2">
-                                    <Label>{t('realEstate.profitAmount', { defaultValue: 'Profit Amount' })}</Label>
+                                    <Label>{t('realEstate.profitAmount', { defaultValue: 'Commission Amount' })}</Label>
                                     <Input
                                         type="text"
                                         inputMode={currency === 'iqd' ? 'numeric' : 'decimal'}

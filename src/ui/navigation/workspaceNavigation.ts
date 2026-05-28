@@ -208,9 +208,10 @@ export function buildWorkspaceNavigation({
           },
         ]
       : []),
-    ...(hasFeature("loans")
+    ...(hasFeature("loans") || hasFeature("installments") || hasFeature("real_estate")
       ? [
           ...(canAccessPermission("loans.access")
+            && hasFeature("loans")
             ? [
                 {
                   name: t("nav.loans", { defaultValue: "Loans" }),
@@ -219,7 +220,8 @@ export function buildWorkspaceNavigation({
                 },
               ]
             : []),
-          ...(canAccessPermission("installments.access")
+          ...((hasFeature("installments") || hasFeature("real_estate"))
+            && canAccessPermission("installments.access")
             ? [
                 {
                   name: t("nav.installments", {

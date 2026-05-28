@@ -13,6 +13,7 @@ interface ProtectedRouteProps {
     redirectTo?: string
     allowKicked?: boolean
     requiredFeature?: ModuleFeatureKey
+    requiredAnyFeature?: ModuleFeatureKey[]
     requiredCapability?: PlanCapabilityKey
     requiredPermission?: WorkspacePermissionKey
 }
@@ -23,6 +24,7 @@ export function ProtectedRoute({
     redirectTo = '/login',
     allowKicked = false,
     requiredFeature,
+    requiredAnyFeature,
     requiredCapability,
     requiredPermission
 }: ProtectedRouteProps) {
@@ -91,7 +93,10 @@ export function ProtectedRoute({
 
     // Check if required feature is enabled
     // 1. Check Workspace Level
-    if ((requiredFeature && !hasFeature(requiredFeature)) || (requiredCapability && !hasCapability(requiredCapability))) {
+    const lacksRequiredFeature = Boolean(requiredFeature && !hasFeature(requiredFeature))
+    const lacksAnyRequiredFeature = Boolean(requiredAnyFeature?.length && !requiredAnyFeature.some((feature) => hasFeature(feature)))
+
+    if (lacksRequiredFeature || lacksAnyRequiredFeature || (requiredCapability && !hasCapability(requiredCapability))) {
         return (
             <div className="min-h-screen flex items-center justify-center bg-background">
                 <div className="text-center">

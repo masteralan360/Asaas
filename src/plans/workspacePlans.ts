@@ -43,6 +43,7 @@ export type WorkspaceFeatureKey =
     | 'travel_agency'
     | 'real_estate'
     | 'loans'
+    | 'installments'
     | 'net_revenue'
     | 'budget'
     | 'monthly_comparison'
@@ -220,6 +221,7 @@ export const WORKSPACE_FEATURE_MODULE_MAP: Record<WorkspaceFeatureKey, PlanModul
     travel_agency: null,
     real_estate: 'real_estate',
     loans: 'loans',
+    installments: 'installments',
     net_revenue: 'revenue_analytics',
     budget: 'accounting',
     monthly_comparison: 'revenue_analytics',

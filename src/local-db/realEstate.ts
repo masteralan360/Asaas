@@ -23,6 +23,7 @@ import type {
     RealEstateTransaction,
     RealEstateTransactionStatus,
     RealEstateTransactionType,
+    PaymentTransaction,
     WorkspacePaymentMethod
 } from './models'
 
@@ -267,56 +268,37 @@ async function generateTransactionNo(workspaceId: string, createdAt: string) {
     return `RE-${year}-${String(sequence).padStart(5, '0')}`
 }
 
-function getRealEstatePaymentDirection(transaction: Pick<RealEstateTransaction, 'transactionType'>) {
-    return transaction.transactionType === 'buy' ? 'outgoing' as const : 'incoming' as const
-}
-
-function getRealEstatePaymentCounterparty(transaction: Pick<RealEstateTransaction, 'transactionType' | 'buyerName' | 'sellerName'>) {
-    return transaction.transactionType === 'buy' ? transaction.sellerName : transaction.buyerName
-}
-
 function normalizeOptionalText(value?: string | null) {
     const text = String(value || '').trim()
     return text || null
 }
 
-async function appendRealEstatePaymentTransaction(
-    transaction: RealEstateTransaction,
-    payment: RealEstatePayment,
-    installment?: RealEstateInstallment | null
-) {
-    try {
-        const { appendPaymentTransaction } = await import('./payments')
-        const installmentLabel = installment
-            ? `Installment ${String(installment.installmentNo).padStart(2, '0')}`
-            : payment.paymentKind === 'down_payment'
-                ? 'Down payment'
-                : 'Payment'
+function getActivePaymentTransactionAmount(rows: PaymentTransaction[]) {
+    const reversedIds = new Set(
+        rows
+            .filter((row) => !row.isDeleted && !!row.reversalOfTransactionId)
+            .map((row) => row.reversalOfTransactionId as string)
+    )
 
-        await appendPaymentTransaction(transaction.workspaceId, {
-            sourceModule: 'real_estate',
-            sourceType: installment ? 'real_estate_installment' : 'real_estate_payment',
-            sourceRecordId: transaction.id,
-            sourceSubrecordId: installment?.id ?? payment.id,
-            direction: getRealEstatePaymentDirection(transaction),
-            amount: payment.amount,
-            currency: transaction.currency,
-            paymentMethod: payment.paymentMethod,
-            paidAt: payment.paidAt,
-            counterpartyName: getRealEstatePaymentCounterparty(transaction),
-            referenceLabel: `${transaction.transactionNo} / ${installmentLabel}`,
-            note: payment.note || null,
-            createdBy: payment.createdBy || null,
-            metadata: {
-                realEstateTransactionId: transaction.id,
-                realEstatePaymentId: payment.id,
-                installmentId: installment?.id ?? null,
-                transactionType: transaction.transactionType,
-                propertyLocation: transaction.location
-            }
-        })
-    } catch (error) {
-        console.error('[RealEstate] Failed to append payment transaction:', error)
+    return rows
+        .filter((row) =>
+            !row.isDeleted
+            && !row.reversalOfTransactionId
+            && !reversedIds.has(row.id)
+        )
+        .reduce((sum, row) => sum + Math.max(0, Number(row.amount || 0)), 0)
+}
+
+async function getCommissionPaymentRows(workspaceId: string, transactionId: string) {
+    return db.payment_transactions
+        .where('[workspaceId+sourceType+sourceRecordId]')
+        .equals([workspaceId, 'real_estate_commission', transactionId])
+        .toArray()
+}
+
+function assertCommissionPaymentMethod(paymentMethod: WorkspacePaymentMethod) {
+    if (paymentMethod === 'credit' || paymentMethod === 'loan' || paymentMethod === 'loan_adjustment' || paymentMethod === 'unknown') {
+        throw new Error('Select a valid commission payment method')
     }
 }
 
@@ -495,10 +477,6 @@ export async function createRealEstateTransaction(
             : Promise.resolve()
     ])
 
-    if (downPayment) {
-        await appendRealEstatePaymentTransaction(transaction, downPayment, null)
-    }
-
     const savedTransaction = await db.real_estate_transactions.get(transaction.id)
     return {
         transaction: savedTransaction || transaction,
@@ -515,6 +493,100 @@ export interface RecordRealEstatePaymentInput {
     paidAt?: string
     note?: string | null
     createdBy?: string | null
+}
+
+export interface RecordRealEstateCommissionPaymentInput {
+    transactionId: string
+    amount: number
+    paymentMethod: WorkspacePaymentMethod
+    paidAt?: string
+    counterpartyName?: string | null
+    businessPartnerId?: string | null
+    note?: string | null
+    createdBy?: string | null
+}
+
+export async function getRealEstateCommissionPaidAmount(workspaceId: string, transactionId: string) {
+    const transaction = await db.real_estate_transactions.get(transactionId)
+    return roundRealEstateAmount(
+        getActivePaymentTransactionAmount(await getCommissionPaymentRows(workspaceId, transactionId)),
+        transaction?.currency ?? 'usd'
+    )
+}
+
+export async function recordRealEstateCommissionPayment(
+    workspaceId: string,
+    input: RecordRealEstateCommissionPaymentInput
+) {
+    assertCommissionPaymentMethod(input.paymentMethod)
+
+    const transaction = await db.real_estate_transactions.get(input.transactionId)
+    if (!transaction || transaction.isDeleted || transaction.workspaceId !== workspaceId) {
+        throw new Error('Real estate transaction not found')
+    }
+
+    const amount = roundRealEstateAmount(Math.max(0, Number(input.amount || 0)), transaction.currency)
+    if (amount <= 0) {
+        throw new Error('Commission amount must be greater than zero')
+    }
+
+    const paidAmount = roundRealEstateAmount(
+        getActivePaymentTransactionAmount(await getCommissionPaymentRows(workspaceId, transaction.id)),
+        transaction.currency
+    )
+    const remainingAmount = roundRealEstateAmount(Math.max(transaction.profitAmount - paidAmount, 0), transaction.currency)
+    if (amount > remainingAmount) {
+        throw new Error('Commission amount cannot exceed the remaining commission')
+    }
+
+    const requestedBusinessPartnerId = normalizeOptionalText(input.businessPartnerId)
+    let businessPartnerId = requestedBusinessPartnerId
+        || transaction.buyerBusinessPartnerId
+        || transaction.sellerBusinessPartnerId
+        || null
+    let counterpartyName = normalizeOptionalText(input.counterpartyName)
+
+    if (businessPartnerId) {
+        const partner = await db.business_partners.get(businessPartnerId)
+        if (!partner || partner.workspaceId !== workspaceId || partner.isDeleted || partner.mergedIntoBusinessPartnerId) {
+            if (requestedBusinessPartnerId) {
+                throw new Error('Selected business partner is not available')
+            }
+            businessPartnerId = null
+        } else {
+            businessPartnerId = partner.id
+            counterpartyName = partner.name
+        }
+    }
+
+    if (!counterpartyName) {
+        counterpartyName = transaction.buyerName || transaction.sellerName || null
+    }
+
+    const commissionPaymentId = generateId()
+    const { appendPaymentTransaction } = await import('./payments')
+    return appendPaymentTransaction(workspaceId, {
+        sourceModule: 'real_estate',
+        sourceType: 'real_estate_commission',
+        sourceRecordId: transaction.id,
+        sourceSubrecordId: commissionPaymentId,
+        direction: 'incoming',
+        amount,
+        currency: transaction.currency,
+        paymentMethod: input.paymentMethod,
+        paidAt: input.paidAt || new Date().toISOString(),
+        counterpartyName,
+        referenceLabel: `${transaction.transactionNo} / Commission`,
+        note: input.note?.trim() || null,
+        createdBy: input.createdBy || null,
+        metadata: {
+            realEstateTransactionId: transaction.id,
+            realEstateCommissionPaymentId: commissionPaymentId,
+            transactionType: transaction.transactionType,
+            propertyLocation: transaction.location,
+            businessPartnerId
+        }
+    })
 }
 
 export async function recordRealEstatePayment(
@@ -628,8 +700,6 @@ export async function recordRealEstatePayment(
         ),
         syncUpsertEntities(PAYMENTS_TABLE, [payment as unknown as RealEstateSyncEntity], workspaceId)
     ])
-
-    await appendRealEstatePaymentTransaction(updatedTransaction, payment, firstTouchedInstallment)
 
     return {
         transaction: updatedTransaction,

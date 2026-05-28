@@ -1193,7 +1193,7 @@ function App() {
                       <Route path="/installments">
                         <ProtectedRoute
                           allowedRoles={["admin", "staff", "viewer"]}
-                          requiredFeature="loans"
+                          requiredAnyFeature={["installments", "real_estate"]}
                           requiredPermission="installments.access"
                         >
                           <Layout>
@@ -1204,7 +1204,7 @@ function App() {
                       <Route path="/installments/:loanId">
                         <ProtectedRoute
                           allowedRoles={["admin", "staff", "viewer"]}
-                          requiredFeature="loans"
+                          requiredFeature="installments"
                           requiredPermission="installments.access"
                         >
                           <Layout>

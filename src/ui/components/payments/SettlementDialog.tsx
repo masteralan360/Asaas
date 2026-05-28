@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
+import { type FormEvent, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { X } from 'lucide-react'
 
-import type { PaymentObligation, WorkspacePaymentMethod } from '@/local-db'
+import { type BusinessPartner, type PaymentObligation, type WorkspacePaymentMethod, useBusinessPartners } from '@/local-db'
 import { formatCurrency, formatDate, formatLocalDateTimeValue, parseLocalDateTimeValue } from '@/lib/utils'
 import {
     Button,
@@ -20,6 +21,7 @@ import {
     SelectValue,
     Textarea
 } from '@/ui/components'
+import { PartnerAutocompleteInput } from '@/ui/components/crm/PartnerAutocompleteInput'
 import { useWorkspace } from '@/workspace'
 
 interface SettlementDialogProps {
@@ -32,7 +34,14 @@ interface SettlementDialogProps {
         paymentMethod: WorkspacePaymentMethod
         paidAt: string
         note?: string
+        counterpartyName?: string
+        businessPartnerId?: string | null
     }) => Promise<void> | void
+}
+
+function getMetadataString(metadata: Record<string, unknown> | null | undefined, key: string) {
+    const value = metadata?.[key]
+    return typeof value === 'string' && value.trim() ? value.trim() : null
 }
 
 export function SettlementDialog({
@@ -48,6 +57,15 @@ export function SettlementDialog({
     const [paymentMethod, setPaymentMethod] = useState<WorkspacePaymentMethod>('cash')
     const [paidAt, setPaidAt] = useState('')
     const [note, setNote] = useState('')
+    const [counterpartyName, setCounterpartyName] = useState('')
+    const [linkedCounterparty, setLinkedCounterparty] = useState<{ id: string; name: string } | null>(null)
+    const showsCounterpartyPicker = obligation?.sourceType === 'real_estate_commission'
+    const businessPartners = useBusinessPartners(showsCounterpartyPicker ? obligation?.workspaceId : undefined, { includeRealEstateRoles: true }) || []
+
+    const businessPartnerById = useMemo(() => new Map(businessPartners.map((partner) => [partner.id, partner])), [businessPartners])
+    const defaultBusinessPartnerId = getMetadataString(obligation?.metadata, 'businessPartnerId')
+    const defaultBusinessPartner = defaultBusinessPartnerId ? businessPartnerById.get(defaultBusinessPartnerId) : undefined
+    const defaultCounterpartyName = defaultBusinessPartner?.name || obligation?.counterpartyName || obligation?.title || ''
 
     useEffect(() => {
         if (!open) {
@@ -57,7 +75,14 @@ export function SettlementDialog({
         setPaymentMethod('cash')
         setPaidAt(formatLocalDateTimeValue(new Date()))
         setNote('')
-    }, [open, obligation?.id])
+        setCounterpartyName(defaultCounterpartyName)
+        setLinkedCounterparty(defaultBusinessPartnerId
+            ? {
+                id: defaultBusinessPartnerId,
+                name: defaultCounterpartyName
+            }
+            : null)
+    }, [defaultBusinessPartnerId, defaultCounterpartyName, open, obligation?.id])
 
     const methods = useMemo(() => {
         const baseMethods: Array<{ value: WorkspacePaymentMethod; label: string }> = [
@@ -89,13 +114,23 @@ export function SettlementDialog({
         ? t('settlementModal.receivable', { defaultValue: 'Receivable' })
         : t('settlementModal.payable', { defaultValue: 'Payable' })
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const requiresLinkedCounterparty = showsCounterpartyPicker
+    const canSubmit = !!obligation && !!selectedPaidAt && (!requiresLinkedCounterparty || !!linkedCounterparty?.id)
+
+    const handleCounterpartySelect = (partner: BusinessPartner) => {
+        setCounterpartyName(partner.name)
+        setLinkedCounterparty({ id: partner.id, name: partner.name })
+    }
+
+    const handleSubmit = (e: FormEvent) => {
         e.preventDefault()
-        if (!obligation || !selectedPaidAt || isSubmitting) return
+        if (!obligation || !selectedPaidAt || !canSubmit || isSubmitting) return
         void onSubmit({
             paymentMethod,
             paidAt: selectedPaidAt?.toISOString() || '',
-            note: note.trim() || undefined
+            note: note.trim() || undefined,
+            counterpartyName: counterpartyName.trim() || undefined,
+            businessPartnerId: linkedCounterparty?.id || null
         })
     }
 
@@ -123,9 +158,55 @@ export function SettlementDialog({
                                         {formatCurrency(obligation.amount, obligation.currency, features.iqd_display_preference)}
                                     </div>
                                     <div className="mt-1 text-sm text-muted-foreground">
-                                        {obligation.counterpartyName || obligation.title}
+                                        {counterpartyName || obligation.counterpartyName || obligation.title}
                                     </div>
                                 </div>
+
+                                {showsCounterpartyPicker ? (
+                                    <div className="grid gap-2">
+                                        <Label>
+                                            {t('payments.table.counterparty', { defaultValue: 'Counterparty' })}
+                                            {requiresLinkedCounterparty ? <span className="text-destructive"> *</span> : null}
+                                        </Label>
+                                        <PartnerAutocompleteInput
+                                            value={counterpartyName}
+                                            onChange={(value) => {
+                                                setCounterpartyName(value)
+                                                setLinkedCounterparty(null)
+                                            }}
+                                            onSelectPartner={handleCounterpartySelect}
+                                            workspaceId={obligation.workspaceId}
+                                            placeholder={t('settlementModal.counterpartyPlaceholder', { defaultValue: 'Search business partner' })}
+                                            disabled={isSubmitting}
+                                            includeRealEstateRoles
+                                        />
+                                        {linkedCounterparty ? (
+                                            <div className="flex flex-col gap-3 rounded-xl border border-primary/20 bg-primary/5 px-3 py-2 sm:flex-row sm:items-start sm:justify-between">
+                                                <div className="min-w-0">
+                                                    <div className="text-[11px] font-bold uppercase tracking-wide text-primary">
+                                                        {t('businessPartners.title', { defaultValue: 'Business Partners' })}
+                                                    </div>
+                                                    <div className="truncate text-sm font-semibold">{linkedCounterparty.name}</div>
+                                                </div>
+                                                <Button
+                                                    type="button"
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="h-8 shrink-0 px-2 text-muted-foreground"
+                                                    onClick={() => setLinkedCounterparty(null)}
+                                                    disabled={isSubmitting}
+                                                >
+                                                    <X className="h-4 w-4" />
+                                                    {t('loans.clearParty', { defaultValue: 'Clear Link' })}
+                                                </Button>
+                                            </div>
+                                        ) : requiresLinkedCounterparty ? (
+                                            <p className="text-xs text-destructive">
+                                                {t('settlementModal.businessPartnerRequired', { defaultValue: 'Select a linked business partner for this commission.' })}
+                                            </p>
+                                        ) : null}
+                                    </div>
+                                ) : null}
 
                                 <div className="grid gap-2">
                                     <Label>{t('settlementModal.paymentMethod', { defaultValue: 'Payment Method' })}</Label>
@@ -171,7 +252,7 @@ export function SettlementDialog({
                         <Button
                             type="submit"
                             className="w-full sm:w-auto"
-                            disabled={!obligation || !selectedPaidAt || isSubmitting}
+                            disabled={!canSubmit || isSubmitting}
                         >
                             {actionLabel}
                         </Button>

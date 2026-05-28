@@ -27,7 +27,6 @@ import type {
     PaymentTransactionSourceType,
     PayrollStatus,
     PurchaseOrder,
-    RealEstateInstallment,
     RealEstateTransaction,
     SalesOrder,
     WorkspacePaymentMethod
@@ -53,6 +52,8 @@ export interface RecordObligationSettlementInput {
     paymentMethod: WorkspacePaymentMethod
     paidAt?: string
     note?: string
+    counterpartyName?: string
+    businessPartnerId?: string | null
     createdBy?: string | null
 }
 
@@ -68,6 +69,11 @@ export interface RecordDirectTransactionInput {
     businessPartnerId?: string | null
     createdBy?: string | null
 }
+
+const PASS_THROUGH_REAL_ESTATE_SOURCE_TYPES = new Set<PaymentTransactionSourceType>([
+    'real_estate_payment',
+    'real_estate_installment'
+])
 
 export interface AppendPaymentTransactionInput {
     sourceModule: PaymentTransactionSourceModule
@@ -164,6 +170,11 @@ function matchesSearch(values: Array<string | null | undefined>, search: string)
     return values.some((value) => value?.toLowerCase().includes(normalized))
 }
 
+function getMetadataString(metadata: Record<string, unknown> | null | undefined, key: string) {
+    const value = metadata?.[key]
+    return typeof value === 'string' && value.trim() ? value.trim() : null
+}
+
 function getTransactionRoutePath(transaction: Pick<PaymentTransaction, 'sourceModule' | 'sourceType' | 'sourceRecordId' | 'metadata'>) {
     if (transaction.sourceModule === 'orders') {
         return `/orders/${transaction.sourceRecordId}`
@@ -254,6 +265,10 @@ function filterTransactions(
             return false
         }
 
+        if (PASS_THROUGH_REAL_ESTATE_SOURCE_TYPES.has(item.sourceType)) {
+            return false
+        }
+
         if (!includeReversals && item.reversalOfTransactionId) {
             return false
         }
@@ -313,6 +328,22 @@ function filterObligations(
     })
 }
 
+function getActivePaymentTransactionAmount(rows: PaymentTransaction[]) {
+    const reversedIds = new Set(
+        rows
+            .filter((row) => !row.isDeleted && !!row.reversalOfTransactionId)
+            .map((row) => row.reversalOfTransactionId as string)
+    )
+
+    return rows
+        .filter((row) =>
+            !row.isDeleted
+            && !row.reversalOfTransactionId
+            && !reversedIds.has(row.id)
+        )
+        .reduce((sum, row) => sum + Math.max(0, Number(row.amount || 0)), 0)
+}
+
 async function hydratePaymentSourceTables(workspaceId: string) {
     if (!shouldUseCloudBusinessData(workspaceId)) {
         return
@@ -323,8 +354,6 @@ async function hydratePaymentSourceTables(workspaceId: string) {
         fetchTableFromSupabase('loans', db.loans, workspaceId, { includeDeleted: true }),
         fetchTableFromSupabase('loan_installments', db.loan_installments, workspaceId, { includeDeleted: true }),
         fetchTableFromSupabase('real_estate_transactions', db.real_estate_transactions, workspaceId, { includeDeleted: true }),
-        fetchTableFromSupabase('real_estate_installments', db.real_estate_installments, workspaceId, { includeDeleted: true }),
-        fetchTableFromSupabase('real_estate_payments', db.real_estate_payments, workspaceId, { includeDeleted: true }),
         fetchTableFromSupabase('sales_orders', db.sales_orders, workspaceId, { includeDeleted: true }),
         fetchTableFromSupabase('purchase_orders', db.purchase_orders, workspaceId, { includeDeleted: true }),
         fetchTableFromSupabase('expense_series', db.expense_series, workspaceId, { includeDeleted: true }),
@@ -392,7 +421,8 @@ function buildSalesOrderObligation(order: SalesOrder, todayKey: string): Payment
         routePath: `/orders/${order.id}`,
         metadata: {
             orderStatus: order.status,
-            sourceChannel: order.sourceChannel || 'manual'
+            sourceChannel: order.sourceChannel || 'manual',
+            businessPartnerId: order.businessPartnerId || null
         }
     }
 }
@@ -425,7 +455,8 @@ function buildPurchaseOrderObligation(order: PurchaseOrder, todayKey: string): P
         status: isDateOverdue(dueDate, todayKey) ? 'overdue' : 'open',
         routePath: `/orders/${order.id}`,
         metadata: {
-            orderStatus: order.status
+            orderStatus: order.status,
+            businessPartnerId: order.businessPartnerId || null
         }
     }
 }
@@ -544,7 +575,8 @@ function buildStandardLoanInstallmentObligations(
                 installmentId: installment.id,
                 installmentNo: installment.installmentNo,
                 loanCategory: loan.loanCategory || 'standard',
-                loanDirection: loan.direction || 'lent'
+                loanDirection: loan.direction || 'lent',
+                businessPartnerId: loan.linkedPartyType === 'business_partner' ? loan.linkedPartyId || null : null
             }
         }]
     })
@@ -586,58 +618,59 @@ function buildSimpleLoanObligations(
             metadata: {
                 loanId: loan.id,
                 loanCategory: loan.loanCategory || 'simple',
-                loanDirection: loan.direction || 'lent'
+                loanDirection: loan.direction || 'lent',
+                businessPartnerId: loan.linkedPartyType === 'business_partner' ? loan.linkedPartyId || null : null
             }
         }]
     })
 }
 
-function buildRealEstateInstallmentObligations(
+function buildRealEstateCommissionObligations(
     transactions: RealEstateTransaction[],
-    installments: RealEstateInstallment[],
-    todayKey: string
+    paymentTransactions: PaymentTransaction[]
 ) {
-    const transactionMap = new Map(
-        transactions
-            .filter((transaction) => !transaction.isDeleted && transaction.isInstallmentBased)
-            .map((transaction) => [transaction.id, transaction])
-    )
+    const commissionPaymentsByTransactionId = new Map<string, PaymentTransaction[]>()
+    paymentTransactions
+        .filter((row) => row.sourceType === 'real_estate_commission')
+        .forEach((row) => {
+            const existing = commissionPaymentsByTransactionId.get(row.sourceRecordId) || []
+            existing.push(row)
+            commissionPaymentsByTransactionId.set(row.sourceRecordId, existing)
+        })
 
-    return installments.flatMap((installment) => {
-        const transaction = transactionMap.get(installment.transactionId)
-        if (!transaction || installment.isDeleted || installment.balanceAmount <= 0 || installment.status === 'paid') {
+    return transactions.flatMap((transaction) => {
+        if (transaction.isDeleted || transaction.profitAmount <= 0) {
             return []
         }
 
-        const dueDate = normalizeDateKey(installment.dueDate)
-        const direction: PaymentTransactionDirection = transaction.transactionType === 'buy' ? 'outgoing' : 'incoming'
-        const installmentLabel = `Installment ${String(installment.installmentNo).padStart(2, '0')}`
+        const paidAmount = getActivePaymentTransactionAmount(commissionPaymentsByTransactionId.get(transaction.id) || [])
+        const balanceAmount = Math.max(transaction.profitAmount - paidAmount, 0)
+        if (balanceAmount <= 0) {
+            return []
+        }
 
         return [{
-            id: `real-estate-installment:${installment.id}`,
+            id: `real-estate-commission:${transaction.id}`,
             workspaceId: transaction.workspaceId,
             sourceModule: 'real_estate' as const,
-            sourceType: 'real_estate_installment' as const,
+            sourceType: 'real_estate_commission' as const,
             sourceRecordId: transaction.id,
-            sourceSubrecordId: installment.id,
-            direction,
-            amount: installment.balanceAmount,
+            sourceSubrecordId: null,
+            direction: 'incoming' as const,
+            amount: balanceAmount,
             currency: transaction.currency,
-            dueDate,
-            counterpartyName: transaction.transactionType === 'buy'
-                ? transaction.sellerName
-                : transaction.buyerName,
-            referenceLabel: `${transaction.transactionNo} / ${installmentLabel}`,
+            dueDate: normalizeDateKey(transaction.createdAt),
+            counterpartyName: transaction.buyerName || transaction.sellerName,
+            referenceLabel: `${transaction.transactionNo} / Commission`,
             title: transaction.location,
-            subtitle: installmentLabel,
-            status: isDateOverdue(dueDate, todayKey) ? 'overdue' as const : 'open' as const,
+            subtitle: 'Mediator commission',
+            status: 'open' as const,
             routePath: `/real-estate/${transaction.id}`,
             metadata: {
                 realEstateTransactionId: transaction.id,
-                installmentId: installment.id,
-                installmentNo: installment.installmentNo,
                 transactionType: transaction.transactionType,
-                propertyLocation: transaction.location
+                propertyLocation: transaction.location,
+                businessPartnerId: transaction.buyerBusinessPartnerId || transaction.sellerBusinessPartnerId || null
             }
         }]
     })
@@ -689,7 +722,7 @@ async function buildPaymentObligations(workspaceId: string, filters: PaymentObli
         loans,
         installments,
         realEstateTransactions,
-        realEstateInstallments,
+        paymentTransactions,
         salesOrders,
         purchaseOrders,
         expenseSeries,
@@ -700,7 +733,7 @@ async function buildPaymentObligations(workspaceId: string, filters: PaymentObli
         db.loans.where('workspaceId').equals(workspaceId).toArray(),
         db.loan_installments.where('workspaceId').equals(workspaceId).toArray(),
         db.real_estate_transactions.where('workspaceId').equals(workspaceId).toArray(),
-        db.real_estate_installments.where('workspaceId').equals(workspaceId).toArray(),
+        db.payment_transactions.where('workspaceId').equals(workspaceId).toArray(),
         db.sales_orders.where('workspaceId').equals(workspaceId).toArray(),
         db.purchase_orders.where('workspaceId').equals(workspaceId).toArray(),
         db.expense_series.where('workspaceId').equals(workspaceId).toArray(),
@@ -718,7 +751,7 @@ async function buildPaymentObligations(workspaceId: string, filters: PaymentObli
     const obligations = [
         ...buildStandardLoanInstallmentObligations(loans, installments, todayKey),
         ...buildSimpleLoanObligations(loans, todayKey),
-        ...buildRealEstateInstallmentObligations(realEstateTransactions, realEstateInstallments, todayKey),
+        ...buildRealEstateCommissionObligations(realEstateTransactions, paymentTransactions),
         ...salesOrders
             .map((order) => buildSalesOrderObligation(order, todayKey))
             .filter((item): item is PaymentObligation => !!item),
@@ -909,6 +942,7 @@ export function isReversiblePaymentSourceType(sourceType: PaymentTransactionSour
     return sourceType === 'loan_payment'
         || sourceType === 'simple_loan'
         || sourceType === 'loan_installment'
+        || sourceType === 'real_estate_commission'
         || sourceType === 'sales_order'
         || sourceType === 'purchase_order'
         || sourceType === 'expense_item'
@@ -1331,14 +1365,15 @@ export async function recordObligationSettlement(
             return
         }
 
-        case 'real_estate_installment': {
+        case 'real_estate_commission': {
             assertStandardSettlementPaymentMethod(input.paymentMethod)
-            const { recordRealEstatePayment } = await import('./realEstate')
-            await recordRealEstatePayment(workspaceId, {
+            const { recordRealEstateCommissionPayment } = await import('./realEstate')
+            await recordRealEstateCommissionPayment(workspaceId, {
                 transactionId: obligation.sourceRecordId,
-                installmentId: obligation.sourceSubrecordId || undefined,
                 amount: obligation.amount,
                 paymentMethod: input.paymentMethod,
+                counterpartyName: input.counterpartyName || obligation.counterpartyName || null,
+                businessPartnerId: input.businessPartnerId || getMetadataString(obligation.metadata, 'businessPartnerId'),
                 note,
                 paidAt,
                 createdBy

@@ -256,6 +256,7 @@ export function Members() {
         const availableModules = new Set(planCapabilities.modules)
         return WORKSPACE_PERMISSION_DEFINITIONS.filter((permission) => {
             if (permission.module === 'global') return true
+            if (permission.module === 'installments' && availableModules.has('real_estate')) return true
             const planModule = PERMISSION_MODULE_PLAN_MODULES[permission.module]
             return planModule ? availableModules.has(planModule) : false
         })

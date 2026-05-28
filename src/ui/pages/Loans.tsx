@@ -3,6 +3,7 @@ import { Link, useLocation, useRoute } from 'wouter'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/auth'
+import { useWorkspacePermissions } from '@/permissions'
 import { db } from '@/local-db/database'
 import {
     useLoans,
@@ -1403,8 +1404,11 @@ export function Installments() {
     const { user } = useAuth()
     const [detailMatch, params] = useRoute('/installments/:loanId')
     const { openLoanPayment } = useLoanPaymentModal()
-    const { features } = useWorkspace()
+    const { hasFeature } = useWorkspace()
+    const { hasPermission } = useWorkspacePermissions()
     const workspaceId = user?.workspaceId
+    const canUseLoanInstallments = hasFeature('installments')
+    const canUseRealEstateInstallments = hasFeature('real_estate') && hasPermission('realEstate.access')
 
     const openPaymentForLoan = (loan: Loan, installment?: LoanInstallment | null) => {
         openLoanPayment(loan.id, {
@@ -1426,22 +1430,44 @@ export function Installments() {
         )
     }
 
-    if (!features.real_estate) {
+    if (!canUseLoanInstallments && !canUseRealEstateInstallments) {
+        return (
+            <Card>
+                <CardContent className="py-10 text-center text-muted-foreground">
+                    {t('installments.noAvailableSurfaces', { defaultValue: 'No installment records are available for this workspace.' })}
+                </CardContent>
+            </Card>
+        )
+    }
+
+    if (!canUseRealEstateInstallments) {
         return <LoanListView workspaceId={workspaceId} />
     }
 
+    if (!canUseLoanInstallments) {
+        return <RealEstateInstallmentsMirror workspaceId={workspaceId} />
+    }
+
     return (
-        <Tabs defaultValue="loan-installments" className="space-y-4">
+        <Tabs defaultValue={canUseLoanInstallments ? 'loan-installments' : 'real-estate'} className="space-y-4">
             <TabsList>
-                <TabsTrigger value="loan-installments">{t('loans.title', { defaultValue: 'Loan Installments' })}</TabsTrigger>
-                <TabsTrigger value="real-estate">{t('realEstate.title', { defaultValue: 'Real Estate' })}</TabsTrigger>
+                {canUseLoanInstallments ? (
+                    <TabsTrigger value="loan-installments">{t('loans.title', { defaultValue: 'Loan Installments' })}</TabsTrigger>
+                ) : null}
+                {canUseRealEstateInstallments ? (
+                    <TabsTrigger value="real-estate">{t('realEstate.title', { defaultValue: 'Real Estate' })}</TabsTrigger>
+                ) : null}
             </TabsList>
-            <TabsContent value="loan-installments">
-                <LoanListView workspaceId={workspaceId} />
-            </TabsContent>
-            <TabsContent value="real-estate">
-                <RealEstateInstallmentsMirror workspaceId={workspaceId} />
-            </TabsContent>
+            {canUseLoanInstallments ? (
+                <TabsContent value="loan-installments">
+                    <LoanListView workspaceId={workspaceId} />
+                </TabsContent>
+            ) : null}
+            {canUseRealEstateInstallments ? (
+                <TabsContent value="real-estate">
+                    <RealEstateInstallmentsMirror workspaceId={workspaceId} />
+                </TabsContent>
+            ) : null}
         </Tabs>
     )
 }

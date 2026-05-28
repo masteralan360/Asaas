@@ -48,6 +48,7 @@ export interface WorkspaceFeatures {
     travel_agency: boolean
     real_estate: boolean
     loans: boolean
+    installments: boolean
     net_revenue: boolean
     budget: boolean
     monthly_comparison: boolean
@@ -127,6 +128,7 @@ const PLAN_DERIVED_FEATURE_KEYS: ModuleFeatureKey[] = [
     'ecommerce',
     'real_estate',
     'loans',
+    'installments',
     'net_revenue',
     'budget',
     'monthly_comparison',

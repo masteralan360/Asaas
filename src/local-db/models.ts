@@ -832,6 +832,7 @@ export type PaymentTransactionSourceType =
   | "loan_installment"
   | "real_estate_payment"
   | "real_estate_installment"
+  | "real_estate_commission"
   | "sales_order"
   | "purchase_order"
   | "expense_item"
@@ -941,6 +942,7 @@ export interface Workspace extends BaseEntity {
   travel_agency?: boolean;
   real_estate?: boolean;
   loans?: boolean;
+  installments?: boolean;
   net_revenue?: boolean;
   budget?: boolean;
   monthly_comparison?: boolean;

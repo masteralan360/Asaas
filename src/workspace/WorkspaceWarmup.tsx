@@ -120,7 +120,7 @@ export function WorkspaceWarmup() {
         }
         if (hasFeature('stock_adjustments')) tasks.push(() => import('@/ui/pages/StockAdjustments'))
         if (hasFeature('hr')) tasks.push(() => import('@/ui/pages/HR'))
-        if (hasFeature('loans')) tasks.push(() => import('@/ui/pages/Loans'))
+        if (hasFeature('loans') || hasFeature('installments') || hasFeature('real_estate')) tasks.push(() => import('@/ui/pages/Loans'))
         if (hasFeature('invoices_history')) tasks.push(() => import('@/ui/pages/InvoicesHistory'))
         if (hasCapability('multiCurrency') && features.allowed_currencies.length > 1) {
             tasks.push(() => import('@/ui/pages/CurrencyConverter'))

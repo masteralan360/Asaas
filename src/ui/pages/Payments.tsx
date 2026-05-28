@@ -63,6 +63,8 @@ function sourceTypeLabel(value: PaymentObligation['sourceType'] | PaymentTransac
             return t('payments.sourceType.realEstatePayment', { defaultValue: 'Real Estate Payment' })
         case 'real_estate_installment':
             return t('payments.sourceType.realEstateInstallment', { defaultValue: 'Real Estate Installment' })
+        case 'real_estate_commission':
+            return t('payments.sourceType.realEstateCommission', { defaultValue: 'Real Estate Commission' })
         case 'sales_order':
             return t('payments.sourceType.salesOrder', { defaultValue: 'Sales Order' })
         case 'purchase_order':
@@ -196,7 +198,13 @@ export function Payments() {
         payable: formatAmountSummary(obligations.filter((item) => item.direction === 'outgoing'), features.iqd_display_preference)
     }), [obligations, features.iqd_display_preference])
 
-    const handleSettle = async (input: { paymentMethod: PaymentTransaction['paymentMethod']; paidAt: string; note?: string }) => {
+    const handleSettle = async (input: {
+        paymentMethod: PaymentTransaction['paymentMethod']
+        paidAt: string
+        note?: string
+        counterpartyName?: string
+        businessPartnerId?: string | null
+    }) => {
         if (!workspaceId || !selectedObligation) {
             return
         }
@@ -207,6 +215,8 @@ export function Payments() {
                 paymentMethod: input.paymentMethod,
                 paidAt: input.paidAt,
                 note: input.note,
+                counterpartyName: input.counterpartyName,
+                businessPartnerId: input.businessPartnerId,
                 createdBy: user?.id || null
             })
             toast({ title: t('payments.settlementRecorded', { defaultValue: 'Settlement recorded' }) })
@@ -265,7 +275,7 @@ export function Payments() {
                 <div className="space-y-3">
                     <h1 className="text-3xl font-bold tracking-tight">{t('payments.title', { defaultValue: 'Payments' })}</h1>
                     <p className="text-sm text-muted-foreground">
-                        {t('payments.subtitle', { defaultValue: 'Unified open obligations and central transaction history across loans, orders, payroll, and expenses.' })}
+                        {t('payments.subtitle', { defaultValue: 'Unified open obligations and central transaction history across loans, orders, payroll, expenses, and Real Estate commissions.' })}
                     </p>
                     {hasPermission('directTransaction.access') && (
                         <Button type="button" variant="outline" onClick={() => setLocation('/direct-transactions')} className="w-fit">
