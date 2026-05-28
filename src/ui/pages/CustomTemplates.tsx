@@ -48,6 +48,7 @@ type CustomTemplateRow = {
     id: string
     workspace_id: string
     module_type_key: string
+    label: string | null
     layout_json: unknown
     created_by: string | null
     updated_by: string | null
@@ -62,6 +63,7 @@ function readStoredLayout(row?: CustomTemplateRow | null): CustomTemplateLayout 
 
     return {
         version: 1,
+        label: row.label?.trim() || (typeof layout.label === 'string' ? layout.label : undefined),
         moduleTypeKey: typeof layout.moduleTypeKey === 'string' ? layout.moduleTypeKey : row.module_type_key,
         nativeTemplateKey: typeof layout.nativeTemplateKey === 'string' ? layout.nativeTemplateKey : undefined,
         page: {
@@ -151,7 +153,7 @@ export function CustomTemplates() {
             const { data, error: fetchError } = await runSupabaseAction('customTemplates.fetch', () =>
                 supabase
                     .from('custom_templates')
-                    .select('id, workspace_id, module_type_key, layout_json, created_by, updated_by, created_at, updated_at')
+                    .select('id, workspace_id, module_type_key, label, layout_json, created_by, updated_by, created_at, updated_at')
                     .eq('workspace_id', workspaceId)
                     .order('updated_at', { ascending: false })
             )
@@ -171,15 +173,21 @@ export function CustomTemplates() {
         void fetchTemplates()
     }, [fetchTemplates])
 
-    const saveTemplateLayout = useCallback(async (layout: CustomTemplateLayout) => {
+    const saveTemplateLayout = useCallback(async (layout: CustomTemplateLayout, options?: { label?: string }) => {
         if (!workspaceId || !user?.id) {
             throw new Error('Missing workspace context.')
         }
 
+        const label = options?.label?.trim() || layout.label?.trim() || getCustomTemplateDisplayName(layout.moduleTypeKey)
+        const layoutWithLabel: CustomTemplateLayout = {
+            ...layout,
+            label
+        }
         const payload = {
             workspace_id: workspaceId,
             module_type_key: layout.moduleTypeKey,
-            layout_json: layout,
+            label,
+            layout_json: layoutWithLabel,
             created_by: user.id,
             updated_by: user.id
         }
@@ -221,7 +229,8 @@ export function CustomTemplates() {
             customTemplate: {
                 moduleTypeKey,
                 nativeTemplateKey: target.nativeTemplateKey,
-                templateId: existingTemplate?.id
+                templateId: existingTemplate?.id,
+                label: existingTemplate?.label?.trim() || readStoredLayout(existingTemplate)?.label || getCustomTemplateDisplayName(moduleTypeKey)
             },
             effectiveId: existingTemplate?.id || `custom-template-${moduleTypeKey}`,
             initialTemplateLayout: readStoredLayout(existingTemplate),
@@ -318,12 +327,17 @@ export function CustomTemplates() {
                                 {templates.map((template) => {
                                     const target = getCustomTemplateTarget(template.module_type_key)
                                     const targetAvailable = availableTargets.some((item) => item.moduleTypeKey === template.module_type_key)
+                                    const storedLayout = readStoredLayout(template)
+                                    const templateLabel = template.label?.trim() || storedLayout?.label || getCustomTemplateDisplayName(template.module_type_key)
                                     return (
                                         <TableRow key={template.id}>
                                             <TableCell>
-                                                <div className="font-medium">{getCustomTemplateDisplayName(template.module_type_key)}</div>
+                                                <div className="font-medium">{templateLabel}</div>
                                                 <div className="text-xs text-muted-foreground">
-                                                    {target?.description || t('customTemplates.unknownTarget', { defaultValue: 'Custom print layout' })}
+                                                    {getCustomTemplateDisplayName(template.module_type_key)}
+                                                    {target?.description
+                                                        ? ` - ${target.description}`
+                                                        : ` - ${t('customTemplates.unknownTarget', { defaultValue: 'Custom print layout' })}`}
                                                 </div>
                                             </TableCell>
                                             <TableCell className="font-mono text-xs">{template.module_type_key}</TableCell>

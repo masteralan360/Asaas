@@ -1,6 +1,7 @@
 import { generateTemplatePdf } from '@/services/pdfGenerator'
-import type { TemplatePreview, TemplatePreviewDataKey } from '@/lib/pdfPreviewStore'
+import type { CustomTemplateLayout, TemplatePreview, TemplatePreviewDataKey } from '@/lib/pdfPreviewStore'
 import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
+import { platformService } from '@/services/platformService'
 import {
     RealEstateBuyPrintTemplate,
     type WorkspaceFooterContacts
@@ -51,7 +52,48 @@ export function getCustomTemplateDisplayName(moduleTypeKey: string) {
     return moduleTypeKey
 }
 
-type CustomTemplatePreviewOptions = {
+export type StoredCustomTemplateRow = {
+    id: string
+    module_type_key: string
+    label?: string | null
+    layout_json: unknown
+    updated_at?: string | null
+}
+
+export function readCustomTemplateLayout(row?: StoredCustomTemplateRow | null): CustomTemplateLayout | null {
+    if (!row || !row.layout_json || typeof row.layout_json !== 'object') return null
+
+    const layout = row.layout_json as Partial<CustomTemplateLayout>
+
+    return {
+        version: 1,
+        label: row.label?.trim() || (typeof layout.label === 'string' ? layout.label : undefined),
+        moduleTypeKey: typeof layout.moduleTypeKey === 'string' ? layout.moduleTypeKey : row.module_type_key,
+        nativeTemplateKey: typeof layout.nativeTemplateKey === 'string' ? layout.nativeTemplateKey : undefined,
+        page: {
+            widthMm: layout.page?.widthMm || 210,
+            heightMm: layout.page?.heightMm || 297
+        },
+        fields: layout.fields || {},
+        annotations: layout.annotations || [],
+        texts: layout.texts || [],
+        images: layout.images || [],
+        updatedAt: typeof layout.updatedAt === 'string' ? layout.updatedAt : row.updated_at || new Date().toISOString()
+    }
+}
+
+export function countCustomTemplateLayoutItems(row: StoredCustomTemplateRow) {
+    const layout = readCustomTemplateLayout(row)
+    if (!layout) return 0
+    return layout.annotations.length + layout.texts.length + layout.images.length + Object.keys(layout.fields).length
+}
+
+export function getStoredCustomTemplateLabel(row: StoredCustomTemplateRow) {
+    const layout = readCustomTemplateLayout(row)
+    return row.label?.trim() || layout?.label || getCustomTemplateDisplayName(row.module_type_key)
+}
+
+export type CustomTemplatePreviewOptions = {
     workspaceId?: string
     workspaceName?: string | null
     features?: WorkspaceFeatures
@@ -215,4 +257,141 @@ export function createCustomTemplatePreview(
         ),
         buildPdf: (element, printLangOverride) => generateTemplatePdf({ element, printLang: printLangOverride })
     }
+}
+
+function nonBlankFields(fields: Record<string, string>) {
+    return Object.fromEntries(
+        Object.entries(fields).filter(([, value]) => value.trim().length > 0)
+    )
+}
+
+function CustomTemplateLayoutOverlay({ layout }: { layout: CustomTemplateLayout }) {
+    return (
+        <div className="pointer-events-none absolute inset-0 z-50 overflow-hidden">
+            <svg className="absolute inset-0 h-full w-full" viewBox="0 0 210 297">
+                {layout.annotations.map((annotation, index) => (
+                    <path
+                        key={`annotation-${index}`}
+                        d={`M ${annotation.points.map((point) => `${point.x},${point.y}`).join(' L ')}`}
+                        stroke={annotation.color}
+                        strokeWidth={annotation.brushSize}
+                        fill="none"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        opacity={annotation.type === 'brush' ? 0.5 : 1}
+                    />
+                ))}
+            </svg>
+
+            {layout.images.map((image, index) => (
+                <img
+                    key={`image-${index}`}
+                    src={platformService.convertFileSrc(image.path)}
+                    alt=""
+                    className="absolute block select-none"
+                    style={{
+                        left: `${(image.x / 210) * 100}%`,
+                        top: `${(image.y / 297) * 100}%`,
+                        width: `${(image.width / 210) * 100}%`,
+                        transform: `rotate(${image.rotation || 0}deg)`,
+                        transformOrigin: 'top left',
+                        zIndex: 60 + index
+                    }}
+                />
+            ))}
+
+            {layout.texts.map((text, index) => (
+                <div
+                    key={`text-${text.id || index}`}
+                    className="absolute whitespace-pre-wrap break-words font-bold leading-snug"
+                    style={{
+                        left: `${(text.x / 210) * 100}%`,
+                        top: `${(text.y / 297) * 100}%`,
+                        width: `${(text.width / 210) * 100}%`,
+                        transform: `rotate(${text.rotation || 0}deg)`,
+                        transformOrigin: 'top left',
+                        zIndex: 100 + index,
+                        fontSize: `${text.fontSize || 16}px`,
+                        color: text.color || '#000000'
+                    }}
+                >
+                    {text.text}
+                </div>
+            ))}
+        </div>
+    )
+}
+
+export function renderCustomTemplateLayoutElement({
+    target,
+    layout,
+    values,
+    options,
+    effectiveId,
+    fieldMode = 'nonBlankLayoutOverrides'
+}: {
+    target: CustomTemplateTarget
+    layout: CustomTemplateLayout
+    values: Record<string, string>
+    options?: CustomTemplatePreviewOptions
+    effectiveId?: string
+    fieldMode?: 'nonBlankLayoutOverrides' | 'layoutOverrides'
+}) {
+    const preview = createCustomTemplatePreview(target, options)
+    const fieldValues = {
+        ...values,
+        ...(fieldMode === 'layoutOverrides' ? layout.fields || {} : nonBlankFields(layout.fields || {}))
+    }
+
+    return (
+        <div
+            className="relative mx-auto overflow-hidden bg-white text-black"
+            style={{
+                width: `${layout.page.widthMm || 210}mm`,
+                height: `${layout.page.heightMm || 297}mm`
+            }}
+        >
+            {preview.createElement(fieldValues, effectiveId, preview.fixedPrintLang)}
+            <CustomTemplateLayoutOverlay layout={layout} />
+        </div>
+    )
+}
+
+export async function buildCustomTemplateLayoutPdf({
+    target,
+    layout,
+    values,
+    options,
+    effectiveId,
+    fieldMode = 'nonBlankLayoutOverrides'
+}: {
+    target: CustomTemplateTarget
+    layout: CustomTemplateLayout
+    values: Record<string, string>
+    options?: CustomTemplatePreviewOptions
+    effectiveId?: string
+    fieldMode?: 'nonBlankLayoutOverrides' | 'layoutOverrides'
+}) {
+    const preview = createCustomTemplatePreview(target, options)
+    const printableLayout = fieldMode === 'layoutOverrides'
+        ? layout
+        : {
+            ...layout,
+            fields: nonBlankFields(layout.fields || {})
+        }
+    const element = renderCustomTemplateLayoutElement({
+        target,
+        layout: printableLayout,
+        values,
+        options,
+        effectiveId,
+        fieldMode
+    })
+
+    return generateTemplatePdf({
+        element,
+        format: 'a4',
+        printLang: preview.fixedPrintLang,
+        printQuality: options?.features?.print_quality
+    })
 }

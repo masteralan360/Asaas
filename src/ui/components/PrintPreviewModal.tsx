@@ -31,7 +31,12 @@ import {
 import { useWorkspace, type WorkspaceFeatures } from '@/workspace'
 import { supabase } from '@/auth/supabase'
 import { getRetriableActionToast, isRetriableWebRequestError, normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
-import { setInvoicePreviewSource, type TemplatePreview } from '@/lib/pdfPreviewStore'
+import {
+    setInvoicePreviewSource,
+    type CustomTemplateLayout,
+    type CustomTemplatePreviewTarget,
+    type TemplatePreview
+} from '@/lib/pdfPreviewStore'
 import { useWorkspacePermissions } from '@/permissions/WorkspacePermissionsContext'
 
 interface PrintPreviewModalProps {
@@ -48,6 +53,12 @@ interface PrintPreviewModalProps {
     documentId?: string
     printTemplate?: ReactNode | ((options: { effectiveId: string }) => ReactNode)
     templatePreview?: TemplatePreview
+    customTemplate?: CustomTemplatePreviewTarget
+    templateFieldValues?: Record<string, string>
+    initialTemplateLayout?: CustomTemplateLayout | null
+    allowTemplateFieldEditing?: boolean
+    templatePrimaryActionLabel?: string
+    generateTemplateLayoutBlob?: (layout: CustomTemplateLayout, printLangOverride?: string) => Promise<Blob>
     features?: WorkspaceFeatures
     workspaceName?: string | null
     module?: string
@@ -78,6 +89,12 @@ export function PrintPreviewModal({
     documentId,
     printTemplate,
     templatePreview: templatePreviewProp,
+    customTemplate,
+    templateFieldValues,
+    initialTemplateLayout,
+    allowTemplateFieldEditing,
+    templatePrimaryActionLabel,
+    generateTemplateLayoutBlob,
     features,
     workspaceName,
     module
@@ -484,7 +501,7 @@ export function PrintPreviewModal({
                     workspaceFooterContacts,
                     printFormat,
                     title: title || t('print.previewTitle') || 'Print Preview',
-                    onSave: handleSave,
+                    onSave: showSaveButton ? handleSave : undefined,
                     invoiceData,
                     effectiveId,
                     generatePdfBlob,
@@ -493,10 +510,16 @@ export function PrintPreviewModal({
                 if (templatePreviewProp) {
                     setInvoicePreviewSource({
                         title: title || t('print.previewTitle') || 'Print Preview',
-                        onSave: handleSave,
+                        onSave: showSaveButton ? handleSave : undefined,
                         effectiveId,
                         workspaceId,
                         templatePreview: templatePreviewProp,
+                        customTemplate,
+                        templateFieldValues,
+                        initialTemplateLayout,
+                        allowTemplateFieldEditing,
+                        templatePrimaryActionLabel,
+                        generateTemplateLayoutBlob,
                     })
                 } else {
                     const blobs = await buildPdfBlobs(printFormat)
@@ -506,7 +529,7 @@ export function PrintPreviewModal({
                     setInvoicePreviewSource({
                         url,
                         title: title || t('print.previewTitle') || 'Print Preview',
-                        onSave: handleSave,
+                        onSave: showSaveButton ? handleSave : undefined,
                     })
                 }
             }
@@ -515,7 +538,7 @@ export function PrintPreviewModal({
         } catch (err) {
             console.error('Failed to open preview:', err)
         }
-    }, [printFormat, title, t, setLocation, handleSave, pdfData, printableFeatures, workspaceId, workspaceName, workspaceFooterContacts, invoiceData, effectiveId, pdfBuilder, translations, buildPdfBlobs, blobToDataUrl, templatePreviewProp])
+    }, [printFormat, title, t, setLocation, handleSave, pdfData, printableFeatures, workspaceId, workspaceName, workspaceFooterContacts, invoiceData, effectiveId, pdfBuilder, translations, buildPdfBlobs, blobToDataUrl, templatePreviewProp, customTemplate, templateFieldValues, initialTemplateLayout, allowTemplateFieldEditing, templatePrimaryActionLabel, generateTemplateLayoutBlob, showSaveButton])
 
     const actionLabel = saveButtonText
         || (invoiceData ? (t('print.printAndSave') || 'Print & Save') : (t('common.print') || 'Print'))

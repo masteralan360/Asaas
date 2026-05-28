@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { type FormEvent, useEffect, useState, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft, Printer, Loader2, Edit3, X, ZoomIn, ZoomOut, Maximize, ImagePlus, Trash2, PenTool, Brush, Palette, Eraser, Hand, Type, RotateCw, Scaling, Move, Languages, Check } from 'lucide-react'
 import {
@@ -11,7 +11,21 @@ import {
 } from '@/lib/pdfPreviewStore'
 import { platformService } from '@/services/platformService'
 import { EditableField } from '@/ui/components/EditableField'
-import { A4InvoiceTemplate, ModernA4InvoiceTemplate, RefundA4InvoiceTemplate, RefundPrimaryA4InvoiceTemplate } from '@/ui/components'
+import {
+    A4InvoiceTemplate,
+    Button,
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+    Input,
+    Label,
+    ModernA4InvoiceTemplate,
+    RefundA4InvoiceTemplate,
+    RefundPrimaryA4InvoiceTemplate
+} from '@/ui/components'
 import { SaleReceiptBase } from '@/ui/components/SaleReceipt'
 import { DeleteConfirmationModal } from '@/ui/components/DeleteConfirmationModal'
 import { cn } from '@/lib/utils'
@@ -195,6 +209,9 @@ export function PdfPreviewPage() {
     const [isDrawing, setIsDrawing] = useState(false)
     const [currentPath, setCurrentPath] = useState<{ x: number, y: number }[] | null>(null)
     const [isClearConfirmOpen, setIsClearConfirmOpen] = useState(false)
+    const [isTemplateLabelDialogOpen, setIsTemplateLabelDialogOpen] = useState(false)
+    const [templateSaveLabel, setTemplateSaveLabel] = useState('')
+    const [pendingTemplateLayout, setPendingTemplateLayout] = useState<CustomTemplateLayout | null>(null)
     const title = source?.title || t('pdfPreview.title') || 'Invoice Preview'
 
     const handleZoomIn = useCallback(() => {
@@ -266,11 +283,13 @@ export function PdfPreviewPage() {
     const templatePreview = source?.templatePreview
     const fixedTemplatePrintLang = templatePreview?.fixedPrintLang
     const initialTemplateLayout = source?.initialTemplateLayout
+    const canEditTemplateFields = Boolean(source?.allowTemplateFieldEditing || isAdmin)
     const [fieldValues, setFieldValues] = useState<Record<string, string> | null>(
         () => {
             if (!templatePreview) return null
             return {
                 ...Object.fromEntries(templatePreview.fields.map(f => [f.key, f.value])),
+                ...(source?.templateFieldValues || {}),
                 ...(initialTemplateLayout?.fields || {})
             }
         }
@@ -282,6 +301,11 @@ export function PdfPreviewPage() {
     const [templateImages, setTemplateImages] = useState<CustomTemplateImage[]>(() => initialTemplateLayout?.images || [])
 
     const showNativePdf = source?.url && !source?.data
+    const hasTemplatePrimaryAction = Boolean(
+        source?.onSaveTemplateLayout
+        || source?.onSave
+        || source?.generateTemplateLayoutBlob
+    )
 
     const handleBack = useCallback(() => {
         clearInvoicePreviewSource()
@@ -331,47 +355,111 @@ export function PdfPreviewPage() {
         }
     }, [source, isSaving])
 
-    const handleTemplatePreviewSave = useCallback(async () => {
+    const buildTemplateLayout = useCallback((): CustomTemplateLayout | null => {
+        if (!source || !templatePreview || !fieldValues || !source.customTemplate?.moduleTypeKey) {
+            return null
+        }
+
+        return {
+            version: 1,
+            label: source.customTemplate.label || initialTemplateLayout?.label,
+            moduleTypeKey: source.customTemplate.moduleTypeKey,
+            nativeTemplateKey: source.customTemplate.nativeTemplateKey,
+            page: {
+                widthMm: 210,
+                heightMm: 297
+            },
+            fields: fieldValues,
+            annotations: templateAnnotations,
+            texts: templateTexts,
+            images: templateImages,
+            updatedAt: new Date().toISOString()
+        }
+    }, [source, templatePreview, fieldValues, initialTemplateLayout?.label, templateAnnotations, templateTexts, templateImages])
+
+    const saveTemplatePreview = useCallback(async (layout?: CustomTemplateLayout, label?: string) => {
         if (!source || !templatePreview || !fieldValues || isSaving) return
+        let shouldCloseAfterAction = true
         setIsSaving(true)
         try {
-            if (source.onSaveTemplateLayout) {
-                if (!source.customTemplate?.moduleTypeKey) {
-                    throw new Error('Missing custom template module/type key.')
-                }
-
-                const layout: CustomTemplateLayout = {
-                    version: 1,
-                    moduleTypeKey: source.customTemplate.moduleTypeKey,
-                    nativeTemplateKey: source.customTemplate.nativeTemplateKey,
-                    page: {
-                        widthMm: 210,
-                        heightMm: 297
-                    },
-                    fields: fieldValues,
-                    annotations: templateAnnotations,
-                    texts: templateTexts,
-                    images: templateImages,
-                    updatedAt: new Date().toISOString()
-                }
-
-                await source.onSaveTemplateLayout(layout)
+            if (layout && source.onSaveTemplateLayout) {
+                await source.onSaveTemplateLayout(layout, { label })
             }
 
-            if (source.onSave) {
+            const shouldBuildPrintBlob = source.onSave || source.generateTemplateLayoutBlob
+            if (shouldBuildPrintBlob) {
                 const overrideLang = fixedTemplatePrintLang || (tempPrintLang !== 'auto' ? tempPrintLang : undefined)
-                const element = templatePreview.createElement(fieldValues, source.effectiveId, overrideLang)
-                const blob = await templatePreview.buildPdf(element, overrideLang)
+                const layoutForBlob = source.generateTemplateLayoutBlob
+                    ? layout || buildTemplateLayout()
+                    : null
+                if (source.generateTemplateLayoutBlob && !layoutForBlob) {
+                    throw new Error('Missing template layout for print preview.')
+                }
+                const blob = source.generateTemplateLayoutBlob && layoutForBlob
+                    ? await source.generateTemplateLayoutBlob(layoutForBlob, overrideLang)
+                    : await templatePreview.buildPdf(
+                        templatePreview.createElement(fieldValues, source.effectiveId, overrideLang),
+                        overrideLang
+                    )
+
+                if (!source.onSave) {
+                    const url = URL.createObjectURL(blob)
+                    window.open(url, '_blank', 'noopener,noreferrer')
+                    window.setTimeout(() => URL.revokeObjectURL(url), 60_000)
+                    shouldCloseAfterAction = false
+                    return
+                }
+
                 await source.onSave(blob)
             }
         } catch (err) {
             console.error('Failed to save template preview:', err)
         } finally {
             setIsSaving(false)
-            clearInvoicePreviewSource()
-            window.history.back()
+            if (shouldCloseAfterAction) {
+                setIsTemplateLabelDialogOpen(false)
+                setPendingTemplateLayout(null)
+                clearInvoicePreviewSource()
+                window.history.back()
+            }
         }
-    }, [source, templatePreview, fieldValues, isSaving, fixedTemplatePrintLang, tempPrintLang, templateAnnotations, templateTexts, templateImages])
+    }, [source, templatePreview, fieldValues, isSaving, fixedTemplatePrintLang, tempPrintLang, buildTemplateLayout])
+
+    const handleTemplatePreviewSave = useCallback(async () => {
+        if (!source || !templatePreview || !fieldValues || isSaving) return
+
+        if (source.onSaveTemplateLayout) {
+            const layout = buildTemplateLayout()
+            if (!layout) {
+                console.error('Failed to save template preview:', new Error('Missing custom template module/type key.'))
+                return
+            }
+
+            const defaultLabel = layout.label?.trim()
+                || source.customTemplate?.label?.trim()
+                || title
+            setPendingTemplateLayout(layout)
+            setTemplateSaveLabel(defaultLabel)
+            setIsTemplateLabelDialogOpen(true)
+            return
+        }
+
+        await saveTemplatePreview()
+    }, [source, templatePreview, fieldValues, isSaving, buildTemplateLayout, saveTemplatePreview, title])
+
+    const handleConfirmTemplateLayoutSave = useCallback(async (event: FormEvent<HTMLFormElement>) => {
+        event.preventDefault()
+        if (!pendingTemplateLayout || isSaving) return
+
+        const label = templateSaveLabel.trim()
+        if (!label) return
+
+        await saveTemplatePreview({
+            ...pendingTemplateLayout,
+            label,
+            updatedAt: new Date().toISOString()
+        }, label)
+    }, [pendingTemplateLayout, isSaving, saveTemplatePreview, templateSaveLabel])
 
     const handleFieldChange = useCallback((key: string, value: string) => {
         setFieldValues(prev => prev ? { ...prev, [key]: value } : null)
@@ -707,7 +795,7 @@ export function PdfPreviewPage() {
                     </div>
 
                     <div className="flex items-center gap-2">
-                        {templatePreview.fields.length > 0 && isAdmin && (
+                        {templatePreview.fields.length > 0 && canEditTemplateFields && (
                             <button
                                 className="inline-flex items-center justify-center rounded-md h-8 px-3 text-xs font-medium transition-colors gap-1.5 bg-secondary text-secondary-foreground hover:bg-secondary/80"
                                 onClick={() => setEditPanelOpen(o => !o)}
@@ -716,16 +804,18 @@ export function PdfPreviewPage() {
                                 {editPanelOpen ? (t('common.close') || 'Close') : (t('common.fields') || 'Editable Fields')}
                             </button>
                         )}
-                        <button
-                            className="inline-flex items-center justify-center rounded-md h-8 px-3 text-xs font-medium transition-colors gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-                            onClick={handleTemplatePreviewSave}
-                            disabled={isSaving}
-                        >
-                            {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : source.onSaveTemplateLayout ? <Check className="h-3.5 w-3.5" /> : <Printer className="h-3.5 w-3.5" />}
-                            {source.onSaveTemplateLayout
-                                ? t('customTemplates.saveLayout', { defaultValue: 'Save Layout' })
-                                : t('print.printAndSave') || 'Print & Save'}
-                        </button>
+                        {hasTemplatePrimaryAction && (
+                            <button
+                                className="inline-flex items-center justify-center rounded-md h-8 px-3 text-xs font-medium transition-colors gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                                onClick={handleTemplatePreviewSave}
+                                disabled={isSaving}
+                            >
+                                {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : source.onSaveTemplateLayout ? <Check className="h-3.5 w-3.5" /> : <Printer className="h-3.5 w-3.5" />}
+                                {source.onSaveTemplateLayout
+                                    ? t('customTemplates.saveLayout', { defaultValue: 'Save Layout' })
+                                    : source.templatePrimaryActionLabel || (source.onSave ? (t('print.printAndSave') || 'Print & Save') : (t('common.print') || 'Print'))}
+                            </button>
+                        )}
                     </div>
                 </header>
                 <div className="flex flex-1 overflow-hidden">
@@ -1071,7 +1161,7 @@ export function PdfPreviewPage() {
                                     source.effectiveId,
                                     fixedTemplatePrintLang || (tempPrintLang !== 'auto' ? tempPrintLang : undefined),
                                     {
-                                        editableFields: isAdmin && drawingMode === 'none',
+                                        editableFields: canEditTemplateFields && drawingMode === 'none',
                                         dataKeys: templatePreview.dataKeys,
                                         onFieldChange: handleFieldChange
                                     }
@@ -1079,7 +1169,7 @@ export function PdfPreviewPage() {
                             </div>
                         </div>
                     </div>
-                    {editPanelOpen && (
+                    {editPanelOpen && canEditTemplateFields && (
                         <div className="w-72 shrink-0 border-l bg-card overflow-y-auto p-4 space-y-4">
                             <div className="flex items-center justify-between">
                                 <h3 className="text-sm font-semibold">{t('common.fields') || 'Editable Fields'}</h3>
@@ -1120,6 +1210,62 @@ export function PdfPreviewPage() {
                     description="This will permanently delete all hand-drawn notes, text fields, and images from this document. Are you sure you want to clear everything?"
                     itemName="Annotations Layer"
                 />
+
+                <Dialog
+                    open={isTemplateLabelDialogOpen}
+                    onOpenChange={(open) => {
+                        if (isSaving) return
+                        setIsTemplateLabelDialogOpen(open)
+                        if (!open) {
+                            setPendingTemplateLayout(null)
+                        }
+                    }}
+                >
+                    <DialogContent className="sm:max-w-md">
+                        <form onSubmit={handleConfirmTemplateLayoutSave}>
+                            <DialogHeader>
+                                <DialogTitle>{t('customTemplates.labelDialogTitle', { defaultValue: 'Name Custom Template' })}</DialogTitle>
+                                <DialogDescription>
+                                    {t('customTemplates.labelDialogDescription', {
+                                        defaultValue: 'Enter a label to identify this custom print layout later.'
+                                    })}
+                                </DialogDescription>
+                            </DialogHeader>
+
+                            <div className="grid gap-2 py-4">
+                                <Label htmlFor="custom-template-label">
+                                    {t('customTemplates.labelField', { defaultValue: 'Template Label' })}
+                                </Label>
+                                <Input
+                                    id="custom-template-label"
+                                    value={templateSaveLabel}
+                                    onChange={(event) => setTemplateSaveLabel(event.target.value)}
+                                    placeholder={t('customTemplates.labelPlaceholder', { defaultValue: 'Enter template label' })}
+                                    disabled={isSaving}
+                                    autoFocus
+                                />
+                            </div>
+
+                            <DialogFooter>
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    onClick={() => {
+                                        setIsTemplateLabelDialogOpen(false)
+                                        setPendingTemplateLayout(null)
+                                    }}
+                                    disabled={isSaving}
+                                >
+                                    {t('common.cancel', { defaultValue: 'Cancel' })}
+                                </Button>
+                                <Button type="submit" disabled={!templateSaveLabel.trim() || isSaving}>
+                                    {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                                    {t('customTemplates.saveLayout', { defaultValue: 'Save Layout' })}
+                                </Button>
+                            </DialogFooter>
+                        </form>
+                    </DialogContent>
+                </Dialog>
             </div>
         )
     }

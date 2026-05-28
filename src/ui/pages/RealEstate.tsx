@@ -1,11 +1,12 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useLocation, useRoute } from 'wouter'
 import { useTranslation } from 'react-i18next'
-import { ArrowLeft, Building2, CalendarClock, HandCoins, MapPin, Plus, Search } from 'lucide-react'
+import { ArrowLeft, Building2, CalendarClock, FileText, HandCoins, Loader2, MapPin, Plus, Printer, Search } from 'lucide-react'
 
-import { useAuth } from '@/auth'
+import { isSupabaseConfigured, supabase, useAuth } from '@/auth'
 import { cn, formatCurrency, formatDate, formatDateTime } from '@/lib/utils'
 import {
+    type BusinessPartner,
     type RealEstateInstallment,
     type PaymentObligation,
     type PaymentTransaction,
@@ -15,7 +16,9 @@ import {
     useRealEstatePayments,
     useRealEstateTransaction,
     useRealEstateTransactions,
-    usePaymentTransactions
+    usePaymentTransactions,
+    useBusinessPartners,
+    useWorkspaceContacts
 } from '@/local-db'
 import {
     Button,
@@ -23,7 +26,13 @@ import {
     CardContent,
     CardHeader,
     CardTitle,
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogHeader,
+    DialogTitle,
     Input,
+    PrintPreviewModal,
     Table,
     TableBody,
     TableCell,
@@ -40,6 +49,18 @@ import { CreateRealEstateTransactionModal } from '@/ui/components/real-estate/Cr
 import { RecordRealEstatePaymentModal } from '@/ui/components/real-estate/RecordRealEstatePaymentModal'
 import { SettlementDialog } from '@/ui/components/payments/SettlementDialog'
 import { useWorkspace } from '@/workspace'
+import {
+    buildCustomTemplateLayoutPdf,
+    createCustomTemplatePreview,
+    getCustomTemplateDisplayName,
+    getCustomTemplateTarget,
+    getStoredCustomTemplateLabel,
+    readCustomTemplateLayout,
+    type StoredCustomTemplateRow
+} from '@/lib/customTemplates'
+import { normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
+import type { CustomTemplateLayout } from '@/lib/pdfPreviewStore'
+import type { PrintFormat } from '@/services/pdfGenerator'
 
 type RealEstateFilter = 'all' | 'active' | 'overdue' | 'completed' | 'installments'
 
@@ -100,6 +121,118 @@ function filterActiveTransactions(rows: PaymentTransaction[]) {
         && !row.reversalOfTransactionId
         && !reversedIds.has(row.id)
     )
+}
+
+function pickWorkspaceContactPair(
+    contacts: ReturnType<typeof useWorkspaceContacts>,
+    type: 'address' | 'email' | 'phone'
+) {
+    const contactsOfType = contacts.filter((contact) =>
+        contact.type === type
+        && typeof contact.value === 'string'
+        && contact.value.trim().length > 0
+    )
+
+    if (contactsOfType.length === 0) return {}
+
+    const primaryContact = contactsOfType.find((contact) => contact.isPrimary) || contactsOfType[0]
+    const primary = primaryContact.value.trim()
+    const nonPrimary = contactsOfType.find((contact) =>
+        contact.id !== primaryContact.id
+        && contact.value.trim() !== primary
+    )?.value.trim()
+
+    return {
+        ...(primary ? { primary } : {}),
+        ...(nonPrimary ? { nonPrimary } : {})
+    }
+}
+
+function sequenceFromTransactionNo(transactionNo: string) {
+    const match = transactionNo.match(/(\d+)$/)
+    if (!match) return transactionNo
+
+    const value = Number(match[1])
+    return Number.isFinite(value) && value > 0 ? String(value) : match[1]
+}
+
+function buildRealEstatePrintValues(
+    transaction: RealEstateTransaction,
+    buyerPartner: BusinessPartner | undefined,
+    sellerPartner: BusinessPartner | undefined,
+    t: ReturnType<typeof useTranslation>['t'],
+    iqdPreference: string
+) {
+    const maybeDate = (value?: string | null) => value ? formatDate(value) : ''
+
+    return {
+        receiptNumber: sequenceFromTransactionNo(transaction.transactionNo),
+        transactionNo: transaction.transactionNo,
+        transactionType: t(`realEstate.types.${transaction.transactionType}`, { defaultValue: transaction.transactionType }),
+        status: t(`realEstate.statuses.${transaction.status}`, { defaultValue: transaction.status }),
+        location: transaction.location,
+        propertyType: transaction.propertyType
+            ? t(`realEstate.propertyTypes.${transaction.propertyType}`, { defaultValue: transaction.propertyType })
+            : '',
+        landAreaM2: transaction.landAreaM2 > 0 ? transaction.landAreaM2.toLocaleString() : '',
+        currency: transaction.currency.toUpperCase(),
+        totalAmount: formatCurrency(transaction.totalAmount, transaction.currency, iqdPreference as any),
+        paidAmount: formatCurrency(transaction.paidAmount, transaction.currency, iqdPreference as any),
+        balanceAmount: formatCurrency(transaction.balanceAmount, transaction.currency, iqdPreference as any),
+        profitAmount: formatCurrency(transaction.profitAmount, transaction.currency, iqdPreference as any),
+        buyerName: transaction.buyerName,
+        buyerPhone: buyerPartner?.phone?.trim() || '',
+        buyerBusinessPartnerId: transaction.buyerBusinessPartnerId || '',
+        buyerWitnessName: transaction.buyerWitnessName || '',
+        buyerWitnessAddress: transaction.buyerWitnessAddress || '',
+        buyerWitnessPhone: transaction.buyerWitnessPhone || '',
+        buyerSignatureName: transaction.buyerName,
+        buyerSignatureAddress: buyerPartner?.address?.trim() || '',
+        buyerSignaturePhone: buyerPartner?.phone?.trim() || '',
+        sellerName: transaction.sellerName,
+        sellerPhone: sellerPartner?.phone?.trim() || '',
+        sellerBusinessPartnerId: transaction.sellerBusinessPartnerId || '',
+        sellerWitnessName: transaction.sellerWitnessName || '',
+        sellerWitnessAddress: transaction.sellerWitnessAddress || '',
+        sellerWitnessPhone: transaction.sellerWitnessPhone || '',
+        sellerSignatureName: transaction.sellerName,
+        sellerSignatureAddress: sellerPartner?.address?.trim() || '',
+        sellerSignaturePhone: sellerPartner?.phone?.trim() || '',
+        isInstallmentBased: transaction.isInstallmentBased
+            ? t('common.yes', { defaultValue: 'Yes' })
+            : t('common.no', { defaultValue: 'No' }),
+        installmentCount: String(transaction.installmentCount || 0),
+        installmentFrequency: transaction.installmentFrequency || '',
+        firstDueDate: maybeDate(transaction.firstDueDate),
+        nextDueDate: maybeDate(transaction.nextDueDate),
+        notes: transaction.notes || '',
+        createdAt: maybeDate(transaction.createdAt),
+        updatedAt: maybeDate(transaction.updatedAt)
+    }
+}
+
+function resolveRealEstatePrintTokens(text: string, values: Record<string, string>) {
+    return text.replace(/\{\{\s*([A-Za-z][A-Za-z0-9_.]*)\s*\}\}/g, (match, key) =>
+        Object.prototype.hasOwnProperty.call(values, key) ? values[key] || '' : match
+    )
+}
+
+function buildRuntimePrintLayout(
+    layout: CustomTemplateLayout,
+    values: Record<string, string>
+): CustomTemplateLayout {
+    const fields = { ...values }
+    Object.entries(layout.fields || {}).forEach(([key, value]) => {
+        const fieldValue = String(value ?? '')
+        if (fieldValue.trim().length > 0) {
+            fields[key] = resolveRealEstatePrintTokens(fieldValue, values)
+        }
+    })
+
+    return {
+        ...layout,
+        fields
+    }
 }
 
 export function RealEstate() {
@@ -318,12 +451,14 @@ function RealEstateDetails({
     onPaymentTargetChange: (target: { transaction: RealEstateTransaction; installment?: RealEstateInstallment | null } | null) => void
 }) {
     const { t } = useTranslation()
-    const { features } = useWorkspace()
+    const { features, workspaceName } = useWorkspace()
     const { toast } = useToast()
     const { user } = useAuth()
     const transaction = useRealEstateTransaction(transactionId)
     const installments = useRealEstateInstallments(transactionId, transaction?.workspaceId)
     const payments = useRealEstatePayments(transactionId, transaction?.workspaceId)
+    const businessPartners = useBusinessPartners(transaction?.workspaceId, { includeRealEstateRoles: true })
+    const workspaceContacts = useWorkspaceContacts(transaction?.workspaceId)
     const commissionTransactions = usePaymentTransactions(transaction?.workspaceId, {
         sourceModule: 'real_estate',
         sourceType: 'real_estate_commission',
@@ -331,6 +466,11 @@ function RealEstateDetails({
     })
     const [isCommissionOpen, setIsCommissionOpen] = useState(false)
     const [isSubmittingCommission, setIsSubmittingCommission] = useState(false)
+    const [customPrintTemplates, setCustomPrintTemplates] = useState<StoredCustomTemplateRow[]>([])
+    const [isLoadingPrintTemplates, setIsLoadingPrintTemplates] = useState(false)
+    const [isPrintSelectionOpen, setIsPrintSelectionOpen] = useState(false)
+    const [isPrintPreviewOpen, setIsPrintPreviewOpen] = useState(false)
+    const [selectedPrintTemplate, setSelectedPrintTemplate] = useState<StoredCustomTemplateRow | null>(null)
 
     const transactionCommissionPayments = useMemo(
         () => filterActiveTransactions(commissionTransactions.filter((payment) => payment.sourceRecordId === transactionId)),
@@ -372,6 +512,155 @@ function RealEstateDetails({
             }
         }
     }, [commissionBalance, t, transaction])
+
+    useEffect(() => {
+        if (!transaction?.workspaceId || !isSupabaseConfigured) {
+            setCustomPrintTemplates([])
+            setIsLoadingPrintTemplates(false)
+            return
+        }
+
+        let cancelled = false
+        setIsLoadingPrintTemplates(true)
+
+        void (async () => {
+            try {
+                const { data, error } = await runSupabaseAction('realEstate.customTemplates.fetch', () =>
+                    supabase
+                        .from('custom_templates')
+                        .select('id, module_type_key, label, layout_json, updated_at')
+                        .eq('workspace_id', transaction.workspaceId)
+                        .like('module_type_key', 'realEstate.%')
+                        .order('updated_at', { ascending: false })
+                )
+
+                if (error) throw normalizeSupabaseActionError(error)
+                if (!cancelled) {
+                    setCustomPrintTemplates((data || []) as StoredCustomTemplateRow[])
+                }
+            } catch (error) {
+                console.error('[RealEstate] Failed to load custom print templates:', error)
+                if (!cancelled) {
+                    setCustomPrintTemplates([])
+                }
+            } finally {
+                if (!cancelled) {
+                    setIsLoadingPrintTemplates(false)
+                }
+            }
+        })()
+
+        return () => {
+            cancelled = true
+        }
+    }, [transaction?.workspaceId])
+
+    const availablePrintTemplates = useMemo(
+        () => customPrintTemplates.filter((template) => {
+            const target = getCustomTemplateTarget(template.module_type_key)
+            return Boolean(target?.nativeTemplateAvailable && readCustomTemplateLayout(template))
+        }),
+        [customPrintTemplates]
+    )
+    const businessPartnerById = useMemo(
+        () => new Map((businessPartners || []).map((partner) => [partner.id, partner])),
+        [businessPartners]
+    )
+    const buyerPartner = transaction?.buyerBusinessPartnerId
+        ? businessPartnerById.get(transaction.buyerBusinessPartnerId)
+        : undefined
+    const sellerPartner = transaction?.sellerBusinessPartnerId
+        ? businessPartnerById.get(transaction.sellerBusinessPartnerId)
+        : undefined
+    const workspaceFooterContacts = useMemo(() => ({
+        address: pickWorkspaceContactPair(workspaceContacts, 'address'),
+        email: pickWorkspaceContactPair(workspaceContacts, 'email'),
+        phone: pickWorkspaceContactPair(workspaceContacts, 'phone')
+    }), [workspaceContacts])
+    const realEstatePrintValues = useMemo(
+        () => transaction
+            ? buildRealEstatePrintValues(transaction, buyerPartner, sellerPartner, t, features.iqd_display_preference)
+            : {},
+        [buyerPartner, features.iqd_display_preference, sellerPartner, t, transaction]
+    )
+    const selectedPrintTarget = useMemo(
+        () => selectedPrintTemplate ? getCustomTemplateTarget(selectedPrintTemplate.module_type_key) : undefined,
+        [selectedPrintTemplate]
+    )
+    const selectedPrintLayout = useMemo(
+        () => selectedPrintTemplate ? readCustomTemplateLayout(selectedPrintTemplate) : null,
+        [selectedPrintTemplate]
+    )
+    const selectedRuntimePrintLayout = useMemo(
+        () => selectedPrintLayout ? buildRuntimePrintLayout(selectedPrintLayout, realEstatePrintValues) : null,
+        [realEstatePrintValues, selectedPrintLayout]
+    )
+    const selectedPrintPreview = useMemo(
+        () => selectedPrintTarget
+            ? createCustomTemplatePreview(selectedPrintTarget, {
+                workspaceId: transaction?.workspaceId,
+                workspaceName,
+                features,
+                workspaceFooterContacts
+            })
+            : undefined,
+        [features, selectedPrintTarget, transaction?.workspaceId, workspaceFooterContacts, workspaceName]
+    )
+    const openPrintTemplate = useCallback((template: StoredCustomTemplateRow) => {
+        setSelectedPrintTemplate(template)
+        setIsPrintSelectionOpen(false)
+        setIsPrintPreviewOpen(true)
+    }, [])
+
+    const handlePrintClick = useCallback(() => {
+        if (availablePrintTemplates.length === 0) return
+
+        if (availablePrintTemplates.length === 1) {
+            openPrintTemplate(availablePrintTemplates[0])
+            return
+        }
+
+        setIsPrintSelectionOpen(true)
+    }, [availablePrintTemplates, openPrintTemplate])
+
+    const buildRealEstatePrintPdf = useCallback(async ({ effectiveId }: { format: PrintFormat; effectiveId: string }) => {
+        if (!transaction || !selectedPrintTarget || !selectedPrintTarget.nativeTemplateAvailable || !selectedPrintLayout) {
+            throw new Error('Custom print template is not available.')
+        }
+
+        return buildCustomTemplateLayoutPdf({
+            target: selectedPrintTarget,
+            layout: selectedPrintLayout,
+            values: realEstatePrintValues,
+            options: {
+                workspaceId: transaction.workspaceId,
+                workspaceName,
+                features,
+                workspaceFooterContacts
+            },
+            effectiveId
+        })
+    }, [features, realEstatePrintValues, selectedPrintLayout, selectedPrintTarget, transaction, workspaceFooterContacts, workspaceName])
+
+    const buildEditableRealEstatePrintPdf = useCallback(async (layout: CustomTemplateLayout) => {
+        if (!transaction || !selectedPrintTarget || !selectedPrintTarget.nativeTemplateAvailable) {
+            throw new Error('Custom print template is not available.')
+        }
+
+        return buildCustomTemplateLayoutPdf({
+            target: selectedPrintTarget,
+            layout,
+            values: realEstatePrintValues,
+            options: {
+                workspaceId: transaction.workspaceId,
+                workspaceName,
+                features,
+                workspaceFooterContacts
+            },
+            effectiveId: `${transaction.id}-${selectedPrintTemplate?.id || 'custom-template'}`,
+            fieldMode: 'layoutOverrides'
+        })
+    }, [features, realEstatePrintValues, selectedPrintTarget, selectedPrintTemplate?.id, transaction, workspaceFooterContacts, workspaceName])
 
     const handleCommissionSettle = async (input: {
         paymentMethod: PaymentTransaction['paymentMethod']
@@ -440,6 +729,15 @@ function RealEstateDetails({
                     <span className="font-semibold text-foreground">{transaction.transactionNo}</span>
                 </div>
                 <div className="flex flex-col gap-2 sm:flex-row">
+                    <Button
+                        variant="outline"
+                        className="gap-2"
+                        onClick={handlePrintClick}
+                        disabled={isLoadingPrintTemplates || availablePrintTemplates.length === 0}
+                    >
+                        {isLoadingPrintTemplates ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
+                        {t('common.print', { defaultValue: 'Print' })}
+                    </Button>
                     {commissionBalance > 0 && user?.role !== 'viewer' ? (
                         <Button className="gap-2" onClick={() => setIsCommissionOpen(true)}>
                             <HandCoins className="h-4 w-4" />
@@ -679,6 +977,43 @@ function RealEstateDetails({
                 isSubmitting={isSubmittingCommission}
                 onSubmit={handleCommissionSettle}
             />
+            <RealEstatePrintSelectionModal
+                isOpen={isPrintSelectionOpen}
+                onClose={() => setIsPrintSelectionOpen(false)}
+                templates={availablePrintTemplates}
+                onSelect={openPrintTemplate}
+            />
+            {selectedPrintTemplate && selectedPrintLayout && selectedRuntimePrintLayout && selectedPrintTarget && selectedPrintPreview ? (
+                <PrintPreviewModal
+                    isOpen={isPrintPreviewOpen}
+                    onClose={() => {
+                        setIsPrintPreviewOpen(false)
+                        setSelectedPrintTemplate(null)
+                    }}
+                    onConfirm={() => {
+                        setIsPrintPreviewOpen(false)
+                        setSelectedPrintTemplate(null)
+                    }}
+                    title={t('realEstate.printA4', { defaultValue: 'Print A4' })}
+                    showSaveButton={false}
+                    documentId={`${transaction.id}-${selectedPrintTemplate.id}`}
+                    pdfBuilder={buildRealEstatePrintPdf}
+                    templatePreview={selectedPrintPreview}
+                    customTemplate={{
+                        moduleTypeKey: selectedPrintTarget.moduleTypeKey,
+                        nativeTemplateKey: selectedPrintTarget.nativeTemplateKey,
+                        templateId: selectedPrintTemplate.id,
+                        label: getStoredCustomTemplateLabel(selectedPrintTemplate)
+                    }}
+                    initialTemplateLayout={selectedRuntimePrintLayout}
+                    allowTemplateFieldEditing
+                    templatePrimaryActionLabel={t('common.print', { defaultValue: 'Print' })}
+                    generateTemplateLayoutBlob={buildEditableRealEstatePrintPdf}
+                    features={features}
+                    workspaceName={workspaceName}
+                    module="real_estate"
+                />
+            ) : null}
         </div>
     )
 }
@@ -700,5 +1035,61 @@ function InfoRow({ label, value }: { label: string; value: string }) {
             <span className="text-muted-foreground">{label}</span>
             <span className="max-w-[60%] text-right font-medium">{value}</span>
         </div>
+    )
+}
+
+function RealEstatePrintSelectionModal({
+    isOpen,
+    onClose,
+    templates,
+    onSelect
+}: {
+    isOpen: boolean
+    onClose: () => void
+    templates: StoredCustomTemplateRow[]
+    onSelect: (template: StoredCustomTemplateRow) => void
+}) {
+    const { t } = useTranslation()
+
+    return (
+        <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+            <DialogContent className="sm:max-w-md">
+                <DialogHeader>
+                    <DialogTitle className="flex items-center gap-2">
+                        <Printer className="h-5 w-5 text-primary" />
+                        {t('common.print', { defaultValue: 'Print' })}
+                    </DialogTitle>
+                    <DialogDescription>
+                        {t('realEstate.selectPrintTemplate', {
+                            defaultValue: 'Choose the custom template to use for this contract.'
+                        })}
+                    </DialogDescription>
+                </DialogHeader>
+
+                <div className="grid grid-cols-1 gap-4 py-4 sm:grid-cols-2">
+                    {templates.map((template) => {
+                        const target = getCustomTemplateTarget(template.module_type_key)
+                        return (
+                            <Button
+                                key={template.id}
+                                variant="outline"
+                                className="flex h-32 flex-col gap-3 text-center transition-all hover:border-primary hover:bg-primary/5"
+                                onClick={() => onSelect(template)}
+                            >
+                                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-secondary">
+                                    <FileText className="h-6 w-6 text-foreground" />
+                                </div>
+                                <div className="min-w-0 space-y-1">
+                                    <div className="max-w-full truncate font-bold">{getStoredCustomTemplateLabel(template)}</div>
+                                    <div className="text-xs text-muted-foreground">
+                                        {target ? getCustomTemplateDisplayName(target.moduleTypeKey) : template.module_type_key}
+                                    </div>
+                                </div>
+                            </Button>
+                        )
+                    })}
+                </div>
+            </DialogContent>
+        </Dialog>
     )
 }

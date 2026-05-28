@@ -66,6 +66,7 @@ export type CustomTemplateImage = {
 
 export type CustomTemplateLayout = {
     version: 1
+    label?: string
     moduleTypeKey: string
     nativeTemplateKey?: string
     page: {
@@ -83,6 +84,7 @@ export type CustomTemplatePreviewTarget = {
     moduleTypeKey: string
     nativeTemplateKey?: string
     templateId?: string
+    label?: string
 }
 
 export type InvoicePreviewSource = {
@@ -102,8 +104,12 @@ export type InvoicePreviewSource = {
     /** Template preview mode for editable inline preview of custom templates (loans, orders, budget) */
     templatePreview?: TemplatePreview
     customTemplate?: CustomTemplatePreviewTarget
+    templateFieldValues?: Record<string, string>
     initialTemplateLayout?: CustomTemplateLayout | null
-    onSaveTemplateLayout?: (layout: CustomTemplateLayout) => Promise<void>
+    allowTemplateFieldEditing?: boolean
+    templatePrimaryActionLabel?: string
+    generateTemplateLayoutBlob?: (layout: CustomTemplateLayout, printLangOverride?: string) => Promise<Blob>
+    onSaveTemplateLayout?: (layout: CustomTemplateLayout, options?: { label?: string }) => Promise<void>
 }
 
 let _source: InvoicePreviewSource | null = null
