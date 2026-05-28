@@ -1,6 +1,6 @@
 import { useDeferredValue, useEffect, useMemo, useState, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ArrowDownLeft, ArrowUpRight, FileSpreadsheet, Loader2, RotateCcw, Search, ShieldCheck, SlidersHorizontal, Wallet, TrendingUp, TrendingDown, DollarSign, Package, Percent, BarChart3, Clock, ChevronUp, ChevronDown, ChevronsUp, ChevronsDown, UsersRound } from 'lucide-react'
+import { ArrowDownLeft, ArrowUpRight, FileSpreadsheet, Loader2, RotateCcw, Search, ShieldCheck, SlidersHorizontal, Wallet, TrendingUp, TrendingDown, DollarSign, Package, Percent, BarChart3, Clock, ChevronUp, ChevronDown, ChevronsUp, ChevronsDown, UsersRound, FileText } from 'lucide-react'
 import { Area, AreaChart, Bar, BarChart, ResponsiveContainer, Tooltip as RechartsTooltip, XAxis } from 'recharts'
 import { useLocation } from 'wouter'
 
@@ -1669,7 +1669,8 @@ export function Ledger() {
                             const latestPayment = currentIndex > 0 ? relatedRows[0] : null
                             const firstPayment = currentIndex !== -1 && currentIndex < relatedRows.length - 1 ? relatedRows[relatedRows.length - 1] : null
 
-                            const hasContextMenu = Boolean(nextPayment || previousPayment || latestPayment || firstPayment || entry.businessPartnerId)
+                            const isRealEstateEntry = entry.sourceModule === 'real_estate'
+                            const hasContextMenu = Boolean(nextPayment || previousPayment || latestPayment || firstPayment || entry.businessPartnerId || isRealEstateEntry)
 
                             const rowContent = (
                                 <TableRow
@@ -1847,12 +1848,17 @@ export function Ledger() {
                                                 {t('ledger.context.scrollToFirst', { defaultValue: 'First payment' })}
                                             </ContextMenuItem>
                                         )}
-                                        {entry.businessPartnerId && (
+                                        {isRealEstateEntry ? (
+                                            <ContextMenuItem onClick={() => openEntry(entry)}>
+                                                <FileText className="mr-2 h-4 w-4" />
+                                                {t('ledger.context.viewRealEstateContract', { defaultValue: 'View Real Estate Contract' })}
+                                            </ContextMenuItem>
+                                        ) : entry.businessPartnerId ? (
                                             <ContextMenuItem onClick={() => setLocation(`/business-partners/${entry.businessPartnerId}`)}>
                                                 <UsersRound className="mr-2 h-4 w-4" />
                                                 {t('ledger.context.viewBusinessPartner', { defaultValue: 'View Business Partner' })}
                                             </ContextMenuItem>
-                                        )}
+                                        ) : null}
                                     </ContextMenuContent>
                                 </ContextMenu>
                             )
