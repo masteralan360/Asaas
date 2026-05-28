@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { X } from 'lucide-react'
 
 import { type BusinessPartner, type PaymentObligation, type WorkspacePaymentMethod, useBusinessPartners } from '@/local-db'
-import { formatCurrency, formatDate, formatLocalDateTimeValue, parseLocalDateTimeValue } from '@/lib/utils'
+import { formatCurrency, formatDate, formatLocalDateTimeValue, formatNumericInput, parseFormattedNumber, parseLocalDateTimeValue, sanitizeNumericInput } from '@/lib/utils'
 import {
     Button,
     DateTimePicker,
@@ -13,6 +13,7 @@ import {
     DialogFooter,
     DialogHeader,
     DialogTitle,
+    Input,
     Label,
     Select,
     SelectContent,
@@ -33,6 +34,7 @@ interface SettlementDialogProps {
     onSubmit: (input: {
         paymentMethod: WorkspacePaymentMethod
         paidAt: string
+        amount?: number
         note?: string
         counterpartyName?: string
         businessPartnerId?: string | null
@@ -56,10 +58,12 @@ export function SettlementDialog({
     const { features } = useWorkspace()
     const [paymentMethod, setPaymentMethod] = useState<WorkspacePaymentMethod>('cash')
     const [paidAt, setPaidAt] = useState('')
+    const [amount, setAmount] = useState('')
     const [note, setNote] = useState('')
     const [counterpartyName, setCounterpartyName] = useState('')
     const [linkedCounterparty, setLinkedCounterparty] = useState<{ id: string; name: string } | null>(null)
     const showsCounterpartyPicker = obligation?.sourceType === 'real_estate_commission'
+    const showsAmountInput = obligation?.sourceType === 'real_estate_commission'
     const businessPartners = useBusinessPartners(showsCounterpartyPicker ? obligation?.workspaceId : undefined, { includeRealEstateRoles: true }) || []
 
     const businessPartnerById = useMemo(() => new Map(businessPartners.map((partner) => [partner.id, partner])), [businessPartners])
@@ -74,6 +78,7 @@ export function SettlementDialog({
 
         setPaymentMethod('cash')
         setPaidAt(formatLocalDateTimeValue(new Date()))
+        setAmount(String(obligation?.amount || ''))
         setNote('')
         setCounterpartyName(defaultCounterpartyName)
         setLinkedCounterparty(defaultBusinessPartnerId
@@ -82,7 +87,7 @@ export function SettlementDialog({
                 name: defaultCounterpartyName
             }
             : null)
-    }, [defaultBusinessPartnerId, defaultCounterpartyName, open, obligation?.id])
+    }, [defaultBusinessPartnerId, defaultCounterpartyName, open, obligation?.amount, obligation?.id])
 
     const methods = useMemo(() => {
         const baseMethods: Array<{ value: WorkspacePaymentMethod; label: string }> = [
@@ -115,7 +120,17 @@ export function SettlementDialog({
         : t('settlementModal.payable', { defaultValue: 'Payable' })
 
     const requiresLinkedCounterparty = showsCounterpartyPicker
-    const canSubmit = !!obligation && !!selectedPaidAt && (!requiresLinkedCounterparty || !!linkedCounterparty?.id)
+    const parsedAmount = parseFormattedNumber(amount || '0')
+    const hasEditedAmount = !!obligation
+        && showsAmountInput
+        && amount.trim() !== ''
+        && parsedAmount !== obligation.amount
+    const hasValidAmount = !showsAmountInput
+        || (!!obligation && parsedAmount > 0 && parsedAmount <= obligation.amount)
+    const canSubmit = !!obligation
+        && !!selectedPaidAt
+        && hasValidAmount
+        && (!requiresLinkedCounterparty || !!linkedCounterparty?.id)
 
     const handleCounterpartySelect = (partner: BusinessPartner) => {
         setCounterpartyName(partner.name)
@@ -128,6 +143,7 @@ export function SettlementDialog({
         void onSubmit({
             paymentMethod,
             paidAt: selectedPaidAt?.toISOString() || '',
+            amount: showsAmountInput ? parsedAmount : undefined,
             note: note.trim() || undefined,
             counterpartyName: counterpartyName.trim() || undefined,
             businessPartnerId: linkedCounterparty?.id || null
@@ -161,13 +177,38 @@ export function SettlementDialog({
                                     <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                                         {directionLabel}
                                     </div>
-                                    <div className="mt-1 text-xl font-bold">
-                                        {formatCurrency(obligation.amount, obligation.currency, features.iqd_display_preference)}
+                                    <div className="mt-1 flex flex-wrap items-baseline gap-2">
+                                        <span className="text-xl font-bold">
+                                            {formatCurrency(hasEditedAmount ? parsedAmount : obligation.amount, obligation.currency, features.iqd_display_preference)}
+                                        </span>
+                                        {hasEditedAmount ? (
+                                            <span className="text-sm font-semibold text-muted-foreground line-through decoration-2">
+                                                {formatCurrency(obligation.amount, obligation.currency, features.iqd_display_preference)}
+                                            </span>
+                                        ) : null}
                                     </div>
                                     <div className="mt-1 text-sm text-muted-foreground">
                                         {counterpartyName || obligation.counterpartyName || obligation.title}
                                     </div>
                                 </div>
+
+                                {showsAmountInput ? (
+                                    <div className="grid gap-2">
+                                        <Label>{t('payments.table.amount', { defaultValue: 'Amount' })}</Label>
+                                        <Input
+                                            type="text"
+                                            inputMode={obligation.currency === 'iqd' ? 'numeric' : 'decimal'}
+                                            value={formatNumericInput(amount)}
+                                            onChange={(event) => setAmount(sanitizeNumericInput(event.target.value, { allowDecimal: obligation.currency !== 'iqd' }))}
+                                            disabled={isSubmitting}
+                                        />
+                                        {parsedAmount > obligation.amount ? (
+                                            <p className="text-xs text-destructive">
+                                                {t('settlementModal.amountExceedsReceivable', { defaultValue: 'Amount cannot exceed the receivable balance.' })}
+                                            </p>
+                                        ) : null}
+                                    </div>
+                                ) : null}
 
                                 {showsCounterpartyPicker ? (
                                     <div className="grid gap-2">

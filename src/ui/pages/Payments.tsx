@@ -201,6 +201,7 @@ export function Payments() {
     const handleSettle = async (input: {
         paymentMethod: PaymentTransaction['paymentMethod']
         paidAt: string
+        amount?: number
         note?: string
         counterpartyName?: string
         businessPartnerId?: string | null
@@ -214,6 +215,7 @@ export function Payments() {
             await recordObligationSettlement(workspaceId, selectedObligation, {
                 paymentMethod: input.paymentMethod,
                 paidAt: input.paidAt,
+                amount: input.amount,
                 note: input.note,
                 counterpartyName: input.counterpartyName,
                 businessPartnerId: input.businessPartnerId,

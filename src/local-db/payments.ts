@@ -51,6 +51,7 @@ export interface PaymentObligationFilterOptions {
 export interface RecordObligationSettlementInput {
     paymentMethod: WorkspacePaymentMethod
     paidAt?: string
+    amount?: number
     note?: string
     counterpartyName?: string
     businessPartnerId?: string | null
@@ -1337,12 +1338,15 @@ export async function recordObligationSettlement(
     const paidAt = input.paidAt ? new Date(input.paidAt).toISOString() : new Date().toISOString()
     const note = input.note?.trim() || null
     const createdBy = input.createdBy || null
+    const settlementAmount = input.amount !== undefined
+        ? Number(input.amount || 0)
+        : obligation.amount
 
     if (obligation.workspaceId !== workspaceId) {
         throw new Error('Workspace mismatch')
     }
 
-    if (obligation.amount <= 0) {
+    if (settlementAmount <= 0) {
         throw new Error('Invalid settlement amount')
     }
 
@@ -1367,10 +1371,13 @@ export async function recordObligationSettlement(
 
         case 'real_estate_commission': {
             assertStandardSettlementPaymentMethod(input.paymentMethod)
+            if (settlementAmount > obligation.amount) {
+                throw new Error('Settlement amount cannot exceed the receivable balance')
+            }
             const { recordRealEstateCommissionPayment } = await import('./realEstate')
             await recordRealEstateCommissionPayment(workspaceId, {
                 transactionId: obligation.sourceRecordId,
-                amount: obligation.amount,
+                amount: settlementAmount,
                 paymentMethod: input.paymentMethod,
                 counterpartyName: input.counterpartyName || obligation.counterpartyName || null,
                 businessPartnerId: input.businessPartnerId || getMetadataString(obligation.metadata, 'businessPartnerId'),
