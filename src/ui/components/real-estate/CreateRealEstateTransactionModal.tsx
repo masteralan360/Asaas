@@ -1,11 +1,11 @@
-import { type FormEvent, useEffect, useMemo, useState } from 'react'
+import { type FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft, Building2, Plus, Users, X } from 'lucide-react'
 
 import { useAuth } from '@/auth'
 import { useExchangeRate } from '@/context/ExchangeRateContext'
-import { buildOrderExchangeRatesSnapshot } from '@/lib/orderCurrency'
-import { formatCurrency, formatLocalDateValue, formatNumericInput, parseFormattedNumber, parseLocalDateValue, sanitizeNumericInput } from '@/lib/utils'
+import { buildOrderExchangeRatesSnapshot, filterSnapshotByCurrency } from '@/lib/orderCurrency'
+import { formatCurrency, formatLocalDateValue, formatNumberWithCommas, formatNumericInput, parseFormattedNumber, parseLocalDateValue, sanitizeNumericInput } from '@/lib/utils'
 import { createBusinessPartner, createRealEstateTransaction, type BusinessPartner, type CurrencyCode, type InstallmentFrequency, type RealEstatePropertyType, type RealEstateTransactionType } from '@/local-db'
 import {
     Button,
@@ -76,6 +76,8 @@ export function CreateRealEstateTransactionPage({
     const [installmentFrequency, setInstallmentFrequency] = useState<InstallmentFrequency>('monthly')
     const [firstDueDate, setFirstDueDate] = useState(formatLocalDateValue(new Date()))
     const [notes, setNotes] = useState('')
+    const [exchangeRateValue, setExchangeRateValue] = useState('')
+    const [exchangeRateSource, setExchangeRateSource] = useState('')
     const [isCreateBuyerOpen, setIsCreateBuyerOpen] = useState(false)
     const [isSavingBuyer, setIsSavingBuyer] = useState(false)
     const [isCreateSellerOpen, setIsCreateSellerOpen] = useState(false)
@@ -108,6 +110,9 @@ export function CreateRealEstateTransactionPage({
         setNotes('')
     }, [settlementCurrency])
 
+    const prevCurrencyRef = useRef(currency)
+    const initializedRef = useRef(false)
+
     useEffect(() => {
         const allowDecimal = currency !== 'iqd'
         setTotalAmount((current) => sanitizeNumericInput(current, { allowDecimal }))
@@ -115,19 +120,58 @@ export function CreateRealEstateTransactionPage({
         setProfitAmount((current) => sanitizeNumericInput(current, { allowDecimal }))
     }, [currency])
 
+    const rateForCurrency = useMemo(() => {
+        const code = currency.toLowerCase()
+        if (code === 'iqd') return exchangeData
+        if (code === 'usd') return exchangeData
+        if (code === 'eur') return eurRates.eur_iqd
+        if (code === 'try') return tryRates.try_iqd
+        return null
+    }, [currency, exchangeData, eurRates.eur_iqd, tryRates.try_iqd])
+
+    const currencyPair = useMemo(() => {
+        const code = currency.toUpperCase()
+        if (code === 'IQD' || code === 'USD') return 'USD/IQD'
+        if (code === 'EUR') return 'EUR/IQD'
+        if (code === 'TRY') return 'TRY/IQD'
+        return 'USD/IQD'
+    }, [currency])
+
+    useEffect(() => {
+        if (!rateForCurrency) return
+        if (prevCurrencyRef.current !== currency || !initializedRef.current) {
+            prevCurrencyRef.current = currency
+            initializedRef.current = true
+            setExchangeRateValue(formatNumberWithCommas(rateForCurrency.rate))
+            setExchangeRateSource(rateForCurrency.source === 'manual' ? 'manual' : 'live')
+        }
+    }, [currency, rateForCurrency])
+
     const availableCurrencies = useMemo(() => {
         const currencies: CurrencyCode[] = Array.from(new Set([settlementCurrency, ...features.allowed_currencies])) as CurrencyCode[]
         return currencies
     }, [features.allowed_currencies, settlementCurrency])
 
     const exchangeRateSnapshot = useMemo(() => {
-        const snapshot = buildOrderExchangeRatesSnapshot({
+        const parsedRate = parseFormattedNumber(exchangeRateValue || '0')
+        if (!parsedRate) return null
+
+        if (exchangeRateSource === 'manual') {
+            return [{
+                pair: currencyPair,
+                rate: parsedRate,
+                source: 'manual',
+                timestamp: new Date().toISOString()
+            }]
+        }
+
+        const fullSnapshot = buildOrderExchangeRatesSnapshot({
             exchangeData,
             eurRates,
             tryRates
         })
-        return snapshot.length > 0 ? snapshot : null
-    }, [exchangeData, eurRates, tryRates])
+        return filterSnapshotByCurrency(fullSnapshot, currency)
+    }, [exchangeData, eurRates, exchangeRateSource, exchangeRateValue, tryRates, currency, currencyPair])
 
     const parsedTotal = parseFormattedNumber(totalAmount || '0')
     const parsedPaid = parseFormattedNumber(paidAmount || '0')
@@ -258,297 +302,347 @@ export function CreateRealEstateTransactionPage({
     }
 
     return (
-        <div className="space-y-5">
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                <div className="space-y-1">
-                    <Button
-                        type="button"
-                        variant="ghost"
-                        className="h-auto gap-2 px-0 text-muted-foreground hover:bg-transparent hover:text-foreground"
-                        onClick={onCancel}
-                    >
-                        <ArrowLeft className="h-4 w-4" />
-                        {t('realEstate.title', { defaultValue: 'Real Estate' })}
-                    </Button>
-                    <h1 className="flex items-center gap-2 text-3xl font-bold tracking-tight">
-                        <Building2 className="h-7 w-7" />
-                        {t('realEstate.createTitle', { defaultValue: 'Create Real Estate Transaction' })}
-                    </h1>
-                    <p className="text-sm text-muted-foreground">
-                        {t('realEstate.createDescription', { defaultValue: 'Record a property deal with multi-currency and optional installment tracking.' })}
-                    </p>
-                </div>
-            </div>
-
-            <form onSubmit={handleSubmit} className="space-y-5">
-                <Card>
-                    <CardHeader>
-                        <CardTitle>{t('realEstate.contractDetails', { defaultValue: 'Contract Details' })}</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="grid gap-4">
-                            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                                <div className="grid gap-2">
-                                    <Label>{t('realEstate.location', { defaultValue: 'Location' })} <span className="text-destructive">*</span></Label>
-                                    <Input
-                                        value={location}
-                                        onChange={(event) => setLocation(event.target.value)}
-                                        placeholder={t('realEstate.locationPlaceholder', { defaultValue: 'Property address or coordinates' })}
-                                    />
-                                </div>
-                                <div className="grid gap-2">
-                                    <Label>{t('realEstate.transactionType', { defaultValue: 'Transaction Type' })}</Label>
-                                    <Select value={transactionType} onValueChange={(value: RealEstateTransactionType) => setTransactionType(value)}>
-                                        <SelectTrigger><SelectValue /></SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="sell">{t('realEstate.types.sell', { defaultValue: 'Sell' })}</SelectItem>
-                                            <SelectItem value="buy">{t('realEstate.types.buy', { defaultValue: 'Buy' })}</SelectItem>
-                                            <SelectItem value="rent">{t('realEstate.types.rent', { defaultValue: 'Rent' })}</SelectItem>
-                                            <SelectItem value="lease">{t('realEstate.types.lease', { defaultValue: 'Lease' })}</SelectItem>
-                                            <SelectItem value="exchange">{t('realEstate.types.exchange', { defaultValue: 'Exchange' })}</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                                <div className="grid gap-2">
-                                    <Label>{t('realEstate.propertyType', { defaultValue: 'Property Type' })}</Label>
-                                    <Select value={propertyType} onValueChange={(value: RealEstatePropertyType | '') => setPropertyType(value)}>
-                                        <SelectTrigger><SelectValue placeholder={t('realEstate.propertyTypePlaceholder', { defaultValue: 'Select type' })} /></SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="house">{t('realEstate.propertyTypes.house', { defaultValue: 'House' })}</SelectItem>
-                                            <SelectItem value="apartment">{t('realEstate.propertyTypes.apartment', { defaultValue: 'Apartment' })}</SelectItem>
-                                            <SelectItem value="land">{t('realEstate.propertyTypes.land', { defaultValue: 'Land' })}</SelectItem>
-                                            <SelectItem value="commercial">{t('realEstate.propertyTypes.commercial', { defaultValue: 'Commercial' })}</SelectItem>
-                                            <SelectItem value="villa">{t('realEstate.propertyTypes.villa', { defaultValue: 'Villa' })}</SelectItem>
-                                            <SelectItem value="office">{t('realEstate.propertyTypes.office', { defaultValue: 'Office' })}</SelectItem>
-                                            <SelectItem value="warehouse">{t('realEstate.propertyTypes.warehouse', { defaultValue: 'Warehouse' })}</SelectItem>
-                                            <SelectItem value="other">{t('realEstate.propertyTypes.other', { defaultValue: 'Other' })}</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                </div>
+        <div className="flex h-full flex-col overflow-hidden bg-background">
+            <form onSubmit={handleSubmit} className="flex flex-1 flex-col overflow-hidden">
+                <div className="flex-1 overflow-y-auto p-4 lg:p-6 custom-scrollbar">
+                    <div className="space-y-5 pb-5">
+                        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                            <div className="space-y-1">
+                                <Button
+                                    type="button"
+                                    variant="ghost"
+                                    className="h-auto gap-2 px-0 text-muted-foreground hover:bg-transparent hover:text-foreground"
+                                    onClick={onCancel}
+                                >
+                                    <ArrowLeft className="h-4 w-4" />
+                                    {t('realEstate.title', { defaultValue: 'Real Estate' })}
+                                </Button>
+                                <h1 className="flex items-center gap-2 text-3xl font-bold tracking-tight">
+                                    <Building2 className="h-7 w-7" />
+                                    {t('realEstate.createTitle', { defaultValue: 'Create Real Estate Transaction' })}
+                                </h1>
+                                <p className="text-sm text-muted-foreground">
+                                    {t('realEstate.createDescription', { defaultValue: 'Record a property deal with multi-currency and optional installment tracking.' })}
+                                </p>
                             </div>
-
-                            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                                <div className="grid gap-2">
-                                    <Label>{t('realEstate.buyer', { defaultValue: 'Buyer' })} <span className="text-destructive">*</span></Label>
-                                    <div className="flex flex-col gap-2">
-                                        <div className="flex gap-2">
-                                            <PartnerAutocompleteInput
-                                                value={buyerName}
-                                                onChange={(value) => {
-                                                    setBuyerName(value)
-                                                    if (buyerLink && value.trim() !== buyerLink.name) {
-                                                        setBuyerLink(null)
-                                                    }
-                                                }}
-                                                onSelectPartner={handleBuyerPartnerSelect}
-                                                workspaceId={workspaceId}
-                                                placeholder={t('realEstate.buyerPlaceholder', { defaultValue: 'Search or enter buyer name' })}
-                                                className="flex-1"
-                                                includeRealEstateRoles={features.real_estate}
-                                                excludePartnerIds={sellerLink?.id ? [sellerLink.id] : []}
-                                            />
-                                            <Button type="button" size="icon" variant="outline" className="shrink-0" onClick={() => setIsCreateBuyerOpen(true)}>
-                                                <Plus className="h-4 w-4" />
-                                            </Button>
-                                        </div>
-                                        {buyerLink ? (
-                                            <LinkedPartyBadge label={t('realEstate.linkedBuyer', { defaultValue: 'Linked buyer' })} name={buyerLink.name} onClear={() => setBuyerLink(null)} />
-                                        ) : null}
-                                    </div>
-                                </div>
-                                <div className="grid gap-2">
-                                    <Label>{t('realEstate.seller', { defaultValue: 'Seller' })} <span className="text-destructive">*</span></Label>
-                                    <div className="flex flex-col gap-2">
-                                        <div className="flex gap-2">
-                                            <PartnerAutocompleteInput
-                                                value={sellerName}
-                                                onChange={(value) => {
-                                                    setSellerName(value)
-                                                    if (sellerLink && value.trim() !== sellerLink.name) {
-                                                        setSellerLink(null)
-                                                    }
-                                                }}
-                                                onSelectPartner={handleSellerPartnerSelect}
-                                                workspaceId={workspaceId}
-                                                placeholder={t('realEstate.sellerPlaceholder', { defaultValue: 'Search or enter seller name' })}
-                                                className="flex-1"
-                                                includeRealEstateRoles={features.real_estate}
-                                                excludePartnerIds={buyerLink?.id ? [buyerLink.id] : []}
-                                            />
-                                            <Button type="button" size="icon" variant="outline" className="shrink-0" onClick={() => setIsCreateSellerOpen(true)}>
-                                                <Plus className="h-4 w-4" />
-                                            </Button>
-                                        </div>
-                                        {sellerLink ? (
-                                            <LinkedPartyBadge label={t('realEstate.linkedSeller', { defaultValue: 'Linked seller' })} name={sellerLink.name} onClear={() => setSellerLink(null)} />
-                                        ) : null}
-                                    </div>
-                                </div>
-                            </div>
-                            {hasDuplicateLinkedParty ? (
-                                <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                                    {t('realEstate.messages.buyerSellerSamePartner', { defaultValue: 'Buyer and seller cannot use the same business partner.' })}
-                                </div>
-                            ) : null}
-
-                            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                                <WitnessFields
-                                    title={t('realEstate.buyerWitness', { defaultValue: 'Buyer Witness' })}
-                                    name={buyerWitnessName}
-                                    address={buyerWitnessAddress}
-                                    phone={buyerWitnessPhone}
-                                    onNameChange={setBuyerWitnessName}
-                                    onAddressChange={setBuyerWitnessAddress}
-                                    onPhoneChange={setBuyerWitnessPhone}
-                                />
-                                <WitnessFields
-                                    title={t('realEstate.sellerWitness', { defaultValue: 'Seller Witness' })}
-                                    name={sellerWitnessName}
-                                    address={sellerWitnessAddress}
-                                    phone={sellerWitnessPhone}
-                                    onNameChange={setSellerWitnessName}
-                                    onAddressChange={setSellerWitnessAddress}
-                                    onPhoneChange={setSellerWitnessPhone}
-                                />
-                            </div>
-
-                            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                                <div className="grid gap-2">
-                                    <Label>{t('realEstate.landArea', { defaultValue: 'Land Area (m2)' })}</Label>
-                                    <Input
-                                        type="text"
-                                        inputMode="decimal"
-                                        placeholder="0"
-                                        value={formatNumericInput(landAreaM2)}
-                                        onChange={(event) => setLandAreaM2(sanitizeNumericInput(event.target.value, { allowDecimal: true }))}
-                                    />
-                                </div>
-                                <div className="grid gap-2">
-                                    <Label>{t('realEstate.currency', { defaultValue: 'Currency' })}</Label>
-                                    <Select value={currency} onValueChange={(value: CurrencyCode) => setCurrency(value)}>
-                                        <SelectTrigger><SelectValue /></SelectTrigger>
-                                        <SelectContent>
-                                            {availableCurrencies.map((item) => (
-                                                <SelectItem key={item} value={item}>{item.toUpperCase()}</SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                                <div className="grid gap-2">
-                                    <Label>{t('realEstate.total', { defaultValue: 'Total' })} <span className="text-destructive">*</span></Label>
-                                    <Input
-                                        type="text"
-                                        inputMode={currency === 'iqd' ? 'numeric' : 'decimal'}
-                                        placeholder="0"
-                                        value={formatNumericInput(totalAmount)}
-                                        onChange={(event) => setTotalAmount(sanitizeNumericInput(event.target.value, { allowDecimal: currency !== 'iqd' }))}
-                                    />
-                                </div>
-                            </div>
-
-                            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                                <div className="grid gap-2">
-                                    <Label>{t('realEstate.contractPaid', { defaultValue: 'Contract Paid' })}</Label>
-                                    <Input
-                                        type="text"
-                                        inputMode={currency === 'iqd' ? 'numeric' : 'decimal'}
-                                        placeholder="0"
-                                        value={formatNumericInput(paidAmount)}
-                                        onChange={(event) => setPaidAmount(sanitizeNumericInput(event.target.value, { allowDecimal: currency !== 'iqd' }))}
-                                    />
-                                </div>
-                                <div className="grid gap-2">
-                                    <Label>{t('realEstate.profitAmount', { defaultValue: 'Commission Amount' })}</Label>
-                                    <Input
-                                        type="text"
-                                        inputMode={currency === 'iqd' ? 'numeric' : 'decimal'}
-                                        placeholder="0"
-                                        value={formatNumericInput(profitAmount)}
-                                        onChange={(event) => setProfitAmount(sanitizeNumericInput(event.target.value, { allowDecimal: currency !== 'iqd' }))}
-                                    />
-                                </div>
-                            </div>
-
-                            <div className="rounded-2xl border bg-muted/20 p-4">
-                                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                                    <div>
-                                        <Label htmlFor="real-estate-installments" className="text-base font-semibold">
-                                            {t('realEstate.installmentBasedDeal', { defaultValue: 'Installment-based Deal' })}
-                                        </Label>
-                                        <p className="mt-1 text-sm text-muted-foreground">
-                                            {t('realEstate.installmentDescription', { defaultValue: 'Generate a repayment schedule for the remaining balance.' })}
-                                        </p>
-                                    </div>
-                                    <Switch
-                                        id="real-estate-installments"
-                                        checked={isInstallmentBased}
-                                        onCheckedChange={setIsInstallmentBased}
-                                        disabled={remainingBalance <= 0}
-                                    />
-                                </div>
-
-                                {isInstallmentBased ? (
-                                    <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
+                        </div>
+                        <Card>
+                            <CardHeader>
+                                <CardTitle>{t('realEstate.contractDetails', { defaultValue: 'Contract Details' })}</CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                                <div className="grid gap-4">
+                                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                                         <div className="grid gap-2">
-                                            <Label>{t('loans.installmentCount', { defaultValue: 'Installments' })}</Label>
+                                            <Label>{t('realEstate.location', { defaultValue: 'Location' })} <span className="text-destructive">*</span></Label>
                                             <Input
-                                                type="number"
-                                                min={1}
-                                                inputMode="numeric"
-                                                value={installmentCount}
-                                                onChange={(event) => setInstallmentCount(Math.max(1, Number(event.target.value || 1)))}
+                                                value={location}
+                                                onChange={(event) => setLocation(event.target.value)}
+                                                placeholder={t('realEstate.locationPlaceholder', { defaultValue: 'Property address or coordinates' })}
                                             />
-                                            {remainingBalance > 0 ? (
-                                                <p className="text-[11px] text-muted-foreground">
-                                                    {formatCurrency(remainingBalance / installmentCount, currency, features.iqd_display_preference)} / {t('loans.installmentCount', { defaultValue: 'installment' })}
-                                                </p>
-                                            ) : null}
                                         </div>
                                         <div className="grid gap-2">
-                                            <Label>{t('loans.frequency', { defaultValue: 'Frequency' })}</Label>
-                                            <Select value={installmentFrequency} onValueChange={(value: InstallmentFrequency) => setInstallmentFrequency(value)}>
+                                            <Label>{t('realEstate.transactionType', { defaultValue: 'Transaction Type' })}</Label>
+                                            <Select value={transactionType} onValueChange={(value: RealEstateTransactionType) => setTransactionType(value)}>
                                                 <SelectTrigger><SelectValue /></SelectTrigger>
                                                 <SelectContent>
-                                                    <SelectItem value="weekly">{t('loans.frequencies.weekly', { defaultValue: 'Weekly' })}</SelectItem>
-                                                    <SelectItem value="biweekly">{t('loans.frequencies.biweekly', { defaultValue: 'Biweekly' })}</SelectItem>
-                                                    <SelectItem value="monthly">{t('loans.frequencies.monthly', { defaultValue: 'Monthly' })}</SelectItem>
+                                                    <SelectItem value="sell">{t('realEstate.types.sell', { defaultValue: 'Sell' })}</SelectItem>
+                                                    <SelectItem value="buy">{t('realEstate.types.buy', { defaultValue: 'Buy' })}</SelectItem>
+                                                    <SelectItem value="rent">{t('realEstate.types.rent', { defaultValue: 'Rent' })}</SelectItem>
+                                                    <SelectItem value="lease">{t('realEstate.types.lease', { defaultValue: 'Lease' })}</SelectItem>
+                                                    <SelectItem value="exchange">{t('realEstate.types.exchange', { defaultValue: 'Exchange' })}</SelectItem>
                                                 </SelectContent>
                                             </Select>
                                         </div>
                                         <div className="grid gap-2">
-                                            <Label>{t('loans.firstDueDate', { defaultValue: 'First Due Date' })}</Label>
-                                            <DateTimePicker
-                                                id="real-estate-first-due-date"
-                                                mode="date"
-                                                date={parseLocalDateValue(firstDueDate)}
-                                                setDate={(value) => setFirstDueDate(value ? formatLocalDateValue(value) : '')}
-                                                placeholder={t('loans.firstDueDate', { defaultValue: 'First Due Date' })}
+                                            <Label>{t('realEstate.propertyType', { defaultValue: 'Property Type' })}</Label>
+                                            <Select value={propertyType} onValueChange={(value: RealEstatePropertyType | '') => setPropertyType(value)}>
+                                                <SelectTrigger><SelectValue placeholder={t('realEstate.propertyTypePlaceholder', { defaultValue: 'Select type' })} /></SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="house">{t('realEstate.propertyTypes.house', { defaultValue: 'House' })}</SelectItem>
+                                                    <SelectItem value="apartment">{t('realEstate.propertyTypes.apartment', { defaultValue: 'Apartment' })}</SelectItem>
+                                                    <SelectItem value="land">{t('realEstate.propertyTypes.land', { defaultValue: 'Land' })}</SelectItem>
+                                                    <SelectItem value="commercial">{t('realEstate.propertyTypes.commercial', { defaultValue: 'Commercial' })}</SelectItem>
+                                                    <SelectItem value="villa">{t('realEstate.propertyTypes.villa', { defaultValue: 'Villa' })}</SelectItem>
+                                                    <SelectItem value="office">{t('realEstate.propertyTypes.office', { defaultValue: 'Office' })}</SelectItem>
+                                                    <SelectItem value="warehouse">{t('realEstate.propertyTypes.warehouse', { defaultValue: 'Warehouse' })}</SelectItem>
+                                                    <SelectItem value="other">{t('realEstate.propertyTypes.other', { defaultValue: 'Other' })}</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                                        <div className="grid gap-2">
+                                            <Label>{t('realEstate.buyer', { defaultValue: 'Buyer' })} <span className="text-destructive">*</span></Label>
+                                            <div className="flex flex-col gap-2">
+                                                <div className="flex gap-2">
+                                                    <PartnerAutocompleteInput
+                                                        value={buyerName}
+                                                        onChange={(value) => {
+                                                            setBuyerName(value)
+                                                            if (buyerLink && value.trim() !== buyerLink.name) {
+                                                                setBuyerLink(null)
+                                                            }
+                                                        }}
+                                                        onSelectPartner={handleBuyerPartnerSelect}
+                                                        workspaceId={workspaceId}
+                                                        placeholder={t('realEstate.buyerPlaceholder', { defaultValue: 'Search or enter buyer name' })}
+                                                        className="flex-1"
+                                                        includeRealEstateRoles={features.real_estate}
+                                                        excludePartnerIds={sellerLink?.id ? [sellerLink.id] : []}
+                                                    />
+                                                    <Button type="button" size="icon" variant="outline" className="shrink-0" onClick={() => setIsCreateBuyerOpen(true)}>
+                                                        <Plus className="h-4 w-4" />
+                                                    </Button>
+                                                </div>
+                                                {buyerLink ? (
+                                                    <LinkedPartyBadge label={t('realEstate.linkedBuyer', { defaultValue: 'Linked buyer' })} name={buyerLink.name} onClear={() => setBuyerLink(null)} />
+                                                ) : null}
+                                            </div>
+                                        </div>
+                                        <div className="grid gap-2">
+                                            <Label>{t('realEstate.seller', { defaultValue: 'Seller' })} <span className="text-destructive">*</span></Label>
+                                            <div className="flex flex-col gap-2">
+                                                <div className="flex gap-2">
+                                                    <PartnerAutocompleteInput
+                                                        value={sellerName}
+                                                        onChange={(value) => {
+                                                            setSellerName(value)
+                                                            if (sellerLink && value.trim() !== sellerLink.name) {
+                                                                setSellerLink(null)
+                                                            }
+                                                        }}
+                                                        onSelectPartner={handleSellerPartnerSelect}
+                                                        workspaceId={workspaceId}
+                                                        placeholder={t('realEstate.sellerPlaceholder', { defaultValue: 'Search or enter seller name' })}
+                                                        className="flex-1"
+                                                        includeRealEstateRoles={features.real_estate}
+                                                        excludePartnerIds={buyerLink?.id ? [buyerLink.id] : []}
+                                                    />
+                                                    <Button type="button" size="icon" variant="outline" className="shrink-0" onClick={() => setIsCreateSellerOpen(true)}>
+                                                        <Plus className="h-4 w-4" />
+                                                    </Button>
+                                                </div>
+                                                {sellerLink ? (
+                                                    <LinkedPartyBadge label={t('realEstate.linkedSeller', { defaultValue: 'Linked seller' })} name={sellerLink.name} onClear={() => setSellerLink(null)} />
+                                                ) : null}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    {hasDuplicateLinkedParty ? (
+                                        <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                                            {t('realEstate.messages.buyerSellerSamePartner', { defaultValue: 'Buyer and seller cannot use the same business partner.' })}
+                                        </div>
+                                    ) : null}
+
+                                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                                        <WitnessFields
+                                            title={t('realEstate.buyerWitness', { defaultValue: 'Buyer Witness' })}
+                                            name={buyerWitnessName}
+                                            address={buyerWitnessAddress}
+                                            phone={buyerWitnessPhone}
+                                            onNameChange={setBuyerWitnessName}
+                                            onAddressChange={setBuyerWitnessAddress}
+                                            onPhoneChange={setBuyerWitnessPhone}
+                                        />
+                                        <WitnessFields
+                                            title={t('realEstate.sellerWitness', { defaultValue: 'Seller Witness' })}
+                                            name={sellerWitnessName}
+                                            address={sellerWitnessAddress}
+                                            phone={sellerWitnessPhone}
+                                            onNameChange={setSellerWitnessName}
+                                            onAddressChange={setSellerWitnessAddress}
+                                            onPhoneChange={setSellerWitnessPhone}
+                                        />
+                                    </div>
+
+                                    <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                                        <div className="grid gap-2">
+                                            <Label>{t('realEstate.landArea', { defaultValue: 'Land Area (m2)' })}</Label>
+                                            <div className="relative">
+                                                <Input
+                                                    type="text"
+                                                    inputMode="decimal"
+                                                    placeholder="0"
+                                                    value={formatNumericInput(landAreaM2)}
+                                                    onChange={(event) => setLandAreaM2(sanitizeNumericInput(event.target.value, { allowDecimal: true }))}
+                                                    className="pr-10"
+                                                />
+                                                <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-muted-foreground">
+                                                    m²
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <div className="grid gap-2">
+                                            <Label>{t('realEstate.currency', { defaultValue: 'Currency' })}</Label>
+                                            <Select value={currency} onValueChange={(value: CurrencyCode) => setCurrency(value)}>
+                                                <SelectTrigger><SelectValue /></SelectTrigger>
+                                                <SelectContent>
+                                                    {availableCurrencies.map((item) => (
+                                                        <SelectItem key={item} value={item}>{item.toUpperCase()}</SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                        <div className="grid gap-2">
+                                            <Label>{t('realEstate.total', { defaultValue: 'Total' })} <span className="text-destructive">*</span></Label>
+                                            <Input
+                                                type="text"
+                                                inputMode={currency === 'iqd' ? 'numeric' : 'decimal'}
+                                                placeholder="0"
+                                                value={formatNumericInput(totalAmount)}
+                                                onChange={(event) => setTotalAmount(sanitizeNumericInput(event.target.value, { allowDecimal: currency !== 'iqd' }))}
                                             />
                                         </div>
                                     </div>
-                                ) : null}
-                            </div>
 
-                            <div className="grid gap-2">
-                                <Label>{t('realEstate.notes', { defaultValue: 'Notes' })}</Label>
-                                <Textarea
-                                    rows={4}
-                                    value={notes}
-                                    onChange={(event) => setNotes(event.target.value)}
-                                    placeholder={t('realEstate.notesPlaceholder', { defaultValue: 'Property details, contract number, etc.' })}
-                                />
-                            </div>
-                        </div>
-                    </CardContent>
-                </Card>
+                                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                                        <div className="grid gap-2">
+                                            <Label>{t('realEstate.contractPaid', { defaultValue: 'Contract Paid' })}</Label>
+                                            <Input
+                                                type="text"
+                                                inputMode={currency === 'iqd' ? 'numeric' : 'decimal'}
+                                                placeholder="0"
+                                                value={formatNumericInput(paidAmount)}
+                                                onChange={(event) => setPaidAmount(sanitizeNumericInput(event.target.value, { allowDecimal: currency !== 'iqd' }))}
+                                            />
+                                        </div>
+                                        <div className="grid gap-2">
+                                            <Label>{t('realEstate.profitAmount', { defaultValue: 'Commission Amount' })}</Label>
+                                            <Input
+                                                type="text"
+                                                inputMode={currency === 'iqd' ? 'numeric' : 'decimal'}
+                                                placeholder="0"
+                                                value={formatNumericInput(profitAmount)}
+                                                onChange={(event) => setProfitAmount(sanitizeNumericInput(event.target.value, { allowDecimal: currency !== 'iqd' }))}
+                                            />
+                                        </div>
+                                    </div>
 
-                <div className="sticky bottom-0 z-10 flex flex-col-reverse gap-3 border-t bg-background/95 py-4 backdrop-blur sm:flex-row sm:justify-between">
-                    <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={onCancel} disabled={isSaving}>
-                        {t('common.cancel') || 'Cancel'}
-                    </Button>
-                    <Button type="submit" className="w-full sm:w-auto" disabled={!canSubmit || isSaving}>
-                        {t('common.create') || 'Create'}
-                    </Button>
+                                    <div className="rounded-2xl border bg-muted/20 p-4">
+                                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                            <div>
+                                                <Label htmlFor="real-estate-installments" className="text-base font-semibold">
+                                                    {t('realEstate.installmentBasedDeal', { defaultValue: 'Installment-based Deal' })}
+                                                </Label>
+                                                <p className="mt-1 text-sm text-muted-foreground">
+                                                    {t('realEstate.installmentDescription', { defaultValue: 'Generate a repayment schedule for the remaining balance.' })}
+                                                </p>
+                                            </div>
+                                            <Switch
+                                                id="real-estate-installments"
+                                                checked={isInstallmentBased}
+                                                onCheckedChange={setIsInstallmentBased}
+                                                disabled={remainingBalance <= 0}
+                                            />
+                                        </div>
+
+                                        {isInstallmentBased ? (
+                                            <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
+                                                <div className="grid gap-2">
+                                                    <Label>{t('loans.installmentCount', { defaultValue: 'Installments' })}</Label>
+                                                    <Input
+                                                        type="number"
+                                                        min={1}
+                                                        inputMode="numeric"
+                                                        value={installmentCount}
+                                                        onChange={(event) => setInstallmentCount(Math.max(1, Number(event.target.value || 1)))}
+                                                    />
+                                                    {remainingBalance > 0 ? (
+                                                        <p className="text-[11px] text-muted-foreground">
+                                                            {formatCurrency(remainingBalance / installmentCount, currency, features.iqd_display_preference)} / {t('loans.installmentCount', { defaultValue: 'installment' })}
+                                                        </p>
+                                                    ) : null}
+                                                </div>
+                                                <div className="grid gap-2">
+                                                    <Label>{t('loans.frequency', { defaultValue: 'Frequency' })}</Label>
+                                                    <Select value={installmentFrequency} onValueChange={(value: InstallmentFrequency) => setInstallmentFrequency(value)}>
+                                                        <SelectTrigger><SelectValue /></SelectTrigger>
+                                                        <SelectContent>
+                                                            <SelectItem value="weekly">{t('loans.frequencies.weekly', { defaultValue: 'Weekly' })}</SelectItem>
+                                                            <SelectItem value="biweekly">{t('loans.frequencies.biweekly', { defaultValue: 'Biweekly' })}</SelectItem>
+                                                            <SelectItem value="monthly">{t('loans.frequencies.monthly', { defaultValue: 'Monthly' })}</SelectItem>
+                                                        </SelectContent>
+                                                    </Select>
+                                                </div>
+                                                <div className="grid gap-2">
+                                                    <Label>{t('loans.firstDueDate', { defaultValue: 'First Due Date' })}</Label>
+                                                    <DateTimePicker
+                                                        id="real-estate-first-due-date"
+                                                        mode="date"
+                                                        date={parseLocalDateValue(firstDueDate)}
+                                                        setDate={(value) => setFirstDueDate(value ? formatLocalDateValue(value) : '')}
+                                                        placeholder={t('loans.firstDueDate', { defaultValue: 'First Due Date' })}
+                                                    />
+                                                </div>
+                                            </div>
+                                        ) : null}
+                                    </div>
+
+                                    <div className="grid gap-2">
+                                        <Label>{t('realEstate.notes', { defaultValue: 'Notes' })}</Label>
+                                        <Textarea
+                                            rows={4}
+                                            value={notes}
+                                            onChange={(event) => setNotes(event.target.value)}
+                                            placeholder={t('realEstate.notesPlaceholder', { defaultValue: 'Property details, contract number, etc.' })}
+                                        />
+                                    </div>
+                                </div>
+                            </CardContent>
+                        </Card>
+
+                        <Card>
+                            <CardHeader>
+                                <CardTitle>{t('realEstate.marketRateSnapshot', { defaultValue: 'Market Rate Snapshot' })}</CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                                <div className="space-y-3 rounded-2xl border border-primary/20 bg-primary/5 p-4">
+                                    <div className="flex items-center justify-between">
+                                        <div className="text-sm font-semibold">{t('realEstate.exchangeRate', { defaultValue: 'Exchange Rate' })}</div>
+                                        {exchangeRateSource ? (
+                                            <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${exchangeRateSource === 'live' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                                                {exchangeRateSource === 'live' ? 'Live' : 'Manual'}
+                                            </span>
+                                        ) : null}
+                                    </div>
+                                    <div className="grid gap-3 sm:grid-cols-2">
+                                        <div className="grid gap-2">
+                                            <Label>{t('realEstate.currencyPair', { defaultValue: 'Currency Pair' })}</Label>
+                                            <div className="flex h-10 w-full items-center rounded-md border border-input bg-background px-3 py-2 text-sm">
+                                                {currencyPair}
+                                            </div>
+                                        </div>
+                                        <div className="grid gap-2">
+                                            <Label>{t('realEstate.rate', { defaultValue: 'Rate' })}</Label>
+                                            <Input
+                                                type="text"
+                                                inputMode="numeric"
+                                                value={formatNumericInput(exchangeRateValue)}
+                                                onChange={(event) => {
+                                                    setExchangeRateValue(sanitizeNumericInput(event.target.value, { allowDecimal: false }))
+                                                    setExchangeRateSource('manual')
+                                                }}
+                                                placeholder="0"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+                            </CardContent>
+                        </Card>
+
+                    </div>
+                </div>
+                <div className="flex-shrink-0 border-t bg-background/95 px-4 py-2 backdrop-blur lg:px-6">
+                    <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-between">
+                        <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={onCancel} disabled={isSaving}>
+                            {t('common.cancel') || 'Cancel'}
+                        </Button>
+                        <Button type="submit" className="w-full sm:w-auto" disabled={!canSubmit || isSaving}>
+                            {t('common.create') || 'Create'}
+                        </Button>
+                    </div>
                 </div>
             </form>
 

@@ -322,7 +322,7 @@ export function Layout({ children }: LayoutProps) {
     const ecommerceCountLabel = pendingEcommerceCount > 99 ? '99+' : pendingEcommerceCount
     const ecommercePendingLabel = t('ecommerce.pendingOrders', { defaultValue: 'Pending Orders' })
 
-    const isPosLikeRoute = location === '/pos' || location === '/instant-pos'
+    const isPosLikeRoute = location === '/pos' || location === '/instant-pos' || location === '/real-estate/new'
     const isModuleLauncherRoute = location === '/modules'
 
     const openInventoryTransferAutomationTab = (event: { preventDefault: () => void; stopPropagation: () => void }) => {

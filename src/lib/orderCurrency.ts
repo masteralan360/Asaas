@@ -250,6 +250,13 @@ export function buildOrderExchangeRatesSnapshot(rates: LiveOrderRates): Exchange
     return snapshot
 }
 
+export function filterSnapshotByCurrency(snapshot: ExchangeRateSnapshot[] | null, currency: CurrencyCode): ExchangeRateSnapshot[] | null {
+    if (!snapshot || snapshot.length === 0) return null
+    const code = currency.toUpperCase()
+    const filtered = snapshot.filter((entry) => entry.pair.includes(code))
+    return filtered.length > 0 ? filtered : null
+}
+
 export function getPrimaryExchangeDetails(
     from: CurrencyCode,
     to: CurrencyCode,
