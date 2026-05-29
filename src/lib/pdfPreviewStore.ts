@@ -22,6 +22,7 @@ export type TemplatePreviewDataKey = {
 export type TemplatePreviewRenderOptions = {
     editableFields?: boolean
     dataKeys?: TemplatePreviewDataKey[]
+    tokenFieldTemplates?: Record<string, string>
     onFieldChange?: (key: string, value: string) => void
 }
 
@@ -74,6 +75,7 @@ export type CustomTemplateLayout = {
         heightMm: number
     }
     fields: Record<string, string>
+    fieldTokenTemplates?: Record<string, string>
     annotations: CustomTemplateAnnotation[]
     texts: CustomTemplateText[]
     images: CustomTemplateImage[]

@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNod
 import { Phone } from 'lucide-react'
 import { ReactQRCode } from '@lglab/react-qr-code'
 
+import { useTranslation } from 'react-i18next'
+import i18n from '@/i18n/config'
 import type { TemplatePreviewDataKey } from '@/lib/pdfPreviewStore'
 import { platformService } from '@/services/platformService'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/ui/components/dialog'
@@ -32,6 +34,8 @@ type RealEstateBuyPrintTemplateProps = {
     fieldTypes?: Record<string, RealEstateBuyFieldType>
     fieldPlaceholders?: Record<string, string>
     transactionKeys?: TemplatePreviewDataKey[]
+    tokenFieldTemplates?: Record<string, string>
+    printLang?: string
     onFieldChange?: (key: string, value: string) => void
 }
 
@@ -39,24 +43,122 @@ function dataKeyToken(key: TemplatePreviewDataKey) {
     return key.token || `{{${key.key}}}`
 }
 
-function resolveDataKeyTokens(text: string, values: RealEstateBuyTemplateValues) {
-    return text.replace(/\{\{\s*([A-Za-z][A-Za-z0-9_.]*)\s*\}\}/g, (match, key) => {
-        const replacement = values[key]?.trim()
-        return replacement || match
-    })
+function parseDataKeyTokens(text: string) {
+    const segments: Array<{ type: 'text'; value: string } | { type: 'token'; key: string; raw: string }> = []
+    const pattern = /\{\{\s*([A-Za-z][A-Za-z0-9_.]*)\s*\}\}/g
+    let lastIndex = 0
+    let match: RegExpExecArray | null
+
+    while ((match = pattern.exec(text)) !== null) {
+        if (match.index > lastIndex) {
+            segments.push({ type: 'text', value: text.slice(lastIndex, match.index) })
+        }
+        segments.push({ type: 'token', key: match[1], raw: match[0] })
+        lastIndex = match.index + match[0].length
+    }
+
+    if (lastIndex < text.length) {
+        segments.push({ type: 'text', value: text.slice(lastIndex) })
+    }
+
+    return segments
+}
+
+function hasDataKeyToken(text?: string) {
+    return Boolean(text && /\{\{\s*[A-Za-z][A-Za-z0-9_.]*\s*\}\}/.test(text))
+}
+
+function UnderlinedTokenValue({ children }: { children: ReactNode }) {
+    return (
+        <span
+            className="relative inline-block font-bold"
+            style={{
+                lineHeight: 1.05,
+                paddingBottom: '2.35mm',
+                verticalAlign: 'baseline'
+            }}
+        >
+            <span>{children}</span>
+            <span
+                aria-hidden="true"
+                className="absolute left-0 right-0"
+                style={{
+                    bottom: '0.1mm',
+                    borderBottom: '1px solid #000000'
+                }}
+            />
+        </span>
+    )
+}
+
+function renderDataKeyTokens(text: string, values: RealEstateBuyTemplateValues, tokenTemplate?: string) {
+    if (hasDataKeyToken(text)) {
+        return parseDataKeyTokens(text).map((segment, index) => {
+            if (segment.type === 'text') {
+                return <span key={`text-${index}`}>{segment.value}</span>
+            }
+
+            const replacement = values[segment.key]?.trim() || segment.raw
+            return (
+                <UnderlinedTokenValue key={`token-${index}`}>
+                    {replacement}
+                </UnderlinedTokenValue>
+            )
+        })
+    }
+
+    if (hasDataKeyToken(tokenTemplate)) {
+        const ranges: Array<{ start: number; end: number }> = []
+        let cursor = 0
+        for (const segment of parseDataKeyTokens(tokenTemplate || '')) {
+            if (segment.type !== 'token') continue
+            const replacement = values[segment.key]?.trim()
+            if (!replacement) continue
+            const index = text.indexOf(replacement, cursor)
+            if (index === -1) continue
+            ranges.push({ start: index, end: index + replacement.length })
+            cursor = index + replacement.length
+        }
+
+        if (ranges.length > 0) {
+            const nodes: ReactNode[] = []
+            let lastIndex = 0
+            ranges.forEach((range, index) => {
+                if (range.start > lastIndex) {
+                    nodes.push(<span key={`text-${index}`}>{text.slice(lastIndex, range.start)}</span>)
+                }
+                nodes.push(
+                    <UnderlinedTokenValue key={`token-${index}`}>
+                        {text.slice(range.start, range.end)}
+                    </UnderlinedTokenValue>
+                )
+                lastIndex = range.end
+            })
+            if (lastIndex < text.length) {
+                nodes.push(<span key="text-tail">{text.slice(lastIndex)}</span>)
+            }
+            return nodes
+        }
+    }
+
+    return text
 }
 
 function TransactionKeyPickerDialog({
     open,
     dataKeys,
     onOpenChange,
-    onInsert
+    onInsert,
+    printLang
 }: {
     open: boolean
     dataKeys: TemplatePreviewDataKey[]
     onOpenChange: (open: boolean) => void
     onInsert: (key: TemplatePreviewDataKey) => void
+    printLang?: string
 }) {
+    const { t } = useTranslation()
+    const displayT = printLang ? i18n.getFixedT(printLang) : t
     const [query, setQuery] = useState('')
 
     useEffect(() => {
@@ -73,7 +175,10 @@ function TransactionKeyPickerDialog({
                 key.key,
                 key.label,
                 key.group,
-                key.description
+                key.description,
+                key.token || `{{${key.key}}}`,
+                displayT('customTemplates.transactionKeys.realEstateBuy.' + key.key, key.label),
+                displayT('customTemplates.transactionKeys.realEstateBuy._groups.' + (key.group || 'Transaction'), key.group)
             ].some((value) => value?.toLowerCase().includes(normalizedQuery))
         })
 
@@ -93,20 +198,20 @@ function TransactionKeyPickerDialog({
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="max-w-lg overflow-hidden p-0">
                 <DialogHeader className="border-b px-5 py-4 text-left">
-                    <DialogTitle>Transaction keys</DialogTitle>
+                    <DialogTitle>{displayT('customTemplates.keyPicker.title')}</DialogTitle>
                 </DialogHeader>
                 <div className="space-y-3 p-4">
                     <Input
                         autoFocus
                         value={query}
                         onChange={(event) => setQuery(event.target.value)}
-                        placeholder="Search transaction keys"
+                        placeholder={displayT('customTemplates.keyPicker.searchPlaceholder')}
                     />
                     <div className="max-h-[360px] overflow-y-auto rounded-md border">
                         {groupedKeys.length > 0 ? groupedKeys.map((group) => (
                             <div key={group.group} className="border-b last:border-b-0">
                                 <div className="bg-muted/50 px-3 py-2 text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
-                                    {group.group}
+                                    {displayT('customTemplates.transactionKeys.realEstateBuy._groups.' + group.group, group.group)}
                                 </div>
                                 {group.keys.map((key) => (
                                     <button
@@ -116,7 +221,7 @@ function TransactionKeyPickerDialog({
                                         onClick={() => onInsert(key)}
                                     >
                                         <span className="min-w-0">
-                                            <span className="block truncate font-medium">{key.label}</span>
+                                            <span className="block truncate font-medium">{displayT('customTemplates.transactionKeys.realEstateBuy.' + key.key, key.label)}</span>
                                             {key.description ? (
                                                 <span className="block truncate text-xs text-muted-foreground">{key.description}</span>
                                             ) : null}
@@ -129,7 +234,7 @@ function TransactionKeyPickerDialog({
                             </div>
                         )) : (
                             <div className="px-3 py-6 text-center text-sm text-muted-foreground">
-                                No keys found.
+                                {displayT('customTemplates.keyPicker.noKeysFound')}
                             </div>
                         )}
                     </div>
@@ -233,6 +338,8 @@ function FreeWriteTermRow({
     fieldKey,
     editable,
     transactionKeys = [],
+    tokenTemplate,
+    printLang,
     onFieldChange
 }: {
     index: number
@@ -240,6 +347,8 @@ function FreeWriteTermRow({
     fieldKey: string
     editable?: boolean
     transactionKeys?: TemplatePreviewDataKey[]
+    tokenTemplate?: string
+    printLang?: string
     onFieldChange?: (key: string, value: string) => void
 }) {
     const text = values[fieldKey] || ''
@@ -306,11 +415,12 @@ function FreeWriteTermRow({
                             dataKeys={transactionKeys}
                             onOpenChange={setIsKeyPickerOpen}
                             onInsert={handleInsertKey}
+                            printLang={printLang}
                         />
                     </>
                 ) : (
                     <div className="max-h-[8.9mm] min-h-[8.9mm] overflow-hidden whitespace-pre-wrap break-words pt-[0.4mm] text-right leading-[1.55]">
-                        {resolveDataKeyTokens(text, values)}
+                        {renderDataKeyTokens(text, values, tokenTemplate)}
                     </div>
                 )}
             </div>
@@ -349,12 +459,15 @@ export function RealEstateBuyPrintTemplate({
     fieldTypes,
     fieldPlaceholders,
     transactionKeys,
+    tokenFieldTemplates,
+    printLang,
     onFieldChange
 }: RealEstateBuyPrintTemplateProps) {
     const logoSrc = resolveLogoSrc(logoUrl)
     const address = joinContact(workspaceFooterContacts?.address)
     const phone = joinContact(workspaceFooterContacts?.phone, '', '\n')
     const centerQr = !logoSrc && Boolean(qrValue)
+    const effectivePrintLang = printLang && printLang !== 'auto' ? printLang : i18n.language
     const field = (fieldKey: string, fallback = '') => (
         <TemplateField
             values={values}
@@ -484,6 +597,8 @@ export function RealEstateBuyPrintTemplate({
                             fieldKey={`contractRow${rowIndex + 1}`}
                             editable={editableFields}
                             transactionKeys={transactionKeys}
+                            tokenTemplate={tokenFieldTemplates?.[`contractRow${rowIndex + 1}`]}
+                            printLang={effectivePrintLang}
                             onFieldChange={onFieldChange}
                         />
                     ))}

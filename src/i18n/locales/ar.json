@@ -2910,5 +2910,86 @@
       "open": "فتح",
       "noMatch": "لا توجد إدخالات في دفتر الأستاذ تطابق الفلاتر الحالية."
     }
+  },
+  "customTemplates": {
+    "title": "القوالب المخصصة",
+    "subtitle": "إدارة تخصيصات تخطيط الطباعة لمساحة العمل حسب الوحدة ونوع الطباعة.",
+    "addNew": "إضافة قالب جديد",
+    "existingTitle": "القوالب المخصصة الموجودة",
+    "existingDescription": "يتم حفظ JSON التخطيط لنطاق مساحة العمل الحالية ومفتاح الوحدة/النوع.",
+    "emptyTitle": "لا توجد قوالب مخصصة بعد",
+    "emptyDescription": "قم بإنشاء تخصيص طباعة للعقارات لحفظ التخطيط الأول.",
+    "addTitle": "إضافة قالب جديد",
+    "addDescription": "اختر الوحدة ونوع الطباعة للتخصيص. العقارات هي الوحدة المدعومة الوحيدة في هذا الإصدار.",
+    "moduleTypeLabel": "الوحدة / نوع الطباعة",
+    "selectPlaceholder": "اختر الوحدة/النوع",
+    "openPreview": "فتح معاينة الطباعة",
+    "noSupportedTargets": "لا توجد أنواع قوالب طباعة مدعومة متاحة لمساحة العمل هذه.",
+    "previewTitle": "قالب مخصص لـ {{name}}",
+    "customize": "تخصيص",
+    "saveLayout": "حفظ التخطيط",
+    "labelDialogTitle": "تسمية القالب المخصص",
+    "labelDialogDescription": "أدخل تسمية لتعريف تخطيط الطباعة المخصص هذا لاحقاً.",
+    "labelField": "تسمية القالب",
+    "labelPlaceholder": "أدخل تسمية القالب",
+    "savedTitle": "تم حفظ القالب",
+    "savedDescription": "تم حفظ تخطيط الطباعة المخصص في Supabase.",
+    "supabaseRequired": "يجب تكوين Supabase قبل حفظ القوالب المخصصة.",
+    "unknownTarget": "تخطيط طباعة مخصص",
+    "table": {
+      "template": "القالب",
+      "key": "مفتاح الوحدة/النوع",
+      "layout": "عناصر التخطيط",
+      "updated": "آخر تحديث"
+    },
+    "transactionKeys": {
+      "realEstateBuy": {
+        "transactionNo": "رقم المعاملة",
+        "transactionType": "نوع المعاملة",
+        "status": "حالة المعاملة",
+        "location": "موقع العقار",
+        "propertyType": "نوع العقار",
+        "landAreaM2": "مساحة العقار (م\u00B2)",
+        "currency": "العملة",
+        "totalAmount": "المبلغ الإجمالي",
+        "paidAmount": "المبلغ المدفوع",
+        "balanceAmount": "المبلغ المتبقي",
+        "profitAmount": "مبلغ الربح",
+        "buyerName": "اسم المشتري",
+        "buyerPhone": "رقم هاتف المشتري",
+        "buyerBusinessPartnerId": "معرف الشريك التجاري للمشتري",
+        "buyerWitnessName": "اسم شاهد المشتري",
+        "buyerWitnessAddress": "عنوان شاهد المشتري",
+        "buyerWitnessPhone": "رقم هاتف شاهد المشتري",
+        "sellerName": "اسم البائع",
+        "sellerPhone": "رقم هاتف البائع",
+        "sellerBusinessPartnerId": "معرف الشريك التجاري للبائع",
+        "sellerWitnessName": "اسم شاهد البائع",
+        "sellerWitnessAddress": "عنوان شاهد البائع",
+        "sellerWitnessPhone": "رقم هاتف شاهد البائع",
+        "isInstallmentBased": "صفقة بالتقسيط",
+        "installmentCount": "عدد الأقساط",
+        "installmentFrequency": "وتيرة القسط",
+        "firstDueDate": "تاريخ الاستحقاق الأول",
+        "nextDueDate": "تاريخ الاستحقاق التالي",
+        "notes": "ملاحظات",
+        "createdAt": "تاريخ الإنشاء",
+        "updatedAt": "تاريخ التحديث",
+        "_groups": {
+          "Deal": "الصفقة",
+          "Property": "العقار",
+          "Amounts": "المبالغ",
+          "Buyer": "المشتري",
+          "Seller": "البائع",
+          "Installments": "الأقساط",
+          "System": "النظام"
+        }
+      }
+    },
+    "keyPicker": {
+      "title": "مفاتيح المعاملات",
+      "searchPlaceholder": "ابحث في مفاتيح المعاملات",
+      "noKeysFound": "لم يتم العثور على مفاتيح."
+    }
   }
 }

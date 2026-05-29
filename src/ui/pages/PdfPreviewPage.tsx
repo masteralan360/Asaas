@@ -370,6 +370,7 @@ export function PdfPreviewPage() {
                 heightMm: 297
             },
             fields: fieldValues,
+            fieldTokenTemplates: initialTemplateLayout?.fieldTokenTemplates,
             annotations: templateAnnotations,
             texts: templateTexts,
             images: templateImages,

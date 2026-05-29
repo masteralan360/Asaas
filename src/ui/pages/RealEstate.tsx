@@ -156,6 +156,10 @@ function sequenceFromTransactionNo(transactionNo: string) {
     return Number.isFinite(value) && value > 0 ? String(value) : match[1]
 }
 
+function formatLandAreaM2(value: number) {
+    return value > 0 ? `${value.toLocaleString()}m²` : ''
+}
+
 function buildRealEstatePrintValues(
     transaction: RealEstateTransaction,
     buyerPartner: BusinessPartner | undefined,
@@ -174,7 +178,7 @@ function buildRealEstatePrintValues(
         propertyType: transaction.propertyType
             ? t(`realEstate.propertyTypes.${transaction.propertyType}`, { defaultValue: transaction.propertyType })
             : '',
-        landAreaM2: transaction.landAreaM2 > 0 ? transaction.landAreaM2.toLocaleString() : '',
+        landAreaM2: formatLandAreaM2(transaction.landAreaM2),
         currency: transaction.currency.toUpperCase(),
         totalAmount: formatCurrency(transaction.totalAmount, transaction.currency, iqdPreference as any),
         paidAmount: formatCurrency(transaction.paidAmount, transaction.currency, iqdPreference as any),
@@ -217,15 +221,23 @@ function resolveRealEstatePrintTokens(text: string, values: Record<string, strin
     )
 }
 
+function hasRealEstatePrintToken(text: string) {
+    return /\{\{\s*[A-Za-z][A-Za-z0-9_.]*\s*\}\}/.test(text)
+}
+
 function buildRuntimePrintLayout(
     layout: CustomTemplateLayout,
     values: Record<string, string>
 ): CustomTemplateLayout {
     const fields = { ...values }
+    const fieldTokenTemplates: Record<string, string> = {}
     Object.entries(layout.fields || {}).forEach(([key, value]) => {
         const fieldValue = String(value ?? '')
         if (key === 'receiptNumber') {
             return
+        }
+        if (key.startsWith('contractRow') && hasRealEstatePrintToken(fieldValue)) {
+            fieldTokenTemplates[key] = fieldValue
         }
         if (fieldValue.trim().length > 0) {
             fields[key] = resolveRealEstatePrintTokens(fieldValue, values)
@@ -234,7 +246,8 @@ function buildRuntimePrintLayout(
 
     return {
         ...layout,
-        fields
+        fields,
+        fieldTokenTemplates
     }
 }
 

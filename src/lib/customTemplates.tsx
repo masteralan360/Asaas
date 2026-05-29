@@ -116,37 +116,37 @@ const REAL_ESTATE_BUY_FIELD_PLACEHOLDERS = {
 }
 
 export const REAL_ESTATE_BUY_TRANSACTION_KEYS: TemplatePreviewDataKey[] = [
-    { key: 'transactionNo', label: 'Transaction number', group: 'Deal' },
-    { key: 'transactionType', label: 'Transaction type', group: 'Deal' },
-    { key: 'status', label: 'Transaction status', group: 'Deal' },
-    { key: 'location', label: 'Property location', group: 'Property' },
-    { key: 'propertyType', label: 'Property type', group: 'Property' },
-    { key: 'landAreaM2', label: 'Property area (m²)', group: 'Property' },
-    { key: 'currency', label: 'Currency', group: 'Amounts' },
-    { key: 'totalAmount', label: 'Total amount', group: 'Amounts' },
-    { key: 'paidAmount', label: 'Paid amount', group: 'Amounts' },
-    { key: 'balanceAmount', label: 'Balance amount', group: 'Amounts' },
-    { key: 'profitAmount', label: 'Profit amount', group: 'Amounts' },
-    { key: 'buyerName', label: 'Buyer name', group: 'Buyer' },
-    { key: 'buyerPhone', label: 'Buyer phone number', group: 'Buyer' },
-    { key: 'buyerBusinessPartnerId', label: 'Buyer business partner ID', group: 'Buyer' },
-    { key: 'buyerWitnessName', label: 'Buyer witness name', group: 'Buyer' },
-    { key: 'buyerWitnessAddress', label: 'Buyer witness address', group: 'Buyer' },
-    { key: 'buyerWitnessPhone', label: 'Buyer witness phone number', group: 'Buyer' },
-    { key: 'sellerName', label: 'Seller name', group: 'Seller' },
-    { key: 'sellerPhone', label: 'Seller phone number', group: 'Seller' },
-    { key: 'sellerBusinessPartnerId', label: 'Seller business partner ID', group: 'Seller' },
-    { key: 'sellerWitnessName', label: 'Seller witness name', group: 'Seller' },
-    { key: 'sellerWitnessAddress', label: 'Seller witness address', group: 'Seller' },
-    { key: 'sellerWitnessPhone', label: 'Seller witness phone number', group: 'Seller' },
-    { key: 'isInstallmentBased', label: 'Installment-based deal', group: 'Installments' },
-    { key: 'installmentCount', label: 'Installment count', group: 'Installments' },
-    { key: 'installmentFrequency', label: 'Installment frequency', group: 'Installments' },
-    { key: 'firstDueDate', label: 'First due date', group: 'Installments' },
-    { key: 'nextDueDate', label: 'Next due date', group: 'Installments' },
-    { key: 'notes', label: 'Notes', group: 'Deal' },
-    { key: 'createdAt', label: 'Created date', group: 'System' },
-    { key: 'updatedAt', label: 'Updated date', group: 'System' }
+    { key: 'transactionNo', label: '', group: 'Deal' },
+    { key: 'transactionType', label: '', group: 'Deal' },
+    { key: 'status', label: '', group: 'Deal' },
+    { key: 'location', label: '', group: 'Property' },
+    { key: 'propertyType', label: '', group: 'Property' },
+    { key: 'landAreaM2', label: '', group: 'Property' },
+    { key: 'currency', label: '', group: 'Amounts' },
+    { key: 'totalAmount', label: '', group: 'Amounts' },
+    { key: 'paidAmount', label: '', group: 'Amounts' },
+    { key: 'balanceAmount', label: '', group: 'Amounts' },
+    { key: 'profitAmount', label: '', group: 'Amounts' },
+    { key: 'buyerName', label: '', group: 'Buyer' },
+    { key: 'buyerPhone', label: '', group: 'Buyer' },
+    { key: 'buyerBusinessPartnerId', label: '', group: 'Buyer' },
+    { key: 'buyerWitnessName', label: '', group: 'Buyer' },
+    { key: 'buyerWitnessAddress', label: '', group: 'Buyer' },
+    { key: 'buyerWitnessPhone', label: '', group: 'Buyer' },
+    { key: 'sellerName', label: '', group: 'Seller' },
+    { key: 'sellerPhone', label: '', group: 'Seller' },
+    { key: 'sellerBusinessPartnerId', label: '', group: 'Seller' },
+    { key: 'sellerWitnessName', label: '', group: 'Seller' },
+    { key: 'sellerWitnessAddress', label: '', group: 'Seller' },
+    { key: 'sellerWitnessPhone', label: '', group: 'Seller' },
+    { key: 'isInstallmentBased', label: '', group: 'Installments' },
+    { key: 'installmentCount', label: '', group: 'Installments' },
+    { key: 'installmentFrequency', label: '', group: 'Installments' },
+    { key: 'firstDueDate', label: '', group: 'Installments' },
+    { key: 'nextDueDate', label: '', group: 'Installments' },
+    { key: 'notes', label: '', group: 'Deal' },
+    { key: 'createdAt', label: '', group: 'System' },
+    { key: 'updatedAt', label: '', group: 'System' }
 ]
 
 const REAL_ESTATE_BUY_FIELDS = [
@@ -209,6 +209,8 @@ function createRealEstateBuyPreview(options: CustomTemplatePreviewOptions): Temp
                 fieldTypes={REAL_ESTATE_BUY_FIELD_TYPES}
                 fieldPlaceholders={REAL_ESTATE_BUY_FIELD_PLACEHOLDERS}
                 transactionKeys={renderOptions?.dataKeys || REAL_ESTATE_BUY_TRANSACTION_KEYS}
+                tokenFieldTemplates={renderOptions?.tokenFieldTemplates}
+                printLang={options.features?.print_lang}
                 onFieldChange={renderOptions?.onFieldChange}
             />
         ),
@@ -351,7 +353,9 @@ export function renderCustomTemplateLayoutElement({
                 height: `${layout.page.heightMm || 297}mm`
             }}
         >
-            {preview.createElement(fieldValues, effectiveId, preview.fixedPrintLang)}
+            {preview.createElement(fieldValues, effectiveId, preview.fixedPrintLang, {
+                tokenFieldTemplates: layout.fieldTokenTemplates
+            })}
             <CustomTemplateLayoutOverlay layout={layout} />
         </div>
     )

@@ -1864,6 +1864,55 @@
       "key": "Module/Type Key",
       "layout": "Layout Items",
       "updated": "Updated"
+    },
+    "transactionKeys": {
+      "realEstateBuy": {
+        "transactionNo": "Transaction number",
+        "transactionType": "Transaction type",
+        "status": "Transaction status",
+        "location": "Property location",
+        "propertyType": "Property type",
+        "landAreaM2": "Property area (m\u00B2)",
+        "currency": "Currency",
+        "totalAmount": "Total amount",
+        "paidAmount": "Paid amount",
+        "balanceAmount": "Balance amount",
+        "profitAmount": "Profit amount",
+        "buyerName": "Buyer name",
+        "buyerPhone": "Buyer phone number",
+        "buyerBusinessPartnerId": "Buyer business partner ID",
+        "buyerWitnessName": "Buyer witness name",
+        "buyerWitnessAddress": "Buyer witness address",
+        "buyerWitnessPhone": "Buyer witness phone number",
+        "sellerName": "Seller name",
+        "sellerPhone": "Seller phone number",
+        "sellerBusinessPartnerId": "Seller business partner ID",
+        "sellerWitnessName": "Seller witness name",
+        "sellerWitnessAddress": "Seller witness address",
+        "sellerWitnessPhone": "Seller witness phone number",
+        "isInstallmentBased": "Installment-based deal",
+        "installmentCount": "Installment count",
+        "installmentFrequency": "Installment frequency",
+        "firstDueDate": "First due date",
+        "nextDueDate": "Next due date",
+        "notes": "Notes",
+        "createdAt": "Created date",
+        "updatedAt": "Updated date",
+        "_groups": {
+          "Deal": "Deal",
+          "Property": "Property",
+          "Amounts": "Amounts",
+          "Buyer": "Buyer",
+          "Seller": "Seller",
+          "Installments": "Installments",
+          "System": "System"
+        }
+      }
+    },
+    "keyPicker": {
+      "title": "Transaction keys",
+      "searchPlaceholder": "Search transaction keys",
+      "noKeysFound": "No keys found."
     }
   },
   "members": {
