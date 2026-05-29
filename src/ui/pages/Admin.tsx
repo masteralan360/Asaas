@@ -43,6 +43,7 @@ import {
     MessageSquare,
     DollarSign,
     GitBranch,
+    Plane,
     type LucideIcon
 } from 'lucide-react'
 import {
@@ -187,7 +188,7 @@ export function Admin() {
         'inventory_transfer', 'inventory_transactions', 'stock_adjustments',
         'ledger', 'payments', 'direct_transactions', 'members',
         'business_partners', 'customers', 'suppliers', 'orders',
-        'ecommerce', 'real_estate', 'loans', 'installments', 'discounts',
+        'ecommerce', 'travel_agency', 'real_estate', 'loans', 'installments', 'discounts',
         'revenue_analytics', 'team_performance', 'invoice_history',
         'accounting', 'hr', 'expenses', 'payroll', 'whatsapp'
     ]
@@ -210,6 +211,7 @@ export function Admin() {
         suppliers: Truck,
         orders: ShoppingCart,
         ecommerce: Store,
+        travel_agency: Plane,
         real_estate: Building2,
         loans: HandCoins,
         installments: Copy,

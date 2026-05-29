@@ -48,7 +48,7 @@ import {
     TabsTrigger,
     useToast
 } from '@/ui/components'
-import { CreateRealEstateTransactionModal } from '@/ui/components/real-estate/CreateRealEstateTransactionModal'
+import { CreateRealEstateTransactionPage } from '@/ui/components/real-estate/CreateRealEstateTransactionModal'
 import { RecordRealEstatePaymentModal } from '@/ui/components/real-estate/RecordRealEstatePaymentModal'
 import { SettlementDialog } from '@/ui/components/payments/SettlementDialog'
 import { useWorkspace } from '@/workspace'
@@ -259,10 +259,10 @@ export function RealEstate() {
     const { user } = useAuth()
     const { features } = useWorkspace()
     const [, navigate] = useLocation()
+    const [createMatch] = useRoute('/real-estate/new')
     const [detailMatch, params] = useRoute('/real-estate/:transactionId')
     const workspaceId = user?.workspaceId
     const transactions = useRealEstateTransactions(workspaceId)
-    const [createOpen, setCreateOpen] = useState(false)
     const [search, setSearch] = useState('')
     const [filter, setFilter] = useState<RealEstateFilter>('all')
     const [paymentTarget, setPaymentTarget] = useState<{
@@ -306,6 +306,17 @@ export function RealEstate() {
         return null
     }
 
+    if (createMatch) {
+        return (
+            <CreateRealEstateTransactionPage
+                workspaceId={workspaceId}
+                settlementCurrency={features.default_currency}
+                onCancel={() => navigate('/real-estate')}
+                onCreated={(transactionId) => navigate(`/real-estate/${transactionId}`)}
+            />
+        )
+    }
+
     if (detailMatch && params?.transactionId) {
         return (
             <RealEstateDetails
@@ -329,7 +340,7 @@ export function RealEstate() {
                         {t('realEstate.subtitle', { defaultValue: 'Manual property transactions with partner links, multi-currency totals, and installment schedules.' })}
                     </p>
                 </div>
-                <Button className="gap-2" onClick={() => setCreateOpen(true)}>
+                <Button className="gap-2" onClick={() => navigate('/real-estate/new')}>
                     <Plus className="h-4 w-4" />
                     {t('realEstate.create', { defaultValue: 'Create Transaction' })}
                 </Button>
@@ -437,13 +448,6 @@ export function RealEstate() {
                 </CardContent>
             </Card>
 
-            <CreateRealEstateTransactionModal
-                isOpen={createOpen}
-                onOpenChange={setCreateOpen}
-                workspaceId={workspaceId}
-                settlementCurrency={features.default_currency}
-                onCreated={(transactionId) => navigate(`/real-estate/${transactionId}`)}
-            />
             <RecordRealEstatePaymentModal
                 isOpen={paymentTarget !== null}
                 onOpenChange={(open) => {

@@ -21,6 +21,7 @@ export type PlanModuleKey =
     | 'suppliers'
     | 'orders'
     | 'ecommerce'
+    | 'travel_agency'
     | 'real_estate'
     | 'loans'
     | 'installments'
@@ -218,7 +219,7 @@ export const WORKSPACE_FEATURE_MODULE_MAP: Record<WorkspaceFeatureKey, PlanModul
     sales_history: 'sales_history',
     crm: 'customers',
     ecommerce: 'ecommerce',
-    travel_agency: null,
+    travel_agency: 'travel_agency',
     real_estate: 'real_estate',
     loans: 'loans',
     installments: 'installments',

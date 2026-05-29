@@ -126,6 +126,7 @@ const PLAN_DERIVED_FEATURE_KEYS: ModuleFeatureKey[] = [
     'sales_history',
     'crm',
     'ecommerce',
+    'travel_agency',
     'real_estate',
     'loans',
     'installments',
@@ -155,9 +156,6 @@ function getResolvedFeatureFlags(resolved: ResolvedWorkspacePlan) {
     const capabilitySet = new Set(resolved.capabilities)
     return PLAN_DERIVED_FEATURE_KEYS.reduce((flags, key) => {
         switch (key) {
-            case 'travel_agency':
-                flags[key] = false
-                break
             case 'monthly_comparison':
                 flags[key] = moduleSet.has('revenue_analytics')
                 break

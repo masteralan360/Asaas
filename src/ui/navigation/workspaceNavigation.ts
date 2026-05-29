@@ -190,7 +190,7 @@ export function buildWorkspaceNavigation({
           },
         ]
       : []),
-    ...(isCoreRole && hasFeature("travel_agency")
+    ...(isCoreRole && hasFeature("travel_agency") && canAccessPermission("travelAgency.access")
       ? [
           {
             name: t("nav.travelAgency", { defaultValue: "Travel Agency" }),

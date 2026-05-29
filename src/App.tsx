@@ -938,6 +938,7 @@ function App() {
                         <ProtectedRoute
                           allowedRoles={["admin", "staff", "viewer"]}
                           requiredFeature="travel_agency"
+                          requiredPermission="travelAgency.access"
                         >
                           <Layout>
                             <TravelAgency />
@@ -948,6 +949,7 @@ function App() {
                         <ProtectedRoute
                           allowedRoles={["admin", "staff", "viewer"]}
                           requiredFeature="travel_agency"
+                          requiredPermission="travelAgency.access"
                         >
                           <Layout>
                             <TravelAgencySaleCreate />
@@ -958,6 +960,7 @@ function App() {
                         <ProtectedRoute
                           allowedRoles={["admin", "staff", "viewer"]}
                           requiredFeature="travel_agency"
+                          requiredPermission="travelAgency.access"
                         >
                           <Layout>
                             <TravelAgencySaleView />
@@ -968,6 +971,7 @@ function App() {
                         <ProtectedRoute
                           allowedRoles={["admin", "staff", "viewer"]}
                           requiredFeature="travel_agency"
+                          requiredPermission="travelAgency.access"
                         >
                           <Layout>
                             <TravelAgencySaleEdit />
@@ -975,6 +979,17 @@ function App() {
                         </ProtectedRoute>
                       </Route>
                       <Route path="/real-estate">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="real_estate"
+                          requiredPermission="realEstate.access"
+                        >
+                          <Layout>
+                            <RealEstate />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/real-estate/new">
                         <ProtectedRoute
                           allowedRoles={["admin", "staff", "viewer"]}
                           requiredFeature="real_estate"

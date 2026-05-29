@@ -1,6 +1,6 @@
 import { type FormEvent, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Building2, Plus, Users, X } from 'lucide-react'
+import { ArrowLeft, Building2, Plus, Users, X } from 'lucide-react'
 
 import { useAuth } from '@/auth'
 import { useExchangeRate } from '@/context/ExchangeRateContext'
@@ -9,13 +9,11 @@ import { formatCurrency, formatLocalDateValue, formatNumericInput, parseFormatte
 import { createBusinessPartner, createRealEstateTransaction, type BusinessPartner, type CurrencyCode, type InstallmentFrequency, type RealEstatePropertyType, type RealEstateTransactionType } from '@/local-db'
 import {
     Button,
+    Card,
+    CardContent,
+    CardHeader,
+    CardTitle,
     DateTimePicker,
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogFooter,
-    DialogHeader,
-    DialogTitle,
     Input,
     Label,
     Select,
@@ -31,11 +29,10 @@ import { PartnerAutocompleteInput } from '@/ui/components/crm/PartnerAutocomplet
 import { BusinessPartnerFormDialog, type BusinessPartnerFormPayload } from '@/ui/components/crm/BusinessPartnerFormDialog'
 import { useWorkspace } from '@/workspace'
 
-interface CreateRealEstateTransactionModalProps {
-    isOpen: boolean
-    onOpenChange: (open: boolean) => void
+interface CreateRealEstateTransactionPageProps {
     workspaceId: string
     settlementCurrency: CurrencyCode
+    onCancel: () => void
     onCreated?: (transactionId: string) => void
 }
 
@@ -44,13 +41,12 @@ type PartyLink = {
     name: string
 } | null
 
-export function CreateRealEstateTransactionModal({
-    isOpen,
-    onOpenChange,
+export function CreateRealEstateTransactionPage({
     workspaceId,
     settlementCurrency,
+    onCancel,
     onCreated
-}: CreateRealEstateTransactionModalProps) {
+}: CreateRealEstateTransactionPageProps) {
     const { t } = useTranslation()
     const { toast } = useToast()
     const { user } = useAuth()
@@ -86,10 +82,6 @@ export function CreateRealEstateTransactionModal({
     const [isSavingSeller, setIsSavingSeller] = useState(false)
 
     useEffect(() => {
-        if (!isOpen) {
-            return
-        }
-
         setIsSaving(false)
         setLocation('')
         setTransactionType('sell')
@@ -114,7 +106,7 @@ export function CreateRealEstateTransactionModal({
         setInstallmentFrequency('monthly')
         setFirstDueDate(formatLocalDateValue(new Date()))
         setNotes('')
-    }, [isOpen, settlementCurrency])
+    }, [settlementCurrency])
 
     useEffect(() => {
         const allowDecimal = currency !== 'iqd'
@@ -253,7 +245,6 @@ export function CreateRealEstateTransactionModal({
                 title: t('common.success') || 'Success',
                 description: t('realEstate.messages.created', { defaultValue: 'Real estate transaction created.' })
             })
-            onOpenChange(false)
             onCreated?.(result.transaction.id)
         } catch (error: any) {
             toast({
@@ -267,20 +258,34 @@ export function CreateRealEstateTransactionModal({
     }
 
     return (
-        <Dialog open={isOpen} onOpenChange={onOpenChange}>
-            <DialogContent className="top-[calc(50%+var(--titlebar-height)/2+var(--safe-area-top)/2)] flex max-h-[calc(100dvh-var(--titlebar-height)-var(--safe-area-top)-var(--safe-area-bottom)-0.75rem)] w-[calc(100vw-0.75rem)] max-w-4xl flex-col overflow-hidden rounded-[1.25rem] border-border/60 p-0 sm:w-full sm:max-h-[min(calc(100dvh-var(--titlebar-height)-var(--safe-area-top)-var(--safe-area-bottom)-2rem),820px)] sm:rounded-[1.75rem]">
-                <DialogHeader className="border-b bg-muted/30 px-4 py-4 pr-14 text-left sm:px-6 sm:py-5">
-                    <DialogTitle className="flex items-center gap-2">
-                        <Building2 className="h-5 w-5" />
+        <div className="space-y-5">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                <div className="space-y-1">
+                    <Button
+                        type="button"
+                        variant="ghost"
+                        className="h-auto gap-2 px-0 text-muted-foreground hover:bg-transparent hover:text-foreground"
+                        onClick={onCancel}
+                    >
+                        <ArrowLeft className="h-4 w-4" />
+                        {t('realEstate.title', { defaultValue: 'Real Estate' })}
+                    </Button>
+                    <h1 className="flex items-center gap-2 text-3xl font-bold tracking-tight">
+                        <Building2 className="h-7 w-7" />
                         {t('realEstate.createTitle', { defaultValue: 'Create Real Estate Transaction' })}
-                    </DialogTitle>
-                    <DialogDescription>
+                    </h1>
+                    <p className="text-sm text-muted-foreground">
                         {t('realEstate.createDescription', { defaultValue: 'Record a property deal with multi-currency and optional installment tracking.' })}
-                    </DialogDescription>
-                </DialogHeader>
+                    </p>
+                </div>
+            </div>
 
-                <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
-                    <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6 sm:py-6">
+            <form onSubmit={handleSubmit} className="space-y-5">
+                <Card>
+                    <CardHeader>
+                        <CardTitle>{t('realEstate.contractDetails', { defaultValue: 'Contract Details' })}</CardTitle>
+                    </CardHeader>
+                    <CardContent>
                         <div className="grid gap-4">
                             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                                 <div className="grid gap-2">
@@ -534,17 +539,18 @@ export function CreateRealEstateTransactionModal({
                                 />
                             </div>
                         </div>
-                    </div>
+                    </CardContent>
+                </Card>
 
-                    <DialogFooter className="border-t bg-muted/20 px-4 py-4 pb-[calc(1rem+var(--safe-area-bottom))] sm:justify-between sm:px-6">
-                        <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={() => onOpenChange(false)} disabled={isSaving}>
-                            {t('common.cancel') || 'Cancel'}
-                        </Button>
-                        <Button type="submit" className="w-full sm:w-auto" disabled={!canSubmit || isSaving}>
-                            {t('common.create') || 'Create'}
-                        </Button>
-                    </DialogFooter>
-                </form>
+                <div className="sticky bottom-0 z-10 flex flex-col-reverse gap-3 border-t bg-background/95 py-4 backdrop-blur sm:flex-row sm:justify-between">
+                    <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={onCancel} disabled={isSaving}>
+                        {t('common.cancel') || 'Cancel'}
+                    </Button>
+                    <Button type="submit" className="w-full sm:w-auto" disabled={!canSubmit || isSaving}>
+                        {t('common.create') || 'Create'}
+                    </Button>
+                </div>
+            </form>
 
             <BusinessPartnerFormDialog
                 isOpen={isCreateBuyerOpen}
@@ -566,8 +572,7 @@ export function CreateRealEstateTransactionModal({
                 isSaving={isSavingSeller}
                 onSubmit={handleCreateSellerPartner}
             />
-            </DialogContent>
-        </Dialog>
+        </div>
     )
 }
 
