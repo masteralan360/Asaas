@@ -159,6 +159,8 @@ function TransactionKeyPickerDialog({
 }) {
     const { t } = useTranslation()
     const displayT = printLang ? i18n.getFixedT(printLang) : t
+    const displayLabel = (key: string, fallback?: string) =>
+        displayT(key, { defaultValue: fallback || key })
     const [query, setQuery] = useState('')
 
     useEffect(() => {
@@ -177,8 +179,8 @@ function TransactionKeyPickerDialog({
                 key.group,
                 key.description,
                 key.token || `{{${key.key}}}`,
-                displayT('customTemplates.transactionKeys.realEstateBuy.' + key.key, key.label),
-                displayT('customTemplates.transactionKeys.realEstateBuy._groups.' + (key.group || 'Transaction'), key.group)
+                displayLabel('customTemplates.transactionKeys.realEstateBuy.' + key.key, key.label),
+                displayLabel('customTemplates.transactionKeys.realEstateBuy._groups.' + (key.group || 'Transaction'), key.group)
             ].some((value) => value?.toLowerCase().includes(normalizedQuery))
         })
 
@@ -211,7 +213,7 @@ function TransactionKeyPickerDialog({
                         {groupedKeys.length > 0 ? groupedKeys.map((group) => (
                             <div key={group.group} className="border-b last:border-b-0">
                                 <div className="bg-muted/50 px-3 py-2 text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
-                                    {displayT('customTemplates.transactionKeys.realEstateBuy._groups.' + group.group, group.group)}
+                                    {displayLabel('customTemplates.transactionKeys.realEstateBuy._groups.' + group.group, group.group)}
                                 </div>
                                 {group.keys.map((key) => (
                                     <button
@@ -221,7 +223,7 @@ function TransactionKeyPickerDialog({
                                         onClick={() => onInsert(key)}
                                     >
                                         <span className="min-w-0">
-                                            <span className="block truncate font-medium">{displayT('customTemplates.transactionKeys.realEstateBuy.' + key.key, key.label)}</span>
+                                            <span className="block truncate font-medium">{displayLabel('customTemplates.transactionKeys.realEstateBuy.' + key.key, key.label)}</span>
                                             {key.description ? (
                                                 <span className="block truncate text-xs text-muted-foreground">{key.description}</span>
                                             ) : null}

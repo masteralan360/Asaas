@@ -70,6 +70,10 @@
     "view": "بینین",
     "all": "هەموو",
     "print": "چاپکردن",
+    "yes": "بەڵێ",
+    "no": "نەخێر",
+    "name": "ناو",
+    "record": "تۆمارکردن",
     "am": "بەیانی (AM)",
     "pm": "ئێوارە (PM)",
     "pagination": {
@@ -164,6 +168,11 @@
         "title": "نەختینە و کۆنترۆڵ",
         "eyebrow": "کردارە داراییەکان",
         "description": "جوڵەی پارە و تۆمارە داراییەکان و بەدواداچوونی پارەدانەکان بۆ گەڕانی خێرا ڕێکخراون."
+      },
+      "real-estate": {
+        "title": "خانووبەرە",
+        "eyebrow": "کردارەکانی خانووبەرە",
+        "description": "مامەڵەکانی خانووبەرە، خشتەی قیستەکان، و باڵانسی خانووبەرە جیا لە دارایی گشتی ڕێکخراون."
       },
       "partners-and-demand": {
         "title": "هاوبەشەکان و داخوازی",
@@ -2968,5 +2977,98 @@
       "searchPlaceholder": "گەڕان لە کلیلەکانی مامەڵە",
       "noKeysFound": "هیچ کلیلیک نەدۆزرایەوە."
     }
+  },
+  "realEstate": {
+    "title": "خانووبەرە",
+    "subtitle": "مامەڵەکانی خانووبەرە بە شێوەی دەستی لەگەڵ بەستەری هاوبەشەکان، کۆی گشتی فرە دراو، و خشتەی قیستەکان.",
+    "create": "دروستکردنی مامەڵە",
+    "createTitle": "دروستکردنی مامەڵەی خانووبەرە",
+    "createDescription": "تۆمارکردنی مامەڵەیەکی خانووبەرە لەگەڵ فرە دراو و شوێنکەوتنی قیست بە هەڵبژاردن.",
+    "metrics": {
+      "total": "مامەڵەکان",
+      "active": "مامەڵە چالاکەکان",
+      "openBalance": "باڵانسی کراوە",
+      "profit": "قازانج",
+      "installments": "قیستەکان"
+    },
+    "searchPlaceholder": "گەڕان لە مامەڵەکان...",
+    "statuses": {
+      "active": "چالاک",
+      "overdue": "دواکەوتوو",
+      "completed": "تەواو",
+      "partial": "بەشێکی",
+      "paid": "پارەدراو"
+    },
+    "types": {
+      "sell": "فرۆشتن",
+      "buy": "کڕین",
+      "rent": "بەکرێگرتن",
+      "lease": "بەکرێدانی درێژخایەن",
+      "exchange": "ئاڵوگۆڕ"
+    },
+    "propertyTypes": {
+      "house": "خانوو",
+      "apartment": "شوقە",
+      "land": "زەوی",
+      "commercial": "بازرگانی",
+      "villa": "ڤێلا",
+      "office": "نووسینگە",
+      "warehouse": "کۆگا",
+      "other": "تری"
+    },
+    "table": {
+      "transaction": "مامەڵە",
+      "parties": "لایەنەکان"
+    },
+    "location": "شوێن",
+    "locationPlaceholder": "ناونیشانی خانووبەرە یان پۆتانەکان",
+    "propertyType": "خانووبەرە",
+    "propertyTypePlaceholder": "جۆر هەڵبژێرە",
+    "total": "کۆی گشتی",
+    "buyer": "کڕیار",
+    "buyerPlaceholder": "گەڕان یان داخڵکردنی ناوی کڕیار",
+    "buyerWitness": "شاهیدی کڕیار",
+    "seller": "فرۆشیار",
+    "sellerPlaceholder": "گەڕان یان داخڵکردنی ناوی فرۆشیار",
+    "sellerWitness": "شاهیدی فرۆشیار",
+    "landArea": "ڕووبەری زەوی (م2)",
+    "profitAmount": "بڕی قازانج",
+    "transactionType": "جۆری مامەڵە",
+    "currency": "دراو",
+    "summary": "پوختەی مامەڵە",
+    "contractPaid": "پارەدراوی گرێبەست",
+    "commissionPaid": "قازانجی پارەدراو",
+    "remainingCommission": "قازانجی ماوە",
+    "installments": "قیستەکان",
+    "installmentBasedDeal": "مامەڵەی بە قیست",
+    "installmentDescription": "خشتەیەکی قیست بۆ باڵانسی ماوە دروست بکە.",
+    "installmentMirrorTitle": "قیستەکانی خانووبەرە",
+    "searchInstallments": "گەڕان لە قیستەکانی خانووبەرە...",
+    "contractPayments": "پارەدانەکانی گرێبەست",
+    "commission": "قازانج",
+    "paid": "پارەدراو",
+    "recordContractPayment": "تۆمارکردنی پارەدانی گرێبەست",
+    "recordCommission": "تۆمارکردنی قازانج",
+    "contractBalance": "باڵانسی گرێبەست",
+    "mediatorCommission": "قازانجی نێوەندگیر",
+    "notes": "تێبینی",
+    "notesPlaceholder": "وردەکاری خانووبەرە، ژمارەی گرێبەست، هتد.",
+    "linkedBuyer": "کڕیاری بەستەرکراو",
+    "linkedSeller": "فرۆشیاری بەستەرکراو",
+    "witnessPhone": "ژمارەی تەلەفۆن",
+    "printA4": "چاپکردنی A4",
+    "selectPrintTemplate": "قاڵبی تایبەت هەڵبژێرە بۆ بەکارهێنان لەم گرێبەستەدا.",
+    "messages": {
+      "created": "مامەڵەی خانووبەرە دروست کرا.",
+      "createFailed": "دروستکردنی مامەڵەی خانووبەرە سەرکەوتوو نەبوو.",
+      "paymentRecorded": "پارەدانی خانووبەرە تۆمار کرا.",
+      "paymentFailed": "تۆمارکردنی پارەدانی خانووبەرە سەرکەوتوو نەبوو.",
+      "commissionRecorded": "پارەدانی قازانج تۆمار کرا.",
+      "commissionFailed": "تۆمارکردنی پارەدانی قازانج سەرکەوتوو نەبوو."
+    },
+    "notFound": "مامەڵەی خانووبەرە نەدۆزرایەوە.",
+    "empty": "هیچ مامەڵەیەکی خانووبەرە نەدۆزرایەوە.",
+    "noInstallments": "ئەم مامەڵەیە خشتەی قیستی نییە.",
+    "noInstallmentRows": "هیچ ڕیزێکی قیستی خانووبەرە بەردەست نییە."
   }
 }

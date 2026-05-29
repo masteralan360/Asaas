@@ -109,6 +109,8 @@
     "fromTeam": "From the Team",
     "yes": "Yes",
     "no": "No",
+    "name": "Name",
+    "record": "Record",
     "rowsPerPage": "Rows per page"
   },
   "messages": {
@@ -1914,6 +1916,99 @@
       "searchPlaceholder": "Search transaction keys",
       "noKeysFound": "No keys found."
     }
+  },
+  "realEstate": {
+    "title": "Real Estate",
+    "subtitle": "Manual property transactions with partner links, multi-currency totals, and installment schedules.",
+    "create": "Create Transaction",
+    "createTitle": "Create Real Estate Transaction",
+    "createDescription": "Record a property deal with multi-currency and optional installment tracking.",
+    "metrics": {
+      "total": "Transactions",
+      "active": "Active Deals",
+      "openBalance": "Open Balance",
+      "profit": "Commission",
+      "installments": "Installment Deals"
+    },
+    "searchPlaceholder": "Search transactions...",
+    "statuses": {
+      "active": "Active",
+      "overdue": "Overdue",
+      "completed": "Completed",
+      "partial": "Partial",
+      "paid": "Paid"
+    },
+    "types": {
+      "sell": "Sell",
+      "buy": "Buy",
+      "rent": "Rent",
+      "lease": "Lease",
+      "exchange": "Exchange"
+    },
+    "propertyTypes": {
+      "house": "House",
+      "apartment": "Apartment",
+      "land": "Land",
+      "commercial": "Commercial",
+      "villa": "Villa",
+      "office": "Office",
+      "warehouse": "Warehouse",
+      "other": "Other"
+    },
+    "table": {
+      "transaction": "Transaction",
+      "parties": "Parties"
+    },
+    "location": "Location",
+    "locationPlaceholder": "Property address or coordinates",
+    "propertyType": "Property",
+    "propertyTypePlaceholder": "Select type",
+    "total": "Total",
+    "buyer": "Buyer",
+    "buyerPlaceholder": "Search or enter buyer name",
+    "buyerWitness": "Buyer Witness",
+    "seller": "Seller",
+    "sellerPlaceholder": "Search or enter seller name",
+    "sellerWitness": "Seller Witness",
+    "landArea": "Land Area (m2)",
+    "profitAmount": "Commission Amount",
+    "transactionType": "Transaction Type",
+    "currency": "Currency",
+    "summary": "Deal Summary",
+    "contractPaid": "Contract Paid",
+    "commissionPaid": "Commission Paid",
+    "remainingCommission": "Remaining Commission",
+    "installments": "Installments",
+    "installmentBasedDeal": "Installment-based Deal",
+    "installmentDescription": "Generate a repayment schedule for the remaining balance.",
+    "installmentMirrorTitle": "Real Estate Installments",
+    "searchInstallments": "Search property installments...",
+    "contractPayments": "Contract Payments",
+    "commission": "Commission",
+    "paid": "Paid",
+    "recordContractPayment": "Record Contract Payment",
+    "recordCommission": "Record Commission",
+    "contractBalance": "Contract Balance",
+    "mediatorCommission": "Mediator commission",
+    "notes": "Notes",
+    "notesPlaceholder": "Property details, contract number, etc.",
+    "linkedBuyer": "Linked buyer",
+    "linkedSeller": "Linked seller",
+    "witnessPhone": "Phone Number",
+    "printA4": "Print A4",
+    "selectPrintTemplate": "Choose the custom template to use for this contract.",
+    "messages": {
+      "created": "Real estate transaction created.",
+      "createFailed": "Failed to create real estate transaction.",
+      "paymentRecorded": "Real estate payment recorded.",
+      "paymentFailed": "Failed to record real estate payment.",
+      "commissionRecorded": "Commission payment recorded.",
+      "commissionFailed": "Failed to record commission payment."
+    },
+    "notFound": "Real estate transaction not found.",
+    "empty": "No real estate transactions found.",
+    "noInstallments": "This transaction does not have an installment schedule.",
+    "noInstallmentRows": "No real estate installment rows are available."
   },
   "members": {
     "title": "Members & Admin Control",

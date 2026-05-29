@@ -70,6 +70,10 @@
     "view": "عرض",
     "all": "الكل",
     "print": "طباعة",
+    "yes": "نعم",
+    "no": "لا",
+    "name": "الاسم",
+    "record": "تسجيل",
     "am": "صباحاً (AM)",
     "pm": "مساءً (PM)",
     "pagination": {
@@ -165,6 +169,11 @@
         "title": "النقد والرقابة",
         "eyebrow": "العمليات المالية",
         "description": "حركة الأموال والسجلات المالية ومتابعة المدفوعات منظمة للمسح السريع."
+      },
+      "real-estate": {
+        "title": "العقارات",
+        "eyebrow": "عمليات العقارات",
+        "description": "صفقات العقارات وجداول الأقساط وأرصدة العقارات مجمعة بعيداً عن المالية العامة."
       },
       "partners-and-demand": {
         "title": "الشركاء والطلب",
@@ -2991,5 +3000,98 @@
       "searchPlaceholder": "ابحث في مفاتيح المعاملات",
       "noKeysFound": "لم يتم العثور على مفاتيح."
     }
+  },
+  "realEstate": {
+    "title": "العقارات",
+    "subtitle": "معاملات عقارية يدوية مع روابط الشركاء وإجماليات متعددة العملات وجداول أقساط.",
+    "create": "إنشاء معاملة",
+    "createTitle": "إنشاء معاملة عقارية",
+    "createDescription": "تسجيل صفقة عقارية مع دعم العملات المتعددة وتتبع الأقساط الاختياري.",
+    "metrics": {
+      "total": "المعاملات",
+      "active": "الصفقات النشطة",
+      "openBalance": "الرصيد المفتوح",
+      "profit": "العمولة",
+      "installments": "صفقات الأقساط"
+    },
+    "searchPlaceholder": "البحث في المعاملات...",
+    "statuses": {
+      "active": "نشط",
+      "overdue": "متأخر",
+      "completed": "مكتمل",
+      "partial": "جزئي",
+      "paid": "مدفوع"
+    },
+    "types": {
+      "sell": "بيع",
+      "buy": "شراء",
+      "rent": "إيجار",
+      "lease": "عقد إيجار طويل",
+      "exchange": "مبادلة"
+    },
+    "propertyTypes": {
+      "house": "منزل",
+      "apartment": "شقة",
+      "land": "أرض",
+      "commercial": "تجاري",
+      "villa": "فيلا",
+      "office": "مكتب",
+      "warehouse": "مستودع",
+      "other": "أخرى"
+    },
+    "table": {
+      "transaction": "المعاملة",
+      "parties": "الأطراف"
+    },
+    "location": "الموقع",
+    "locationPlaceholder": "عنوان العقار أو إحداثياته",
+    "propertyType": "العقار",
+    "propertyTypePlaceholder": "اختر النوع",
+    "total": "الإجمالي",
+    "buyer": "المشتري",
+    "buyerPlaceholder": "ابحث أو أدخل اسم المشتري",
+    "buyerWitness": "شاهد المشتري",
+    "seller": "البائع",
+    "sellerPlaceholder": "ابحث أو أدخل اسم البائع",
+    "sellerWitness": "شاهد البائع",
+    "landArea": "مساحة الأرض (م2)",
+    "profitAmount": "مبلغ العمولة",
+    "transactionType": "نوع المعاملة",
+    "currency": "العملة",
+    "summary": "ملخص الصفقة",
+    "contractPaid": "المدفوع من العقد",
+    "commissionPaid": "العمولة المدفوعة",
+    "remainingCommission": "العمولة المتبقية",
+    "installments": "الأقساط",
+    "installmentBasedDeal": "صفقة بالتقسيط",
+    "installmentDescription": "إنشاء جدول سداد للرصيد المتبقي.",
+    "installmentMirrorTitle": "أقساط العقارات",
+    "searchInstallments": "البحث في أقساط العقارات...",
+    "contractPayments": "مدفوعات العقد",
+    "commission": "العمولة",
+    "paid": "مدفوع",
+    "recordContractPayment": "تسجيل دفعة العقد",
+    "recordCommission": "تسجيل العمولة",
+    "contractBalance": "رصيد العقد",
+    "mediatorCommission": "عمولة الوسيط",
+    "notes": "ملاحظات",
+    "notesPlaceholder": "تفاصيل العقار، رقم العقد، إلخ.",
+    "linkedBuyer": "المشتري المرتبط",
+    "linkedSeller": "البائع المرتبط",
+    "witnessPhone": "رقم الهاتف",
+    "printA4": "طباعة A4",
+    "selectPrintTemplate": "اختر القالب المخصص لاستخدامه في هذا العقد.",
+    "messages": {
+      "created": "تم إنشاء المعاملة العقارية.",
+      "createFailed": "فشل إنشاء المعاملة العقارية.",
+      "paymentRecorded": "تم تسجيل دفعة العقار.",
+      "paymentFailed": "فشل تسجيل دفعة العقار.",
+      "commissionRecorded": "تم تسجيل دفعة العمولة.",
+      "commissionFailed": "فشل تسجيل دفعة العمولة."
+    },
+    "notFound": "لم يتم العثور على المعاملة العقارية.",
+    "empty": "لم يتم العثور على معاملات عقارية.",
+    "noInstallments": "هذه المعاملة لا تحتوي على جدول أقساط.",
+    "noInstallmentRows": "لا توجد صفوف أقساط عقارية متاحة."
   }
 }

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useLocation, useRoute } from 'wouter'
 import { useTranslation } from 'react-i18next'
+import i18n from '@/i18n/config'
 import { ArrowLeft, Building2, CalendarClock, FileText, HandCoins, Loader2, MapPin, Plus, Printer, Search } from 'lucide-react'
 
 import { isSupabaseConfigured, supabase, useAuth } from '@/auth'
@@ -179,7 +180,7 @@ function buildRealEstatePrintValues(
             ? t(`realEstate.propertyTypes.${transaction.propertyType}`, { defaultValue: transaction.propertyType })
             : '',
         landAreaM2: formatLandAreaM2(transaction.landAreaM2),
-        currency: transaction.currency.toUpperCase(),
+        currency: transaction.currency?.toLowerCase() === 'iqd' ? iqdPreference : transaction.currency.toUpperCase(),
         totalAmount: formatCurrency(transaction.totalAmount, transaction.currency, iqdPreference as any),
         paidAmount: formatCurrency(transaction.paidAmount, transaction.currency, iqdPreference as any),
         balanceAmount: formatCurrency(transaction.balanceAmount, transaction.currency, iqdPreference as any),
@@ -593,11 +594,13 @@ function RealEstateDetails({
         email: pickWorkspaceContactPair(workspaceContacts, 'email'),
         phone: pickWorkspaceContactPair(workspaceContacts, 'phone')
     }), [workspaceContacts])
+    const printLang = features.print_lang && features.print_lang !== 'auto' ? features.print_lang : i18n.language
+    const printT = i18n.getFixedT(printLang)
     const realEstatePrintValues = useMemo(
         () => transaction
-            ? buildRealEstatePrintValues(transaction, buyerPartner, sellerPartner, t, features.iqd_display_preference)
+            ? buildRealEstatePrintValues(transaction, buyerPartner, sellerPartner, printT, features.iqd_display_preference)
             : {},
-        [buyerPartner, features.iqd_display_preference, sellerPartner, t, transaction]
+        [buyerPartner, features.iqd_display_preference, printT, sellerPartner, transaction]
     )
     const selectedPrintTarget = useMemo(
         () => selectedPrintTemplate ? getCustomTemplateTarget(selectedPrintTemplate.module_type_key) : undefined,
