@@ -8,6 +8,7 @@ import { buildOrderExchangeRatesSnapshot } from '@/lib/orderCurrency'
 import { getLoanLinkedPartyTypeLabel, type LoanPartySelection } from '@/lib/loanParties'
 import { formatCurrency, formatLocalDateValue, formatNumericInput, parseFormattedNumber, parseLocalDateValue, sanitizeNumericInput } from '@/lib/utils'
 import {
+    CurrencySelector,
     Dialog,
     DialogContent,
     DialogHeader,
@@ -96,10 +97,6 @@ export function CreateManualLoanModal({
         parseFormattedNumber(principalAmount || '0') > 0 &&
         installmentCount > 0 &&
         firstDueDate
-    const availableCurrencies = useMemo(() => {
-        const currencies: CurrencyCode[] = Array.from(new Set([settlementCurrency, ...features.allowed_currencies])) as CurrencyCode[]
-        return currencies
-    }, [features.allowed_currencies, settlementCurrency])
     const exchangeRateSnapshot = useMemo(() => {
         const snapshot = buildOrderExchangeRatesSnapshot({
             exchangeData,
@@ -265,17 +262,13 @@ export function CreateManualLoanModal({
                                     />
                                 </div>
                                 <div className="grid gap-2 xl:col-span-2">
-                                    <Label>{t('loans.currencyHint') || 'Settlement Currency'}</Label>
-                                    <Select value={selectedCurrency} onValueChange={(value: CurrencyCode) => setSelectedCurrency(value)}>
-                                        <SelectTrigger><SelectValue /></SelectTrigger>
-                                        <SelectContent>
-                                            {availableCurrencies.map((currency) => (
-                                                <SelectItem key={currency} value={currency}>
-                                                    {currency.toUpperCase()}
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
+                                    <CurrencySelector
+                                        value={selectedCurrency}
+                                        onChange={(value) => setSelectedCurrency(value)}
+                                        label={t('loans.currencyHint') || 'Settlement Currency'}
+                                        iqdDisplayPreference={features.iqd_display_preference}
+                                        allowedCurrencies={Array.from(new Set([settlementCurrency, ...features.allowed_currencies])) as CurrencyCode[]}
+                                    />
                                 </div>
                                 <div className="grid gap-2 xl:col-span-2">
                                     <Label>{t('loans.installmentCount') || 'Installments'} <span className="text-destructive">*</span></Label>

@@ -11,6 +11,7 @@ import { getLoanLinkedPartyTypeLabel, type LoanPartySelection } from '@/lib/loan
 import { formatLocalDateValue, formatNumericInput, parseFormattedNumber, parseLocalDateValue, sanitizeNumericInput } from '@/lib/utils'
 import {
     Button,
+    CurrencySelector,
     DateTimePicker,
     Dialog,
     DialogContent,
@@ -97,10 +98,6 @@ export function CreateSimpleLoanModal({
         () => getLoanCounterpartyNameLabel({ loanCategory: 'simple', direction }, t),
         [direction, t]
     )
-    const availableCurrencies = useMemo(() => {
-        const currencies: CurrencyCode[] = Array.from(new Set([settlementCurrency, ...features.allowed_currencies])) as CurrencyCode[]
-        return currencies
-    }, [features.allowed_currencies, settlementCurrency])
     const exchangeRateSnapshot = useMemo(() => {
         const snapshot = buildOrderExchangeRatesSnapshot({
             exchangeData,
@@ -203,21 +200,13 @@ export function CreateSimpleLoanModal({
                                         </SelectContent>
                                     </Select>
                                 </div>
-                                <div className="grid gap-2">
-                                    <Label>{t('loans.currencyHint', { defaultValue: 'Settlement Currency' })}</Label>
-                                    <Select value={selectedCurrency} onValueChange={(value: CurrencyCode) => setSelectedCurrency(value)}>
-                                        <SelectTrigger>
-                                            <SelectValue />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            {availableCurrencies.map((currency) => (
-                                                <SelectItem key={currency} value={currency}>
-                                                    {currency.toUpperCase()}
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                </div>
+                                <CurrencySelector
+                                    value={selectedCurrency}
+                                    onChange={(value) => setSelectedCurrency(value)}
+                                    label={t('loans.currencyHint', { defaultValue: 'Settlement Currency' })}
+                                    iqdDisplayPreference={features.iqd_display_preference}
+                                    allowedCurrencies={Array.from(new Set([settlementCurrency, ...features.allowed_currencies])) as CurrencyCode[]}
+                                />
                             </div>
 
                             <div className="grid gap-2">

@@ -10,6 +10,7 @@ interface CurrencySelectorProps {
     label?: string
     iqdDisplayPreference?: 'IQD' | 'د.ع'
     disabled?: boolean
+    allowedCurrencies?: CurrencyCode[]
 }
 
 const CURRENCY_LABELS: Record<string, { label: string; symbol: string }> = {
@@ -19,19 +20,21 @@ const CURRENCY_LABELS: Record<string, { label: string; symbol: string }> = {
     iqd: { label: 'IQD', symbol: '' }
 }
 
-export function CurrencySelector({ value, onChange, label, iqdDisplayPreference = 'IQD', disabled }: CurrencySelectorProps) {
+export function CurrencySelector({ value, onChange, label, iqdDisplayPreference = 'IQD', disabled, allowedCurrencies }: CurrencySelectorProps) {
     const { features } = useWorkspace()
     const defaultCurrency = features.default_currency || 'usd'
 
     useEffect(() => {
-        if (features.allowed_currencies.length <= 1 && value !== defaultCurrency) {
+        if (!allowedCurrencies && features.allowed_currencies.length <= 1 && value !== defaultCurrency) {
             onChange(defaultCurrency)
         }
-    }, [features.allowed_currencies, defaultCurrency, onChange, value])
+    }, [features.allowed_currencies, allowedCurrencies, defaultCurrency, onChange, value])
 
-    if (features.allowed_currencies.length <= 1) {
+    if (!allowedCurrencies && features.allowed_currencies.length <= 1) {
         return null
     }
+
+    const currencies = allowedCurrencies ?? features.allowed_currencies
 
     return (
         <div className="space-y-2">
@@ -41,7 +44,7 @@ export function CurrencySelector({ value, onChange, label, iqdDisplayPreference 
                     <SelectValue placeholder="Select Currency" />
                 </SelectTrigger>
                 <SelectContent>
-                    {features.allowed_currencies.map((code) => {
+                    {currencies.map((code) => {
                         const info = CURRENCY_LABELS[code]
                         if (code === 'iqd') {
                             return (

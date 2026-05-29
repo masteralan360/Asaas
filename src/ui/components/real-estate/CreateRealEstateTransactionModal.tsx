@@ -13,6 +13,7 @@ import {
     CardContent,
     CardHeader,
     CardTitle,
+    CurrencySelector,
     DateTimePicker,
     Input,
     Label,
@@ -474,17 +475,13 @@ export function CreateRealEstateTransactionPage({
                                                 </span>
                                             </div>
                                         </div>
-                                        <div className="grid gap-2">
-                                            <Label>{t('realEstate.currency', { defaultValue: 'Currency' })}</Label>
-                                            <Select value={currency} onValueChange={(value: CurrencyCode) => setCurrency(value)}>
-                                                <SelectTrigger><SelectValue /></SelectTrigger>
-                                                <SelectContent>
-                                                    {availableCurrencies.map((item) => (
-                                                        <SelectItem key={item} value={item}>{item.toUpperCase()}</SelectItem>
-                                                    ))}
-                                                </SelectContent>
-                                            </Select>
-                                        </div>
+                                        <CurrencySelector
+                                            value={currency}
+                                            onChange={(value) => setCurrency(value)}
+                                            label={t('realEstate.currency', { defaultValue: 'Currency' })}
+                                            iqdDisplayPreference={features.iqd_display_preference}
+                                            allowedCurrencies={availableCurrencies}
+                                        />
                                         <div className="grid gap-2">
                                             <Label>{t('realEstate.total', { defaultValue: 'Total' })} <span className="text-destructive">*</span></Label>
                                             <Input
