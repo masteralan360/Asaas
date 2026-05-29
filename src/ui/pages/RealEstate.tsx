@@ -224,6 +224,9 @@ function buildRuntimePrintLayout(
     const fields = { ...values }
     Object.entries(layout.fields || {}).forEach(([key, value]) => {
         const fieldValue = String(value ?? '')
+        if (key === 'receiptNumber') {
+            return
+        }
         if (fieldValue.trim().length > 0) {
             fields[key] = resolveRealEstatePrintTokens(fieldValue, values)
         }
@@ -606,6 +609,22 @@ function RealEstateDetails({
             : undefined,
         [features, selectedPrintTarget, transaction?.workspaceId, workspaceFooterContacts, workspaceName]
     )
+    const realEstatePrintInvoiceData = useMemo(() => {
+        if (!transaction) return undefined
+
+        const sequenceId = Number(sequenceFromTransactionNo(transaction.transactionNo))
+        return {
+            invoiceid: transaction.transactionNo,
+            sequenceId: Number.isFinite(sequenceId) ? sequenceId : undefined,
+            totalAmount: transaction.totalAmount,
+            settlementCurrency: transaction.currency,
+            origin: 'real_estate' as const,
+            cashierName: user?.name || '',
+            createdBy: user?.id,
+            createdByName: user?.name || '',
+            printFormat: 'a4' as const
+        }
+    }, [transaction, user?.id, user?.name])
     const openPrintTemplate = useCallback((template: StoredCustomTemplateRow) => {
         setSelectedPrintTemplate(template)
         setIsPrintSelectionOpen(false)
@@ -642,7 +661,11 @@ function RealEstateDetails({
         })
     }, [features, realEstatePrintValues, selectedPrintLayout, selectedPrintTarget, transaction, workspaceFooterContacts, workspaceName])
 
-    const buildEditableRealEstatePrintPdf = useCallback(async (layout: CustomTemplateLayout) => {
+    const buildEditableRealEstatePrintPdf = useCallback(async (
+        layout: CustomTemplateLayout,
+        _printLangOverride?: string,
+        effectiveId?: string
+    ) => {
         if (!transaction || !selectedPrintTarget || !selectedPrintTarget.nativeTemplateAvailable) {
             throw new Error('Custom print template is not available.')
         }
@@ -657,10 +680,10 @@ function RealEstateDetails({
                 features,
                 workspaceFooterContacts
             },
-            effectiveId: `${transaction.id}-${selectedPrintTemplate?.id || 'custom-template'}`,
+            effectiveId,
             fieldMode: 'layoutOverrides'
         })
-    }, [features, realEstatePrintValues, selectedPrintTarget, selectedPrintTemplate?.id, transaction, workspaceFooterContacts, workspaceName])
+    }, [features, realEstatePrintValues, selectedPrintTarget, transaction, workspaceFooterContacts, workspaceName])
 
     const handleCommissionSettle = async (input: {
         paymentMethod: PaymentTransaction['paymentMethod']
@@ -996,7 +1019,8 @@ function RealEstateDetails({
                     }}
                     title={t('realEstate.printA4', { defaultValue: 'Print A4' })}
                     showSaveButton={false}
-                    documentId={`${transaction.id}-${selectedPrintTemplate.id}`}
+                    documentId={transaction.id}
+                    invoiceData={realEstatePrintInvoiceData}
                     pdfBuilder={buildRealEstatePrintPdf}
                     templatePreview={selectedPrintPreview}
                     customTemplate={{
@@ -1007,7 +1031,8 @@ function RealEstateDetails({
                     }}
                     initialTemplateLayout={selectedRuntimePrintLayout}
                     allowTemplateFieldEditing
-                    templatePrimaryActionLabel={t('common.print', { defaultValue: 'Print' })}
+                    enableTemplatePreviewSave
+                    templatePrimaryActionLabel={t('print.saveAndPrint', { defaultValue: 'Save & Print' })}
                     generateTemplateLayoutBlob={buildEditableRealEstatePrintPdf}
                     features={features}
                     workspaceName={workspaceName}

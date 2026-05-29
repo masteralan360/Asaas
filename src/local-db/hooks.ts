@@ -80,6 +80,29 @@ async function getMutationSession(label: string) {
     return session
 }
 
+function sanitizeInvoiceRemotePayload(source: Record<string, unknown>): Record<string, unknown> {
+    const {
+        items,
+        currency,
+        subtotal,
+        discount,
+        printMetadata,
+        pdfBlobA4,
+        pdfBlobReceipt,
+        localPathA4,
+        localPathReceipt,
+        orderId,
+        customerId,
+        status,
+        isSnapshot,
+        syncStatus,
+        lastSyncedAt,
+        ...remotePayload
+    } = source
+
+    return remotePayload
+}
+
 function shouldUseOfflineMutationFallback(error: unknown): boolean {
     if (typeof navigator !== 'undefined' && navigator.onLine === false) {
         return true
@@ -1412,34 +1435,14 @@ export async function createInvoice(
 
     if (usesCloudBusinessData && isOnline()) {
         // ONLINE
-        // Omit items/blobs and legacy fields that don't belong in the table schema
-        // We keep createdBy/created_by in local but map to user_id in remote for RLS
-        const {
-            items,
-            currency,
-            subtotal,
-            discount,
-            printMetadata,
-            pdfBlobA4,
-            pdfBlobReceipt,
-            localPathA4,
-            localPathReceipt,
-            ...rest
-        } = invoice as any
-
-        // @ts-ignore - isSnapshot might be passed but not in Invoice type
-        const { isSnapshot, ...finalRest } = rest
-
         // Get current auth user to satisfy RLS 'user_id' check
         const session = await getMutationSession('invoices.create')
         const currentUserId = session?.user?.id
 
-        const payload = toSnakeCase({
-            ...finalRest,
-            userId: currentUserId, // Explicitly set user_id for RLS
-            syncStatus: undefined,
-            lastSyncedAt: undefined
-        })
+        const payload = toSnakeCase(sanitizeInvoiceRemotePayload({
+            ...invoice,
+            userId: currentUserId // Explicitly set user_id for RLS
+        } as unknown as Record<string, unknown>))
 
         // Use upsert instead of insert to handle network retries/collisions gracefully
         const { error } = await runMutation('invoices.create', () => supabase.from('invoices').upsert(payload))
@@ -1511,20 +1514,11 @@ export async function updateInvoice(id: string, data: Partial<Invoice>): Promise
 
     if (usesCloudBusinessData && isOnline()) {
         // ONLINE
-        // Filter out legacy fields from update payload
-        const {
-            items,
-            currency,
-            subtotal,
-            discount,
-            printMetadata,
-            pdfBlobA4,
-            pdfBlobReceipt,
-            localPathA4,
-            localPathReceipt,
-            ...restData
-        } = data as any
-        const payload = toSnakeCase({ ...restData, updatedAt: now })
+        // Filter out local-only fields from update payload.
+        const payload = toSnakeCase({
+            ...sanitizeInvoiceRemotePayload(data as unknown as Record<string, unknown>),
+            updatedAt: now
+        })
         const { error } = await runMutation('invoices.update', () => supabase.from('invoices').update(payload).eq('id', id))
 
         if (error) throw normalizeSupabaseActionError(error)

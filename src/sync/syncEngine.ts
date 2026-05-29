@@ -456,6 +456,13 @@ export async function processMutationQueue(
             delete dbPayload.discount;
             delete dbPayload.print_metadata;
             delete dbPayload.is_snapshot;
+            delete dbPayload.order_id;
+            delete dbPayload.customer_id;
+            delete dbPayload.status;
+            delete dbPayload.local_path_a4;
+            delete dbPayload.local_path_receipt;
+            delete dbPayload.pdf_blob_a4;
+            delete dbPayload.pdf_blob_receipt;
           }
 
           const { error } = await client.from(tableName).upsert(dbPayload);

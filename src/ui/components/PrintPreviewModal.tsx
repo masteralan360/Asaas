@@ -57,8 +57,9 @@ interface PrintPreviewModalProps {
     templateFieldValues?: Record<string, string>
     initialTemplateLayout?: CustomTemplateLayout | null
     allowTemplateFieldEditing?: boolean
+    enableTemplatePreviewSave?: boolean
     templatePrimaryActionLabel?: string
-    generateTemplateLayoutBlob?: (layout: CustomTemplateLayout, printLangOverride?: string) => Promise<Blob>
+    generateTemplateLayoutBlob?: (layout: CustomTemplateLayout, printLangOverride?: string, effectiveId?: string) => Promise<Blob>
     features?: WorkspaceFeatures
     workspaceName?: string | null
     module?: string
@@ -93,6 +94,7 @@ export function PrintPreviewModal({
     templateFieldValues,
     initialTemplateLayout,
     allowTemplateFieldEditing,
+    enableTemplatePreviewSave,
     templatePrimaryActionLabel,
     generateTemplateLayoutBlob,
     features,
@@ -510,7 +512,7 @@ export function PrintPreviewModal({
                 if (templatePreviewProp) {
                     setInvoicePreviewSource({
                         title: title || t('print.previewTitle') || 'Print Preview',
-                        onSave: showSaveButton ? handleSave : undefined,
+                        onSave: showSaveButton || enableTemplatePreviewSave ? handleSave : undefined,
                         effectiveId,
                         workspaceId,
                         templatePreview: templatePreviewProp,
@@ -538,7 +540,7 @@ export function PrintPreviewModal({
         } catch (err) {
             console.error('Failed to open preview:', err)
         }
-    }, [printFormat, title, t, setLocation, handleSave, pdfData, printableFeatures, workspaceId, workspaceName, workspaceFooterContacts, invoiceData, effectiveId, pdfBuilder, translations, buildPdfBlobs, blobToDataUrl, templatePreviewProp, customTemplate, templateFieldValues, initialTemplateLayout, allowTemplateFieldEditing, templatePrimaryActionLabel, generateTemplateLayoutBlob, showSaveButton])
+    }, [printFormat, title, t, setLocation, handleSave, pdfData, printableFeatures, workspaceId, workspaceName, workspaceFooterContacts, invoiceData, effectiveId, pdfBuilder, translations, buildPdfBlobs, blobToDataUrl, templatePreviewProp, customTemplate, templateFieldValues, initialTemplateLayout, allowTemplateFieldEditing, enableTemplatePreviewSave, templatePrimaryActionLabel, generateTemplateLayoutBlob, showSaveButton])
 
     const actionLabel = saveButtonText
         || (invoiceData ? (t('print.printAndSave') || 'Print & Save') : (t('common.print') || 'Print'))

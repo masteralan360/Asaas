@@ -2070,6 +2070,7 @@
   "print": {
     "clickToExpand": "Click to expand",
     "printAndSave": "Print & Save",
+    "saveAndPrint": "Save & Print",
     "previewTitle": "Print Preview",
     "openFullPreview": "Open the full PDF viewer to preview, zoom, and navigate the document.",
     "openPreview": "Open Full Preview",

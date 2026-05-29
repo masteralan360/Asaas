@@ -396,7 +396,7 @@ export function PdfPreviewPage() {
                     throw new Error('Missing template layout for print preview.')
                 }
                 const blob = source.generateTemplateLayoutBlob && layoutForBlob
-                    ? await source.generateTemplateLayoutBlob(layoutForBlob, overrideLang)
+                    ? await source.generateTemplateLayoutBlob(layoutForBlob, overrideLang, source.effectiveId)
                     : await templatePreview.buildPdf(
                         templatePreview.createElement(fieldValues, source.effectiveId, overrideLang),
                         overrideLang

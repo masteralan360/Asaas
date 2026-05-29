@@ -209,8 +209,18 @@ function UnderlineValue({
 }) {
     return (
         <span
-            className="inline-block border-b border-black px-1 font-bold leading-none"
-            style={{ minWidth: width, width, textAlign: align }}
+            className="inline-block min-w-0 border-b border-black px-1 font-bold align-bottom"
+            style={{
+                minWidth: width,
+                width,
+                maxWidth: '100%',
+                minHeight: '5.2mm',
+                paddingBottom: '1.3mm',
+                textAlign: align,
+                lineHeight: 1.35,
+                whiteSpace: 'normal',
+                verticalAlign: 'bottom'
+            }}
         >
             {children}
         </span>
@@ -274,8 +284,8 @@ function FreeWriteTermRow({
     }
 
     return (
-        <div className="grid min-h-[11.8mm] grid-cols-[auto_1fr] gap-1 border-b border-dotted border-zinc-300 py-[1.6mm] leading-[1.8]">
-            <div dir="ltr" className={showIndex ? 'min-w-[7mm] text-right font-bold' : 'min-w-[7mm] text-right font-bold opacity-0'}>{index} -</div>
+        <div className="grid min-h-[11.8mm] grid-cols-[auto_1fr] items-start gap-1 border-b border-dotted border-zinc-300 py-[1.2mm] leading-[1.55]">
+            <div dir="ltr" className={showIndex ? 'min-w-[7mm] pt-[0.4mm] text-right font-bold leading-[1.4]' : 'min-w-[7mm] pt-[0.4mm] text-right font-bold leading-[1.4] opacity-0'}>{index} -</div>
             <div className="min-w-0">
                 {editable ? (
                     <>
@@ -287,7 +297,7 @@ function FreeWriteTermRow({
                             onClick={(event) => event.stopPropagation()}
                             onKeyDown={handleKeyDown}
                             onChange={(event) => onFieldChange?.(fieldKey, event.target.value)}
-                            className="block h-[8.4mm] w-full resize-none bg-transparent p-0 text-right font-semibold leading-[1.8] text-black outline-none ring-1 ring-transparent transition-shadow hover:ring-primary/30 focus:ring-2 focus:ring-primary print:ring-0"
+                            className="block h-[8.9mm] w-full resize-none overflow-hidden bg-transparent p-0 pt-[0.4mm] text-right font-semibold leading-[1.55] text-black outline-none ring-1 ring-transparent transition-shadow hover:ring-primary/30 focus:ring-2 focus:ring-primary print:ring-0"
                             dir="rtl"
                             rows={1}
                         />
@@ -299,7 +309,9 @@ function FreeWriteTermRow({
                         />
                     </>
                 ) : (
-                    <div className="min-h-[8.4mm] whitespace-pre-wrap text-right">{resolveDataKeyTokens(text, values)}</div>
+                    <div className="max-h-[8.9mm] min-h-[8.9mm] overflow-hidden whitespace-pre-wrap break-words pt-[0.4mm] text-right leading-[1.55]">
+                        {resolveDataKeyTokens(text, values)}
+                    </div>
                 )}
             </div>
         </div>
@@ -384,6 +396,10 @@ export function RealEstateBuyPrintTemplate({
 .real-estate-buy-template {
   -webkit-print-color-adjust: exact !important;
   print-color-adjust: exact !important;
+}
+.real-estate-buy-template,
+.real-estate-buy-template * {
+  box-sizing: border-box;
 }
 @media print {
   @page { margin: 0; size: A4; }

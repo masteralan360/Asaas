@@ -108,7 +108,7 @@ export type InvoicePreviewSource = {
     initialTemplateLayout?: CustomTemplateLayout | null
     allowTemplateFieldEditing?: boolean
     templatePrimaryActionLabel?: string
-    generateTemplateLayoutBlob?: (layout: CustomTemplateLayout, printLangOverride?: string) => Promise<Blob>
+    generateTemplateLayoutBlob?: (layout: CustomTemplateLayout, printLangOverride?: string, effectiveId?: string) => Promise<Blob>
     onSaveTemplateLayout?: (layout: CustomTemplateLayout, options?: { label?: string }) => Promise<void>
 }
 

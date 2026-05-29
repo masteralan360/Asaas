@@ -699,6 +699,7 @@ export interface Invoice extends BaseEntity {
     | "accounting"
     | "loans"
     | "Loans"
+    | "real_estate"
     | "sales_order"
     | "travel_agency"
     | "upload";
