@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useLocation, useRoute } from 'wouter'
 import { useTranslation } from 'react-i18next'
 import i18n from '@/i18n/config'
-import { ArrowLeft, Building2, CalendarClock, FileText, HandCoins, Loader2, MapPin, Plus, Printer, Search } from 'lucide-react'
+import { ArrowLeft, Building2, CalendarClock, FileText, HandCoins, Loader2, MapPin, Plus, Printer, Search, Trash2 } from 'lucide-react'
 
 import { isSupabaseConfigured, supabase, useAuth } from '@/auth'
 import { cn, formatCurrency, formatDate, formatDateTime } from '@/lib/utils'
@@ -12,6 +12,7 @@ import {
     type PaymentObligation,
     type PaymentTransaction,
     type RealEstateTransaction,
+    deleteRealEstateTransaction,
     recordObligationSettlement,
     useRealEstateInstallments,
     useRealEstatePayments,
@@ -27,6 +28,7 @@ import {
     CardContent,
     CardHeader,
     CardTitle,
+    DeleteConfirmationModal,
     Dialog,
     DialogContent,
     DialogDescription,
@@ -471,6 +473,7 @@ function RealEstateDetails({
     const { features, workspaceName } = useWorkspace()
     const { toast } = useToast()
     const { user } = useAuth()
+    const [, navigate] = useLocation()
     const transaction = useRealEstateTransaction(transactionId)
     const installments = useRealEstateInstallments(transactionId, transaction?.workspaceId)
     const payments = useRealEstatePayments(transactionId, transaction?.workspaceId)
@@ -488,6 +491,8 @@ function RealEstateDetails({
     const [isPrintSelectionOpen, setIsPrintSelectionOpen] = useState(false)
     const [isPrintPreviewOpen, setIsPrintPreviewOpen] = useState(false)
     const [selectedPrintTemplate, setSelectedPrintTemplate] = useState<StoredCustomTemplateRow | null>(null)
+    const [isDeleteOpen, setIsDeleteOpen] = useState(false)
+    const [isDeleting, setIsDeleting] = useState(false)
 
     const transactionCommissionPayments = useMemo(
         () => filterActiveTransactions(commissionTransactions.filter((payment) => payment.sourceRecordId === transactionId)),
@@ -740,6 +745,32 @@ function RealEstateDetails({
         }
     }
 
+    const handleDeleteTransaction = async () => {
+        if (!transaction || isDeleting) {
+            return
+        }
+
+        setIsDeleting(true)
+        try {
+            await deleteRealEstateTransaction(transaction.id)
+            toast({
+                title: t('common.success', { defaultValue: 'Success' }),
+                description: t('realEstate.messages.deleted', { defaultValue: 'Real estate transaction deleted.' })
+            })
+            setIsDeleteOpen(false)
+            onPaymentTargetChange(null)
+            navigate('/real-estate')
+        } catch (error: any) {
+            toast({
+                title: t('common.error', { defaultValue: 'Error' }),
+                description: error?.message || t('realEstate.messages.deleteFailed', { defaultValue: 'Failed to delete real estate transaction.' }),
+                variant: 'destructive'
+            })
+        } finally {
+            setIsDeleting(false)
+        }
+    }
+
     if (!transaction || transaction.isDeleted) {
         return (
             <Card>
@@ -787,6 +818,12 @@ function RealEstateDetails({
                         <Button variant="outline" className="gap-2" onClick={() => onOpenPayment(transaction, null)}>
                             <HandCoins className="h-4 w-4" />
                             {t('realEstate.recordContractPayment', { defaultValue: 'Record Contract Payment' })}
+                        </Button>
+                    ) : null}
+                    {user?.role !== 'viewer' ? (
+                        <Button variant="destructive" className="gap-2" onClick={() => setIsDeleteOpen(true)}>
+                            <Trash2 className="h-4 w-4" />
+                            {t('common.delete', { defaultValue: 'Delete' })}
                         </Button>
                     ) : null}
                 </div>
@@ -1015,6 +1052,20 @@ function RealEstateDetails({
                 obligation={commissionObligation}
                 isSubmitting={isSubmittingCommission}
                 onSubmit={handleCommissionSettle}
+            />
+            <DeleteConfirmationModal
+                isOpen={isDeleteOpen}
+                onClose={() => {
+                    if (isDeleting) return
+                    setIsDeleteOpen(false)
+                }}
+                onConfirm={handleDeleteTransaction}
+                itemName={transaction.transactionNo}
+                isLoading={isDeleting}
+                title={t('realEstate.confirmDelete', { defaultValue: 'Delete Real Estate Transaction' })}
+                description={t('realEstate.deleteWarning', {
+                    defaultValue: 'This will hide the contract and its installment schedule. Existing payments, commission collections, and ledger history will remain for audit.'
+                })}
             />
             <RealEstatePrintSelectionModal
                 isOpen={isPrintSelectionOpen}

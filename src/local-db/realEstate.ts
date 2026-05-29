@@ -718,15 +718,6 @@ export async function deleteRealEstateTransaction(transactionId: string) {
         return
     }
 
-    const payments = await db.real_estate_payments
-        .where('transactionId')
-        .equals(transactionId)
-        .and((payment) => !payment.isDeleted)
-        .toArray()
-    if (payments.length > 0) {
-        throw new Error('Cannot delete a real estate transaction with recorded payments')
-    }
-
     const now = new Date().toISOString()
     const installments = await db.real_estate_installments
         .where('transactionId')
