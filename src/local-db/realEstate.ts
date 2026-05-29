@@ -360,6 +360,10 @@ export async function createRealEstateTransaction(
 
     const buyerBusinessPartnerId = await resolveBusinessPartnerId(input.buyerBusinessPartnerId)
     const sellerBusinessPartnerId = await resolveBusinessPartnerId(input.sellerBusinessPartnerId)
+    if (buyerBusinessPartnerId && sellerBusinessPartnerId && buyerBusinessPartnerId === sellerBusinessPartnerId) {
+        throw new Error('Buyer and seller cannot use the same business partner')
+    }
+
     const transactionId = generateId()
     const transactionNo = await generateTransactionNo(workspaceId, now)
     const balanceAmount = roundRealEstateAmount(totalAmount - paidAmount, input.currency)

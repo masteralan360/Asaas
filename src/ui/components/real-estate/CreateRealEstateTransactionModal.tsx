@@ -140,14 +140,25 @@ export function CreateRealEstateTransactionModal({
     const parsedTotal = parseFormattedNumber(totalAmount || '0')
     const parsedPaid = parseFormattedNumber(paidAmount || '0')
     const remainingBalance = Math.max(parsedTotal - parsedPaid, 0)
+    const hasDuplicateLinkedParty = Boolean(buyerLink?.id && sellerLink?.id && buyerLink.id === sellerLink.id)
     const canSubmit = location.trim().length > 0 &&
         buyerName.trim().length > 0 &&
         sellerName.trim().length > 0 &&
         parsedTotal > 0 &&
         parsedPaid <= parsedTotal &&
+        !hasDuplicateLinkedParty &&
         (!isInstallmentBased || (remainingBalance > 0 && installmentCount > 0 && firstDueDate))
 
     const handleBuyerPartnerSelect = (partner: BusinessPartner) => {
+        if (sellerLink?.id === partner.id) {
+            toast({
+                title: t('common.error', { defaultValue: 'Error' }),
+                description: t('realEstate.messages.buyerSellerSamePartner', { defaultValue: 'Buyer and seller cannot use the same business partner.' }),
+                variant: 'destructive'
+            })
+            return
+        }
+
         setBuyerLink({ id: partner.id, name: partner.name })
         setBuyerName(partner.name)
     }
@@ -171,6 +182,15 @@ export function CreateRealEstateTransactionModal({
     }
 
     const handleSellerPartnerSelect = (partner: BusinessPartner) => {
+        if (buyerLink?.id === partner.id) {
+            toast({
+                title: t('common.error', { defaultValue: 'Error' }),
+                description: t('realEstate.messages.buyerSellerSamePartner', { defaultValue: 'Buyer and seller cannot use the same business partner.' }),
+                variant: 'destructive'
+            })
+            return
+        }
+
         setSellerLink({ id: partner.id, name: partner.name })
         setSellerName(partner.name)
     }
@@ -320,6 +340,7 @@ export function CreateRealEstateTransactionModal({
                                                 placeholder={t('realEstate.buyerPlaceholder', { defaultValue: 'Search or enter buyer name' })}
                                                 className="flex-1"
                                                 includeRealEstateRoles={features.real_estate}
+                                                excludePartnerIds={sellerLink?.id ? [sellerLink.id] : []}
                                             />
                                             <Button type="button" size="icon" variant="outline" className="shrink-0" onClick={() => setIsCreateBuyerOpen(true)}>
                                                 <Plus className="h-4 w-4" />
@@ -347,6 +368,7 @@ export function CreateRealEstateTransactionModal({
                                                 placeholder={t('realEstate.sellerPlaceholder', { defaultValue: 'Search or enter seller name' })}
                                                 className="flex-1"
                                                 includeRealEstateRoles={features.real_estate}
+                                                excludePartnerIds={buyerLink?.id ? [buyerLink.id] : []}
                                             />
                                             <Button type="button" size="icon" variant="outline" className="shrink-0" onClick={() => setIsCreateSellerOpen(true)}>
                                                 <Plus className="h-4 w-4" />
@@ -358,6 +380,11 @@ export function CreateRealEstateTransactionModal({
                                     </div>
                                 </div>
                             </div>
+                            {hasDuplicateLinkedParty ? (
+                                <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                                    {t('realEstate.messages.buyerSellerSamePartner', { defaultValue: 'Buyer and seller cannot use the same business partner.' })}
+                                </div>
+                            ) : null}
 
                             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                                 <WitnessFields

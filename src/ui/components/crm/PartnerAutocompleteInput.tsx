@@ -15,6 +15,7 @@ interface PartnerAutocompleteInputProps {
     className?: string
     disabled?: boolean
     includeRealEstateRoles?: boolean
+    excludePartnerIds?: string[]
 }
 
 export function PartnerAutocompleteInput({
@@ -25,7 +26,8 @@ export function PartnerAutocompleteInput({
     placeholder,
     className,
     disabled,
-    includeRealEstateRoles = false
+    includeRealEstateRoles = false,
+    excludePartnerIds = []
 }: PartnerAutocompleteInputProps) {
     const { t } = useTranslation()
     const partners = useBusinessPartners(workspaceId, { includeRealEstateRoles }) || []
@@ -34,13 +36,15 @@ export function PartnerAutocompleteInput({
     const containerRef = useRef<HTMLDivElement>(null)
 
     const query = value.trim().toLowerCase()
+    const excludedPartnerIds = useMemo(() => new Set(excludePartnerIds.filter(Boolean)), [excludePartnerIds])
 
     const filtered = useMemo(() => {
         if (!query || query.length < 1) return []
         return partners
+            .filter((p) => !excludedPartnerIds.has(p.id))
             .filter((p) => p.name.toLowerCase().includes(query))
             .slice(0, 8)
-    }, [partners, query])
+    }, [excludedPartnerIds, partners, query])
 
     const showDropdown = isFocused && !justSelected && filtered.length > 0
 
