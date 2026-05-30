@@ -185,29 +185,11 @@ type WorkspaceMetadataOptions = {
 }
 
 type BranchSourceWorkspace = WorkspaceMetadataRow & {
-    pos?: boolean | null
     instant_pos?: boolean | null
-    sales_history?: boolean | null
-    crm?: boolean | null
-    ecommerce?: boolean | null
     travel_agency?: boolean | null
-    loans?: boolean | null
-    net_revenue?: boolean | null
-    budget?: boolean | null
-    monthly_comparison?: boolean | null
-    team_performance?: boolean | null
-    products?: boolean | null
-    discounts?: boolean | null
-    storages?: boolean | null
-    inventory_transfer?: boolean | null
-    invoices_history?: boolean | null
-    hr?: boolean | null
-    members?: boolean | null
     is_configured?: boolean | null
     default_currency?: string | null
     iqd_display_preference?: string | null
-    eur_conversion_enabled?: boolean | null
-    try_conversion_enabled?: boolean | null
     locked_workspace?: boolean | null
     logo_url?: string | null
     coordination?: string | null
@@ -231,29 +213,11 @@ const BRANCH_SOURCE_SELECT_COLUMNS = [
     'code',
     'plan',
     'data_mode',
-    'pos',
     'instant_pos',
-    'sales_history',
-    'crm',
-    'ecommerce',
     'travel_agency',
-    'loans',
-    'net_revenue',
-    'budget',
-    'monthly_comparison',
-    'team_performance',
-    'products',
-    'discounts',
-    'storages',
-    'inventory_transfer',
-    'invoices_history',
-    'hr',
-    'members',
     'is_configured',
     'default_currency',
     'iqd_display_preference',
-    'eur_conversion_enabled',
-    'try_conversion_enabled',
     'locked_workspace',
     'logo_url',
     'coordination',
@@ -848,29 +812,11 @@ async function handleCreateBranch(
         name: branchName,
         plan: sourcePlan.plan,
         data_mode: sourceWorkspace.data_mode ?? 'cloud',
-        pos: sourceWorkspace.pos ?? true,
         instant_pos: sourceWorkspace.instant_pos ?? true,
-        sales_history: sourceWorkspace.sales_history ?? true,
-        crm: sourceWorkspace.crm ?? true,
-        ecommerce: sourceWorkspace.ecommerce ?? false,
         travel_agency: sourceWorkspace.travel_agency ?? true,
-        loans: sourceWorkspace.loans ?? true,
-        net_revenue: sourceWorkspace.net_revenue ?? true,
-        budget: sourceWorkspace.budget ?? true,
-        monthly_comparison: sourceWorkspace.monthly_comparison ?? true,
-        team_performance: sourceWorkspace.team_performance ?? true,
-        products: sourceWorkspace.products ?? true,
-        discounts: sourceWorkspace.discounts ?? true,
-        storages: sourceWorkspace.storages ?? true,
-        inventory_transfer: sourceWorkspace.inventory_transfer ?? true,
-        invoices_history: sourceWorkspace.invoices_history ?? true,
-        hr: sourceWorkspace.hr ?? true,
-        members: sourceWorkspace.members ?? true,
         is_configured: true,
-        default_currency: sourceWorkspace.default_currency ?? 'usd',
+        default_currency: sourceWorkspace.default_currency ?? 'iqd',
         iqd_display_preference: sourceWorkspace.iqd_display_preference ?? 'IQD',
-        eur_conversion_enabled: sourceWorkspace.eur_conversion_enabled ?? false,
-        try_conversion_enabled: sourceWorkspace.try_conversion_enabled ?? false,
         locked_workspace: sourceWorkspace.locked_workspace ?? false,
         logo_url: sourceWorkspace.logo_url ?? null,
         coordination: sourceWorkspace.coordination ?? null,

@@ -27,6 +27,7 @@ import { invokeWorkspaceAccess } from '@/lib/workspaceAccess'
 import { cn, formatCurrency } from '@/lib/utils'
 import { platformService } from '@/services/platformService'
 import { useWorkspace } from '@/workspace'
+import { UiAccessGate } from '@/context/UiAccessContext'
 import {
     Button,
     Card,
@@ -638,16 +639,18 @@ export function Products() {
                     )}
                     {canEdit && (
                         <div className="flex gap-2">
-                            {canCloneToBranch && !isBranchCloneSelectionMode && (
-                                <Button
-                                    variant="outline"
-                                    onClick={() => setIsBranchCloneSelectionMode(true)}
-                                    disabled={products.length === 0}
-                                >
-                                    <GitBranch className="h-4 w-4" />
-                                    {branchCloneActionLabel}
-                                </Button>
-                            )}
+                            <UiAccessGate>
+                                {canCloneToBranch && !isBranchCloneSelectionMode && (
+                                    <Button
+                                        variant="outline"
+                                        onClick={() => setIsBranchCloneSelectionMode(true)}
+                                        disabled={products.length === 0}
+                                    >
+                                        <GitBranch className="h-4 w-4" />
+                                        {branchCloneActionLabel}
+                                    </Button>
+                                )}
+                            </UiAccessGate>
                             <Button variant="outline" onClick={() => handleOpenCategoryDialog()}>
                                 <Plus className="h-4 w-4" />
                                 {t('products.addCategory')}
