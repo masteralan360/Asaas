@@ -2518,8 +2518,8 @@ export function Settings() {
                                             <p className="font-medium capitalize">{user?.role}</p>
                                         </div>
                                         <div>
-                                            <Label className="text-muted-foreground">{t('settings.authMode')}</Label>
-                                            <p className="font-medium">{isSupabaseConfigured ? 'Supabase' : t('settings.demo')}</p>
+                                            <Label className="text-muted-foreground">{t('settings.plan') || 'Plan'}</Label>
+                                            <p className="font-medium capitalize">{features.plan}</p>
                                         </div>
                                         <div className="md:col-span-2">
                                             <Label className="text-muted-foreground">Workspace Subscription</Label>

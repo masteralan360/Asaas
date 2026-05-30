@@ -1620,6 +1620,7 @@
     "title": "Settings",
     "subtitle": "Manage your account and application settings",
     "downloadMedia": "Download Workspace Media",
+    "plan": "Subscription Plan",
     "updater": {
       "title": "Application Updates",
       "description": "Check for the latest version of Atlas.",
