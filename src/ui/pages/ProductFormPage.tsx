@@ -1803,13 +1803,13 @@ export function ProductCreatePage() {
                         <div className="px-2 py-4 text-center text-sm text-muted-foreground">
                             {t('products.noStorage.description') || 'You need to create a storage location before adding products.'}
                         </div>
-                        <DialogFooter className="flex-col gap-2 sm:flex-col">
-                            <Button className="w-full" onClick={() => navigate('/storages')}>
+                        <DialogFooter className="gap-2">
+                            <Button variant="outline" onClick={() => navigate('/products')}>
+                                {t('common.goBack') || 'Go Back'}
+                            </Button>
+                            <Button onClick={() => navigate('/storages')}>
                                 <Warehouse className="mr-2 h-4 w-4" />
                                 {t('products.noStorage.goToStorage') || 'Go to Storage Settings'}
-                            </Button>
-                            <Button variant="outline" className="w-full" onClick={() => navigate('/products')}>
-                                {t('common.goBack') || 'Go Back'}
                             </Button>
                         </DialogFooter>
                     </DialogContent>
