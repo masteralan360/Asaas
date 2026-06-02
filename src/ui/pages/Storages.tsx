@@ -1,10 +1,11 @@
 import { useStorages, createStorage, updateStorage, deleteStorage, setMarketplaceStorage, getPrimaryStorageId, getPrimaryStorageFromList, isPrimaryStorage, useInventory, useProducts, useCategories, type Storage, type CurrencyCode } from '@/local-db'
 import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useLocation } from 'wouter'
 import { useExchangeRate } from '@/context/ExchangeRateContext'
 import { useAuth } from '@/auth'
 import { useWorkspace } from '@/workspace'
 import { Button } from '@/ui/components/button'
-import { Plus, Search, Edit, Trash2, Warehouse, ShieldCheck, Package, Filter, LayoutGrid, Info, Store } from 'lucide-react'
+import { Plus, Search, Edit, Trash2, Warehouse, ShieldCheck, Package, Filter, LayoutGrid, Info, Store, ArrowRight } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/ui/components/card'
 import { Input } from '@/ui/components/input'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/ui/components/table'
@@ -27,7 +28,9 @@ export default function Storages() {
     const [isDialogOpen, setIsDialogOpen] = useState(false)
     const [editingStorage, setEditingStorage] = useState<Storage | undefined>(undefined)
     const [deletingStorage, setDeletingStorage] = useState<Storage | undefined>(undefined)
+    const [storageWithStock, setStorageWithStock] = useState<Storage | undefined>(undefined)
     const [storageName, setStorageName] = useState('')
+    const [, navigate] = useLocation()
 
     const filteredStorages = storages.filter(s =>
         s.name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -379,7 +382,14 @@ export default function Storages() {
                                                                         </Button>
                                                                     )}
                                                                     {user?.role === 'admin' && (
-                                                                        <Button variant="ghost" size="icon" className="h-8 w-8 rounded-xl hover:bg-destructive/10 hover:text-destructive transition-all" onClick={() => setDeletingStorage(storage)}>
+                                                                        <Button variant="ghost" size="icon" className="h-8 w-8 rounded-xl hover:bg-destructive/10 hover:text-destructive transition-all" onClick={() => {
+                                                                            const hasStock = inventory.some((item) => item.storageId === storage.id && item.quantity > 0)
+                                                                            if (hasStock) {
+                                                                                setStorageWithStock(storage)
+                                                                            } else {
+                                                                                setDeletingStorage(storage)
+                                                                            }
+                                                                        }}>
                                                                             <Trash2 className="h-4 w-4" />
                                                                         </Button>
                                                                     )}
@@ -577,6 +587,34 @@ export default function Storages() {
                         </Button>
                         <Button onClick={editingStorage ? handleUpdate : handleCreate} className="rounded-xl">
                             {editingStorage ? t('common.save', 'Save') : t('common.create', 'Create')}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={!!storageWithStock} onOpenChange={() => setStorageWithStock(undefined)}>
+                <DialogContent
+                    className="max-w-md rounded-2xl [&>button.absolute]:hidden"
+                    onInteractOutside={(e) => e.preventDefault()}
+                >
+                    <DialogHeader>
+                        <div className="mx-auto mb-2 flex h-14 w-14 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900/30">
+                            <Warehouse className="h-7 w-7 text-amber-600 dark:text-amber-400" />
+                        </div>
+                        <DialogTitle className="text-center text-xl">
+                            {t('storages.hasStock.title') || 'Storage Has Stock'}
+                        </DialogTitle>
+                    </DialogHeader>
+                    <div className="px-2 py-4 text-center text-sm text-muted-foreground">
+                        {t('storages.hasStock.description') || 'This storage contains products with stock. Transfer the stock to another storage before deleting.'}
+                    </div>
+                    <DialogFooter className="gap-2">
+                        <Button variant="outline" onClick={() => setStorageWithStock(undefined)}>
+                            {t('common.goBack') || 'Go Back'}
+                        </Button>
+                        <Button onClick={() => navigate('/inventory-transfer')}>
+                            <ArrowRight className="mr-2 h-4 w-4" />
+                            {t('storages.hasStock.goToTransfer') || 'Inventory Transfer'}
                         </Button>
                     </DialogFooter>
                 </DialogContent>

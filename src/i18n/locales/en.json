@@ -2827,6 +2827,11 @@
     "deleted": "Storage deleted",
     "productsMoved": "{{count}} products moved to Reserve",
     "confirmDelete": "Delete Storage",
+    "hasStock": {
+      "title": "Storage Has Stock",
+      "description": "This storage contains products with stock. Transfer the stock to another storage before deleting.",
+      "goToTransfer": "Inventory Transfer"
+    },
     "tabs": {
       "locations": "Locations",
       "inventory": "Storage Inventory"
