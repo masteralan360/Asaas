@@ -901,7 +901,12 @@
     "confirmDelete": "Delete Product",
     "deleteWarning": "Deleting this product will remove it from inventory. This cannot be undone.",
     "expiryDate": "Expiry",
-    "manufacturingDate": "Mfg"
+    "manufacturingDate": "Mfg",
+    "noStorage": {
+      "title": "No Storage Found",
+      "description": "You need to create a storage location before adding products.",
+      "goToStorage": "Go to Storage Settings"
+    }
   },
   "suppliers": {
     "title": "Suppliers",
