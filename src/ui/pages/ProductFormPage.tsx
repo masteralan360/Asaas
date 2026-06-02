@@ -29,6 +29,7 @@ import { useAuth } from '@/auth'
 import {
     addProductBarcode,
     createProduct,
+    db,
     deleteProductBarcode,
     DuplicateProductBarcodeError,
     getPrimaryStorageFromList,
@@ -1763,6 +1764,60 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
 }
 
 export function ProductCreatePage() {
+    const { t } = useTranslation()
+    const { user } = useAuth()
+    const [, navigate] = useLocation()
+
+    const storageCount = useLiveQuery(
+        async () => {
+            if (!user?.workspaceId) return 0
+            return db.storages
+                .where('workspaceId')
+                .equals(user.workspaceId)
+                .and((s) => !s.isDeleted)
+                .count()
+        },
+        [user?.workspaceId]
+    )
+
+    if (storageCount === undefined) {
+        return null
+    }
+
+    if (storageCount === 0) {
+        return (
+            <div className="flex h-full w-full items-center justify-center">
+                <Dialog open={true} onOpenChange={() => navigate('/products')}>
+                    <DialogContent
+                        className="max-w-md rounded-2xl [&>button.absolute]:hidden"
+                        onInteractOutside={(e) => e.preventDefault()}
+                    >
+                        <DialogHeader>
+                            <div className="mx-auto mb-2 flex h-14 w-14 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900/30">
+                                <Warehouse className="h-7 w-7 text-amber-600 dark:text-amber-400" />
+                            </div>
+                            <DialogTitle className="text-center text-xl">
+                                {t('products.noStorage.title') || 'No Storage Found'}
+                            </DialogTitle>
+                        </DialogHeader>
+                        <div className="px-2 py-4 text-center text-sm text-muted-foreground">
+                            {t('products.noStorage.description') || 'You need to create a storage location before adding products.'}
+                        </div>
+                        <DialogFooter className="flex-col gap-2 sm:flex-col">
+                            <Button className="w-full" onClick={() => navigate('/storages')}>
+                                <Warehouse className="mr-2 h-4 w-4" />
+                                {t('products.noStorage.goToStorage') || 'Go to Storage Settings'}
+                            </Button>
+                            <Button variant="outline" className="w-full" onClick={() => navigate('/products')}>
+                                {t('common.goBack') || 'Go Back'}
+                            </Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
+            </div>
+        )
+    }
+
     return <ProductEditor mode="create" />
 }
 
