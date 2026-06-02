@@ -709,7 +709,48 @@
   box-shadow: 2px 2px 0px 0px rgba(255, 255, 255, 1);
 }
 
+@property --exchange-rate-border-beam-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
 @layer utilities {
+  .exchange-rate-border-beam {
+    --exchange-rate-border-beam-angle: 0deg;
+    --exchange-rate-border-beam-fill: rgb(29 19 8);
+    position: relative;
+    border-color: transparent !important;
+    background:
+      linear-gradient(var(--exchange-rate-border-beam-fill), var(--exchange-rate-border-beam-fill)) padding-box,
+      conic-gradient(
+        from var(--exchange-rate-border-beam-angle),
+        transparent 0deg 86deg,
+        rgba(245, 158, 11, 0.98) 90deg,
+        rgba(245, 158, 11, 0.98) 92deg,
+        transparent 96deg 360deg
+      ) border-box !important;
+    animation: exchange-rate-border-beam 5s linear infinite;
+  }
+
+  .light .exchange-rate-border-beam {
+    --exchange-rate-border-beam-fill: rgb(255 251 235);
+  }
+
+  .theme-neo-orange.light .exchange-rate-border-beam {
+    --exchange-rate-border-beam-fill: #fff;
+  }
+
+  .theme-neo-orange.dark .exchange-rate-border-beam {
+    --exchange-rate-border-beam-fill: #000;
+  }
+
+  @keyframes exchange-rate-border-beam {
+    to {
+      --exchange-rate-border-beam-angle: 360deg;
+    }
+  }
+
   .animate-bell-ring {
     animation: bell-ring 2.5s ease-in-out infinite;
     transform-origin: top center;

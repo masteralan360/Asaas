@@ -87,9 +87,10 @@ export function ExchangeRateList({ isMobile = false }: { isMobile?: boolean }) {
                 !isLoading && usdWorks && 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500',
                 !isLoading && !usdWorks && !allFailed && 'bg-amber-500/10 border-amber-500/20 text-amber-600',
                 !isLoading && allFailed && 'bg-red-500/10 border-red-500/20 text-red-500',
-                isLoading && 'bg-secondary border-border text-muted-foreground'
+                isLoading && 'bg-amber-500/10 border-amber-500/20 text-amber-600'
             ),
-            isMobile && "flex-col items-start rtl:items-start rounded-xl p-2 w-full gap-2 border-none bg-transparent"
+            isMobile && "flex-col items-start rtl:items-start rounded-xl p-2 w-full gap-2 border-none bg-transparent",
+            isLoading && !isMobile && "exchange-rate-border-beam"
         )}>
             <div className="flex items-center gap-2">
                 {isLoading ? (
@@ -109,24 +110,55 @@ export function ExchangeRateList({ isMobile = false }: { isMobile?: boolean }) {
                 "text-xs font-bold font-mono flex items-center gap-3",
                 isMobile && "flex-col items-start rtl:items-start text-base w-full gap-4"
             )}>
-                {isLoading ? (
-                    <span>{t('common.loading')}</span>
-                ) : (
-                    <>
-                        {/* USD/IQD Section */}
-                        {currencyStatus.usd === 'error' ? (
-                            <CurrencyOfflineRow currency="USD" isMobile={isMobile} />
-                        ) : exchangeData && (
-                            <div className={cn("flex items-center gap-2", isMobile && "w-full justify-between p-3 rounded-xl hover:bg-emerald-500/5 transition-colors")}>
+                <>
+                    {/* USD/IQD Section */}
+                    {currencyStatus.usd === 'error' ? (
+                        <CurrencyOfflineRow currency="USD" isMobile={isMobile} />
+                    ) : exchangeData && (
+                        <div className={cn("flex items-center gap-2", isMobile && "w-full justify-between p-3 rounded-xl hover:bg-emerald-500/5 transition-colors")}>
+                            <div className="flex flex-col items-start gap-1">
+                                <span>USD/IQD: {exchangeData.rate.toLocaleString()}</span>
+                                {isMobile && allRates?.usd_iqd?.average && (
+                                    <span className="text-[10px] text-muted-foreground">{t('exchange.marketAverage')}: {allRates.usd_iqd.average.toLocaleString()}</span>
+                                )}
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <span className="text-[10px] opacity-70 font-normal uppercase">
+                                    {exchangeData.source === 'manual' ? t('exchange.manual') : exchangeData.source}
+                                </span>
+                                {isMobile && (
+                                    <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-8 w-8 rounded-full"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            window.dispatchEvent(new CustomEvent('open-manual-rate-editor', { detail: { currency: 'USD' } }));
+                                        }}
+                                    >
+                                        <Pencil className="w-3.5 h-3.5" />
+                                    </Button>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* EUR/IQD Section */}
+                    {features.allowed_currencies.includes('eur') && (
+                        currencyStatus.eur === 'error' ? (
+                            <CurrencyOfflineRow currency="EUR" isMobile={isMobile} />
+                        ) : eurRates.eur_iqd && (
+                            <div className={cn("flex items-center gap-3", isMobile && "w-full justify-between p-3 border-t border-emerald-500/10 rounded-xl hover:bg-emerald-500/5 transition-colors")}>
+                                {!isMobile && <span className="w-px h-3 bg-current/20" />}
                                 <div className="flex flex-col items-start gap-1">
-                                    <span>USD/IQD: {exchangeData.rate.toLocaleString()}</span>
-                                    {isMobile && allRates?.usd_iqd?.average && (
-                                        <span className="text-[10px] text-muted-foreground">{t('exchange.marketAverage')}: {allRates.usd_iqd.average.toLocaleString()}</span>
+                                    <span>EUR/IQD: {eurRates.eur_iqd.rate.toLocaleString()}</span>
+                                    {isMobile && allRates?.eur_iqd?.average && (
+                                        <span className="text-[10px] text-muted-foreground">{t('exchange.marketAverage')}: {allRates.eur_iqd.average.toLocaleString()}</span>
                                     )}
                                 </div>
                                 <div className="flex items-center gap-2">
                                     <span className="text-[10px] opacity-70 font-normal uppercase">
-                                        {exchangeData.source === 'manual' ? t('exchange.manual') : exchangeData.source}
+                                        {eurRates.eur_iqd.source === 'manual' ? t('exchange.manual') : eurRates.eur_iqd.source}
                                     </span>
                                     {isMobile && (
                                         <Button
@@ -135,7 +167,7 @@ export function ExchangeRateList({ isMobile = false }: { isMobile?: boolean }) {
                                             className="h-8 w-8 rounded-full"
                                             onClick={(e) => {
                                                 e.stopPropagation();
-                                                window.dispatchEvent(new CustomEvent('open-manual-rate-editor', { detail: { currency: 'USD' } }));
+                                                window.dispatchEvent(new CustomEvent('open-manual-rate-editor', { detail: { currency: 'EUR' } }));
                                             }}
                                         >
                                             <Pencil className="w-3.5 h-3.5" />
@@ -143,79 +175,44 @@ export function ExchangeRateList({ isMobile = false }: { isMobile?: boolean }) {
                                     )}
                                 </div>
                             </div>
-                        )}
+                        )
+                    )}
 
-                        {/* EUR/IQD Section */}
-                        {features.allowed_currencies.includes('eur') && (
-                            currencyStatus.eur === 'error' ? (
-                                <CurrencyOfflineRow currency="EUR" isMobile={isMobile} />
-                            ) : eurRates.eur_iqd && (
-                                <div className={cn("flex items-center gap-3", isMobile && "w-full justify-between p-3 border-t border-emerald-500/10 rounded-xl hover:bg-emerald-500/5 transition-colors")}>
-                                    {!isMobile && <span className="w-px h-3 bg-current/20" />}
-                                    <div className="flex flex-col items-start gap-1">
-                                        <span>EUR/IQD: {eurRates.eur_iqd.rate.toLocaleString()}</span>
-                                        {isMobile && allRates?.eur_iqd?.average && (
-                                            <span className="text-[10px] text-muted-foreground">{t('exchange.marketAverage')}: {allRates.eur_iqd.average.toLocaleString()}</span>
-                                        )}
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-[10px] opacity-70 font-normal uppercase">
-                                            {eurRates.eur_iqd.source === 'manual' ? t('exchange.manual') : eurRates.eur_iqd.source}
-                                        </span>
-                                        {isMobile && (
-                                            <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                className="h-8 w-8 rounded-full"
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    window.dispatchEvent(new CustomEvent('open-manual-rate-editor', { detail: { currency: 'EUR' } }));
-                                                }}
-                                            >
-                                                <Pencil className="w-3.5 h-3.5" />
-                                            </Button>
-                                        )}
-                                    </div>
+                    {/* TRY/IQD Section */}
+                    {features.allowed_currencies.includes('try') && (
+                        currencyStatus.try === 'error' ? (
+                            <CurrencyOfflineRow currency="TRY" isMobile={isMobile} />
+                        ) : tryRates.try_iqd && (
+                            <div className={cn("flex items-center gap-3", isMobile && "w-full justify-between p-3 border-t border-emerald-500/10 rounded-xl hover:bg-emerald-500/5 transition-colors")}>
+                                {!isMobile && <span className="w-px h-3 bg-current/20" />}
+                                <div className="flex flex-col items-start gap-1">
+                                    <span>TRY/IQD: {tryRates.try_iqd.rate.toLocaleString()}</span>
+                                    {isMobile && allRates?.try_iqd?.average && (
+                                        <span className="text-[10px] text-muted-foreground">{t('exchange.marketAverage')}: {allRates.try_iqd.average.toLocaleString()}</span>
+                                    )}
                                 </div>
-                            )
-                        )}
-
-                        {/* TRY/IQD Section */}
-                        {features.allowed_currencies.includes('try') && (
-                            currencyStatus.try === 'error' ? (
-                                <CurrencyOfflineRow currency="TRY" isMobile={isMobile} />
-                            ) : tryRates.try_iqd && (
-                                <div className={cn("flex items-center gap-3", isMobile && "w-full justify-between p-3 border-t border-emerald-500/10 rounded-xl hover:bg-emerald-500/5 transition-colors")}>
-                                    {!isMobile && <span className="w-px h-3 bg-current/20" />}
-                                    <div className="flex flex-col items-start gap-1">
-                                        <span>TRY/IQD: {tryRates.try_iqd.rate.toLocaleString()}</span>
-                                        {isMobile && allRates?.try_iqd?.average && (
-                                            <span className="text-[10px] text-muted-foreground">{t('exchange.marketAverage')}: {allRates.try_iqd.average.toLocaleString()}</span>
-                                        )}
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-[10px] opacity-70 font-normal uppercase">
-                                            {tryRates.try_iqd.source === 'manual' ? t('exchange.manual') : tryRates.try_iqd.source}
-                                        </span>
-                                        {isMobile && (
-                                            <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                className="h-8 w-8 rounded-full"
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    window.dispatchEvent(new CustomEvent('open-manual-rate-editor', { detail: { currency: 'TRY' } }));
-                                                }}
-                                            >
-                                                <Pencil className="w-3.5 h-3.5" />
-                                            </Button>
-                                        )}
-                                    </div>
+                                <div className="flex items-center gap-2">
+                                    <span className="text-[10px] opacity-70 font-normal uppercase">
+                                        {tryRates.try_iqd.source === 'manual' ? t('exchange.manual') : tryRates.try_iqd.source}
+                                    </span>
+                                    {isMobile && (
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className="h-8 w-8 rounded-full"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                window.dispatchEvent(new CustomEvent('open-manual-rate-editor', { detail: { currency: 'TRY' } }));
+                                            }}
+                                        >
+                                            <Pencil className="w-3.5 h-3.5" />
+                                        </Button>
+                                    )}
                                 </div>
-                            )
-                        )}
-                    </>
-                )}
+                            </div>
+                        )
+                    )}
+                </>
             </div>
 
             <div className={cn("flex items-center gap-2", isMobile && "mt-auto w-full pt-4 border-t border-emerald-500/20 justify-between")}>
@@ -314,9 +311,9 @@ export function ExchangeRateIndicator() {
                                 "flex items-center gap-1.5 h-8 px-2.5 transition-all",
                                 style === 'neo-orange' ? "neo-indicator" : cn(
                                     "rounded-full border-emerald-500/20 bg-emerald-500/5 text-emerald-500 hover:bg-emerald-500/10 hover:text-emerald-600",
-                                    status === 'loading' && "opacity-70 animate-pulse",
                                     status === 'error' && "border-red-500/20 bg-red-500/5 text-red-500 hover:text-red-600"
-                                )
+                                ),
+                                status === 'loading' && "opacity-90 exchange-rate-border-beam"
                             )}
                         >
                             <Globe className={cn("w-4 h-4 shrink-0", status === 'loading' && "animate-spin")} />
