@@ -14,7 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Label } from '@/ui/components/label'
 import { useTranslation } from 'react-i18next'
 import { useToast } from '@/ui/components/use-toast'
-import { StorageSelector, Tabs, TabsList, TabsTrigger, TabsContent, Select, SelectContent, SelectTrigger, SelectValue, SelectItem } from '@/ui/components'
+import { StorageSelector, Tabs, TabsList, TabsTrigger, TabsContent, Select, SelectContent, SelectTrigger, SelectValue, SelectItem, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/ui/components'
 import { formatCurrency, cn } from '@/lib/utils'
 import { platformService } from '@/services/platformService'
 
@@ -314,13 +314,14 @@ export default function Storages() {
                                     <TableRow className="hover:bg-transparent border-b">
                                         <TableHead className="font-bold py-4 pl-6 text-primary/80">{t('storages.table.name', 'Name')}</TableHead>
                                         <TableHead className="font-bold">{t('storages.table.type', 'Type')}</TableHead>
+                                        <TableHead className="font-bold">{t('storages.table.stock', 'Stock')}</TableHead>
                                         <TableHead className="text-right font-bold pr-6">{t('storages.table.actions', 'Actions')}</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
                                     {filteredStorages.length === 0 ? (
                                         <TableRow>
-                                            <TableCell colSpan={3} className="h-48 text-center bg-muted/5">
+                                            <TableCell colSpan={4} className="h-48 text-center bg-muted/5">
                                                 <div className="flex flex-col items-center justify-center gap-2 opacity-30">
                                                     <Warehouse className="w-12 h-12" />
                                                     <p className="text-sm font-medium">{t('common.noData', 'No results found.')}</p>
@@ -353,6 +354,50 @@ export default function Storages() {
                                                         }`}>
                                                         {storage.isSystem ? t('storages.system', 'System') : t('storages.custom', 'Custom')}
                                                     </span>
+                                                </TableCell>
+                                                <TableCell>
+                                                    {(() => {
+                                                        const storageInventory = inventory
+                                                            .filter((item) => item.storageId === storage.id)
+                                                            .sort((a, b) => b.quantity - a.quantity)
+                                                        const totalStock = storageInventory.reduce((sum, item) => sum + item.quantity, 0)
+                                                        const MAX_VISIBLE = 10
+                                                        const visible = storageInventory.slice(0, MAX_VISIBLE)
+                                                        const remaining = storageInventory.length - MAX_VISIBLE
+                                                        return totalStock > 0 ? (
+                                                            <TooltipProvider delayDuration={300}>
+                                                                <Tooltip>
+                                                                    <TooltipTrigger asChild>
+                                                                        <span className="font-semibold text-sm tabular-nums underline decoration-dotted underline-offset-4 cursor-help">
+                                                                            {totalStock}
+                                                                        </span>
+                                                                    </TooltipTrigger>
+                                                                    <TooltipContent side="bottom" align="start" className="max-h-60 overflow-y-auto p-2 space-y-1">
+                                                                        {visible.map((item) => {
+                                                                            const product = products.find((p) => p.id === item.productId)
+                                                                            return (
+                                                                                <div key={item.productId} className="flex items-center justify-between gap-4 text-xs">
+                                                                                    <span className="font-medium truncate max-w-[180px]">
+                                                                                        {product?.name || item.productId}
+                                                                                    </span>
+                                                                                    <span className="tabular-nums font-semibold text-muted-foreground">
+                                                                                        {item.quantity}
+                                                                                    </span>
+                                                                                </div>
+                                                                            )
+                                                                        })}
+                                                                        {remaining > 0 && (
+                                                                            <div className="text-xs text-muted-foreground/60 pt-1 border-t border-border/40">
+                                                                                *{remaining} {t('common.more', 'More')}
+                                                                            </div>
+                                                                        )}
+                                                                    </TooltipContent>
+                                                                </Tooltip>
+                                                            </TooltipProvider>
+                                                        ) : (
+                                                            <span className="font-semibold text-sm tabular-nums text-muted-foreground">0</span>
+                                                        )
+                                                    })()}
                                                 </TableCell>
                                                 <TableCell className="text-right pr-6">
                                                     <div className="flex justify-end items-center gap-2 flex-wrap">
