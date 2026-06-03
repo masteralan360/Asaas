@@ -80,6 +80,7 @@
     "@types/crypto-js": "^4.2.2",
     "@untitledui/file-icons": "^0.0.9",
     "@untitledui/icons": "^0.0.22",
+    "@vercel/analytics": "^2.0.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "crypto-js": "^4.2.0",
