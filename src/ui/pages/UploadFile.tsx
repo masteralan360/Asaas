@@ -379,7 +379,7 @@ export function UploadFilesTab({ invoices, onPreview }: UploadFilesTabProps) {
                     {!r2Service.isConfigured() && (
                         <div className="flex items-start gap-3 rounded-2xl border border-destructive/20 bg-destructive/5 p-4 text-sm text-destructive">
                             <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0" />
-                            <p>{t('uploadFile.r2NotConfiguredDesc', { defaultValue: 'R2 storage is not configured on this device. Uploads will stay blocked until the worker URL and auth token are available.' })}</p>
+                            <p>{t('uploadFile.r2NotConfiguredDesc', { defaultValue: 'R2 storage is not configured on this device. Uploads will stay blocked until the worker URL is available.' })}</p>
                         </div>
                     )}
 

@@ -1031,7 +1031,7 @@
     "selectFile": "Please select a PDF file to upload.",
     "mustBeOnline": "You must be online to upload files to R2 storage.",
     "r2NotConfigured": "R2 storage is not configured on this device.",
-    "r2NotConfiguredDesc": "R2 storage is not configured on this device. Uploads will stay blocked until the worker URL and auth token are available.",
+    "r2NotConfiguredDesc": "R2 storage is not configured on this device. Uploads will stay blocked until the worker URL is available.",
     "uploadFailed": "Failed to upload the PDF file.",
     "uploadedFiles": "Uploaded Files",
     "filesCount": "{{count}} file(s) stored in workspace uploads.",

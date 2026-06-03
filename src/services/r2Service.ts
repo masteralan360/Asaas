@@ -1,8 +1,14 @@
 /**
- * Service to handle Cloudflare R2 storage operations via the proxy worker.
- * This avoids exposing R2 keys in the client and handles CORS/Auth securely.
+ * Service to handle Cloudflare R2 storage operations via the authenticated proxy worker.
+ * Public reads use shareable object URLs; privileged writes/lists use the user's Supabase session.
  */
+import { supabase } from '@/auth/supabase';
+
 class R2Service {
+    constructor() {
+        this.removeStorageValue(['r2', 'auth', 'token'].join('_'));
+    }
+
     private normalizePath(path: string): string {
         const cleanPath = path.startsWith('/') ? path.slice(1) : path;
         return cleanPath
@@ -40,6 +46,15 @@ class R2Service {
         }
     }
 
+    private removeStorageValue(key: string): void {
+        if (!this.canUseStorage()) return;
+        try {
+            window.localStorage.removeItem(key);
+        } catch {
+            // Ignore storage failures (e.g., disabled storage)
+        }
+    }
+
     private writeStorageValue(key: string, value?: string): void {
         if (!value || !this.canUseStorage()) return;
         try {
@@ -51,24 +66,53 @@ class R2Service {
 
     private get workerUrl(): string | undefined {
         const fromVite = this.readEnvValue(import.meta.env.VITE_R2_WORKER_URL);
-        const fromDefine = this.readEnvValue(typeof __R2_WORKER_URL__ !== 'undefined' ? __R2_WORKER_URL__ : undefined);
         const fromStorage = this.readStorageValue('r2_worker_url');
-        const resolved = fromVite || fromDefine || fromStorage;
+        const resolved = fromVite || fromStorage;
         if (resolved && resolved !== fromStorage) {
             this.writeStorageValue('r2_worker_url', resolved);
         }
         return resolved;
     }
 
-    private get authToken(): string | undefined {
-        const fromVite = this.readEnvValue(import.meta.env.VITE_R2_AUTH_TOKEN);
-        const fromDefine = this.readEnvValue(typeof __R2_AUTH_TOKEN__ !== 'undefined' ? __R2_AUTH_TOKEN__ : undefined);
-        const fromStorage = this.readStorageValue('r2_auth_token');
-        const resolved = fromVite || fromDefine || fromStorage;
-        if (resolved && resolved !== fromStorage) {
-            this.writeStorageValue('r2_auth_token', resolved);
+    private async getAccessToken(forceRefresh = false): Promise<string | undefined> {
+        if (forceRefresh) {
+            const { data } = await supabase.auth.refreshSession();
+            if (data.session?.access_token) {
+                return data.session.access_token;
+            }
         }
-        return resolved;
+
+        const { data } = await supabase.auth.getSession();
+        if (data.session?.access_token) {
+            return data.session.access_token;
+        }
+
+        if (!forceRefresh) {
+            const { data: refreshedData } = await supabase.auth.refreshSession();
+            return refreshedData.session?.access_token;
+        }
+
+        return undefined;
+    }
+
+    private async fetchPrivileged(url: string, init: RequestInit): Promise<Response> {
+        const requestWithToken = async (forceRefresh: boolean) => {
+            const accessToken = await this.getAccessToken(forceRefresh);
+            if (!accessToken) {
+                throw new Error('R2 authentication missing. Please sign in again.');
+            }
+
+            const headers = new Headers(init.headers);
+            headers.set('Authorization', `Bearer ${accessToken}`);
+            return fetch(url, { ...init, headers });
+        };
+
+        const response = await requestWithToken(false);
+        if (response.status === 401 || response.status === 403) {
+            return requestWithToken(true);
+        }
+
+        return response;
     }
 
     /**
@@ -85,15 +129,14 @@ class R2Service {
      * Upload an object to R2
      */
     public async upload(path: string, data: Blob | ArrayBuffer | string, contentType?: string): Promise<string> {
-        if (!this.workerUrl || !this.authToken) {
+        if (!this.workerUrl) {
             throw new Error('R2 configuration missing');
         }
 
         const url = this.getUrl(path);
-        const response = await fetch(url, {
+        const response = await this.fetchPrivileged(url, {
             method: 'PUT',
             headers: {
-                'Authorization': `Bearer ${this.authToken}`,
                 'Content-Type': contentType || 'application/octet-stream'
             },
             body: data
@@ -111,16 +154,13 @@ class R2Service {
      * Delete an object from R2
      */
     public async delete(path: string): Promise<void> {
-        if (!this.workerUrl || !this.authToken) {
+        if (!this.workerUrl) {
             throw new Error('R2 configuration missing');
         }
 
         const url = this.getUrl(path);
-        const response = await fetch(url, {
-            method: 'DELETE',
-            headers: {
-                'Authorization': `Bearer ${this.authToken}`
-            }
+        const response = await this.fetchPrivileged(url, {
+            method: 'DELETE'
         });
 
         if (!response.ok && response.status !== 404) {
@@ -133,7 +173,7 @@ class R2Service {
      * List object keys by prefix
      */
     public async listObjects(prefix: string): Promise<string[]> {
-        if (!this.workerUrl || !this.authToken) {
+        if (!this.workerUrl) {
             throw new Error('R2 configuration missing');
         }
 
@@ -144,11 +184,8 @@ class R2Service {
 
         let response: Response;
         try {
-            response = await fetch(url.toString(), {
-                method: 'GET',
-                headers: {
-                    'Authorization': `Bearer ${this.authToken}`
-                }
+            response = await this.fetchPrivileged(url.toString(), {
+                method: 'GET'
             });
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
@@ -175,7 +212,7 @@ class R2Service {
      * Check if R2 is configured
      */
     public isConfigured(): boolean {
-        return !!(this.workerUrl && this.authToken);
+        return !!this.workerUrl;
     }
     /**
      * Download an object from R2

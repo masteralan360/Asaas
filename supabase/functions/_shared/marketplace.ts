@@ -88,8 +88,8 @@ function getMarketplaceAssetBaseUrl() {
     return ''
 }
 
-function getMarketplaceAssetAuthToken() {
-    for (const key of ['R2_AUTH_TOKEN', 'R2_WORKER_AUTH_TOKEN', 'VITE_R2_AUTH_TOKEN']) {
+function getMarketplaceAssetServiceToken() {
+    for (const key of ['R2_WORKER_SERVICE_TOKEN', 'R2_SERVICE_TOKEN']) {
         const value = (Deno.env.get(key) ?? '').trim()
         if (value) {
             return value
@@ -115,10 +115,10 @@ export function getMarketplaceAssetUrlFromKey(key?: string | null): string | nul
 
 export async function listMarketplaceAssetKeys(prefix: string): Promise<string[]> {
     const baseUrl = getMarketplaceAssetBaseUrl()
-    const authToken = getMarketplaceAssetAuthToken()
+    const serviceToken = getMarketplaceAssetServiceToken()
     const normalizedPrefix = sanitizeMarketplaceText(prefix, 1024)
 
-    if (!baseUrl || !authToken || !normalizedPrefix) {
+    if (!baseUrl || !serviceToken || !normalizedPrefix) {
         return []
     }
 
@@ -129,7 +129,7 @@ export async function listMarketplaceAssetKeys(prefix: string): Promise<string[]
 
         const response = await fetch(listUrl.toString(), {
             headers: {
-                Authorization: `Bearer ${authToken}`
+                'X-R2-Service-Token': serviceToken
             }
         })
 
