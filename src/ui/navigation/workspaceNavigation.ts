@@ -365,7 +365,7 @@ export function buildWorkspaceNavigation({
           },
         ]
       : []),
-    ...(hasFeature("inventory_transfer") && canAccessPermission("inventoryTransactions.access")
+    ...(hasFeature("inventory_transactions") && canAccessPermission("inventoryTransactions.access")
       ? [
           {
             name: t("nav.inventoryTransactions", {

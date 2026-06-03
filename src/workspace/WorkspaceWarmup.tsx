@@ -112,12 +112,8 @@ export function WorkspaceWarmup() {
         }
         if (hasFeature('discounts')) tasks.push(() => import('@/ui/pages/Discounts'))
         if (hasFeature('storages')) tasks.push(() => import('@/ui/pages/Storages'))
-        if (hasFeature('inventory_transfer')) {
-            tasks.push(
-                () => import('@/ui/pages/InventoryTransfer'),
-                () => import('@/ui/pages/InventoryTransactions'),
-            )
-        }
+        if (hasFeature('inventory_transfer')) tasks.push(() => import('@/ui/pages/InventoryTransfer'))
+        if (hasFeature('inventory_transactions')) tasks.push(() => import('@/ui/pages/InventoryTransactions'))
         if (hasFeature('stock_adjustments')) tasks.push(() => import('@/ui/pages/StockAdjustments'))
         if (hasFeature('hr')) tasks.push(() => import('@/ui/pages/HR'))
         if (hasFeature('loans') || hasFeature('installments') || hasFeature('real_estate')) tasks.push(() => import('@/ui/pages/Loans'))

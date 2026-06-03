@@ -53,6 +53,7 @@ export type WorkspaceFeatureKey =
     | 'discounts'
     | 'storages'
     | 'inventory_transfer'
+    | 'inventory_transactions'
     | 'stock_adjustments'
     | 'invoices_history'
     | 'hr'
@@ -231,6 +232,7 @@ export const WORKSPACE_FEATURE_MODULE_MAP: Record<WorkspaceFeatureKey, PlanModul
     discounts: 'discounts',
     storages: 'storages',
     inventory_transfer: 'inventory_transfer',
+    inventory_transactions: 'inventory_transactions',
     stock_adjustments: 'stock_adjustments',
     invoices_history: 'invoice_history',
     hr: 'hr',

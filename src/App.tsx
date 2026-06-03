@@ -1159,7 +1159,7 @@ function App() {
                         </ProtectedRoute>
                       </Route>
                       <Route path="/inventory-transactions">
-                        <ProtectedRoute requiredFeature="inventory_transfer" requiredPermission="inventoryTransactions.access">
+                        <ProtectedRoute requiredFeature="inventory_transactions" requiredPermission="inventoryTransactions.access">
                           <Layout>
                             <InventoryTransactions />
                           </Layout>

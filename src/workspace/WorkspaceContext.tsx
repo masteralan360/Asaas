@@ -57,6 +57,7 @@ export interface WorkspaceFeatures {
     discounts: boolean
     storages: boolean
     inventory_transfer: boolean
+    inventory_transactions: boolean
     stock_adjustments: boolean
     invoices_history: boolean
     hr: boolean
@@ -138,6 +139,7 @@ const PLAN_DERIVED_FEATURE_KEYS: ModuleFeatureKey[] = [
     'discounts',
     'storages',
     'inventory_transfer',
+    'inventory_transactions',
     'stock_adjustments',
     'invoices_history',
     'hr',
@@ -447,6 +449,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             discounts: nextFeatures.discounts,
             storages: nextFeatures.storages,
             inventory_transfer: nextFeatures.inventory_transfer,
+            inventory_transactions: nextFeatures.inventory_transactions,
             stock_adjustments: nextFeatures.stock_adjustments,
             invoices_history: nextFeatures.invoices_history,
             hr: nextFeatures.hr,

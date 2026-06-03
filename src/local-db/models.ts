@@ -952,6 +952,7 @@ export interface Workspace extends BaseEntity {
   discounts?: boolean;
   storages?: boolean;
   inventory_transfer?: boolean;
+  inventory_transactions?: boolean;
   stock_adjustments?: boolean;
   invoices_history?: boolean;
   hr?: boolean;
