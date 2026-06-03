@@ -323,6 +323,10 @@ export class AtlasDatabase extends Dexie {
   constructor() {
     super("AtlasDatabase");
 
+    // Version 38 combines two parallel migration intents: invoice PDF metadata
+    // indexes and the budget/expense/payroll/dividend local tables. Keep this
+    // as a single declaration because Dexie versions must be unique, while the
+    // upgrade clears queued mutations for the retired budget/expense entities.
     this.version(38)
       .stores({
         products:
@@ -342,6 +346,16 @@ export class AtlasDatabase extends Dexie {
           "id, name, workspaceId, isSystem, isProtected, syncStatus, updatedAt, isDeleted",
         employees:
           "id, name, workspaceId, linkedUserId, syncStatus, updatedAt, isDeleted",
+        budget_settings: "id, workspaceId",
+        budget_allocations: "id, workspaceId, month, [workspaceId+month]",
+        expense_series:
+          "id, workspaceId, recurrence, startMonth, endMonth, isDeleted",
+        expense_items:
+          "id, workspaceId, seriesId, month, dueDate, status, [seriesId+month], [workspaceId+month]",
+        payroll_statuses:
+          "id, workspaceId, employeeId, month, status, [employeeId+month], [workspaceId+month]",
+        dividend_statuses:
+          "id, workspaceId, employeeId, month, status, [employeeId+month], [workspaceId+month]",
         syncQueue: "id, entityType, entityId, operation, timestamp",
         offline_mutations:
           "id, workspaceId, entityType, entityId, status, createdAt, [entityType+entityId+status]",
@@ -369,47 +383,6 @@ export class AtlasDatabase extends Dexie {
             .delete(),
         ]),
       );
-
-    this.version(38).stores({
-      products:
-        "id, sku, name, categoryId, storageId, workspaceId, currency, syncStatus, updatedAt, isDeleted, canBeReturned",
-      categories: "id, name, workspaceId, syncStatus, updatedAt, isDeleted",
-      invoices:
-        "id, invoiceid, orderId, customerId, status, workspaceId, syncStatus, updatedAt, isDeleted, origin, createdBy, cashierName, createdByName, sequenceId, printFormat, r2PathA4, r2PathReceipt",
-
-      users:
-        "id, email, role, workspaceId, syncStatus, updatedAt, isDeleted, monthlyTarget",
-      sales:
-        "id, cashierId, workspaceId, settlementCurrency, syncStatus, createdAt, updatedAt, notes",
-      sale_items: "id, saleId, productId",
-      workspaces:
-        "id, name, code, syncStatus, updatedAt, isDeleted, print_lang, print_qr",
-      storages:
-        "id, name, workspaceId, isSystem, isProtected, syncStatus, updatedAt, isDeleted",
-      employees:
-        "id, name, workspaceId, linkedUserId, syncStatus, updatedAt, isDeleted",
-      budget_settings: "id, workspaceId",
-      budget_allocations: "id, workspaceId, month, [workspaceId+month]",
-      expense_series:
-        "id, workspaceId, recurrence, startMonth, endMonth, isDeleted",
-      expense_items:
-        "id, workspaceId, seriesId, month, dueDate, status, [seriesId+month], [workspaceId+month]",
-      payroll_statuses:
-        "id, workspaceId, employeeId, month, status, [employeeId+month], [workspaceId+month]",
-      dividend_statuses:
-        "id, workspaceId, employeeId, month, status, [employeeId+month], [workspaceId+month]",
-      syncQueue: "id, entityType, entityId, operation, timestamp",
-      offline_mutations:
-        "id, workspaceId, entityType, entityId, status, createdAt, [entityType+entityId+status]",
-      workspace_contacts: "id, workspaceId, type, value, syncStatus, updatedAt",
-      loans:
-        "id, workspaceId, saleId, status, nextDueDate, borrowerName, loanNo, syncStatus, updatedAt, isDeleted",
-      loan_installments:
-        "id, loanId, workspaceId, dueDate, status, syncStatus, updatedAt, isDeleted, [loanId+installmentNo]",
-      loan_payments:
-        "id, loanId, workspaceId, paidAt, syncStatus, updatedAt, isDeleted",
-      app_settings: "key",
-    });
 
     this.version(39).stores({
       budget_allocations: "id, workspaceId, month, [workspaceId+month]",
