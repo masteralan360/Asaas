@@ -263,7 +263,7 @@ export const moduleMetaByHref: Record<string, ModuleMeta> = {
     badge: "Archive",
   },
   "/currency-converter": {
-    section: "cash-and-control",
+    section: "people-and-workspace",
     description:
       "Check exchange values and switch currencies with current rates.",
     badge: "Rates",

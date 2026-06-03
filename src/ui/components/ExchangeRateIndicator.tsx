@@ -264,7 +264,7 @@ export function ExchangeRateIndicator() {
                     </button>
 
                     <button
-                        onClick={() => setLocation('/currency-converter')}
+                        onClick={() => window.dispatchEvent(new CustomEvent('open-currency-converter-popup'))}
                         className={cn(
                             "p-1.5 hover:bg-secondary border transition-all group",
                             style === 'neo-orange'

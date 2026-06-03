@@ -48,6 +48,7 @@ export interface WorkspaceNavigationItem {
   status?: string;
   alert?: boolean;
   mobileOnly?: boolean;
+  popup?: boolean;
   children?: WorkspaceNavigationChild[];
 }
 
@@ -307,16 +308,6 @@ export function buildWorkspaceNavigation({
           : []),
       ]
       : []),
-    ...(features.allowed_currencies.length > 1
-      ? [
-        {
-          name: t("nav.currencyConverter", { defaultValue: "Currency Converter" }),
-          href: "/currency-converter",
-          icon: Calculator,
-          mobileOnly: true,
-        },
-      ]
-      : []),
     ...(isCoreRole && hasFeature("allow_whatsapp") && isDesktopDevice
       ? [
         {
@@ -433,6 +424,15 @@ export function buildWorkspaceNavigation({
               name: t("customTemplates.title", { defaultValue: "Custom Templates" }),
               href: "/custom-templates",
               icon: FileText,
+            },
+          ]
+          : []),
+        ...(features.allowed_currencies.length > 1
+          ? [
+            {
+              name: t("nav.currencyConverter", { defaultValue: "Currency Converter" }),
+              href: "/currency-converter",
+              icon: Calculator,
             },
           ]
           : []),

@@ -21,6 +21,7 @@ import { GlobalMarketplaceOrderReminders } from './ecommerce/GlobalMarketplaceOr
 import { LoanPaymentModalProvider } from './loans/LoanPaymentModalProvider'
 import { UnifiedSnoozeProvider } from '@/context/UnifiedSnoozeContext'
 import { GlobalExchangeRateReminders } from './exchange/GlobalExchangeRateReminders'
+import { CurrencyConverterPopup } from './CurrencyConverterPopup'
 import { UnifiedSnoozedRemindersBell } from './reminders/UnifiedSnoozedRemindersBell'
 import { ThemeAwareLogo } from './ThemeAwareLogo'
 import { buildWorkspaceNavigation } from '@/ui/navigation/workspaceNavigation'
@@ -182,6 +183,7 @@ export function Layout({ children }: LayoutProps) {
     const [whatsappStatus, setWhatsappStatus] = useState<'live' | 'off'>(whatsappManager.isActive() ? 'live' : 'off')
     const [isSignOutModalOpen, setIsSignOutModalOpen] = useState(false)
     const [pendingEcommerceCount, setPendingEcommerceCount] = useState(0)
+    const [currencyConverterOpen, setCurrencyConverterOpen] = useState(false)
 
     const copyToClipboard = (text: string) => {
         navigator.clipboard.writeText(text)
@@ -301,6 +303,24 @@ export function Layout({ children }: LayoutProps) {
             setLocation('/locked-workspace')
         }
     }, [isLocked, location])
+
+    // Listen for currency converter popup event from ExchangeRateIndicator
+    useEffect(() => {
+        const handler = () => {
+            if (location !== '/currency-converter') {
+                setCurrencyConverterOpen(true)
+            }
+        }
+        window.addEventListener('open-currency-converter-popup', handler)
+        return () => window.removeEventListener('open-currency-converter-popup', handler)
+    }, [location])
+
+    // Close popup if user navigates to the currency converter page
+    useEffect(() => {
+        if (location === '/currency-converter') {
+            setCurrencyConverterOpen(false)
+        }
+    }, [location])
 
     const navigation = buildWorkspaceNavigation({
         t,
@@ -743,25 +763,38 @@ export function Layout({ children }: LayoutProps) {
                                             )
 
                                             return (
-                                                <div key={item.href} className={cn("space-y-1", item.mobileOnly && "lg:hidden")}>
-                                                    <Link
-                                                        href={item.href}
-                                                        onClick={() => {
-                                                            if (isExpandableGroup) {
-                                                                setExpandedNavGroups((prev) => ({
-                                                                    ...prev,
-                                                                    [item.href]: !prev[item.href]
-                                                                }))
-                                                            }
-                                                            if (!isExpandableGroup) {
+                                                <div key={item.href} className={cn("space-y-1", item.mobileOnly && "lg:hidden", item.popup && !item.mobileOnly && "hidden lg:block")}>
+                                                    {item.popup ? (
+                                                        <button
+                                                            onClick={() => {
                                                                 setMobileSidebarOpen(false)
-                                                            }
-                                                            triggerHaptic('selection')
-                                                        }}
-                                                        onMouseEnter={() => !isMobile() && prefetchRoute(item.href)}
-                                                    >
-                                                        {parentContent}
-                                                    </Link>
+                                                                setCurrencyConverterOpen(true)
+                                                                triggerHaptic('selection')
+                                                            }}
+                                                            className="w-full text-left"
+                                                        >
+                                                            {parentContent}
+                                                        </button>
+                                                    ) : (
+                                                        <Link
+                                                            href={item.href}
+                                                            onClick={() => {
+                                                                if (isExpandableGroup) {
+                                                                    setExpandedNavGroups((prev) => ({
+                                                                        ...prev,
+                                                                        [item.href]: !prev[item.href]
+                                                                    }))
+                                                                }
+                                                                if (!isExpandableGroup) {
+                                                                    setMobileSidebarOpen(false)
+                                                                }
+                                                                triggerHaptic('selection')
+                                                            }}
+                                                            onMouseEnter={() => !isMobile() && prefetchRoute(item.href)}
+                                                        >
+                                                            {parentContent}
+                                                        </Link>
+                                                    )}
 
                                                     {showChildren && (
                                                         <div className={cn(
@@ -1123,6 +1156,7 @@ export function Layout({ children }: LayoutProps) {
                             </DialogFooter>
                         </DialogContent>
                     </Dialog>
+                    <CurrencyConverterPopup open={currencyConverterOpen} onClose={() => setCurrencyConverterOpen(false)} />
                 </div>
             </LoanPaymentModalProvider>
         </UnifiedSnoozeProvider>
