@@ -137,6 +137,8 @@
     "installments": "الأقساط",
     "storages": "المخازن",
     "inventoryTransfer": "نقل المخزون",
+    "inventoryTransactions": "معاملات المخزون",
+    "stockAdjustments": "تسويات المخزون",
     "suppliers": "الموردين",
     "revenue": "تحليل الإيرادات",
     "performance": "أداء الفريق",
@@ -232,6 +234,14 @@
       "/inventory-transfer": {
         "description": "نقل المخزون بين المواقع وتنسيق عملية التجديد.",
         "badge": "حركة"
+      },
+      "/inventory-transactions": {
+        "description": "مراجعة السجلات الدائمة لعمليات نقل المخزون وتسويات المخزون.",
+        "badge": "تدقيق"
+      },
+      "/stock-adjustments": {
+        "description": "تسجيل تغييرات المخزون اليدوية وإدارة الدفعات ومراجعة سجلات المخزون.",
+        "badge": "تسوية"
       },
       "/ledger": {
         "description": "فحص التدفقات النقدية الداخلة والخارجة عبر الوحدات.",
@@ -1357,7 +1367,8 @@
     "discardError": "فشل في تجاهل التغييرات."
   },
   "members": {
-    "title": "الأعضاء",
+    "title": "الأعضاء ولوحة تحكم",
+    "titleShort": "الأعضاء",
     "subtitle": "إدارة أعضاء مساحة العمل",
     "table": {
       "name": "الاسم",
@@ -2285,6 +2296,164 @@
       "totalUnits": "الوحدات المنقولة",
       "permanentTitle": "سجل دائم",
       "permanentDescription": "سجلات حركات المخزون تُضاف فقط ولا يمكن تعديلها أو حذفها. يمكنك مراجعتها هنا فقط."
+    }
+  },
+  "inventoryTransactions": {
+    "pageSubtitle": "مراجعة السجلات الدائمة لعمليات نقل المخزون وتسويات المخزون.",
+    "subtitle": "يتم تسجيل كل نقل يدوي وحركة آلية وتسوية مخزون هنا. هذه السجلات دائمة ولا يمكن حذفها.",
+    "emptyTitle": "لا توجد معاملات مخزون بعد",
+    "emptyDescription": "انقل المنتجات يدوياً، أو دع قاعدة آلية تعمل، أو سجل تسوية مخزون، وستظهر السجلات هنا.",
+    "increaseLabel": "زيادة",
+    "decreaseLabel": "نقصان",
+    "adjustmentLabel": "تسوية مخزون",
+    "summaryDescription": "عدد مباشر لسجلات حركة المخزون الدائمة لمساحة العمل هذه."
+  },
+  "stockAdjustments": {
+    "pageSubtitle": "سجل تغييرات المخزون اليدوية، وأدر دفعات المنتجات، وراجع سجل المخزون الموحد.",
+    "pageSubtitleSimple": "سجل تغييرات المخزون اليدوية وراجع سجل المخزون الموحد.",
+    "newAdjustment": "تسوية مخزون جديدة",
+    "newBatch": "دفعة مخزون جديدة",
+    "tabs": {
+      "adjustments": "تسويات المخزون",
+      "batches": "دفعات المخزون"
+    },
+    "filters": {
+      "title": "الفلاتر",
+      "description": "تصفية حسب المنتج أو المخزن أو النوع أو السبب أو نطاق التاريخ.",
+      "product": "المنتج",
+      "storage": "المخزن",
+      "type": "النوع",
+      "reason": "السبب",
+      "start": "البداية",
+      "end": "النهاية",
+      "allProducts": "جميع المنتجات",
+      "allStorages": "جميع المخازن",
+      "allTypes": "جميع الأنواع",
+      "allReasons": "جميع الأسباب",
+      "increase": "زيادة",
+      "decrease": "نقصان",
+      "startDate": "تاريخ البداية",
+      "endDate": "تاريخ النهاية"
+    },
+    "history": {
+      "title": "سجل التسويات",
+      "description": "يظهر كل إدخال لقطة الكمية قبل وبعد للمخزن المحدد.",
+      "empty": "لا توجد تسويات تطابق الفلاتر الحالية.",
+      "noNotes": "لا توجد ملاحظات.",
+      "qty": "الكمية {{value}}",
+      "previousToNew": "{{previous}} ← {{new}}"
+    },
+    "recentTransactions": {
+      "title": "معاملات المخزون الأخيرة",
+      "description": "مسار تدقيق موحد للمخزون الأولي والتسويات والتحويلات.",
+      "empty": "لا توجد معاملات مخزون متاحة بعد.",
+      "delta": "الفرق {{sign}}{{value}}"
+    },
+    "batches": {
+      "title": "تتبع الدفعات",
+      "description": "مجمعة حسب المنتج والمخزن مع فحص تغطية مقابل المخزون الحالي.",
+      "empty": "لم يتم إنشاء أي دفعات مخزون بعد.",
+      "coverageMismatch": "عدم تطابق التغطية",
+      "inventory": "المخزون {{value}}",
+      "batchCount": "الدفعات {{value}}",
+      "qty": "الكمية {{value}}",
+      "customPricing": "تسعير مخصص",
+      "sell": "البيع {{amount}}",
+      "cost": "التكلفة {{amount}}",
+      "manufactured": "تاريخ الإنتاج {{date}}",
+      "noManufacturingDate": "لا يوجد تاريخ إنتاج",
+      "expires": "ينتهي {{date}}",
+      "noExpiryDate": "لا يوجد تاريخ انتهاء",
+      "edit": "تعديل",
+      "delete": "حذف",
+      "batchOverride": "تجاوز الدفعة نشط",
+      "usingDefaults": "باستخدام إعدادات المنتج الافتراضية",
+      "loadProductMsg": "اختر منتجاً لتحميل سعره وتكلفته وعملته الافتراضية.",
+      "productDefault": "إعدادات المنتج الافتراضية:"
+    },
+    "dialog": {
+      "adjustment": {
+        "title": "تسوية مخزون جديدة",
+        "description": "اختر المنتج والمخزن، ثم حدد كمية المخزون النهائية التي تريد الاحتفاظ بها هناك.",
+        "productSearch": "بحث المنتج",
+        "productSearchPlaceholder": "ابحث عن المنتجات بالاسم أو رمز SKU",
+        "product": "المنتج",
+        "selectProduct": "اختر منتجاً",
+        "storage": "المخزن",
+        "selectStorage": "اختر مخزناً",
+        "finalQuantity": "الكمية النهائية",
+        "currentAvailable": "المتوفر حالياً {{value}}",
+        "reason": "السبب",
+        "notes": "ملاحظات",
+        "cancel": "إلغاء",
+        "saving": "جارٍ الحفظ...",
+        "save": "حفظ التسوية",
+        "selectPrompt": "اختر منتجاً ومخزناً لتحميل الكمية الحالية.",
+        "enterQuantity": "أدخل الكمية النهائية التي تريدها بعد هذه التسوية.",
+        "noChange": "لا تغيير بعد. اضبط الكمية أعلاه لإنشاء إدخال.",
+        "increaseBy": "زيادة بمقدار {{delta}}. {{available}} ← {{target}}.",
+        "decreaseBy": "نقصان بمقدار {{delta}}. {{available}} ← {{target}}."
+      },
+      "batch": {
+        "titleNew": "دفعة مخزون جديدة",
+        "titleEdit": "تعديل دفعة المخزون",
+        "description": "تتبع كمية الدفعة والتواريخ ولقطة التسعير لمخزن واحد. يتم تحميل تسعير المنتج افتراضياً ويمكن تجاوزه لهذه الدفعة.",
+        "productSearch": "بحث المنتج",
+        "productSearchPlaceholder": "ابحث عن المنتجات بالاسم أو رمز SKU",
+        "product": "المنتج",
+        "selectProduct": "اختر منتجاً",
+        "storage": "المخزن",
+        "selectStorage": "اختر مخزناً",
+        "batchNumber": "رقم الدفعة / التشغيلة",
+        "quantity": "الكمية",
+        "inventoryAvailable": "المخزون المتوفر {{value}}",
+        "batchPrice": "سعر الدفعة",
+        "batchCost": "تكلفة الدفعة",
+        "currency": "العملة",
+        "expiryDate": "تاريخ انتهاء الصلاحية",
+        "expiryDatePlaceholder": "تاريخ انتهاء الصلاحية (اختياري)",
+        "manufacturingDate": "تاريخ الإنتاج",
+        "manufacturingDatePlaceholder": "تاريخ الإنتاج (اختياري)",
+        "notes": "ملاحظات",
+        "cancel": "إلغاء",
+        "saving": "جارٍ الحفظ...",
+        "saveChanges": "حفظ التغييرات",
+        "saveBatch": "حفظ الدفعة"
+      }
+    },
+    "reasons": {
+      "purchase": "شراء",
+      "return": "مرتجع",
+      "correction": "تصحيح",
+      "damage": "تلف",
+      "theft": "سرقة",
+      "expired": "منتهي الصلاحية",
+      "production": "إنتاج",
+      "other": "أخرى"
+    },
+    "transactionType": {
+      "stock_adjustment": "تسوية مخزون",
+      "transfer_in": "تحويل وارد",
+      "transfer_out": "تحويل صادر",
+      "initial_stock": "مخزون أولي"
+    },
+    "deleteConfirm": {
+      "title": "حذف دفعة المخزون؟",
+      "description": "سيؤدي ذلك إلى حذف الدفعة بشكل ناعم من التتبع النشط."
+    },
+    "messages": {
+      "adjustmentSaved": "تم حفظ التسوية",
+      "adjustmentSavedDesc": "تم تحديث المخزون وسجل التدقيق.",
+      "adjustmentFailed": "تعذر حفظ التسوية",
+      "batchUpdated": "تم تحديث الدفعة",
+      "batchUpdatedDesc": "تم حفظ تغييرات الدفعة.",
+      "batchCreated": "تم إنشاء الدفعة",
+      "batchCreatedDesc": "تمت إضافة الدفعة الجديدة بنجاح.",
+      "batchFailed": "تعذر حفظ الدفعة",
+      "batchDeleted": "تم حذف الدفعة",
+      "batchDeletedDesc": "تمت إزالة الدفعة من التتبع النشط.",
+      "batchDeleteFailed": "تعذر حذف الدفعة",
+      "genericError": "حدث خطأ ما."
     }
   },
   "budget": {

@@ -2421,7 +2421,7 @@ export function Ledger() {
             <Dialog open={isFilterDialogOpen} onOpenChange={setIsFilterDialogOpen}>
                 <DialogContent className="top-[calc(50%+var(--titlebar-height)/2+var(--safe-area-top)/2)] w-[calc(100vw-0.75rem)] max-w-5xl overflow-hidden rounded-[1.5rem] border border-border/60 p-0 sm:w-[calc(100vw-2rem)] sm:rounded-[2rem]">
                     <div className="flex max-h-[calc(100dvh-var(--titlebar-height)-var(--safe-area-top)-var(--safe-area-bottom)-1rem)] flex-col">
-                        <DialogHeader className="border-b border-border/60 bg-gradient-to-r from-primary/8 via-background to-emerald-500/5 px-6 py-5 text-left">
+                        <DialogHeader className="border-b border-border/60 bg-gradient-to-r from-primary/8 via-background to-emerald-500/5 px-6 py-5 text-start">
                             <DialogTitle className="flex items-center gap-3 text-xl font-black tracking-tight">
                                 <div className="rounded-2xl bg-primary/10 p-2.5 text-primary">
                                     <SlidersHorizontal className="h-5 w-5" />

@@ -1107,7 +1107,7 @@ export function Discounts() {
                 <DialogContent className="left-0 top-0 flex h-[100dvh] max-h-[100dvh] w-screen max-w-none translate-x-0 translate-y-0 flex-col overflow-hidden rounded-none border-0 p-0 sm:left-[50%] sm:top-[calc(50%+var(--titlebar-height)/2+var(--safe-area-top)/2)] sm:h-auto sm:max-h-[min(calc(100dvh-var(--titlebar-height)-var(--safe-area-top)-var(--safe-area-bottom)-2rem),920px)] sm:w-[calc(100vw-2rem)] sm:max-w-5xl sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-3xl sm:border-border/60">
                     <div className="grid min-h-0 flex-1 gap-0 lg:grid-cols-[minmax(0,1.7fr)_320px]">
                         <div className="flex min-h-0 flex-1 flex-col">
-                            <DialogHeader className="space-y-2 border-b bg-background px-4 py-4 pr-14 text-left sm:px-8 sm:py-6">
+                            <DialogHeader className="space-y-2 border-b bg-background px-4 py-4 pr-14 text-start sm:px-8 sm:py-6">
                                 <div className="inline-flex w-fit items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-primary">
                                     {activeTab === 'products' ? <Percent className="h-3.5 w-3.5" /> : <Shapes className="h-3.5 w-3.5" />}
                                     {t('discounts.configurationMode')}

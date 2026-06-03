@@ -107,339 +107,341 @@ export function buildWorkspaceNavigation({
   const otherItems: WorkspaceNavigationItem[] = [
     ...(isCoreRole && hasFeature("pos")
       ? [
-          {
-            name: t("nav.pos", { defaultValue: "Point of Sale" }),
-            href: "/pos",
-            icon: CreditCard,
-          },
-        ]
+        {
+          name: t("nav.pos", { defaultValue: "Point of Sale" }),
+          href: "/pos",
+          icon: CreditCard,
+        },
+      ]
       : []),
     ...(isCoreRole && hasFeature("instant_pos") && features.instant_pos
       ? [
-          {
-            name: t("nav.instantPos", { defaultValue: "Instant POS" }),
-            href: "/instant-pos",
-            icon: Zap,
-            children: features.kds_enabled ? [
-              {
-                name: t("nav.kdsDashboard", { defaultValue: "KDS Dashboard" }),
-                href: "/kds",
-                icon: Monitor,
-              },
-            ] : undefined,
-          },
-        ]
+        {
+          name: t("nav.instantPos", { defaultValue: "Instant POS" }),
+          href: "/instant-pos",
+          icon: Zap,
+          children: features.kds_enabled ? [
+            {
+              name: t("nav.kdsDashboard", { defaultValue: "KDS Dashboard" }),
+              href: "/kds",
+              icon: Monitor,
+            },
+          ] : undefined,
+        },
+      ]
       : []),
     ...(hasFeature("sales_history")
       ? [
-          {
-            name: t("nav.sales", { defaultValue: "Sales History" }),
-            href: "/sales",
-            icon: Receipt,
-          },
-        ]
+        {
+          name: t("nav.sales", { defaultValue: "Sales History" }),
+          href: "/sales",
+          icon: Receipt,
+        },
+      ]
       : []),
     ...(isCoreRole && hasFeature("crm")
       ? [
-          ...(canAccessPermission("businessPartners.access")
-            ? [
-                {
-                  name: t("businessPartners.title", {
-                    defaultValue: "Business Partners",
-                  }),
-                  href: "/business-partners",
-                  icon: UsersRound,
-                },
-              ]
-            : []),
-          ...(canAccessPermission("customers.access")
-            ? [
-                {
-                  name: t("nav.customers", { defaultValue: "Customers" }),
-                  href: "/customers",
-                  icon: Users,
-                },
-              ]
-            : []),
-          ...(canAccessPermission("suppliers.access")
-            ? [
-                {
-                  name: t("nav.suppliers", { defaultValue: "Suppliers" }),
-                  href: "/suppliers",
-                  icon: Truck,
-                },
-              ]
-            : []),
-          ...(canAccessPermission("orders.access")
-            ? [
-                {
-                  name: t("nav.orders", { defaultValue: "Orders" }),
-                  href: "/orders",
-                  icon: ShoppingCart,
-                },
-              ]
-            : []),
-        ]
+        ...(canAccessPermission("businessPartners.access")
+          ? [
+            {
+              name: t("businessPartners.title", {
+                defaultValue: "Business Partners",
+              }),
+              href: "/business-partners",
+              icon: UsersRound,
+            },
+          ]
+          : []),
+        ...(canAccessPermission("customers.access")
+          ? [
+            {
+              name: t("nav.customers", { defaultValue: "Customers" }),
+              href: "/customers",
+              icon: Users,
+            },
+          ]
+          : []),
+        ...(canAccessPermission("suppliers.access")
+          ? [
+            {
+              name: t("nav.suppliers", { defaultValue: "Suppliers" }),
+              href: "/suppliers",
+              icon: Truck,
+            },
+          ]
+          : []),
+        ...(canAccessPermission("orders.access")
+          ? [
+            {
+              name: t("nav.orders", { defaultValue: "Orders" }),
+              href: "/orders",
+              icon: ShoppingCart,
+            },
+          ]
+          : []),
+      ]
       : []),
     ...(isCoreRole && canUseEcommerce && canAccessPermission("ecommerce.access")
       ? [
-          {
-            name: t("nav.ecommerce", { defaultValue: "E-Commerce" }),
-            href: "/ecommerce",
-            icon: Store,
-          },
-        ]
+        {
+          name: t("nav.ecommerce", { defaultValue: "E-Commerce" }),
+          href: "/ecommerce",
+          icon: Store,
+        },
+      ]
       : []),
     ...(isCoreRole && hasFeature("travel_agency") && canAccessPermission("travelAgency.access")
       ? [
-          {
-            name: t("nav.travelAgency", { defaultValue: "Travel Agency" }),
-            href: "/travel-agency",
-            icon: Plane,
-          },
-        ]
+        {
+          name: t("nav.travelAgency", { defaultValue: "Travel Agency" }),
+          href: "/travel-agency",
+          icon: Plane,
+        },
+      ]
       : []),
     ...(isCoreRole && hasFeature("real_estate") && canAccessPermission("realEstate.access")
       ? [
-          {
-            name: t("realEstate.title", { defaultValue: "Real Estate" }),
-            href: "/real-estate",
-            icon: Building2,
-          },
-        ]
+        {
+          name: t("realEstate.title", { defaultValue: "Real Estate" }),
+          href: "/real-estate",
+          icon: Building2,
+        },
+      ]
       : []),
     ...(hasFeature("loans") || hasFeature("installments") || hasFeature("real_estate")
       ? [
-          ...(canAccessPermission("loans.access")
-            && hasFeature("loans")
-            ? [
-                {
-                  name: t("nav.loans", { defaultValue: "Loans" }),
-                  href: "/loans",
-                  icon: HandCoins,
-                },
-              ]
-            : []),
-          ...((hasFeature("installments") || hasFeature("real_estate"))
-            && canAccessPermission("installments.access")
-            ? [
-                {
-                  name: t("nav.installments", {
-                    defaultValue: t("loans.title", { defaultValue: "Installments" }),
-                  }),
-                  href: "/installments",
-                  icon: Copy,
-                },
-              ]
-            : []),
-        ]
+        ...(canAccessPermission("loans.access")
+          && hasFeature("loans")
+          ? [
+            {
+              name: t("nav.loans", { defaultValue: "Loans" }),
+              href: "/loans",
+              icon: HandCoins,
+            },
+          ]
+          : []),
+        ...((hasFeature("installments") || hasFeature("real_estate"))
+          && canAccessPermission("installments.access")
+          ? [
+            {
+              name: t("nav.installments", {
+                defaultValue: t("loans.title", { defaultValue: "Installments" }),
+              }),
+              href: "/installments",
+              icon: Copy,
+            },
+          ]
+          : []),
+      ]
       : []),
     ...(isCoreRole
       ? [
-          ...(hasFeature("ledger") && canAccessPermission("ledger.access")
-            ? [
-                {
-                  name: t("nav.ledger", { defaultValue: "Ledger" }),
-                  href: "/ledger",
-                  icon: Wallet,
-                },
-              ]
-            : []),
-          ...(hasFeature("payments") && canAccessPermission("payment.access")
-            ? [
-                {
-                  name: t("nav.payments", { defaultValue: "Payments" }),
-                  href: "/payments",
-                  icon: CreditCard,
-                },
-              ]
-            : []),
-          ...(hasFeature("direct_transactions") && canAccessPermission("directTransaction.access")
-            ? [
-                {
-                  name: t("nav.directTransactions", {
-                    defaultValue: "Direct Transactions",
-                  }),
-                  href: "/direct-transactions",
-                  icon: ArrowRightLeft,
-                },
-              ]
-            : []),
-          ...(hasFeature("net_revenue") && canAccessPermission("revenueAnalytics.access")
-            ? [
-                {
-                  name: t("nav.revenue", { defaultValue: "Revenue Analytics" }),
-                  href: "/revenue",
-                  icon: BarChart3,
-                },
-              ]
-            : []),
-          ...(hasFeature("budget") && canAccessPermission("accounting.access")
-            ? [
-                {
-                  name: t("nav.budget", { defaultValue: "Accounting" }),
-                  href: "/budget",
-                  icon: FileSpreadsheet,
-                },
-              ]
-            : []),
-          ...(hasFeature("monthly_comparison")
-            ? [
-                {
-                  name: t("monthlyComparison.title", {
-                    defaultValue: "Monthly Comparison",
-                  }),
-                  href: "/monthly-comparison",
-                  icon: ArrowRightLeft,
-                },
-              ]
-            : []),
-          ...(hasFeature("team_performance") && canAccessPermission("teamPerformance.access")
-            ? [
-                {
-                  name: t("nav.performance", {
-                    defaultValue: "Team Performance",
-                  }),
-                  href: "/performance",
-                  icon: TrendingUp,
-                },
-              ]
-            : []),
-        ]
+        ...(hasFeature("ledger") && canAccessPermission("ledger.access")
+          ? [
+            {
+              name: t("nav.ledger", { defaultValue: "Ledger" }),
+              href: "/ledger",
+              icon: Wallet,
+            },
+          ]
+          : []),
+        ...(hasFeature("payments") && canAccessPermission("payment.access")
+          ? [
+            {
+              name: t("nav.payments", { defaultValue: "Payments" }),
+              href: "/payments",
+              icon: CreditCard,
+            },
+          ]
+          : []),
+        ...(hasFeature("direct_transactions") && canAccessPermission("directTransaction.access")
+          ? [
+            {
+              name: t("nav.directTransactions", {
+                defaultValue: "Direct Transactions",
+              }),
+              href: "/direct-transactions",
+              icon: ArrowRightLeft,
+            },
+          ]
+          : []),
+        ...(hasFeature("net_revenue") && canAccessPermission("revenueAnalytics.access")
+          ? [
+            {
+              name: t("nav.revenue", { defaultValue: "Revenue Analytics" }),
+              href: "/revenue",
+              icon: BarChart3,
+            },
+          ]
+          : []),
+        ...(hasFeature("budget") && canAccessPermission("accounting.access")
+          ? [
+            {
+              name: t("nav.budget", { defaultValue: "Accounting" }),
+              href: "/budget",
+              icon: FileSpreadsheet,
+            },
+          ]
+          : []),
+        ...(hasFeature("monthly_comparison")
+          ? [
+            {
+              name: t("monthlyComparison.title", {
+                defaultValue: "Monthly Comparison",
+              }),
+              href: "/monthly-comparison",
+              icon: ArrowRightLeft,
+            },
+          ]
+          : []),
+        ...(hasFeature("team_performance") && canAccessPermission("teamPerformance.access")
+          ? [
+            {
+              name: t("nav.performance", {
+                defaultValue: "Team Performance",
+              }),
+              href: "/performance",
+              icon: TrendingUp,
+            },
+          ]
+          : []),
+      ]
       : []),
     ...(features.allowed_currencies.length > 1
       ? [
-          {
-            name: t("nav.currencyConverter", { defaultValue: "Currency Converter" }),
-            href: "/currency-converter",
-            icon: Calculator,
-            mobileOnly: true,
-          },
-        ]
+        {
+          name: t("nav.currencyConverter", { defaultValue: "Currency Converter" }),
+          href: "/currency-converter",
+          icon: Calculator,
+          mobileOnly: true,
+        },
+      ]
       : []),
     ...(isCoreRole && hasFeature("allow_whatsapp") && isDesktopDevice
       ? [
-          {
-            name: t("nav.whatsapp", { defaultValue: "WhatsApp" }),
-            href: "/whatsapp",
-            icon: MessageSquare,
-            status: whatsappStatus,
-          },
-        ]
+        {
+          name: t("nav.whatsapp", { defaultValue: "WhatsApp" }),
+          href: "/whatsapp",
+          icon: MessageSquare,
+          status: whatsappStatus,
+        },
+      ]
       : []),
     ...(hasFeature("products")
       ? [
-          {
-            name: t("nav.products", { defaultValue: "Products" }),
-            href: "/products",
-            icon: Package,
-          },
-        ]
+        {
+          name: t("nav.products", { defaultValue: "Products" }),
+          href: "/products",
+          icon: Package,
+        },
+      ]
       : []),
     ...(hasFeature("discounts") && canAccessPermission("discounts.access")
       ? [
-          {
-            name: t("nav.discounts", { defaultValue: "Discounts" }),
-            href: "/discounts",
-            icon: Percent,
-          },
-        ]
+        {
+          name: t("nav.discounts", { defaultValue: "Discounts" }),
+          href: "/discounts",
+          icon: Percent,
+        },
+      ]
       : []),
     ...(hasFeature("storages") && canAccessPermission("storages.access")
       ? [
-          {
-            name: t("nav.storages", { defaultValue: "Storages" }),
-            href: "/storages",
-            icon: Warehouse,
-          },
-        ]
+        {
+          name: t("nav.storages", { defaultValue: "Storages" }),
+          href: "/storages",
+          icon: Warehouse,
+        },
+      ]
       : []),
     ...(hasFeature("inventory_transfer") && canAccessPermission("inventoryTransfer.access")
       ? [
-          {
-            name: t("nav.inventoryTransfer", {
-              defaultValue: "Inventory Transfer",
-            }),
-            href: "/inventory-transfer",
-            icon: ArrowRightLeft,
-          },
-        ]
+        {
+          name: t("nav.inventoryTransfer", {
+            defaultValue: "Inventory Transfer",
+          }),
+          href: "/inventory-transfer",
+          icon: ArrowRightLeft,
+        },
+      ]
       : []),
     ...(hasFeature("inventory_transactions") && canAccessPermission("inventoryTransactions.access")
       ? [
-          {
-            name: t("nav.inventoryTransactions", {
-              defaultValue: "Inventory Transactions",
-            }),
-            href: "/inventory-transactions",
-            icon: History,
-          },
-        ]
+        {
+          name: t("nav.inventoryTransactions", {
+            defaultValue: "Inventory Transactions",
+          }),
+          href: "/inventory-transactions",
+          icon: History,
+        },
+      ]
       : []),
     ...(hasFeature("stock_adjustments") && canAccessPermission("stockAdjustments.access")
       ? [
-          {
-            name: t("nav.stockAdjustments", {
-              defaultValue: "Stock Adjustments",
-            }),
-            href: "/stock-adjustments",
-            icon: Boxes,
-          },
-        ]
+        {
+          name: t("nav.stockAdjustments", {
+            defaultValue: "Stock Adjustments",
+          }),
+          href: "/stock-adjustments",
+          icon: Boxes,
+        },
+      ]
       : []),
     ...(hasFeature("invoices_history") && canAccessPermission("invoiceHistory.access")
       ? [
-          {
-            name: t("nav.invoicesHistory", {
-              defaultValue: "Invoices History",
-            }),
-            href: "/invoices-history",
-            icon: FileText,
-            children: [
-              {
-                name: t("nav.uploadFiles", { defaultValue: "Upload Files" }),
-                href: "/invoices-history/upload-files",
-                icon: Upload,
-              },
-            ],
-          },
-        ]
+        {
+          name: t("nav.invoicesHistory", {
+            defaultValue: "Invoices History",
+          }),
+          href: "/invoices-history",
+          icon: FileText,
+          children: [
+            {
+              name: t("nav.uploadFiles", { defaultValue: "Upload Files" }),
+              href: "/invoices-history/upload-files",
+              icon: Upload,
+            },
+          ],
+        },
+      ]
       : []),
     ...(isCoreRole
       ? [
-          ...(hasFeature("hr") && canAccessPermission("hr.access")
-            ? [
-                {
-                  name: t("nav.hr", { defaultValue: "HR" }),
-                  href: "/hr",
-                  icon: UsersRound,
-                },
-              ]
-            : []),
-          ...(hasFeature("members")
-            ? [
-                {
-                  name: t("members.adminControlTitle", { defaultValue: "Members & Admin Control" }),
-                  href: "/members",
-                  icon: Users,
-                },
-              ]
-            : []),
-          ...(role === "admin"
-            ? [
-                {
-                  name: t("customTemplates.title", { defaultValue: "Custom Templates" }),
-                  href: "/custom-templates",
-                  icon: FileText,
-                },
-              ]
-            : []),
-          {
-            name: t("nav.settings", { defaultValue: "Settings" }),
-            href: "/settings",
-            icon: Settings,
-          },
-        ]
+        ...(hasFeature("hr") && canAccessPermission("hr.access")
+          ? [
+            {
+              name: t("nav.hr", { defaultValue: "HR" }),
+              href: "/hr",
+              icon: UsersRound,
+            },
+          ]
+          : []),
+        ...(hasFeature("members")
+          ? [
+            {
+              name: role === "admin"
+                ? t("members.title", { defaultValue: "Members & Admin Control" })
+                : t("members.titleShort", { defaultValue: "Members" }),
+              href: "/members",
+              icon: Users,
+            },
+          ]
+          : []),
+        ...(role === "admin"
+          ? [
+            {
+              name: t("customTemplates.title", { defaultValue: "Custom Templates" }),
+              href: "/custom-templates",
+              icon: FileText,
+            },
+          ]
+          : []),
+        {
+          name: t("nav.settings", { defaultValue: "Settings" }),
+          href: "/settings",
+          icon: Settings,
+        },
+      ]
       : []),
   ];
 

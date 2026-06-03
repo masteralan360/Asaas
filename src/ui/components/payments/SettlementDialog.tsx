@@ -160,7 +160,7 @@ export function SettlementDialog({
                     }
                 }}
             >
-                <DialogHeader className="border-b bg-muted/30 px-4 py-4 pr-14 text-left sm:px-6 sm:py-5">
+                <DialogHeader className="border-b bg-muted/30 px-4 py-4 pr-14 text-start sm:px-6 sm:py-5">
                     <DialogTitle>{actionLabel}</DialogTitle>
                     <DialogDescription>
                         {obligation 

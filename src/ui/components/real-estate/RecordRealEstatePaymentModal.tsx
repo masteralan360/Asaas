@@ -129,7 +129,7 @@ export function RecordRealEstatePaymentModal({
     return (
         <Dialog open={isOpen} onOpenChange={onOpenChange}>
             <DialogContent className="top-[calc(50%+var(--titlebar-height)/2+var(--safe-area-top)/2)] w-[calc(100vw-0.75rem)] max-w-lg rounded-[1.25rem] border-border/60 p-0 sm:w-full sm:rounded-[1.5rem]">
-                <DialogHeader className="border-b bg-muted/30 px-4 py-4 pr-14 text-left sm:px-6">
+                <DialogHeader className="border-b bg-muted/30 px-4 py-4 pr-14 text-start sm:px-6">
                     <DialogTitle>{t('realEstate.recordContractPayment', { defaultValue: 'Record Contract Payment' })}</DialogTitle>
                     <DialogDescription>
                         {transaction ? `${transaction.transactionNo} / ${transaction.location}` : ''}

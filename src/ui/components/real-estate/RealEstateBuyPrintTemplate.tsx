@@ -199,7 +199,7 @@ function TransactionKeyPickerDialog({
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="max-w-lg overflow-hidden p-0">
-                <DialogHeader className="border-b px-5 py-4 text-left">
+                <DialogHeader className="border-b px-5 py-4 text-start">
                     <DialogTitle>{displayT('customTemplates.keyPicker.title')}</DialogTitle>
                 </DialogHeader>
                 <div className="space-y-3 p-4">

@@ -97,19 +97,20 @@ type BatchFormState = {
   notes: string;
 };
 
-const adjustmentReasonOptions: Array<{
-  value: StockAdjustmentReason;
-  label: string;
-}> = [
-  { value: "purchase", label: "Purchase" },
-  { value: "return", label: "Return" },
-  { value: "correction", label: "Correction" },
-  { value: "damage", label: "Damage" },
-  { value: "theft", label: "Theft" },
-  { value: "expired", label: "Expired" },
-  { value: "production", label: "Production" },
-  { value: "other", label: "Other" },
-];
+function getAdjustmentReasonOptions(
+  translate: (key: string, defaultValue: string) => string,
+) {
+  return [
+    { value: "purchase" as StockAdjustmentReason, label: translate("stockAdjustments.reasons.purchase", "Purchase") },
+    { value: "return" as StockAdjustmentReason, label: translate("stockAdjustments.reasons.return", "Return") },
+    { value: "correction" as StockAdjustmentReason, label: translate("stockAdjustments.reasons.correction", "Correction") },
+    { value: "damage" as StockAdjustmentReason, label: translate("stockAdjustments.reasons.damage", "Damage") },
+    { value: "theft" as StockAdjustmentReason, label: translate("stockAdjustments.reasons.theft", "Theft") },
+    { value: "expired" as StockAdjustmentReason, label: translate("stockAdjustments.reasons.expired", "Expired") },
+    { value: "production" as StockAdjustmentReason, label: translate("stockAdjustments.reasons.production", "Production") },
+    { value: "other" as StockAdjustmentReason, label: translate("stockAdjustments.reasons.other", "Other") },
+  ];
+}
 
 const emptyAdjustmentForm: AdjustmentFormState = {
   productId: "",
@@ -136,14 +137,21 @@ function groupKey(productId: string, storageId: string) {
   return `${productId}::${storageId}`;
 }
 
-function getReasonLabel(reason: StockAdjustmentReason) {
-  return (
-    adjustmentReasonOptions.find((option) => option.value === reason)?.label ||
-    reason
-  );
+function getReasonLabel(
+  reason: StockAdjustmentReason,
+  translate?: (key: string, defaultValue: string, options?: Record<string, unknown>) => string,
+) {
+  const fallback = reason.charAt(0).toUpperCase() + reason.slice(1);
+  if (!translate) {
+    return fallback;
+  }
+  return translate(`stockAdjustments.reasons.${reason}`, fallback);
 }
 
-function getExpiryBadge(expiryDate?: string | null) {
+function getExpiryBadge(
+  expiryDate?: string | null,
+  t?: (key: string, defaultValue: string, options?: Record<string, unknown>) => string,
+) {
   if (!expiryDate) return null;
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -152,19 +160,37 @@ function getExpiryBadge(expiryDate?: string | null) {
   const days = Math.ceil((expiry.getTime() - today.getTime()) / 86400000);
   if (days < 0)
     return {
-      label: "Expired",
+      label: t ? t("stockAdjustments.expired", "Expired") : "Expired",
       className: "border-rose-500/20 bg-rose-500/10 text-rose-700",
     };
   if (days <= 30)
     return {
-      label: `Near expiry • ${days}d`,
+      label: t
+        ? t("stockAdjustments.nearExpiry", "Near expiry • {{days}}d", { days })
+        : `Near expiry • ${days}d`,
       className: "border-amber-500/20 bg-amber-500/10 text-amber-700",
     };
   return null;
 }
 
-function mapTransactionLabel(transaction: InventoryTransaction) {
-  return transaction.transactionType.replace(/_/g, " ");
+const transactionTypeLabels: Record<string, string> = {
+  stock_adjustment: "Stock Adjustment",
+  transfer_in: "Transfer In",
+  transfer_out: "Transfer Out",
+  initial_stock: "Initial Stock",
+};
+
+function mapTransactionLabel(
+  transaction: InventoryTransaction,
+  translate?: (key: string, defaultValue: string) => string,
+) {
+  if (!translate) {
+    return transactionTypeLabels[transaction.transactionType] || transaction.transactionType.replace(/_/g, " ");
+  }
+  return translate(
+    `stockAdjustments.transactionType.${transaction.transactionType}`,
+    transactionTypeLabels[transaction.transactionType] || transaction.transactionType.replace(/_/g, " "),
+  );
 }
 
 export function StockAdjustments() {
@@ -182,6 +208,8 @@ export function StockAdjustments() {
   const adjustments = useStockAdjustments(workspaceId);
   const batches = useStockBatches(workspaceId);
   const transactions = useInventoryTransactions(workspaceId);
+
+  const reasonOptions = useMemo(() => getAdjustmentReasonOptions(t), [t]);
 
   const [activeTab, setActiveTab] = useState<ActiveTab>("adjustments");
   const [productFilter, setProductFilter] = useState("all");
@@ -524,16 +552,16 @@ export function StockAdjustments() {
         createdBy: user?.id ?? null,
       });
       toast({
-        title: "Adjustment saved",
-        description: "Inventory and audit log were updated.",
+        title: t("stockAdjustments.messages.adjustmentSaved", "Adjustment saved"),
+        description: t("stockAdjustments.messages.adjustmentSavedDesc", "Inventory and audit log were updated."),
       });
       setAdjustmentDialogOpen(false);
       resetAdjustmentForm();
     } catch (error) {
       toast({
-        title: "Unable to save adjustment",
+        title: t("stockAdjustments.messages.adjustmentFailed", "Unable to save adjustment"),
         description:
-          error instanceof Error ? error.message : "Something went wrong.",
+          error instanceof Error ? error.message : t("stockAdjustments.messages.genericError", "Something went wrong."),
         variant: "destructive",
       });
       setIsSavingAdjustment(false);
@@ -560,14 +588,14 @@ export function StockAdjustments() {
       if (batchForm.id) {
         await updateStockBatch(batchForm.id, payload);
         toast({
-          title: "Batch updated",
-          description: "Batch changes were saved.",
+          title: t("stockAdjustments.messages.batchUpdated", "Batch updated"),
+          description: t("stockAdjustments.messages.batchUpdatedDesc", "Batch changes were saved."),
         });
       } else {
         await createStockBatch(workspaceId, payload);
         toast({
-          title: "Batch created",
-          description: "New batch added successfully.",
+          title: t("stockAdjustments.messages.batchCreated", "Batch created"),
+          description: t("stockAdjustments.messages.batchCreatedDesc", "New batch added successfully."),
         });
       }
 
@@ -575,9 +603,9 @@ export function StockAdjustments() {
       resetBatchForm();
     } catch (error) {
       toast({
-        title: "Unable to save batch",
+        title: t("stockAdjustments.messages.batchFailed", "Unable to save batch"),
         description:
-          error instanceof Error ? error.message : "Something went wrong.",
+          error instanceof Error ? error.message : t("stockAdjustments.messages.genericError", "Something went wrong."),
         variant: "destructive",
       });
       setIsSavingBatch(false);
@@ -590,15 +618,15 @@ export function StockAdjustments() {
     try {
       await deleteStockBatch(batchToDelete.id);
       toast({
-        title: "Batch deleted",
-        description: "The batch was removed from active tracking.",
+        title: t("stockAdjustments.messages.batchDeleted", "Batch deleted"),
+        description: t("stockAdjustments.messages.batchDeletedDesc", "The batch was removed from active tracking."),
       });
       setBatchToDelete(null);
     } catch (error) {
       toast({
-        title: "Unable to delete batch",
+        title: t("stockAdjustments.messages.batchDeleteFailed", "Unable to delete batch"),
         description:
-          error instanceof Error ? error.message : "Something went wrong.",
+          error instanceof Error ? error.message : t("stockAdjustments.messages.genericError", "Something went wrong."),
         variant: "destructive",
       });
     } finally {
@@ -626,8 +654,8 @@ export function StockAdjustments() {
           </h1>
           <p className="max-w-3xl text-muted-foreground">
             {canManageStockBatches
-              ? "Record manual stock changes, manage product batches, and review the unified inventory log."
-              : "Record manual stock changes and review the unified inventory log."}
+              ? t("stockAdjustments.pageSubtitle", "Record manual stock changes, manage product batches, and review the unified inventory log.")
+              : t("stockAdjustments.pageSubtitleSimple", "Record manual stock changes and review the unified inventory log.")}
           </p>
         </div>
         {canEdit && (
@@ -640,7 +668,7 @@ export function StockAdjustments() {
               }}
             >
               <Plus className="h-4 w-4" />
-              New Stock Adjustment
+              {t("stockAdjustments.newAdjustment", "New Stock Adjustment")}
             </Button>
             {canManageStockBatches && (
               <Button
@@ -652,7 +680,7 @@ export function StockAdjustments() {
                 }}
               >
                 <Plus className="h-4 w-4" />
-                New Stock Batch
+                {t("stockAdjustments.newBatch", "New Stock Batch")}
               </Button>
             )}
           </div>
@@ -672,11 +700,11 @@ export function StockAdjustments() {
           canManageStockBatches ? "max-w-xl grid-cols-2" : "max-w-xs grid-cols-1",
         )}>
           <TabsTrigger value="adjustments" className="min-h-10">
-            Stock Adjustments
+            {t("stockAdjustments.tabs.adjustments", "Stock Adjustments")}
           </TabsTrigger>
           {canManageStockBatches && (
             <TabsTrigger value="batches" className="min-h-10">
-              Stock Batches
+              {t("stockAdjustments.tabs.batches", "Stock Batches")}
             </TabsTrigger>
           )}
         </TabsList>
@@ -684,20 +712,20 @@ export function StockAdjustments() {
         <TabsContent value="adjustments" className="space-y-6">
           <Card className="border-border/60 shadow-sm">
             <CardHeader>
-              <CardTitle>Filters</CardTitle>
+              <CardTitle>{t("stockAdjustments.filters.title", "Filters")}</CardTitle>
               <CardDescription>
-                Filter by product, storage, type, reason, or date range.
+                {t("stockAdjustments.filters.description", "Filter by product, storage, type, reason, or date range.")}
               </CardDescription>
             </CardHeader>
             <CardContent className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
               <div className="space-y-2">
-                <Label>Product</Label>
+                <Label>{t("stockAdjustments.filters.product", "Product")}</Label>
                 <Select value={productFilter} onValueChange={setProductFilter}>
                   <SelectTrigger className="rounded-xl">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">All products</SelectItem>
+                    <SelectItem value="all">{t("stockAdjustments.filters.allProducts", "All products")}</SelectItem>
                     {products.map((product) => (
                       <SelectItem key={product.id} value={product.id}>
                         {product.name}
@@ -707,13 +735,13 @@ export function StockAdjustments() {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>Storage</Label>
+                <Label>{t("stockAdjustments.filters.storage", "Storage")}</Label>
                 <Select value={storageFilter} onValueChange={setStorageFilter}>
                   <SelectTrigger className="rounded-xl">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">All storages</SelectItem>
+                    <SelectItem value="all">{t("stockAdjustments.filters.allStorages", "All storages")}</SelectItem>
                     {storages.map((storage) => (
                       <SelectItem key={storage.id} value={storage.id}>
                         {storage.name}
@@ -723,7 +751,7 @@ export function StockAdjustments() {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>Type</Label>
+                <Label>{t("stockAdjustments.filters.type", "Type")}</Label>
                 <Select
                   value={typeFilter}
                   onValueChange={(value) =>
@@ -734,14 +762,14 @@ export function StockAdjustments() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">All types</SelectItem>
-                    <SelectItem value="increase">Increase</SelectItem>
-                    <SelectItem value="decrease">Decrease</SelectItem>
+                    <SelectItem value="all">{t("stockAdjustments.filters.allTypes", "All types")}</SelectItem>
+                    <SelectItem value="increase">{t("stockAdjustments.filters.increase", "Increase")}</SelectItem>
+                    <SelectItem value="decrease">{t("stockAdjustments.filters.decrease", "Decrease")}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>Reason</Label>
+                <Label>{t("stockAdjustments.filters.reason", "Reason")}</Label>
                 <Select
                   value={reasonFilter}
                   onValueChange={(value) =>
@@ -752,8 +780,8 @@ export function StockAdjustments() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">All reasons</SelectItem>
-                    {adjustmentReasonOptions.map((option) => (
+                    <SelectItem value="all">{t("stockAdjustments.filters.allReasons", "All reasons")}</SelectItem>
+                    {reasonOptions.map((option) => (
                       <SelectItem key={option.value} value={option.value}>
                         {option.label}
                       </SelectItem>
@@ -762,22 +790,22 @@ export function StockAdjustments() {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>Start</Label>
+                <Label>{t("stockAdjustments.filters.start", "Start")}</Label>
                 <DateTimePicker
                   mode="date"
                   date={startDate}
                   setDate={setStartDate}
-                  placeholder="Start date"
+                  placeholder={t("stockAdjustments.filters.startDate", "Start date")}
                   buttonClassName="rounded-xl"
                 />
               </div>
               <div className="space-y-2">
-                <Label>End</Label>
+                <Label>{t("stockAdjustments.filters.end", "End")}</Label>
                 <DateTimePicker
                   mode="date"
                   date={endDate}
                   setDate={setEndDate}
-                  placeholder="End date"
+                  placeholder={t("stockAdjustments.filters.endDate", "End date")}
                   buttonClassName="rounded-xl"
                 />
               </div>
@@ -786,16 +814,15 @@ export function StockAdjustments() {
 
           <Card className="border-border/60 shadow-sm">
             <CardHeader>
-              <CardTitle>Adjustment history</CardTitle>
+              <CardTitle>{t("stockAdjustments.history.title", "Adjustment history")}</CardTitle>
               <CardDescription>
-                Each entry shows the before and after quantity snapshot for the
-                selected storage.
+                {t("stockAdjustments.history.description", "Each entry shows the before and after quantity snapshot for the selected storage.")}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
               {filteredAdjustments.length === 0 ? (
                 <div className="rounded-2xl border border-dashed px-4 py-10 text-center text-sm text-muted-foreground">
-                  No adjustments match the current filters.
+                  {t("stockAdjustments.history.empty", "No adjustments match the current filters.")}
                 </div>
               ) : (
                 filteredAdjustments.map((adjustment) => {
@@ -810,7 +837,7 @@ export function StockAdjustments() {
                           <div className="flex flex-wrap items-center gap-2">
                             <span className="font-bold">
                               {productsById.get(adjustment.productId)?.name ||
-                                "Unknown product"}
+                                t("inventoryTransfer.transactions.unknownProduct", "Unknown product")}
                             </span>
                             <span
                               className={cn(
@@ -825,29 +852,30 @@ export function StockAdjustments() {
                               ) : (
                                 <ArrowDown className="h-3.5 w-3.5" />
                               )}
-                              {adjustment.adjustmentType}
+                              {adjustment.adjustmentType === "increase"
+                                ? t("stockAdjustments.filters.increase", "Increase")
+                                : t("stockAdjustments.filters.decrease", "Decrease")}
                             </span>
                             <span className="rounded-full border border-border/60 bg-muted/30 px-2.5 py-1 text-xs font-semibold text-muted-foreground">
-                              {getReasonLabel(adjustment.reason)}
+                              {getReasonLabel(adjustment.reason, t)}
                             </span>
                           </div>
                           <div className="text-sm text-muted-foreground">
                             {storagesById.get(adjustment.storageId)?.name ||
-                              "Unknown storage"}{" "}
+                              t("inventoryTransfer.unknownStorage", "Unknown storage")}{" "}
                             • {formatDateTime(adjustment.createdAt)}
                           </div>
                           <div className="flex flex-wrap gap-2 text-sm">
                             <span className="rounded-full border border-border/60 px-3 py-1 font-semibold">
-                              Qty {adjustment.quantity}
+                              {t("stockAdjustments.history.qty", "Qty {{value}}", { value: formatNumericInput(String(adjustment.quantity)) })}
                             </span>
                             <span className="rounded-full border border-border/60 px-3 py-1 font-semibold">
-                              {adjustment.previousQuantity} →{" "}
-                              {adjustment.newQuantity}
+                              {t("stockAdjustments.history.previousToNew", "{{previous}} → {{new}}", { previous: String(adjustment.previousQuantity), new: String(adjustment.newQuantity) })}
                             </span>
                           </div>
                         </div>
                         <div className="max-w-md text-sm text-muted-foreground">
-                          {adjustment.notes || "No notes provided."}
+                          {adjustment.notes || t("stockAdjustments.history.noNotes", "No notes provided.")}
                         </div>
                       </div>
                     </div>
@@ -861,17 +889,16 @@ export function StockAdjustments() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <History className="h-5 w-5 text-primary" />
-                Recent inventory transactions
+                {t("stockAdjustments.recentTransactions.title", "Recent inventory transactions")}
               </CardTitle>
               <CardDescription>
-                Unified audit trail for initial stock, adjustments, and
-                transfers.
+                {t("stockAdjustments.recentTransactions.description", "Unified audit trail for initial stock, adjustments, and transfers.")}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
               {recentTransactions.length === 0 ? (
                 <div className="rounded-2xl border border-dashed px-4 py-10 text-center text-sm text-muted-foreground">
-                  No inventory transactions are available yet.
+                  {t("stockAdjustments.recentTransactions.empty", "No inventory transactions are available yet.")}
                 </div>
               ) : (
                 recentTransactions.map((transaction) => {
@@ -885,7 +912,7 @@ export function StockAdjustments() {
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="font-semibold">
                             {productsById.get(transaction.productId)?.name ||
-                              "Unknown product"}
+                              t("inventoryTransfer.transactions.unknownProduct", "Unknown product")}
                           </span>
                           <span
                             className={cn(
@@ -895,19 +922,18 @@ export function StockAdjustments() {
                                 : "border-rose-500/20 bg-rose-500/10 text-rose-700",
                             )}
                           >
-                            {mapTransactionLabel(transaction)}
+                            {mapTransactionLabel(transaction, t)}
                           </span>
                         </div>
                         <div className="text-sm text-muted-foreground">
                           {storagesById.get(transaction.storageId)?.name ||
-                            "Unknown storage"}{" "}
+                            t("inventoryTransfer.unknownStorage", "Unknown storage")}{" "}
                           • {formatDateTime(transaction.createdAt)}
                         </div>
                       </div>
                       <div className="flex flex-wrap gap-2 text-sm">
                         <span className="rounded-full border border-border/60 px-3 py-1 font-semibold">
-                          Delta {isPositive ? "+" : ""}
-                          {transaction.quantityDelta}
+                          {t("stockAdjustments.recentTransactions.delta", "Delta {{sign}}{{value}}", { sign: isPositive ? "+" : "", value: formatNumericInput(String(transaction.quantityDelta)) })}
                         </span>
                         <span className="rounded-full border border-border/60 px-3 py-1 font-semibold">
                           {transaction.previousQuantity} →{" "}
@@ -926,16 +952,15 @@ export function StockAdjustments() {
         <TabsContent value="batches" className="space-y-6">
           <Card className="border-border/60 shadow-sm">
             <CardHeader>
-              <CardTitle>Batch tracking</CardTitle>
+              <CardTitle>{t("stockAdjustments.batches.title", "Batch tracking")}</CardTitle>
               <CardDescription>
-                Grouped by product and storage with a coverage check against
-                current inventory.
+                {t("stockAdjustments.batches.description", "Grouped by product and storage with a coverage check against current inventory.")}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               {batchGroups.length === 0 ? (
                 <div className="rounded-2xl border border-dashed px-4 py-10 text-center text-sm text-muted-foreground">
-                  No stock batches have been created yet.
+                  {t("stockAdjustments.batches.empty", "No stock batches have been created yet.")}
                 </div>
               ) : (
                 batchGroups.map((group) => {
@@ -954,25 +979,25 @@ export function StockAdjustments() {
                           <div className="flex flex-wrap items-center gap-2">
                             <span className="text-lg font-black">
                               {productsById.get(group.productId)?.name ||
-                                "Unknown product"}
+                                t("inventoryTransfer.transactions.unknownProduct", "Unknown product")}
                             </span>
                             <span className="rounded-full border border-border/60 bg-muted/30 px-2.5 py-1 text-xs font-semibold text-muted-foreground">
                               {storagesById.get(group.storageId)?.name ||
-                                "Unknown storage"}
+                                t("inventoryTransfer.unknownStorage", "Unknown storage")}
                             </span>
                             {mismatch && (
                               <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/20 bg-amber-500/10 px-2.5 py-1 text-xs font-semibold text-amber-700">
                                 <AlertTriangle className="h-3.5 w-3.5" />
-                                Coverage mismatch
+                                {t("stockAdjustments.batches.coverageMismatch", "Coverage mismatch")}
                               </span>
                             )}
                           </div>
                           <div className="flex flex-wrap gap-2 text-sm">
                             <span className="rounded-full border border-border/60 px-3 py-1 font-semibold">
-                              Inventory {inventoryQuantity}
+                              {t("stockAdjustments.batches.inventory", "Inventory {{value}}", { value: formatNumericInput(String(inventoryQuantity)) })}
                             </span>
                             <span className="rounded-full border border-border/60 px-3 py-1 font-semibold">
-                              Batches {group.batchQuantity}
+                              {t("stockAdjustments.batches.batchCount", "Batches {{value}}", { value: String(group.batchQuantity) })}
                             </span>
                           </div>
                         </div>
@@ -980,7 +1005,7 @@ export function StockAdjustments() {
 
                       <div className="mt-4 space-y-3">
                         {group.rows.map((batch) => {
-                          const expiryBadge = getExpiryBadge(batch.expiryDate);
+                          const expiryBadge = getExpiryBadge(batch.expiryDate, t);
                           const productDefaults = productsById.get(
                             batch.productId,
                           );
@@ -1000,7 +1025,7 @@ export function StockAdjustments() {
                                     {batch.batchNumber}
                                   </span>
                                   <span className="rounded-full border border-border/60 bg-background px-2 py-0.5 text-xs font-semibold">
-                                    Qty {batch.quantity}
+                                    {t("stockAdjustments.batches.qty", "Qty {{value}}", { value: formatNumericInput(String(batch.quantity)) })}
                                   </span>
                                   {expiryBadge && (
                                     <span
@@ -1014,24 +1039,16 @@ export function StockAdjustments() {
                                   )}
                                   {hasCustomPricing && (
                                     <span className="rounded-full border border-sky-500/20 bg-sky-500/10 px-2 py-0.5 text-xs font-semibold text-sky-700">
-                                      Custom pricing
+                                      {t("stockAdjustments.batches.customPricing", "Custom pricing")}
                                     </span>
                                   )}
                                 </div>
                                 <div className="flex flex-wrap gap-2 text-sm">
                                   <span className="rounded-full border border-border/60 bg-background px-2.5 py-1 font-semibold">
-                                    Sell{" "}
-                                    {formatCurrency(
-                                      batch.price,
-                                      batch.currency,
-                                    )}
+                                    {t("stockAdjustments.batches.sell", "Sell {{amount}}", { amount: formatCurrency(batch.price, batch.currency) })}
                                   </span>
                                   <span className="rounded-full border border-border/60 bg-background px-2.5 py-1 font-semibold">
-                                    Cost{" "}
-                                    {formatCurrency(
-                                      batch.costPrice,
-                                      batch.currency,
-                                    )}
+                                    {t("stockAdjustments.batches.cost", "Cost {{amount}}", { amount: formatCurrency(batch.costPrice, batch.currency) })}
                                   </span>
                                   <span className="rounded-full border border-border/60 bg-background px-2.5 py-1 font-semibold uppercase text-muted-foreground">
                                     {batch.currency}
@@ -1039,11 +1056,11 @@ export function StockAdjustments() {
                                 </div>
                                 <div className="text-sm text-muted-foreground">
                                   {batch.manufacturingDate
-                                    ? `Manufactured ${formatDate(batch.manufacturingDate)}`
-                                    : "No manufacturing date"}
+                                    ? t("stockAdjustments.batches.manufactured", "Manufactured {{date}}", { date: formatDate(batch.manufacturingDate) })
+                                    : t("stockAdjustments.batches.noManufacturingDate", "No manufacturing date")}
                                   {batch.expiryDate
-                                    ? ` • Expires ${formatDate(batch.expiryDate)}`
-                                    : " • No expiry date"}
+                                    ? ` • ${t("stockAdjustments.batches.expires", "Expires {{date}}", { date: formatDate(batch.expiryDate) })}`
+                                    : ` • ${t("stockAdjustments.batches.noExpiryDate", "No expiry date")}`}
                                 </div>
                                 {batch.notes && (
                                   <div className="text-sm text-muted-foreground">
@@ -1086,7 +1103,7 @@ export function StockAdjustments() {
                                     }}
                                   >
                                     <Pencil className="h-4 w-4" />
-                                    Edit
+                                    {t("stockAdjustments.batches.edit", "Edit")}
                                   </Button>
                                   <Button
                                     variant="outline"
@@ -1094,7 +1111,7 @@ export function StockAdjustments() {
                                     onClick={() => setBatchToDelete(batch)}
                                   >
                                     <Trash2 className="h-4 w-4" />
-                                    Delete
+                                    {t("stockAdjustments.batches.delete", "Delete")}
                                   </Button>
                                 </div>
                               )}
@@ -1120,11 +1137,10 @@ export function StockAdjustments() {
         }}
       >
         <DialogContent className="top-[calc(50%+var(--titlebar-height)/2+var(--safe-area-top)/2)] flex max-h-[calc(100dvh-var(--titlebar-height)-var(--safe-area-top)-var(--safe-area-bottom)-0.75rem)] w-[calc(100vw-0.75rem)] max-w-3xl flex-col overflow-hidden rounded-[1.25rem] border-border/60 p-0 sm:w-full sm:max-h-[min(calc(100dvh-var(--titlebar-height)-var(--safe-area-top)-var(--safe-area-bottom)-2rem),820px)] sm:rounded-[1.75rem]">
-          <DialogHeader className="border-b bg-muted/30 px-4 py-4 pr-14 text-left sm:px-6 sm:py-5">
-            <DialogTitle>New Stock Adjustment</DialogTitle>
+          <DialogHeader className="border-b bg-muted/30 px-4 py-4 pr-14 text-start sm:px-6 sm:py-5">
+            <DialogTitle>{t("stockAdjustments.dialog.adjustment.title", "New Stock Adjustment")}</DialogTitle>
             <DialogDescription>
-              Pick the product and storage, then set the final stock quantity
-              you want to keep there.
+              {t("stockAdjustments.dialog.adjustment.description", "Pick the product and storage, then set the final stock quantity you want to keep there.")}
             </DialogDescription>
           </DialogHeader>
           <form
@@ -1134,20 +1150,20 @@ export function StockAdjustments() {
             <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6 sm:py-6">
               <div className="grid gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="adjustment-search">Product search</Label>
+                  <Label htmlFor="adjustment-search">{t("stockAdjustments.dialog.adjustment.productSearch", "Product search")}</Label>
                   <Input
                     id="adjustment-search"
                     value={adjustmentSearch}
                     onChange={(event) =>
                       setAdjustmentSearch(event.target.value)
                     }
-                    placeholder="Search products by name or SKU"
+                    placeholder={t("stockAdjustments.dialog.adjustment.productSearchPlaceholder", "Search products by name or SKU")}
                     className="rounded-xl"
                   />
                 </div>
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">
-                    <Label>Product</Label>
+                    <Label>{t("stockAdjustments.dialog.adjustment.product", "Product")}</Label>
                     <Select
                       value={adjustmentForm.productId}
                       onValueChange={(value) =>
@@ -1158,7 +1174,7 @@ export function StockAdjustments() {
                       }
                     >
                       <SelectTrigger className="rounded-xl">
-                        <SelectValue placeholder="Select product" />
+                        <SelectValue placeholder={t("stockAdjustments.dialog.adjustment.selectProduct", "Select product")} />
                       </SelectTrigger>
                       <SelectContent>
                         {filteredProductsForAdjustment.map((product) => (
@@ -1170,7 +1186,7 @@ export function StockAdjustments() {
                     </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label>Storage</Label>
+                    <Label>{t("stockAdjustments.dialog.adjustment.storage", "Storage")}</Label>
                     <Select
                       value={adjustmentForm.storageId}
                       onValueChange={(value) =>
@@ -1181,7 +1197,7 @@ export function StockAdjustments() {
                       }
                     >
                       <SelectTrigger className="rounded-xl">
-                        <SelectValue placeholder="Select storage" />
+                        <SelectValue placeholder={t("stockAdjustments.dialog.adjustment.selectStorage", "Select storage")} />
                       </SelectTrigger>
                       <SelectContent>
                         {adjustmentStorageOptions.map((storage) => (
@@ -1197,14 +1213,11 @@ export function StockAdjustments() {
                   <div className="grid gap-2">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <Label htmlFor="adjustment-quantity">
-                        Final Quantity
+                        {t("stockAdjustments.dialog.adjustment.finalQuantity", "Final Quantity")}
                       </Label>
                       {adjustmentAvailableQuantity !== null ? (
                         <span className="text-xs text-muted-foreground">
-                          Current available{" "}
-                          {formatNumericInput(
-                            String(adjustmentAvailableQuantity),
-                          )}
+                          {t("stockAdjustments.dialog.adjustment.currentAvailable", "Current available {{value}}", { value: formatNumericInput(String(adjustmentAvailableQuantity)) })}
                         </span>
                       ) : null}
                     </div>
@@ -1253,19 +1266,19 @@ export function StockAdjustments() {
                       )}
                     >
                       {!adjustmentSelectionKey
-                        ? "Select a product and storage to load the current quantity."
+                        ? t("stockAdjustments.dialog.adjustment.selectPrompt", "Select a product and storage to load the current quantity.")
                         : adjustmentTargetQuantity === null
-                          ? "Enter the final quantity you want after this adjustment."
+                          ? t("stockAdjustments.dialog.adjustment.enterQuantity", "Enter the final quantity you want after this adjustment.")
                           : adjustmentQuantityDelta === 0
-                            ? "No change yet. Adjust the quantity above to create an entry."
+                            ? t("stockAdjustments.dialog.adjustment.noChange", "No change yet. Adjust the quantity above to create an entry.")
                             : adjustmentQuantityDelta &&
                                 adjustmentQuantityDelta > 0
-                              ? `Increase by ${formatNumericInput(String(adjustmentQuantityDelta))}. ${formatNumericInput(String(adjustmentAvailableQuantity ?? 0))} -> ${formatNumericInput(String(adjustmentTargetQuantity))}.`
-                              : `Decrease by ${formatNumericInput(String(Math.abs(adjustmentQuantityDelta ?? 0)))}. ${formatNumericInput(String(adjustmentAvailableQuantity ?? 0))} -> ${formatNumericInput(String(adjustmentTargetQuantity ?? 0))}.`}
+                              ? t("stockAdjustments.dialog.adjustment.increaseBy", "Increase by {{delta}}. {{available}} -> {{target}}.", { delta: formatNumericInput(String(adjustmentQuantityDelta)), available: formatNumericInput(String(adjustmentAvailableQuantity ?? 0)), target: formatNumericInput(String(adjustmentTargetQuantity)) })
+                              : t("stockAdjustments.dialog.adjustment.decreaseBy", "Decrease by {{delta}}. {{available}} -> {{target}}.", { delta: formatNumericInput(String(Math.abs(adjustmentQuantityDelta ?? 0))), available: formatNumericInput(String(adjustmentAvailableQuantity ?? 0)), target: formatNumericInput(String(adjustmentTargetQuantity ?? 0)) })}
                     </div>
                   </div>
                   <div className="grid gap-2">
-                    <Label>Reason</Label>
+                    <Label>{t("stockAdjustments.dialog.adjustment.reason", "Reason")}</Label>
                     <Select
                       value={adjustmentForm.reason}
                       onValueChange={(value) =>
@@ -1279,7 +1292,7 @@ export function StockAdjustments() {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {adjustmentReasonOptions.map((option) => (
+                        {reasonOptions.map((option) => (
                           <SelectItem key={option.value} value={option.value}>
                             {option.label}
                           </SelectItem>
@@ -1289,7 +1302,7 @@ export function StockAdjustments() {
                   </div>
                 </div>
                 <div className="grid gap-2">
-                  <Label htmlFor="adjustment-notes">Notes</Label>
+                  <Label htmlFor="adjustment-notes">{t("stockAdjustments.dialog.adjustment.notes", "Notes")}</Label>
                   <Textarea
                     id="adjustment-notes"
                     value={adjustmentForm.notes}
@@ -1312,14 +1325,16 @@ export function StockAdjustments() {
                 onClick={() => setAdjustmentDialogOpen(false)}
                 disabled={isSavingAdjustment}
               >
-                Cancel
+                {t("stockAdjustments.dialog.adjustment.cancel", "Cancel")}
               </Button>
               <Button
                 type="submit"
                 className="w-full sm:w-auto"
                 disabled={!canSaveAdjustment || isSavingAdjustment}
               >
-                {isSavingAdjustment ? "Saving..." : "Save Adjustment"}
+                {isSavingAdjustment
+                  ? t("stockAdjustments.dialog.adjustment.saving", "Saving...")
+                  : t("stockAdjustments.dialog.adjustment.save", "Save Adjustment")}
               </Button>
             </DialogFooter>
           </form>
@@ -1334,14 +1349,12 @@ export function StockAdjustments() {
         }}
       >
         <DialogContent className="top-[calc(50%+var(--titlebar-height)/2+var(--safe-area-top)/2)] flex max-h-[calc(100dvh-var(--titlebar-height)-var(--safe-area-top)-var(--safe-area-bottom)-0.75rem)] w-[calc(100vw-0.75rem)] max-w-3xl flex-col overflow-hidden rounded-[1.25rem] border-border/60 p-0 sm:w-full sm:max-h-[min(calc(100dvh-var(--titlebar-height)-var(--safe-area-top)-var(--safe-area-bottom)-2rem),820px)] sm:rounded-[1.75rem]">
-          <DialogHeader className="border-b bg-muted/30 px-4 py-4 pr-14 text-left sm:px-6 sm:py-5">
+          <DialogHeader className="border-b bg-muted/30 px-4 py-4 pr-14 text-start sm:px-6 sm:py-5">
             <DialogTitle>
-              {batchForm.id ? "Edit Stock Batch" : "New Stock Batch"}
+              {batchForm.id ? t("stockAdjustments.dialog.batch.titleEdit", "Edit Stock Batch") : t("stockAdjustments.dialog.batch.titleNew", "New Stock Batch")}
             </DialogTitle>
             <DialogDescription>
-              Track the batch quantity, dates, and pricing snapshot for one
-              storage. Product pricing is loaded by default and can be
-              overridden for this batch.
+              {t("stockAdjustments.dialog.batch.description", "Track the batch quantity, dates, and pricing snapshot for one storage. Product pricing is loaded by default and can be overridden for this batch.")}
             </DialogDescription>
           </DialogHeader>
           <form
@@ -1351,18 +1364,18 @@ export function StockAdjustments() {
             <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6 sm:py-6">
               <div className="grid gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="batch-search">Product search</Label>
+                  <Label htmlFor="batch-search">{t("stockAdjustments.dialog.batch.productSearch", "Product search")}</Label>
                   <Input
                     id="batch-search"
                     value={batchSearch}
                     onChange={(event) => setBatchSearch(event.target.value)}
-                    placeholder="Search products by name or SKU"
+                    placeholder={t("stockAdjustments.dialog.batch.productSearchPlaceholder", "Search products by name or SKU")}
                     className="rounded-xl"
                   />
                 </div>
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">
-                    <Label>Product <span className="text-destructive">*</span></Label>
+                    <Label>{t("stockAdjustments.dialog.batch.product", "Product")} <span className="text-destructive">*</span></Label>
                     <Select
                       value={batchForm.productId}
                       onValueChange={(value) =>
@@ -1381,7 +1394,7 @@ export function StockAdjustments() {
                       }
                     >
                       <SelectTrigger className="rounded-xl">
-                        <SelectValue placeholder="Select product" />
+                        <SelectValue placeholder={t("stockAdjustments.dialog.batch.selectProduct", "Select product")} />
                       </SelectTrigger>
                       <SelectContent>
                         {filteredProductsForBatch.map((product) => (
@@ -1393,7 +1406,7 @@ export function StockAdjustments() {
                     </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label>Storage <span className="text-destructive">*</span></Label>
+                    <Label>{t("stockAdjustments.dialog.batch.storage", "Storage")} <span className="text-destructive">*</span></Label>
                     <Select
                       value={batchForm.storageId}
                       onValueChange={(value) =>
@@ -1404,7 +1417,7 @@ export function StockAdjustments() {
                       }
                     >
                       <SelectTrigger className="rounded-xl">
-                        <SelectValue placeholder="Select storage" />
+                        <SelectValue placeholder={t("stockAdjustments.dialog.batch.selectStorage", "Select storage")} />
                       </SelectTrigger>
                       <SelectContent>
                         {batchStorageOptions.map((storage) => (
@@ -1418,7 +1431,7 @@ export function StockAdjustments() {
                 </div>
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">
-                    <Label htmlFor="batch-number">Batch / Lot Number <span className="text-destructive">*</span></Label>
+                    <Label htmlFor="batch-number">{t("stockAdjustments.dialog.batch.batchNumber", "Batch / Lot Number")} <span className="text-destructive">*</span></Label>
                     <Input
                       id="batch-number"
                       value={batchForm.batchNumber}
@@ -1433,11 +1446,10 @@ export function StockAdjustments() {
                   </div>
                   <div className="grid gap-2">
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                      <Label htmlFor="batch-quantity">Quantity <span className="text-destructive">*</span></Label>
+                      <Label htmlFor="batch-quantity">{t("stockAdjustments.dialog.batch.quantity", "Quantity")} <span className="text-destructive">*</span></Label>
                       {batchInventoryQuantity !== null ? (
                         <span className="text-xs text-muted-foreground">
-                          Inventory available{" "}
-                          {formatNumericInput(String(batchInventoryQuantity))}
+                          {t("stockAdjustments.dialog.batch.inventoryAvailable", "Inventory available {{value}}", { value: formatNumericInput(String(batchInventoryQuantity)) })}
                         </span>
                       ) : null}
                     </div>
@@ -1460,7 +1472,7 @@ export function StockAdjustments() {
                 </div>
                 <div className="grid gap-4 md:grid-cols-3">
                   <div className="grid gap-2">
-                    <Label htmlFor="batch-price">Batch price <span className="text-destructive">*</span></Label>
+                    <Label htmlFor="batch-price">{t("stockAdjustments.dialog.batch.batchPrice", "Batch price")} <span className="text-destructive">*</span></Label>
                     <Input
                       id="batch-price"
                       type="text"
@@ -1476,7 +1488,7 @@ export function StockAdjustments() {
                     />
                   </div>
                   <div className="grid gap-2">
-                    <Label htmlFor="batch-cost-price">Batch cost <span className="text-destructive">*</span></Label>
+                    <Label htmlFor="batch-cost-price">{t("stockAdjustments.dialog.batch.batchCost", "Batch cost")} <span className="text-destructive">*</span></Label>
                     <Input
                       id="batch-cost-price"
                       type="text"
@@ -1492,7 +1504,7 @@ export function StockAdjustments() {
                     />
                   </div>
                   <CurrencySelector
-                    label="Currency"
+                    label={t("stockAdjustments.dialog.batch.currency", "Currency")}
                     value={batchForm.currency}
                     onChange={(value) =>
                       setBatchForm((current) => ({
@@ -1506,7 +1518,7 @@ export function StockAdjustments() {
                   {selectedBatchProduct ? (
                     <div className="flex flex-wrap items-center gap-2">
                       <span>
-                        Product default:
+                        {t("stockAdjustments.batches.productDefault", "Product default:")}
                         {" "}
                         {formatCurrency(
                           selectedBatchProduct.price,
@@ -1514,33 +1526,28 @@ export function StockAdjustments() {
                         )}
                       </span>
                       <span>
-                        Cost
-                        {" "}
-                        {formatCurrency(
-                          selectedBatchProduct.costPrice,
-                          selectedBatchProduct.currency,
-                        )}
+                        {t("stockAdjustments.batches.cost", "Cost {{amount}}", { amount: formatCurrency(selectedBatchProduct.costPrice, selectedBatchProduct.currency) })}
                       </span>
                       <span className="uppercase">
                         {selectedBatchProduct.currency}
                       </span>
                       {batchUsesCustomPricing ? (
                         <span className="rounded-full border border-sky-500/20 bg-sky-500/10 px-2 py-0.5 text-xs font-semibold text-sky-700">
-                          Batch override active
+                          {t("stockAdjustments.batches.batchOverride", "Batch override active")}
                         </span>
                       ) : (
                         <span className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 text-xs font-semibold text-emerald-700">
-                          Using product defaults
+                          {t("stockAdjustments.batches.usingDefaults", "Using product defaults")}
                         </span>
                       )}
                     </div>
                   ) : (
-                    "Select a product to load its default price, cost, and currency."
+                    t("stockAdjustments.batches.loadProductMsg", "Select a product to load its default price, cost, and currency.")
                   )}
                 </div>
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">
-                    <Label>Expiry date</Label>
+                    <Label>{t("stockAdjustments.dialog.batch.expiryDate", "Expiry date")}</Label>
                     <DateTimePicker
                       mode="date"
                       date={parseLocalDateValue(batchForm.expiryDate)}
@@ -1550,12 +1557,12 @@ export function StockAdjustments() {
                           expiryDate: formatLocalDateValue(value),
                         }))
                       }
-                      placeholder="Optional expiry date"
+                      placeholder={t("stockAdjustments.dialog.batch.expiryDatePlaceholder", "Optional expiry date")}
                       buttonClassName="rounded-xl"
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label>Manufacturing date</Label>
+                    <Label>{t("stockAdjustments.dialog.batch.manufacturingDate", "Manufacturing date")}</Label>
                     <DateTimePicker
                       mode="date"
                       date={parseLocalDateValue(batchForm.manufacturingDate)}
@@ -1565,13 +1572,13 @@ export function StockAdjustments() {
                           manufacturingDate: formatLocalDateValue(value),
                         }))
                       }
-                      placeholder="Optional manufacturing date"
+                      placeholder={t("stockAdjustments.dialog.batch.manufacturingDatePlaceholder", "Optional manufacturing date")}
                       buttonClassName="rounded-xl"
                     />
                   </div>
                 </div>
                 <div className="grid gap-2">
-                  <Label htmlFor="batch-notes">Notes</Label>
+                  <Label htmlFor="batch-notes">{t("stockAdjustments.dialog.batch.notes", "Notes")}</Label>
                   <Textarea
                     id="batch-notes"
                     value={batchForm.notes}
@@ -1594,7 +1601,7 @@ export function StockAdjustments() {
                 onClick={() => setBatchDialogOpen(false)}
                 disabled={isSavingBatch}
               >
-                Cancel
+                {t("stockAdjustments.dialog.batch.cancel", "Cancel")}
               </Button>
               <Button
                 type="submit"
@@ -1602,10 +1609,10 @@ export function StockAdjustments() {
                 disabled={!canSaveBatch || isSavingBatch}
               >
                 {isSavingBatch
-                  ? "Saving..."
+                  ? t("stockAdjustments.dialog.batch.saving", "Saving...")
                   : batchForm.id
-                    ? "Save Changes"
-                    : "Save Batch"}
+                    ? t("stockAdjustments.dialog.batch.saveChanges", "Save Changes")
+                    : t("stockAdjustments.dialog.batch.saveBatch", "Save Batch")}
               </Button>
             </DialogFooter>
           </form>
@@ -1621,8 +1628,8 @@ export function StockAdjustments() {
           void handleDeleteBatch();
         }}
         isLoading={isDeletingBatch}
-        title="Delete stock batch?"
-        description="This will soft-delete the batch from active tracking."
+        title={t("stockAdjustments.deleteConfirm.title", "Delete stock batch?")}
+        description={t("stockAdjustments.deleteConfirm.description", "This will soft-delete the batch from active tracking.")}
         itemName={batchToDelete?.batchNumber || ""}
       />
     </div>

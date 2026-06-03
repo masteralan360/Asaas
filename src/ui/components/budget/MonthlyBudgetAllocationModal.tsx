@@ -81,7 +81,7 @@ export function MonthlyBudgetAllocationModal({
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="sm:max-w-[420px] rounded-[32px] border border-border/60 bg-background/95 p-8 gap-6 shadow-2xl backdrop-blur-2xl dark:border-white/10 dark:bg-zinc-950/95">
-                <DialogHeader className="flex flex-row items-start gap-4 space-y-0 text-left">
+                <DialogHeader className="flex flex-row items-start gap-4 space-y-0 text-start">
                     <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-orange-500/10 text-orange-500 dark:bg-orange-500/15 dark:text-orange-300">
                         <TrendingUp className="h-6 w-6" />
                     </div>
@@ -99,7 +99,7 @@ export function MonthlyBudgetAllocationModal({
                     <div className="grid gap-2.5">
                         <Label className="text-sm font-semibold text-foreground">Allocation Type</Label>
                         <Select value={type} onValueChange={(value) => setType(value as 'fixed' | 'percentage')}>
-                            <SelectTrigger className={cn(fieldClassName, '[&>span]:text-left')}>
+                            <SelectTrigger className={cn(fieldClassName, '[&>span]:text-start')}>
                                 <SelectValue />
                             </SelectTrigger>
                             <SelectContent className={selectContentClassName}>

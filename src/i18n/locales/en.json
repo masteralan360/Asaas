@@ -160,6 +160,8 @@
     "installments": "Installments",
     "storages": "Storages",
     "inventoryTransfer": "Inventory Transfer",
+    "inventoryTransactions": "Inventory Transactions",
+    "stockAdjustments": "Stock Adjustments",
     "suppliers": "Suppliers",
     "revenue": "Revenue Analytics",
     "performance": "Team Performance",
@@ -256,6 +258,14 @@
       "/inventory-transfer": {
         "description": "Move stock across locations and coordinate replenishment.",
         "badge": "Movement"
+      },
+      "/inventory-transactions": {
+        "description": "Review permanent records for inventory transfers and stock adjustments.",
+        "badge": "Audit"
+      },
+      "/stock-adjustments": {
+        "description": "Record manual stock changes, manage batches, and review inventory logs.",
+        "badge": "Adjust"
       },
       "/ledger": {
         "description": "Inspect cross-module inflows, outflows, and payment trails.",
@@ -2019,6 +2029,7 @@
   },
   "members": {
     "title": "Members & Admin Control",
+    "titleShort": "Members",
     "subtitle": "Manage workspace members",
     "table": {
       "name": "Name",
@@ -2960,6 +2971,164 @@
       "totalUnits": "Units Moved",
       "permanentTitle": "Permanent Log",
       "permanentDescription": "Inventory transaction records are append-only. You can review them here, but they are intentionally not editable or deletable."
+    }
+  },
+  "inventoryTransactions": {
+    "pageSubtitle": "Review permanent records for inventory transfers and stock adjustments.",
+    "subtitle": "Every manual transfer, automation move, and stock adjustment is recorded here. These records are permanent and cannot be deleted.",
+    "emptyTitle": "No inventory transactions yet",
+    "emptyDescription": "Transfer products manually, let an automation rule trigger, or record a stock adjustment, and the records will appear here.",
+    "increaseLabel": "Increase",
+    "decreaseLabel": "Decrease",
+    "adjustmentLabel": "Stock Adjustment",
+    "summaryDescription": "A live count of permanent inventory movement records for this workspace."
+  },
+  "stockAdjustments": {
+    "pageSubtitle": "Record manual stock changes, manage product batches, and review the unified inventory log.",
+    "pageSubtitleSimple": "Record manual stock changes and review the unified inventory log.",
+    "newAdjustment": "New Stock Adjustment",
+    "newBatch": "New Stock Batch",
+    "tabs": {
+      "adjustments": "Stock Adjustments",
+      "batches": "Stock Batches"
+    },
+    "filters": {
+      "title": "Filters",
+      "description": "Filter by product, storage, type, reason, or date range.",
+      "product": "Product",
+      "storage": "Storage",
+      "type": "Type",
+      "reason": "Reason",
+      "start": "Start",
+      "end": "End",
+      "allProducts": "All products",
+      "allStorages": "All storages",
+      "allTypes": "All types",
+      "allReasons": "All reasons",
+      "increase": "Increase",
+      "decrease": "Decrease",
+      "startDate": "Start date",
+      "endDate": "End date"
+    },
+    "history": {
+      "title": "Adjustment history",
+      "description": "Each entry shows the before and after quantity snapshot for the selected storage.",
+      "empty": "No adjustments match the current filters.",
+      "noNotes": "No notes provided.",
+      "qty": "Qty {{value}}",
+      "previousToNew": "{{previous}} → {{new}}"
+    },
+    "recentTransactions": {
+      "title": "Recent inventory transactions",
+      "description": "Unified audit trail for initial stock, adjustments, and transfers.",
+      "empty": "No inventory transactions are available yet.",
+      "delta": "Delta {{sign}}{{value}}"
+    },
+    "batches": {
+      "title": "Batch tracking",
+      "description": "Grouped by product and storage with a coverage check against current inventory.",
+      "empty": "No stock batches have been created yet.",
+      "coverageMismatch": "Coverage mismatch",
+      "inventory": "Inventory {{value}}",
+      "batchCount": "Batches {{value}}",
+      "qty": "Qty {{value}}",
+      "customPricing": "Custom pricing",
+      "sell": "Sell {{amount}}",
+      "cost": "Cost {{amount}}",
+      "manufactured": "Manufactured {{date}}",
+      "noManufacturingDate": "No manufacturing date",
+      "expires": "Expires {{date}}",
+      "noExpiryDate": "No expiry date",
+      "edit": "Edit",
+      "delete": "Delete",
+      "batchOverride": "Batch override active",
+      "usingDefaults": "Using product defaults",
+      "loadProductMsg": "Select a product to load its default price, cost, and currency.",
+      "productDefault": "Product default:"
+    },
+    "dialog": {
+      "adjustment": {
+        "title": "New Stock Adjustment",
+        "description": "Pick the product and storage, then set the final stock quantity you want to keep there.",
+        "productSearch": "Product search",
+        "productSearchPlaceholder": "Search products by name or SKU",
+        "product": "Product",
+        "selectProduct": "Select product",
+        "storage": "Storage",
+        "selectStorage": "Select storage",
+        "finalQuantity": "Final Quantity",
+        "currentAvailable": "Current available {{value}}",
+        "reason": "Reason",
+        "notes": "Notes",
+        "cancel": "Cancel",
+        "saving": "Saving...",
+        "save": "Save Adjustment",
+        "selectPrompt": "Select a product and storage to load the current quantity.",
+        "enterQuantity": "Enter the final quantity you want after this adjustment.",
+        "noChange": "No change yet. Adjust the quantity above to create an entry.",
+        "increaseBy": "Increase by {{delta}}. {{available}} -> {{target}}.",
+        "decreaseBy": "Decrease by {{delta}}. {{available}} -> {{target}}."
+      },
+      "batch": {
+        "titleNew": "New Stock Batch",
+        "titleEdit": "Edit Stock Batch",
+        "description": "Track the batch quantity, dates, and pricing snapshot for one storage. Product pricing is loaded by default and can be overridden for this batch.",
+        "productSearch": "Product search",
+        "productSearchPlaceholder": "Search products by name or SKU",
+        "product": "Product",
+        "selectProduct": "Select product",
+        "storage": "Storage",
+        "selectStorage": "Select storage",
+        "batchNumber": "Batch / Lot Number",
+        "quantity": "Quantity",
+        "inventoryAvailable": "Inventory available {{value}}",
+        "batchPrice": "Batch price",
+        "batchCost": "Batch cost",
+        "currency": "Currency",
+        "expiryDate": "Expiry date",
+        "expiryDatePlaceholder": "Optional expiry date",
+        "manufacturingDate": "Manufacturing date",
+        "manufacturingDatePlaceholder": "Optional manufacturing date",
+        "notes": "Notes",
+        "cancel": "Cancel",
+        "saving": "Saving...",
+        "saveChanges": "Save Changes",
+        "saveBatch": "Save Batch"
+      }
+    },
+    "reasons": {
+      "purchase": "Purchase",
+      "return": "Return",
+      "correction": "Correction",
+      "damage": "Damage",
+      "theft": "Theft",
+      "expired": "Expired",
+      "production": "Production",
+      "other": "Other"
+    },
+    "transactionType": {
+      "stock_adjustment": "Stock Adjustment",
+      "transfer_in": "Transfer In",
+      "transfer_out": "Transfer Out",
+      "initial_stock": "Initial Stock"
+    },
+    "deleteConfirm": {
+      "title": "Delete stock batch?",
+      "description": "This will soft-delete the batch from active tracking."
+    },
+    "messages": {
+      "adjustmentSaved": "Adjustment saved",
+      "adjustmentSavedDesc": "Inventory and audit log were updated.",
+      "adjustmentFailed": "Unable to save adjustment",
+      "batchUpdated": "Batch updated",
+      "batchUpdatedDesc": "Batch changes were saved.",
+      "batchCreated": "Batch created",
+      "batchCreatedDesc": "New batch added successfully.",
+      "batchFailed": "Unable to save batch",
+      "batchDeleted": "Batch deleted",
+      "batchDeletedDesc": "The batch was removed from active tracking.",
+      "batchDeleteFailed": "Unable to delete batch",
+      "genericError": "Something went wrong."
     }
   },
   "budget": {
