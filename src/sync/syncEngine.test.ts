@@ -170,7 +170,8 @@ describe('fullSync error reporting', () => {
         })
 
         expect(supabaseMock.upsert).toHaveBeenCalledTimes(1)
-        const payload = supabaseMock.upsert.mock.calls[0][0] as Record<string, unknown>
+        const firstUpsertCall = supabaseMock.upsert.mock.calls[0] as unknown as [Record<string, unknown>]
+        const payload = firstUpsertCall[0]
         expect(payload).toMatchObject({
             id: 'product-1',
             name: 'Desk',
