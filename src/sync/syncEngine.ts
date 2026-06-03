@@ -60,7 +60,17 @@ const SYNC_PULL_TABLES = [
   "payment_transactions",
 ] as const;
 
-const TABLES_WITHOUT_VERSION = new Set<string>(["sale_items"]);
+const TABLES_WITHOUT_VERSION = new Set<string>(["sales", "sale_items"]);
+const PROCESSABLE_MUTATION_STATUSES = ["pending", "syncing"] as const;
+const SALE_CREATE_RESULT_SELECT =
+  "id, sequence_id, system_verified, system_review_status, system_review_reason";
+
+function isSaleCreateMutation(mutation: {
+  entityType: string;
+  operation: string;
+}) {
+  return mutation.entityType === "sales" && mutation.operation === "create";
+}
 
 // Convert camelCase to snake_case
 function toSnakeCase(obj: Record<string, unknown>): Record<string, unknown> {
@@ -104,6 +114,66 @@ async function withTimeout<T>(
     timeoutMs: ms,
     platform: "all",
   });
+}
+
+function getSaleSequenceId(result: unknown): number | null {
+  const raw =
+    (result as { sequence_id?: unknown; sequenceId?: unknown } | null)
+      ?.sequence_id ??
+    (result as { sequenceId?: unknown } | null)?.sequenceId;
+  const value = typeof raw === "number" ? raw : Number(raw);
+  return Number.isFinite(value) && value > 0 ? value : null;
+}
+
+function getSaleReviewUpdate(result: unknown): Record<string, unknown> {
+  const source = result as
+    | {
+        system_verified?: unknown;
+        system_review_status?: unknown;
+        system_review_reason?: unknown;
+        systemVerified?: unknown;
+        systemReviewStatus?: unknown;
+        systemReviewReason?: unknown;
+      }
+    | null;
+  const update: Record<string, unknown> = {};
+
+  const systemVerified = source?.system_verified ?? source?.systemVerified;
+  const systemReviewStatus =
+    source?.system_review_status ?? source?.systemReviewStatus;
+  const systemReviewReason =
+    source?.system_review_reason ?? source?.systemReviewReason;
+
+  if (systemVerified !== undefined) {
+    update.systemVerified = systemVerified;
+  }
+  if (systemReviewStatus !== undefined) {
+    update.systemReviewStatus = systemReviewStatus;
+  }
+  if (systemReviewReason !== undefined) {
+    update.systemReviewReason = systemReviewReason;
+  }
+
+  return update;
+}
+
+async function fetchSaleCreateResult(
+  entityId: string,
+): Promise<Record<string, unknown> | null> {
+  const { data, error } = (await withTimeout(
+    supabase
+      .from("sales")
+      .select(SALE_CREATE_RESULT_SELECT)
+      .eq("id", entityId)
+      .maybeSingle(),
+    30000,
+  )) as any;
+
+  if (error) {
+    throw error;
+  }
+
+  return (data ?? null) as Record<string, unknown> | null;
 }
 
 async function fetchPullRows(
@@ -273,10 +343,22 @@ export async function processMutationQueue(
     return { success: 0, failed: 1, error: "Supabase not configured" };
   }
 
-  const mutations = await db.offline_mutations
+  const mutationGroups = await Promise.all(
+    PROCESSABLE_MUTATION_STATUSES.map((status) =>
+      db.offline_mutations.where("status").equals(status).sortBy("createdAt"),
+    ),
+  );
+  const failedSaleCreates = await db.offline_mutations
     .where("status")
-    .equals("pending")
+    .equals("failed")
+    .filter(isSaleCreateMutation)
     .sortBy("createdAt");
+  const mutations = mutationGroups
+    .flat()
+    .concat(failedSaleCreates)
+    .sort((left, right) =>
+      String(left.createdAt).localeCompare(String(right.createdAt)),
+    );
 
   console.log(
     `[Sync] processMutationQueue: Found ${mutations.length} pending mutations`,
@@ -285,8 +367,11 @@ export async function processMutationQueue(
   let successCount = 0;
 
   for (const mutation of mutations) {
-    // Update status to syncing
-    await db.offline_mutations.update(mutation.id, { status: "syncing" });
+    // Mark active attempts, and retry rows that were interrupted while syncing.
+    await db.offline_mutations.update(mutation.id, {
+      status: "syncing",
+      error: undefined,
+    });
 
     try {
       const { entityType, operation, payload, entityId, workspaceId, id } =
@@ -333,36 +418,52 @@ export async function processMutationQueue(
               "complete_sale",
               { payload: dbPayload },
             );
-            if (error) throw error;
 
-            // Capture sequence_id and update local records
-            const result = serverResult as any;
-            const saleReviewUpdate: Record<string, unknown> = {};
-            if (result?.system_verified !== undefined) {
-              saleReviewUpdate.systemVerified = result.system_verified;
+            let result = serverResult as Record<string, unknown> | null;
+            if (error) {
+              const recoveredResult = await fetchSaleCreateResult(entityId).catch(
+                () => null,
+              );
+              if (!recoveredResult) {
+                throw error;
+              }
+              result = recoveredResult;
             }
-            if (result?.system_review_status !== undefined) {
-              saleReviewUpdate.systemReviewStatus = result.system_review_status;
-            }
-            if (result?.system_review_reason !== undefined) {
-              saleReviewUpdate.systemReviewReason = result.system_review_reason;
-            }
-            if (result?.sequence_id) {
-              const sequenceId = result.sequence_id;
-              const formattedInvoiceId = `#${String(sequenceId).padStart(5, "0")}`;
 
-              // Update both sales and invoices tables locally
-              await db.sales.update(entityId, {
-                sequenceId,
-                ...saleReviewUpdate,
-              });
-              await db.invoices.update(entityId, {
-                sequenceId,
-                invoiceid: formattedInvoiceId,
-              });
-            } else if (Object.keys(saleReviewUpdate).length > 0) {
-              await db.sales.update(entityId, saleReviewUpdate);
+            if (!getSaleSequenceId(result)) {
+              const fetchedResult = await fetchSaleCreateResult(entityId);
+              if (fetchedResult) {
+                result = {
+                  ...(result ?? {}),
+                  ...fetchedResult,
+                };
+              }
             }
+
+            const sequenceId = getSaleSequenceId(result);
+            if (!sequenceId) {
+              throw new Error(
+                "Sale synced but Supabase did not return a sequence ID.",
+              );
+            }
+
+            const syncedAt = new Date().toISOString();
+            const formattedInvoiceId = `#${String(sequenceId).padStart(5, "0")}`;
+            const saleReviewUpdate = getSaleReviewUpdate(result);
+
+            await db.sales.update(entityId, {
+              sequenceId,
+              ...saleReviewUpdate,
+              syncStatus: "synced",
+              lastSyncedAt: syncedAt,
+            });
+            await db.invoices.update(entityId, {
+              sequenceId,
+              invoiceid: formattedInvoiceId,
+              syncStatus: "synced",
+              lastSyncedAt: syncedAt,
+            });
+            entityHandledInline = true;
           } else if (rpcAction === "return_sale_items") {
             const { error } = await supabase.rpc("return_sale_items", {
               p_sale_item_ids: dbPayload.p_sale_item_ids,

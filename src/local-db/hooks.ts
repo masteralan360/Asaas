@@ -1864,7 +1864,18 @@ export function useSyncQueue() {
 }
 
 export function usePendingSyncCount() {
-    const count = useLiveQuery(() => db.offline_mutations.where('status').equals('pending').count(), [])
+    const count = useLiveQuery(async () => {
+        const [pending, syncing, failedSaleCreates] = await Promise.all([
+            db.offline_mutations.where('status').equals('pending').count(),
+            db.offline_mutations.where('status').equals('syncing').count(),
+            db.offline_mutations
+                .where('status')
+                .equals('failed')
+                .filter((mutation) => mutation.entityType === 'sales' && mutation.operation === 'create')
+                .count()
+        ])
+        return pending + syncing + failedSaleCreates
+    }, [])
     return count ?? 0
 }
 

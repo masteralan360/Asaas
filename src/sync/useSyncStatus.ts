@@ -42,8 +42,19 @@ export function useSyncStatus(): UseSyncStatusResult {
         lastSyncTimeRef.current = lastSyncTime
     }, [lastSyncTime])
 
-    // Get pending sync count from offline_mutations
-    const livePendingCount = useLiveQuery(() => db.offline_mutations.where('status').equals('pending').count(), []) ?? 0
+    // Get pending/interrupted sync count from offline_mutations
+    const livePendingCount = useLiveQuery(async () => {
+        const [pending, syncing, failedSaleCreates] = await Promise.all([
+            db.offline_mutations.where('status').equals('pending').count(),
+            db.offline_mutations.where('status').equals('syncing').count(),
+            db.offline_mutations
+                .where('status')
+                .equals('failed')
+                .filter((mutation) => mutation.entityType === 'sales' && mutation.operation === 'create')
+                .count()
+        ])
+        return pending + syncing + failedSaleCreates
+    }, []) ?? 0
     const pendingCount = isLocalMode ? 0 : livePendingCount
 
     // Perform sync
@@ -103,7 +114,16 @@ export function useSyncStatus(): UseSyncStatusResult {
             if (syncInProgress.current || !isOnline) return
 
             // Check if there are pending mutations
-            const pending = await db.offline_mutations.where('status').equals('pending').count()
+            const [pendingRows, syncingRows, failedSaleCreates] = await Promise.all([
+                db.offline_mutations.where('status').equals('pending').count(),
+                db.offline_mutations.where('status').equals('syncing').count(),
+                db.offline_mutations
+                    .where('status')
+                    .equals('failed')
+                    .filter((mutation) => mutation.entityType === 'sales' && mutation.operation === 'create')
+                    .count()
+            ])
+            const pending = pendingRows + syncingRows + failedSaleCreates
 
             if (pending === 0) {
                 // Still do a pull-only sync if last sync was > 10 min ago

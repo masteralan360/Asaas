@@ -2,20 +2,33 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const dbMock = vi.hoisted(() => {
     const rows: Array<Record<string, any>> = []
+    const sales = {
+        update: vi.fn(async () => 1)
+    }
+    const invoices = {
+        update: vi.fn(async () => 1)
+    }
 
     const offlineMutations = {
         where: vi.fn((indexName: string) => ({
-            equals: vi.fn((value: unknown) => ({
-                sortBy: vi.fn(async (sortField: string) => {
+            equals: vi.fn((value: unknown) => {
+                const matchingRows = () => rows.filter((row) => row.status === value)
+                const sortRows = async (sourceRows: Array<Record<string, any>>, sortField: string) => {
                     if (indexName !== 'status' || sortField !== 'createdAt') {
                         throw new Error(`Unsupported query: ${indexName}/${sortField}`)
                     }
 
-                    return rows
-                        .filter((row) => row.status === value)
-                        .sort((left, right) => String(left.createdAt).localeCompare(String(right.createdAt)))
-                })
-            }))
+                    return sourceRows.sort((left, right) => String(left.createdAt).localeCompare(String(right.createdAt)))
+                }
+                return {
+                    sortBy: vi.fn((sortField: string) => sortRows(matchingRows(), sortField)),
+                    filter: vi.fn((predicate: (row: Record<string, any>) => boolean) => ({
+                        sortBy: vi.fn((sortField: string) => sortRows(matchingRows().filter(predicate), sortField)),
+                        count: vi.fn(async () => matchingRows().filter(predicate).length)
+                    })),
+                    count: vi.fn(async () => matchingRows().length)
+                }
+            })
         })),
         update: vi.fn(async (id: string, patch: Record<string, any>) => {
             const row = rows.find((item) => item.id === id)
@@ -29,10 +42,14 @@ const dbMock = vi.hoisted(() => {
     return {
         rows,
         offlineMutations,
+        sales,
+        invoices,
         reset() {
             rows.splice(0)
             offlineMutations.where.mockClear()
             offlineMutations.update.mockClear()
+            sales.update.mockClear()
+            invoices.update.mockClear()
         }
     }
 })
@@ -41,6 +58,7 @@ const supabaseMock = vi.hoisted(() => {
     const mutationError = new Error('permission denied')
     const upsert = vi.fn(async () => ({ data: null, error: mutationError }))
     const rpc = vi.fn(async () => ({ data: null, error: null }))
+    let saleLookup: Record<string, any> | null = null
 
     const makeBuilder = (tableName: string) => {
         const builder: Record<string, any> = {}
@@ -57,6 +75,7 @@ const supabaseMock = vi.hoisted(() => {
             order: vi.fn(() => builder),
             range: vi.fn(async () => ({ data: [], error: null })),
             in: vi.fn(() => builder),
+            maybeSingle: vi.fn(async () => ({ data: tableName === 'sales' ? saleLookup : null, error: null })),
             upsert,
             update: vi.fn(() => ({
                 eq: vi.fn(async () => ({ data: null, error: null }))
@@ -77,10 +96,14 @@ const supabaseMock = vi.hoisted(() => {
         mutationError,
         rpc,
         upsert,
+        setSaleLookup(row: Record<string, any> | null) {
+            saleLookup = row
+        },
         reset() {
             from.mockClear()
             rpc.mockClear()
             upsert.mockClear()
+            saleLookup = null
         }
     }
 })
@@ -99,7 +122,9 @@ vi.mock('@/auth/supabase', () => ({
 
 vi.mock('@/local-db', () => ({
     db: {
-        offline_mutations: dbMock.offlineMutations
+        offline_mutations: dbMock.offlineMutations,
+        sales: dbMock.sales,
+        invoices: dbMock.invoices
     }
 }))
 
@@ -180,5 +205,136 @@ describe('fullSync error reporting', () => {
         })
         expect(payload).not.toHaveProperty('sync_status')
         expect(payload).not.toHaveProperty('last_synced_at')
+    })
+
+    it('replaces the temporary offline sale id display with the server sequence id', async () => {
+        supabaseMock.rpc.mockResolvedValueOnce({
+            data: {
+                sequence_id: 7,
+                system_verified: true,
+                system_review_status: 'approved',
+                system_review_reason: null
+            },
+            error: null
+        })
+        dbMock.rows.push({
+            id: 'mutation-2',
+            workspaceId: 'workspace-1',
+            entityType: 'sales',
+            entityId: '65cd27b9-0000-4000-8000-000000000000',
+            operation: 'create',
+            payload: {
+                id: '65cd27b9-0000-4000-8000-000000000000',
+                total_amount: 1000,
+                settlement_currency: 'iqd',
+                items: []
+            },
+            createdAt: '2026-06-03T00:00:00.000Z',
+            status: 'pending'
+        })
+
+        const result = await fullSync('user-1', 'workspace-1', null)
+
+        expect(result.success).toBe(true)
+        expect(supabaseMock.rpc).toHaveBeenCalledWith('complete_sale', {
+            payload: expect.objectContaining({
+                id: '65cd27b9-0000-4000-8000-000000000000',
+                settlement_currency: 'iqd'
+            })
+        })
+        expect(dbMock.sales.update).toHaveBeenCalledWith(
+            '65cd27b9-0000-4000-8000-000000000000',
+            expect.objectContaining({
+                sequenceId: 7,
+                syncStatus: 'synced',
+                systemVerified: true,
+                systemReviewStatus: 'approved'
+            })
+        )
+        expect(dbMock.invoices.update).toHaveBeenCalledWith(
+            '65cd27b9-0000-4000-8000-000000000000',
+            expect.objectContaining({
+                sequenceId: 7,
+                invoiceid: '#00007',
+                syncStatus: 'synced'
+            })
+        )
+        expect(dbMock.rows[0]).toMatchObject({ status: 'synced' })
+    })
+
+    it('recovers an interrupted sale create using the existing server row sequence id', async () => {
+        supabaseMock.rpc.mockResolvedValueOnce({
+            data: null,
+            error: Object.assign(new Error('duplicate key value'), { code: '23505' })
+        })
+        supabaseMock.setSaleLookup({
+            id: '65cd27b9-0000-4000-8000-000000000000',
+            sequence_id: 8,
+            system_verified: true,
+            system_review_status: 'approved',
+            system_review_reason: null
+        })
+        dbMock.rows.push({
+            id: 'mutation-3',
+            workspaceId: 'workspace-1',
+            entityType: 'sales',
+            entityId: '65cd27b9-0000-4000-8000-000000000000',
+            operation: 'create',
+            payload: {
+                id: '65cd27b9-0000-4000-8000-000000000000',
+                total_amount: 1000,
+                settlement_currency: 'iqd',
+                items: []
+            },
+            createdAt: '2026-06-03T00:00:00.000Z',
+            status: 'syncing'
+        })
+
+        const result = await fullSync('user-1', 'workspace-1', null)
+
+        expect(result.success).toBe(true)
+        expect(dbMock.sales.update).toHaveBeenCalledWith(
+            '65cd27b9-0000-4000-8000-000000000000',
+            expect.objectContaining({
+                sequenceId: 8,
+                syncStatus: 'synced'
+            })
+        )
+        expect(dbMock.rows[0]).toMatchObject({ status: 'synced', error: undefined })
+    })
+
+    it('retries a failed offline sale create instead of leaving the temporary id forever', async () => {
+        supabaseMock.rpc.mockResolvedValueOnce({
+            data: { sequence_id: 9 },
+            error: null
+        })
+        dbMock.rows.push({
+            id: 'mutation-4',
+            workspaceId: 'workspace-1',
+            entityType: 'sales',
+            entityId: '65cd27b9-0000-4000-8000-000000000000',
+            operation: 'create',
+            payload: {
+                id: '65cd27b9-0000-4000-8000-000000000000',
+                total_amount: 1000,
+                settlement_currency: 'iqd',
+                items: []
+            },
+            createdAt: '2026-06-03T00:00:00.000Z',
+            status: 'failed',
+            error: 'network timeout'
+        })
+
+        const result = await fullSync('user-1', 'workspace-1', null)
+
+        expect(result.success).toBe(true)
+        expect(dbMock.sales.update).toHaveBeenCalledWith(
+            '65cd27b9-0000-4000-8000-000000000000',
+            expect.objectContaining({
+                sequenceId: 9,
+                syncStatus: 'synced'
+            })
+        )
+        expect(dbMock.rows[0]).toMatchObject({ status: 'synced', error: undefined })
     })
 })

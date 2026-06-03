@@ -14,6 +14,19 @@ import { runManagedFullSync } from '@/sync/syncCoordinator'
 
 const MIN_OVERLAY_MS = 800
 
+async function countRecoverableMutations() {
+    const [pending, syncing, failedSaleCreates] = await Promise.all([
+        db.offline_mutations.where('status').equals('pending').count(),
+        db.offline_mutations.where('status').equals('syncing').count(),
+        db.offline_mutations
+            .where('status')
+            .equals('failed')
+            .filter((mutation) => mutation.entityType === 'sales' && mutation.operation === 'create')
+            .count()
+    ])
+    return pending + syncing + failedSaleCreates
+}
+
 export function AutoSyncOverlay() {
     const { t } = useTranslation()
     const { toast } = useToast()
@@ -46,7 +59,7 @@ export function AutoSyncOverlay() {
             return
         }
 
-        const pending = await db.offline_mutations.where('status').equals('pending').count()
+        const pending = await countRecoverableMutations()
         if (pending <= 0) {
             return
         }
