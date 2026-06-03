@@ -43,7 +43,7 @@ export function DeviceTokenBootstrap() {
                 const notification = new Notification(title, {
                     body,
                     data,
-                    icon: '/icon-192.png',
+                    icon: '/pwa-icon.png',
                 })
 
                 notification.onclick = () => {

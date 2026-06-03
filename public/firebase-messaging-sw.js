@@ -15,14 +15,12 @@ if (firebaseConfig.apiKey && firebaseConfig.projectId) {
     const messaging = firebase.messaging();
 
     messaging.onBackgroundMessage((payload) => {
-        console.log('[firebase-messaging-sw.js] Received background message: ', payload);
-
         const title = payload.notification?.title || payload.data?.title || payload.data?.subject || 'Asaas';
         const body = payload.notification?.body || payload.data?.body || payload.data?.message || 'You have a new notification.';
 
         const notificationOptions = {
             body,
-            icon: '/icon-192.png',
+            icon: '/pwa-icon.png',
             data: payload.data || payload.notification?.data || {}
         };
 
