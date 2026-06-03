@@ -12,7 +12,7 @@ function getFaviconPath(): string {
  * Returns the static logo path.
  */
 function getLogoPath(): string {
-    return '/logo.png'
+    return '/AtlasClear.png'
 }
 
 /**
@@ -41,7 +41,7 @@ export function useFavicon() {
  * Custom hook that returns the static logo path.
  */
 export function useLogo(): string {
-    return '/logo.png'
+    return '/AtlasClear.png'
 }
 
 export { getFaviconPath, getLogoPath }
