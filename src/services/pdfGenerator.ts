@@ -2,8 +2,6 @@ import { createElement, type ReactElement } from 'react'
 import { createRoot } from 'react-dom/client'
 import i18n from '@/i18n/config'
 import { I18nextProvider } from 'react-i18next'
-import html2canvas from 'html2canvas'
-import { jsPDF } from 'jspdf'
 import { A4InvoiceTemplate, ModernA4InvoiceTemplate, RefundA4InvoiceTemplate, RefundPrimaryA4InvoiceTemplate } from '@/ui/components'
 import { SaleReceiptBase } from '@/ui/components/SaleReceipt'
 import { UniversalInvoice } from '@/types'
@@ -25,6 +23,8 @@ interface RenderResult {
     widthMm: number
     heightMm: number
 }
+
+type JsPDFConstructor = typeof import('jspdf').jsPDF
 
 interface WorkspaceContactPair {
     primary?: string
@@ -86,6 +86,7 @@ async function waitForImages(container: HTMLElement) {
 }
 
 async function renderToCanvas(element: ReturnType<typeof createElement>, widthMm: number, quality: 'low' | 'high' = 'low'): Promise<RenderResult> {
+    const { default: html2canvas } = await import('html2canvas')
     const container = document.createElement('div')
     container.id = 'pdf-render-container'
     container.style.position = 'fixed'
@@ -193,8 +194,8 @@ async function renderToCanvas(element: ReturnType<typeof createElement>, widthMm
     }
 }
 
-function canvasToA4Pdf(renderResult: RenderResult) {
-    const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' })
+function canvasToA4Pdf(renderResult: RenderResult, PdfDocument: JsPDFConstructor) {
+    const pdf = new PdfDocument({ orientation: 'p', unit: 'mm', format: 'a4' })
 
     // Add background JPEG (Low Res)
     pdf.addImage(renderResult.background, 'JPEG', 0, 0, renderResult.widthMm, renderResult.heightMm, undefined, 'FAST')
@@ -207,8 +208,8 @@ function canvasToA4Pdf(renderResult: RenderResult) {
     return pdf.output('blob') as Blob
 }
 
-function canvasToReceiptPdf(renderResult: RenderResult) {
-    const pdf = new jsPDF({
+function canvasToReceiptPdf(renderResult: RenderResult, PdfDocument: JsPDFConstructor) {
+    const pdf = new PdfDocument({
         orientation: 'p',
         unit: 'mm',
         format: [renderResult.widthMm, renderResult.heightMm]
@@ -296,7 +297,8 @@ export async function generateInvoicePdf(options: PDFGeneratorOptions): Promise<
             )
         )
         const renderResult = await renderToCanvas(element, RECEIPT_WIDTH_MM, features?.print_quality)
-        return canvasToReceiptPdf(renderResult)
+        const { jsPDF } = await import('jspdf')
+        return canvasToReceiptPdf(renderResult, jsPDF)
     }
 
     const isRefundA4 = !!data.is_refund_invoice
@@ -336,7 +338,8 @@ export async function generateInvoicePdf(options: PDFGeneratorOptions): Promise<
             })
     )
     const renderResult = await renderToCanvas(element, A4_WIDTH_MM, features?.print_quality)
-    return canvasToA4Pdf(renderResult)
+    const { jsPDF } = await import('jspdf')
+    return canvasToA4Pdf(renderResult, jsPDF)
 
 }
 
@@ -361,8 +364,9 @@ export async function generateTemplatePdf({
 
     const widthMm = format === 'receipt' ? RECEIPT_WIDTH_MM : A4_WIDTH_MM
     const renderResult = await renderToCanvas(wrappedElement, widthMm, printQuality)
+    const { jsPDF } = await import('jspdf')
 
-    return format === 'receipt' ? canvasToReceiptPdf(renderResult) : canvasToA4Pdf(renderResult)
+    return format === 'receipt' ? canvasToReceiptPdf(renderResult, jsPDF) : canvasToA4Pdf(renderResult, jsPDF)
 }
 
 /**

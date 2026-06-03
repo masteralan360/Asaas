@@ -1,13 +1,16 @@
-import { useState, useMemo, useEffect } from 'react'
+import { lazy, Suspense, useState, useMemo, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { FileSpreadsheet, Download, ArrowLeft, Loader2 } from 'lucide-react'
-import Spreadsheet from "react-spreadsheet"
 import { cn } from '@/lib/utils'
 import { useWorkspace } from '@/workspace'
 import { db } from '@/local-db'
-import { Button } from '@/ui/components'
+import { Button } from '@/ui/components/button'
 import { exportToExcel, mapFinanceForExport, mapSalesForExport, mapRevenueForExport } from '@/lib/excelExport'
 import { supabase } from '@/auth/supabase'
+
+const SpreadsheetPreview = lazy(() =>
+    import('react-spreadsheet').then((module) => ({ default: module.default }))
+)
 
 interface ExportPreviewModalProps {
     isOpen: boolean
@@ -331,10 +334,19 @@ export function ExportPreviewModal({
                 ) : spreadsheetData.length > 0 ? (
                     <div className="overflow-auto">
                         <div className="inline-block min-w-full">
-                            <Spreadsheet
-                                data={spreadsheetData}
-                                className="atlas-spreadsheet text-sm font-medium"
-                            />
+                            <Suspense
+                                fallback={(
+                                    <div className="flex items-center justify-center py-16 text-muted-foreground gap-3">
+                                        <Loader2 className="w-5 h-5 animate-spin text-primary" />
+                                        <span className="text-sm font-semibold">{t('common.loading') || 'Loading...'}</span>
+                                    </div>
+                                )}
+                            >
+                                <SpreadsheetPreview
+                                    data={spreadsheetData}
+                                    className="atlas-spreadsheet text-sm font-medium"
+                                />
+                            </Suspense>
                         </div>
                     </div>
                 ) : (

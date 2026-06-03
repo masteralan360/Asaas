@@ -126,22 +126,87 @@ export default defineConfig(({ mode }) => {
                     marketplace: path.resolve(__dirname, 'marketplace.html')
                 },
                 output: {
-                    manualChunks: {
-                        'vendor-supabase': ['@supabase/supabase-js'],
-                        'vendor-db': ['dexie', 'dexie-react-hooks'],
-                        'vendor-react': ['react', 'react-dom', 'wouter', 'i18next', 'react-i18next'],
-                        'vendor-ui': [
-                            '@radix-ui/react-dialog',
-                            '@radix-ui/react-dropdown-menu',
-                            '@radix-ui/react-select',
-                            '@radix-ui/react-switch',
-                            '@radix-ui/react-tabs',
-                            '@radix-ui/react-toast',
-                            'lucide-react'
-                        ],
-                        'vendor-charts': ['recharts'],
-                        'vendor-spreadsheet': ['xlsx', 'react-spreadsheet', 'scheduler'],
-                        'vendor-pdf': ['@react-pdf/renderer', 'jspdf', 'html2canvas']
+                    manualChunks(id) {
+                        const normalizedId = id.replace(/\\/g, '/')
+                        const isPackage = (packageName: string) =>
+                            normalizedId.includes(`/node_modules/${packageName}/`)
+
+                        if (normalizedId.includes('vite/preload-helper')) {
+                            return 'preload-helper'
+                        }
+
+                        if (normalizedId.includes('commonjsHelpers')) {
+                            return 'commonjs-helpers'
+                        }
+
+                        if (!normalizedId.includes('/node_modules/')) {
+                            return undefined
+                        }
+
+                        if (isPackage('@supabase/supabase-js') || normalizedId.includes('/node_modules/@supabase/')) {
+                            return 'vendor-supabase'
+                        }
+
+                        if (isPackage('dexie') || isPackage('dexie-react-hooks')) {
+                            return 'vendor-db'
+                        }
+
+                        if (
+                            isPackage('react') ||
+                            isPackage('react-dom') ||
+                            isPackage('scheduler') ||
+                            isPackage('wouter') ||
+                            isPackage('i18next') ||
+                            isPackage('react-i18next')
+                        ) {
+                            return 'vendor-react'
+                        }
+
+                        if (normalizedId.includes('/node_modules/@radix-ui/') || isPackage('lucide-react')) {
+                            return 'vendor-ui'
+                        }
+
+                        if (isPackage('xlsx')) {
+                            return 'vendor-xlsx'
+                        }
+
+                        if (
+                            isPackage('react-spreadsheet') ||
+                            isPackage('fast-formula-parser') ||
+                            isPackage('use-context-selector') ||
+                            isPackage('array.prototype.flatmap')
+                        ) {
+                            return 'vendor-spreadsheet'
+                        }
+
+                        if (
+                            isPackage('html2canvas') ||
+                            isPackage('jspdf') ||
+                            isPackage('canvg') ||
+                            isPackage('dompurify') ||
+                            isPackage('fflate') ||
+                            isPackage('fast-png')
+                        ) {
+                            return 'vendor-pdf'
+                        }
+
+                        if (
+                            isPackage('@react-pdf/renderer') ||
+                            normalizedId.includes('/node_modules/@react-pdf/') ||
+                            isPackage('fontkit') ||
+                            isPackage('yoga-layout')
+                        ) {
+                            return 'vendor-react-pdf'
+                        }
+
+                        if (
+                            isPackage('@lyfie/luthor') ||
+                            isPackage('@lyfie/luthor-headless') ||
+                            isPackage('lexical') ||
+                            normalizedId.includes('/node_modules/@lexical/')
+                        ) {
+                            return 'vendor-notebook'
+                        }
                     }
                 }
             },

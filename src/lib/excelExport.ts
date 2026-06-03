@@ -1,4 +1,3 @@
-import * as XLSX from 'xlsx';
 import { isTauri } from './platform';
 import { platformService } from '@/services/platformService';
 import { formatOriginLabel } from '@/lib/utils';
@@ -10,6 +9,8 @@ import { formatOriginLabel } from '@/lib/utils';
  * @param sheetName Name of the worksheet.
  */
 export const exportToExcel = async (data: any[], fileName: string = 'export', sheetName: string = 'Sheet1'): Promise<boolean> => {
+    const XLSX = await import('xlsx');
+
     // Create a new workbook and worksheet
     const worksheet = XLSX.utils.json_to_sheet(data);
     const workbook = XLSX.utils.book_new();

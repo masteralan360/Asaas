@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { useLocation } from 'wouter'
-import { NotionLikeEditor, type ExtensiveEditorRef } from '@lyfie/luthor'
+import type { ExtensiveEditorRef } from '@lyfie/luthor'
 import { ArrowLeft, CheckCircle2, Loader2, NotebookPen, Save, TriangleAlert } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/auth'
@@ -8,9 +8,17 @@ import { Button, Input } from '@/ui/components'
 import { useTheme } from '@/ui/components/theme-provider'
 import { getNotebookDocument, getNotebookStorageKey, isNotebookStarterContent, saveNotebookDocument, type NotebookDocument } from '@/local-db/notebook'
 import { formatDateTime } from '@/lib/utils'
-import '@lyfie/luthor/styles.css'
 
 const AUTOSAVE_INTERVAL_MS = 1500
+
+const NotebookEditor = lazy(async () => {
+    const [editorModule] = await Promise.all([
+        import('@lyfie/luthor'),
+        import('@lyfie/luthor/styles.css')
+    ])
+
+    return { default: editorModule.NotionLikeEditor }
+})
 
 function resolveEditorTheme(theme: 'dark' | 'light' | 'system'): 'dark' | 'light' {
     if (theme === 'system') {
@@ -328,27 +336,38 @@ export function Notebook() {
                                         </div>
                                     </div>
                                 ) : (
-                                    <NotionLikeEditor
-                                        className="[&_.luthor-editor]:min-h-[60vh] [&_.luthor-editor]:rounded-[20px] [&_.luthor-editor]:border [&_.luthor-editor]:border-border/70 [&_.luthor-editor]:bg-card [&_.luthor-editor-header]:mb-4 [&_.luthor-richtext-container]:min-h-[52vh]"
-                                        defaultContent={initialContent}
-                                        showDefaultContent={false}
-                                        initialTheme={resolveEditorTheme(theme)}
-                                        availableModes={['visual']}
-                                        isToolbarEnabled
-                                        onReady={(methods) => {
-                                            editorRef.current = methods
-                                            setIsEditorReady(true)
-                                        }}
-                                        placeholder={t('notebook.fields.editorPlaceholder') || "Start writing, or type '/' for commands..."}
-                                        toolbarAlignment="left"
-                                        toolbarPosition="top"
-                                        featureFlags={{
-                                            image: false,
-                                            iframeEmbed: false,
-                                            youTubeEmbed: false,
-                                            themeToggle: false
-                                        }}
-                                    />
+                                    <Suspense
+                                        fallback={(
+                                            <div className="flex min-h-[60vh] items-center justify-center rounded-[20px] border border-dashed border-border/70 bg-muted/20">
+                                                <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                                                    <Loader2 className="w-4 h-4 animate-spin text-primary" />
+                                                    {t('notebook.messages.loadingEditor') || 'Loading notebook editor...'}
+                                                </div>
+                                            </div>
+                                        )}
+                                    >
+                                        <NotebookEditor
+                                            className="[&_.luthor-editor]:min-h-[60vh] [&_.luthor-editor]:rounded-[20px] [&_.luthor-editor]:border [&_.luthor-editor]:border-border/70 [&_.luthor-editor]:bg-card [&_.luthor-editor-header]:mb-4 [&_.luthor-richtext-container]:min-h-[52vh]"
+                                            defaultContent={initialContent}
+                                            showDefaultContent={false}
+                                            initialTheme={resolveEditorTheme(theme)}
+                                            availableModes={['visual']}
+                                            isToolbarEnabled
+                                            onReady={(methods) => {
+                                                editorRef.current = methods
+                                                setIsEditorReady(true)
+                                            }}
+                                            placeholder={t('notebook.fields.editorPlaceholder') || "Start writing, or type '/' for commands..."}
+                                            toolbarAlignment="left"
+                                            toolbarPosition="top"
+                                            featureFlags={{
+                                                image: false,
+                                                iframeEmbed: false,
+                                                youTubeEmbed: false,
+                                                themeToggle: false
+                                            }}
+                                        />
+                                    </Suspense>
                                 )}
                             </div>
                         </div>

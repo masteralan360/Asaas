@@ -124,8 +124,6 @@ export function WorkspaceWarmup() {
         if (hasFeature('members')) tasks.push(() => import('@/ui/pages/Members'))
         if (user?.role === 'admin') tasks.push(() => import('@/ui/pages/CustomTemplates'))
 
-        tasks.push(() => import('@/ui/pages/Notebook'))
-
         await runInBatches(tasks, MODULE_PRELOAD_BATCH_SIZE)
     }, [features.allowed_currencies.length, features.kds_enabled, hasCapability, hasFeature, user?.role])
 
