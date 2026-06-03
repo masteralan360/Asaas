@@ -57,7 +57,7 @@ const dbMock = vi.hoisted(() => {
 const supabaseMock = vi.hoisted(() => {
     const mutationError = new Error('permission denied')
     const upsert = vi.fn(async () => ({ data: null, error: mutationError }))
-    const rpc = vi.fn(async () => ({ data: null, error: null }))
+    const rpc = vi.fn(async () => ({ data: null as any, error: null as any }))
     let saleLookup: Record<string, any> | null = null
 
     const makeBuilder = (tableName: string) => {
