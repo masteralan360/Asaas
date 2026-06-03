@@ -65,7 +65,7 @@ export function ProtectedRoute({
 
     // Redirect locked workspace members to locked workspace page
     if (isLocked && location !== '/locked-workspace') {
-        const isAdminRoute = location.startsWith('/admin') || location.startsWith('/workspace-configuration') || location.startsWith('/settings');
+        const isAdminRoute = location.startsWith('/workspace-configuration') || location.startsWith('/settings');
 
         // If not an admin route, redirect everyone (including admins)
         // This ensures admins "feel" the lock on general pages like POS/Dashboard

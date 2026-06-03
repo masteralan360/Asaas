@@ -96,9 +96,6 @@ const Members = lazy(() =>
 const Settings = lazy(() =>
   import("@/ui/pages/Settings").then((m) => ({ default: m.Settings })),
 );
-const Admin = lazy(() =>
-  import("@/ui/pages/Admin").then((m) => ({ default: m.Admin })),
-);
 const WorkspaceRegistration = lazy(() =>
   import("@/ui/pages/WorkspaceRegistration").then((m) => ({
     default: m.WorkspaceRegistration,
@@ -1295,9 +1292,6 @@ function App() {
                             <Settings />
                           </Layout>
                         </ProtectedRoute>
-                      </Route>
-                      <Route path="/admin">
-                        <Admin />
                       </Route>
                       <Route path="/workspace-configuration">
                         <ProtectedRoute allowedRoles={["admin"]}>
