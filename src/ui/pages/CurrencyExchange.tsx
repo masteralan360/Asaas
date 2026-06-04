@@ -1167,13 +1167,19 @@ function CreateCurrencyExchangeTransactionPage({
                                     <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                                         <div className="grid gap-2">
                                             <Label>Customer Gives</Label>
-                                            <Input
-                                                type="text"
-                                                inputMode={fromCurrency === 'iqd' ? 'numeric' : 'decimal'}
-                                                placeholder="0"
-                                                value={formatNumericInput(customerGivesAmount)}
-                                                onChange={(event) => setCustomerGivesAmount(sanitizeNumericInput(event.target.value, { allowDecimal: fromCurrency !== 'iqd' }))}
-                                            />
+                                            <div className="relative">
+                                                <Input
+                                                    type="text"
+                                                    inputMode={fromCurrency === 'iqd' ? 'numeric' : 'decimal'}
+                                                    placeholder="0"
+                                                    className="pr-12"
+                                                    value={formatNumericInput(customerGivesAmount)}
+                                                    onChange={(event) => setCustomerGivesAmount(sanitizeNumericInput(event.target.value, { allowDecimal: fromCurrency !== 'iqd' }))}
+                                                />
+                                                <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold uppercase tracking-wider text-muted-foreground/60">
+                                                    {fromCurrency === 'iqd' ? features.iqd_display_preference : fromCurrency === 'usd' ? '$' : fromCurrency.toUpperCase()}
+                                                </span>
+                                            </div>
                                         </div>
                                         <div className="grid gap-2">
                                             <Label>Payment Method</Label>
