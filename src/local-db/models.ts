@@ -588,6 +588,16 @@ export interface RealEstatePayment extends BaseEntity {
 export type ExchangeTransactionType = "buy" | "sell";
 export type ExchangeFeeType = "fixed" | "percentage";
 export type ExchangeFeeRuleTransactionScope = "buy" | "sell" | "both";
+export type ExchangeAcquisitionRateSource = "last_buy" | "manual";
+export type ExchangeSafeMovementType =
+  | "opening_balance"
+  | "adjustment"
+  | "exchange_in"
+  | "exchange_out";
+export type ExchangeSafeMovementSourceType =
+  | "opening_balance"
+  | "adjustment"
+  | "exchange_transaction";
 export type ExchangePaymentMethod =
   | "cash"
   | "fib"
@@ -643,9 +653,43 @@ export interface ExchangeTransaction extends BaseEntity {
   finalFeeValue: number;
   feeAmount: number;
   feeEdited: boolean;
+  safeId?: string | null;
+  safeNameSnapshot?: string | null;
+  acquisitionRate?: number | null;
+  acquisitionRateSource?: ExchangeAcquisitionRateSource | null;
+  acquisitionRateSnapshot?: ExchangeRateSnapshot[] | null;
+  profitAmount?: number | null;
+  profitCurrency?: CurrencyCode | null;
   paymentMethod: ExchangePaymentMethod;
   employeeUserId?: string | null;
   employeeName?: string | null;
+  notes?: string | null;
+  createdBy?: string | null;
+}
+
+export interface ExchangeSafe extends BaseEntity {
+  name: string;
+  isActive: boolean;
+  notes?: string | null;
+  createdBy?: string | null;
+}
+
+export interface ExchangeSafeBalance extends BaseEntity {
+  safeId: string;
+  currency: CurrencyCode;
+  balanceAmount: number;
+}
+
+export interface ExchangeSafeMovement extends BaseEntity {
+  safeId: string;
+  safeNameSnapshot: string;
+  currency: CurrencyCode;
+  movementType: ExchangeSafeMovementType;
+  sourceType: ExchangeSafeMovementSourceType;
+  sourceId?: string | null;
+  deltaAmount: number;
+  balanceBefore: number;
+  balanceAfter: number;
   notes?: string | null;
   createdBy?: string | null;
 }
@@ -987,7 +1031,10 @@ export interface SyncQueueItem {
     | "real_estate_installments"
     | "real_estate_payments"
     | "exchange_transactions"
-    | "exchange_fee_rules";
+    | "exchange_fee_rules"
+    | "fx_safes"
+    | "fx_safe_balances"
+    | "fx_safe_movements";
   entityId: string;
   operation: "create" | "update" | "delete";
   data: Record<string, unknown>;
@@ -1100,7 +1147,10 @@ export interface OfflineMutation {
     | "real_estate_installments"
     | "real_estate_payments"
     | "exchange_transactions"
-    | "exchange_fee_rules";
+    | "exchange_fee_rules"
+    | "fx_safes"
+    | "fx_safe_balances"
+    | "fx_safe_movements";
   entityId: string;
   operation: "create" | "update" | "delete";
   payload: Record<string, unknown>;

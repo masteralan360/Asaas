@@ -43,6 +43,9 @@ import type {
   RealEstatePayment,
   ExchangeTransaction,
   ExchangeFeeRule,
+  ExchangeSafe,
+  ExchangeSafeBalance,
+  ExchangeSafeMovement,
 } from "./models";
 import { isLocalWorkspaceMode } from "@/workspace/workspaceMode";
 import {
@@ -323,6 +326,9 @@ export class AtlasDatabase extends Dexie {
   real_estate_payments!: EntityTable<RealEstatePayment, "id">;
   exchange_transactions!: EntityTable<ExchangeTransaction, "id">;
   exchange_fee_rules!: EntityTable<ExchangeFeeRule, "id">;
+  fx_safes!: EntityTable<ExchangeSafe, "id">;
+  fx_safe_balances!: EntityTable<ExchangeSafeBalance, "id">;
+  fx_safe_movements!: EntityTable<ExchangeSafeMovement, "id">;
 
   constructor() {
     super("AtlasDatabase");
@@ -2087,6 +2093,19 @@ export class AtlasDatabase extends Dexie {
         "id, workspaceId, name, transactionScope, feeType, currency, effectiveStartDate, effectiveEndDate, isActive, isLocked, createdAt, updatedAt, isDeleted, syncStatus, [workspaceId+isActive], [workspaceId+transactionScope], [workspaceId+effectiveStartDate]",
     });
 
+    this.version(61).stores({
+      exchange_transactions:
+        "id, workspaceId, transactionNo, transactionType, transactionDate, fromCurrency, toCurrency, safeId, profitCurrency, paymentMethod, employeeUserId, createdAt, updatedAt, isDeleted, syncStatus, [workspaceId+createdAt], [workspaceId+transactionDate], [workspaceId+transactionType], [workspaceId+safeId]",
+      exchange_fee_rules:
+        "id, workspaceId, name, transactionScope, feeType, currency, effectiveStartDate, effectiveEndDate, isActive, isLocked, createdAt, updatedAt, isDeleted, syncStatus, [workspaceId+isActive], [workspaceId+transactionScope], [workspaceId+effectiveStartDate]",
+      fx_safes:
+        "id, workspaceId, name, isActive, createdAt, updatedAt, isDeleted, syncStatus, [workspaceId+isActive], [workspaceId+createdAt]",
+      fx_safe_balances:
+        "id, workspaceId, safeId, currency, balanceAmount, updatedAt, isDeleted, syncStatus, [safeId+currency], [workspaceId+safeId], [workspaceId+currency]",
+      fx_safe_movements:
+        "id, workspaceId, safeId, currency, movementType, sourceType, sourceId, createdAt, updatedAt, isDeleted, syncStatus, [workspaceId+safeId], [safeId+currency], [sourceType+sourceId]",
+    });
+
     this.registerLocalModeSyncHooks();
   }
 
@@ -2126,6 +2145,9 @@ export class AtlasDatabase extends Dexie {
       "real_estate_payments",
       "exchange_transactions",
       "exchange_fee_rules",
+      "fx_safes",
+      "fx_safe_balances",
+      "fx_safe_movements",
       "budget_settings",
       "budget_allocations",
       "expense_series",
@@ -2285,6 +2307,9 @@ export async function clearDatabase(): Promise<void> {
       db.real_estate_payments,
       db.exchange_transactions,
       db.exchange_fee_rules,
+      db.fx_safes,
+      db.fx_safe_balances,
+      db.fx_safe_movements,
       db.payment_transactions,
       db.syncQueue,
     ],
@@ -2306,6 +2331,9 @@ export async function clearDatabase(): Promise<void> {
       await db.real_estate_payments.clear();
       await db.exchange_transactions.clear();
       await db.exchange_fee_rules.clear();
+      await db.fx_safes.clear();
+      await db.fx_safe_balances.clear();
+      await db.fx_safe_movements.clear();
       await db.payment_transactions.clear();
       await db.syncQueue.clear();
     },

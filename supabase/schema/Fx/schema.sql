@@ -14,6 +14,13 @@ CREATE TABLE fx.exchange_transactions (
   exchange_rate_source text NOT NULL,
   exchange_rate_manually_edited boolean NOT NULL DEFAULT false,
   market_rate_snapshot jsonb NOT NULL DEFAULT '[]'::jsonb,
+  safe_id uuid NULL,
+  safe_name_snapshot text NULL,
+  acquisition_rate numeric NULL,
+  acquisition_rate_source text NULL,
+  acquisition_rate_snapshot jsonb NULL,
+  profit_amount numeric NULL,
+  profit_currency text NULL,
   fee_rule_id uuid NULL,
   fee_rule_snapshot jsonb NULL,
   fee_type text NULL,
@@ -39,6 +46,8 @@ CREATE TABLE fx.exchange_transactions (
   ),
   CONSTRAINT exchange_transactions_fee_type_check CHECK (fee_type IS NULL OR fee_type IN ('fixed', 'percentage')),
   CONSTRAINT exchange_transactions_fee_currency_check CHECK (fee_currency IS NULL OR fee_currency IN ('usd', 'eur', 'iqd', 'try')),
+  CONSTRAINT exchange_transactions_acquisition_source_check CHECK (acquisition_rate_source IS NULL OR acquisition_rate_source IN ('last_buy', 'manual')),
+  CONSTRAINT exchange_transactions_profit_currency_check CHECK (profit_currency IS NULL OR profit_currency IN ('usd', 'eur', 'iqd', 'try')),
   CONSTRAINT exchange_transactions_payment_method_check CHECK (payment_method IN ('cash', 'fib', 'qicard', 'zaincash', 'fastpay')),
   PRIMARY KEY (id)
 );
@@ -68,5 +77,59 @@ CREATE TABLE fx.exchange_fee_rules (
   CONSTRAINT exchange_fee_rules_value_check CHECK (value >= 0),
   CONSTRAINT exchange_fee_rules_basis_amount_check CHECK (customer_gives_basis_amount > 0),
   CONSTRAINT exchange_fee_rules_dates_check CHECK (effective_end_date IS NULL OR effective_end_date >= effective_start_date),
+  PRIMARY KEY (id)
+);
+
+CREATE TABLE fx.fx_safes (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL,
+  name text NOT NULL,
+  is_active boolean NOT NULL DEFAULT true,
+  notes text NULL,
+  created_by uuid NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  version bigint NOT NULL DEFAULT 1,
+  is_deleted boolean NOT NULL DEFAULT false,
+  CONSTRAINT fx_safes_name_check CHECK (length(trim(name)) > 0),
+  PRIMARY KEY (id)
+);
+
+CREATE TABLE fx.fx_safe_balances (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL,
+  safe_id uuid NOT NULL,
+  currency text NOT NULL,
+  balance_amount numeric NOT NULL DEFAULT 0,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  version bigint NOT NULL DEFAULT 1,
+  is_deleted boolean NOT NULL DEFAULT false,
+  CONSTRAINT fx_safe_balances_currency_check CHECK (currency IN ('usd', 'eur', 'iqd', 'try')),
+  CONSTRAINT fx_safe_balances_safe_currency_unique UNIQUE (safe_id, currency),
+  PRIMARY KEY (id)
+);
+
+CREATE TABLE fx.fx_safe_movements (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL,
+  safe_id uuid NOT NULL,
+  safe_name_snapshot text NOT NULL,
+  currency text NOT NULL,
+  movement_type text NOT NULL,
+  source_type text NOT NULL,
+  source_id uuid NULL,
+  delta_amount numeric NOT NULL,
+  balance_before numeric NOT NULL,
+  balance_after numeric NOT NULL,
+  notes text NULL,
+  created_by uuid NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  version bigint NOT NULL DEFAULT 1,
+  is_deleted boolean NOT NULL DEFAULT false,
+  CONSTRAINT fx_safe_movements_currency_check CHECK (currency IN ('usd', 'eur', 'iqd', 'try')),
+  CONSTRAINT fx_safe_movements_type_check CHECK (movement_type IN ('opening_balance', 'adjustment', 'exchange_in', 'exchange_out')),
+  CONSTRAINT fx_safe_movements_source_check CHECK (source_type IN ('opening_balance', 'adjustment', 'exchange_transaction')),
   PRIMARY KEY (id)
 );

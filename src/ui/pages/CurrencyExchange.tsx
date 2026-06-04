@@ -1,7 +1,7 @@
 import { type FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useRoute } from 'wouter'
 import { useTranslation } from 'react-i18next'
-import { ArrowLeft, ArrowRightLeft, CalendarClock, ClipboardList, Clock, Lock, Plus, Search, Trash2, Unlock } from 'lucide-react'
+import { ArrowLeft, ArrowRightLeft, CalendarClock, ClipboardList, Clock, History, Lock, Plus, Search, Trash2, Unlock, Wallet } from 'lucide-react'
 
 import { useAuth } from '@/auth'
 import { useExchangeRate } from '@/context/ExchangeRateContext'
@@ -10,19 +10,29 @@ import { cn, formatCurrency, formatDateTime, formatNumberWithCommas, formatNumer
 import { setManualExchangeRate, type ManualRateCurrency } from '@/lib/manualExchangeRates'
 import {
     buildExchangeFeeRuleSnapshot,
+    calculateExchangeProfit,
     calculateExchangeTransaction,
     createExchangeFeeRule,
+    createExchangeSafe,
+    createExchangeSafeAdjustment,
     createExchangeTransaction,
     deleteExchangeFeeRule,
     deleteExchangeTransaction,
+    EXCHANGE_SAFE_CURRENCIES,
+    findLatestSafeBuyForAcquisitionRate,
     getDefaultExchangeFeeBasisAmount,
     getEffectiveExchangeRateUsed,
     getExchangeFeeBasisAmount,
+    getExchangeRateBasisAmount,
     isExchangeFeeRuleEffectiveForTransaction,
     resolveEffectiveExchangeFeeRule,
     updateExchangeFeeRule,
     useExchangeFeeRules,
+    useExchangeSafeBalances,
+    useExchangeSafeMovements,
+    useExchangeSafes,
     useExchangeTransactions,
+    type ExchangeAcquisitionRateSource,
     type CurrencyCode,
     type ExchangeFeeRule,
     type ExchangeFeeRuleTransactionScope,
@@ -30,6 +40,8 @@ import {
     type ExchangePaymentMethod,
     type ExchangeRateMap,
     type ExchangeRateSnapshot,
+    type ExchangeSafeBalance,
+    type ExchangeSafeMovement,
     type ExchangeTransactionType,
     type IQDDisplayPreference
 } from '@/local-db'
@@ -168,6 +180,25 @@ function feeScopeLabel(scope: ExchangeFeeRuleTransactionScope) {
     return 'Buy and Sell'
 }
 
+function getSafeBalanceAmount(balances: ExchangeSafeBalance[], safeId: string | null | undefined, currency: CurrencyCode) {
+    if (!safeId) return 0
+    return Number(balances.find((balance) => balance.safeId === safeId && balance.currency === currency && !balance.isDeleted)?.balanceAmount || 0)
+}
+
+function sanitizeSignedNumericInput(value: string, options?: { allowDecimal?: boolean; maxFractionDigits?: number }) {
+    const trimmed = value.trim()
+    const sign = trimmed.startsWith('-') ? '-' : ''
+    const sanitized = sanitizeNumericInput(trimmed.replace(/-/g, ''), options)
+    return sanitized ? `${sign}${sanitized}` : sign
+}
+
+function movementTypeLabel(type: ExchangeSafeMovement['movementType']) {
+    if (type === 'opening_balance') return 'Opening Balance'
+    if (type === 'adjustment') return 'Adjustment'
+    if (type === 'exchange_in') return 'Exchange In'
+    return 'Exchange Out'
+}
+
 export function CurrencyExchange() {
     const { user } = useAuth()
     const { features } = useWorkspace()
@@ -175,6 +206,7 @@ export function CurrencyExchange() {
     const [, navigate] = useLocation()
     const [createMatch] = useRoute('/currency-exchange/new')
     const [rulesMatch] = useRoute('/currency-exchange/rules')
+    const [safesMatch] = useRoute('/currency-exchange/safes')
     const workspaceId = user?.workspaceId
     const canAccessRules = user?.role === 'admin' || hasPermission('currencyExchangeFeeRules.access')
 
@@ -201,6 +233,16 @@ export function CurrencyExchange() {
         )
     }
 
+    if (safesMatch) {
+        return (
+            <ExchangeSafesPage
+                workspaceId={workspaceId}
+                iqdDisplayPreference={features.iqd_display_preference}
+                onBack={() => navigate('/currency-exchange')}
+            />
+        )
+    }
+
     return (
         <ExchangeTransactionsPage
             workspaceId={workspaceId}
@@ -208,6 +250,7 @@ export function CurrencyExchange() {
             canAccessRules={canAccessRules}
             onCreate={() => navigate('/currency-exchange/new')}
             onRules={() => navigate('/currency-exchange/rules')}
+            onSafes={() => navigate('/currency-exchange/safes')}
         />
     )
 }
@@ -217,13 +260,15 @@ function ExchangeTransactionsPage({
     iqdDisplayPreference,
     canAccessRules,
     onCreate,
-    onRules
+    onRules,
+    onSafes
 }: {
     workspaceId: string
     iqdDisplayPreference: IQDDisplayPreference
     canAccessRules: boolean
     onCreate: () => void
     onRules: () => void
+    onSafes: () => void
 }) {
     const { t } = useTranslation()
     const { toast } = useToast()
@@ -284,6 +329,10 @@ function ExchangeTransactionsPage({
                     </p>
                 </div>
                 <div className="flex flex-col gap-2 sm:flex-row">
+                    <Button type="button" variant="outline" onClick={onSafes} className="gap-2">
+                        <Wallet className="h-4 w-4" />
+                        Safes
+                    </Button>
                     {canAccessRules ? (
                         <Button type="button" variant="outline" onClick={onRules} className="gap-2">
                             <ClipboardList className="h-4 w-4" />
@@ -345,6 +394,9 @@ function ExchangeTransactionsPage({
                                     <TableCell>
                                         <div className="font-medium">{transaction.transactionNo}</div>
                                         <div className="text-xs text-muted-foreground">{formatDateTime(transaction.transactionDate)}</div>
+                                        {transaction.safeNameSnapshot ? (
+                                            <div className="text-xs text-muted-foreground">{transaction.safeNameSnapshot}</div>
+                                        ) : null}
                                         {transaction.employeeName ? (
                                             <div className="text-xs text-muted-foreground">{transaction.employeeName}</div>
                                         ) : null}
@@ -363,6 +415,11 @@ function ExchangeTransactionsPage({
                                     </TableCell>
                                     <TableCell>
                                         <div>{transaction.feeType ? `${transaction.feeType} / ${formatCurrency(transaction.feeAmount, transaction.feeCurrency || transaction.fromCurrency, iqdDisplayPreference as any)}` : '-'}</div>
+                                        {transaction.profitCurrency ? (
+                                            <div className={(transaction.profitAmount || 0) >= 0 ? 'text-xs text-emerald-700 dark:text-emerald-300' : 'text-xs text-destructive'}>
+                                                Profit: {formatCurrency(transaction.profitAmount || 0, transaction.profitCurrency, iqdDisplayPreference as any)}
+                                            </div>
+                                        ) : null}
                                         {transaction.feeEdited ? (
                                             <div className="text-xs text-amber-700 dark:text-amber-300">Edited from rule</div>
                                         ) : null}
@@ -400,6 +457,315 @@ function ExchangeTransactionsPage({
     )
 }
 
+function ExchangeSafesPage({
+    workspaceId,
+    iqdDisplayPreference,
+    onBack
+}: {
+    workspaceId: string
+    iqdDisplayPreference: IQDDisplayPreference
+    onBack: () => void
+}) {
+    const { user } = useAuth()
+    const { toast } = useToast()
+    const safes = useExchangeSafes(workspaceId)
+    const balances = useExchangeSafeBalances(workspaceId)
+    const [selectedSafeId, setSelectedSafeId] = useState('')
+    const selectedSafe = safes.find((safe) => safe.id === selectedSafeId) || safes[0] || null
+    const movements = useExchangeSafeMovements(workspaceId, selectedSafe?.id)
+    const isAdmin = user?.role === 'admin'
+    const [createOpen, setCreateOpen] = useState(false)
+    const [adjustOpen, setAdjustOpen] = useState(false)
+    const [safeName, setSafeName] = useState('')
+    const [safeNotes, setSafeNotes] = useState('')
+    const [openingBalances, setOpeningBalances] = useState<Record<CurrencyCode, string>>({ iqd: '', usd: '', eur: '', try: '' })
+    const [adjustCurrency, setAdjustCurrency] = useState<CurrencyCode>('iqd')
+    const [adjustAmount, setAdjustAmount] = useState('')
+    const [adjustNotes, setAdjustNotes] = useState('')
+    const [isSavingSafe, setIsSavingSafe] = useState(false)
+
+    useEffect(() => {
+        if (!selectedSafeId && safes[0]) {
+            setSelectedSafeId(safes[0].id)
+        }
+    }, [safes, selectedSafeId])
+
+    const resetCreateForm = () => {
+        setSafeName('')
+        setSafeNotes('')
+        setOpeningBalances({ iqd: '', usd: '', eur: '', try: '' })
+    }
+
+    const handleCreateSafe = async () => {
+        setIsSavingSafe(true)
+        try {
+            const safe = await createExchangeSafe(workspaceId, {
+                name: safeName,
+                notes: safeNotes,
+                openingBalances: Object.fromEntries(
+                    EXCHANGE_SAFE_CURRENCIES.map((currency) => [currency, parseFormattedNumber(openingBalances[currency] || '0')])
+                ) as Partial<Record<CurrencyCode, number>>,
+                createdBy: user?.id ?? null,
+                isAdmin
+            })
+            setSelectedSafeId(safe.id)
+            setCreateOpen(false)
+            resetCreateForm()
+            toast({ title: 'Safe created.', description: `${safe.name} is ready for exchange transactions.` })
+        } catch (error: any) {
+            toast({
+                title: 'Failed to create safe',
+                description: error?.message || 'Could not create safe.',
+                variant: 'destructive'
+            })
+        } finally {
+            setIsSavingSafe(false)
+        }
+    }
+
+    const handleAdjustment = async () => {
+        if (!selectedSafe) return
+        setIsSavingSafe(true)
+        try {
+            await createExchangeSafeAdjustment(workspaceId, {
+                safeId: selectedSafe.id,
+                currency: adjustCurrency,
+                amount: parseFormattedNumber(adjustAmount || '0'),
+                notes: adjustNotes,
+                createdBy: user?.id ?? null,
+                isAdmin
+            })
+            setAdjustOpen(false)
+            setAdjustAmount('')
+            setAdjustNotes('')
+            toast({ title: 'Adjustment saved.', description: `${selectedSafe.name} balance was updated.` })
+        } catch (error: any) {
+            toast({
+                title: 'Failed to adjust safe',
+                description: error?.message || 'Could not adjust safe.',
+                variant: 'destructive'
+            })
+        } finally {
+            setIsSavingSafe(false)
+        }
+    }
+
+    return (
+        <div className="space-y-6">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                    <Button
+                        type="button"
+                        variant="ghost"
+                        className="h-auto gap-2 px-0 text-muted-foreground hover:bg-transparent hover:text-foreground"
+                        onClick={onBack}
+                    >
+                        <ArrowLeft className="h-4 w-4" />
+                        Currency Exchange Service
+                    </Button>
+                    <h1 className="mt-1 flex items-center gap-2 text-3xl font-bold tracking-tight">
+                        <Wallet className="h-7 w-7" />
+                        FX Safes
+                    </h1>
+                    <p className="text-sm text-muted-foreground">
+                        Currency Exchange-only safes with per-currency balances and movement audit.
+                    </p>
+                </div>
+                <div className="flex flex-col gap-2 sm:flex-row">
+                    {isAdmin && selectedSafe ? (
+                        <Button type="button" variant="outline" onClick={() => setAdjustOpen(true)}>
+                            Adjustment
+                        </Button>
+                    ) : null}
+                    <Button type="button" onClick={() => setCreateOpen(true)} className="gap-2">
+                        <Plus className="h-4 w-4" />
+                        Create Safe
+                    </Button>
+                </div>
+            </div>
+
+            <div className="grid gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Safes</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-2">
+                        {safes.length === 0 ? (
+                            <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
+                                No FX safes yet.
+                            </div>
+                        ) : safes.map((safe) => (
+                            <button
+                                key={safe.id}
+                                type="button"
+                                className={cn(
+                                    'w-full rounded-xl border px-3 py-3 text-start transition-colors',
+                                    selectedSafe?.id === safe.id ? 'border-primary bg-primary/5' : 'hover:bg-muted/40'
+                                )}
+                                onClick={() => setSelectedSafeId(safe.id)}
+                            >
+                                <div className="font-semibold">{safe.name}</div>
+                                <div className="text-xs text-muted-foreground">{safe.isActive ? 'Active' : 'Inactive'}</div>
+                            </button>
+                        ))}
+                    </CardContent>
+                </Card>
+
+                <div className="space-y-4">
+                    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                        {EXCHANGE_SAFE_CURRENCIES.map((currency) => (
+                            <MetricCard
+                                key={currency}
+                                title={currency.toUpperCase()}
+                                value={formatCurrency(getSafeBalanceAmount(balances, selectedSafe?.id, currency), currency, iqdDisplayPreference)}
+                            />
+                        ))}
+                    </div>
+
+                    <Card>
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2">
+                                <History className="h-5 w-5" />
+                                Movement Audit
+                            </CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <Table>
+                                <TableHeader>
+                                    <TableRow>
+                                        <TableHead>Date</TableHead>
+                                        <TableHead>Type</TableHead>
+                                        <TableHead>Currency</TableHead>
+                                        <TableHead>Delta</TableHead>
+                                        <TableHead>Before</TableHead>
+                                        <TableHead>After</TableHead>
+                                        <TableHead>Notes</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {movements.length === 0 ? (
+                                        <TableRow>
+                                            <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">
+                                                No movements for this safe yet.
+                                            </TableCell>
+                                        </TableRow>
+                                    ) : movements.slice(0, 50).map((movement) => (
+                                        <TableRow key={movement.id}>
+                                            <TableCell>{formatDateTime(movement.createdAt)}</TableCell>
+                                            <TableCell>{movementTypeLabel(movement.movementType)}</TableCell>
+                                            <TableCell>{movement.currency.toUpperCase()}</TableCell>
+                                            <TableCell className={movement.deltaAmount < 0 ? 'text-destructive' : 'text-emerald-700'}>
+                                                {formatCurrency(movement.deltaAmount, movement.currency, iqdDisplayPreference)}
+                                            </TableCell>
+                                            <TableCell>{formatCurrency(movement.balanceBefore, movement.currency, iqdDisplayPreference)}</TableCell>
+                                            <TableCell>{formatCurrency(movement.balanceAfter, movement.currency, iqdDisplayPreference)}</TableCell>
+                                            <TableCell>{movement.notes || '-'}</TableCell>
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                        </CardContent>
+                    </Card>
+                </div>
+            </div>
+
+            <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+                <DialogContent className="max-w-xl">
+                    <DialogHeader>
+                        <DialogTitle>Create FX Safe</DialogTitle>
+                        <DialogDescription>
+                            Opening balances are admin-only and will be saved as audit movements.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="grid gap-4">
+                        <div className="grid gap-2">
+                            <Label>Safe Name</Label>
+                            <Input value={safeName} onChange={(event) => setSafeName(event.target.value)} placeholder="Main exchange safe" />
+                        </div>
+                        {isAdmin ? (
+                            <div className="grid gap-3 sm:grid-cols-2">
+                                {EXCHANGE_SAFE_CURRENCIES.map((currency) => (
+                                    <div key={currency} className="grid gap-2">
+                                        <Label>Opening {currency.toUpperCase()}</Label>
+                                        <Input
+                                            type="text"
+                                            inputMode="decimal"
+                                            value={formatNumericInput(openingBalances[currency])}
+                                            onChange={(event) => setOpeningBalances((prev) => ({
+                                                ...prev,
+                                                [currency]: sanitizeNumericInput(event.target.value, { allowDecimal: currency !== 'iqd' })
+                                            }))}
+                                            placeholder="0"
+                                        />
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <div className="rounded-xl border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+                                Only admins can set opening balances.
+                            </div>
+                        )}
+                        <div className="grid gap-2">
+                            <Label>Notes</Label>
+                            <Textarea value={safeNotes} onChange={(event) => setSafeNotes(event.target.value)} rows={3} />
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button type="button" variant="ghost" onClick={() => setCreateOpen(false)}>Cancel</Button>
+                        <Button type="button" onClick={handleCreateSafe} disabled={isSavingSafe || !safeName.trim()}>
+                            Create Safe
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={adjustOpen} onOpenChange={setAdjustOpen}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Safe Adjustment</DialogTitle>
+                        <DialogDescription>
+                            Admin-only correction movement for {selectedSafe?.name || 'selected safe'}.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="grid gap-4">
+                        <div className="grid gap-2">
+                            <Label>Currency</Label>
+                            <Select value={adjustCurrency} onValueChange={(value: CurrencyCode) => setAdjustCurrency(value)}>
+                                <SelectTrigger><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                    {EXCHANGE_SAFE_CURRENCIES.map((currency) => (
+                                        <SelectItem key={currency} value={currency}>{currency.toUpperCase()}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="grid gap-2">
+                            <Label>Amount Delta</Label>
+                            <Input
+                                type="text"
+                                inputMode="decimal"
+                                value={adjustAmount.startsWith('-') ? `-${formatNumericInput(adjustAmount.slice(1))}` : formatNumericInput(adjustAmount)}
+                                onChange={(event) => setAdjustAmount(sanitizeSignedNumericInput(event.target.value, { allowDecimal: adjustCurrency !== 'iqd' }))}
+                                placeholder="Use negative amount to decrease"
+                            />
+                        </div>
+                        <div className="grid gap-2">
+                            <Label>Notes</Label>
+                            <Textarea value={adjustNotes} onChange={(event) => setAdjustNotes(event.target.value)} rows={3} />
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button type="button" variant="ghost" onClick={() => setAdjustOpen(false)}>Cancel</Button>
+                        <Button type="button" onClick={handleAdjustment} disabled={isSavingSafe || !adjustAmount}>
+                            Save Adjustment
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+        </div>
+    )
+}
+
 function CreateCurrencyExchangeTransactionPage({
     workspaceId,
     onCancel,
@@ -415,25 +781,41 @@ function CreateCurrencyExchangeTransactionPage({
     const { features } = useWorkspace()
     const { exchangeData, eurRates, tryRates } = useExchangeRate()
     const rules = useExchangeFeeRules(workspaceId)
+    const safes = useExchangeSafes(workspaceId)
+    const safeBalances = useExchangeSafeBalances(workspaceId)
     const [isSaving, setIsSaving] = useState(false)
     const [transactionType, setTransactionType] = useState<ExchangeTransactionType>('buy')
     const [fromCurrency, setFromCurrency] = useState<CurrencyCode>('iqd')
     const [toCurrency, setToCurrency] = useState<CurrencyCode>('usd')
+    const [selectedSafeId, setSelectedSafeId] = useState('')
     const [customerGivesAmount, setCustomerGivesAmount] = useState('')
     const [transactionDate, setTransactionDate] = useState(currentTimestamp())
     const [paymentMethod, setPaymentMethod] = useState<ExchangePaymentMethod>('cash')
     const [notes, setNotes] = useState('')
     const [exchangeRateValue, setExchangeRateValue] = useState('')
     const [exchangeRateSource, setExchangeRateSource] = useState('live')
+    const [acquisitionRateValue, setAcquisitionRateValue] = useState('')
+    const [acquisitionRateSource, setAcquisitionRateSource] = useState<ExchangeAcquisitionRateSource | null>(null)
     const [selectedRuleId, setSelectedRuleId] = useState<string>('none')
     const [feeValue, setFeeValue] = useState('')
     const [manualPeriodOpen, setManualPeriodOpen] = useState(false)
     const prevPairRef = useRef(`${fromCurrency}:${toCurrency}`)
+    const prevAcquisitionKeyRef = useRef('')
 
     const availableCurrencies = useMemo(() => {
         const values = new Set<CurrencyCode>([...features.allowed_currencies, features.default_currency, 'iqd', 'usd'])
         return Array.from(values)
     }, [features.allowed_currencies, features.default_currency])
+    const activeSafes = useMemo(() => safes.filter((safe) => safe.isActive), [safes])
+    const selectedSafe = activeSafes.find((safe) => safe.id === selectedSafeId) || null
+
+    useEffect(() => {
+        if (!selectedSafeId && activeSafes[0]) {
+            setSelectedSafeId(activeSafes[0].id)
+        } else if (selectedSafeId && activeSafes.length > 0 && !activeSafes.some((safe) => safe.id === selectedSafeId)) {
+            setSelectedSafeId(activeSafes[0].id)
+        }
+    }, [activeSafes, selectedSafeId])
 
     const rawUsdRate = Number(exchangeData?.rate || 0)
     const rawEurRate = Number(eurRates.eur_iqd?.rate || 0)
@@ -494,6 +876,7 @@ function CreateCurrencyExchangeTransactionPage({
     const feeBasisAmount = selectedRule ? getExchangeFeeBasisAmount(selectedRule, feeCurrency) : getDefaultExchangeFeeBasisAmount(feeCurrency)
     const parsedFeeValue = parseFormattedNumber(feeValue || '0')
     const parsedCustomerGives = parseFormattedNumber(customerGivesAmount || '0')
+    const parsedAcquisitionRate = parseFormattedNumber(acquisitionRateValue || '0')
     const canEditFee = !selectedRule || !selectedRule.isLocked
 
     const calculation = useMemo(() => {
@@ -516,6 +899,63 @@ function CreateCurrencyExchangeTransactionPage({
             return null
         }
     }, [feeBasisAmount, feeCurrency, feeType, fromCurrency, parsedCustomerGives, parsedFeeValue, parsedRate, ratesToIqd, toCurrency])
+
+    useEffect(() => {
+        const acquisitionKey = `${transactionType}:${selectedSafeId}:${fromCurrency}:${toCurrency}:${transactionDate}`
+        const contextChanged = prevAcquisitionKeyRef.current !== acquisitionKey
+        if (contextChanged) {
+            prevAcquisitionKeyRef.current = acquisitionKey
+        }
+        if (transactionType !== 'sell' || !selectedSafeId || fromCurrency === toCurrency) {
+            setAcquisitionRateValue('')
+            setAcquisitionRateSource(null)
+            return
+        }
+        if (!contextChanged && acquisitionRateSource === 'manual') {
+            return
+        }
+
+        let cancelled = false
+        findLatestSafeBuyForAcquisitionRate({
+            workspaceId,
+            safeId: selectedSafeId,
+            soldCurrency: toCurrency,
+            profitCurrency: fromCurrency,
+            ratesToIqd,
+            beforeTransactionDate: transactionDate
+        }).then((latestBuy) => {
+            if (cancelled) return
+            if (latestBuy) {
+                setAcquisitionRateValue(formatNumberWithCommas(latestBuy.acquisitionRate))
+                setAcquisitionRateSource('last_buy')
+            } else {
+                setAcquisitionRateValue('')
+                setAcquisitionRateSource('manual')
+            }
+        })
+
+        return () => {
+            cancelled = true
+        }
+    }, [acquisitionRateSource, fromCurrency, ratesToIqd, selectedSafeId, toCurrency, transactionDate, transactionType, workspaceId])
+
+    const profitPreview = useMemo(() => {
+        if (transactionType !== 'sell' || !calculation || parsedAcquisitionRate <= 0) {
+            return null
+        }
+        try {
+            return calculateExchangeProfit({
+                transactionType,
+                fromCurrency,
+                toCurrency,
+                customerGivesAmount: parsedCustomerGives,
+                customerReceivesAmount: calculation.customerReceivesAmount,
+                acquisitionRate: parsedAcquisitionRate
+            })
+        } catch {
+            return null
+        }
+    }, [calculation, fromCurrency, parsedAcquisitionRate, parsedCustomerGives, toCurrency, transactionType])
 
     const fullMarketSnapshot = useMemo(() => buildOrderExchangeRatesSnapshot({
         exchangeData,
@@ -543,11 +983,22 @@ function CreateCurrencyExchangeTransactionPage({
         }]
     }, [exchangeRateSource, fromCurrency, fullMarketSnapshot, parsedRate, toCurrency])
 
+    const outgoingSafeBalance = getSafeBalanceAmount(safeBalances, selectedSafeId, toCurrency)
+    const hasInsufficientSafeBalance = Boolean(
+        calculation
+        && selectedSafeId
+        && outgoingSafeBalance + 0.000001 < calculation.customerReceivesAmount
+    )
+    const acquisitionRateRequired = transactionType === 'sell'
+
     const canSubmit = fromCurrency !== toCurrency &&
+        Boolean(selectedSafeId) &&
         parsedCustomerGives > 0 &&
         parsedRate > 0 &&
         Boolean(calculation) &&
-        marketRateSnapshot.length > 0
+        marketRateSnapshot.length > 0 &&
+        !hasInsufficientSafeBalance &&
+        (!acquisitionRateRequired || parsedAcquisitionRate > 0)
 
     const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault()
@@ -558,6 +1009,7 @@ function CreateCurrencyExchangeTransactionPage({
             await createExchangeTransaction(workspaceId, {
                 transactionType,
                 transactionDate,
+                safeId: selectedSafeId,
                 fromCurrency,
                 toCurrency,
                 customerGivesAmount: parsedCustomerGives,
@@ -573,6 +1025,9 @@ function CreateCurrencyExchangeTransactionPage({
                 originalFeeValue: selectedRule?.value ?? null,
                 finalFeeValue: parsedFeeValue,
                 feeBasisAmount,
+                acquisitionRate: transactionType === 'sell' ? parsedAcquisitionRate : null,
+                acquisitionRateSource: transactionType === 'sell' ? (acquisitionRateSource || 'manual') : null,
+                acquisitionRateSnapshot: transactionType === 'sell' ? marketRateSnapshot : null,
                 paymentMethod,
                 employeeUserId: user?.id ?? null,
                 employeeName: user?.name ?? null,
@@ -658,7 +1113,24 @@ function CreateCurrencyExchangeTransactionPage({
                                             <Label>Employee</Label>
                                             <Input value={user?.name || ''} readOnly className="bg-muted/40" />
                                         </div>
+                                        <div className="grid gap-2">
+                                            <Label>Safe</Label>
+                                            <Select value={selectedSafeId} onValueChange={setSelectedSafeId}>
+                                                <SelectTrigger><SelectValue placeholder="Select safe" /></SelectTrigger>
+                                                <SelectContent>
+                                                    {activeSafes.map((safe) => (
+                                                        <SelectItem key={safe.id} value={safe.id}>{safe.name}</SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
                                     </div>
+
+                                    {activeSafes.length === 0 ? (
+                                        <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                                            Create an FX safe before creating exchange transactions.
+                                        </div>
+                                    ) : null}
 
                                     <div className="grid grid-cols-1 gap-4 md:grid-cols-[1fr_auto_1fr] md:items-end">
                                         <CurrencySelector
@@ -683,6 +1155,12 @@ function CreateCurrencyExchangeTransactionPage({
                                     {fromCurrency === toCurrency ? (
                                         <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
                                             From currency and To currency must be different.
+                                        </div>
+                                    ) : null}
+
+                                    {hasInsufficientSafeBalance && calculation ? (
+                                        <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                                            {selectedSafe?.name || 'Selected safe'} has {formatCurrency(outgoingSafeBalance, toCurrency, features.iqd_display_preference)} available, but this transaction pays {formatCurrency(calculation.customerReceivesAmount, toCurrency, features.iqd_display_preference)}.
                                         </div>
                                     ) : null}
 
@@ -770,7 +1248,38 @@ function CreateCurrencyExchangeTransactionPage({
                                                 placeholder="0"
                                             />
                                         </div>
+                                        {transactionType === 'sell' ? (
+                                            <div className="grid gap-2 sm:col-span-2">
+                                                <div className="flex items-center justify-between gap-2">
+                                                    <Label>Acquisition Rate</Label>
+                                                    <span className={cn(
+                                                        'rounded-full px-2 py-0.5 text-xs font-medium',
+                                                        acquisitionRateSource === 'last_buy' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
+                                                    )}>
+                                                        {acquisitionRateSource === 'last_buy' ? 'Last Buy' : 'Manual'}
+                                                    </span>
+                                                </div>
+                                                <Input
+                                                    type="text"
+                                                    inputMode="decimal"
+                                                    value={formatNumericInput(acquisitionRateValue)}
+                                                    onChange={(event) => {
+                                                        setAcquisitionRateValue(sanitizeNumericInput(event.target.value, { allowDecimal: fromCurrency !== 'iqd', maxFractionDigits: 6 }))
+                                                        setAcquisitionRateSource('manual')
+                                                    }}
+                                                    placeholder={`Cost per ${formatNumberWithCommas(getExchangeRateBasisAmount(toCurrency))} ${toCurrency.toUpperCase()} in ${fromCurrency.toUpperCase()}`}
+                                                />
+                                                <p className="text-xs text-muted-foreground">
+                                                    Cost of {toCurrency.toUpperCase()} expressed in {fromCurrency.toUpperCase()} for profit snapshot.
+                                                </p>
+                                            </div>
+                                        ) : null}
                                     </div>
+                                    {profitPreview?.profitCurrency ? (
+                                        <div className="rounded-xl border bg-muted/20 px-3 py-2 text-sm">
+                                            Estimated profit: <span className="font-semibold">{formatCurrency(profitPreview.profitAmount || 0, profitPreview.profitCurrency, features.iqd_display_preference)}</span>
+                                        </div>
+                                    ) : null}
                                 </div>
                             </CardContent>
                         </Card>
@@ -896,8 +1405,13 @@ function CreateCurrencyExchangeTransactionPage({
                             customerGivesAmount={parsedCustomerGives}
                             paymentMethod={paymentMethod}
                             employeeName={user?.name || '-'}
+                            safeName={selectedSafe?.name || '-'}
                             exchangeRate={parsedRate}
                             exchangeRateSource={exchangeRateSource}
+                            acquisitionRate={transactionType === 'sell' ? parsedAcquisitionRate : null}
+                            acquisitionRateSource={transactionType === 'sell' ? acquisitionRateSource : null}
+                            profitAmount={profitPreview?.profitAmount ?? null}
+                            profitCurrency={profitPreview?.profitCurrency ?? null}
                             feeRuleName={selectedRule?.name || 'No fee'}
                             feeType={feeType}
                             feeCurrency={feeCurrency}
@@ -1063,8 +1577,13 @@ function ExchangeTransactionSummary({
     customerGivesAmount,
     paymentMethod,
     employeeName,
+    safeName,
     exchangeRate,
     exchangeRateSource,
+    acquisitionRate,
+    acquisitionRateSource,
+    profitAmount,
+    profitCurrency,
     feeRuleName,
     feeType,
     feeCurrency,
@@ -1083,8 +1602,13 @@ function ExchangeTransactionSummary({
     customerGivesAmount: number
     paymentMethod: ExchangePaymentMethod
     employeeName: string
+    safeName: string
     exchangeRate: number
     exchangeRateSource: string
+    acquisitionRate: number | null
+    acquisitionRateSource: ExchangeAcquisitionRateSource | null
+    profitAmount: number | null
+    profitCurrency: CurrencyCode | null
     feeRuleName: string
     feeType: ExchangeFeeType | null
     feeCurrency: CurrencyCode
@@ -1140,6 +1664,7 @@ function ExchangeTransactionSummary({
                         <SummaryRow label="Before Fee" value={beforeFeeLabel} />
                         <SummaryRow label="Payment Method" value={paymentMethod} valueClassName="capitalize" />
                         <SummaryRow label="Employee" value={employeeName || '-'} />
+                        <SummaryRow label="Safe" value={safeName || '-'} />
                     </div>
 
                     <div className="h-px bg-border" />
@@ -1153,6 +1678,19 @@ function ExchangeTransactionSummary({
                             value={exchangeRateSource === 'manual' ? 'Manual' : 'Live'}
                             valueClassName={exchangeRateSource === 'manual' ? 'text-amber-700 dark:text-amber-300' : 'text-emerald-700 dark:text-emerald-300'}
                         />
+                        {acquisitionRate !== null ? (
+                            <>
+                                <SummaryRow label="Acquisition Rate" value={acquisitionRate > 0 ? formatNumberWithCommas(acquisitionRate) : '-'} />
+                                <SummaryRow label="Acquisition Source" value={acquisitionRateSource === 'last_buy' ? 'Last Buy' : 'Manual'} />
+                            </>
+                        ) : null}
+                        {profitCurrency ? (
+                            <SummaryRow
+                                label="Estimated Profit"
+                                value={formatCurrency(profitAmount || 0, profitCurrency, iqdDisplayPreference)}
+                                valueClassName={(profitAmount || 0) >= 0 ? 'text-emerald-700 dark:text-emerald-300' : 'text-destructive'}
+                            />
+                        ) : null}
                         <div className="rounded-lg border bg-muted/20 p-3">
                             {marketRateSnapshot.length > 0 ? (
                                 <div className="grid gap-2">

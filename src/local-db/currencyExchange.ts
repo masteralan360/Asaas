@@ -12,20 +12,32 @@ import { db } from './database'
 import { addToOfflineMutations, fetchTableFromSupabase } from './hooks'
 import type {
     CurrencyCode,
+    ExchangeAcquisitionRateSource,
     ExchangeFeeRule,
     ExchangeFeeRuleSnapshot,
     ExchangeFeeRuleTransactionScope,
     ExchangeFeeType,
     ExchangePaymentMethod,
     ExchangeRateSnapshot,
+    ExchangeSafe,
+    ExchangeSafeBalance,
+    ExchangeSafeMovement,
     ExchangeTransaction,
     ExchangeTransactionType
 } from './models'
 
 const TRANSACTIONS_TABLE = 'exchange_transactions'
 const FEE_RULES_TABLE = 'exchange_fee_rules'
+const SAFES_TABLE = 'fx_safes'
+const SAFE_BALANCES_TABLE = 'fx_safe_balances'
+const SAFE_MOVEMENTS_TABLE = 'fx_safe_movements'
 
-type ExchangeTableName = typeof TRANSACTIONS_TABLE | typeof FEE_RULES_TABLE
+type ExchangeTableName =
+    | typeof TRANSACTIONS_TABLE
+    | typeof FEE_RULES_TABLE
+    | typeof SAFES_TABLE
+    | typeof SAFE_BALANCES_TABLE
+    | typeof SAFE_MOVEMENTS_TABLE
 type ExchangeSyncEntity = Record<string, unknown> & {
     id: string
     workspaceId: string
@@ -34,8 +46,13 @@ type ExchangeSyncEntity = Record<string, unknown> & {
 
 const tableByName = {
     [TRANSACTIONS_TABLE]: db.exchange_transactions,
-    [FEE_RULES_TABLE]: db.exchange_fee_rules
+    [FEE_RULES_TABLE]: db.exchange_fee_rules,
+    [SAFES_TABLE]: db.fx_safes,
+    [SAFE_BALANCES_TABLE]: db.fx_safe_balances,
+    [SAFE_MOVEMENTS_TABLE]: db.fx_safe_movements
 } as const
+
+export const EXCHANGE_SAFE_CURRENCIES: CurrencyCode[] = ['iqd', 'usd', 'eur', 'try']
 
 export interface ExchangeRateMap {
     usd: number
@@ -64,6 +81,7 @@ export interface ExchangeCalculationResult {
 export interface CreateExchangeTransactionInput {
     transactionType: ExchangeTransactionType
     transactionDate?: string
+    safeId: string
     fromCurrency: CurrencyCode
     toCurrency: CurrencyCode
     customerGivesAmount: number
@@ -79,11 +97,31 @@ export interface CreateExchangeTransactionInput {
     originalFeeValue?: number | null
     finalFeeValue?: number | null
     feeBasisAmount?: number | null
+    acquisitionRate?: number | null
+    acquisitionRateSource?: ExchangeAcquisitionRateSource | null
+    acquisitionRateSnapshot?: ExchangeRateSnapshot[] | null
     paymentMethod: ExchangePaymentMethod
     employeeUserId?: string | null
     employeeName?: string | null
     notes?: string | null
     createdBy?: string | null
+}
+
+export interface CreateExchangeSafeInput {
+    name: string
+    openingBalances?: Partial<Record<CurrencyCode, number>>
+    notes?: string | null
+    createdBy?: string | null
+    isAdmin: boolean
+}
+
+export interface CreateExchangeSafeAdjustmentInput {
+    safeId: string
+    currency: CurrencyCode
+    amount: number
+    notes?: string | null
+    createdBy?: string | null
+    isAdmin: boolean
 }
 
 export interface SaveExchangeFeeRuleInput {
@@ -133,6 +171,130 @@ export function getExchangeFeeBasisAmount(rule: { currency?: CurrencyCode | null
     const currency = rule?.currency || fallbackCurrency
     const basisAmount = Number(rule?.customerGivesBasisAmount || 0)
     return basisAmount > 0 ? basisAmount : getDefaultExchangeFeeBasisAmount(currency)
+}
+
+export function getExchangeRateBasisAmount(currency: CurrencyCode) {
+    return getDefaultExchangeFeeBasisAmount(currency)
+}
+
+function roundSafeAmount(value: number, currency: CurrencyCode) {
+    return roundCurrencyAmount(value, currency)
+}
+
+function calculateAcquisitionRateFromBuy(
+    buy: ExchangeTransaction,
+    soldCurrency: CurrencyCode,
+    profitCurrency: CurrencyCode,
+    ratesToIqd: ExchangeRateMap
+) {
+    const basis = getExchangeRateBasisAmount(soldCurrency)
+    const soldAmount = Number(buy.customerGivesAmount || 0)
+    const paidAmount = Number(buy.customerReceivesAmount || 0)
+    if (soldAmount <= 0 || paidAmount <= 0) {
+        return 0
+    }
+
+    const paidPerBasis = paidAmount * basis / soldAmount
+    if (buy.toCurrency === profitCurrency) {
+        return roundSafeAmount(paidPerBasis, profitCurrency)
+    }
+
+    return roundSafeAmount(convertExchangeAmount(paidPerBasis, buy.toCurrency, profitCurrency, ratesToIqd), profitCurrency)
+}
+
+export async function findLatestSafeBuyForAcquisitionRate({
+    workspaceId,
+    safeId,
+    soldCurrency,
+    profitCurrency,
+    ratesToIqd,
+    beforeTransactionDate
+}: {
+    workspaceId: string
+    safeId: string
+    soldCurrency: CurrencyCode
+    profitCurrency: CurrencyCode
+    ratesToIqd: ExchangeRateMap
+    beforeTransactionDate?: string | null
+}) {
+    if (!workspaceId || !safeId) {
+        return null
+    }
+
+    const parsedBefore = beforeTransactionDate ? new Date(beforeTransactionDate) : null
+    const beforeIso = parsedBefore && !Number.isNaN(parsedBefore.getTime())
+        ? parsedBefore.toISOString()
+        : null
+
+    const buys = await db.exchange_transactions
+        .where('workspaceId')
+        .equals(workspaceId)
+        .and((transaction) =>
+            !transaction.isDeleted
+            && transaction.transactionType === 'buy'
+            && transaction.safeId === safeId
+            && transaction.fromCurrency === soldCurrency
+            && (!beforeIso || transaction.transactionDate <= beforeIso)
+        )
+        .toArray()
+
+    const latest = buys.sort((left, right) =>
+        right.transactionDate.localeCompare(left.transactionDate)
+        || right.createdAt.localeCompare(left.createdAt)
+    )[0]
+
+    if (!latest) {
+        return null
+    }
+
+    const acquisitionRate = calculateAcquisitionRateFromBuy(latest, soldCurrency, profitCurrency, ratesToIqd)
+    if (acquisitionRate <= 0) {
+        return null
+    }
+
+    return {
+        transaction: latest,
+        acquisitionRate,
+        source: 'last_buy' as const
+    }
+}
+
+export function calculateExchangeProfit({
+    transactionType,
+    fromCurrency,
+    toCurrency,
+    customerGivesAmount,
+    customerReceivesAmount,
+    acquisitionRate
+}: {
+    transactionType: ExchangeTransactionType
+    fromCurrency: CurrencyCode
+    toCurrency: CurrencyCode
+    customerGivesAmount: number
+    customerReceivesAmount: number
+    acquisitionRate?: number | null
+}) {
+    if (transactionType !== 'sell') {
+        return {
+            acquisitionRate: null,
+            acquisitionRateSource: null,
+            profitAmount: null,
+            profitCurrency: null
+        }
+    }
+
+    const rate = Number(acquisitionRate || 0)
+    if (rate <= 0) {
+        throw new Error('Acquisition rate is required for sell transactions')
+    }
+
+    const cost = Number(customerReceivesAmount || 0) * rate / getExchangeRateBasisAmount(toCurrency)
+    const profitAmount = roundSafeAmount(Number(customerGivesAmount || 0) - cost, fromCurrency)
+    return {
+        acquisitionRate: rate,
+        profitAmount,
+        profitCurrency: fromCurrency
+    }
 }
 
 const DATE_ONLY_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/
@@ -400,6 +562,273 @@ export function isExchangeFeeRuleEffectiveForTransaction(
         && (!rule.effectiveEndDate || getDateTimeBoundaryMs(rule.effectiveEndDate, 'end') >= transactionTime)
 }
 
+function createBaseEntity(workspaceId: string, now: string) {
+    return {
+        workspaceId,
+        createdAt: now,
+        updatedAt: now,
+        version: 1,
+        isDeleted: false,
+        ...getSyncMetadata(workspaceId, now)
+    }
+}
+
+async function getSafeBalance(safeId: string, currency: CurrencyCode) {
+    return await db.fx_safe_balances
+        .where('[safeId+currency]')
+        .equals([safeId, currency])
+        .first()
+}
+
+async function ensureSafeBalance(
+    workspaceId: string,
+    safeId: string,
+    currency: CurrencyCode,
+    now: string
+) {
+    const existing = await getSafeBalance(safeId, currency)
+    if (existing) {
+        return existing
+    }
+
+    const balance: ExchangeSafeBalance = {
+        id: generateId(),
+        safeId,
+        currency,
+        balanceAmount: 0,
+        ...createBaseEntity(workspaceId, now)
+    }
+    await db.fx_safe_balances.put(balance)
+    return balance
+}
+
+function makeSafeMovement({
+    workspaceId,
+    safe,
+    currency,
+    movementType,
+    sourceType,
+    sourceId,
+    deltaAmount,
+    balanceBefore,
+    balanceAfter,
+    notes,
+    createdBy,
+    now
+}: {
+    workspaceId: string
+    safe: ExchangeSafe
+    currency: CurrencyCode
+    movementType: ExchangeSafeMovement['movementType']
+    sourceType: ExchangeSafeMovement['sourceType']
+    sourceId?: string | null
+    deltaAmount: number
+    balanceBefore: number
+    balanceAfter: number
+    notes?: string | null
+    createdBy?: string | null
+    now: string
+}): ExchangeSafeMovement {
+    return {
+        id: generateId(),
+        safeId: safe.id,
+        safeNameSnapshot: safe.name,
+        currency,
+        movementType,
+        sourceType,
+        sourceId: sourceId ?? null,
+        deltaAmount: roundSafeAmount(deltaAmount, currency),
+        balanceBefore: roundSafeAmount(balanceBefore, currency),
+        balanceAfter: roundSafeAmount(balanceAfter, currency),
+        notes: normalizeOptionalText(notes),
+        createdBy: createdBy || null,
+        ...createBaseEntity(workspaceId, now)
+    }
+}
+
+async function applySafeDelta({
+    workspaceId,
+    safe,
+    currency,
+    deltaAmount,
+    movementType,
+    sourceType,
+    sourceId,
+    notes,
+    createdBy,
+    now
+}: {
+    workspaceId: string
+    safe: ExchangeSafe
+    currency: CurrencyCode
+    deltaAmount: number
+    movementType: ExchangeSafeMovement['movementType']
+    sourceType: ExchangeSafeMovement['sourceType']
+    sourceId?: string | null
+    notes?: string | null
+    createdBy?: string | null
+    now: string
+}) {
+    const balance = await ensureSafeBalance(workspaceId, safe.id, currency, now)
+    const before = Number(balance.balanceAmount || 0)
+    const roundedDelta = roundSafeAmount(deltaAmount, currency)
+    const after = roundSafeAmount(before + roundedDelta, currency)
+    if (after < -0.000001) {
+        throw new Error(`Insufficient ${currency.toUpperCase()} balance in ${safe.name}`)
+    }
+
+    const updatedBalance: ExchangeSafeBalance = {
+        ...balance,
+        balanceAmount: after,
+        updatedAt: now,
+        version: balance.version + 1,
+        ...getSyncMetadata(workspaceId, now)
+    }
+    const movement = makeSafeMovement({
+        workspaceId,
+        safe,
+        currency,
+        movementType,
+        sourceType,
+        sourceId,
+        deltaAmount: roundedDelta,
+        balanceBefore: before,
+        balanceAfter: after,
+        notes,
+        createdBy,
+        now
+    })
+
+    await db.fx_safe_balances.put(updatedBalance)
+    await db.fx_safe_movements.put(movement)
+    return { balance: updatedBalance, movement }
+}
+
+export async function createExchangeSafe(workspaceId: string, input: CreateExchangeSafeInput) {
+    const now = new Date().toISOString()
+    const name = input.name.trim()
+    const changedBalances: ExchangeSafeBalance[] = []
+    const movements: ExchangeSafeMovement[] = []
+
+    if (!workspaceId) {
+        throw new Error('Workspace is required')
+    }
+    if (!name) {
+        throw new Error('Safe name is required')
+    }
+
+    const openingBalances = input.openingBalances || {}
+    const hasOpeningBalances = EXCHANGE_SAFE_CURRENCIES.some((currency) => Number(openingBalances[currency] || 0) > 0)
+    if (hasOpeningBalances && !input.isAdmin) {
+        throw new Error('Only admins can set opening balances')
+    }
+
+    const safe: ExchangeSafe = {
+        id: generateId(),
+        name,
+        isActive: true,
+        notes: normalizeOptionalText(input.notes),
+        createdBy: input.createdBy || null,
+        ...createBaseEntity(workspaceId, now)
+    }
+
+    await db.transaction('rw', [db.fx_safes, db.fx_safe_balances, db.fx_safe_movements], async () => {
+        await db.fx_safes.put(safe)
+        for (const currency of EXCHANGE_SAFE_CURRENCIES) {
+            const amount = roundSafeAmount(Math.max(0, Number(openingBalances[currency] || 0)), currency)
+            const balance: ExchangeSafeBalance = {
+                id: generateId(),
+                safeId: safe.id,
+                currency,
+                balanceAmount: amount,
+                ...createBaseEntity(workspaceId, now)
+            }
+            await db.fx_safe_balances.put(balance)
+            changedBalances.push(balance)
+
+            if (amount > 0) {
+                const movement = makeSafeMovement({
+                    workspaceId,
+                    safe,
+                    currency,
+                    movementType: 'opening_balance',
+                    sourceType: 'opening_balance',
+                    deltaAmount: amount,
+                    balanceBefore: 0,
+                    balanceAfter: amount,
+                    notes: input.notes,
+                    createdBy: input.createdBy,
+                    now
+                })
+                await db.fx_safe_movements.put(movement)
+                movements.push(movement)
+            }
+        }
+    })
+
+    await syncUpsertEntities(SAFES_TABLE, [safe as unknown as ExchangeSyncEntity], workspaceId)
+    await syncUpsertEntities(SAFE_BALANCES_TABLE, changedBalances as unknown as ExchangeSyncEntity[], workspaceId)
+    await syncUpsertEntities(SAFE_MOVEMENTS_TABLE, movements as unknown as ExchangeSyncEntity[], workspaceId)
+    return await db.fx_safes.get(safe.id) || safe
+}
+
+export async function createExchangeSafeAdjustment(workspaceId: string, input: CreateExchangeSafeAdjustmentInput) {
+    const now = new Date().toISOString()
+    if (!workspaceId) {
+        throw new Error('Workspace is required')
+    }
+    if (!input.isAdmin) {
+        throw new Error('Only admins can adjust safe balances')
+    }
+
+    const amount = roundSafeAmount(Number(input.amount || 0), input.currency)
+    if (!amount) {
+        throw new Error('Adjustment amount is required')
+    }
+
+    const safe = await db.fx_safes.get(input.safeId)
+    if (!safe || safe.isDeleted || safe.workspaceId !== workspaceId) {
+        throw new Error('Safe not found')
+    }
+
+    let changedBalance: ExchangeSafeBalance | null = null
+    let movement: ExchangeSafeMovement | null = null
+    await db.transaction('rw', [db.fx_safe_balances, db.fx_safe_movements], async () => {
+        const result = await applySafeDelta({
+            workspaceId,
+            safe,
+            currency: input.currency,
+            deltaAmount: amount,
+            movementType: 'adjustment',
+            sourceType: 'adjustment',
+            notes: input.notes,
+            createdBy: input.createdBy,
+            now
+        })
+        changedBalance = result.balance
+        movement = result.movement
+    })
+
+    if (changedBalance) {
+        await syncUpsertEntities(SAFE_BALANCES_TABLE, [changedBalance as unknown as ExchangeSyncEntity], workspaceId)
+    }
+    if (movement) {
+        await syncUpsertEntities(SAFE_MOVEMENTS_TABLE, [movement as unknown as ExchangeSyncEntity], workspaceId)
+    }
+    return { balance: changedBalance, movement }
+}
+
+export async function hasCurrencyExchangeAccountingData(workspaceId: string | undefined | null) {
+    if (!workspaceId) return false
+    const [transactions, safes, balances, movements] = await Promise.all([
+        db.exchange_transactions.where('workspaceId').equals(workspaceId).and((item) => !item.isDeleted).count(),
+        db.fx_safes.where('workspaceId').equals(workspaceId).and((item) => !item.isDeleted).count(),
+        db.fx_safe_balances.where('workspaceId').equals(workspaceId).and((item) => !item.isDeleted).count(),
+        db.fx_safe_movements.where('workspaceId').equals(workspaceId).and((item) => !item.isDeleted).count()
+    ])
+    return transactions + safes + balances + movements > 0
+}
+
 export async function createExchangeTransaction(
     workspaceId: string,
     input: CreateExchangeTransactionInput
@@ -414,9 +843,13 @@ export async function createExchangeTransaction(
     const originalFeeValue = input.originalFeeValue ?? input.feeRuleSnapshot?.value ?? null
     const finalFeeValue = Math.max(0, Number(input.finalFeeValue ?? originalFeeValue ?? 0))
     const feeBasisAmount = Math.max(0, Number(input.feeBasisAmount ?? input.feeRuleSnapshot?.customerGivesBasisAmount ?? 0))
+    const safeId = input.safeId
 
     if (!workspaceId) {
         throw new Error('Workspace is required')
+    }
+    if (!safeId) {
+        throw new Error('Safe is required')
     }
     if (fromCurrency === toCurrency) {
         throw new Error('From currency and To currency must be different')
@@ -431,6 +864,14 @@ export async function createExchangeTransaction(
         throw new Error('Market rate snapshot is required')
     }
 
+    const safe = await db.fx_safes.get(safeId)
+    if (!safe || safe.isDeleted || safe.workspaceId !== workspaceId) {
+        throw new Error('Safe not found')
+    }
+    if (!safe.isActive) {
+        throw new Error('Safe is inactive')
+    }
+
     const calculation = calculateExchangeTransaction({
         fromCurrency,
         toCurrency,
@@ -441,6 +882,49 @@ export async function createExchangeTransaction(
         feeValue: finalFeeValue,
         feeBasisAmount
     })
+
+    let acquisitionRate: number | null = null
+    let acquisitionRateSource: ExchangeAcquisitionRateSource | null = null
+    let acquisitionRateSnapshot: ExchangeRateSnapshot[] | null = null
+    let profitAmount: number | null = null
+    let profitCurrency: CurrencyCode | null = null
+
+    if (input.transactionType === 'sell') {
+        const manualRate = Number(input.acquisitionRate || 0)
+        if (manualRate > 0) {
+            acquisitionRate = manualRate
+            acquisitionRateSource = input.acquisitionRateSource || 'manual'
+        } else {
+            const latestBuy = await findLatestSafeBuyForAcquisitionRate({
+                workspaceId,
+                safeId,
+                soldCurrency: toCurrency,
+                profitCurrency: fromCurrency,
+                ratesToIqd: input.ratesToIqd,
+                beforeTransactionDate: transactionDate
+            })
+            if (latestBuy) {
+                acquisitionRate = latestBuy.acquisitionRate
+                acquisitionRateSource = latestBuy.source
+            }
+        }
+
+        if (!acquisitionRate || acquisitionRate <= 0) {
+            throw new Error('Acquisition rate is required for sell transactions')
+        }
+
+        const profit = calculateExchangeProfit({
+            transactionType: input.transactionType,
+            fromCurrency,
+            toCurrency,
+            customerGivesAmount,
+            customerReceivesAmount: calculation.customerReceivesAmount,
+            acquisitionRate
+        })
+        profitAmount = profit.profitAmount
+        profitCurrency = profit.profitCurrency
+        acquisitionRateSnapshot = input.acquisitionRateSnapshot ?? input.marketRateSnapshot
+    }
 
     const transactionId = generateId()
     const transactionNo = await generateExchangeTransactionNo(workspaceId, now)
@@ -472,6 +956,13 @@ export async function createExchangeTransaction(
         finalFeeValue,
         feeAmount: calculation.feeAmount,
         feeEdited,
+        safeId: safe.id,
+        safeNameSnapshot: safe.name,
+        acquisitionRate,
+        acquisitionRateSource,
+        acquisitionRateSnapshot,
+        profitAmount,
+        profitCurrency,
         paymentMethod: input.paymentMethod,
         employeeUserId: input.employeeUserId ?? null,
         employeeName: normalizeOptionalText(input.employeeName),
@@ -484,8 +975,45 @@ export async function createExchangeTransaction(
         ...getSyncMetadata(workspaceId, now)
     }
 
-    await db.exchange_transactions.put(transaction)
+    const changedBalances: ExchangeSafeBalance[] = []
+    const movements: ExchangeSafeMovement[] = []
+    await db.transaction('rw', [db.exchange_transactions, db.fx_safe_balances, db.fx_safe_movements], async () => {
+        await db.exchange_transactions.put(transaction)
+
+        const incoming = await applySafeDelta({
+            workspaceId,
+            safe,
+            currency: fromCurrency,
+            deltaAmount: customerGivesAmount,
+            movementType: 'exchange_in',
+            sourceType: 'exchange_transaction',
+            sourceId: transactionId,
+            notes: transactionNo,
+            createdBy: input.createdBy,
+            now
+        })
+        changedBalances.push(incoming.balance)
+        movements.push(incoming.movement)
+
+        const outgoing = await applySafeDelta({
+            workspaceId,
+            safe,
+            currency: toCurrency,
+            deltaAmount: -calculation.customerReceivesAmount,
+            movementType: 'exchange_out',
+            sourceType: 'exchange_transaction',
+            sourceId: transactionId,
+            notes: transactionNo,
+            createdBy: input.createdBy,
+            now
+        })
+        changedBalances.push(outgoing.balance)
+        movements.push(outgoing.movement)
+    })
+
     await syncUpsertEntities(TRANSACTIONS_TABLE, [transaction as unknown as ExchangeSyncEntity], workspaceId)
+    await syncUpsertEntities(SAFE_BALANCES_TABLE, changedBalances as unknown as ExchangeSyncEntity[], workspaceId)
+    await syncUpsertEntities(SAFE_MOVEMENTS_TABLE, movements as unknown as ExchangeSyncEntity[], workspaceId)
 
     const savedTransaction = await db.exchange_transactions.get(transaction.id)
     return savedTransaction || transaction
@@ -652,6 +1180,62 @@ export function useExchangeTransaction(transactionId: string | undefined) {
         () => transactionId ? db.exchange_transactions.get(transactionId) : undefined,
         [transactionId]
     )
+}
+
+export function useExchangeSafes(workspaceId: string | undefined) {
+    const online = useNetworkStatus()
+
+    const safes = useLiveQuery(
+        () => workspaceId
+            ? db.fx_safes
+                .where('workspaceId')
+                .equals(workspaceId)
+                .and((item) => !item.isDeleted)
+                .sortBy('createdAt')
+            : [],
+        [workspaceId]
+    )
+
+    useEffect(() => {
+        if (online && workspaceId && shouldUseCloudBusinessData(workspaceId)) {
+            void Promise.all([
+                fetchTableFromSupabase(SAFES_TABLE, db.fx_safes, workspaceId),
+                fetchTableFromSupabase(SAFE_BALANCES_TABLE, db.fx_safe_balances, workspaceId),
+                fetchTableFromSupabase(SAFE_MOVEMENTS_TABLE, db.fx_safe_movements, workspaceId)
+            ])
+        }
+    }, [online, workspaceId])
+
+    return safes ?? []
+}
+
+export function useExchangeSafeBalances(workspaceId: string | undefined, safeId?: string | null) {
+    return useLiveQuery(
+        () => {
+            if (!workspaceId) return []
+            return db.fx_safe_balances
+                .where('workspaceId')
+                .equals(workspaceId)
+                .and((item) => !item.isDeleted && (!safeId || item.safeId === safeId))
+                .toArray()
+        },
+        [workspaceId, safeId]
+    ) ?? []
+}
+
+export function useExchangeSafeMovements(workspaceId: string | undefined, safeId?: string | null) {
+    return useLiveQuery(
+        () => {
+            if (!workspaceId) return []
+            return db.fx_safe_movements
+                .where('workspaceId')
+                .equals(workspaceId)
+                .and((item) => !item.isDeleted && (!safeId || item.safeId === safeId))
+                .reverse()
+                .sortBy('createdAt')
+        },
+        [workspaceId, safeId]
+    ) ?? []
 }
 
 export function useExchangeFeeRules(workspaceId: string | undefined) {

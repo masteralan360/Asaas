@@ -1,7 +1,7 @@
 import { useAuth } from '@/auth'
 import { isBackendConfigurationRequired, supabase } from '@/auth/supabase'
 import { useSyncStatus, clearQueue } from '@/sync'
-import { db } from '@/local-db'
+import { db, hasCurrencyExchangeAccountingData } from '@/local-db'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, Button, Label, LanguageSwitcher, Input, CurrencySelector, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Tabs, TabsList, TabsTrigger, TabsContent, Switch, Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, Textarea, useToast, RegisterWorkspaceContactsModal } from '@/ui/components'
 import { useTranslation } from 'react-i18next'
 import { useWorkspace } from '@/workspace'
@@ -62,6 +62,7 @@ export function Settings() {
     const [whatsappAutoLaunch, setWhatsappAutoLaunch] = useState(localStorage.getItem('whatsapp_auto_launch') === 'true')
     const [hourDisplayPreference, setHourDisplayPreferenceState] = useState<HourDisplayPreference>(getHourDisplayPreference())
     const [monthDisplayPreference, setMonthDisplayPreferenceState] = useState<MonthDisplayPreference>(getMonthDisplayPreference())
+    const [hasFxAccountingData, setHasFxAccountingData] = useState(false)
     const isKdsSaving = false
 
     // Biometric State
@@ -108,6 +109,18 @@ export function Settings() {
     const canUseWhatsapp = hasCapability('whatsappIntegration')
     const canUseMultipleContacts = hasCapability('multipleWorkspaceContacts')
     const canUseBranches = planCapabilities.limits.maxBranches > 0
+
+    useEffect(() => {
+        let cancelled = false
+        hasCurrencyExchangeAccountingData(user?.workspaceId).then((hasData) => {
+            if (!cancelled) {
+                setHasFxAccountingData(hasData)
+            }
+        })
+        return () => {
+            cancelled = true
+        }
+    }, [user?.workspaceId])
 
     const activeSupabaseUrl = isBackendConfigurationRequired
         ? (customUrl || '')
@@ -541,15 +554,31 @@ export function Settings() {
     }
 
     const handleCurrencySelect = (val: CurrencyCode) => {
+        if (hasFxAccountingData && val !== features.default_currency) {
+            toast({
+                title: 'Workspace currency locked',
+                description: 'Workspace currency is locked because Currency Exchange has safes or transactions. This protects historical balances and profit reports.',
+                variant: 'destructive'
+            })
+            return
+        }
         setPendingCurrency(val)
         setIsCurrencyModalOpen(true)
     }
 
     const confirmCurrencyChange = async () => {
         if (pendingCurrency) {
-            await updateSettings({ default_currency: pendingCurrency })
-            setPendingCurrency(null)
-            setIsCurrencyModalOpen(false)
+            try {
+                await updateSettings({ default_currency: pendingCurrency })
+                setPendingCurrency(null)
+                setIsCurrencyModalOpen(false)
+            } catch (error: any) {
+                toast({
+                    title: 'Workspace currency locked',
+                    description: error?.message || 'Workspace currency is locked because Currency Exchange has safes or transactions. This protects historical balances and profit reports.',
+                    variant: 'destructive'
+                })
+            }
         }
     }
 
@@ -2269,7 +2298,13 @@ export function Settings() {
                                         value={features.default_currency}
                                         onChange={handleCurrencySelect}
                                         iqdDisplayPreference={features.iqd_display_preference}
+                                        disabled={hasFxAccountingData}
                                     />
+                                    {hasFxAccountingData && (
+                                        <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-sm text-amber-700">
+                                            Workspace currency is locked because Currency Exchange has safes or transactions. This protects historical balances and profit reports.
+                                        </div>
+                                    )}
 
                                     {features.default_currency === 'iqd' && (
                                         <div className="space-y-2">

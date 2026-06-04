@@ -8,6 +8,7 @@ import type {
     WorkspaceDataMode
 } from '@/local-db/models'
 import { db } from '@/local-db/database'
+import { hasCurrencyExchangeAccountingData } from '@/local-db/currencyExchange'
 import { addToOfflineMutations } from '@/local-db/hooks'
 import { hydrateLocalModeCacheFromSqlite, clearWorkspaceSqliteData } from '@/local-db/localModeSqlite'
 import { isMobile } from '@/lib/platform'
@@ -932,6 +933,14 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         const currentFeatures = featuresRef.current
         const currentBranchInfo = branchInfo
         const nextWorkspaceName = name ?? workspaceNameRef.current ?? user?.workspaceName ?? 'My Workspace'
+        if (
+            featureSettings.default_currency
+            && featureSettings.default_currency !== currentFeatures.default_currency
+            && await hasCurrencyExchangeAccountingData(workspaceId)
+        ) {
+            throw new Error('Workspace currency is locked because Currency Exchange has safes or transactions. This protects historical balances and profit reports.')
+        }
+
         const newFeatures = mergeWorkspaceFeatures({ ...currentFeatures, ...featureSettings }, overridesRef.current)
         const now = new Date().toISOString()
 

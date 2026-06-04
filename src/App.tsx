@@ -1047,6 +1047,17 @@ function App() {
                           </Layout>
                         </ProtectedRoute>
                       </Route>
+                      <Route path="/currency-exchange/safes">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="currency_exchange"
+                          requiredPermission="currencyExchange.access"
+                        >
+                          <Layout>
+                            <CurrencyExchange />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
 
                       <Route path="/ledger">
                         <ProtectedRoute

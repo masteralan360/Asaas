@@ -27,7 +27,10 @@ const realEstateTables = new Set([
 
 const fxTables = new Set([
     'exchange_transactions',
-    'exchange_fee_rules'
+    'exchange_fee_rules',
+    'fx_safes',
+    'fx_safe_balances',
+    'fx_safe_movements'
 ])
 
 const budgetClient = supabase.schema('budget')
