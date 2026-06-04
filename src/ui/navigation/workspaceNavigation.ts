@@ -209,6 +209,24 @@ export function buildWorkspaceNavigation({
         },
       ]
       : []),
+    ...(isCoreRole && hasFeature("currency_exchange") && canAccessPermission("currencyExchange.access")
+      ? [
+        {
+          name: t("currencyExchange.title", { defaultValue: "Currency Exchange Service" }),
+          href: "/currency-exchange",
+          icon: ArrowRightLeft,
+          children: canAccessPermission("currencyExchangeFeeRules.access")
+            ? [
+              {
+                name: t("currencyExchange.feeRules.title", { defaultValue: "Fee/Commission Rules" }),
+                href: "/currency-exchange/rules",
+                icon: Percent,
+              },
+            ]
+            : undefined,
+        },
+      ]
+      : []),
     ...(hasFeature("loans") || hasFeature("installments") || hasFeature("real_estate")
       ? [
         ...(canAccessPermission("loans.access")

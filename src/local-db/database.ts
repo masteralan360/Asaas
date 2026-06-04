@@ -41,6 +41,8 @@ import type {
   RealEstateTransaction,
   RealEstateInstallment,
   RealEstatePayment,
+  ExchangeTransaction,
+  ExchangeFeeRule,
 } from "./models";
 import { isLocalWorkspaceMode } from "@/workspace/workspaceMode";
 import {
@@ -319,6 +321,8 @@ export class AtlasDatabase extends Dexie {
   real_estate_transactions!: EntityTable<RealEstateTransaction, "id">;
   real_estate_installments!: EntityTable<RealEstateInstallment, "id">;
   real_estate_payments!: EntityTable<RealEstatePayment, "id">;
+  exchange_transactions!: EntityTable<ExchangeTransaction, "id">;
+  exchange_fee_rules!: EntityTable<ExchangeFeeRule, "id">;
 
   constructor() {
     super("AtlasDatabase");
@@ -2076,6 +2080,13 @@ export class AtlasDatabase extends Dexie {
         "id, transactionId, workspaceId, paidAt, syncStatus, updatedAt, isDeleted",
     });
 
+    this.version(60).stores({
+      exchange_transactions:
+        "id, workspaceId, transactionNo, transactionType, transactionDate, fromCurrency, toCurrency, paymentMethod, employeeUserId, createdAt, updatedAt, isDeleted, syncStatus, [workspaceId+createdAt], [workspaceId+transactionDate], [workspaceId+transactionType]",
+      exchange_fee_rules:
+        "id, workspaceId, name, transactionScope, feeType, currency, effectiveStartDate, effectiveEndDate, isActive, isLocked, createdAt, updatedAt, isDeleted, syncStatus, [workspaceId+isActive], [workspaceId+transactionScope], [workspaceId+effectiveStartDate]",
+    });
+
     this.registerLocalModeSyncHooks();
   }
 
@@ -2113,6 +2124,8 @@ export class AtlasDatabase extends Dexie {
       "real_estate_transactions",
       "real_estate_installments",
       "real_estate_payments",
+      "exchange_transactions",
+      "exchange_fee_rules",
       "budget_settings",
       "budget_allocations",
       "expense_series",
@@ -2270,6 +2283,8 @@ export async function clearDatabase(): Promise<void> {
       db.real_estate_transactions,
       db.real_estate_installments,
       db.real_estate_payments,
+      db.exchange_transactions,
+      db.exchange_fee_rules,
       db.payment_transactions,
       db.syncQueue,
     ],
@@ -2289,6 +2304,8 @@ export async function clearDatabase(): Promise<void> {
       await db.real_estate_transactions.clear();
       await db.real_estate_installments.clear();
       await db.real_estate_payments.clear();
+      await db.exchange_transactions.clear();
+      await db.exchange_fee_rules.clear();
       await db.payment_transactions.clear();
       await db.syncQueue.clear();
     },

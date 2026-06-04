@@ -25,9 +25,15 @@ const realEstateTables = new Set([
     'real_estate_payments'
 ])
 
+const fxTables = new Set([
+    'exchange_transactions',
+    'exchange_fee_rules'
+])
+
 const budgetClient = supabase.schema('budget')
 const crmClient = supabase.schema('crm')
 const realEstateClient = supabase.schema('real_estate')
+const fxClient = supabase.schema('fx')
 
 export function isBudgetTable(tableName: string): boolean {
     return budgetTables.has(tableName)
@@ -41,6 +47,10 @@ export function isRealEstateTable(tableName: string): boolean {
     return realEstateTables.has(tableName)
 }
 
+export function isFxTable(tableName: string): boolean {
+    return fxTables.has(tableName)
+}
+
 export function getSupabaseClientForTable(tableName: string) {
     if (isBudgetTable(tableName)) {
         return budgetClient
@@ -52,6 +62,10 @@ export function getSupabaseClientForTable(tableName: string) {
 
     if (isRealEstateTable(tableName)) {
         return realEstateClient
+    }
+
+    if (isFxTable(tableName)) {
+        return fxClient
     }
 
     return supabase

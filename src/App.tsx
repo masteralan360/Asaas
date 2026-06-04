@@ -240,6 +240,11 @@ const TravelAgencySaleView = lazy(() =>
 const RealEstate = lazy(() =>
   import("@/ui/pages/RealEstate").then((m) => ({ default: m.RealEstate })),
 );
+const CurrencyExchange = lazy(() =>
+  import("@/ui/pages/CurrencyExchange").then((m) => ({
+    default: m.CurrencyExchange,
+  })),
+);
 
 const Ledger = lazy(() =>
   import("@/ui/pages/Ledger").then((m) => ({ default: m.Ledger })),
@@ -1005,6 +1010,40 @@ function App() {
                         >
                           <Layout>
                             <RealEstate />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+
+                      <Route path="/currency-exchange">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="currency_exchange"
+                          requiredPermission="currencyExchange.access"
+                        >
+                          <Layout>
+                            <CurrencyExchange />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/currency-exchange/new">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="currency_exchange"
+                          requiredPermission="currencyExchange.access"
+                        >
+                          <Layout>
+                            <CurrencyExchange />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/currency-exchange/rules">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="currency_exchange"
+                          requiredPermission="currencyExchangeFeeRules.access"
+                        >
+                          <Layout>
+                            <CurrencyExchange />
                           </Layout>
                         </ProtectedRoute>
                       </Route>

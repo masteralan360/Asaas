@@ -1,4 +1,5 @@
 import {
+  ArrowRightLeft,
   BarChart3,
   Building2,
   CreditCard,
@@ -28,6 +29,7 @@ export const launcherSectionOrder = [
   "stock-and-supply",
   "cash-and-control",
   "real-estate",
+  "currency-exchange",
   "partners-and-demand",
   "insights-and-trends",
   "people-and-workspace",
@@ -91,6 +93,20 @@ export const launcherSections: Record<NavigationSectionKey, LauncherSection> = {
       text: "text-lime-700 dark:text-lime-300",
       border: "border-lime-500/20 hover:border-lime-400/40",
       glow: "bg-lime-400/18",
+    },
+  },
+  "currency-exchange": {
+    title: "Currency Exchange",
+    eyebrow: "FX operations",
+    description:
+      "Walk-in exchange deals, market-rate snapshots, and fee controls grouped apart from general finance.",
+    icon: ArrowRightLeft,
+    theme: {
+      shell: "from-violet-500/18 via-fuchsia-500/10 to-transparent",
+      surface: "bg-violet-500/12 ring-1 ring-violet-500/20",
+      text: "text-violet-700 dark:text-violet-300",
+      border: "border-violet-500/20 hover:border-violet-400/40",
+      glow: "bg-violet-400/18",
     },
   },
   "partners-and-demand": {
@@ -192,6 +208,16 @@ export const moduleMetaByHref: Record<string, ModuleMeta> = {
     section: "real-estate",
     description: "Record property deals, parties, balances, and installment schedules.",
     badge: "Property",
+  },
+  "/currency-exchange": {
+    section: "currency-exchange",
+    description: "Record walk-in buy and sell currency exchanges with rate snapshots.",
+    badge: "FX",
+  },
+  "/currency-exchange/rules": {
+    section: "currency-exchange",
+    description: "Manage reusable exchange fee and commission rules.",
+    badge: "Rules",
   },
   "/products": {
     section: "stock-and-supply",

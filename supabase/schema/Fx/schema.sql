@@ -1,0 +1,72 @@
+CREATE SCHEMA IF NOT EXISTS fx;
+
+CREATE TABLE fx.exchange_transactions (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL,
+  transaction_no text NOT NULL,
+  transaction_type text NOT NULL,
+  transaction_date timestamp with time zone NOT NULL DEFAULT now(),
+  from_currency text NOT NULL,
+  to_currency text NOT NULL,
+  customer_gives_amount numeric NOT NULL,
+  customer_receives_amount numeric NOT NULL,
+  exchange_rate_used numeric NOT NULL,
+  exchange_rate_source text NOT NULL,
+  exchange_rate_manually_edited boolean NOT NULL DEFAULT false,
+  market_rate_snapshot jsonb NOT NULL DEFAULT '[]'::jsonb,
+  fee_rule_id uuid NULL,
+  fee_rule_snapshot jsonb NULL,
+  fee_type text NULL,
+  fee_currency text NULL,
+  original_fee_value numeric NULL,
+  final_fee_value numeric NOT NULL DEFAULT 0,
+  fee_amount numeric NOT NULL DEFAULT 0,
+  fee_edited boolean NOT NULL DEFAULT false,
+  payment_method text NOT NULL,
+  employee_user_id uuid NULL,
+  employee_name text NULL,
+  notes text NULL,
+  created_by uuid NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  version bigint NOT NULL DEFAULT 1,
+  is_deleted boolean NOT NULL DEFAULT false,
+  CONSTRAINT exchange_transactions_type_check CHECK (transaction_type IN ('buy', 'sell')),
+  CONSTRAINT exchange_transactions_currency_check CHECK (
+    from_currency IN ('usd', 'eur', 'iqd', 'try')
+    AND to_currency IN ('usd', 'eur', 'iqd', 'try')
+    AND from_currency <> to_currency
+  ),
+  CONSTRAINT exchange_transactions_fee_type_check CHECK (fee_type IS NULL OR fee_type IN ('fixed', 'percentage')),
+  CONSTRAINT exchange_transactions_fee_currency_check CHECK (fee_currency IS NULL OR fee_currency IN ('usd', 'eur', 'iqd', 'try')),
+  CONSTRAINT exchange_transactions_payment_method_check CHECK (payment_method IN ('cash', 'fib', 'qicard', 'zaincash', 'fastpay')),
+  PRIMARY KEY (id)
+);
+
+CREATE TABLE fx.exchange_fee_rules (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL,
+  name text NOT NULL,
+  transaction_scope text NOT NULL DEFAULT 'both',
+  fee_type text NOT NULL,
+  currency text NOT NULL,
+  value numeric NOT NULL,
+  customer_gives_basis_amount numeric NOT NULL DEFAULT 100000,
+  effective_start_date date NOT NULL,
+  effective_end_date date NULL,
+  is_active boolean NOT NULL DEFAULT true,
+  is_locked boolean NOT NULL DEFAULT false,
+  notes text NULL,
+  created_by uuid NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  version bigint NOT NULL DEFAULT 1,
+  is_deleted boolean NOT NULL DEFAULT false,
+  CONSTRAINT exchange_fee_rules_scope_check CHECK (transaction_scope IN ('buy', 'sell', 'both')),
+  CONSTRAINT exchange_fee_rules_type_check CHECK (fee_type IN ('fixed', 'percentage')),
+  CONSTRAINT exchange_fee_rules_currency_check CHECK (currency IN ('usd', 'eur', 'iqd', 'try')),
+  CONSTRAINT exchange_fee_rules_value_check CHECK (value >= 0),
+  CONSTRAINT exchange_fee_rules_basis_amount_check CHECK (customer_gives_basis_amount > 0),
+  CONSTRAINT exchange_fee_rules_dates_check CHECK (effective_end_date IS NULL OR effective_end_date >= effective_start_date),
+  PRIMARY KEY (id)
+);

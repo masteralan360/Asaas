@@ -585,6 +585,71 @@ export interface RealEstatePayment extends BaseEntity {
   createdBy?: string | null;
 }
 
+export type ExchangeTransactionType = "buy" | "sell";
+export type ExchangeFeeType = "fixed" | "percentage";
+export type ExchangeFeeRuleTransactionScope = "buy" | "sell" | "both";
+export type ExchangePaymentMethod =
+  | "cash"
+  | "fib"
+  | "qicard"
+  | "zaincash"
+  | "fastpay";
+
+export interface ExchangeFeeRuleSnapshot {
+  id: string;
+  name: string;
+  transactionScope: ExchangeFeeRuleTransactionScope;
+  feeType: ExchangeFeeType;
+  currency: CurrencyCode;
+  value: number;
+  customerGivesBasisAmount: number;
+  effectiveStartDate: string;
+  effectiveEndDate?: string | null;
+  isLocked: boolean;
+}
+
+export interface ExchangeFeeRule extends BaseEntity {
+  name: string;
+  transactionScope: ExchangeFeeRuleTransactionScope;
+  feeType: ExchangeFeeType;
+  currency: CurrencyCode;
+  value: number;
+  customerGivesBasisAmount: number;
+  effectiveStartDate: string;
+  effectiveEndDate?: string | null;
+  isActive: boolean;
+  isLocked: boolean;
+  notes?: string | null;
+  createdBy?: string | null;
+}
+
+export interface ExchangeTransaction extends BaseEntity {
+  transactionNo: string;
+  transactionType: ExchangeTransactionType;
+  transactionDate: string;
+  fromCurrency: CurrencyCode;
+  toCurrency: CurrencyCode;
+  customerGivesAmount: number;
+  customerReceivesAmount: number;
+  exchangeRateUsed: number;
+  exchangeRateSource: string;
+  exchangeRateManuallyEdited: boolean;
+  marketRateSnapshot: ExchangeRateSnapshot[];
+  feeRuleId?: string | null;
+  feeRuleSnapshot?: ExchangeFeeRuleSnapshot | null;
+  feeType?: ExchangeFeeType | null;
+  feeCurrency?: CurrencyCode | null;
+  originalFeeValue?: number | null;
+  finalFeeValue: number;
+  feeAmount: number;
+  feeEdited: boolean;
+  paymentMethod: ExchangePaymentMethod;
+  employeeUserId?: string | null;
+  employeeName?: string | null;
+  notes?: string | null;
+  createdBy?: string | null;
+}
+
 export interface Employee extends BaseEntity {
   name: string;
   email?: string;
@@ -825,6 +890,7 @@ export type PaymentTransactionSourceModule =
   | "orders"
   | "budget"
   | "real_estate"
+  | "currency_exchange"
   | "payments";
 export type PaymentTransactionSourceType =
   | "loan_origination"
@@ -838,7 +904,8 @@ export type PaymentTransactionSourceType =
   | "purchase_order"
   | "expense_item"
   | "payroll_status"
-  | "direct_transaction";
+  | "direct_transaction"
+  | "exchange_transaction";
 export type PaymentTransactionDirection = "incoming" | "outgoing";
 
 export interface PaymentTransaction extends BaseEntity {
@@ -918,7 +985,9 @@ export interface SyncQueueItem {
     | "travel_agency_sales"
     | "real_estate_transactions"
     | "real_estate_installments"
-    | "real_estate_payments";
+    | "real_estate_payments"
+    | "exchange_transactions"
+    | "exchange_fee_rules";
   entityId: string;
   operation: "create" | "update" | "delete";
   data: Record<string, unknown>;
@@ -942,6 +1011,7 @@ export interface Workspace extends BaseEntity {
   crm?: boolean;
   travel_agency?: boolean;
   real_estate?: boolean;
+  currency_exchange?: boolean;
   loans?: boolean;
   installments?: boolean;
   net_revenue?: boolean;
@@ -1028,7 +1098,9 @@ export interface OfflineMutation {
     | "travel_agency_sales"
     | "real_estate_transactions"
     | "real_estate_installments"
-    | "real_estate_payments";
+    | "real_estate_payments"
+    | "exchange_transactions"
+    | "exchange_fee_rules";
   entityId: string;
   operation: "create" | "update" | "delete";
   payload: Record<string, unknown>;

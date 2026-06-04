@@ -48,6 +48,8 @@ const SYNC_PULL_TABLES = [
   "real_estate_transactions",
   "real_estate_installments",
   "real_estate_payments",
+  "exchange_transactions",
+  "exchange_fee_rules",
   "budget_settings",
   "budget_allocations",
   "expense_series",
