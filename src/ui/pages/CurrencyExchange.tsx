@@ -6,7 +6,7 @@ import { ArrowLeft, ArrowRightLeft, ClipboardList, Lock, Plus, Search, Trash2, U
 import { useAuth } from '@/auth'
 import { useExchangeRate } from '@/context/ExchangeRateContext'
 import { buildOrderExchangeRatesSnapshot } from '@/lib/orderCurrency'
-import { cn, formatCurrency, formatDate, formatDateTime, formatLocalDateValue, formatNumberWithCommas, formatNumericInput, parseFormattedNumber, parseLocalDateValue, sanitizeNumericInput } from '@/lib/utils'
+import { cn, formatCurrency, formatDateTime, formatNumberWithCommas, formatNumericInput, parseFormattedNumber, parseLocalDateTimeValue, sanitizeNumericInput } from '@/lib/utils'
 import {
     buildExchangeFeeRuleSnapshot,
     calculateExchangeTransaction,
@@ -17,6 +17,7 @@ import {
     getDefaultExchangeFeeBasisAmount,
     getEffectiveExchangeRateUsed,
     getExchangeFeeBasisAmount,
+    isExchangeFeeRuleEffectiveForTransaction,
     resolveEffectiveExchangeFeeRule,
     updateExchangeFeeRule,
     useExchangeFeeRules,
@@ -78,8 +79,12 @@ type MarketRateCurrency = Exclude<CurrencyCode, 'iqd'>
 
 const paymentMethods: ExchangePaymentMethod[] = ['cash', 'fib', 'qicard', 'zaincash', 'fastpay']
 
-function todayKey() {
-    return new Date().toISOString().slice(0, 10)
+function currentTimestamp() {
+    return new Date().toISOString()
+}
+
+function toTimestampValue(value: Date | undefined) {
+    return value ? value.toISOString() : ''
 }
 
 function calculateRulePreviewFeeAmount(feeType: ExchangeFeeType, customerGivesAmount: number, feeValue: number) {
@@ -134,7 +139,7 @@ function makeDefaultRuleForm(currency: CurrencyCode): FeeRuleFormState {
         currency,
         value: '',
         customerGivesBasisAmount: String(getDefaultExchangeFeeBasisAmount(currency)),
-        effectiveStartDate: todayKey(),
+        effectiveStartDate: currentTimestamp(),
         effectiveEndDate: '',
         isActive: true,
         isLocked: false,
@@ -404,7 +409,7 @@ function CreateCurrencyExchangeTransactionPage({
     const [fromCurrency, setFromCurrency] = useState<CurrencyCode>('iqd')
     const [toCurrency, setToCurrency] = useState<CurrencyCode>('usd')
     const [customerGivesAmount, setCustomerGivesAmount] = useState('')
-    const [transactionDate, setTransactionDate] = useState(todayKey())
+    const [transactionDate, setTransactionDate] = useState(currentTimestamp())
     const [paymentMethod, setPaymentMethod] = useState<ExchangePaymentMethod>('cash')
     const [notes, setNotes] = useState('')
     const [exchangeRateValue, setExchangeRateValue] = useState('')
@@ -623,9 +628,9 @@ function CreateCurrencyExchangeTransactionPage({
                                             <Label>Transaction Date</Label>
                                             <DateTimePicker
                                                 id="currency-exchange-transaction-date"
-                                                mode="date"
-                                                date={parseLocalDateValue(transactionDate)}
-                                                setDate={(value) => setTransactionDate(value ? formatLocalDateValue(value) : '')}
+                                                mode="date-time"
+                                                date={parseLocalDateTimeValue(transactionDate)}
+                                                setDate={(value) => setTransactionDate(toTimestampValue(value))}
                                                 placeholder="Transaction Date"
                                             />
                                         </div>
@@ -755,12 +760,7 @@ function CreateCurrencyExchangeTransactionPage({
                                                     <SelectItem value="none">No fee</SelectItem>
                                                     {rules
                                                         .filter((rule) =>
-                                                            !rule.isDeleted
-                                                            && rule.isActive
-                                                            && rule.currency === fromCurrency
-                                                            && (rule.transactionScope === 'both' || rule.transactionScope === transactionType)
-                                                            && rule.effectiveStartDate.slice(0, 10) <= transactionDate
-                                                            && (!rule.effectiveEndDate || rule.effectiveEndDate.slice(0, 10) >= transactionDate)
+                                                            isExchangeFeeRuleEffectiveForTransaction(rule, transactionType, transactionDate, fromCurrency)
                                                         )
                                                         .map((rule) => (
                                                             <SelectItem key={rule.id} value={rule.id}>{rule.name}</SelectItem>
@@ -953,7 +953,7 @@ function ExchangeTransactionSummary({
                 </CardHeader>
                 <CardContent className="space-y-5">
                     <div className="grid gap-2">
-                        <SummaryRow label="Transaction Date" value={formatDate(transactionDate)} />
+                        <SummaryRow label="Transaction Date" value={formatDateTime(transactionDate)} />
                         <SummaryRow label="Type" value={transactionTypeLabel(transactionType)} />
                         <SummaryRow label="Customer Gives" value={customerGivesLabel} />
                         <SummaryRow label="Before Fee" value={beforeFeeLabel} />
@@ -1288,9 +1288,9 @@ function ExchangeFeeRulesPage({
                                     <Label>Effective Start</Label>
                                     <DateTimePicker
                                         id="currency-exchange-fee-effective-start"
-                                        mode="date"
-                                        date={parseLocalDateValue(form.effectiveStartDate)}
-                                        setDate={(value) => setForm((current) => ({ ...current, effectiveStartDate: value ? formatLocalDateValue(value) : '' }))}
+                                        mode="date-time"
+                                        date={parseLocalDateTimeValue(form.effectiveStartDate)}
+                                        setDate={(value) => setForm((current) => ({ ...current, effectiveStartDate: toTimestampValue(value) }))}
                                         placeholder="Effective Start"
                                     />
                                 </div>
@@ -1298,9 +1298,9 @@ function ExchangeFeeRulesPage({
                                     <Label>Effective End</Label>
                                     <DateTimePicker
                                         id="currency-exchange-fee-effective-end"
-                                        mode="date"
-                                        date={parseLocalDateValue(form.effectiveEndDate)}
-                                        setDate={(value) => setForm((current) => ({ ...current, effectiveEndDate: value ? formatLocalDateValue(value) : '' }))}
+                                        mode="date-time"
+                                        date={parseLocalDateTimeValue(form.effectiveEndDate)}
+                                        setDate={(value) => setForm((current) => ({ ...current, effectiveEndDate: toTimestampValue(value) }))}
                                         placeholder="Effective End"
                                     />
                                 </div>
@@ -1382,8 +1382,8 @@ function ExchangeFeeRulesPage({
                                             </div>
                                         </TableCell>
                                         <TableCell>
-                                            {formatDate(rule.effectiveStartDate)}
-                                            {rule.effectiveEndDate ? ` - ${formatDate(rule.effectiveEndDate)}` : ' - Open'}
+                                            {formatDateTime(rule.effectiveStartDate)}
+                                            {rule.effectiveEndDate ? ` - ${formatDateTime(rule.effectiveEndDate)}` : ' - Open'}
                                         </TableCell>
                                         <TableCell>
                                             <div className="flex flex-wrap gap-1.5">

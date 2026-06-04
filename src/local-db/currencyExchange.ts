@@ -135,12 +135,41 @@ export function getExchangeFeeBasisAmount(rule: { currency?: CurrencyCode | null
     return basisAmount > 0 ? basisAmount : getDefaultExchangeFeeBasisAmount(currency)
 }
 
-function normalizeDateKey(value?: string | null) {
+const DATE_ONLY_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/
+
+function parseDateTimeBoundary(value?: string | null, boundary: 'start' | 'end' = 'start') {
     if (!value) {
-        return new Date().toISOString().slice(0, 10)
+        return new Date()
     }
 
-    return value.slice(0, 10)
+    const dateOnlyMatch = value.match(DATE_ONLY_PATTERN)
+    if (dateOnlyMatch) {
+        const [, year, month, day] = dateOnlyMatch
+        return new Date(
+            Number(year),
+            Number(month) - 1,
+            Number(day),
+            boundary === 'end' ? 23 : 0,
+            boundary === 'end' ? 59 : 0,
+            boundary === 'end' ? 59 : 0,
+            boundary === 'end' ? 999 : 0
+        )
+    }
+
+    const parsed = new Date(value)
+    if (!Number.isNaN(parsed.getTime())) {
+        return parsed
+    }
+
+    return new Date()
+}
+
+function normalizeDateTimeBoundary(value?: string | null, boundary: 'start' | 'end' = 'start') {
+    return parseDateTimeBoundary(value, boundary).toISOString()
+}
+
+function getDateTimeBoundaryMs(value?: string | null, boundary: 'start' | 'end' = 'start') {
+    return parseDateTimeBoundary(value, boundary).getTime()
 }
 
 function normalizeOptionalText(value?: string | null) {
@@ -348,20 +377,27 @@ export function resolveEffectiveExchangeFeeRule(
     transactionDate: string,
     feeCurrency?: CurrencyCode
 ) {
-    const dateKey = normalizeDateKey(transactionDate)
     return rules
-        .filter((rule) =>
-            !rule.isDeleted
-            && rule.isActive
-            && (rule.transactionScope === 'both' || rule.transactionScope === transactionType)
-            && (!feeCurrency || rule.currency === feeCurrency)
-            && normalizeDateKey(rule.effectiveStartDate) <= dateKey
-            && (!rule.effectiveEndDate || normalizeDateKey(rule.effectiveEndDate) >= dateKey)
-        )
+        .filter((rule) => isExchangeFeeRuleEffectiveForTransaction(rule, transactionType, transactionDate, feeCurrency))
         .sort((left, right) =>
-            normalizeDateKey(right.effectiveStartDate).localeCompare(normalizeDateKey(left.effectiveStartDate))
+            getDateTimeBoundaryMs(right.effectiveStartDate) - getDateTimeBoundaryMs(left.effectiveStartDate)
             || right.updatedAt.localeCompare(left.updatedAt)
         )[0] || null
+}
+
+export function isExchangeFeeRuleEffectiveForTransaction(
+    rule: ExchangeFeeRule,
+    transactionType: ExchangeTransactionType,
+    transactionDate: string,
+    feeCurrency?: CurrencyCode
+) {
+    const transactionTime = getDateTimeBoundaryMs(transactionDate)
+    return !rule.isDeleted
+        && rule.isActive
+        && (rule.transactionScope === 'both' || rule.transactionScope === transactionType)
+        && (!feeCurrency || rule.currency === feeCurrency)
+        && getDateTimeBoundaryMs(rule.effectiveStartDate, 'start') <= transactionTime
+        && (!rule.effectiveEndDate || getDateTimeBoundaryMs(rule.effectiveEndDate, 'end') >= transactionTime)
 }
 
 export async function createExchangeTransaction(
@@ -486,8 +522,8 @@ export async function createExchangeFeeRule(workspaceId: string, input: SaveExch
         currency: input.currency,
         value,
         customerGivesBasisAmount,
-        effectiveStartDate: normalizeDateKey(input.effectiveStartDate),
-        effectiveEndDate: input.effectiveEndDate ? normalizeDateKey(input.effectiveEndDate) : null,
+        effectiveStartDate: normalizeDateTimeBoundary(input.effectiveStartDate, 'start'),
+        effectiveEndDate: input.effectiveEndDate ? normalizeDateTimeBoundary(input.effectiveEndDate, 'end') : null,
         isActive: input.isActive,
         isLocked: input.isLocked,
         notes: normalizeOptionalText(input.notes),
@@ -534,9 +570,9 @@ export async function updateExchangeFeeRule(ruleId: string, input: Partial<SaveE
         name: input.name !== undefined ? input.name.trim() : existing.name,
         value: nextValue,
         customerGivesBasisAmount: nextBasisAmount,
-        effectiveStartDate: input.effectiveStartDate ? normalizeDateKey(input.effectiveStartDate) : existing.effectiveStartDate,
+        effectiveStartDate: input.effectiveStartDate ? normalizeDateTimeBoundary(input.effectiveStartDate, 'start') : existing.effectiveStartDate,
         effectiveEndDate: input.effectiveEndDate !== undefined
-            ? (input.effectiveEndDate ? normalizeDateKey(input.effectiveEndDate) : null)
+            ? (input.effectiveEndDate ? normalizeDateTimeBoundary(input.effectiveEndDate, 'end') : null)
             : existing.effectiveEndDate,
         notes: input.notes !== undefined ? normalizeOptionalText(input.notes) : existing.notes,
         updatedAt: now,
