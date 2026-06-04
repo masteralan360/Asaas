@@ -665,6 +665,9 @@ export interface ExchangeTransaction extends BaseEntity {
   employeeName?: string | null;
   notes?: string | null;
   createdBy?: string | null;
+  isReversed: boolean;
+  reversalTransactionId?: string | null;
+  reversedTransactionId?: string | null;
 }
 
 export interface ExchangeSafe extends BaseEntity {

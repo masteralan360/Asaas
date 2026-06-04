@@ -231,6 +231,8 @@ export async function findLatestSafeBuyForAcquisitionRate({
         .equals(workspaceId)
         .and((transaction) =>
             !transaction.isDeleted
+            && !transaction.isReversed
+            && !transaction.reversedTransactionId
             && transaction.transactionType === 'buy'
             && transaction.safeId === safeId
             && transaction.fromCurrency === soldCurrency
@@ -1149,6 +1151,135 @@ export async function deleteExchangeTransaction(transactionId: string) {
 
     await db.exchange_transactions.put(deleted)
     await syncSoftDelete(TRANSACTIONS_TABLE, existing.id, existing.workspaceId)
+}
+
+export async function reverseExchangeTransaction(
+    transactionId: string,
+    createdBy?: string | null
+) {
+    const existing = await db.exchange_transactions.get(transactionId)
+    if (!existing || existing.isDeleted) {
+        throw new Error('Transaction not found')
+    }
+    if (existing.isReversed) {
+        throw new Error('Transaction is already reversed')
+    }
+    if (existing.reversedTransactionId) {
+        throw new Error('Cannot reverse a reversal transaction')
+    }
+
+    const workspaceId = existing.workspaceId
+    const now = new Date().toISOString()
+    const reversalId = generateId()
+    const transactionNo = await generateExchangeTransactionNo(workspaceId, now)
+    const reversedType = existing.transactionType === 'buy' ? 'sell' : 'buy'
+
+    const reversal: ExchangeTransaction = {
+        id: reversalId,
+        workspaceId,
+        transactionNo,
+        transactionType: reversedType,
+        transactionDate: now,
+        fromCurrency: existing.toCurrency,
+        toCurrency: existing.fromCurrency,
+        customerGivesAmount: existing.customerReceivesAmount,
+        customerReceivesAmount: existing.customerGivesAmount,
+        exchangeRateUsed: existing.exchangeRateUsed,
+        exchangeRateSource: existing.exchangeRateSource,
+        exchangeRateManuallyEdited: existing.exchangeRateManuallyEdited,
+        marketRateSnapshot: existing.marketRateSnapshot,
+        feeRuleId: null,
+        feeRuleSnapshot: null,
+        feeType: null,
+        feeCurrency: null,
+        originalFeeValue: null,
+        finalFeeValue: 0,
+        feeAmount: 0,
+        feeEdited: false,
+        safeId: existing.safeId,
+        safeNameSnapshot: existing.safeNameSnapshot,
+        acquisitionRate: null,
+        acquisitionRateSource: null,
+        acquisitionRateSnapshot: null,
+        profitAmount: null,
+        profitCurrency: null,
+        paymentMethod: existing.paymentMethod,
+        employeeUserId: existing.employeeUserId,
+        employeeName: existing.employeeName,
+        notes: `Reversal of ${existing.transactionNo}`,
+        createdBy: createdBy || null,
+        isReversed: false,
+        reversalTransactionId: null,
+        reversedTransactionId: existing.id,
+        createdAt: now,
+        updatedAt: now,
+        version: 1,
+        isDeleted: false,
+        ...getSyncMetadata(workspaceId, now)
+    }
+
+    const updatedOriginal: ExchangeTransaction = {
+        ...existing,
+        isReversed: true,
+        reversalTransactionId: reversalId,
+        updatedAt: now,
+        version: existing.version + 1,
+        ...getSyncMetadata(workspaceId, now)
+    }
+
+    const safeId = existing.safeId
+    if (!safeId) {
+        throw new Error('Transaction has no safe')
+    }
+
+    const safe = await db.fx_safes.get(safeId)
+    if (!safe || safe.isDeleted) {
+        throw new Error('Safe not found')
+    }
+
+    const changedBalances: ExchangeSafeBalance[] = []
+    const movements: ExchangeSafeMovement[] = []
+
+    await db.transaction('rw', [db.exchange_transactions, db.fx_safe_balances, db.fx_safe_movements], async () => {
+        await db.exchange_transactions.put(reversal)
+        await db.exchange_transactions.put(updatedOriginal)
+
+        const incoming = await applySafeDelta({
+            workspaceId,
+            safe,
+            currency: reversal.fromCurrency,
+            deltaAmount: reversal.customerGivesAmount,
+            movementType: 'exchange_in',
+            sourceType: 'exchange_transaction',
+            sourceId: reversalId,
+            notes: transactionNo,
+            createdBy,
+            now
+        })
+        changedBalances.push(incoming.balance)
+        movements.push(incoming.movement)
+
+        const outgoing = await applySafeDelta({
+            workspaceId,
+            safe,
+            currency: reversal.toCurrency,
+            deltaAmount: -reversal.customerReceivesAmount,
+            movementType: 'exchange_out',
+            sourceType: 'exchange_transaction',
+            sourceId: reversalId,
+            notes: transactionNo,
+            createdBy,
+            now
+        })
+        changedBalances.push(outgoing.balance)
+        movements.push(outgoing.movement)
+    })
+
+    await syncUpsertEntities(TRANSACTIONS_TABLE, [reversal as unknown as ExchangeSyncEntity, updatedOriginal as unknown as ExchangeSyncEntity], workspaceId)
+    await syncUpsertEntities(SAFE_BALANCES_TABLE, changedBalances as unknown as ExchangeSyncEntity[], workspaceId)
+    await syncUpsertEntities(SAFE_MOVEMENTS_TABLE, movements as unknown as ExchangeSyncEntity[], workspaceId)
+
+    return { reversal, original: updatedOriginal }
 }
 
 export function useExchangeTransactions(workspaceId: string | undefined) {

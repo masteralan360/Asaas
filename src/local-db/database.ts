@@ -2106,6 +2106,11 @@ export class AtlasDatabase extends Dexie {
         "id, workspaceId, safeId, currency, movementType, sourceType, sourceId, createdAt, updatedAt, isDeleted, syncStatus, [workspaceId+safeId], [safeId+currency], [sourceType+sourceId]",
     });
 
+    this.version(62).stores({
+      exchange_transactions:
+        "id, workspaceId, transactionNo, transactionType, transactionDate, fromCurrency, toCurrency, safeId, profitCurrency, paymentMethod, employeeUserId, createdAt, updatedAt, isDeleted, syncStatus, [workspaceId+createdAt], [workspaceId+transactionDate], [workspaceId+transactionType], [workspaceId+safeId]",
+    });
+
     this.registerLocalModeSyncHooks();
   }
 

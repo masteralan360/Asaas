@@ -1,7 +1,7 @@
 import { type FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useRoute } from 'wouter'
 import { useTranslation } from 'react-i18next'
-import { ArrowLeft, ArrowRightLeft, CalendarClock, ClipboardList, Clock, History, Lock, Plus, Search, Trash2, Unlock, Wallet } from 'lucide-react'
+import { ArrowLeft, ArrowRightLeft, CalendarClock, ClipboardList, Clock, History, Lock, Plus, Search, Trash2, Undo2, Unlock, Wallet } from 'lucide-react'
 
 import { useAuth } from '@/auth'
 import { useExchangeRate } from '@/context/ExchangeRateContext'
@@ -19,6 +19,7 @@ import {
     deleteExchangeFeeRule,
     deleteExchangeTransaction,
     EXCHANGE_SAFE_CURRENCIES,
+    reverseExchangeTransaction,
     findLatestSafeBuyForAcquisitionRate,
     getDefaultExchangeFeeBasisAmount,
     getEffectiveExchangeRateUsed,
@@ -42,6 +43,7 @@ import {
     type ExchangeRateSnapshot,
     type ExchangeSafeBalance,
     type ExchangeSafeMovement,
+    type ExchangeTransaction,
     type ExchangeTransactionType,
     type IQDDisplayPreference
 } from '@/local-db'
@@ -272,10 +274,13 @@ function ExchangeTransactionsPage({
 }) {
     const { t } = useTranslation()
     const { toast } = useToast()
+    const { user } = useAuth()
+    const { hasPermission } = useWorkspacePermissions()
     const transactions = useExchangeTransactions(workspaceId)
     const [search, setSearch] = useState('')
-    const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null)
-    const [isDeleting, setIsDeleting] = useState(false)
+    const [reverseTargetId, setReverseTargetId] = useState<string | null>(null)
+    const [isReversing, setIsReversing] = useState(false)
+    const canReverse = user?.role === 'admin' || hasPermission('currencyExchange.reverse')
 
     const filteredTransactions = useMemo(() => {
         const query = search.trim().toLowerCase()
@@ -298,21 +303,21 @@ function ExchangeTransactionsPage({
         totalFees: transactions.reduce((sum, transaction) => sum + Number(transaction.feeAmount || 0), 0)
     }), [transactions])
 
-    const handleDelete = async () => {
-        if (!deleteTargetId) return
-        setIsDeleting(true)
+    const handleReverse = async () => {
+        if (!reverseTargetId) return
+        setIsReversing(true)
         try {
-            await deleteExchangeTransaction(deleteTargetId)
-            toast({ title: t('common.success', { defaultValue: 'Success' }), description: 'Exchange transaction deleted.' })
-            setDeleteTargetId(null)
+            await reverseExchangeTransaction(reverseTargetId, user?.id || null)
+            toast({ title: t('common.success', { defaultValue: 'Success' }), description: 'Exchange transaction reversed.' })
+            setReverseTargetId(null)
         } catch (error: any) {
             toast({
                 title: t('common.error', { defaultValue: 'Error' }),
-                description: error?.message || 'Failed to delete exchange transaction.',
+                description: error?.message || 'Failed to reverse exchange transaction.',
                 variant: 'destructive'
             })
         } finally {
-            setIsDeleting(false)
+            setIsReversing(false)
         }
     }
 
@@ -390,7 +395,7 @@ function ExchangeTransactionsPage({
                                     </TableCell>
                                 </TableRow>
                             ) : filteredTransactions.map((transaction) => (
-                                <TableRow key={transaction.id}>
+                                <TableRow key={transaction.id} className={transaction.isReversed ? 'bg-destructive/5' : transaction.reversedTransactionId ? 'bg-amber-500/5' : ''}>
                                     <TableCell>
                                         <div className="font-medium">{transaction.transactionNo}</div>
                                         <div className="text-xs text-muted-foreground">{formatDateTime(transaction.transactionDate)}</div>
@@ -426,16 +431,26 @@ function ExchangeTransactionsPage({
                                     </TableCell>
                                     <TableCell className="capitalize">{transaction.paymentMethod}</TableCell>
                                     <TableCell className="text-end">
-                                        <Button
-                                            type="button"
-                                            variant="ghost"
-                                            size="icon"
-                                            className="text-destructive hover:text-destructive"
-                                            onClick={() => setDeleteTargetId(transaction.id)}
-                                            aria-label="Delete exchange transaction"
-                                        >
-                                            <Trash2 className="h-4 w-4" />
-                                        </Button>
+                                        {canReverse && !transaction.isReversed && !transaction.reversedTransactionId ? (
+                                            <Button
+                                                type="button"
+                                                variant="ghost"
+                                                size="icon"
+                                                className="text-destructive hover:text-destructive"
+                                                onClick={() => setReverseTargetId(transaction.id)}
+                                                aria-label="Reverse exchange transaction"
+                                            >
+                                                <Undo2 className="h-4 w-4" />
+                                            </Button>
+                                        ) : transaction.isReversed ? (
+                                            <span className="inline-flex items-center gap-1 rounded-full bg-destructive/15 px-2.5 py-0.5 text-xs font-semibold text-destructive">
+                                                Reversed
+                                            </span>
+                                        ) : transaction.reversedTransactionId ? (
+                                            <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2.5 py-0.5 text-xs font-semibold text-amber-700 dark:text-amber-300">
+                                                Reversal
+                                            </span>
+                                        ) : null}
                                     </TableCell>
                                 </TableRow>
                             ))}
@@ -444,14 +459,12 @@ function ExchangeTransactionsPage({
                 </CardContent>
             </Card>
 
-            <DeleteConfirmationModal
-                isOpen={!!deleteTargetId}
-                onClose={() => setDeleteTargetId(null)}
-                onConfirm={handleDelete}
-                itemName={transactions.find((transaction) => transaction.id === deleteTargetId)?.transactionNo}
-                isLoading={isDeleting}
-                title="Delete Exchange Transaction"
-                description="This will remove the exchange transaction from active records while preserving sync history."
+            <ReverseTransactionModal
+                isOpen={!!reverseTargetId}
+                onClose={() => setReverseTargetId(null)}
+                onConfirm={handleReverse}
+                transaction={transactions.find((transaction) => transaction.id === reverseTargetId)}
+                isLoading={isReversing}
             />
         </div>
     )
@@ -2182,6 +2195,72 @@ function MetricCard({ title, value }: { title: string; value: string }) {
                 <div className="mt-1 text-2xl font-bold">{value}</div>
             </CardContent>
         </Card>
+    )
+}
+
+function ReverseTransactionModal({
+    isOpen,
+    onClose,
+    onConfirm,
+    transaction,
+    isLoading
+}: {
+    isOpen: boolean
+    onClose: () => void
+    onConfirm: () => void
+    transaction: ExchangeTransaction | undefined
+    isLoading: boolean
+}) {
+    const { t } = useTranslation()
+    if (!transaction) return null
+
+    const reversedType = transaction.transactionType === 'buy' ? 'sell' : 'buy'
+    const givesLabel = formatCurrency(transaction.customerReceivesAmount, transaction.toCurrency, 'IQD' as any)
+    const receivesLabel = formatCurrency(transaction.customerGivesAmount, transaction.fromCurrency, 'IQD' as any)
+
+    return (
+        <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose() }}>
+            <DialogContent className="sm:max-w-md">
+                <DialogHeader>
+                    <DialogTitle>Reverse Exchange Transaction</DialogTitle>
+                    <DialogDescription>
+                        This will create a reversal transaction for {transaction.transactionNo} and restore safe balances to their prior state.
+                    </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-3 rounded-lg border bg-muted/20 p-4">
+                    <div className="text-sm font-medium">Original Transaction</div>
+                    <div className="grid grid-cols-2 gap-2 text-sm">
+                        <span className="text-muted-foreground">Type</span>
+                        <span>{transactionTypeLabel(transaction.transactionType)}</span>
+                        <span className="text-muted-foreground">Gave</span>
+                        <span>{formatCurrency(transaction.customerGivesAmount, transaction.fromCurrency, 'IQD' as any)}</span>
+                        <span className="text-muted-foreground">Received</span>
+                        <span>{formatCurrency(transaction.customerReceivesAmount, transaction.toCurrency, 'IQD' as any)}</span>
+                    </div>
+                    <div className="h-px bg-border" />
+                    <div className="text-sm font-medium">Reversal</div>
+                    <div className="grid grid-cols-2 gap-2 text-sm">
+                        <span className="text-muted-foreground">Type</span>
+                        <span>{transactionTypeLabel(reversedType)}</span>
+                        <span className="text-muted-foreground">Customer Gives</span>
+                        <span>{givesLabel}</span>
+                        <span className="text-muted-foreground">Customer Receives</span>
+                        <span>{receivesLabel}</span>
+                    </div>
+                    <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+                        This action cannot be undone. The original transaction will be marked as reversed and a new reversal transaction will be created.
+                    </div>
+                </div>
+                <DialogFooter className="gap-2 sm:space-x-0">
+                    <Button type="button" variant="outline" onClick={onClose} disabled={isLoading}>
+                        Cancel
+                    </Button>
+                    <Button type="button" variant="destructive" onClick={onConfirm} disabled={isLoading}>
+                        {isLoading ? 'Reversing...' : 'Reverse Transaction'}
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
     )
 }
 

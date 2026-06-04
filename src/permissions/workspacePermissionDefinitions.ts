@@ -20,6 +20,7 @@ import {
   BarChart3,
   TrendingUp,
   Globe,
+  Undo2,
 } from "lucide-react";
 
 export const WORKSPACE_PERMISSION_DEFINITIONS = [
@@ -151,6 +152,16 @@ export const WORKSPACE_PERMISSION_DEFINITIONS = [
     descriptionKey: "members.permissions.currencyExchangeFeeRulesAccessDescription",
     defaultDescription: "Access reusable currency exchange fee and commission rules.",
     icon: Percent,
+    section: "currency-exchange",
+  },
+  {
+    key: "currencyExchange.reverse",
+    module: "currencyExchange",
+    labelKey: "members.permissions.currencyExchangeReverse",
+    defaultLabel: "Reverse Transactions",
+    descriptionKey: "members.permissions.currencyExchangeReverseDescription",
+    defaultDescription: "Allows reversing exchange transactions, restoring safe balances to their prior state.",
+    icon: Undo2,
     section: "currency-exchange",
   },
   {
