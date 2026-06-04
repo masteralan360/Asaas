@@ -23,6 +23,8 @@ import { Image as ImageIcon } from 'lucide-react'
 import { assetManager } from '@/lib/assetManager'
 import { getMonthDisplayPreference, setMonthDisplayPreference, type MonthDisplayPreference } from '@/lib/monthDisplay'
 import { useWorkspaceContacts } from '@/local-db/hooks'
+import { getManualRateSource, getManualRateValue, setExchangeRateSource as setStoredExchangeRateSource } from '@/lib/manualExchangeRates'
+import type { ExchangeRateSource } from '@/lib/exchangeRate'
 import { getRetriableActionToast, isRetriableWebRequestError, normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
 import { DEFAULT_THERMAL_ROLL_WIDTH, THERMAL_ROLL_WIDTHS, isLikelyThermalPrinter, isVirtualPrinter, printService, type StoredThermalPrinter, type ThermalRollWidth } from '@/services/printService'
 import type { PrinterInfo } from 'tauri-plugin-thermal-printer'
@@ -53,9 +55,9 @@ export function Settings() {
     const [pendingCurrency, setPendingCurrency] = useState<'usd' | 'iqd' | 'eur' | 'try' | null>(null)
     const [posHotkey, setPosHotkey] = useState(localStorage.getItem('pos_hotkey') || '')
     const [barcodeHotkey, setBarcodeHotkey] = useState(localStorage.getItem('barcode_hotkey') || '')
-    const [exchangeRateSource, setExchangeRateSource] = useState(localStorage.getItem('primary_exchange_rate_source') || 'xeiqd')
-    const [eurExchangeRateSource, setEurExchangeRateSource] = useState(localStorage.getItem('primary_eur_exchange_rate_source') || 'forexfy')
-    const [tryExchangeRateSource, setTryExchangeRateSource] = useState(localStorage.getItem('primary_try_exchange_rate_source') || 'forexfy')
+    const [exchangeRateSource, setExchangeRateSource] = useState(getManualRateSource('USD'))
+    const [eurExchangeRateSource, setEurExchangeRateSource] = useState(getManualRateSource('EUR'))
+    const [tryExchangeRateSource, setTryExchangeRateSource] = useState(getManualRateSource('TRY'))
     const [exchangeRateThreshold, setExchangeRateThreshold] = useState(localStorage.getItem('exchange_rate_threshold') || '2500')
     const [whatsappAutoLaunch, setWhatsappAutoLaunch] = useState(localStorage.getItem('whatsapp_auto_launch') === 'true')
     const [hourDisplayPreference, setHourDisplayPreferenceState] = useState<HourDisplayPreference>(getHourDisplayPreference())
@@ -485,9 +487,9 @@ export function Settings() {
     // Sync local state when localStorage changes from other components (like Manual Editor Modal)
     useEffect(() => {
         const syncSources = () => {
-            setExchangeRateSource(localStorage.getItem('primary_exchange_rate_source') || 'xeiqd')
-            setEurExchangeRateSource(localStorage.getItem('primary_eur_exchange_rate_source') || 'forexfy')
-            setTryExchangeRateSource(localStorage.getItem('primary_try_exchange_rate_source') || 'forexfy')
+            setExchangeRateSource(getManualRateSource('USD'))
+            setEurExchangeRateSource(getManualRateSource('EUR'))
+            setTryExchangeRateSource(getManualRateSource('TRY'))
         }
         window.addEventListener('exchange-rate-refresh', syncSources)
         return () => window.removeEventListener('exchange-rate-refresh', syncSources)
@@ -495,41 +497,41 @@ export function Settings() {
 
     const handleExchangeRateSourceChange = (val: string) => {
         if (val === 'manual') {
-            const currentRate = localStorage.getItem('manual_rate_usd_iqd');
-            if (!currentRate || parseInt(currentRate) === 0) {
+            const currentRate = getManualRateValue('USD');
+            if (!currentRate) {
                 openManualEditor('USD');
                 return;
             }
         }
-        setExchangeRateSource(val)
-        localStorage.setItem('primary_exchange_rate_source', val)
+        setExchangeRateSource(val as ExchangeRateSource)
+        setStoredExchangeRateSource('USD', val as ExchangeRateSource)
         // Notify the indicator to refresh instantly
         window.dispatchEvent(new CustomEvent('exchange-rate-refresh'))
     }
 
     const handleEurExchangeRateSourceChange = (val: string) => {
         if (val === 'manual') {
-            const currentRate = localStorage.getItem('manual_rate_eur_iqd');
-            if (!currentRate || parseInt(currentRate) === 0) {
+            const currentRate = getManualRateValue('EUR');
+            if (!currentRate) {
                 openManualEditor('EUR');
                 return;
             }
         }
-        setEurExchangeRateSource(val)
-        localStorage.setItem('primary_eur_exchange_rate_source', val)
+        setEurExchangeRateSource(val as ExchangeRateSource)
+        setStoredExchangeRateSource('EUR', val as ExchangeRateSource)
         window.dispatchEvent(new CustomEvent('exchange-rate-refresh'))
     }
 
     const handleTryExchangeRateSourceChange = (val: string) => {
         if (val === 'manual') {
-            const currentRate = localStorage.getItem('manual_rate_try_iqd');
-            if (!currentRate || parseInt(currentRate) === 0) {
+            const currentRate = getManualRateValue('TRY');
+            if (!currentRate) {
                 openManualEditor('TRY');
                 return;
             }
         }
-        setTryExchangeRateSource(val)
-        localStorage.setItem('primary_try_exchange_rate_source', val)
+        setTryExchangeRateSource(val as ExchangeRateSource)
+        setStoredExchangeRateSource('TRY', val as ExchangeRateSource)
         window.dispatchEvent(new CustomEvent('exchange-rate-refresh'))
     }
 

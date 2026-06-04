@@ -6,6 +6,8 @@ import { AlertTriangle, TrendingUp, ArrowRightLeft, BellOff } from 'lucide-react
 import { useExchangeRate } from '@/context/ExchangeRateContext';
 import { useTheme } from '../theme-provider';
 import { formatCurrency, cn } from '@/lib/utils';
+import { setExchangeRateSource, type ManualRateCurrency } from '@/lib/manualExchangeRates';
+import type { ExchangeRateSource } from '@/lib/exchangeRate';
 
 interface RateDiscrepancyModalProps {
     open: boolean;
@@ -25,18 +27,18 @@ export function RateDiscrepancyModal({ open, onOpenChange, onOpenEditor, onOpenS
 
     const handleSwitchToLive = async () => {
         // Reset source to default (xeiqd for USD, forexfy for others)
-        let key = 'primary_exchange_rate_source';
-        let defaultVal = 'xeiqd';
+        let currency: ManualRateCurrency = 'USD';
+        let defaultVal: ExchangeRateSource = 'xeiqd';
 
         if (pair.includes('EUR')) {
-            key = 'primary_eur_exchange_rate_source';
+            currency = 'EUR';
             defaultVal = 'forexfy';
         } else if (pair.includes('TRY')) {
-            key = 'primary_try_exchange_rate_source';
+            currency = 'TRY';
             defaultVal = 'forexfy';
         }
 
-        localStorage.setItem(key, defaultVal);
+        setExchangeRateSource(currency, defaultVal);
         await refresh();
         onOpenChange(false);
     };

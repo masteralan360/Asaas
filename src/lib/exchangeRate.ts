@@ -1,3 +1,5 @@
+import { getManualRateSource, getManualRateValue } from './manualExchangeRates';
+
 export type ExchangeRateSource = 'xeiqd' | 'forexfy' | 'dolardinar' | 'manual';
 
 export interface ExchangeRateResult {
@@ -14,13 +16,13 @@ export async function fetchUSDToIQDRate(primarySource?: ExchangeRateSource): Pro
     }
 
     // If manual mode, return the value from localStorage
-    if (primarySource === 'manual' || (!primarySource && localStorage.getItem('primary_exchange_rate_source') === 'manual')) {
-        const manualRate = parseInt(localStorage.getItem('manual_rate_usd_iqd') || '0');
+    if (primarySource === 'manual' || (!primarySource && getManualRateSource('USD') === 'manual')) {
+        const manualRate = getManualRateValue('USD');
         return { rate: manualRate, source: 'manual', isFallback: false };
     }
 
     // Get primary from localStorage if not provided (for direct calls from component)
-    const favoredSource = primarySource || (localStorage.getItem('primary_exchange_rate_source') as ExchangeRateSource) || 'xeiqd';
+    const favoredSource = primarySource || getManualRateSource('USD');
 
     const sources: ExchangeRateSource[] = [
         favoredSource,
@@ -56,13 +58,13 @@ export async function fetchEURToIQDRate(primarySource?: ExchangeRateSource): Pro
     }
 
     // If manual mode, return the values from localStorage
-    if (primarySource === 'manual' || (!primarySource && localStorage.getItem('primary_eur_exchange_rate_source') === 'manual')) {
+    if (primarySource === 'manual' || (!primarySource && getManualRateSource('EUR') === 'manual')) {
         const usdEur = parseFloat(localStorage.getItem('manual_rate_usd_eur') || '0');
-        const eurIqd = parseInt(localStorage.getItem('manual_rate_eur_iqd') || '0');
+        const eurIqd = getManualRateValue('EUR');
         return { usdEur, eurIqd, source: 'manual', isFallback: false };
     }
 
-    const favoredSource = primarySource || (localStorage.getItem('primary_eur_exchange_rate_source') as ExchangeRateSource) || 'forexfy';
+    const favoredSource = primarySource || getManualRateSource('EUR');
 
     // XEIQD doesn't easily provide EUR, so we fallback to others
     const sources: ExchangeRateSource[] = [
@@ -96,13 +98,13 @@ export async function fetchTRYToIQDRate(primarySource?: ExchangeRateSource): Pro
     }
 
     // If manual mode, return the values from localStorage
-    if (primarySource === 'manual' || (!primarySource && localStorage.getItem('primary_try_exchange_rate_source') === 'manual')) {
+    if (primarySource === 'manual' || (!primarySource && getManualRateSource('TRY') === 'manual')) {
         const usdTry = parseFloat(localStorage.getItem('manual_rate_usd_try') || '0');
-        const tryIqd = parseInt(localStorage.getItem('manual_rate_try_iqd') || '0');
+        const tryIqd = getManualRateValue('TRY');
         return { usdTry, tryIqd, source: 'manual', isFallback: false };
     }
 
-    const favoredSource = primarySource || (localStorage.getItem('primary_try_exchange_rate_source') as ExchangeRateSource) || 'forexfy';
+    const favoredSource = primarySource || getManualRateSource('TRY');
 
     const sources: ExchangeRateSource[] = [
         favoredSource,

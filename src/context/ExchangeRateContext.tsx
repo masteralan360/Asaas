@@ -4,6 +4,7 @@ import { buildOrderExchangeRatesSnapshot, cacheExchangeRatesSnapshot } from '@/l
 import { useWorkspace } from '@/workspace'
 import { useNetworkStatus } from '@/hooks/useNetworkStatus'
 import { formatTime } from '@/lib/utils'
+import { cleanupExpiredManualRates, getManualRateSource, getManualRateValue } from '@/lib/manualExchangeRates'
 
 export interface ExchangeSnapshot {
     rate: number
@@ -124,11 +125,12 @@ export function ExchangeRateProvider({ children }: { children: React.ReactNode }
 
         setStatus('loading')
         setCurrencyStatus({ usd: 'loading', eur: 'loading', try: 'loading' })
+        cleanupExpiredManualRates()
 
         // Only clear rates whose manual source was removed — preserve cached live rates
-        const usdSource = localStorage.getItem('primary_exchange_rate_source')
-        const eurSource = localStorage.getItem('primary_eur_exchange_rate_source')
-        const trySource = localStorage.getItem('primary_try_exchange_rate_source')
+        const usdSource = getManualRateSource('USD')
+        const eurSource = getManualRateSource('EUR')
+        const trySource = getManualRateSource('TRY')
 
         setExchangeData(prev => {
             if (prev && prev.source === 'manual' && usdSource !== 'manual') return null
@@ -150,9 +152,9 @@ export function ExchangeRateProvider({ children }: { children: React.ReactNode }
         // 1. Fetch USD/IQD
         try {
             // Check if manual rate is set
-            const usdSource = localStorage.getItem('primary_exchange_rate_source')
+            const usdSource = getManualRateSource('USD')
             if (usdSource === 'manual') {
-                const manualRate = parseInt(localStorage.getItem('manual_rate_usd_iqd') || '0')
+                const manualRate = getManualRateValue('USD')
                 if (manualRate > 0) {
                     setExchangeData({ rate: manualRate, source: 'manual', isFallback: false })
                     usdSuccess = true
@@ -167,7 +169,7 @@ export function ExchangeRateProvider({ children }: { children: React.ReactNode }
         } catch (error) {
             console.error('ExchangeRateProvider: Failed to fetch USD/IQD rate', error)
             // Check if we have a manual fallback
-            const manualRate = parseInt(localStorage.getItem('manual_rate_usd_iqd') || '0')
+            const manualRate = getManualRateValue('USD')
             if (manualRate > 0) {
                 setExchangeData({ rate: manualRate, source: 'manual', isFallback: true })
                 usdSuccess = true
@@ -177,9 +179,9 @@ export function ExchangeRateProvider({ children }: { children: React.ReactNode }
         // 2. Fetch EUR rates if enabled
         if (features.allowed_currencies.includes('eur')) {
             try {
-                const eurSource = localStorage.getItem('primary_eur_exchange_rate_source')
+                const eurSource = getManualRateSource('EUR')
                 if (eurSource === 'manual') {
-                    const manualRate = parseInt(localStorage.getItem('manual_rate_eur_iqd') || '0')
+                    const manualRate = getManualRateValue('EUR')
                     if (manualRate > 0) {
                         const timestamp = new Date().toISOString()
                         setEurRates({
@@ -202,7 +204,7 @@ export function ExchangeRateProvider({ children }: { children: React.ReactNode }
             } catch (error) {
                 console.error('ExchangeRateProvider: Failed to fetch EUR rates', error)
                 // Check for manual fallback
-                const manualRate = parseInt(localStorage.getItem('manual_rate_eur_iqd') || '0')
+                const manualRate = getManualRateValue('EUR')
                 if (manualRate > 0) {
                     const timestamp = new Date().toISOString()
                     setEurRates({
@@ -219,9 +221,9 @@ export function ExchangeRateProvider({ children }: { children: React.ReactNode }
         // 3. Fetch TRY rates if enabled
         if (features.allowed_currencies.includes('try')) {
             try {
-                const trySource = localStorage.getItem('primary_try_exchange_rate_source')
+                const trySource = getManualRateSource('TRY')
                 if (trySource === 'manual') {
-                    const manualRate = parseInt(localStorage.getItem('manual_rate_try_iqd') || '0')
+                    const manualRate = getManualRateValue('TRY')
                     if (manualRate > 0) {
                         const timestamp = new Date().toISOString()
                         setTryRates({
@@ -244,7 +246,7 @@ export function ExchangeRateProvider({ children }: { children: React.ReactNode }
             } catch (error) {
                 console.error('ExchangeRateProvider: Failed to fetch TRY rates', error)
                 // Check for manual fallback
-                const manualRate = parseInt(localStorage.getItem('manual_rate_try_iqd') || '0')
+                const manualRate = getManualRateValue('TRY')
                 if (manualRate > 0) {
                     const timestamp = new Date().toISOString()
                     setTryRates({
@@ -266,9 +268,9 @@ export function ExchangeRateProvider({ children }: { children: React.ReactNode }
         }
 
         setCurrencyStatus({
-            usd: getStatus(usdSuccess, localStorage.getItem('primary_exchange_rate_source')),
-            eur: getStatus(eurSuccess, localStorage.getItem('primary_eur_exchange_rate_source')),
-            try: getStatus(trySuccess, localStorage.getItem('primary_try_exchange_rate_source'))
+            usd: getStatus(usdSuccess, getManualRateSource('USD')),
+            eur: getStatus(eurSuccess, getManualRateSource('EUR')),
+            try: getStatus(trySuccess, getManualRateSource('TRY'))
         })
 
         // 4. Validation Check (Average of all sources) - best effort
@@ -288,9 +290,9 @@ export function ExchangeRateProvider({ children }: { children: React.ReactNode }
                 const isGloballySnoozed = snoozeUntil && new Date().getTime() < parseInt(snoozeUntil)
 
                 const pairs = [
-                    { key: 'usd_iqd', label: 'USD/IQD', manualKey: 'manual_rate_usd_iqd', sourceKey: 'primary_exchange_rate_source' },
-                    { key: 'eur_iqd', label: 'EUR/IQD', manualKey: 'manual_rate_eur_iqd', sourceKey: 'primary_eur_exchange_rate_source' },
-                    { key: 'try_iqd', label: 'TRY/IQD', manualKey: 'manual_rate_try_iqd', sourceKey: 'primary_try_exchange_rate_source' }
+                    { key: 'usd_iqd', label: 'USD/IQD', currency: 'USD' as const },
+                    { key: 'eur_iqd', label: 'EUR/IQD', currency: 'EUR' as const },
+                    { key: 'try_iqd', label: 'TRY/IQD', currency: 'TRY' as const }
                 ]
 
                 const activeSnoozed: string[] = []
@@ -298,8 +300,8 @@ export function ExchangeRateProvider({ children }: { children: React.ReactNode }
                 let activeAlert: any = null
 
                 for (const p of pairs) {
-                    if (localStorage.getItem(p.sourceKey) === 'manual') {
-                        const manualVal = parseInt(localStorage.getItem(p.manualKey) || '0')
+                    if (getManualRateSource(p.currency) === 'manual') {
+                        const manualVal = getManualRateValue(p.currency)
                         const avgVal = all[p.key as keyof typeof all]?.average
                         if (manualVal > 0 && avgVal && Math.abs(manualVal - avgVal) > threshold) {
                             const data = {

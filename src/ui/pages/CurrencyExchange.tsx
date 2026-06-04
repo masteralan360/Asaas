@@ -1,12 +1,13 @@
 import { type FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useRoute } from 'wouter'
 import { useTranslation } from 'react-i18next'
-import { ArrowLeft, ArrowRightLeft, ClipboardList, Lock, Plus, Search, Trash2, Unlock } from 'lucide-react'
+import { ArrowLeft, ArrowRightLeft, CalendarClock, ClipboardList, Clock, Lock, Plus, Search, Trash2, Unlock } from 'lucide-react'
 
 import { useAuth } from '@/auth'
 import { useExchangeRate } from '@/context/ExchangeRateContext'
 import { buildOrderExchangeRatesSnapshot } from '@/lib/orderCurrency'
 import { cn, formatCurrency, formatDateTime, formatNumberWithCommas, formatNumericInput, parseFormattedNumber, parseLocalDateTimeValue, sanitizeNumericInput } from '@/lib/utils'
+import { setManualExchangeRate, type ManualRateCurrency } from '@/lib/manualExchangeRates'
 import {
     buildExchangeFeeRuleSnapshot,
     calculateExchangeTransaction,
@@ -41,6 +42,12 @@ import {
     CurrencySelector,
     DateTimePicker,
     DeleteConfirmationModal,
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
     Input,
     Label,
     Select,
@@ -109,6 +116,10 @@ function buildRateMap(
 
 function isMarketRateCurrency(currency: CurrencyCode): currency is MarketRateCurrency {
     return currency === 'usd' || currency === 'eur' || currency === 'try'
+}
+
+function toManualRateCurrency(currency: MarketRateCurrency): ManualRateCurrency {
+    return currency.toUpperCase() as ManualRateCurrency
 }
 
 function getRateToIqd(currency: CurrencyCode, rates: ExchangeRateMap) {
@@ -416,6 +427,7 @@ function CreateCurrencyExchangeTransactionPage({
     const [exchangeRateSource, setExchangeRateSource] = useState('live')
     const [selectedRuleId, setSelectedRuleId] = useState<string>('none')
     const [feeValue, setFeeValue] = useState('')
+    const [manualPeriodOpen, setManualPeriodOpen] = useState(false)
     const prevPairRef = useRef(`${fromCurrency}:${toCurrency}`)
 
     const availableCurrencies = useMemo(() => {
@@ -428,28 +440,36 @@ function CreateCurrencyExchangeTransactionPage({
     const rawTryRate = Number(tryRates.try_iqd?.rate || 0)
     const parsedRate = parseFormattedNumber(exchangeRateValue || '0')
     const editedAnchorCurrency = fromCurrency === 'iqd' ? toCurrency : fromCurrency
+    const canApplyManualPeriod = exchangeRateSource === 'manual'
+        && isMarketRateCurrency(editedAnchorCurrency)
+        && parsedRate > 0
+    const marketRatesToIqd = useMemo(() => (
+        buildRateMap(rawUsdRate, rawEurRate || null, rawTryRate || null)
+    ), [rawEurRate, rawTryRate, rawUsdRate])
+
+    const selectedPairMarketRate = useMemo(() => {
+        if (fromCurrency === toCurrency) return 1
+        if (fromCurrency === 'iqd') return getRateToIqd(toCurrency, marketRatesToIqd)
+        return getRateToIqd(fromCurrency, marketRatesToIqd)
+    }, [fromCurrency, marketRatesToIqd, toCurrency])
+
     const ratesToIqd = useMemo(() => {
-        const base = buildRateMap(rawUsdRate, rawEurRate || null, rawTryRate || null)
+        const base = { ...marketRatesToIqd }
         if (isMarketRateCurrency(editedAnchorCurrency) && parsedRate > 0) {
             base[editedAnchorCurrency] = parsedRate
         }
         return base
-    }, [editedAnchorCurrency, parsedRate, rawEurRate, rawTryRate, rawUsdRate])
-
-    const anchorRate = useMemo(() => {
-        if (fromCurrency === toCurrency) return 1
-        if (fromCurrency === 'iqd') return getRateToIqd(toCurrency, ratesToIqd)
-        return getRateToIqd(fromCurrency, ratesToIqd)
-    }, [fromCurrency, ratesToIqd, toCurrency])
+    }, [editedAnchorCurrency, marketRatesToIqd, parsedRate])
 
     useEffect(() => {
         const pairKey = `${fromCurrency}:${toCurrency}`
         if (prevPairRef.current !== pairKey || !exchangeRateValue) {
             prevPairRef.current = pairKey
-            setExchangeRateValue(anchorRate > 0 ? formatNumberWithCommas(anchorRate) : '')
+            setExchangeRateValue(selectedPairMarketRate > 0 ? formatNumberWithCommas(selectedPairMarketRate) : '')
             setExchangeRateSource('live')
+            setManualPeriodOpen(false)
         }
-    }, [anchorRate, exchangeRateValue, fromCurrency, toCurrency])
+    }, [exchangeRateValue, fromCurrency, selectedPairMarketRate, toCurrency])
 
     const activeRule = useMemo(() => (
         resolveEffectiveExchangeFeeRule(rules, transactionType, transactionDate, fromCurrency)
@@ -707,14 +727,28 @@ function CreateCurrencyExchangeTransactionPage({
                             </CardHeader>
                             <CardContent>
                                 <div className="space-y-3 rounded-2xl border border-primary/20 bg-primary/5 p-4">
-                                    <div className="flex items-center justify-between">
+                                    <div className="flex items-center justify-between gap-3">
                                         <div className="text-sm font-semibold">Exchange Rate</div>
-                                        <span className={cn(
-                                            'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium',
-                                            exchangeRateSource === 'manual' ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'
-                                        )}>
-                                            {exchangeRateSource === 'manual' ? 'Manual' : 'Live'}
-                                        </span>
+                                        <div className="flex items-center gap-2">
+                                            <span className={cn(
+                                                'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium',
+                                                exchangeRateSource === 'manual' ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'
+                                            )}>
+                                                {exchangeRateSource === 'manual' ? 'Manual' : 'Live'}
+                                            </span>
+                                            {canApplyManualPeriod ? (
+                                                <Button
+                                                    type="button"
+                                                    variant="outline"
+                                                    size="sm"
+                                                    className="h-7 rounded-full px-2.5 text-xs"
+                                                    onClick={() => setManualPeriodOpen(true)}
+                                                >
+                                                    <Clock className="mr-1.5 h-3.5 w-3.5" />
+                                                    Apply for Period
+                                                </Button>
+                                            ) : null}
+                                        </div>
                                     </div>
                                     <div className="grid gap-3 sm:grid-cols-2">
                                         <div className="grid gap-2">
@@ -740,6 +774,24 @@ function CreateCurrencyExchangeTransactionPage({
                                 </div>
                             </CardContent>
                         </Card>
+
+                        {isMarketRateCurrency(editedAnchorCurrency) ? (
+                            <ManualRatePeriodModal
+                                open={manualPeriodOpen}
+                                onOpenChange={setManualPeriodOpen}
+                                currency={toManualRateCurrency(editedAnchorCurrency)}
+                                rate={parsedRate}
+                                pairLabel={`${editedAnchorCurrency.toUpperCase()}/IQD`}
+                                iqdDisplayPreference={features.iqd_display_preference}
+                                onApplied={() => {
+                                    window.dispatchEvent(new CustomEvent('exchange-rate-refresh'))
+                                    toast({
+                                        title: 'Manual rate scheduled.',
+                                        description: `${editedAnchorCurrency.toUpperCase()}/IQD will use this rate until the selected period ends.`
+                                    })
+                                }}
+                            />
+                        ) : null}
 
                         <Card>
                             <CardHeader>
@@ -871,6 +923,135 @@ function CreateCurrencyExchangeTransactionPage({
                 </div>
             </form>
         </div>
+    )
+}
+
+type ManualRatePeriodPreset = '1h' | '2h' | '3h' | '4h' | '5h' | 'day' | 'custom'
+
+const manualRatePeriodOptions: Array<{ id: ManualRatePeriodPreset; label: string }> = [
+    { id: '1h', label: '1 hour' },
+    { id: '2h', label: '2 hours' },
+    { id: '3h', label: '3 hours' },
+    { id: '4h', label: '4 hours' },
+    { id: '5h', label: '5 hours' },
+    { id: 'day', label: 'Today' },
+    { id: 'custom', label: 'Custom time' }
+]
+
+function getManualRatePeriodEnd(preset: ManualRatePeriodPreset, customUntil: Date | undefined) {
+    const now = new Date()
+    if (preset === 'day') {
+        const endOfDay = new Date(now)
+        endOfDay.setHours(23, 59, 59, 999)
+        return endOfDay
+    }
+    if (preset === 'custom') {
+        return customUntil
+    }
+
+    const hours = Number(preset.replace('h', ''))
+    return new Date(now.getTime() + hours * 60 * 60 * 1000)
+}
+
+function ManualRatePeriodModal({
+    open,
+    onOpenChange,
+    currency,
+    rate,
+    pairLabel,
+    iqdDisplayPreference,
+    onApplied
+}: {
+    open: boolean
+    onOpenChange: (open: boolean) => void
+    currency: ManualRateCurrency
+    rate: number
+    pairLabel: string
+    iqdDisplayPreference: IQDDisplayPreference
+    onApplied: () => void
+}) {
+    const [preset, setPreset] = useState<ManualRatePeriodPreset>('1h')
+    const [customUntil, setCustomUntil] = useState<Date | undefined>(() => {
+        const date = new Date()
+        date.setHours(date.getHours() + 1, 0, 0, 0)
+        return date
+    })
+    const expiresAt = getManualRatePeriodEnd(preset, customUntil)
+    const isValid = Boolean(expiresAt && expiresAt.getTime() > Date.now() && rate > 0)
+
+    const handleApply = () => {
+        if (!expiresAt || !isValid) return
+
+        setManualExchangeRate(currency, rate, { expiresAt })
+        onApplied()
+        onOpenChange(false)
+    }
+
+    return (
+        <Dialog open={open} onOpenChange={onOpenChange}>
+            <DialogContent className="max-w-md p-0">
+                <DialogHeader className="border-b bg-amber-500/5 p-6 text-start">
+                    <DialogTitle className="flex items-center gap-2 text-amber-700">
+                        <CalendarClock className="h-5 w-5" />
+                        Apply Manual Rate Window
+                    </DialogTitle>
+                    <DialogDescription>
+                        {pairLabel} will use {formatCurrency(Math.round(rate), 'iqd', iqdDisplayPreference)} until the selected time.
+                    </DialogDescription>
+                </DialogHeader>
+
+                <div className="space-y-4 p-6">
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                        {manualRatePeriodOptions.map((option) => (
+                            <button
+                                key={option.id}
+                                type="button"
+                                onClick={() => setPreset(option.id)}
+                                className={cn(
+                                    'flex h-11 items-center justify-center rounded-lg border px-3 text-sm font-medium transition-colors',
+                                    preset === option.id
+                                        ? 'border-amber-500 bg-amber-500/10 text-amber-700'
+                                        : 'border-border bg-background hover:bg-muted/50'
+                                )}
+                            >
+                                {option.label}
+                            </button>
+                        ))}
+                    </div>
+
+                    {preset === 'custom' ? (
+                        <div className="grid gap-2">
+                            <Label>Until</Label>
+                            <DateTimePicker
+                                id="manual-rate-period-until"
+                                mode="date-time"
+                                date={customUntil}
+                                setDate={setCustomUntil}
+                                placeholder="Custom end time"
+                            />
+                        </div>
+                    ) : null}
+
+                    <div className="rounded-xl border bg-muted/20 px-3 py-2 text-sm">
+                        <div className="text-xs font-medium uppercase text-muted-foreground">Expires</div>
+                        <div className="mt-1 font-semibold">{expiresAt ? formatDateTime(expiresAt) : '-'}</div>
+                    </div>
+
+                    <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-xs text-amber-700">
+                        Existing discrepancy alerts and snooze settings still apply to this manual rate.
+                    </div>
+                </div>
+
+                <DialogFooter className="gap-2 border-t bg-muted/20 p-4 sm:space-x-0">
+                    <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
+                        Cancel
+                    </Button>
+                    <Button type="button" disabled={!isValid} onClick={handleApply}>
+                        Apply Manual Window
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
     )
 }
 

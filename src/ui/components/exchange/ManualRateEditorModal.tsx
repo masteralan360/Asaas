@@ -8,6 +8,7 @@ import { useTranslation } from 'react-i18next';
 import { Coins, Save, X, Info } from 'lucide-react';
 import { useExchangeRate } from '@/context/ExchangeRateContext';
 import { useTheme } from '../theme-provider';
+import { clearManualExchangeRate, setManualExchangeRate } from '@/lib/manualExchangeRates';
 
 interface ManualRateEditorModalProps {
     open: boolean;
@@ -103,32 +104,14 @@ export function ManualRateEditorModal({ open, onOpenChange, initialCurrency = 'U
 
         if (isNaN(rateVal) || rateVal <= 0) {
             // If empty or 0, switch back to live source for this currency
-            let key = 'primary_exchange_rate_source';
-            let defaultLive = 'xeiqd';
-
-            if (currency === 'EUR') {
-                key = 'primary_eur_exchange_rate_source';
-                defaultLive = 'forexfy';
-            } else if (currency === 'TRY') {
-                key = 'primary_try_exchange_rate_source';
-                defaultLive = 'forexfy';
-            }
-
-            localStorage.setItem(key, defaultLive);
-            localStorage.removeItem(`manual_rate_${currency.toLowerCase()}_iqd`);
+            clearManualExchangeRate(currency);
 
             onOpenChange(false);
             refreshRates();
             return;
         }
 
-        // Switch to manual source for this currency
-        let sourceKey = 'primary_exchange_rate_source';
-        if (currency === 'EUR') sourceKey = 'primary_eur_exchange_rate_source';
-        else if (currency === 'TRY') sourceKey = 'primary_try_exchange_rate_source';
-
-        localStorage.setItem(sourceKey, 'manual');
-        localStorage.setItem(`manual_rate_${currency.toLowerCase()}_iqd`, rateVal.toString());
+        setManualExchangeRate(currency, rateVal);
 
         // Refresh and close
         onOpenChange(false);
