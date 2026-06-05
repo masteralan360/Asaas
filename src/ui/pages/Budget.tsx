@@ -42,8 +42,12 @@ import {
     useSales,
     useSalesOrders,
     useTravelAgencySales,
+    useExchangeTransactions,
+    usePaymentTransactions,
     toUISale,
-    toUISaleFromTravelAgency
+    toUISaleFromTravelAgency,
+    toUISaleFromExchangeTransaction,
+    toUISaleFromRealEstateCommissionTransaction
 } from '@/local-db'
 import { db } from '@/local-db/database'
 import type { BudgetStatus, CurrencyCode, ExpenseItem, ExpenseRecurrence, ExpenseSeries, IQDDisplayPreference, PaymentObligation, WorkspacePaymentMethod } from '@/local-db/models'
@@ -458,7 +462,23 @@ export function Budget() {
     const rawSales = useSales(workspaceId)
     const salesOrders = useSalesOrders(workspaceId)
     const rawTravelSales = useTravelAgencySales(workspaceId)
-    const sales = useMemo(() => rawSales.map(toUISale), [rawSales])
+    const rawExchangeTransactions = useExchangeTransactions(workspaceId)
+    const realEstateCommissionTransactions = usePaymentTransactions(workspaceId, {
+        direction: 'incoming',
+        sourceModule: 'real_estate',
+        sourceType: 'real_estate_commission',
+        includeReversals: false
+    })
+    const sales = useMemo(() => {
+        const baseSales = rawSales.map(toUISale)
+        const exchangeSales = (rawExchangeTransactions || [])
+            .filter(tx => !tx.isDeleted && !tx.isReversed && tx.transactionType === 'sell' && tx.profitAmount != null && tx.profitAmount > 0)
+            .map(toUISaleFromExchangeTransaction)
+        const realEstateCommissionSales = (realEstateCommissionTransactions || [])
+            .filter(transaction => transaction.amount > 0)
+            .map(toUISaleFromRealEstateCommissionTransaction)
+        return [...baseSales, ...exchangeSales, ...realEstateCommissionSales]
+    }, [rawSales, rawExchangeTransactions, realEstateCommissionTransactions])
     const travelSales = useMemo(
         () => (rawTravelSales || [])
             .filter(sale => sale.isPaid && !sale.isDeleted)

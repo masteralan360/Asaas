@@ -53,7 +53,7 @@ export interface Sale {
     exchange_rate_timestamp: string | null
     exchange_rates?: any[] | null
     created_at: string
-    origin: 'pos' | 'manual' | 'instant_pos' | 'sales_order' | 'travel_agency'
+    origin: 'pos' | 'manual' | 'instant_pos' | 'sales_order' | 'travel_agency' | 'exchange' | 'real_estate'
     payment_method?: 'cash' | 'fib' | 'qicard' | 'zaincash' | 'fastpay' | 'loan'
     cashier_name?: string
     items?: SaleItem[]
@@ -73,6 +73,8 @@ export interface Sale {
     _orderNumber?: string
     _isOrder?: boolean
     _sourceChannel?: string | null
+    _realEstateTransactionId?: string | null
+    _counterpartyName?: string | null
 }
 
 export interface CartItem {

@@ -4736,6 +4736,69 @@ export function toUISaleFromExchangeTransaction(tx: any): any {
     }
 }
 
+export function toUISaleFromRealEstateCommissionTransaction(transaction: PaymentTransaction): any {
+    const amount = Number(transaction.amount || 0)
+    const realEstateTransactionId = typeof transaction.metadata?.realEstateTransactionId === 'string'
+        ? transaction.metadata.realEstateTransactionId
+        : transaction.sourceRecordId
+    const propertyLocation = typeof transaction.metadata?.propertyLocation === 'string'
+        ? transaction.metadata.propertyLocation
+        : transaction.referenceLabel || 'Real Estate Commission'
+    const category = 'Real Estate Commission'
+    const items: any[] = [{
+        id: generateId(),
+        sale_id: transaction.id,
+        product_id: 'real_estate_commission',
+        product_name: propertyLocation,
+        product_sku: 'RE-COMMISSION',
+        product_category: category,
+        quantity: 1,
+        unit_price: amount,
+        total_price: amount,
+        cost_price: 0,
+        converted_cost_price: 0,
+        original_currency: transaction.currency,
+        original_unit_price: amount,
+        converted_unit_price: amount,
+        settlement_currency: transaction.currency,
+        returned_quantity: 0,
+        is_returned: false,
+        product: {
+            name: propertyLocation,
+            sku: 'RE-COMMISSION',
+            category,
+            can_be_returned: false
+        }
+    }]
+
+    return {
+        id: transaction.id,
+        workspace_id: transaction.workspaceId,
+        cashier_id: transaction.createdBy || '',
+        total_amount: amount,
+        settlement_currency: transaction.currency,
+        exchange_source: null,
+        exchange_rate: null,
+        exchange_rate_timestamp: null,
+        exchange_rates: null,
+        created_at: transaction.paidAt,
+        updated_at: transaction.updatedAt,
+        origin: 'real_estate',
+        payment_method: transaction.paymentMethod || 'cash',
+        cashier_name: 'Real Estate',
+        items,
+        is_returned: false,
+        sequenceId: transaction.referenceLabel || realEstateTransactionId,
+        notes: transaction.note || null,
+        partyName: transaction.counterpartyName || null,
+        _isRealEstateCommission: true,
+        _realEstateTransactionId: realEstateTransactionId,
+        _counterpartyName: transaction.counterpartyName || null,
+        _realEstateReference: transaction.referenceLabel || null,
+        _realEstatePaymentId: transaction.id
+    }
+}
+
 export function toUISaleFromTravelAgency(sale: any): any {
     const tourists = sale.tourists || sale.tourist_list || []
     const groupRev = Number(sale.groupRevenue || sale.group_revenue || 0)

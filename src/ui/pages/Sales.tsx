@@ -11,7 +11,7 @@ import { formatLocalizedMonthYear } from '@/lib/monthDisplay'
 import { getLoanDetailsPath } from '@/lib/loanPresentation'
 import { getRetriableActionToast, isRetriableWebRequestError, normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
 
-import { adjustInventoryQuantity, commitStockBatchAllocations, db, recordLoanPayment, resolveReturnStorageId, restoreStockBatchAllocations, splitStockBatchAllocationsForReturn, useLoanBySaleId, useLoanInstallments, useLoanPayments, useLoans, useSales, useSalesOrders, useTravelAgencySales, useExchangeTransactions, toUISale, toUISaleFromOrder, toUISaleFromTravelAgency, toUISaleFromExchangeTransaction, type Loan, type StockBatchAllocation } from '@/local-db'
+import { adjustInventoryQuantity, commitStockBatchAllocations, db, recordLoanPayment, resolveReturnStorageId, restoreStockBatchAllocations, splitStockBatchAllocationsForReturn, useLoanBySaleId, useLoanInstallments, useLoanPayments, useLoans, useSales, useSalesOrders, useTravelAgencySales, useExchangeTransactions, usePaymentTransactions, toUISale, toUISaleFromOrder, toUISaleFromTravelAgency, toUISaleFromExchangeTransaction, toUISaleFromRealEstateCommissionTransaction, type Loan, type StockBatchAllocation } from '@/local-db'
 import { useWorkspace } from '@/workspace'
 import { isMobile } from '@/lib/platform'
 import { whatsappManager } from '@/lib/whatsappWebviewManager'
@@ -126,6 +126,22 @@ function countActiveSalesFilters(filters: SalesFilterState) {
     ].filter(Boolean).length
 }
 
+function getExternalSaleDetailsPath(sale: Sale) {
+    if (sale.origin === 'sales_order') {
+        return `/orders/${sale.id}`
+    }
+    if (sale.origin === 'travel_agency') {
+        return `/travel-agency/${sale.id}/view`
+    }
+    if (sale.origin === 'exchange') {
+        return '/currency-exchange'
+    }
+    if (sale.origin === 'real_estate') {
+        return `/real-estate/${sale._realEstateTransactionId || sale.id}`
+    }
+    return null
+}
+
 type EffectiveLoanStatus = 'pending' | 'active' | 'overdue' | 'completed'
 
 function resolveEffectiveLoanStatus(loan: Loan | undefined): EffectiveLoanStatus {
@@ -203,6 +219,12 @@ export function Sales() {
     const rawOrders = useSalesOrders(user?.workspaceId, dateBounds.startDate, dateBounds.endDate)
     const rawTravelSales = useTravelAgencySales(user?.workspaceId, dateBounds.startDate, dateBounds.endDate)
     const rawExchangeTransactions = useExchangeTransactions(user?.workspaceId)
+    const realEstateCommissionTransactions = usePaymentTransactions(user?.workspaceId, {
+        direction: 'incoming',
+        sourceModule: 'real_estate',
+        sourceType: 'real_estate_commission',
+        includeReversals: false
+    })
 
     const loans = useLoans(user?.workspaceId)
     const allSales = useMemo(() => {
@@ -216,10 +238,13 @@ export function Sales() {
         const exchangeSales = (rawExchangeTransactions || [])
             .filter(tx => !tx.isDeleted && !tx.isReversed && tx.transactionType === 'sell' && tx.profitAmount != null && tx.profitAmount > 0)
             .map(toUISaleFromExchangeTransaction)
-        return [...sales, ...orders, ...travelSales, ...exchangeSales]
-    }, [rawSales, rawOrders, rawTravelSales, rawExchangeTransactions])
+        const realEstateCommissionSales = (realEstateCommissionTransactions || [])
+            .filter(transaction => transaction.amount > 0)
+            .map(toUISaleFromRealEstateCommissionTransaction)
+        return [...sales, ...orders, ...travelSales, ...exchangeSales, ...realEstateCommissionSales]
+    }, [rawSales, rawOrders, rawTravelSales, rawExchangeTransactions, realEstateCommissionTransactions])
 
-    const isLoading = rawSales === undefined || rawOrders === undefined || rawTravelSales === undefined || rawExchangeTransactions === undefined
+    const isLoading = rawSales === undefined || rawOrders === undefined || rawTravelSales === undefined || rawExchangeTransactions === undefined || realEstateCommissionTransactions === undefined
     const [isDateLoading, setIsDateLoading] = useState(false)
     const prevDateBoundsRef = useRef(dateBounds)
 
@@ -1741,12 +1766,9 @@ export function Sales() {
                                                                     style === 'neo-orange' ? "rounded-[var(--radius)] neo-border shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]" : "rounded-xl"
                                                                 )}
                                                                 onClick={() => {
-                                                                    if (sale.origin === 'sales_order') {
-                                                                        setLocation(`/orders/${sale.id}`)
-                                                                    } else if (sale.origin === 'travel_agency') {
-                                                                        setLocation(`/travel-agency/${sale.id}/view`)
-                                                                    } else if (sale.origin === 'exchange') {
-                                                                        setLocation(`/currency-exchange`)
+                                                                    const externalPath = getExternalSaleDetailsPath(sale)
+                                                                    if (externalPath) {
+                                                                        setLocation(externalPath)
                                                                     } else {
                                                                         setSelectedSale(sale)
                                                                     }
@@ -1755,7 +1777,7 @@ export function Sales() {
                                                                     <Eye className="w-4 h-4" />
                                                                     {t('common.view')}
                                                                 </Button>
-                                                                {sale.origin !== 'sales_order' && sale.origin !== 'travel_agency' && sale.origin !== 'exchange' && (
+                                                                {!getExternalSaleDetailsPath(sale) && (
                                                                 <Button
                                                                     variant="outline"
                                                                     size="icon"
@@ -1768,7 +1790,7 @@ export function Sales() {
                                                                     <Printer className="w-4 h-4" />
                                                                 </Button>
                                                             )}
-                                                            {sale.origin !== 'sales_order' && sale.origin !== 'travel_agency' && sale.origin !== 'exchange' && (sale.notes || user?.role !== 'viewer') && (
+                                                            {!getExternalSaleDetailsPath(sale) && (sale.notes || user?.role !== 'viewer') && (
                                                                 <Button
                                                                     variant="outline"
                                                                     size="icon"
@@ -1787,7 +1809,7 @@ export function Sales() {
                                                             )}
                                                         </div>
                                                         <div className="flex gap-1">
-                                                            {!isFullyReturned && sale.origin !== 'sales_order' && sale.origin !== 'travel_agency' && sale.origin !== 'exchange' && (user?.role === 'admin' || user?.role === 'staff') && (
+                                                            {!isFullyReturned && !getExternalSaleDetailsPath(sale) && (user?.role === 'admin' || user?.role === 'staff') && (
                                                                 <Button
                                                                     variant="ghost"
                                                                     size="icon"
@@ -1816,12 +1838,9 @@ export function Sales() {
                                                 <ContextMenuItem
                                                     className="gap-2"
                                                     onSelect={() => {
-                                                        if (sale.origin === 'sales_order') {
-                                                            setLocation(`/orders/${sale.id}`)
-                                                        } else if (sale.origin === 'travel_agency') {
-                                                            setLocation(`/travel-agency/${sale.id}/view`)
-                                                        } else if (sale.origin === 'exchange') {
-                                                            setLocation(`/currency-exchange`)
+                                                        const externalPath = getExternalSaleDetailsPath(sale)
+                                                        if (externalPath) {
+                                                            setLocation(externalPath)
                                                         } else {
                                                             setSelectedSale(sale)
                                                         }
@@ -1830,7 +1849,7 @@ export function Sales() {
                                                     <Eye className="w-4 h-4" />
                                                     {t('common.view') || 'View Details'}
                                                 </ContextMenuItem>
-                                                {sale.origin !== 'sales_order' && sale.origin !== 'travel_agency' && sale.origin !== 'exchange' && (
+                                                {!getExternalSaleDetailsPath(sale) && (
                                                     <ContextMenuItem
                                                         className="gap-2"
                                                         onSelect={() => onPrintClick(sale)}
@@ -1839,7 +1858,7 @@ export function Sales() {
                                                         {t('common.print') || 'Print'}
                                                     </ContextMenuItem>
                                                 )}
-                                                {!isFullyReturned && sale.origin !== 'sales_order' && sale.origin !== 'travel_agency' && sale.origin !== 'exchange' && (user?.role === 'admin' || user?.role === 'staff') && (
+                                                {!isFullyReturned && !getExternalSaleDetailsPath(sale) && (user?.role === 'admin' || user?.role === 'staff') && (
                                                     <ContextMenuItem
                                                         className="gap-2"
                                                         onSelect={() => handleReturnSale(sale)}
@@ -1848,7 +1867,7 @@ export function Sales() {
                                                         {t('sales.return.confirmTitle')}
                                                     </ContextMenuItem>
                                                 )}
-                                                {sale.origin !== 'sales_order' && sale.origin !== 'travel_agency' && sale.origin !== 'exchange' && (
+                                                {!getExternalSaleDetailsPath(sale) && (
                                                     <ContextMenuItem
                                                         className="gap-2"
                                                         onSelect={() => {
@@ -2074,7 +2093,7 @@ export function Sales() {
                                                             </span>
                                                         </TableCell>
                                                         <TableCell className="text-start">
-                                                            {sale.origin !== 'sales_order' && sale.origin !== 'travel_agency' && sale.origin !== 'exchange' && (
+                                                            {!getExternalSaleDetailsPath(sale) && (
                                                                 <Button
                                                                     variant="ghost"
                                                                     size="sm"
@@ -2104,12 +2123,9 @@ export function Sales() {
                                                                 size="icon"
                                                                 allowViewer={true}
                                                                 onClick={() => {
-                                                                    if (sale.origin === 'sales_order') {
-                                                                        setLocation(`/orders/${sale.id}`)
-                                                                    } else if (sale.origin === 'travel_agency') {
-                                                                        setLocation(`/travel-agency/${sale.id}/view`)
-                                                                    } else if (sale.origin === 'exchange') {
-                                                                        setLocation(`/currency-exchange`)
+                                                                    const externalPath = getExternalSaleDetailsPath(sale)
+                                                                    if (externalPath) {
+                                                                        setLocation(externalPath)
                                                                     } else {
                                                                         setSelectedSale(sale)
                                                                     }
@@ -2118,7 +2134,7 @@ export function Sales() {
                                                             >
                                                                 <Eye className="w-4 h-4" />
                                                             </Button>
-                                                            {sale.origin !== 'sales_order' && sale.origin !== 'travel_agency' && sale.origin !== 'exchange' && (
+                                                            {!getExternalSaleDetailsPath(sale) && (
                                                                 <>
                                                                     <Button
                                                                         variant="ghost"
@@ -2157,12 +2173,9 @@ export function Sales() {
                                                     <ContextMenuItem
                                                         className="gap-2"
                                                         onSelect={() => {
-                                                            if (sale.origin === 'sales_order') {
-                                                                setLocation(`/orders/${sale.id}`)
-                                                            } else if (sale.origin === 'travel_agency') {
-                                                                setLocation(`/travel-agency/${sale.id}/view`)
-                                                            } else if (sale.origin === 'exchange') {
-                                                                setLocation(`/currency-exchange`)
+                                                            const externalPath = getExternalSaleDetailsPath(sale)
+                                                            if (externalPath) {
+                                                                setLocation(externalPath)
                                                             } else {
                                                                 setSelectedSale(sale)
                                                             }
@@ -2171,7 +2184,7 @@ export function Sales() {
                                                         <Eye className="w-4 h-4" />
                                                         {t('common.view') || 'View Details'}
                                                     </ContextMenuItem>
-                                                    {sale.origin !== 'sales_order' && sale.origin !== 'travel_agency' && sale.origin !== 'exchange' && (
+                                                    {!getExternalSaleDetailsPath(sale) && (
                                                         <ContextMenuItem
                                                             className="gap-2"
                                                             onSelect={() => onPrintClick(sale)}
@@ -2180,7 +2193,7 @@ export function Sales() {
                                                             {t('common.print') || 'Print'}
                                                         </ContextMenuItem>
                                                     )}
-                                                    {!isFullyReturned && sale.origin !== 'sales_order' && sale.origin !== 'travel_agency' && sale.origin !== 'exchange' && (user?.role === 'admin' || user?.role === 'staff') && (
+                                                    {!isFullyReturned && !getExternalSaleDetailsPath(sale) && (user?.role === 'admin' || user?.role === 'staff') && (
                                                         <ContextMenuItem
                                                             className="gap-2"
                                                             onSelect={() => handleReturnSale(sale)}
@@ -2189,7 +2202,7 @@ export function Sales() {
                                                             {t('sales.return.confirmTitle')}
                                                         </ContextMenuItem>
                                                     )}
-                                                    {sale.origin !== 'sales_order' && sale.origin !== 'travel_agency' && sale.origin !== 'exchange' && (
+                                                    {!getExternalSaleDetailsPath(sale) && (
                                                         <ContextMenuItem
                                                             className="gap-2"
                                                             onSelect={() => {

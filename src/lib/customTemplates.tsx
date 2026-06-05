@@ -18,11 +18,16 @@ export type CustomTemplateTarget = {
     nativeTemplateAvailable: boolean
 }
 
-export const CUSTOM_TEMPLATE_TARGETS: CustomTemplateTarget[] = [
+const REAL_ESTATE_CONTRACT_TARGETS: Array<Pick<CustomTemplateTarget, 'moduleTypeKey' | 'typeLabel' | 'description' | 'nativeTemplateKey' | 'nativeTemplateAvailable'>> = [
+    {
+        moduleTypeKey: 'realEstate.Sell',
+        typeLabel: 'Sell',
+        description: 'Real estate sell transaction print layout.',
+        nativeTemplateKey: 'realEstate.Sell',
+        nativeTemplateAvailable: true
+    },
     {
         moduleTypeKey: 'realEstate.Buy',
-        workspaceModuleKey: 'real_estate',
-        moduleLabel: 'Real Estate',
         typeLabel: 'Buy',
         description: 'Real estate buy transaction print layout.',
         nativeTemplateKey: 'realEstate.Buy',
@@ -30,13 +35,37 @@ export const CUSTOM_TEMPLATE_TARGETS: CustomTemplateTarget[] = [
     },
     {
         moduleTypeKey: 'realEstate.Rent',
-        workspaceModuleKey: 'real_estate',
-        moduleLabel: 'Real Estate',
         typeLabel: 'Rent',
         description: 'Real estate rent transaction print layout.',
         nativeTemplateKey: 'realEstate.Rent',
-        nativeTemplateAvailable: false
+        nativeTemplateAvailable: true
+    },
+    {
+        moduleTypeKey: 'realEstate.Lease',
+        typeLabel: 'Lease',
+        description: 'Real estate lease transaction print layout.',
+        nativeTemplateKey: 'realEstate.Lease',
+        nativeTemplateAvailable: true
+    },
+    {
+        moduleTypeKey: 'realEstate.Exchange',
+        typeLabel: 'Exchange',
+        description: 'Real estate exchange transaction print layout.',
+        nativeTemplateKey: 'realEstate.Exchange',
+        nativeTemplateAvailable: true
     }
+]
+
+const REAL_ESTATE_CONTRACT_MODULE_TYPE_KEYS = new Set(
+    REAL_ESTATE_CONTRACT_TARGETS.map((target) => target.moduleTypeKey)
+)
+
+export const CUSTOM_TEMPLATE_TARGETS: CustomTemplateTarget[] = [
+    ...REAL_ESTATE_CONTRACT_TARGETS.map((target) => ({
+        ...target,
+        workspaceModuleKey: 'real_estate',
+        moduleLabel: 'Real Estate'
+    }))
 ]
 
 export function getCustomTemplateTarget(moduleTypeKey: string) {
@@ -193,7 +222,7 @@ function buildQrValue(workspaceId?: string, effectiveId?: string, features?: Wor
     return `https://asaas-r2-proxy.alanepic360.workers.dev/${workspaceId}/printed-invoices/A4/${effectiveId}.pdf`
 }
 
-function createRealEstateBuyPreview(options: CustomTemplatePreviewOptions): TemplatePreview {
+function createRealEstateContractPreview(options: CustomTemplatePreviewOptions): TemplatePreview {
     return {
         fields: REAL_ESTATE_BUY_FIELDS,
         dataKeys: REAL_ESTATE_BUY_TRANSACTION_KEYS,
@@ -226,8 +255,8 @@ export function createCustomTemplatePreview(
     target: CustomTemplateTarget,
     options: CustomTemplatePreviewOptions = {}
 ): TemplatePreview {
-    if (target.moduleTypeKey === 'realEstate.Buy') {
-        return createRealEstateBuyPreview(options)
+    if (REAL_ESTATE_CONTRACT_MODULE_TYPE_KEYS.has(target.moduleTypeKey)) {
+        return createRealEstateContractPreview(options)
     }
 
     return {

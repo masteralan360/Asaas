@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { useLocation } from 'wouter'
 import { useAuth } from '@/auth'
 import { Sale } from '@/types'
-import { useCategories, useProducts, useSales, useSalesOrders, useTravelAgencySales, useExchangeTransactions, toUISale, toUISaleFromTravelAgency, toUISaleFromExchangeTransaction } from '@/local-db'
+import { useCategories, useProducts, useSales, useSalesOrders, useTravelAgencySales, useExchangeTransactions, usePaymentTransactions, toUISale, toUISaleFromTravelAgency, toUISaleFromExchangeTransaction, toUISaleFromRealEstateCommissionTransaction } from '@/local-db'
 import { formatCurrency, formatDateTime, formatDate, formatOriginLabel, formatTime } from '@/lib/utils'
 import { cn } from '@/lib/utils'
 import { formatLocalizedMonthYear } from '@/lib/monthDisplay'
@@ -106,6 +106,12 @@ export function Revenue() {
     const salesOrders = useSalesOrders(user?.workspaceId, dateBounds.startDate, dateBounds.endDate)
     const rawTravelSales = useTravelAgencySales(user?.workspaceId, dateBounds.startDate, dateBounds.endDate)
     const rawExchangeTransactions = useExchangeTransactions(user?.workspaceId)
+    const realEstateCommissionTransactions = usePaymentTransactions(user?.workspaceId, {
+        direction: 'incoming',
+        sourceModule: 'real_estate',
+        sourceType: 'real_estate_commission',
+        includeReversals: false
+    })
     const products = useProducts(user?.workspaceId)
     const categories = useCategories(user?.workspaceId)
 
@@ -114,8 +120,11 @@ export function Revenue() {
         const exchangeSales = (rawExchangeTransactions || [])
             .filter(tx => !tx.isDeleted && !tx.isReversed && tx.transactionType === 'sell' && tx.profitAmount != null && tx.profitAmount > 0)
             .map(toUISaleFromExchangeTransaction)
-        return [...sales, ...exchangeSales]
-    }, [rawSales, rawExchangeTransactions])
+        const realEstateCommissionSales = (realEstateCommissionTransactions || [])
+            .filter(transaction => transaction.amount > 0)
+            .map(toUISaleFromRealEstateCommissionTransaction)
+        return [...sales, ...exchangeSales, ...realEstateCommissionSales]
+    }, [rawSales, rawExchangeTransactions, realEstateCommissionTransactions])
     const travelSales = useMemo<Sale[]>(() =>
         (rawTravelSales || [])
             .filter(s => s.isPaid && !s.isDeleted)
@@ -186,7 +195,7 @@ export function Revenue() {
         [revenueRecords, dateRange, customDates]
     )
 
-    const isLoading = rawSales === undefined || salesOrders === undefined || rawTravelSales === undefined
+    const isLoading = rawSales === undefined || salesOrders === undefined || rawTravelSales === undefined || realEstateCommissionTransactions === undefined
     const [isDateLoading, setIsDateLoading] = useState(false)
     const prevDateBoundsRef = useRef(dateBounds)
 
@@ -304,7 +313,8 @@ export function Revenue() {
         const saleStats: {
             key: string,
             id: string,
-            source: 'sale' | 'sales_order' | 'travel_agency',
+            source: 'sale' | 'sales_order' | 'travel_agency' | 'exchange' | 'real_estate',
+            sourceRecordId?: string | null,
             referenceCode: string,
             date: string,
             revenue: number,
@@ -384,6 +394,7 @@ export function Revenue() {
                 key: record.key,
                 id: record.id,
                 source: record.source as any,
+                sourceRecordId: record.sourceRecordId || null,
                 referenceCode: record.referenceCode,
                 date: record.date,
                 revenue: totals.revenue,
@@ -1154,13 +1165,17 @@ export function Revenue() {
                                         const { isFullyReturned, hasAnyReturn, totalReturnedQuantity } = originalSale
                                             ? getRevenueRecordReturnSummary(toRevenueRecordFromSale(originalSale))
                                             : { isFullyReturned: false, hasAnyReturn: false, totalReturnedQuantity: 0 }
-                                        const canOpenSaleDetails = !!originalSale || sale.source === 'sales_order' || sale.source === 'travel_agency'
+                                        const canOpenSaleDetails = !!originalSale || sale.source === 'sales_order' || sale.source === 'travel_agency' || sale.source === 'exchange' || sale.source === 'real_estate'
 
                                         const handleRecordClick = () => {
                                             if (sale.source === 'travel_agency') {
                                                 setLocation(`/travel-agency/${sale.id}/view`)
                                             } else if (sale.source === 'sales_order') {
                                                 setLocation(`/orders/${sale.id}`)
+                                            } else if (sale.source === 'exchange') {
+                                                setLocation('/currency-exchange')
+                                            } else if (sale.source === 'real_estate') {
+                                                setLocation(`/real-estate/${sale.sourceRecordId || sale.id}`)
                                             } else if (originalSale) {
                                                 setSelectedSale(originalSale)
                                             }
@@ -1298,13 +1313,17 @@ export function Revenue() {
                                             const { isFullyReturned, hasAnyReturn, totalReturnedQuantity } = originalSale
                                                 ? getRevenueRecordReturnSummary(toRevenueRecordFromSale(originalSale))
                                                 : { isFullyReturned: false, hasAnyReturn: false, totalReturnedQuantity: 0 }
-                                            const canOpenSaleDetails = !!originalSale || sale.source === 'sales_order' || sale.source === 'travel_agency'
+                                            const canOpenSaleDetails = !!originalSale || sale.source === 'sales_order' || sale.source === 'travel_agency' || sale.source === 'exchange' || sale.source === 'real_estate'
 
                                             const handleRecordClick = () => {
                                                 if (sale.source === 'travel_agency') {
                                                     setLocation(`/travel-agency/${sale.id}/view`)
                                                 } else if (sale.source === 'sales_order') {
                                                     setLocation(`/orders/${sale.id}`)
+                                                } else if (sale.source === 'exchange') {
+                                                    setLocation('/currency-exchange')
+                                                } else if (sale.source === 'real_estate') {
+                                                    setLocation(`/real-estate/${sale.sourceRecordId || sale.id}`)
                                                 } else if (originalSale) {
                                                     setSelectedSale(originalSale)
                                                 }

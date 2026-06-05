@@ -67,6 +67,18 @@ import type { PrintFormat } from '@/services/pdfGenerator'
 
 type RealEstateFilter = 'all' | 'active' | 'overdue' | 'completed' | 'installments'
 
+const REAL_ESTATE_PRINT_MODULE_TYPE_KEYS: Record<RealEstateTransaction['transactionType'], string> = {
+    sell: 'realEstate.Sell',
+    buy: 'realEstate.Buy',
+    rent: 'realEstate.Rent',
+    lease: 'realEstate.Lease',
+    exchange: 'realEstate.Exchange'
+}
+
+function getRealEstatePrintModuleTypeKey(transactionType: RealEstateTransaction['transactionType']) {
+    return REAL_ESTATE_PRINT_MODULE_TYPE_KEYS[transactionType]
+}
+
 function statusClass(status: string) {
     if (status === 'completed' || status === 'paid') {
         return 'bg-blue-500/15 text-blue-700 dark:text-blue-300'
@@ -581,12 +593,19 @@ function RealEstateDetails({
         }
     }, [transaction?.workspaceId])
 
+    const transactionPrintModuleTypeKey = transaction
+        ? getRealEstatePrintModuleTypeKey(transaction.transactionType)
+        : null
     const availablePrintTemplates = useMemo(
         () => customPrintTemplates.filter((template) => {
+            if (!transactionPrintModuleTypeKey || template.module_type_key !== transactionPrintModuleTypeKey) {
+                return false
+            }
+
             const target = getCustomTemplateTarget(template.module_type_key)
             return Boolean(target?.nativeTemplateAvailable && readCustomTemplateLayout(template))
         }),
-        [customPrintTemplates]
+        [customPrintTemplates, transactionPrintModuleTypeKey]
     )
     const businessPartnerById = useMemo(
         () => new Map((businessPartners || []).map((partner) => [partner.id, partner])),

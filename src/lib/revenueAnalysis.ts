@@ -15,7 +15,8 @@ export interface RevenueAnalysisItem {
 export interface RevenueAnalysisRecord {
     key: string
     id: string
-    source: 'sale' | 'sales_order' | 'travel_agency'
+    source: 'sale' | 'sales_order' | 'travel_agency' | 'exchange' | 'real_estate'
+    sourceRecordId?: string | null
     referenceCode: string
     date: string
     currency: string
@@ -57,6 +58,13 @@ function getOrderRevenueDate(order: SalesOrder) {
     return order.actualDeliveryDate || order.updatedAt || order.createdAt
 }
 
+function getSaleRevenueSource(sale: Sale) {
+    if (sale.origin === 'travel_agency') return 'travel_agency'
+    if (sale.origin === 'exchange') return 'exchange'
+    if (sale.origin === 'real_estate') return 'real_estate'
+    return 'sale'
+}
+
 function normalizeRevenueCategory(value: string | null | undefined) {
     const trimmed = value?.trim()
     return trimmed || undefined
@@ -89,12 +97,15 @@ export function toRevenueRecordFromSale(sale: Sale, options: RevenueCategoryLook
     return {
         key: `sale:${sale.id}`,
         id: sale.id,
-        source: sale.origin === 'travel_agency' ? 'travel_agency' : 'sale',
+        source: getSaleRevenueSource(sale),
+        sourceRecordId: (sale as Sale & { _realEstateTransactionId?: string | null })._realEstateTransactionId || null,
         referenceCode: sale.sequenceId ? `#${String(sale.sequenceId).padStart(5, '0')}` : `#${sale.id.split('-')[0]}`,
         date: sale.created_at,
         currency: sale.settlement_currency || 'usd',
         origin: sale.origin,
         cashier: sale.cashier_name || 'Staff',
+        partyName: (sale as Sale & { partyName?: string; _counterpartyName?: string }).partyName
+            || (sale as Sale & { partyName?: string; _counterpartyName?: string })._counterpartyName,
         sequenceId: sale.sequenceId,
         hasPartialReturn: !!sale.has_partial_return,
         isReturned: !!sale.is_returned,

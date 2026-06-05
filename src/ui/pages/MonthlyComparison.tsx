@@ -38,7 +38,24 @@ import { db } from '@/local-db/database'
 import { cn, formatCurrency } from '@/lib/utils'
 import { formatLocalizedMonthYear } from '@/lib/monthDisplay'
 import { convertToStoreBase as convertToStoreBaseUtil } from '@/lib/currency'
-import { useSales, toUISale, useBudgetAllocations, useExpenseSeries, useEmployees, usePayrollStatuses, useDividendStatuses, ensureExpenseItemsForMonth } from '@/local-db'
+import {
+    useSales,
+    useSalesOrders,
+    useTravelAgencySales,
+    useExchangeTransactions,
+    usePaymentTransactions,
+    toUISale,
+    toUISaleFromOrder,
+    toUISaleFromTravelAgency,
+    toUISaleFromExchangeTransaction,
+    toUISaleFromRealEstateCommissionTransaction,
+    useBudgetAllocations,
+    useExpenseSeries,
+    useEmployees,
+    usePayrollStatuses,
+    useDividendStatuses,
+    ensureExpenseItemsForMonth
+} from '@/local-db'
 import type { BudgetAllocation, ExpenseItem, ExpenseSeries, Employee, PayrollStatus, DividendStatus } from '@/local-db/models'
 import { buildPayrollItems, buildDividendItems, calculateNetProfitForMonth, buildConversionRates } from '@/lib/budget'
 import type { Sale, SaleItem } from '@/types'
@@ -1636,6 +1653,15 @@ export function MonthlyComparison() {
     const iqdPreference = (features.iqd_display_preference || 'IQD') as 'IQD' | 'د.ع'
 
     const rawSales = useSales(workspaceId)
+    const rawOrders = useSalesOrders(workspaceId)
+    const rawTravelSales = useTravelAgencySales(workspaceId)
+    const rawExchangeTransactions = useExchangeTransactions(workspaceId)
+    const realEstateCommissionTransactions = usePaymentTransactions(workspaceId, {
+        direction: 'incoming',
+        sourceModule: 'real_estate',
+        sourceType: 'real_estate_commission',
+        includeReversals: false
+    })
     const budgetAllocations = useBudgetAllocations(workspaceId)
     const expenseSeries = useExpenseSeries(workspaceId)
     const employees = useEmployees(workspaceId)
@@ -1648,7 +1674,22 @@ export function MonthlyComparison() {
         [workspaceId]
     ) ?? []
 
-    const sales = useMemo<Sale[]>(() => rawSales.map(toUISale), [rawSales])
+    const sales = useMemo<Sale[]>(() => {
+        const baseSales = rawSales.map(toUISale)
+        const orderSales = (rawOrders || [])
+            .filter(order => !order.isDeleted && order.status === 'completed')
+            .map(toUISaleFromOrder)
+        const travelSales = (rawTravelSales || [])
+            .filter(sale => sale.isPaid && !sale.isDeleted)
+            .map(toUISaleFromTravelAgency)
+        const exchangeSales = (rawExchangeTransactions || [])
+            .filter(tx => !tx.isDeleted && !tx.isReversed && tx.transactionType === 'sell' && tx.profitAmount != null && tx.profitAmount > 0)
+            .map(toUISaleFromExchangeTransaction)
+        const realEstateCommissionSales = (realEstateCommissionTransactions || [])
+            .filter(transaction => transaction.amount > 0)
+            .map(toUISaleFromRealEstateCommissionTransaction)
+        return [...baseSales, ...orderSales, ...travelSales, ...exchangeSales, ...realEstateCommissionSales]
+    }, [rawSales, rawOrders, rawTravelSales, rawExchangeTransactions, realEstateCommissionTransactions])
 
     const rates = useMemo(
         () => buildConversionRates(exchangeData, eurRates, tryRates),
