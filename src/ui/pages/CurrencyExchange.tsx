@@ -832,11 +832,15 @@ function ExchangeSafesPage({
         if (!selectedSafe) return
         setIsSavingSafe(true)
         try {
+            const userName = user?.name || user?.email || 'Unknown'
+            const adjustmentNotes = adjustNotes
+                ? `${adjustNotes} (by ${userName})`
+                : `Adjusted by ${userName}`
             await createExchangeSafeAdjustment(workspaceId, {
                 safeId: selectedSafe.id,
                 currency: adjustCurrency,
                 amount: parseFormattedNumber(adjustAmount || '0'),
-                notes: adjustNotes,
+                notes: adjustmentNotes,
                 createdBy: user?.id ?? null,
                 isAdmin
             })
