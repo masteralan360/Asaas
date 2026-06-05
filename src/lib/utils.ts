@@ -447,6 +447,7 @@ export function formatOriginLabel(origin?: string | null, sourceChannel?: string
     if (normalized === 'manual') return 'Manual'
     if (normalized === 'loans' || normalized === 'loan') return 'Loans'
     if (normalized === 'upload' || normalized === 'uploads') return 'Upload'
+    if (normalized === 'exchange') return 'Exchange'
     return origin
 }
 

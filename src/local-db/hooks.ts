@@ -4682,6 +4682,60 @@ export function toUISaleFromOrder(order: any): any {
 /**
  * Maps a TravelAgencySale (camelCase) to the UI Sale type (snake_case).
  */
+export function toUISaleFromExchangeTransaction(tx: any): any {
+    const items: any[] = [{
+        id: generateId(),
+        sale_id: tx.id,
+        product_id: 'exchange_profit',
+        product_name: `${tx.fromCurrency} → ${tx.toCurrency}`,
+        product_sku: 'FX-PROFIT',
+        quantity: 1,
+        unit_price: tx.profitAmount || 0,
+        total_price: tx.profitAmount || 0,
+        cost_price: 0,
+        converted_cost_price: 0,
+        original_currency: tx.profitCurrency || tx.fromCurrency,
+        original_unit_price: tx.profitAmount || 0,
+        converted_unit_price: tx.profitAmount || 0,
+        settlement_currency: tx.profitCurrency || tx.fromCurrency,
+        returned_quantity: 0,
+        is_returned: false,
+        product: {
+            name: `${tx.fromCurrency} → ${tx.toCurrency}`,
+            sku: 'FX-TRADE',
+            can_be_returned: false
+        }
+    }]
+
+    return {
+        id: tx.id,
+        workspace_id: tx.workspaceId,
+        cashier_id: tx.employeeUserId || '',
+        total_amount: Number(tx.profitAmount || 0),
+        settlement_currency: tx.profitCurrency || tx.fromCurrency || 'usd',
+        exchange_source: tx.exchangeRateSource || null,
+        exchange_rate: tx.exchangeRateUsed || null,
+        exchange_rate_timestamp: null,
+        exchange_rates: null,
+        created_at: tx.transactionDate || tx.createdAt,
+        updated_at: tx.updatedAt,
+        origin: 'exchange',
+        payment_method: tx.paymentMethod || 'cash',
+        cashier_name: tx.employeeName || 'Exchange',
+        items,
+        is_returned: false,
+        sequenceId: tx.transactionNo,
+        notes: tx.notes || `${tx.customerGivesAmount} ${tx.fromCurrency} @ ${tx.exchangeRateUsed}`,
+        _isExchange: true,
+        _transactionNo: tx.transactionNo,
+        _fromCurrency: tx.fromCurrency,
+        _toCurrency: tx.toCurrency,
+        _customerGivesAmount: tx.customerGivesAmount,
+        _customerReceivesAmount: tx.customerReceivesAmount,
+        _exchangeRateUsed: tx.exchangeRateUsed
+    }
+}
+
 export function toUISaleFromTravelAgency(sale: any): any {
     const tourists = sale.tourists || sale.tourist_list || []
     const groupRev = Number(sale.groupRevenue || sale.group_revenue || 0)

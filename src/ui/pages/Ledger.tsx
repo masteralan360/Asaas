@@ -20,6 +20,7 @@ import {
     useSalesOrders,
     usePurchaseOrders,
     useBusinessPartners,
+    useExchangeTransactions,
     type CurrencyCode,
     type IQDDisplayPreference,
     type Loan,
@@ -72,7 +73,7 @@ import { useWorkspace } from '@/workspace'
 import { useTheme } from '@/ui/components/theme-provider'
 
 type LedgerDirection = 'incoming' | 'outgoing'
-type LedgerSourceModule = 'pos' | 'instant_pos' | 'orders' | 'expenses' | 'payroll' | 'loans' | 'real_estate' | 'manual'
+type LedgerSourceModule = 'pos' | 'instant_pos' | 'orders' | 'expenses' | 'payroll' | 'loans' | 'real_estate' | 'manual' | 'exchange'
 type LedgerRelationRole = 'origin' | 'repayment' | 'settlement'
 type LedgerEntryType =
     | 'pos_sale'
@@ -92,6 +93,7 @@ type LedgerEntryType =
     | 'real_estate_commission'
     | 'direct_inflow'
     | 'direct_outflow'
+    | 'exchange_profit'
 
 interface LedgerEntry {
     id: string
@@ -303,6 +305,8 @@ function ledgerTypeLabel(type: LedgerEntryType, t: any) {
             return t('ledger.type.directInflow', { defaultValue: 'Direct Inflow' })
         case 'direct_outflow':
             return t('ledger.type.directOutflow', { defaultValue: 'Direct Outflow' })
+        case 'exchange_profit':
+            return t('ledger.type.exchangeProfit', { defaultValue: 'Exchange Profit' })
         default:
             return type
     }
@@ -326,6 +330,8 @@ function sourceModuleLabel(module: LedgerSourceModule, t: any) {
             return t('ledger.sourceModule.realEstate', { defaultValue: 'Real Estate' })
         case 'manual':
             return t('ledger.sourceModule.manual', { defaultValue: 'Manual' })
+        case 'exchange':
+            return t('ledger.sourceModule.exchange', { defaultValue: 'Exchange' })
         default:
             return module
     }
@@ -584,6 +590,29 @@ function LedgerSparkline({
 
 function buildReferenceId(prefix: string, id: string, sequenceId?: number) {
     return sequenceId ? `${prefix}-${sequenceId}` : `${prefix}-${id.slice(0, 8).toUpperCase()}`
+}
+
+function buildExchangeLedgerEntry(tx: any): LedgerEntry | null {
+    if (tx.isDeleted || tx.isReversed || tx.transactionType !== 'sell' || tx.profitAmount == null || tx.profitAmount <= 0) {
+        return null
+    }
+    return {
+        id: `exchange:${tx.id}`,
+        transactionId: tx.id,
+        date: tx.transactionDate || tx.createdAt,
+        type: 'exchange_profit',
+        direction: 'incoming',
+        amount: tx.profitAmount,
+        currency: tx.profitCurrency || tx.fromCurrency || 'usd',
+        sourceModule: 'exchange',
+        referenceId: buildReferenceId('FX', tx.id, tx.transactionNo),
+        partner: tx.employeeName || null,
+        businessPartnerId: null,
+        paymentMethod: tx.paymentMethod || null,
+        notes: tx.notes || null,
+        description: tx.notes || `${tx.customerGivesAmount} ${tx.fromCurrency} → ${tx.customerReceivesAmount} ${tx.toCurrency} @ ${tx.exchangeRateUsed}`,
+        routePath: '/currency-exchange'
+    }
 }
 
 function buildSaleReferenceId(sale: Pick<Sale, 'id' | 'origin' | 'sequenceId'>) {
@@ -1129,6 +1158,7 @@ export function Ledger() {
     const salesOrders = useSalesOrders(workspaceId, dateBounds.startDate, dateBounds.endDate)
     const purchaseOrders = usePurchaseOrders(workspaceId)
     const businessPartners = useBusinessPartners(workspaceId)
+    const rawExchangeTransactions = useExchangeTransactions(workspaceId)
     const rates = useMemo(
         () => buildConversionRates(exchangeData, eurRates, tryRates),
         [eurRates, exchangeData, tryRates]
@@ -1202,11 +1232,14 @@ export function Ledger() {
             ...sales.map(s => buildSaleLedgerEntry(s, t)).filter((entry): entry is LedgerEntry => !!entry),
             ...paymentTransactions
                 .map((transaction) => buildPaymentLedgerEntry(transaction, context, t))
+                .filter((entry): entry is LedgerEntry => !!entry),
+            ...(rawExchangeTransactions || [])
+                .map(tx => buildExchangeLedgerEntry(tx))
                 .filter((entry): entry is LedgerEntry => !!entry)
         ]
 
         return rows.sort((left, right) => right.date.localeCompare(left.date) || right.transactionId.localeCompare(left.transactionId))
-    }, [loanById, loanOriginationIds, paymentTransactions, realEstateTransactionById, saleById, sales, salesOrderById, purchaseOrderById, businessPartnerByName])
+    }, [loanById, loanOriginationIds, paymentTransactions, realEstateTransactionById, saleById, sales, salesOrderById, purchaseOrderById, businessPartnerByName, rawExchangeTransactions])
 
     const typeOptions = useMemo(
         () => Array.from(new Set(allEntries.map((entry) => entry.type))).sort((left, right) => ledgerTypeLabel(left, t).localeCompare(ledgerTypeLabel(right, t))),

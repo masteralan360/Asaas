@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { useLocation } from 'wouter'
 import { useAuth } from '@/auth'
 import { Sale } from '@/types'
-import { useCategories, useProducts, useSales, useSalesOrders, useTravelAgencySales, toUISale, toUISaleFromTravelAgency } from '@/local-db'
+import { useCategories, useProducts, useSales, useSalesOrders, useTravelAgencySales, useExchangeTransactions, toUISale, toUISaleFromTravelAgency, toUISaleFromExchangeTransaction } from '@/local-db'
 import { formatCurrency, formatDateTime, formatDate, formatOriginLabel, formatTime } from '@/lib/utils'
 import { cn } from '@/lib/utils'
 import { formatLocalizedMonthYear } from '@/lib/monthDisplay'
@@ -105,10 +105,17 @@ export function Revenue() {
     const rawSales = useSales(user?.workspaceId, dateBounds.startDate, dateBounds.endDate)
     const salesOrders = useSalesOrders(user?.workspaceId, dateBounds.startDate, dateBounds.endDate)
     const rawTravelSales = useTravelAgencySales(user?.workspaceId, dateBounds.startDate, dateBounds.endDate)
+    const rawExchangeTransactions = useExchangeTransactions(user?.workspaceId)
     const products = useProducts(user?.workspaceId)
     const categories = useCategories(user?.workspaceId)
-    
-    const allSales = useMemo<Sale[]>(() => (rawSales || []).map(toUISale), [rawSales])
+
+    const allSales = useMemo<Sale[]>(() => {
+        const sales = (rawSales || []).map(toUISale)
+        const exchangeSales = (rawExchangeTransactions || [])
+            .filter(tx => !tx.isDeleted && !tx.isReversed && tx.transactionType === 'sell' && tx.profitAmount != null && tx.profitAmount > 0)
+            .map(toUISaleFromExchangeTransaction)
+        return [...sales, ...exchangeSales]
+    }, [rawSales, rawExchangeTransactions])
     const travelSales = useMemo<Sale[]>(() =>
         (rawTravelSales || [])
             .filter(s => s.isPaid && !s.isDeleted)
