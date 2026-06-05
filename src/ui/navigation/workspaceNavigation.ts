@@ -28,6 +28,7 @@ import {
   UsersRound,
   Upload,
   Warehouse,
+  Vault,
   Wallet,
   Zap,
 } from "lucide-react";
@@ -215,15 +216,22 @@ export function buildWorkspaceNavigation({
           name: t("currencyExchange.title", { defaultValue: "Currency Exchange Service" }),
           href: "/currency-exchange",
           icon: ArrowRightLeft,
-          children: canAccessPermission("currencyExchangeFeeRules.access")
-            ? [
-              {
+          children: (() => {
+            const result: WorkspaceNavigationChild[] = []
+            if (canAccessPermission("currencyExchangeFeeRules.access")) {
+              result.push({
                 name: t("currencyExchange.feeRules.title", { defaultValue: "Fee/Commission Rules" }),
                 href: "/currency-exchange/rules",
                 icon: Percent,
-              },
-            ]
-            : undefined,
+              })
+            }
+            result.push({
+              name: t("currencyExchange.safes.title", { defaultValue: "Safes" }),
+              href: "/currency-exchange/safes",
+              icon: Vault,
+            })
+            return result
+          })(),
         },
       ]
       : []),

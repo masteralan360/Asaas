@@ -2,7 +2,7 @@ import { type FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useRoute } from 'wouter'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
-import { ArrowLeft, ArrowRightLeft, CalendarClock, ClipboardList, Clock, HelpCircle, History, Lock, Plus, Search, Trash2, Undo2, Unlock, Wallet } from 'lucide-react'
+import { ArrowLeft, ArrowRightLeft, CalendarClock, ClipboardList, Clock, HelpCircle, History, Lock, Plus, Search, Trash2, Undo2, Unlock, Vault } from 'lucide-react'
 
 import { useAuth } from '@/auth'
 import { useExchangeRate } from '@/context/ExchangeRateContext'
@@ -558,7 +558,7 @@ function ExchangeTransactionsPage({
                 </div>
                 <div className="flex flex-col gap-2 sm:flex-row">
                     <Button type="button" variant="outline" onClick={onSafes} className="gap-2">
-                        <Wallet className="h-4 w-4" />
+                        <Vault className="h-4 w-4" />
                         {t('currencyExchange.safes.title')}
                     </Button>
                     {canAccessRules ? (
@@ -876,7 +876,7 @@ function ExchangeSafesPage({
                         {t('currencyExchange.serviceTitle')}
                     </Button>
                     <h1 className="mt-1 flex items-center gap-2 text-3xl font-bold tracking-tight">
-                        <Wallet className="h-7 w-7" />
+                        <Vault className="h-7 w-7" />
                         {t('currencyExchange.safes.pageTitle')}
                     </h1>
                     <p className="text-sm text-muted-foreground">
