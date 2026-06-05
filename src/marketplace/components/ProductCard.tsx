@@ -33,7 +33,7 @@ export function ProductCard({ product, iqdPreference, addToCartLabel, onAdd }: P
     }, [resolvedImageUrl])
 
     return (
-        <Card className="group h-full overflow-hidden rounded-[2.5rem] border-[#e3e8ef] bg-[#fbfbfd] transition-all duration-300 hover:-translate-y-1 hover:border-[#c9ded9] hover:shadow-[0_24px_60px_rgba(15,23,42,0.10)] dark:border-border/60 dark:bg-card/85">
+        <Card className="group h-full overflow-hidden rounded-[2.5rem] border-[#e3e8ef] bg-[#fbfbfd] transition-all duration-300 hover:-translate-y-1 hover:border-[#c9ded9] hover:shadow-[0_24px_60px_rgba(15,23,42,0.10)]">
             <CardContent className="flex h-full flex-col p-4">
                 <div className="relative overflow-hidden bg-[#f1f2f4]">
                     <div className="aspect-square">
@@ -58,11 +58,11 @@ export function ProductCard({ product, iqdPreference, addToCartLabel, onAdd }: P
                     )}
                 </div>
 
-                <div className="flex flex-1 flex-col border-t border-[#edf0f4] pt-4 dark:border-border/50">
-                    <p className="min-h-4 text-[11px] font-black uppercase tracking-[0.18em] text-[#4c5857] dark:text-muted-foreground">
+                <div className="flex flex-1 flex-col border-t border-[#edf0f4] pt-4">
+                    <p className="min-h-4 text-[11px] font-black uppercase tracking-[0.18em] text-[#4c5857]">
                         {product.category_name || ''}
                     </p>
-                    <h3 className="mt-2 line-clamp-2 min-h-[3.25rem] text-lg font-semibold leading-snug text-[#151b28] dark:text-foreground">
+                    <h3 className="mt-2 line-clamp-2 min-h-[3.25rem] text-lg font-semibold leading-snug text-[#151b28]">
                         {product.name}
                     </h3>
 
@@ -78,7 +78,7 @@ export function ProductCard({ product, iqdPreference, addToCartLabel, onAdd }: P
                                     </div>
                                 </>
                             ) : (
-                                <div className="text-lg font-black text-[#151b28] dark:text-foreground">
+                                <div className="text-lg font-black text-[#151b28]">
                                     {formatCurrency(product.price, product.currency, iqdPreference)}
                                 </div>
                             )}

@@ -3,7 +3,7 @@ import { Link } from 'wouter'
 import { ArrowLeft } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
-import { LanguageSwitcher, ThemeToggle } from '@/ui/components'
+import { LanguageSwitcher } from '@/ui/components'
 import { cn } from '@/lib/utils'
 import { StoreAvatar } from './StoreAvatar'
 
@@ -72,7 +72,6 @@ export function MarketplaceLayout({
                         <div className="flex flex-wrap items-center gap-2">
                             {headerActions}
                             <LanguageSwitcher />
-                            <ThemeToggle />
                         </div>
                     </div>
                 </header>

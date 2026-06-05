@@ -30,7 +30,7 @@ export function OrderConfirmation({ orderNumber, storeName, phone, onBackToStore
                             phone
                         })}
                     </p>
-                    <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-300">
+                    <p className="text-sm font-semibold text-emerald-700">
                         {t('marketplace.confirmation.orderNumber', {
                             defaultValue: 'Order #{{number}}',
                             number: orderNumber

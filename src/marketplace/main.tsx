@@ -10,7 +10,7 @@ import { MarketplaceApp } from './MarketplaceApp'
 
 createRoot(document.getElementById('root')!).render(
     <StrictMode>
-        <ThemeProvider defaultTheme="light" storageKey="vite-ui-theme" defaultStyle="emerald">
+        <ThemeProvider defaultTheme="light" storageKey="vite-ui-marketplace-theme" defaultStyle="emerald">
             <MarketplaceApp />
             <Toaster />
         </ThemeProvider>

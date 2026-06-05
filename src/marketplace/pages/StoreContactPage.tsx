@@ -31,7 +31,7 @@ function ContactRows({
 
     if (contacts.length === 0) {
         return (
-            <div className="rounded-3xl border border-dashed border-[#d5dce4] p-6 text-sm text-[#4d5856] dark:border-border dark:text-muted-foreground">
+            <div className="rounded-3xl border border-dashed border-[#d5dce4] p-6 text-sm text-[#4d5856]">
                 {emptyLabel}
             </div>
         )
@@ -47,17 +47,17 @@ function ContactRows({
                 return (
                     <div
                         key={`${contact.type}-${contact.value}-${index}`}
-                        className="flex items-start gap-4 rounded-3xl border border-[#e3e8ef] bg-white p-5 dark:border-border/60 dark:bg-background/60"
+                        className="flex items-start gap-4 rounded-3xl border border-[#e3e8ef] bg-white p-5"
                     >
                         <div className={cn(
                             'flex h-11 w-11 shrink-0 items-center justify-center rounded-full',
-                            contact.is_primary ? 'bg-[#d3e7e1] text-[#00756f]' : 'bg-[#eef2f6] text-[#4d5856] dark:bg-muted dark:text-muted-foreground'
+                            contact.is_primary ? 'bg-[#d3e7e1] text-[#00756f]' : 'bg-[#eef2f6] text-[#4d5856]'
                         )}>
                             <Icon className="h-5 w-5" />
                         </div>
                         <div className="min-w-0 flex-1">
                             <div className="flex flex-wrap items-center gap-2">
-                                <p className="text-sm font-black uppercase tracking-[0.16em] text-[#4d5856] dark:text-muted-foreground">
+                                <p className="text-sm font-black uppercase tracking-[0.16em] text-[#4d5856]">
                                     {label}
                                 </p>
                                 {contact.is_primary && (
@@ -69,12 +69,12 @@ function ContactRows({
                             {type === 'phone' ? (
                                 <a
                                     href={`tel:${contact.value}`}
-                                    className="mt-2 block break-words text-lg font-semibold text-[#111827] hover:text-[#00756f] dark:text-foreground"
+                                    className="mt-2 block break-words text-lg font-semibold text-[#111827] hover:text-[#00756f]"
                                 >
                                     {contact.value}
                                 </a>
                             ) : (
-                                <p className="mt-2 break-words text-lg font-semibold leading-7 text-[#111827] dark:text-foreground">
+                                <p className="mt-2 break-words text-lg font-semibold leading-7 text-[#111827]">
                                     {contact.value}
                                 </p>
                             )}
@@ -119,10 +119,10 @@ export function StoreContactPage() {
         >
             {isLoading ? (
                 <div className="mx-auto max-w-[1180px] space-y-6">
-                    <div className="h-32 animate-pulse rounded-[2.5rem] border border-[#e3e8ef] bg-white dark:border-border dark:bg-card" />
+                    <div className="h-32 animate-pulse rounded-[2.5rem] border border-[#e3e8ef] bg-white" />
                     <div className="grid gap-6 md:grid-cols-2">
-                        <div className="h-[360px] animate-pulse rounded-[2.5rem] border border-[#e3e8ef] bg-white dark:border-border dark:bg-card" />
-                        <div className="h-[360px] animate-pulse rounded-[2.5rem] border border-[#e3e8ef] bg-white dark:border-border dark:bg-card" />
+                        <div className="h-[360px] animate-pulse rounded-[2.5rem] border border-[#e3e8ef] bg-white" />
+                        <div className="h-[360px] animate-pulse rounded-[2.5rem] border border-[#e3e8ef] bg-white" />
                     </div>
                 </div>
             ) : error || !catalog ? (
@@ -142,26 +142,26 @@ export function StoreContactPage() {
                 </Card>
             ) : (
                 <section className="mx-auto max-w-[1180px] space-y-6">
-                    <div className="rounded-[2.5rem] border border-[#e3e8ef] bg-[#fbfbfd] p-8 dark:border-border/60 dark:bg-card/85">
-                        <h1 className="text-4xl font-black tracking-tight text-[#111827] dark:text-foreground">
+                    <div className="rounded-[2.5rem] border border-[#e3e8ef] bg-[#fbfbfd] p-8">
+                        <h1 className="text-4xl font-black tracking-tight text-[#111827]">
                             {t('marketplace.contactStore', {
                                 defaultValue: 'Contact {{storeName}}',
                                 storeName: catalog.store.name
                             })}
                         </h1>
-                        <p className="mt-2 max-w-3xl text-sm leading-6 text-[#4d5856] dark:text-muted-foreground">
+                        <p className="mt-2 max-w-3xl text-sm leading-6 text-[#4d5856]">
                             {catalog.store.description || t('marketplace.storeSubtitle', { defaultValue: 'Browse products and send an inquiry order directly to the store.' })}
                         </p>
                     </div>
 
                     <div className="grid gap-6 md:grid-cols-2">
-                        <Card className="rounded-[2.5rem] border-[#e3e8ef] bg-[#fbfbfd] dark:border-border/60 dark:bg-card/85">
+                        <Card className="rounded-[2.5rem] border-[#e3e8ef] bg-[#fbfbfd]">
                             <CardContent className="space-y-5 p-6">
                                 <div>
-                                    <h2 className="text-2xl font-black text-[#111827] dark:text-foreground">
+                                    <h2 className="text-2xl font-black text-[#111827]">
                                         {t('marketplace.phoneNumbers', { defaultValue: 'Phone Numbers' })}
                                     </h2>
-                                    <p className="mt-1 text-sm text-[#4d5856] dark:text-muted-foreground">
+                                    <p className="mt-1 text-sm text-[#4d5856]">
                                         {t('marketplace.primaryFirst', { defaultValue: 'Primary contacts are listed first.' })}
                                     </p>
                                 </div>
@@ -173,13 +173,13 @@ export function StoreContactPage() {
                             </CardContent>
                         </Card>
 
-                        <Card className="rounded-[2.5rem] border-[#e3e8ef] bg-[#fbfbfd] dark:border-border/60 dark:bg-card/85">
+                        <Card className="rounded-[2.5rem] border-[#e3e8ef] bg-[#fbfbfd]">
                             <CardContent className="space-y-5 p-6">
                                 <div>
-                                    <h2 className="text-2xl font-black text-[#111827] dark:text-foreground">
+                                    <h2 className="text-2xl font-black text-[#111827]">
                                         {t('marketplace.addresses', { defaultValue: 'Addresses' })}
                                     </h2>
-                                    <p className="mt-1 text-sm text-[#4d5856] dark:text-muted-foreground">
+                                    <p className="mt-1 text-sm text-[#4d5856]">
                                         {t('marketplace.primaryFirst', { defaultValue: 'Primary contacts are listed first.' })}
                                     </p>
                                 </div>

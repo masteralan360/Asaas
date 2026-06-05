@@ -64,11 +64,11 @@ export function StorefrontLayout({
 
     return (
         <div
-            className="flex h-dvh flex-col overflow-x-hidden overflow-y-auto bg-[#f7f7fb] text-[#111827] dark:bg-[#101418] dark:text-foreground"
+            className="flex h-dvh flex-col overflow-x-hidden overflow-y-auto bg-[#f7f7fb] text-[#111827]"
             style={{ fontFamily: 'Geist Variable, Inter, sans-serif' }}
         >
             <div className="mx-auto flex w-full max-w-[1480px] flex-1 flex-col px-4 py-4 sm:px-6 lg:px-10">
-                <header className="rounded-[2.5rem] border border-[#dde3ea] bg-[#f8f9fc]/95 px-5 py-4 shadow-[0_4px_16px_rgba(15,23,42,0.05)] dark:border-border/60 dark:bg-card/90">
+                <header className="rounded-[2.5rem] border border-[#dde3ea] bg-[#f8f9fc]/95 px-5 py-4 shadow-[0_4px_16px_rgba(15,23,42,0.05)]">
                     <div className="grid min-h-12 items-center gap-4 lg:grid-cols-[1fr_auto_1fr]">
                         <Link
                             href="/"
@@ -105,7 +105,7 @@ export function StorefrontLayout({
                             <Select value={i18n.language || 'en'} onValueChange={changeLanguage}>
                                 <SelectTrigger
                                     allowViewer
-                                    className="h-10 w-[92px] rounded-full border-0 bg-transparent px-2 text-[#3f4a48] shadow-none focus:ring-0 focus:ring-offset-0 dark:text-foreground"
+                                    className="h-10 w-[92px] rounded-full border-0 bg-transparent px-2 text-[#3f4a48] shadow-none focus:ring-0 focus:ring-offset-0"
                                     aria-label={t('marketplace.language', { defaultValue: 'Language' })}
                                 >
                                     <div className="flex items-center gap-2">
@@ -125,7 +125,7 @@ export function StorefrontLayout({
                                 variant="ghost"
                                 size="icon"
                                 onClick={onCartClick}
-                                className="relative rounded-full text-[#3f4a48] hover:bg-[#dcebe8] dark:text-foreground"
+                                className="relative rounded-full text-[#3f4a48] hover:bg-[#dcebe8]"
                                 aria-label={t('marketplace.cart.title', { defaultValue: 'Your Order' })}
                             >
                                 <ShoppingBag className="h-5 w-5" />
@@ -144,10 +144,10 @@ export function StorefrontLayout({
                 </main>
             </div>
 
-            <footer className="w-full border-t border-[#dfe4e9] bg-white dark:border-border dark:bg-card">
+            <footer className="w-full border-t border-[#dfe4e9] bg-white">
                 <div className="mx-auto max-w-[1480px] space-y-2 px-4 py-8 sm:px-6 lg:px-10">
                     <h2 className="text-2xl font-semibold">{storeName}</h2>
-                    <p className="text-sm text-[#4d5856] dark:text-muted-foreground">
+                    <p className="text-sm text-[#4d5856]">
                         {t('marketplace.storefrontCopyright', {
                                 defaultValue: '© 2026 {{storeName}}. Part of the Atlas ERP System.',
                             storeName

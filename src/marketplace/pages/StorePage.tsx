@@ -231,13 +231,13 @@ export function StorePage() {
         >
             {isLoading ? (
                 <div className="mx-auto grid max-w-[1180px] gap-6 lg:grid-cols-[220px_minmax(0,1fr)]">
-                    <div className="h-[520px] animate-pulse rounded-[2.5rem] border border-[#e3e8ef] bg-white dark:border-border dark:bg-card" />
+                    <div className="h-[520px] animate-pulse rounded-[2.5rem] border border-[#e3e8ef] bg-white" />
                     <div className="space-y-6">
-                        <div className="h-32 animate-pulse rounded-[2.5rem] border border-[#e3e8ef] bg-white dark:border-border dark:bg-card" />
-                        <div className="h-16 animate-pulse rounded-[2rem] border border-[#e3e8ef] bg-white dark:border-border dark:bg-card" />
+                        <div className="h-32 animate-pulse rounded-[2.5rem] border border-[#e3e8ef] bg-white" />
+                        <div className="h-16 animate-pulse rounded-[2rem] border border-[#e3e8ef] bg-white" />
                         <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
                             {Array.from({ length: 6 }).map((_, index) => (
-                                <div key={index} className="h-[360px] animate-pulse rounded-[2.5rem] border border-[#e3e8ef] bg-white dark:border-border dark:bg-card" />
+                                <div key={index} className="h-[360px] animate-pulse rounded-[2.5rem] border border-[#e3e8ef] bg-white" />
                             ))}
                         </div>
                     </div>
@@ -259,13 +259,13 @@ export function StorePage() {
                 </Card>
             ) : (
                 <div className="mx-auto grid max-w-[1180px] gap-6 max-sm:pb-40 lg:grid-cols-[220px_minmax(0,1fr)]">
-                    <aside className="rounded-[2.5rem] border border-[#e3e8ef] bg-[#fbfbfd] p-6 lg:min-h-[660px] dark:border-border/60 dark:bg-card/85">
+                    <aside className="rounded-[2.5rem] border border-[#e3e8ef] bg-[#fbfbfd] p-6 lg:min-h-[660px]">
                         <div className="flex h-full flex-col">
                             <div>
-                                <h2 className="text-xl font-bold text-[#151b28] dark:text-foreground">
+                                <h2 className="text-xl font-bold text-[#151b28]">
                                     {t('marketplace.filters', { defaultValue: 'Filters' })}
                                 </h2>
-                                <p className="mt-1 text-sm text-[#4d5856] dark:text-muted-foreground">
+                                <p className="mt-1 text-sm text-[#4d5856]">
                                     {t('marketplace.refineSelection', { defaultValue: 'Refine your selection' })}
                                 </p>
                             </div>
@@ -278,7 +278,7 @@ export function StorePage() {
                                         'flex h-12 w-full items-center gap-4 rounded-full px-5 text-left text-sm font-black tracking-wide transition-colors',
                                         priceFilter === 'all'
                                             ? 'bg-[#d9e8e2] text-[#5e6b68]'
-                                            : 'text-[#4d5856] hover:bg-[#eef4f2] dark:text-muted-foreground dark:hover:bg-muted/40'
+                                            : 'text-[#4d5856] hover:bg-[#eef4f2]'
                                     )}
                                 >
                                     <Grid2X2 className="h-5 w-5" />
@@ -292,7 +292,7 @@ export function StorePage() {
                                         'flex h-12 w-full items-center gap-4 rounded-full px-5 text-left text-sm font-black tracking-wide transition-colors',
                                         priceFilter === 'under-threshold'
                                             ? 'bg-[#d9e8e2] text-[#5e6b68]'
-                                            : 'text-[#4d5856] hover:bg-[#eef4f2] dark:text-muted-foreground dark:hover:bg-muted/40'
+                                            : 'text-[#4d5856] hover:bg-[#eef4f2]'
                                     )}
                                 >
                                     <Banknote className="h-5 w-5" />
@@ -315,7 +315,7 @@ export function StorePage() {
                             />
                         )}
 
-                        <div className="rounded-[2.5rem] border border-[#e3e8ef] bg-[#fbfbfd] p-8 dark:border-border/60 dark:bg-card/85">
+                        <div className="rounded-[2.5rem] border border-[#e3e8ef] bg-[#fbfbfd] p-8">
                             <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
                                 <div className="flex min-w-0 items-center gap-5">
                                     {catalog.store.logo_url ? (
@@ -333,10 +333,10 @@ export function StorePage() {
                                     )}
 
                                     <div className="min-w-0">
-                                        <h1 className="truncate text-4xl font-black leading-tight tracking-tight text-[#111827] dark:text-foreground">
+                                        <h1 className="truncate text-4xl font-black leading-tight tracking-tight text-[#111827]">
                                             {catalog.store.name}
                                         </h1>
-                                        <p className="mt-1 max-w-3xl text-sm leading-6 text-[#4d5856] dark:text-muted-foreground">
+                                        <p className="mt-1 max-w-3xl text-sm leading-6 text-[#4d5856]">
                                             {storeDescription}
                                         </p>
                                     </div>
@@ -351,8 +351,8 @@ export function StorePage() {
                                     />
 
                                     <Select value={sortMode} onValueChange={(value) => setSortMode(value as SortMode)}>
-                                        <SelectTrigger className="h-10 w-[174px] rounded-full border-[#d5dce4] bg-[#fbfbfd] px-4 text-xs shadow-none focus:ring-0 focus:ring-offset-0 dark:border-border dark:bg-card">
-                                            <span className="mr-1 text-[#4d5856] dark:text-muted-foreground">
+                                        <SelectTrigger className="h-10 w-[174px] rounded-full border-[#d5dce4] bg-[#fbfbfd] px-4 text-xs shadow-none focus:ring-0 focus:ring-offset-0">
+                                            <span className="mr-1 text-[#4d5856]">
                                                 {t('marketplace.sortBy', { defaultValue: 'Sort By:' })}
                                             </span>
                                             <SelectValue />
@@ -370,20 +370,20 @@ export function StorePage() {
                             </div>
                         </div>
 
-                        <div className="rounded-[2rem] border border-[#e3e8ef] bg-[#fbfbfd] p-4 shadow-[0_3px_10px_rgba(15,23,42,0.03)] dark:border-border/60 dark:bg-card/85">
+                        <div className="rounded-[2rem] border border-[#e3e8ef] bg-[#fbfbfd] p-4 shadow-[0_3px_10px_rgba(15,23,42,0.03)]">
                             <div className="relative">
-                                <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-[#4d5856] dark:text-muted-foreground" />
+                                <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-[#4d5856]" />
                                 <Input
                                     value={search}
                                     onChange={(event) => setSearch(event.target.value)}
                                     placeholder={t('marketplace.searchCollection', { defaultValue: 'Search our collection...' })}
-                                    className="h-12 rounded-2xl border-0 bg-transparent pl-12 text-base shadow-none placeholder:text-[#273141] focus-visible:ring-0 focus-visible:ring-offset-0 dark:placeholder:text-muted-foreground"
+                                    className="h-12 rounded-2xl border-0 bg-transparent pl-12 text-base shadow-none placeholder:text-[#273141] focus-visible:ring-0 focus-visible:ring-offset-0"
                                 />
                             </div>
                         </div>
 
                         {displayedProducts.length === 0 ? (
-                            <Card className="rounded-[2.5rem] border-[#e3e8ef] bg-[#fbfbfd] dark:border-border/60 dark:bg-card/85">
+                            <Card className="rounded-[2.5rem] border-[#e3e8ef] bg-[#fbfbfd]">
                                 <CardContent className="p-10 text-center">
                                     <h3 className="text-xl font-black">
                                         {t('marketplace.noProducts', { defaultValue: 'No products match this filter yet' })}
