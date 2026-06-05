@@ -213,7 +213,7 @@ export function buildWorkspaceNavigation({
     ...(isCoreRole && hasFeature("currency_exchange") && canAccessPermission("currencyExchange.access")
       ? [
         {
-          name: t("currencyExchange.title", { defaultValue: "Currency Exchange Service" }),
+          name: t("currencyExchange.serviceTitle", { defaultValue: "Currency Exchange Service" }),
           href: "/currency-exchange",
           icon: ArrowRightLeft,
           children: (() => {

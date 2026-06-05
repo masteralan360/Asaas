@@ -3254,7 +3254,7 @@
     "noInstallmentRows": "هیچ ڕیزێکی قیستی خانووبەرە بەردەست نییە."
   },
   "currencyExchange": {
-    "serviceTitle": "خزمەتی گۆڕینەوەی دراو",
+    "serviceTitle": "خزمەتگوزاری گۆڕینەوەی دراو",
     "serviceDescription": "مامەڵەی کڕین و فرۆشتنی دراو بۆ کڕیار، لەگەڵ وێنەی پارێزراوی نرخ و کرێ.",
     "transactionTypes": {
       "buy": "کڕینی دراو",
