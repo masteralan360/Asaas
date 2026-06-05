@@ -2,7 +2,7 @@ import { type FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useRoute } from 'wouter'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
-import { ArrowLeft, ArrowRightLeft, CalendarClock, ClipboardList, Clock, History, Lock, Plus, Search, Trash2, Undo2, Unlock, Wallet } from 'lucide-react'
+import { ArrowLeft, ArrowRightLeft, CalendarClock, ClipboardList, Clock, HelpCircle, History, Lock, Plus, Search, Trash2, Undo2, Unlock, Wallet } from 'lucide-react'
 
 import { useAuth } from '@/auth'
 import { useExchangeRate } from '@/context/ExchangeRateContext'
@@ -77,6 +77,10 @@ import {
     TableHeader,
     TableRow,
     Textarea,
+    Tooltip,
+    TooltipContent,
+    TooltipProvider,
+    TooltipTrigger,
     useToast
 } from '@/ui/components'
 import { useWorkspace } from '@/workspace'
@@ -96,7 +100,7 @@ type FeeRuleFormState = {
     notes: string
 }
 
-type ExchangeReversalRelationRange = {
+type ExchangeRelationRange = {
     firstIndex: number
     lastIndex: number
 }
@@ -236,10 +240,42 @@ function getExchangeReversalRelationKey(transaction: ExchangeTransaction) {
 
 function buildExchangeReversalRelationMaps(transactions: ExchangeTransaction[]) {
     const counts = new Map<string, number>()
-    const ranges = new Map<string, ExchangeReversalRelationRange>()
+    const ranges = new Map<string, ExchangeRelationRange>()
 
     transactions.forEach((transaction, index) => {
         const relationKey = getExchangeReversalRelationKey(transaction)
+        if (!relationKey) {
+            return
+        }
+
+        counts.set(relationKey, (counts.get(relationKey) || 0) + 1)
+
+        const existingRange = ranges.get(relationKey)
+        if (!existingRange) {
+            ranges.set(relationKey, { firstIndex: index, lastIndex: index })
+            return
+        }
+
+        existingRange.lastIndex = index
+    })
+
+    return { counts, ranges }
+}
+
+function getExchangeMovementRelationKey(movement: ExchangeSafeMovement) {
+    if (movement.sourceType !== 'exchange_transaction' || !movement.sourceId) {
+        return null
+    }
+
+    return `exchange-movement:${movement.sourceId}`
+}
+
+function buildExchangeMovementRelationMaps(movements: ExchangeSafeMovement[]) {
+    const counts = new Map<string, number>()
+    const ranges = new Map<string, ExchangeRelationRange>()
+
+    movements.forEach((movement, index) => {
+        const relationKey = getExchangeMovementRelationKey(movement)
         if (!relationKey) {
             return
         }
@@ -659,6 +695,17 @@ function ExchangeSafesPage({
     const [adjustAmount, setAdjustAmount] = useState('')
     const [adjustNotes, setAdjustNotes] = useState('')
     const [isSavingSafe, setIsSavingSafe] = useState(false)
+    const [hoveredMovementRelationKey, setHoveredMovementRelationKey] = useState<string | null>(null)
+
+    const visibleMovements = useMemo(() => movements.slice(0, 50), [movements])
+    const movementRelationMaps = useMemo(
+        () => buildExchangeMovementRelationMaps(visibleMovements),
+        [visibleMovements]
+    )
+    const hoveredMovementRange = hoveredMovementRelationKey
+        ? (movementRelationMaps.ranges.get(hoveredMovementRelationKey) ?? null)
+        : null
+    const hasVisibleMovementRelations = Array.from(movementRelationMaps.counts.values()).some((count) => count > 1)
 
     useEffect(() => {
         if (!selectedSafeId && safes[0]) {
@@ -812,7 +859,7 @@ function ExchangeSafesPage({
                             </CardTitle>
                         </CardHeader>
                         <CardContent>
-                            <Table>
+                            <Table className={cn(hasVisibleMovementRelations && 'ms-6 w-[calc(100%-1.5rem)]')}>
                                 <TableHeader>
                                     <TableRow>
                                         <TableHead>{t('currencyExchange.table.date')}</TableHead>
@@ -831,9 +878,56 @@ function ExchangeSafesPage({
                                                 {t('currencyExchange.empty.movements')}
                                             </TableCell>
                                         </TableRow>
-                                    ) : movements.slice(0, 50).map((movement) => (
-                                        <TableRow key={movement.id}>
-                                            <TableCell>{formatDateTime(movement.createdAt)}</TableCell>
+                                    ) : visibleMovements.map((movement, rowIndex) => {
+                                        const movementRelationKey = getExchangeMovementRelationKey(movement)
+                                        const isRelationHovered = !!hoveredMovementRelationKey && movementRelationKey === hoveredMovementRelationKey
+                                        const relatedVisibleCount = movementRelationKey ? (movementRelationMaps.counts.get(movementRelationKey) || 0) : 0
+                                        const hasVisibleLinkedPeer = relatedVisibleCount > 1
+                                        const showHierarchyLine = !!hoveredMovementRange
+                                            && hoveredMovementRange.firstIndex !== hoveredMovementRange.lastIndex
+                                            && rowIndex >= hoveredMovementRange.firstIndex
+                                            && rowIndex <= hoveredMovementRange.lastIndex
+                                        const showHierarchyTurn = isRelationHovered && hasVisibleLinkedPeer
+                                        const hierarchyVerticalClass = hoveredMovementRange && rowIndex === hoveredMovementRange.firstIndex
+                                            ? 'top-1/2 bottom-0'
+                                            : hoveredMovementRange && rowIndex === hoveredMovementRange.lastIndex
+                                                ? 'top-0 bottom-1/2'
+                                                : 'top-0 bottom-0'
+
+                                        return (
+                                        <TableRow
+                                            key={movement.id}
+                                            className={cn(
+                                                movementRelationKey && 'transition-colors duration-150',
+                                                isRelationHovered && hasVisibleLinkedPeer && 'bg-yellow-500/10'
+                                            )}
+                                            onMouseEnter={() => {
+                                                if (movementRelationKey) {
+                                                    setHoveredMovementRelationKey(movementRelationKey)
+                                                }
+                                            }}
+                                            onMouseLeave={() => {
+                                                if (movementRelationKey) {
+                                                    setHoveredMovementRelationKey((current) => current === movementRelationKey ? null : current)
+                                                }
+                                            }}
+                                        >
+                                            <TableCell className="relative">
+                                                {showHierarchyLine ? (
+                                                    <div className="pointer-events-none absolute inset-y-0 -start-6 w-5">
+                                                        <span
+                                                            className={cn(
+                                                                'absolute start-1.5 w-px bg-yellow-500',
+                                                                hierarchyVerticalClass
+                                                            )}
+                                                        />
+                                                        {showHierarchyTurn ? (
+                                                            <span className="absolute start-1.5 top-1/2 h-px w-3 -translate-y-1/2 bg-yellow-500" />
+                                                        ) : null}
+                                                    </div>
+                                                ) : null}
+                                                {formatDateTime(movement.createdAt)}
+                                            </TableCell>
                                             <TableCell>{movementTypeLabel(movement.movementType, t)}</TableCell>
                                             <TableCell>{movement.currency.toUpperCase()}</TableCell>
                                             <TableCell className={movement.deltaAmount < 0 ? 'text-destructive' : 'text-emerald-700'}>
@@ -843,7 +937,8 @@ function ExchangeSafesPage({
                                             <TableCell>{formatCurrency(movement.balanceAfter, movement.currency, iqdDisplayPreference)}</TableCell>
                                             <TableCell>{movement.notes || '-'}</TableCell>
                                         </TableRow>
-                                    ))}
+                                        )
+                                    })}
                                 </TableBody>
                             </Table>
                         </CardContent>
@@ -1272,7 +1367,10 @@ function CreateCurrencyExchangeTransactionPage({
                                 <div className="grid gap-4">
                                     <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
                                         <div className="grid gap-2">
-                                            <Label>{t('currencyExchange.labels.transactionType')}</Label>
+                                            <FieldLabelWithTooltip
+                                                label={t('currencyExchange.labels.transactionType')}
+                                                tooltip={t('currencyExchange.tooltips.transactionType')}
+                                            />
                                             <Select value={transactionType} onValueChange={(value: ExchangeTransactionType) => setTransactionType(value)}>
                                                 <SelectTrigger><SelectValue /></SelectTrigger>
                                                 <SelectContent>
@@ -1296,7 +1394,10 @@ function CreateCurrencyExchangeTransactionPage({
                                             <Input value={user?.name || ''} readOnly className="bg-muted/40" />
                                         </div>
                                         <div className="grid gap-2">
-                                            <Label>{t('currencyExchange.labels.safe')}</Label>
+                                            <FieldLabelWithTooltip
+                                                label={t('currencyExchange.labels.safe')}
+                                                tooltip={t('currencyExchange.tooltips.safe')}
+                                            />
                                             <Select value={selectedSafeId} onValueChange={setSelectedSafeId}>
                                                 <SelectTrigger><SelectValue placeholder={t('currencyExchange.placeholders.selectSafe')} /></SelectTrigger>
                                                 <SelectContent>
@@ -1315,23 +1416,33 @@ function CreateCurrencyExchangeTransactionPage({
                                     ) : null}
 
                                     <div className="grid grid-cols-1 gap-4 md:grid-cols-[1fr_auto_1fr] md:items-end">
-                                        <CurrencySelector
-                                            value={fromCurrency}
-                                            onChange={(value) => setFromCurrency(value)}
-                                            label={t('currencyExchange.labels.fromCurrency')}
-                                            iqdDisplayPreference={features.iqd_display_preference}
-                                            allowedCurrencies={availableCurrencies}
-                                        />
+                                        <div className="grid gap-2">
+                                            <FieldLabelWithTooltip
+                                                label={t('currencyExchange.labels.fromCurrency')}
+                                                tooltip={t('currencyExchange.tooltips.fromCurrency')}
+                                            />
+                                            <CurrencySelector
+                                                value={fromCurrency}
+                                                onChange={(value) => setFromCurrency(value)}
+                                                iqdDisplayPreference={features.iqd_display_preference}
+                                                allowedCurrencies={availableCurrencies}
+                                            />
+                                        </div>
                                         <Button type="button" variant="outline" size="icon" className="mb-0.5" onClick={switchCurrencies} aria-label={t('currencyExchange.buttons.swapCurrencies')}>
                                             <ArrowRightLeft className="h-4 w-4" />
                                         </Button>
-                                        <CurrencySelector
-                                            value={toCurrency}
-                                            onChange={(value) => setToCurrency(value)}
-                                            label={t('currencyExchange.labels.toCurrency')}
-                                            iqdDisplayPreference={features.iqd_display_preference}
-                                            allowedCurrencies={availableCurrencies}
-                                        />
+                                        <div className="grid gap-2">
+                                            <FieldLabelWithTooltip
+                                                label={t('currencyExchange.labels.toCurrency')}
+                                                tooltip={t('currencyExchange.tooltips.toCurrency')}
+                                            />
+                                            <CurrencySelector
+                                                value={toCurrency}
+                                                onChange={(value) => setToCurrency(value)}
+                                                iqdDisplayPreference={features.iqd_display_preference}
+                                                allowedCurrencies={availableCurrencies}
+                                            />
+                                        </div>
                                     </div>
 
                                     {fromCurrency === toCurrency ? (
@@ -1352,7 +1463,10 @@ function CreateCurrencyExchangeTransactionPage({
 
                                     <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                                         <div className="grid gap-2">
-                                            <Label>{t('currencyExchange.labels.customerGives')}</Label>
+                                            <FieldLabelWithTooltip
+                                                label={t('currencyExchange.labels.customerGives')}
+                                                tooltip={t('currencyExchange.tooltips.customerGives')}
+                                            />
                                             <div className="relative">
                                                 <Input
                                                     type="text"
@@ -1379,7 +1493,10 @@ function CreateCurrencyExchangeTransactionPage({
                                             </Select>
                                         </div>
                                         <div className="grid gap-2">
-                                            <Label>{t('currencyExchange.labels.customerReceives')}</Label>
+                                            <FieldLabelWithTooltip
+                                                label={t('currencyExchange.labels.customerReceives')}
+                                                tooltip={t('currencyExchange.tooltips.customerReceives')}
+                                            />
                                             <div className="flex h-10 items-center rounded-md border border-input bg-muted/40 px-3 text-sm font-semibold">
                                                 {calculation
                                                     ? formatCurrency(calculation.customerReceivesAmount, toCurrency, features.iqd_display_preference)
@@ -2384,6 +2501,30 @@ function MetricCard({ title, value }: { title: string; value: string }) {
                 <div className="mt-1 break-words text-2xl font-bold leading-tight">{value}</div>
             </CardContent>
         </Card>
+    )
+}
+
+function FieldLabelWithTooltip({ label, tooltip }: { label: string; tooltip: string }) {
+    return (
+        <div className="flex items-center gap-1.5">
+            <Label>{label}</Label>
+            <TooltipProvider delayDuration={150}>
+                <Tooltip>
+                    <TooltipTrigger asChild>
+                        <button
+                            type="button"
+                            className="inline-flex h-4 w-4 items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            aria-label={tooltip}
+                        >
+                            <HelpCircle className="h-3.5 w-3.5" />
+                        </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="top" align="start" className="max-w-xs text-xs leading-relaxed">
+                        {tooltip}
+                    </TooltipContent>
+                </Tooltip>
+            </TooltipProvider>
+        </div>
     )
 }
 
