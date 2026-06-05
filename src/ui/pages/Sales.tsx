@@ -96,6 +96,7 @@ export interface SalesFilterState {
     origin: string
     minAmount: string
     maxAmount: string
+    returnStatus: string
     sort: SalesSortOption
 }
 
@@ -107,6 +108,7 @@ export const DEFAULT_SALES_FILTERS: SalesFilterState = {
     origin: 'all',
     minAmount: '',
     maxAmount: '',
+    returnStatus: 'all',
     sort: 'date_desc'
 }
 
@@ -119,6 +121,7 @@ function countActiveSalesFilters(filters: SalesFilterState) {
         filters.origin !== 'all',
         !!filters.minAmount,
         !!filters.maxAmount,
+        filters.returnStatus !== 'all',
         filters.sort !== 'date_desc'
     ].filter(Boolean).length
 }
@@ -330,6 +333,12 @@ export function Sales() {
             const eMethod = effectiveFilters.paymentMethod.toLowerCase()
             if (effectiveFilters.paymentMethod !== 'all' && pMethod !== eMethod) {
                 return false
+            }
+
+            if (effectiveFilters.returnStatus !== 'all') {
+                const hasReturn = saleHasAnyReturnActivity(s)
+                if (effectiveFilters.returnStatus === 'returned' && !hasReturn) return false
+                if (effectiveFilters.returnStatus === 'non-returned' && hasReturn) return false
             }
 
             const total = s.total_amount || 0
@@ -2444,6 +2453,20 @@ export function Sales() {
                                                     {paymentMethodOptions.map((method) => (
                                                         <SelectItem key={method} value={method}>{method.toUpperCase().replace('_', ' ')}</SelectItem>
                                                     ))}
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+
+                                        <div className="space-y-2">
+                                            <Label>{t('sales.filters.returnStatus', { defaultValue: 'Return Status' })}</Label>
+                                            <Select value={draftFilters.returnStatus} onValueChange={(value) => setDraftFilters((current) => ({ ...current, returnStatus: value }))}>
+                                                <SelectTrigger>
+                                                    <SelectValue />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="all">{t('sales.filters.all', { defaultValue: 'All' })}</SelectItem>
+                                                    <SelectItem value="returned">{t('sales.filters.returned', { defaultValue: 'Returned' })}</SelectItem>
+                                                    <SelectItem value="non-returned">{t('sales.filters.nonReturned', { defaultValue: 'Non-Returned' })}</SelectItem>
                                                 </SelectContent>
                                             </Select>
                                         </div>

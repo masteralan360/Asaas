@@ -186,6 +186,51 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
         }
     }
 
+    const orderDetailsPreview = useMemo<TemplatePreview | undefined>(() => {
+        if (!resolved) return undefined
+        const { order, kind } = resolved
+        const counterpartyLabel = kind === 'sales'
+            ? (t('orders.details.customer') || 'Customer')
+            : (t('orders.details.supplier') || 'Supplier')
+        const counterpartyName = kind === 'sales' ? (order as any).customerName : (order as any).supplierName
+        return {
+            fields: [
+                { key: 'counterpartyName', label: counterpartyLabel, value: counterpartyName || '', type: 'text' },
+                { key: 'notes', label: t('common.notes') || 'Notes', value: (order as any).notes || '', type: 'text' },
+            ],
+            createElement: (data: Record<string, string>, effectiveId?: string, printLangOverride?: string) => {
+                const updatedOrder = {
+                    ...order,
+                    ...(kind === 'sales' ? { customerName: data.counterpartyName } : { supplierName: data.counterpartyName }),
+                    notes: data.notes,
+                }
+                const baseLang = features?.print_lang && features.print_lang !== 'auto' ? features.print_lang : i18n.language
+                const printLang = printLangOverride || baseLang
+                return (
+                    <OrderDetailsPrintTemplate
+                        workspaceName={workspaceName}
+                        printLang={printLang}
+                        order={updatedOrder}
+                        kind={kind}
+                        iqdPreference={features.iqd_display_preference}
+                        logoUrl={features.logo_url}
+                        qrValue={effectiveId ? `https://asaas-r2-proxy.alanepic360.workers.dev/${workspaceId}/printed-invoices/A4/${effectiveId}.pdf` : undefined}
+                    />
+                )
+            },
+            buildPdf: async (element: ReactElement, printLangOverride?: string) => {
+                const baseLang = features?.print_lang && features.print_lang !== 'auto' ? features.print_lang : i18n.language
+                const printLang = printLangOverride || baseLang
+                return generateTemplatePdf({
+                    element,
+                    format: 'a4',
+                    printLang,
+                    printQuality: features.print_quality,
+                })
+            },
+        }
+    }, [resolved, features, workspaceName, t, i18n, workspaceId])
+
     if (!resolved) {
         return (
             <Card>
@@ -329,51 +374,6 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
             })
         }
     }
-
-    const orderDetailsPreview = useMemo<TemplatePreview | undefined>(() => {
-        if (!resolved) return undefined
-        const { order, kind } = resolved
-        const counterpartyLabel = kind === 'sales'
-            ? (t('orders.details.customer') || 'Customer')
-            : (t('orders.details.supplier') || 'Supplier')
-        const counterpartyName = kind === 'sales' ? (order as any).customerName : (order as any).supplierName
-        return {
-            fields: [
-                { key: 'counterpartyName', label: counterpartyLabel, value: counterpartyName || '', type: 'text' },
-                { key: 'notes', label: t('common.notes') || 'Notes', value: (order as any).notes || '', type: 'text' },
-            ],
-            createElement: (data: Record<string, string>, effectiveId?: string, printLangOverride?: string) => {
-                const updatedOrder = {
-                    ...order,
-                    ...(kind === 'sales' ? { customerName: data.counterpartyName } : { supplierName: data.counterpartyName }),
-                    notes: data.notes,
-                }
-                const baseLang = features?.print_lang && features.print_lang !== 'auto' ? features.print_lang : i18n.language
-                const printLang = printLangOverride || baseLang
-                return (
-                    <OrderDetailsPrintTemplate
-                        workspaceName={workspaceName}
-                        printLang={printLang}
-                        order={updatedOrder}
-                        kind={kind}
-                        iqdPreference={features.iqd_display_preference}
-                        logoUrl={features.logo_url}
-                        qrValue={effectiveId ? `https://asaas-r2-proxy.alanepic360.workers.dev/${workspaceId}/printed-invoices/A4/${effectiveId}.pdf` : undefined}
-                    />
-                )
-            },
-            buildPdf: async (element: ReactElement, printLangOverride?: string) => {
-                const baseLang = features?.print_lang && features.print_lang !== 'auto' ? features.print_lang : i18n.language
-                const printLang = printLangOverride || baseLang
-                return generateTemplatePdf({
-                    element,
-                    format: 'a4',
-                    printLang,
-                    printQuality: features.print_quality,
-                })
-            },
-        }
-    }, [resolved, features, workspaceName, t, i18n, workspaceId])
 
     return (
         <div className="space-y-4">
