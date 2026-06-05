@@ -43,6 +43,7 @@ import { formatDateTime } from '@/lib/utils'
 import { normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
 import { useWorkspace } from '@/workspace'
 import { useWorkspaceContacts } from '@/local-db/hooks'
+import { r2Service } from '@/services/r2Service'
 
 type CustomTemplateRow = {
     id: string
@@ -82,6 +83,28 @@ function countLayoutItems(row: CustomTemplateRow) {
     const layout = readStoredLayout(row)
     if (!layout) return 0
     return layout.annotations.length + layout.texts.length + layout.images.length + Object.keys(layout.fields).length
+}
+
+function collectLayoutImagePaths(layout?: CustomTemplateLayout | null) {
+    const paths = new Set<string>()
+    for (const image of layout?.images || []) {
+        const path = typeof image?.path === 'string' ? image.path.trim() : ''
+        if (!path || path.startsWith('http') || path.startsWith('data:') || path.startsWith('blob:')) {
+            continue
+        }
+        paths.add(path.replace(/\\/g, '/'))
+    }
+    return paths
+}
+
+function getR2KeyForStoredMediaPath(path: string, workspaceId: string) {
+    const parts = path.replace(/\\/g, '/').split('/').filter(Boolean)
+    if (parts.length < 3) return null
+
+    const [folderPart, wsPart, ...restPath] = parts
+    if (wsPart !== workspaceId || restPath.length === 0) return null
+
+    return `${wsPart}/${folderPart}/${restPath.join('/')}`
 }
 
 export function CustomTemplates() {
@@ -183,6 +206,21 @@ export function CustomTemplates() {
             ...layout,
             label
         }
+        const existingTemplate = templates.find((template) => template.module_type_key === layout.moduleTypeKey)
+        const previousImagePaths = collectLayoutImagePaths(readStoredLayout(existingTemplate))
+        const nextImagePaths = collectLayoutImagePaths(layoutWithLabel)
+        const pathsUsedByOtherTemplates = new Set<string>()
+        for (const template of templates) {
+            if (template.module_type_key === layout.moduleTypeKey) {
+                continue
+            }
+            for (const path of collectLayoutImagePaths(readStoredLayout(template))) {
+                pathsUsedByOtherTemplates.add(path)
+            }
+        }
+        const removedImagePaths = Array.from(previousImagePaths).filter((path) =>
+            !nextImagePaths.has(path) && !pathsUsedByOtherTemplates.has(path)
+        )
         const payload = {
             workspace_id: workspaceId,
             module_type_key: layout.moduleTypeKey,
@@ -200,13 +238,28 @@ export function CustomTemplates() {
 
         if (saveError) throw normalizeSupabaseActionError(saveError)
 
+        if (removedImagePaths.length > 0 && r2Service.isConfigured()) {
+            const deleteResults = await Promise.allSettled(
+                removedImagePaths.map(async (path) => {
+                    const r2Key = getR2KeyForStoredMediaPath(path, workspaceId)
+                    if (!r2Key) return
+                    await r2Service.delete(r2Key)
+                })
+            )
+            deleteResults.forEach((result, index) => {
+                if (result.status === 'rejected') {
+                    console.error('[CustomTemplates] Failed to delete removed template image from R2:', removedImagePaths[index], result.reason)
+                }
+            })
+        }
+
         toast({
             title: t('customTemplates.savedTitle', { defaultValue: 'Template saved' }),
             description: t('customTemplates.savedDescription', {
                 defaultValue: 'The custom print layout was saved to Supabase.'
             })
         })
-    }, [t, toast, user?.id, workspaceId])
+    }, [t, templates, toast, user?.id, workspaceId])
 
     const openPreview = useCallback((moduleTypeKey: string) => {
         const target = availableTargets.find((item) => item.moduleTypeKey === moduleTypeKey)

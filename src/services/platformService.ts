@@ -8,6 +8,25 @@ class PlatformService implements PlatformAPI {
     private appDataPath: string = '';
     private tauriConvert: ((path: string) => string) | null = null;
 
+    private getImageContentType(ext?: string): string {
+        const normalized = (ext || '').toLowerCase();
+        if (normalized === 'png') return 'image/png';
+        if (normalized === 'jpg' || normalized === 'jpeg') return 'image/jpeg';
+        if (normalized === 'webp') return 'image/webp';
+        return 'application/octet-stream';
+    }
+
+    private async uploadSavedImageToR2(workspaceId: string, subDir: string, fileName: string, data: Blob | ArrayBuffer, contentType: string): Promise<void> {
+        if (!workspaceId || !r2Service.isConfigured()) return;
+
+        const r2Path = `${workspaceId}/${subDir}/${fileName}`.replace(/\\/g, '/');
+        try {
+            await r2Service.upload(r2Path, data, contentType);
+        } catch (error) {
+            console.error('[PlatformService] Image upload to R2 failed:', error);
+        }
+    }
+
     private async pickImageFileFromInput(): Promise<File | null> {
         if (typeof document === 'undefined') return null;
 
@@ -346,7 +365,7 @@ class PlatformService implements PlatformAPI {
 
             try {
                 const { open } = await import('@tauri-apps/plugin-dialog');
-                const { mkdir, copyFile, BaseDirectory } = await import('@tauri-apps/plugin-fs');
+                const { mkdir, copyFile, readFile, BaseDirectory } = await import('@tauri-apps/plugin-fs');
 
                 const selected = await open({
                     multiple: false,
@@ -362,6 +381,11 @@ class PlatformService implements PlatformAPI {
 
                     const relativeDest = `${relativeDir}/${fileName}`.replace(/\\/g, '/');
                     await copyFile(selected, relativeDest, { toPathBaseDir: BaseDirectory.AppData });
+                    if (r2Service.isConfigured()) {
+                        const fileData = await readFile(relativeDest, { baseDir: BaseDirectory.AppData });
+                        const arrayBuffer = fileData.buffer.slice(fileData.byteOffset, fileData.byteOffset + fileData.byteLength);
+                        await this.uploadSavedImageToR2(workspaceId, subDir, fileName, arrayBuffer, this.getImageContentType(ext));
+                    }
 
                     // Return relative path (e.g. product-images/uuid/123.jpg)
                     return relativeDest;
@@ -386,7 +410,7 @@ class PlatformService implements PlatformAPI {
 
             if (r2Service.isConfigured()) {
                 try {
-                    await r2Service.upload(r2Path, fileToPersist, fileToPersist.type || 'application/octet-stream');
+                    await r2Service.upload(r2Path, fileToPersist, fileToPersist.type || this.getImageContentType(ext));
                     return relativeDest;
                 } catch (error) {
                     console.error('[PlatformService] Web image upload failed, falling back to data URL:', error);
@@ -428,6 +452,7 @@ class PlatformService implements PlatformAPI {
 
                 const relativeDest = `${relativeDir}/${fileName}`.replace(/\\/g, '/');
                 await writeFile(relativeDest, uint8Array, { baseDir: BaseDirectory.AppData });
+                await this.uploadSavedImageToR2(workspaceId, subDir, fileName, file, file.type || this.getImageContentType(ext));
 
                 return relativeDest;
             } catch (error) {

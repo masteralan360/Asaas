@@ -779,6 +779,22 @@ export function Settings() {
             if (features.logo_url && !features.logo_url.startsWith('http')) {
                 count++
             }
+            if (isSupabaseConfigured) {
+                const { data } = await runSupabaseAction('customTemplates.mediaCount', () =>
+                    supabase
+                        .from('custom_templates')
+                        .select('layout_json')
+                        .eq('workspace_id', user.workspaceId)
+                ) as any
+                const attachedImageCount = ((data || []) as Array<{ layout_json?: any }>).reduce((sum, row) => {
+                    const images = Array.isArray(row.layout_json?.images) ? row.layout_json.images : []
+                    return sum + images.filter((image: any) => {
+                        const path = typeof image?.path === 'string' ? image.path : ''
+                        return path && !path.startsWith('http') && !path.startsWith('data:') && !path.startsWith('blob:')
+                    }).length
+                }, 0)
+                count += attachedImageCount
+            }
             setLocalMediaCount(count)
         } catch (e) {
             console.error('Failed to count media:', e)
@@ -806,6 +822,29 @@ export function Settings() {
             // Add workspace logo if it exists locally
             if (features.logo_url && !features.logo_url.startsWith('http')) {
                 itemsToSync.push({ path: features.logo_url, name: 'Workspace Logo' })
+            }
+
+            if (isSupabaseConfigured) {
+                const { data } = await runSupabaseAction('customTemplates.mediaSyncList', () =>
+                    supabase
+                        .from('custom_templates')
+                        .select('label, module_type_key, layout_json')
+                        .eq('workspace_id', user.workspaceId)
+                ) as any
+                for (const template of (data || []) as Array<{ label?: string | null; module_type_key?: string | null; layout_json?: any }>) {
+                    const images = Array.isArray(template.layout_json?.images) ? template.layout_json.images : []
+                    for (const image of images) {
+                        const path = typeof image?.path === 'string' ? image.path : ''
+                        if (!path || path.startsWith('http') || path.startsWith('data:') || path.startsWith('blob:')) {
+                            continue
+                        }
+
+                        itemsToSync.push({
+                            path,
+                            name: template.label || template.module_type_key || 'Custom Template Image'
+                        })
+                    }
+                }
             }
 
             if (itemsToSync.length === 0) {
@@ -848,7 +887,7 @@ export function Settings() {
         }
 
         const workspaceId = user.workspaceId
-        const allowedFolders = ['product-images', 'profile-images', 'workspace-logos']
+        const allowedFolders = ['product-images', 'profile-images', 'workspace-logos', 'attached-images']
 
         try {
             const keySet = new Set<string>()
