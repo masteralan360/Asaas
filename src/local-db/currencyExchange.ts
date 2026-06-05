@@ -139,6 +139,8 @@ export interface SaveExchangeFeeRuleInput {
     createdBy?: string | null
 }
 
+export type ExchangeFeeRuleTemporalStatus = 'inactive' | 'pending' | 'effective' | 'ended'
+
 function shouldUseCloudBusinessData(workspaceId?: string | null) {
     return !!workspaceId && !isLocalWorkspaceMode(workspaceId)
 }
@@ -562,6 +564,26 @@ export function isExchangeFeeRuleEffectiveForTransaction(
         && (!feeCurrency || rule.currency === feeCurrency)
         && getDateTimeBoundaryMs(rule.effectiveStartDate, 'start') <= transactionTime
         && (!rule.effectiveEndDate || getDateTimeBoundaryMs(rule.effectiveEndDate, 'end') >= transactionTime)
+}
+
+export function getExchangeFeeRuleTemporalStatus(
+    rule: Pick<ExchangeFeeRule, 'isActive' | 'isDeleted' | 'effectiveStartDate' | 'effectiveEndDate'>,
+    referenceDate: string = new Date().toISOString()
+): ExchangeFeeRuleTemporalStatus {
+    if (rule.isDeleted || !rule.isActive) {
+        return 'inactive'
+    }
+
+    const referenceTime = getDateTimeBoundaryMs(referenceDate)
+    if (getDateTimeBoundaryMs(rule.effectiveStartDate, 'start') > referenceTime) {
+        return 'pending'
+    }
+
+    if (rule.effectiveEndDate && getDateTimeBoundaryMs(rule.effectiveEndDate, 'end') < referenceTime) {
+        return 'ended'
+    }
+
+    return 'effective'
 }
 
 function createBaseEntity(workspaceId: string, now: string) {

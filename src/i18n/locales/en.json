@@ -3484,7 +3484,11 @@
       "reversal": "Reversal",
       "locked": "Locked",
       "unlocked": "Unlocked",
-      "open": "Open"
+      "open": "Open",
+      "pending": "Pending",
+      "activeNow": "Active now",
+      "ended": "Ended",
+      "applies": "Applies"
     },
     "buttons": {
       "createTransaction": "Create Transaction",
@@ -3655,7 +3659,13 @@
       "percentageBasis": "Percentage uses the actual customer gives amount.",
       "activeRule": "Only active rules are applied to new transactions.",
       "lockedRule": "Only admins can lock or unlock rules.",
-      "feeEdited": "Fee value differs from the selected rule snapshot."
+      "feeEdited": "Fee value differs from the selected rule snapshot.",
+      "feeRulePending": "Active is on, but this rule will not apply until {{start}}.",
+      "feeRuleEffectiveUntil": "This rule can apply to matching transactions until {{end}}.",
+      "feeRuleEffectiveOpenEnded": "This rule can apply to matching transactions now and has no end time.",
+      "feeRuleEnded": "Active is on, but the effective end time passed at {{end}}.",
+      "feeRuleUnavailable": "This rule is not currently available for new matching transactions.",
+      "feeRuleInactive": "The active switch is off, so this rule will not apply."
     },
     "feeRules": {
       "title": "Fee/Commission Rules",
@@ -3664,6 +3674,13 @@
       "editRule": "Edit Rule",
       "createRule": "Create Rule",
       "configuredRules": "Configured Rules",
+      "effectiveStatus": "Effective status",
+      "selectedDateRule": "Rule for selected transaction date",
+      "selectedDateRuleApplies": "{{rule}} is effective for {{date}} and is the default rule for this transaction.",
+      "selectedDateRuleNone": "No fee rule is effective for {{date}}.",
+      "selectedDateRuleSelectionHelp": "The rule dropdown only includes rules effective for the selected transaction date.",
+      "pendingRulesForDate": "Scheduled rules are pending for this transaction date.",
+      "pendingRuleStarts": "{{rule}} starts at {{start}} and is not active for {{date}}.",
       "percentageFormula": "{{basis}} x {{value}}% = {{fee}}",
       "fixedFormula": "{{fee}} fixed fee per {{basis}}",
       "perBasis": "per {{basis}}",

@@ -21,6 +21,7 @@ import {
     EXCHANGE_SAFE_CURRENCIES,
     reverseExchangeTransaction,
     findLatestSafeBuyForAcquisitionRate,
+    getExchangeFeeRuleTemporalStatus,
     getDefaultExchangeFeeBasisAmount,
     getEffectiveExchangeRateUsed,
     getExchangeFeeBasisAmount,
@@ -45,6 +46,7 @@ import {
     type ExchangeSafeMovement,
     type ExchangeTransaction,
     type ExchangeTransactionType,
+    type ExchangeFeeRuleTemporalStatus,
     type IQDDisplayPreference
 } from '@/local-db'
 import {
@@ -224,6 +226,83 @@ function acquisitionSourceLabel(source: ExchangeAcquisitionRateSource | null | u
 
 function safeStatusLabel(isActive: boolean, t: TFunction) {
     return isActive ? t('currencyExchange.status.active') : t('currencyExchange.status.inactive')
+}
+
+function feeRuleTemporalStatusLabel(status: ExchangeFeeRuleTemporalStatus, t: TFunction) {
+    switch (status) {
+        case 'pending':
+            return t('currencyExchange.status.pending', { defaultValue: 'Pending' })
+        case 'effective':
+            return t('currencyExchange.status.activeNow', { defaultValue: 'Active now' })
+        case 'ended':
+            return t('currencyExchange.status.ended', { defaultValue: 'Ended' })
+        case 'inactive':
+        default:
+            return t('currencyExchange.status.inactive')
+    }
+}
+
+function feeRuleTemporalBadgeClass(status: ExchangeFeeRuleTemporalStatus) {
+    switch (status) {
+        case 'pending':
+            return 'bg-amber-500/15 text-amber-700 dark:text-amber-300'
+        case 'effective':
+            return 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+        case 'ended':
+            return 'bg-slate-500/15 text-slate-700 dark:text-slate-300'
+        case 'inactive':
+        default:
+            return 'bg-muted text-muted-foreground'
+    }
+}
+
+function feeRuleTemporalHelperText(
+    rule: Pick<ExchangeFeeRule, 'isActive' | 'effectiveStartDate' | 'effectiveEndDate'>,
+    status: ExchangeFeeRuleTemporalStatus,
+    t: TFunction
+) {
+    switch (status) {
+        case 'pending':
+            return t('currencyExchange.help.feeRulePending', {
+                defaultValue: 'Active is on, but this rule will not apply until {{start}}.',
+                start: formatDateTime(rule.effectiveStartDate)
+            })
+        case 'effective':
+            return rule.effectiveEndDate
+                ? t('currencyExchange.help.feeRuleEffectiveUntil', {
+                    defaultValue: 'This rule can apply to matching transactions until {{end}}.',
+                    end: formatDateTime(rule.effectiveEndDate)
+                })
+                : t('currencyExchange.help.feeRuleEffectiveOpenEnded', {
+                    defaultValue: 'This rule can apply to matching transactions now and has no end time.'
+                })
+        case 'ended':
+            return t('currencyExchange.help.feeRuleEnded', {
+                defaultValue: 'Active is on, but the effective end time passed at {{end}}.',
+                end: rule.effectiveEndDate ? formatDateTime(rule.effectiveEndDate) : '-'
+            })
+        case 'inactive':
+        default:
+            return rule.isActive
+                ? t('currencyExchange.help.feeRuleUnavailable', {
+                    defaultValue: 'This rule is not currently available for new matching transactions.'
+                })
+                : t('currencyExchange.help.feeRuleInactive', {
+                    defaultValue: 'The active switch is off, so this rule will not apply.'
+                })
+    }
+}
+
+function feeRuleMatchesTransactionContext(rule: ExchangeFeeRule, transactionType: ExchangeTransactionType, feeCurrency: CurrencyCode) {
+    return !rule.isDeleted
+        && rule.isActive
+        && (rule.transactionScope === 'both' || rule.transactionScope === transactionType)
+        && rule.currency === feeCurrency
+}
+
+function getRuleDateSortValue(value?: string | null) {
+    const parsed = value ? new Date(value).getTime() : 0
+    return Number.isNaN(parsed) ? 0 : parsed
 }
 
 function getExchangeReversalRelationKey(transaction: ExchangeTransaction) {
@@ -1133,6 +1212,19 @@ function CreateCurrencyExchangeTransactionPage({
     const activeRule = useMemo(() => (
         resolveEffectiveExchangeFeeRule(rules, transactionType, transactionDate, fromCurrency)
     ), [fromCurrency, rules, transactionDate, transactionType])
+    const effectiveRulesForSelectedDate = useMemo(() => (
+        rules.filter((rule) =>
+            isExchangeFeeRuleEffectiveForTransaction(rule, transactionType, transactionDate, fromCurrency)
+        )
+    ), [fromCurrency, rules, transactionDate, transactionType])
+    const pendingRulesForSelectedDate = useMemo(() => (
+        rules
+            .filter((rule) =>
+                feeRuleMatchesTransactionContext(rule, transactionType, fromCurrency)
+                && getExchangeFeeRuleTemporalStatus(rule, transactionDate) === 'pending'
+            )
+            .sort((left, right) => getRuleDateSortValue(left.effectiveStartDate) - getRuleDateSortValue(right.effectiveStartDate))
+    ), [fromCurrency, rules, transactionDate, transactionType])
 
     useEffect(() => {
         if (!activeRule) {
@@ -1626,6 +1718,77 @@ function CreateCurrencyExchangeTransactionPage({
                             </CardHeader>
                             <CardContent>
                                 <div className="grid gap-4">
+                                    <div className={cn(
+                                        'rounded-2xl border p-4',
+                                        activeRule
+                                            ? 'border-emerald-500/25 bg-emerald-500/10'
+                                            : 'border-muted bg-muted/20'
+                                    )}>
+                                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                            <div className="flex gap-3">
+                                                <div className={cn(
+                                                    'mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full',
+                                                    activeRule
+                                                        ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                                                        : 'bg-muted text-muted-foreground'
+                                                )}>
+                                                    <CalendarClock className="h-4 w-4" />
+                                                </div>
+                                                <div>
+                                                    <div className="text-sm font-semibold">
+                                                        {t('currencyExchange.feeRules.selectedDateRule', { defaultValue: 'Rule for selected transaction date' })}
+                                                    </div>
+                                                    <p className="mt-1 text-sm text-muted-foreground">
+                                                        {activeRule
+                                                            ? t('currencyExchange.feeRules.selectedDateRuleApplies', {
+                                                                defaultValue: '{{rule}} is effective for {{date}} and is the default rule for this transaction.',
+                                                                rule: activeRule.name,
+                                                                date: formatDateTime(transactionDate)
+                                                            })
+                                                            : t('currencyExchange.feeRules.selectedDateRuleNone', {
+                                                                defaultValue: 'No fee rule is effective for {{date}}.',
+                                                                date: formatDateTime(transactionDate)
+                                                            })}
+                                                    </p>
+                                                    <p className="mt-1 text-xs text-muted-foreground">
+                                                        {t('currencyExchange.feeRules.selectedDateRuleSelectionHelp', {
+                                                            defaultValue: 'The rule dropdown only includes rules effective for the selected transaction date.'
+                                                        })}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            <span className={cn(
+                                                'inline-flex w-fit rounded-full px-2.5 py-1 text-xs font-medium',
+                                                activeRule
+                                                    ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                                                    : 'bg-muted text-muted-foreground'
+                                            )}>
+                                                {activeRule
+                                                    ? t('currencyExchange.status.applies', { defaultValue: 'Applies' })
+                                                    : t('currencyExchange.labels.noFee')}
+                                            </span>
+                                        </div>
+                                        {pendingRulesForSelectedDate.length > 0 ? (
+                                            <div className="mt-3 grid gap-2 rounded-xl border border-amber-500/25 bg-amber-500/10 p-3 text-xs text-amber-800 dark:text-amber-200">
+                                                <div className="font-semibold">
+                                                    {t('currencyExchange.feeRules.pendingRulesForDate', {
+                                                        defaultValue: 'Scheduled rules are pending for this transaction date.'
+                                                    })}
+                                                </div>
+                                                {pendingRulesForSelectedDate.slice(0, 3).map((rule) => (
+                                                    <div key={rule.id}>
+                                                        {t('currencyExchange.feeRules.pendingRuleStarts', {
+                                                            defaultValue: '{{rule}} starts at {{start}} and is not active for {{date}}.',
+                                                            rule: rule.name,
+                                                            start: formatDateTime(rule.effectiveStartDate),
+                                                            date: formatDateTime(transactionDate)
+                                                        })}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        ) : null}
+                                    </div>
+
                                     <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                                         <div className="grid gap-2">
                                             <Label>{t('currencyExchange.labels.rule')}</Label>
@@ -1637,13 +1800,9 @@ function CreateCurrencyExchangeTransactionPage({
                                                 <SelectTrigger><SelectValue /></SelectTrigger>
                                                 <SelectContent>
                                                     <SelectItem value="none">{t('currencyExchange.labels.noFee')}</SelectItem>
-                                                    {rules
-                                                        .filter((rule) =>
-                                                            isExchangeFeeRuleEffectiveForTransaction(rule, transactionType, transactionDate, fromCurrency)
-                                                        )
-                                                        .map((rule) => (
-                                                            <SelectItem key={rule.id} value={rule.id}>{rule.name}</SelectItem>
-                                                        ))}
+                                                    {effectiveRulesForSelectedDate.map((rule) => (
+                                                        <SelectItem key={rule.id} value={rule.id}>{rule.name}</SelectItem>
+                                                    ))}
                                                 </SelectContent>
                                             </Select>
                                         </div>
@@ -2142,6 +2301,18 @@ function ExchangeFeeRulesPage({
             fee: formattedPreviewFeeAmount,
             basis: formattedCustomerGivesBasisAmount
         })
+    const formTemporalStatus = getExchangeFeeRuleTemporalStatus({
+        isActive: form.isActive,
+        isDeleted: false,
+        effectiveStartDate: form.effectiveStartDate,
+        effectiveEndDate: form.effectiveEndDate || null
+    }, currentTimestamp())
+    const formTemporalHelper = feeRuleTemporalHelperText({
+        isActive: form.isActive,
+        effectiveStartDate: form.effectiveStartDate,
+        effectiveEndDate: form.effectiveEndDate || null
+    }, formTemporalStatus, t)
+    const ruleStatusReferenceDate = currentTimestamp()
 
     const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault()
@@ -2349,6 +2520,22 @@ function ExchangeFeeRulesPage({
                                     />
                                 </div>
                             </div>
+                            <div className="rounded-xl border bg-muted/20 px-3 py-3">
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                    <div className="text-sm font-medium">
+                                        {t('currencyExchange.feeRules.effectiveStatus', { defaultValue: 'Effective status' })}
+                                    </div>
+                                    <span className={cn(
+                                        'rounded-full px-2 py-0.5 text-[11px] font-medium',
+                                        feeRuleTemporalBadgeClass(formTemporalStatus)
+                                    )}>
+                                        {feeRuleTemporalStatusLabel(formTemporalStatus, t)}
+                                    </span>
+                                </div>
+                                <p className="mt-2 text-xs text-muted-foreground">
+                                    {formTemporalHelper}
+                                </p>
+                            </div>
                             <div className="grid gap-3 rounded-xl border bg-muted/20 p-3">
                                 <div className="flex items-center justify-between gap-3">
                                     <div>
@@ -2406,6 +2593,7 @@ function ExchangeFeeRulesPage({
                                     </TableRow>
                                 ) : rules.map((rule) => {
                                     const basisAmount = getExchangeFeeBasisAmount(rule)
+                                    const temporalStatus = getExchangeFeeRuleTemporalStatus(rule, ruleStatusReferenceDate)
                                     return (
                                     <TableRow key={rule.id}>
                                         <TableCell>
@@ -2433,7 +2621,13 @@ function ExchangeFeeRulesPage({
                                             <div className="flex flex-wrap gap-1.5">
                                                 <span className={cn(
                                                     'rounded-full px-2 py-0.5 text-[11px] font-medium',
-                                                    rule.isActive ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300' : 'bg-muted text-muted-foreground'
+                                                    feeRuleTemporalBadgeClass(temporalStatus)
+                                                )}>
+                                                    {feeRuleTemporalStatusLabel(temporalStatus, t)}
+                                                </span>
+                                                <span className={cn(
+                                                    'rounded-full px-2 py-0.5 text-[11px] font-medium',
+                                                    rule.isActive ? 'bg-sky-500/15 text-sky-700 dark:text-sky-300' : 'bg-muted text-muted-foreground'
                                                 )}>
                                                     {safeStatusLabel(rule.isActive, t)}
                                                 </span>
@@ -2443,6 +2637,9 @@ function ExchangeFeeRulesPage({
                                                 )}>
                                                     {rule.isLocked ? t('currencyExchange.status.locked') : t('currencyExchange.status.unlocked')}
                                                 </span>
+                                            </div>
+                                            <div className="mt-1 text-xs text-muted-foreground">
+                                                {feeRuleTemporalHelperText(rule, temporalStatus, t)}
                                             </div>
                                         </TableCell>
                                         <TableCell className="text-end">
