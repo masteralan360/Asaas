@@ -26,6 +26,7 @@ type ProductRow = {
     unit: string | null
     category_id: string | null
     image_url: string | null
+    created_at: string | null
 }
 
 type CategoryRow = {
@@ -43,6 +44,23 @@ type ContactRow = {
 type InventoryRow = {
     product_id: string
     quantity: number | null
+    created_at: string | null
+}
+
+function buildStorePayload(workspace: WorkspaceRow, logoUrl: string | null, contacts: ContactRow[]) {
+    return {
+        name: workspace.name,
+        slug: workspace.store_slug,
+        description: workspace.store_description,
+        logo_url: logoUrl,
+        currency: workspace.default_currency ?? 'iqd',
+        contacts: contacts.map((contact) => ({
+            type: contact.type,
+            value: contact.value,
+            label: contact.label,
+            is_primary: Boolean(contact.is_primary)
+        }))
+    }
 }
 
 Deno.serve(async (req) => {
@@ -104,8 +122,7 @@ Deno.serve(async (req) => {
             return errorResponse(marketplaceStorageError.message, 500)
         }
 
-        const primaryContacts = ((contacts ?? []) as ContactRow[]).filter((contact) => contact.is_primary)
-        const visibleContacts = (primaryContacts.length > 0 ? primaryContacts : (contacts ?? []) as ContactRow[]).slice(0, 5)
+        const storeContacts = ((contacts ?? []) as ContactRow[])
         const resolvedLogoUrl = resolvePublicAssetUrl(resolvedWorkspace.logo_url)
             ?? (await listMarketplaceAssetUrls([
                 `${resolvedWorkspace.id}/workspace-logos/`,
@@ -116,19 +133,7 @@ Deno.serve(async (req) => {
         if (!marketplaceStorageId) {
             return jsonResponse(
                 {
-                    store: {
-                        name: resolvedWorkspace.name,
-                        slug: resolvedWorkspace.store_slug,
-                        description: resolvedWorkspace.store_description,
-                        logo_url: resolvedLogoUrl,
-                        currency: resolvedWorkspace.default_currency ?? 'iqd',
-                        contacts: visibleContacts.map((contact) => ({
-                            type: contact.type,
-                            value: contact.value,
-                            label: contact.label,
-                            is_primary: Boolean(contact.is_primary)
-                        }))
-                    },
+                    store: buildStorePayload(resolvedWorkspace, resolvedLogoUrl, storeContacts),
                     categories: [],
                     products: []
                 },
@@ -146,7 +151,7 @@ Deno.serve(async (req) => {
         ] = await Promise.all([
             adminClient
                 .from('inventory')
-                .select('product_id, quantity')
+                .select('product_id, quantity, created_at')
                 .eq('workspace_id', resolvedWorkspace.id)
                 .eq('storage_id', marketplaceStorageId)
                 .eq('is_deleted', false)
@@ -175,19 +180,7 @@ Deno.serve(async (req) => {
         if (visibleProductIds.length === 0) {
             return jsonResponse(
                 {
-                    store: {
-                        name: resolvedWorkspace.name,
-                        slug: resolvedWorkspace.store_slug,
-                        description: resolvedWorkspace.store_description,
-                        logo_url: resolvedLogoUrl,
-                        currency: resolvedWorkspace.default_currency ?? 'iqd',
-                        contacts: visibleContacts.map((contact) => ({
-                            type: contact.type,
-                            value: contact.value,
-                            label: contact.label,
-                            is_primary: Boolean(contact.is_primary)
-                        }))
-                    },
+                    store: buildStorePayload(resolvedWorkspace, resolvedLogoUrl, storeContacts),
                     categories: [],
                     products: []
                 },
@@ -201,7 +194,7 @@ Deno.serve(async (req) => {
 
         const { data: products, error: productsError } = await adminClient
             .from('products')
-            .select('id, name, sku, description, price, currency, unit, category_id, image_url')
+            .select('id, name, sku, description, price, currency, unit, category_id, image_url, created_at')
             .eq('workspace_id', resolvedWorkspace.id)
             .eq('is_deleted', false)
             .in('id', visibleProductIds)
@@ -212,6 +205,10 @@ Deno.serve(async (req) => {
         }
 
         const productRows = (products ?? []) as ProductRow[]
+        const marketplaceAddedAtByProductId = new Map(
+            ((inventoryRows ?? []) as InventoryRow[])
+                .map((row) => [row.product_id, row.created_at] as const)
+        )
         const discountByProductId = new Map<string, ResolvedWorkspaceDiscountRow>()
         for (const discount of (activeDiscounts ?? []) as ResolvedWorkspaceDiscountRow[]) {
             if (discount.is_stock_ok) {
@@ -251,19 +248,7 @@ Deno.serve(async (req) => {
 
         return jsonResponse(
             {
-                store: {
-                    name: resolvedWorkspace.name,
-                    slug: resolvedWorkspace.store_slug,
-                    description: resolvedWorkspace.store_description,
-                    logo_url: resolvedLogoUrl,
-                    currency: resolvedWorkspace.default_currency ?? 'iqd',
-                    contacts: visibleContacts.map((contact) => ({
-                        type: contact.type,
-                        value: contact.value,
-                        label: contact.label,
-                        is_primary: Boolean(contact.is_primary)
-                    }))
-                },
+                store: buildStorePayload(resolvedWorkspace, resolvedLogoUrl, storeContacts),
                 categories: categoryIds
                     .map((categoryId) => ({
                         id: categoryId,
@@ -292,7 +277,8 @@ Deno.serve(async (req) => {
                             : null,
                         discount_type: resolvedDiscount?.discount_type ?? null,
                         discount_value: resolvedDiscount?.discount_value ?? null,
-                        discount_ends_at: resolvedDiscount?.ends_at ?? null
+                        discount_ends_at: resolvedDiscount?.ends_at ?? null,
+                        marketplace_added_at: marketplaceAddedAtByProductId.get(product.id) ?? product.created_at ?? null
                     }
                 })
             },

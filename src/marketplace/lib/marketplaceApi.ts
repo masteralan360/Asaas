@@ -39,6 +39,7 @@ export interface MarketplaceProduct {
     discount_type: string | null
     discount_value: number | null
     discount_ends_at: string | null
+    marketplace_added_at: string | null
 }
 
 export interface MarketplaceStoreCatalog {

@@ -33,10 +33,10 @@ export function ProductCard({ product, iqdPreference, addToCartLabel, onAdd }: P
     }, [resolvedImageUrl])
 
     return (
-        <Card className="group h-full overflow-hidden border-border/60 bg-card/85 transition-all duration-300 hover:-translate-y-1 hover:border-primary/40 hover:shadow-[0_24px_60px_rgba(15,23,42,0.12)]">
-            <CardContent className="flex h-full flex-col gap-4 p-4">
-                <div className="relative overflow-hidden rounded-[1.5rem] bg-muted/40">
-                    <div className="aspect-[4/3]">
+        <Card className="group h-full overflow-hidden rounded-[2.5rem] border-[#e3e8ef] bg-[#fbfbfd] transition-all duration-300 hover:-translate-y-1 hover:border-[#c9ded9] hover:shadow-[0_24px_60px_rgba(15,23,42,0.10)] dark:border-border/60 dark:bg-card/85">
+            <CardContent className="flex h-full flex-col p-4">
+                <div className="relative overflow-hidden bg-[#f1f2f4]">
+                    <div className="aspect-square">
                         {resolvedImageUrl && !hasImageError ? (
                             <img
                                 src={resolvedImageUrl}
@@ -58,46 +58,44 @@ export function ProductCard({ product, iqdPreference, addToCartLabel, onAdd }: P
                     )}
                 </div>
 
-                <div className="space-y-2">
-                    <div className="space-y-1">
-                        <h3 className="line-clamp-2 text-lg font-bold leading-tight">{product.name}</h3>
-                        <p className="text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">
-                            {product.sku}
-                        </p>
-                    </div>
-
-                    <p className="line-clamp-3 min-h-[4.25rem] text-sm leading-6 text-muted-foreground">
-                        {product.description || product.unit}
+                <div className="flex flex-1 flex-col border-t border-[#edf0f4] pt-4 dark:border-border/50">
+                    <p className="min-h-4 text-[11px] font-black uppercase tracking-[0.18em] text-[#4c5857] dark:text-muted-foreground">
+                        {product.category_name || ''}
                     </p>
-                </div>
+                    <h3 className="mt-2 line-clamp-2 min-h-[3.25rem] text-lg font-semibold leading-snug text-[#151b28] dark:text-foreground">
+                        {product.name}
+                    </h3>
 
-                <div className="mt-auto flex items-center justify-between gap-3">
-                    <div>
-                        {hasDiscount ? (
-                            <>
-                                <div className="text-xs font-semibold text-muted-foreground line-through">
+                    <div className="mt-auto flex items-end justify-between gap-3 pt-8">
+                        <div>
+                            {hasDiscount ? (
+                                <>
+                                    <div className="text-xs font-semibold text-muted-foreground line-through">
+                                        {formatCurrency(product.price, product.currency, iqdPreference)}
+                                    </div>
+                                    <div className="text-lg font-black text-emerald-600">
+                                        {formatCurrency(product.discount_price!, product.currency, iqdPreference)}
+                                    </div>
+                                </>
+                            ) : (
+                                <div className="text-lg font-black text-[#151b28] dark:text-foreground">
                                     {formatCurrency(product.price, product.currency, iqdPreference)}
                                 </div>
-                                <div className="text-xl font-black text-emerald-600">
-                                    {formatCurrency(product.discount_price!, product.currency, iqdPreference)}
+                            )}
+                            {endsSoon && endsAt && (
+                                <div className="mt-1 text-[11px] font-medium text-amber-600">
+                                    Ends {formatDate(endsAt)}
                                 </div>
-                            </>
-                        ) : (
-                            <div className="text-xl font-black">
-                                {formatCurrency(product.price, product.currency, iqdPreference)}
-                            </div>
-                        )}
-                        <div className="text-xs text-muted-foreground">{product.unit}</div>
-                        {endsSoon && endsAt && (
-                            <div className="mt-1 text-[11px] font-medium text-amber-600">
-                                Ends {formatDate(endsAt)}
-                            </div>
-                        )}
+                            )}
+                        </div>
+                        <Button
+                            className="h-9 rounded-full bg-[#d3e7e1] px-5 text-sm font-black text-[#00756f] shadow-none hover:bg-[#c4ded7]"
+                            onClick={() => onAdd(product)}
+                        >
+                            <Plus className="h-4 w-4" />
+                            {addToCartLabel}
+                        </Button>
                     </div>
-                    <Button className="gap-2 rounded-2xl" onClick={() => onAdd(product)}>
-                        <Plus className="h-4 w-4" />
-                        {addToCartLabel}
-                    </Button>
                 </div>
             </CardContent>
         </Card>
