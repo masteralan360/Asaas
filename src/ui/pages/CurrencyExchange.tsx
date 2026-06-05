@@ -1,6 +1,7 @@
 import { type FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useRoute } from 'wouter'
 import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import { ArrowLeft, ArrowRightLeft, CalendarClock, ClipboardList, Clock, History, Lock, Plus, Search, Trash2, Undo2, Unlock, Wallet } from 'lucide-react'
 
 import { useAuth } from '@/auth'
@@ -17,7 +18,6 @@ import {
     createExchangeSafeAdjustment,
     createExchangeTransaction,
     deleteExchangeFeeRule,
-    deleteExchangeTransaction,
     EXCHANGE_SAFE_CURRENCIES,
     reverseExchangeTransaction,
     findLatestSafeBuyForAcquisitionRate,
@@ -96,6 +96,11 @@ type FeeRuleFormState = {
     notes: string
 }
 
+type ExchangeReversalRelationRange = {
+    firstIndex: number
+    lastIndex: number
+}
+
 type MarketRateCurrency = Exclude<CurrencyCode, 'iqd'>
 
 const paymentMethods: ExchangePaymentMethod[] = ['cash', 'fib', 'qicard', 'zaincash', 'fastpay']
@@ -172,14 +177,12 @@ function makeDefaultRuleForm(currency: CurrencyCode): FeeRuleFormState {
     }
 }
 
-function transactionTypeLabel(type: ExchangeTransactionType) {
-    return type === 'buy' ? 'Buy Currency' : 'Sell Currency'
+function transactionTypeLabel(type: ExchangeTransactionType, t: TFunction) {
+    return t(`currencyExchange.transactionTypes.${type}`)
 }
 
-function feeScopeLabel(scope: ExchangeFeeRuleTransactionScope) {
-    if (scope === 'buy') return 'Buy Currency'
-    if (scope === 'sell') return 'Sell Currency'
-    return 'Buy and Sell'
+function feeScopeLabel(scope: ExchangeFeeRuleTransactionScope, t: TFunction) {
+    return t(`currencyExchange.ruleScopes.${scope}`)
 }
 
 function getSafeBalanceAmount(balances: ExchangeSafeBalance[], safeId: string | null | undefined, currency: CurrencyCode) {
@@ -194,11 +197,98 @@ function sanitizeSignedNumericInput(value: string, options?: { allowDecimal?: bo
     return sanitized ? `${sign}${sanitized}` : sign
 }
 
-function movementTypeLabel(type: ExchangeSafeMovement['movementType']) {
-    if (type === 'opening_balance') return 'Opening Balance'
-    if (type === 'adjustment') return 'Adjustment'
-    if (type === 'exchange_in') return 'Exchange In'
-    return 'Exchange Out'
+function movementTypeLabel(type: ExchangeSafeMovement['movementType'], t: TFunction) {
+    return t(`currencyExchange.movementTypes.${type}`)
+}
+
+function feeTypeLabel(type: ExchangeFeeType | null | undefined, t: TFunction) {
+    if (!type) return '-'
+    return t(`currencyExchange.feeTypes.${type}`)
+}
+
+function rateSourceLabel(source: string | null | undefined, t: TFunction) {
+    return source === 'manual'
+        ? t('currencyExchange.rateSources.manual')
+        : t('currencyExchange.rateSources.live')
+}
+
+function acquisitionSourceLabel(source: ExchangeAcquisitionRateSource | null | undefined, t: TFunction) {
+    return source === 'last_buy'
+        ? t('currencyExchange.acquisitionSources.last_buy')
+        : t('currencyExchange.acquisitionSources.manual')
+}
+
+function safeStatusLabel(isActive: boolean, t: TFunction) {
+    return isActive ? t('currencyExchange.status.active') : t('currencyExchange.status.inactive')
+}
+
+function getExchangeReversalRelationKey(transaction: ExchangeTransaction) {
+    if (transaction.reversedTransactionId) {
+        return `exchange-reversal:${transaction.reversedTransactionId}`
+    }
+
+    if (transaction.isReversed) {
+        return `exchange-reversal:${transaction.id}`
+    }
+
+    return null
+}
+
+function buildExchangeReversalRelationMaps(transactions: ExchangeTransaction[]) {
+    const counts = new Map<string, number>()
+    const ranges = new Map<string, ExchangeReversalRelationRange>()
+
+    transactions.forEach((transaction, index) => {
+        const relationKey = getExchangeReversalRelationKey(transaction)
+        if (!relationKey) {
+            return
+        }
+
+        counts.set(relationKey, (counts.get(relationKey) || 0) + 1)
+
+        const existingRange = ranges.get(relationKey)
+        if (!existingRange) {
+            ranges.set(relationKey, { firstIndex: index, lastIndex: index })
+            return
+        }
+
+        existingRange.lastIndex = index
+    })
+
+    return { counts, ranges }
+}
+
+function profitSummary(transactions: ExchangeTransaction[], iqdPreference: IQDDisplayPreference) {
+    const totals = new Map<CurrencyCode, number>()
+
+    for (const transaction of transactions) {
+        if (!transaction.profitCurrency) {
+            continue
+        }
+
+        const amount = Number(transaction.profitAmount || 0)
+        if (!Number.isFinite(amount) || amount === 0) {
+            continue
+        }
+
+        totals.set(transaction.profitCurrency, (totals.get(transaction.profitCurrency) || 0) + amount)
+    }
+
+    const orderedCurrencies = [
+        ...EXCHANGE_SAFE_CURRENCIES,
+        ...Array.from(totals.keys()).filter((currency) => !EXCHANGE_SAFE_CURRENCIES.includes(currency))
+    ]
+    const entries = orderedCurrencies
+        .map((currency) => [currency, totals.get(currency) || 0] as const)
+        .filter(([, amount]) => amount !== 0)
+
+    if (entries.length === 0) {
+        return '-'
+    }
+
+    return entries
+        .map(([currency, amount]) => formatCurrency(amount, currency, iqdPreference))
+        .join(' / ')
 }
 
 export function CurrencyExchange() {
@@ -277,8 +367,10 @@ function ExchangeTransactionsPage({
     const { user } = useAuth()
     const { hasPermission } = useWorkspacePermissions()
     const transactions = useExchangeTransactions(workspaceId)
+    const safes = useExchangeSafes(workspaceId)
     const [search, setSearch] = useState('')
     const [reverseTargetId, setReverseTargetId] = useState<string | null>(null)
+    const [hoveredReversalRelationKey, setHoveredReversalRelationKey] = useState<string | null>(null)
     const [isReversing, setIsReversing] = useState(false)
     const canReverse = user?.role === 'admin' || hasPermission('currencyExchange.reverse')
 
@@ -296,24 +388,40 @@ function ExchangeTransactionsPage({
         ].some((value) => value ? String(value).toLowerCase().includes(query) : false))
     }, [search, transactions])
 
-    const metrics = useMemo(() => ({
-        totalCount: transactions.length,
-        manualRates: transactions.filter((transaction) => transaction.exchangeRateManuallyEdited).length,
-        editedFees: transactions.filter((transaction) => transaction.feeEdited).length,
-        totalFees: transactions.reduce((sum, transaction) => sum + Number(transaction.feeAmount || 0), 0)
-    }), [transactions])
+    const reversalRelationMaps = useMemo(
+        () => buildExchangeReversalRelationMaps(filteredTransactions),
+        [filteredTransactions]
+    )
+    const hoveredReversalRange = hoveredReversalRelationKey
+        ? (reversalRelationMaps.ranges.get(hoveredReversalRelationKey) ?? null)
+        : null
+    const hasVisibleReversalRelations = Array.from(reversalRelationMaps.counts.values()).some((count) => count > 1)
+
+    const metrics = useMemo(() => {
+        const reportableTransactions = transactions.filter((transaction) => !transaction.isReversed && !transaction.reversedTransactionId)
+
+        return {
+            totalCount: transactions.length,
+            manualRates: reportableTransactions.filter((transaction) => transaction.exchangeRateManuallyEdited).length,
+            realizedProfit: profitSummary(reportableTransactions, iqdDisplayPreference),
+            activeSafes: safes.filter((safe) => safe.isActive).length
+        }
+    }, [iqdDisplayPreference, safes, transactions])
 
     const handleReverse = async () => {
         if (!reverseTargetId) return
         setIsReversing(true)
         try {
             await reverseExchangeTransaction(reverseTargetId, user?.id || null)
-            toast({ title: t('common.success', { defaultValue: 'Success' }), description: 'Exchange transaction reversed.' })
+            toast({
+                title: t('common.success', { defaultValue: 'Success' }),
+                description: t('currencyExchange.messages.transactionReversed')
+            })
             setReverseTargetId(null)
         } catch (error: any) {
             toast({
                 title: t('common.error', { defaultValue: 'Error' }),
-                description: error?.message || 'Failed to reverse exchange transaction.',
+                description: error?.message || t('currencyExchange.messages.transactionReverseFailed'),
                 variant: 'destructive'
             })
         } finally {
@@ -327,46 +435,46 @@ function ExchangeTransactionsPage({
                 <div>
                     <h1 className="flex items-center gap-2 text-3xl font-bold tracking-tight">
                         <ArrowRightLeft className="h-7 w-7" />
-                        Currency Exchange Service
+                        {t('currencyExchange.serviceTitle')}
                     </h1>
                     <p className="text-sm text-muted-foreground">
-                        Walk-in buy and sell currency transactions with immutable rate and fee snapshots.
+                        {t('currencyExchange.serviceDescription')}
                     </p>
                 </div>
                 <div className="flex flex-col gap-2 sm:flex-row">
                     <Button type="button" variant="outline" onClick={onSafes} className="gap-2">
                         <Wallet className="h-4 w-4" />
-                        Safes
+                        {t('currencyExchange.safes.title')}
                     </Button>
                     {canAccessRules ? (
                         <Button type="button" variant="outline" onClick={onRules} className="gap-2">
                             <ClipboardList className="h-4 w-4" />
-                            Fee/Commission Rules
+                            {t('currencyExchange.feeRules.title')}
                         </Button>
                     ) : null}
                     <Button type="button" onClick={onCreate} className="gap-2">
                         <Plus className="h-4 w-4" />
-                        Create Transaction
+                        {t('currencyExchange.buttons.createTransaction')}
                     </Button>
                 </div>
             </div>
 
             <div className="grid gap-4 md:grid-cols-4">
-                <MetricCard title="Transactions" value={String(metrics.totalCount)} />
-                <MetricCard title="Manual Rates" value={String(metrics.manualRates)} />
-                <MetricCard title="Edited Fees" value={String(metrics.editedFees)} />
-                <MetricCard title="Fee Snapshots" value={String(metrics.totalFees.toLocaleString())} />
+                <MetricCard title={t('currencyExchange.metrics.transactions')} value={String(metrics.totalCount)} />
+                <MetricCard title={t('currencyExchange.metrics.manualRates')} value={String(metrics.manualRates)} />
+                <MetricCard title={t('currencyExchange.metrics.realizedProfit')} value={metrics.realizedProfit} />
+                <MetricCard title={t('currencyExchange.metrics.activeSafes')} value={String(metrics.activeSafes)} />
             </div>
 
             <Card>
                 <CardHeader>
                     <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                        <CardTitle>Exchange Transactions</CardTitle>
+                        <CardTitle>{t('currencyExchange.transactions.title')}</CardTitle>
                         <div className="relative w-full md:w-80">
                             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                             <Input
                                 className="pl-9"
-                                placeholder="Search transactions..."
+                                placeholder={t('currencyExchange.transactions.searchPlaceholder')}
                                 value={search}
                                 onChange={(event) => setSearch(event.target.value)}
                             />
@@ -374,16 +482,16 @@ function ExchangeTransactionsPage({
                     </div>
                 </CardHeader>
                 <CardContent>
-                    <Table>
+                    <Table className={cn(hasVisibleReversalRelations && 'ms-6 w-[calc(100%-1.5rem)]')}>
                         <TableHeader>
                             <TableRow>
-                                <TableHead>Transaction</TableHead>
-                                <TableHead>Type</TableHead>
-                                <TableHead>Customer Gives</TableHead>
-                                <TableHead>Customer Receives</TableHead>
-                                <TableHead>Rate</TableHead>
-                                <TableHead>Fee</TableHead>
-                                <TableHead>Payment</TableHead>
+                                <TableHead>{t('currencyExchange.table.transaction')}</TableHead>
+                                <TableHead>{t('currencyExchange.table.type')}</TableHead>
+                                <TableHead>{t('currencyExchange.table.customerGives')}</TableHead>
+                                <TableHead>{t('currencyExchange.table.customerReceives')}</TableHead>
+                                <TableHead>{t('currencyExchange.table.rate')}</TableHead>
+                                <TableHead>{t('currencyExchange.table.fee')}</TableHead>
+                                <TableHead>{t('currencyExchange.table.payment')}</TableHead>
                                 <TableHead className="text-end">{t('common.actions', { defaultValue: 'Actions' })}</TableHead>
                             </TableRow>
                         </TableHeader>
@@ -391,12 +499,58 @@ function ExchangeTransactionsPage({
                             {filteredTransactions.length === 0 ? (
                                 <TableRow>
                                     <TableCell colSpan={8} className="py-8 text-center text-muted-foreground">
-                                        No exchange transactions found.
+                                        {t('currencyExchange.empty.transactions')}
                                     </TableCell>
                                 </TableRow>
-                            ) : filteredTransactions.map((transaction) => (
-                                <TableRow key={transaction.id} className={transaction.isReversed ? 'bg-destructive/5' : transaction.reversedTransactionId ? 'bg-amber-500/5' : ''}>
-                                    <TableCell>
+                            ) : filteredTransactions.map((transaction, rowIndex) => {
+                                const reversalRelationKey = getExchangeReversalRelationKey(transaction)
+                                const isRelationHovered = !!hoveredReversalRelationKey && reversalRelationKey === hoveredReversalRelationKey
+                                const relatedVisibleCount = reversalRelationKey ? (reversalRelationMaps.counts.get(reversalRelationKey) || 0) : 0
+                                const hasVisibleLinkedPeer = relatedVisibleCount > 1
+                                const showHierarchyLine = !!hoveredReversalRange
+                                    && hoveredReversalRange.firstIndex !== hoveredReversalRange.lastIndex
+                                    && rowIndex >= hoveredReversalRange.firstIndex
+                                    && rowIndex <= hoveredReversalRange.lastIndex
+                                const showHierarchyTurn = isRelationHovered && hasVisibleLinkedPeer
+                                const hierarchyVerticalClass = hoveredReversalRange && rowIndex === hoveredReversalRange.firstIndex
+                                    ? 'top-1/2 bottom-0'
+                                    : hoveredReversalRange && rowIndex === hoveredReversalRange.lastIndex
+                                        ? 'top-0 bottom-1/2'
+                                        : 'top-0 bottom-0'
+
+                                return (
+                                <TableRow
+                                    key={transaction.id}
+                                    className={cn(
+                                        transaction.isReversed ? 'bg-destructive/5' : transaction.reversedTransactionId ? 'bg-amber-500/5' : '',
+                                        reversalRelationKey && 'transition-colors duration-150',
+                                        isRelationHovered && hasVisibleLinkedPeer && 'bg-yellow-500/10'
+                                    )}
+                                    onMouseEnter={() => {
+                                        if (reversalRelationKey) {
+                                            setHoveredReversalRelationKey(reversalRelationKey)
+                                        }
+                                    }}
+                                    onMouseLeave={() => {
+                                        if (reversalRelationKey) {
+                                            setHoveredReversalRelationKey((current) => current === reversalRelationKey ? null : current)
+                                        }
+                                    }}
+                                >
+                                    <TableCell className="relative">
+                                        {showHierarchyLine ? (
+                                            <div className="pointer-events-none absolute inset-y-0 -start-6 w-5">
+                                                <span
+                                                    className={cn(
+                                                        'absolute start-1.5 w-px bg-yellow-500',
+                                                        hierarchyVerticalClass
+                                                    )}
+                                                />
+                                                {showHierarchyTurn ? (
+                                                    <span className="absolute start-1.5 top-1/2 h-px w-3 -translate-y-1/2 bg-yellow-500" />
+                                                ) : null}
+                                            </div>
+                                        ) : null}
                                         <div className="font-medium">{transaction.transactionNo}</div>
                                         <div className="text-xs text-muted-foreground">{formatDateTime(transaction.transactionDate)}</div>
                                         {transaction.safeNameSnapshot ? (
@@ -406,7 +560,7 @@ function ExchangeTransactionsPage({
                                             <div className="text-xs text-muted-foreground">{transaction.employeeName}</div>
                                         ) : null}
                                     </TableCell>
-                                    <TableCell>{transactionTypeLabel(transaction.transactionType)}</TableCell>
+                                    <TableCell>{transactionTypeLabel(transaction.transactionType, t)}</TableCell>
                                     <TableCell>{formatCurrency(transaction.customerGivesAmount, transaction.fromCurrency, iqdDisplayPreference as any)}</TableCell>
                                     <TableCell>{formatCurrency(transaction.customerReceivesAmount, transaction.toCurrency, iqdDisplayPreference as any)}</TableCell>
                                     <TableCell>
@@ -415,18 +569,25 @@ function ExchangeTransactionsPage({
                                             'mt-1 inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium',
                                             transaction.exchangeRateManuallyEdited ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300' : 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
                                         )}>
-                                            {transaction.exchangeRateManuallyEdited ? 'Manual' : 'Live'}
+                                            {transaction.exchangeRateManuallyEdited ? t('currencyExchange.rateSources.manual') : t('currencyExchange.rateSources.live')}
                                         </div>
                                     </TableCell>
                                     <TableCell>
-                                        <div>{transaction.feeType ? `${transaction.feeType} / ${formatCurrency(transaction.feeAmount, transaction.feeCurrency || transaction.fromCurrency, iqdDisplayPreference as any)}` : '-'}</div>
+                                        <div>{transaction.feeType ? `${feeTypeLabel(transaction.feeType, t)} / ${formatCurrency(transaction.feeAmount, transaction.feeCurrency || transaction.fromCurrency, iqdDisplayPreference as any)}` : '-'}</div>
                                         {transaction.profitCurrency ? (
-                                            <div className={(transaction.profitAmount || 0) >= 0 ? 'text-xs text-emerald-700 dark:text-emerald-300' : 'text-xs text-destructive'}>
-                                                Profit: {formatCurrency(transaction.profitAmount || 0, transaction.profitCurrency, iqdDisplayPreference as any)}
+                                            <div className={cn(
+                                                'text-xs',
+                                                transaction.isReversed || transaction.reversedTransactionId
+                                                    ? 'text-foreground line-through decoration-current'
+                                                    : (transaction.profitAmount || 0) >= 0
+                                                        ? 'text-emerald-700 dark:text-emerald-300'
+                                                        : 'text-destructive'
+                                            )}>
+                                                {t('currencyExchange.labels.profit')}: {formatCurrency(transaction.profitAmount || 0, transaction.profitCurrency, iqdDisplayPreference as any)}
                                             </div>
                                         ) : null}
                                         {transaction.feeEdited ? (
-                                            <div className="text-xs text-amber-700 dark:text-amber-300">Edited from rule</div>
+                                            <div className="text-xs text-amber-700 dark:text-amber-300">{t('currencyExchange.labels.editedFromRule')}</div>
                                         ) : null}
                                     </TableCell>
                                     <TableCell className="capitalize">{transaction.paymentMethod}</TableCell>
@@ -438,22 +599,23 @@ function ExchangeTransactionsPage({
                                                 size="icon"
                                                 className="text-destructive hover:text-destructive"
                                                 onClick={() => setReverseTargetId(transaction.id)}
-                                                aria-label="Reverse exchange transaction"
+                                                aria-label={t('currencyExchange.reverse.action')}
                                             >
                                                 <Undo2 className="h-4 w-4" />
                                             </Button>
                                         ) : transaction.isReversed ? (
                                             <span className="inline-flex items-center gap-1 rounded-full bg-destructive/15 px-2.5 py-0.5 text-xs font-semibold text-destructive">
-                                                Reversed
+                                                {t('currencyExchange.status.reversed')}
                                             </span>
                                         ) : transaction.reversedTransactionId ? (
                                             <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2.5 py-0.5 text-xs font-semibold text-amber-700 dark:text-amber-300">
-                                                Reversal
+                                                {t('currencyExchange.status.reversal')}
                                             </span>
                                         ) : null}
                                     </TableCell>
                                 </TableRow>
-                            ))}
+                                )
+                            })}
                         </TableBody>
                     </Table>
                 </CardContent>
@@ -479,6 +641,7 @@ function ExchangeSafesPage({
     iqdDisplayPreference: IQDDisplayPreference
     onBack: () => void
 }) {
+    const { t } = useTranslation()
     const { user } = useAuth()
     const { toast } = useToast()
     const safes = useExchangeSafes(workspaceId)
@@ -524,11 +687,14 @@ function ExchangeSafesPage({
             setSelectedSafeId(safe.id)
             setCreateOpen(false)
             resetCreateForm()
-            toast({ title: 'Safe created.', description: `${safe.name} is ready for exchange transactions.` })
+            toast({
+                title: t('currencyExchange.messages.safeCreatedTitle'),
+                description: t('currencyExchange.messages.safeCreatedDescription', { name: safe.name })
+            })
         } catch (error: any) {
             toast({
-                title: 'Failed to create safe',
-                description: error?.message || 'Could not create safe.',
+                title: t('currencyExchange.messages.safeCreateFailedTitle'),
+                description: error?.message || t('currencyExchange.messages.safeCreateFailedDescription'),
                 variant: 'destructive'
             })
         } finally {
@@ -551,11 +717,14 @@ function ExchangeSafesPage({
             setAdjustOpen(false)
             setAdjustAmount('')
             setAdjustNotes('')
-            toast({ title: 'Adjustment saved.', description: `${selectedSafe.name} balance was updated.` })
+            toast({
+                title: t('currencyExchange.messages.adjustmentSavedTitle'),
+                description: t('currencyExchange.messages.adjustmentSavedDescription', { name: selectedSafe.name })
+            })
         } catch (error: any) {
             toast({
-                title: 'Failed to adjust safe',
-                description: error?.message || 'Could not adjust safe.',
+                title: t('currencyExchange.messages.adjustmentFailedTitle'),
+                description: error?.message || t('currencyExchange.messages.adjustmentFailedDescription'),
                 variant: 'destructive'
             })
         } finally {
@@ -574,25 +743,25 @@ function ExchangeSafesPage({
                         onClick={onBack}
                     >
                         <ArrowLeft className="h-4 w-4" />
-                        Currency Exchange Service
+                        {t('currencyExchange.serviceTitle')}
                     </Button>
                     <h1 className="mt-1 flex items-center gap-2 text-3xl font-bold tracking-tight">
                         <Wallet className="h-7 w-7" />
-                        FX Safes
+                        {t('currencyExchange.safes.pageTitle')}
                     </h1>
                     <p className="text-sm text-muted-foreground">
-                        Currency Exchange-only safes with per-currency balances and movement audit.
+                        {t('currencyExchange.safes.description')}
                     </p>
                 </div>
                 <div className="flex flex-col gap-2 sm:flex-row">
                     {isAdmin && selectedSafe ? (
                         <Button type="button" variant="outline" onClick={() => setAdjustOpen(true)}>
-                            Adjustment
+                            {t('currencyExchange.buttons.adjustment')}
                         </Button>
                     ) : null}
                     <Button type="button" onClick={() => setCreateOpen(true)} className="gap-2">
                         <Plus className="h-4 w-4" />
-                        Create Safe
+                        {t('currencyExchange.buttons.createSafe')}
                     </Button>
                 </div>
             </div>
@@ -600,12 +769,12 @@ function ExchangeSafesPage({
             <div className="grid gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
                 <Card>
                     <CardHeader>
-                        <CardTitle>Safes</CardTitle>
+                        <CardTitle>{t('currencyExchange.safes.title')}</CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-2">
                         {safes.length === 0 ? (
                             <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
-                                No FX safes yet.
+                                {t('currencyExchange.empty.safes')}
                             </div>
                         ) : safes.map((safe) => (
                             <button
@@ -618,7 +787,7 @@ function ExchangeSafesPage({
                                 onClick={() => setSelectedSafeId(safe.id)}
                             >
                                 <div className="font-semibold">{safe.name}</div>
-                                <div className="text-xs text-muted-foreground">{safe.isActive ? 'Active' : 'Inactive'}</div>
+                                <div className="text-xs text-muted-foreground">{safeStatusLabel(safe.isActive, t)}</div>
                             </button>
                         ))}
                     </CardContent>
@@ -639,33 +808,33 @@ function ExchangeSafesPage({
                         <CardHeader>
                             <CardTitle className="flex items-center gap-2">
                                 <History className="h-5 w-5" />
-                                Movement Audit
+                                {t('currencyExchange.safes.movementAudit')}
                             </CardTitle>
                         </CardHeader>
                         <CardContent>
                             <Table>
                                 <TableHeader>
                                     <TableRow>
-                                        <TableHead>Date</TableHead>
-                                        <TableHead>Type</TableHead>
-                                        <TableHead>Currency</TableHead>
-                                        <TableHead>Delta</TableHead>
-                                        <TableHead>Before</TableHead>
-                                        <TableHead>After</TableHead>
-                                        <TableHead>Notes</TableHead>
+                                        <TableHead>{t('currencyExchange.table.date')}</TableHead>
+                                        <TableHead>{t('currencyExchange.table.type')}</TableHead>
+                                        <TableHead>{t('currencyExchange.table.currency')}</TableHead>
+                                        <TableHead>{t('currencyExchange.table.delta')}</TableHead>
+                                        <TableHead>{t('currencyExchange.table.before')}</TableHead>
+                                        <TableHead>{t('currencyExchange.table.after')}</TableHead>
+                                        <TableHead>{t('currencyExchange.table.notes')}</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
                                     {movements.length === 0 ? (
                                         <TableRow>
                                             <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">
-                                                No movements for this safe yet.
+                                                {t('currencyExchange.empty.movements')}
                                             </TableCell>
                                         </TableRow>
                                     ) : movements.slice(0, 50).map((movement) => (
                                         <TableRow key={movement.id}>
                                             <TableCell>{formatDateTime(movement.createdAt)}</TableCell>
-                                            <TableCell>{movementTypeLabel(movement.movementType)}</TableCell>
+                                            <TableCell>{movementTypeLabel(movement.movementType, t)}</TableCell>
                                             <TableCell>{movement.currency.toUpperCase()}</TableCell>
                                             <TableCell className={movement.deltaAmount < 0 ? 'text-destructive' : 'text-emerald-700'}>
                                                 {formatCurrency(movement.deltaAmount, movement.currency, iqdDisplayPreference)}
@@ -685,21 +854,21 @@ function ExchangeSafesPage({
             <Dialog open={createOpen} onOpenChange={setCreateOpen}>
                 <DialogContent className="max-w-xl">
                     <DialogHeader>
-                        <DialogTitle>Create FX Safe</DialogTitle>
+                        <DialogTitle>{t('currencyExchange.safes.createTitle')}</DialogTitle>
                         <DialogDescription>
-                            Opening balances are admin-only and will be saved as audit movements.
+                            {t('currencyExchange.safes.createDescription')}
                         </DialogDescription>
                     </DialogHeader>
                     <div className="grid gap-4">
                         <div className="grid gap-2">
-                            <Label>Safe Name</Label>
-                            <Input value={safeName} onChange={(event) => setSafeName(event.target.value)} placeholder="Main exchange safe" />
+                            <Label>{t('currencyExchange.labels.safeName')}</Label>
+                            <Input value={safeName} onChange={(event) => setSafeName(event.target.value)} placeholder={t('currencyExchange.placeholders.safeName')} />
                         </div>
                         {isAdmin ? (
                             <div className="grid gap-3 sm:grid-cols-2">
                                 {EXCHANGE_SAFE_CURRENCIES.map((currency) => (
                                     <div key={currency} className="grid gap-2">
-                                        <Label>Opening {currency.toUpperCase()}</Label>
+                                        <Label>{t('currencyExchange.labels.openingCurrency', { currency: currency.toUpperCase() })}</Label>
                                         <Input
                                             type="text"
                                             inputMode="decimal"
@@ -715,18 +884,18 @@ function ExchangeSafesPage({
                             </div>
                         ) : (
                             <div className="rounded-xl border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
-                                Only admins can set opening balances.
+                                {t('currencyExchange.safes.adminOpeningOnly')}
                             </div>
                         )}
                         <div className="grid gap-2">
-                            <Label>Notes</Label>
+                            <Label>{t('currencyExchange.labels.notes')}</Label>
                             <Textarea value={safeNotes} onChange={(event) => setSafeNotes(event.target.value)} rows={3} />
                         </div>
                     </div>
                     <DialogFooter>
-                        <Button type="button" variant="ghost" onClick={() => setCreateOpen(false)}>Cancel</Button>
+                        <Button type="button" variant="ghost" onClick={() => setCreateOpen(false)}>{t('common.cancel', { defaultValue: 'Cancel' })}</Button>
                         <Button type="button" onClick={handleCreateSafe} disabled={isSavingSafe || !safeName.trim()}>
-                            Create Safe
+                            {t('currencyExchange.buttons.createSafe')}
                         </Button>
                     </DialogFooter>
                 </DialogContent>
@@ -735,14 +904,14 @@ function ExchangeSafesPage({
             <Dialog open={adjustOpen} onOpenChange={setAdjustOpen}>
                 <DialogContent>
                     <DialogHeader>
-                        <DialogTitle>Safe Adjustment</DialogTitle>
+                        <DialogTitle>{t('currencyExchange.safes.adjustmentTitle')}</DialogTitle>
                         <DialogDescription>
-                            Admin-only correction movement for {selectedSafe?.name || 'selected safe'}.
+                            {t('currencyExchange.safes.adjustmentDescription', { name: selectedSafe?.name || t('currencyExchange.labels.selectedSafe') })}
                         </DialogDescription>
                     </DialogHeader>
                     <div className="grid gap-4">
                         <div className="grid gap-2">
-                            <Label>Currency</Label>
+                            <Label>{t('common.currency', { defaultValue: 'Currency' })}</Label>
                             <Select value={adjustCurrency} onValueChange={(value: CurrencyCode) => setAdjustCurrency(value)}>
                                 <SelectTrigger><SelectValue /></SelectTrigger>
                                 <SelectContent>
@@ -753,24 +922,24 @@ function ExchangeSafesPage({
                             </Select>
                         </div>
                         <div className="grid gap-2">
-                            <Label>Amount Delta</Label>
+                            <Label>{t('currencyExchange.labels.amountDelta')}</Label>
                             <Input
                                 type="text"
                                 inputMode="decimal"
                                 value={adjustAmount.startsWith('-') ? `-${formatNumericInput(adjustAmount.slice(1))}` : formatNumericInput(adjustAmount)}
                                 onChange={(event) => setAdjustAmount(sanitizeSignedNumericInput(event.target.value, { allowDecimal: adjustCurrency !== 'iqd' }))}
-                                placeholder="Use negative amount to decrease"
+                                placeholder={t('currencyExchange.placeholders.negativeDecrease')}
                             />
                         </div>
                         <div className="grid gap-2">
-                            <Label>Notes</Label>
+                            <Label>{t('currencyExchange.labels.notes')}</Label>
                             <Textarea value={adjustNotes} onChange={(event) => setAdjustNotes(event.target.value)} rows={3} />
                         </div>
                     </div>
                     <DialogFooter>
-                        <Button type="button" variant="ghost" onClick={() => setAdjustOpen(false)}>Cancel</Button>
+                        <Button type="button" variant="ghost" onClick={() => setAdjustOpen(false)}>{t('common.cancel', { defaultValue: 'Cancel' })}</Button>
                         <Button type="button" onClick={handleAdjustment} disabled={isSavingSafe || !adjustAmount}>
-                            Save Adjustment
+                            {t('currencyExchange.buttons.saveAdjustment')}
                         </Button>
                     </DialogFooter>
                 </DialogContent>
@@ -1050,13 +1219,13 @@ function CreateCurrencyExchangeTransactionPage({
 
             toast({
                 title: t('common.success', { defaultValue: 'Success' }),
-                description: 'Exchange transaction created.'
+                description: t('currencyExchange.messages.transactionCreated')
             })
             onCreated()
         } catch (error: any) {
             toast({
                 title: t('common.error', { defaultValue: 'Error' }),
-                description: error?.message || 'Failed to create exchange transaction.',
+                description: error?.message || t('currencyExchange.messages.transactionCreateFailed'),
                 variant: 'destructive'
             })
         } finally {
@@ -1084,52 +1253,52 @@ function CreateCurrencyExchangeTransactionPage({
                                 onClick={onCancel}
                             >
                                 <ArrowLeft className="h-4 w-4" />
-                                Currency Exchange Service
+                                {t('currencyExchange.serviceTitle')}
                             </Button>
                             <h1 className="flex items-center gap-2 text-3xl font-bold tracking-tight">
                                 <ArrowRightLeft className="h-7 w-7" />
-                                Create Exchange Transaction
+                                {t('currencyExchange.create.title')}
                             </h1>
                             <p className="text-sm text-muted-foreground">
-                                Record customer-gives and customer-receives values with a saved rate and fee snapshot.
+                                {t('currencyExchange.create.description')}
                             </p>
                         </div>
 
                         <Card>
                             <CardHeader>
-                                <CardTitle>Transaction Details</CardTitle>
+                                <CardTitle>{t('currencyExchange.create.transactionDetails')}</CardTitle>
                             </CardHeader>
                             <CardContent>
                                 <div className="grid gap-4">
                                     <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
                                         <div className="grid gap-2">
-                                            <Label>Transaction Type</Label>
+                                            <Label>{t('currencyExchange.labels.transactionType')}</Label>
                                             <Select value={transactionType} onValueChange={(value: ExchangeTransactionType) => setTransactionType(value)}>
                                                 <SelectTrigger><SelectValue /></SelectTrigger>
                                                 <SelectContent>
-                                                    <SelectItem value="buy">Buy Currency</SelectItem>
-                                                    <SelectItem value="sell">Sell Currency</SelectItem>
+                                                    <SelectItem value="buy">{t('currencyExchange.transactionTypes.buy')}</SelectItem>
+                                                    <SelectItem value="sell">{t('currencyExchange.transactionTypes.sell')}</SelectItem>
                                                 </SelectContent>
                                             </Select>
                                         </div>
                                         <div className="grid gap-2">
-                                            <Label>Transaction Date</Label>
+                                            <Label>{t('currencyExchange.labels.transactionDate')}</Label>
                                             <DateTimePicker
                                                 id="currency-exchange-transaction-date"
                                                 mode="date-time"
                                                 date={parseLocalDateTimeValue(transactionDate)}
                                                 setDate={(value) => setTransactionDate(toTimestampValue(value))}
-                                                placeholder="Transaction Date"
+                                                placeholder={t('currencyExchange.labels.transactionDate')}
                                             />
                                         </div>
                                         <div className="grid gap-2">
-                                            <Label>Employee</Label>
+                                            <Label>{t('currencyExchange.labels.employee')}</Label>
                                             <Input value={user?.name || ''} readOnly className="bg-muted/40" />
                                         </div>
                                         <div className="grid gap-2">
-                                            <Label>Safe</Label>
+                                            <Label>{t('currencyExchange.labels.safe')}</Label>
                                             <Select value={selectedSafeId} onValueChange={setSelectedSafeId}>
-                                                <SelectTrigger><SelectValue placeholder="Select safe" /></SelectTrigger>
+                                                <SelectTrigger><SelectValue placeholder={t('currencyExchange.placeholders.selectSafe')} /></SelectTrigger>
                                                 <SelectContent>
                                                     {activeSafes.map((safe) => (
                                                         <SelectItem key={safe.id} value={safe.id}>{safe.name}</SelectItem>
@@ -1141,7 +1310,7 @@ function CreateCurrencyExchangeTransactionPage({
 
                                     {activeSafes.length === 0 ? (
                                         <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                                            Create an FX safe before creating exchange transactions.
+                                            {t('currencyExchange.messages.createSafeFirst')}
                                         </div>
                                     ) : null}
 
@@ -1149,17 +1318,17 @@ function CreateCurrencyExchangeTransactionPage({
                                         <CurrencySelector
                                             value={fromCurrency}
                                             onChange={(value) => setFromCurrency(value)}
-                                            label="From Currency"
+                                            label={t('currencyExchange.labels.fromCurrency')}
                                             iqdDisplayPreference={features.iqd_display_preference}
                                             allowedCurrencies={availableCurrencies}
                                         />
-                                        <Button type="button" variant="outline" size="icon" className="mb-0.5" onClick={switchCurrencies} aria-label="Swap currencies">
+                                        <Button type="button" variant="outline" size="icon" className="mb-0.5" onClick={switchCurrencies} aria-label={t('currencyExchange.buttons.swapCurrencies')}>
                                             <ArrowRightLeft className="h-4 w-4" />
                                         </Button>
                                         <CurrencySelector
                                             value={toCurrency}
                                             onChange={(value) => setToCurrency(value)}
-                                            label="To Currency"
+                                            label={t('currencyExchange.labels.toCurrency')}
                                             iqdDisplayPreference={features.iqd_display_preference}
                                             allowedCurrencies={availableCurrencies}
                                         />
@@ -1167,19 +1336,23 @@ function CreateCurrencyExchangeTransactionPage({
 
                                     {fromCurrency === toCurrency ? (
                                         <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                                            From currency and To currency must be different.
+                                            {t('currencyExchange.messages.currencyMustDiffer')}
                                         </div>
                                     ) : null}
 
                                     {hasInsufficientSafeBalance && calculation ? (
                                         <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                                            {selectedSafe?.name || 'Selected safe'} has {formatCurrency(outgoingSafeBalance, toCurrency, features.iqd_display_preference)} available, but this transaction pays {formatCurrency(calculation.customerReceivesAmount, toCurrency, features.iqd_display_preference)}.
+                                            {t('currencyExchange.messages.insufficientSafeBalance', {
+                                                safe: selectedSafe?.name || t('currencyExchange.labels.selectedSafe'),
+                                                available: formatCurrency(outgoingSafeBalance, toCurrency, features.iqd_display_preference),
+                                                pays: formatCurrency(calculation.customerReceivesAmount, toCurrency, features.iqd_display_preference)
+                                            })}
                                         </div>
                                     ) : null}
 
                                     <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                                         <div className="grid gap-2">
-                                            <Label>Customer Gives</Label>
+                                            <Label>{t('currencyExchange.labels.customerGives')}</Label>
                                             <div className="relative">
                                                 <Input
                                                     type="text"
@@ -1195,7 +1368,7 @@ function CreateCurrencyExchangeTransactionPage({
                                             </div>
                                         </div>
                                         <div className="grid gap-2">
-                                            <Label>Payment Method</Label>
+                                            <Label>{t('currencyExchange.labels.paymentMethod')}</Label>
                                             <Select value={paymentMethod} onValueChange={(value: ExchangePaymentMethod) => setPaymentMethod(value)}>
                                                 <SelectTrigger><SelectValue /></SelectTrigger>
                                                 <SelectContent>
@@ -1206,7 +1379,7 @@ function CreateCurrencyExchangeTransactionPage({
                                             </Select>
                                         </div>
                                         <div className="grid gap-2">
-                                            <Label>Customer Receives</Label>
+                                            <Label>{t('currencyExchange.labels.customerReceives')}</Label>
                                             <div className="flex h-10 items-center rounded-md border border-input bg-muted/40 px-3 text-sm font-semibold">
                                                 {calculation
                                                     ? formatCurrency(calculation.customerReceivesAmount, toCurrency, features.iqd_display_preference)
@@ -1220,18 +1393,18 @@ function CreateCurrencyExchangeTransactionPage({
 
                         <Card>
                             <CardHeader>
-                                <CardTitle>Market Rate Snapshot</CardTitle>
+                                <CardTitle>{t('currencyExchange.create.marketRateSnapshot')}</CardTitle>
                             </CardHeader>
                             <CardContent>
                                 <div className="space-y-3 rounded-2xl border border-primary/20 bg-primary/5 p-4">
                                     <div className="flex items-center justify-between gap-3">
-                                        <div className="text-sm font-semibold">Exchange Rate</div>
+                                        <div className="text-sm font-semibold">{t('currencyExchange.labels.exchangeRate')}</div>
                                         <div className="flex items-center gap-2">
                                             <span className={cn(
                                                 'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium',
                                                 exchangeRateSource === 'manual' ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'
                                             )}>
-                                                {exchangeRateSource === 'manual' ? 'Manual' : 'Live'}
+                                                {rateSourceLabel(exchangeRateSource, t)}
                                             </span>
                                             {canApplyManualPeriod ? (
                                                 <Button
@@ -1242,20 +1415,20 @@ function CreateCurrencyExchangeTransactionPage({
                                                     onClick={() => setManualPeriodOpen(true)}
                                                 >
                                                     <Clock className="mr-1.5 h-3.5 w-3.5" />
-                                                    Apply for Period
+                                                    {t('currencyExchange.buttons.applyForPeriod')}
                                                 </Button>
                                             ) : null}
                                         </div>
                                     </div>
                                     <div className="grid gap-3 sm:grid-cols-2">
                                         <div className="grid gap-2">
-                                            <Label>Currency Pair</Label>
+                                            <Label>{t('currencyExchange.labels.currencyPair')}</Label>
                                             <div className="flex h-10 w-full items-center rounded-md border border-input bg-background px-3 py-2 text-sm">
                                                 {getPairLabel(fromCurrency, toCurrency)}
                                             </div>
                                         </div>
                                         <div className="grid gap-2">
-                                            <Label>Rate</Label>
+                                            <Label>{t('currencyExchange.labels.rate')}</Label>
                                             <Input
                                                 type="text"
                                                 inputMode="decimal"
@@ -1270,12 +1443,12 @@ function CreateCurrencyExchangeTransactionPage({
                                         {transactionType === 'sell' ? (
                                             <div className="grid gap-2 sm:col-span-2">
                                                 <div className="flex items-center justify-between gap-2">
-                                                    <Label>Acquisition Rate</Label>
+                                                    <Label>{t('currencyExchange.labels.acquisitionRate')}</Label>
                                                     <span className={cn(
                                                         'rounded-full px-2 py-0.5 text-xs font-medium',
                                                         acquisitionRateSource === 'last_buy' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
                                                     )}>
-                                                        {acquisitionRateSource === 'last_buy' ? 'Last Buy' : 'Manual'}
+                                                        {acquisitionSourceLabel(acquisitionRateSource, t)}
                                                     </span>
                                                 </div>
                                                 <Input
@@ -1286,17 +1459,24 @@ function CreateCurrencyExchangeTransactionPage({
                                                         setAcquisitionRateValue(sanitizeNumericInput(event.target.value, { allowDecimal: fromCurrency !== 'iqd', maxFractionDigits: 6 }))
                                                         setAcquisitionRateSource('manual')
                                                     }}
-                                                    placeholder={`Cost per ${formatNumberWithCommas(getExchangeRateBasisAmount(toCurrency))} ${toCurrency.toUpperCase()} in ${fromCurrency.toUpperCase()}`}
+                                                    placeholder={t('currencyExchange.placeholders.acquisitionRate', {
+                                                        basis: formatNumberWithCommas(getExchangeRateBasisAmount(toCurrency)),
+                                                        to: toCurrency.toUpperCase(),
+                                                        from: fromCurrency.toUpperCase()
+                                                    })}
                                                 />
                                                 <p className="text-xs text-muted-foreground">
-                                                    Cost of {toCurrency.toUpperCase()} expressed in {fromCurrency.toUpperCase()} for profit snapshot.
+                                                    {t('currencyExchange.help.acquisitionRate', {
+                                                        to: toCurrency.toUpperCase(),
+                                                        from: fromCurrency.toUpperCase()
+                                                    })}
                                                 </p>
                                             </div>
                                         ) : null}
                                     </div>
                                     {profitPreview?.profitCurrency ? (
                                         <div className="rounded-xl border bg-muted/20 px-3 py-2 text-sm">
-                                            Estimated profit: <span className="font-semibold">{formatCurrency(profitPreview.profitAmount || 0, profitPreview.profitCurrency, features.iqd_display_preference)}</span>
+                                            {t('currencyExchange.labels.estimatedProfit')}: <span className="font-semibold">{formatCurrency(profitPreview.profitAmount || 0, profitPreview.profitCurrency, features.iqd_display_preference)}</span>
                                         </div>
                                     ) : null}
                                 </div>
@@ -1314,8 +1494,10 @@ function CreateCurrencyExchangeTransactionPage({
                                 onApplied={() => {
                                     window.dispatchEvent(new CustomEvent('exchange-rate-refresh'))
                                     toast({
-                                        title: 'Manual rate scheduled.',
-                                        description: `${editedAnchorCurrency.toUpperCase()}/IQD will use this rate until the selected period ends.`
+                                        title: t('currencyExchange.messages.manualRateScheduledTitle'),
+                                        description: t('currencyExchange.messages.manualRateScheduledDescription', {
+                                            pair: `${editedAnchorCurrency.toUpperCase()}/IQD`
+                                        })
                                     })
                                 }}
                             />
@@ -1323,13 +1505,13 @@ function CreateCurrencyExchangeTransactionPage({
 
                         <Card>
                             <CardHeader>
-                                <CardTitle>Fee / Commission</CardTitle>
+                                <CardTitle>{t('currencyExchange.feeRules.sectionTitle')}</CardTitle>
                             </CardHeader>
                             <CardContent>
                                 <div className="grid gap-4">
                                     <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                                         <div className="grid gap-2">
-                                            <Label>Rule</Label>
+                                            <Label>{t('currencyExchange.labels.rule')}</Label>
                                             <Select value={selectedRuleId} onValueChange={(value) => {
                                                 setSelectedRuleId(value)
                                                 const rule = rules.find((item) => item.id === value)
@@ -1337,7 +1519,7 @@ function CreateCurrencyExchangeTransactionPage({
                                             }}>
                                                 <SelectTrigger><SelectValue /></SelectTrigger>
                                                 <SelectContent>
-                                                    <SelectItem value="none">No fee</SelectItem>
+                                                    <SelectItem value="none">{t('currencyExchange.labels.noFee')}</SelectItem>
                                                     {rules
                                                         .filter((rule) =>
                                                             isExchangeFeeRuleEffectiveForTransaction(rule, transactionType, transactionDate, fromCurrency)
@@ -1349,13 +1531,13 @@ function CreateCurrencyExchangeTransactionPage({
                                             </Select>
                                         </div>
                                         <div className="grid gap-2">
-                                            <Label>Fee Type</Label>
+                                            <Label>{t('currencyExchange.labels.feeType')}</Label>
                                             <div className="flex h-10 items-center rounded-md border border-input bg-muted/40 px-3 text-sm capitalize">
-                                                {selectedRule?.feeType || '-'}
+                                                {feeTypeLabel(selectedRule?.feeType, t)}
                                             </div>
                                         </div>
                                         <div className="grid gap-2">
-                                            <Label>{selectedRule?.feeType === 'percentage' ? 'Percentage Rate' : 'Fixed Fee'}</Label>
+                                            <Label>{selectedRule?.feeType === 'percentage' ? t('currencyExchange.labels.percentageRate') : t('currencyExchange.labels.fixedFee')}</Label>
                                             <Input
                                                 type="text"
                                                 inputMode="decimal"
@@ -1367,13 +1549,16 @@ function CreateCurrencyExchangeTransactionPage({
                                             />
                                             {selectedRule ? (
                                                 <p className="text-xs text-muted-foreground">
-                                                    Original rule value: {selectedRule.value.toLocaleString()} {selectedRule.feeType === 'percentage' ? '%' : selectedRule.currency.toUpperCase()}
-                                                    {selectedRule.isLocked ? ' / locked' : ''}
+                                                    {t('currencyExchange.help.originalRuleValue', {
+                                                        value: selectedRule.value.toLocaleString(),
+                                                        unit: selectedRule.feeType === 'percentage' ? '%' : selectedRule.currency.toUpperCase()
+                                                    })}
+                                                    {selectedRule.isLocked ? ` / ${t('currencyExchange.status.locked')}` : ''}
                                                 </p>
                                             ) : null}
                                         </div>
                                         <div className="grid gap-2">
-                                            <Label>Customer Gives Basis</Label>
+                                            <Label>{t('currencyExchange.labels.customerGivesBasis')}</Label>
                                             <div className="flex h-10 items-center rounded-md border border-input bg-muted/40 px-3 text-sm font-semibold">
                                                 {selectedRule
                                                     ? formatCurrency(feeBasisAmount, feeCurrency, features.iqd_display_preference)
@@ -1382,8 +1567,8 @@ function CreateCurrencyExchangeTransactionPage({
                                             {selectedRule ? (
                                                 <p className="text-xs text-muted-foreground">
                                                     {selectedRule.feeType === 'fixed'
-                                                        ? 'Fixed fee is scaled by this amount.'
-                                                        : 'Percentage uses the actual customer gives amount.'}
+                                                        ? t('currencyExchange.help.fixedFeeBasis')
+                                                        : t('currencyExchange.help.percentageBasis')}
                                                 </p>
                                             ) : null}
                                         </div>
@@ -1391,10 +1576,10 @@ function CreateCurrencyExchangeTransactionPage({
 
                                     {calculation ? (
                                         <div className="grid gap-3 rounded-2xl border bg-muted/20 p-4 sm:grid-cols-4">
-                                            <InfoBlock label="Before Fee" value={formatCurrency(calculation.baseReceivesAmount, toCurrency, features.iqd_display_preference)} />
-                                            <InfoBlock label="Rule Basis" value={selectedRule ? formatCurrency(feeBasisAmount, feeCurrency, features.iqd_display_preference) : '-'} />
-                                            <InfoBlock label="Fee Applied" value={formatCurrency(calculation.feeAmount, feeCurrency, features.iqd_display_preference)} />
-                                            <InfoBlock label="Final Receives" value={formatCurrency(calculation.customerReceivesAmount, toCurrency, features.iqd_display_preference)} />
+                                            <InfoBlock label={t('currencyExchange.labels.beforeFee')} value={formatCurrency(calculation.baseReceivesAmount, toCurrency, features.iqd_display_preference)} />
+                                            <InfoBlock label={t('currencyExchange.labels.ruleBasis')} value={selectedRule ? formatCurrency(feeBasisAmount, feeCurrency, features.iqd_display_preference) : '-'} />
+                                            <InfoBlock label={t('currencyExchange.labels.feeApplied')} value={formatCurrency(calculation.feeAmount, feeCurrency, features.iqd_display_preference)} />
+                                            <InfoBlock label={t('currencyExchange.labels.finalReceives')} value={formatCurrency(calculation.customerReceivesAmount, toCurrency, features.iqd_display_preference)} />
                                         </div>
                                     ) : null}
                                 </div>
@@ -1403,14 +1588,14 @@ function CreateCurrencyExchangeTransactionPage({
 
                         <Card>
                             <CardHeader>
-                                <CardTitle>Notes</CardTitle>
+                                <CardTitle>{t('currencyExchange.labels.notes')}</CardTitle>
                             </CardHeader>
                             <CardContent>
                                 <Textarea
                                     rows={4}
                                     value={notes}
                                     onChange={(event) => setNotes(event.target.value)}
-                                    placeholder="Optional transaction notes"
+                                    placeholder={t('currencyExchange.placeholders.transactionNotes')}
                                 />
                             </CardContent>
                         </Card>
@@ -1431,7 +1616,7 @@ function CreateCurrencyExchangeTransactionPage({
                             acquisitionRateSource={transactionType === 'sell' ? acquisitionRateSource : null}
                             profitAmount={profitPreview?.profitAmount ?? null}
                             profitCurrency={profitPreview?.profitCurrency ?? null}
-                            feeRuleName={selectedRule?.name || 'No fee'}
+                            feeRuleName={selectedRule?.name || t('currencyExchange.labels.noFee')}
                             feeType={feeType}
                             feeCurrency={feeCurrency}
                             originalFeeValue={selectedRule?.value ?? null}
@@ -1461,15 +1646,7 @@ function CreateCurrencyExchangeTransactionPage({
 
 type ManualRatePeriodPreset = '1h' | '2h' | '3h' | '4h' | '5h' | 'day' | 'custom'
 
-const manualRatePeriodOptions: Array<{ id: ManualRatePeriodPreset; label: string }> = [
-    { id: '1h', label: '1 hour' },
-    { id: '2h', label: '2 hours' },
-    { id: '3h', label: '3 hours' },
-    { id: '4h', label: '4 hours' },
-    { id: '5h', label: '5 hours' },
-    { id: 'day', label: 'Today' },
-    { id: 'custom', label: 'Custom time' }
-]
+const manualRatePeriodOptions: ManualRatePeriodPreset[] = ['1h', '2h', '3h', '4h', '5h', 'day', 'custom']
 
 function getManualRatePeriodEnd(preset: ManualRatePeriodPreset, customUntil: Date | undefined) {
     const now = new Date()
@@ -1503,6 +1680,7 @@ function ManualRatePeriodModal({
     iqdDisplayPreference: IQDDisplayPreference
     onApplied: () => void
 }) {
+    const { t } = useTranslation()
     const [preset, setPreset] = useState<ManualRatePeriodPreset>('1h')
     const [customUntil, setCustomUntil] = useState<Date | undefined>(() => {
         const date = new Date()
@@ -1526,10 +1704,13 @@ function ManualRatePeriodModal({
                 <DialogHeader className="border-b bg-amber-500/5 p-6 text-start">
                     <DialogTitle className="flex items-center gap-2 text-amber-700">
                         <CalendarClock className="h-5 w-5" />
-                        Apply Manual Rate Window
+                        {t('currencyExchange.manualRateWindow.title')}
                     </DialogTitle>
                     <DialogDescription>
-                        {pairLabel} will use {formatCurrency(Math.round(rate), 'iqd', iqdDisplayPreference)} until the selected time.
+                        {t('currencyExchange.manualRateWindow.description', {
+                            pair: pairLabel,
+                            rate: formatCurrency(Math.round(rate), 'iqd', iqdDisplayPreference)
+                        })}
                     </DialogDescription>
                 </DialogHeader>
 
@@ -1537,50 +1718,50 @@ function ManualRatePeriodModal({
                     <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                         {manualRatePeriodOptions.map((option) => (
                             <button
-                                key={option.id}
+                                key={option}
                                 type="button"
-                                onClick={() => setPreset(option.id)}
+                                onClick={() => setPreset(option)}
                                 className={cn(
                                     'flex h-11 items-center justify-center rounded-lg border px-3 text-sm font-medium transition-colors',
-                                    preset === option.id
+                                    preset === option
                                         ? 'border-amber-500 bg-amber-500/10 text-amber-700'
                                         : 'border-border bg-background hover:bg-muted/50'
                                 )}
                             >
-                                {option.label}
+                                {t(`currencyExchange.manualRatePeriods.${option}`)}
                             </button>
                         ))}
                     </div>
 
                     {preset === 'custom' ? (
                         <div className="grid gap-2">
-                            <Label>Until</Label>
+                            <Label>{t('currencyExchange.labels.until')}</Label>
                             <DateTimePicker
                                 id="manual-rate-period-until"
                                 mode="date-time"
                                 date={customUntil}
                                 setDate={setCustomUntil}
-                                placeholder="Custom end time"
+                                placeholder={t('currencyExchange.placeholders.customEndTime')}
                             />
                         </div>
                     ) : null}
 
                     <div className="rounded-xl border bg-muted/20 px-3 py-2 text-sm">
-                        <div className="text-xs font-medium uppercase text-muted-foreground">Expires</div>
+                        <div className="text-xs font-medium uppercase text-muted-foreground">{t('currencyExchange.labels.expires')}</div>
                         <div className="mt-1 font-semibold">{expiresAt ? formatDateTime(expiresAt) : '-'}</div>
                     </div>
 
                     <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-xs text-amber-700">
-                        Existing discrepancy alerts and snooze settings still apply to this manual rate.
+                        {t('currencyExchange.manualRateWindow.discrepancyNote')}
                     </div>
                 </div>
 
                 <DialogFooter className="gap-2 border-t bg-muted/20 p-4 sm:space-x-0">
                     <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
-                        Cancel
+                        {t('common.cancel', { defaultValue: 'Cancel' })}
                     </Button>
                     <Button type="button" disabled={!isValid} onClick={handleApply}>
-                        Apply Manual Window
+                        {t('currencyExchange.buttons.applyManualWindow')}
                     </Button>
                 </DialogFooter>
             </DialogContent>
@@ -1639,6 +1820,7 @@ function ExchangeTransactionSummary({
     iqdDisplayPreference: IQDDisplayPreference
     marketRateSnapshot: ExchangeRateSnapshot[]
 }) {
+    const { t } = useTranslation()
     const customerGivesLabel = formatCurrency(customerGivesAmount || 0, fromCurrency, iqdDisplayPreference)
     const beforeFeeLabel = calculation
         ? formatCurrency(calculation.baseReceivesAmount, toCurrency, iqdDisplayPreference)
@@ -1667,45 +1849,45 @@ function ExchangeTransactionSummary({
                 <CardHeader className="space-y-2">
                     <CardTitle className="flex items-center gap-2 text-lg">
                         <ClipboardList className="h-5 w-5" />
-                        Transaction Summary
+                        {t('currencyExchange.summary.title')}
                     </CardTitle>
                     <div className="rounded-xl border bg-muted/20 px-3 py-3">
-                        <div className="text-xs font-medium uppercase text-muted-foreground">Draft Exchange</div>
-                        <div className="mt-1 text-lg font-bold tracking-tight">{fromCurrency.toUpperCase()} to {toCurrency.toUpperCase()}</div>
-                        <div className="mt-1 text-xs text-muted-foreground">{transactionTypeLabel(transactionType)}</div>
+                        <div className="text-xs font-medium uppercase text-muted-foreground">{t('currencyExchange.summary.draftExchange')}</div>
+                        <div className="mt-1 text-lg font-bold tracking-tight">{t('currencyExchange.labels.currencyToCurrency', { from: fromCurrency.toUpperCase(), to: toCurrency.toUpperCase() })}</div>
+                        <div className="mt-1 text-xs text-muted-foreground">{transactionTypeLabel(transactionType, t)}</div>
                     </div>
                 </CardHeader>
                 <CardContent className="space-y-5">
                     <div className="grid gap-2">
-                        <SummaryRow label="Transaction Date" value={formatDateTime(transactionDate)} />
-                        <SummaryRow label="Type" value={transactionTypeLabel(transactionType)} />
-                        <SummaryRow label="Customer Gives" value={customerGivesLabel} />
-                        <SummaryRow label="Before Fee" value={beforeFeeLabel} />
-                        <SummaryRow label="Payment Method" value={paymentMethod} valueClassName="capitalize" />
-                        <SummaryRow label="Employee" value={employeeName || '-'} />
-                        <SummaryRow label="Safe" value={safeName || '-'} />
+                        <SummaryRow label={t('currencyExchange.labels.transactionDate')} value={formatDateTime(transactionDate)} />
+                        <SummaryRow label={t('currencyExchange.table.type')} value={transactionTypeLabel(transactionType, t)} />
+                        <SummaryRow label={t('currencyExchange.labels.customerGives')} value={customerGivesLabel} />
+                        <SummaryRow label={t('currencyExchange.labels.beforeFee')} value={beforeFeeLabel} />
+                        <SummaryRow label={t('currencyExchange.labels.paymentMethod')} value={paymentMethod} valueClassName="capitalize" />
+                        <SummaryRow label={t('currencyExchange.labels.employee')} value={employeeName || '-'} />
+                        <SummaryRow label={t('currencyExchange.labels.safe')} value={safeName || '-'} />
                     </div>
 
                     <div className="h-px bg-border" />
 
                     <div className="grid gap-2">
-                        <div className="text-xs font-semibold uppercase text-muted-foreground">Rate Snapshot</div>
-                        <SummaryRow label="Pair" value={getPairLabel(fromCurrency, toCurrency)} />
-                        <SummaryRow label="Rate Used" value={exchangeRate > 0 ? formatNumberWithCommas(exchangeRate) : '-'} />
+                        <div className="text-xs font-semibold uppercase text-muted-foreground">{t('currencyExchange.summary.rateSnapshot')}</div>
+                        <SummaryRow label={t('currencyExchange.labels.pair')} value={getPairLabel(fromCurrency, toCurrency)} />
+                        <SummaryRow label={t('currencyExchange.labels.rateUsed')} value={exchangeRate > 0 ? formatNumberWithCommas(exchangeRate) : '-'} />
                         <SummaryRow
-                            label="Source"
-                            value={exchangeRateSource === 'manual' ? 'Manual' : 'Live'}
+                            label={t('currencyExchange.labels.source')}
+                            value={rateSourceLabel(exchangeRateSource, t)}
                             valueClassName={exchangeRateSource === 'manual' ? 'text-amber-700 dark:text-amber-300' : 'text-emerald-700 dark:text-emerald-300'}
                         />
                         {acquisitionRate !== null ? (
                             <>
-                                <SummaryRow label="Acquisition Rate" value={acquisitionRate > 0 ? formatNumberWithCommas(acquisitionRate) : '-'} />
-                                <SummaryRow label="Acquisition Source" value={acquisitionRateSource === 'last_buy' ? 'Last Buy' : 'Manual'} />
+                                <SummaryRow label={t('currencyExchange.labels.acquisitionRate')} value={acquisitionRate > 0 ? formatNumberWithCommas(acquisitionRate) : '-'} />
+                                <SummaryRow label={t('currencyExchange.labels.acquisitionSource')} value={acquisitionSourceLabel(acquisitionRateSource, t)} />
                             </>
                         ) : null}
                         {profitCurrency ? (
                             <SummaryRow
-                                label="Estimated Profit"
+                                label={t('currencyExchange.labels.estimatedProfit')}
                                 value={formatCurrency(profitAmount || 0, profitCurrency, iqdDisplayPreference)}
                                 valueClassName={(profitAmount || 0) >= 0 ? 'text-emerald-700 dark:text-emerald-300' : 'text-destructive'}
                             />
@@ -1721,7 +1903,7 @@ function ExchangeTransactionSummary({
                                     ))}
                                 </div>
                             ) : (
-                                <div className="text-xs text-muted-foreground">No rate snapshot yet.</div>
+                                <div className="text-xs text-muted-foreground">{t('currencyExchange.empty.rateSnapshot')}</div>
                             )}
                         </div>
                     </div>
@@ -1729,16 +1911,16 @@ function ExchangeTransactionSummary({
                     <div className="h-px bg-border" />
 
                     <div className="grid gap-2">
-                        <div className="text-xs font-semibold uppercase text-muted-foreground">Fee / Commission</div>
-                        <SummaryRow label="Rule" value={feeRuleName} />
-                        <SummaryRow label="Fee Type" value={feeType || '-'} valueClassName="capitalize" />
-                        <SummaryRow label="Original Value" value={originalFeeValueLabel} />
-                        <SummaryRow label="Final Value" value={finalFeeValueLabel} />
-                        <SummaryRow label="Customer Gives Basis" value={feeBasisAmountLabel} />
-                        <SummaryRow label="Fee Applied" value={feeAppliedLabel} />
+                        <div className="text-xs font-semibold uppercase text-muted-foreground">{t('currencyExchange.feeRules.sectionTitle')}</div>
+                        <SummaryRow label={t('currencyExchange.labels.rule')} value={feeRuleName} />
+                        <SummaryRow label={t('currencyExchange.labels.feeType')} value={feeTypeLabel(feeType, t)} valueClassName="capitalize" />
+                        <SummaryRow label={t('currencyExchange.labels.originalValue')} value={originalFeeValueLabel} />
+                        <SummaryRow label={t('currencyExchange.labels.finalValue')} value={finalFeeValueLabel} />
+                        <SummaryRow label={t('currencyExchange.labels.customerGivesBasis')} value={feeBasisAmountLabel} />
+                        <SummaryRow label={t('currencyExchange.labels.feeApplied')} value={feeAppliedLabel} />
                         {feeEdited ? (
                             <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs font-medium text-amber-700 dark:text-amber-300">
-                                Fee value differs from the selected rule snapshot.
+                                {t('currencyExchange.help.feeEdited')}
                             </div>
                         ) : null}
                     </div>
@@ -1746,17 +1928,17 @@ function ExchangeTransactionSummary({
                     <div className="h-px bg-border" />
 
                     <div className="rounded-xl border border-primary/20 bg-primary/5 p-3">
-                        <div className="text-xs font-semibold uppercase text-muted-foreground">Final Summary</div>
+                        <div className="text-xs font-semibold uppercase text-muted-foreground">{t('currencyExchange.summary.finalSummary')}</div>
                         <div className="mt-3 rounded-lg border border-primary/20 bg-background/70 p-3">
-                            <div className="text-xs font-medium uppercase text-muted-foreground">Customer Receives</div>
+                            <div className="text-xs font-medium uppercase text-muted-foreground">{t('currencyExchange.labels.customerReceives')}</div>
                             <div className="mt-1 text-2xl font-bold tracking-tight">{finalReceivesLabel}</div>
                         </div>
                         <div className="mt-3 grid gap-2">
-                            <SummaryRow label="Customer Gives" value={customerGivesLabel} />
-                            <SummaryRow label="Before Fee" value={beforeFeeLabel} />
-                            <SummaryRow label="Fee Deducted" value={feeAppliedLabel} />
-                            <SummaryRow label="Rate Used" value={exchangeRate > 0 ? formatNumberWithCommas(exchangeRate) : '-'} />
-                            <SummaryRow label="Payment Method" value={paymentMethod} valueClassName="capitalize" />
+                            <SummaryRow label={t('currencyExchange.labels.customerGives')} value={customerGivesLabel} />
+                            <SummaryRow label={t('currencyExchange.labels.beforeFee')} value={beforeFeeLabel} />
+                            <SummaryRow label={t('currencyExchange.labels.feeDeducted')} value={feeAppliedLabel} />
+                            <SummaryRow label={t('currencyExchange.labels.rateUsed')} value={exchangeRate > 0 ? formatNumberWithCommas(exchangeRate) : '-'} />
+                            <SummaryRow label={t('currencyExchange.labels.paymentMethod')} value={paymentMethod} valueClassName="capitalize" />
                         </div>
                     </div>
                 </CardContent>
@@ -1834,8 +2016,15 @@ function ExchangeFeeRulesPage({
     const formattedCustomerGivesBasisAmount = formatCurrency(parsedCustomerGivesBasisAmount, form.currency, features.iqd_display_preference)
     const formattedPreviewFeeAmount = formatCurrency(previewFeeAmount, form.currency, features.iqd_display_preference)
     const feeRuleFormula = form.feeType === 'percentage'
-        ? `${formattedCustomerGivesBasisAmount} x ${formatNumberWithCommas(parsedFeeRuleValue || 0)}% = ${formattedPreviewFeeAmount}`
-        : `${formattedPreviewFeeAmount} fixed fee per ${formattedCustomerGivesBasisAmount}`
+        ? t('currencyExchange.feeRules.percentageFormula', {
+            basis: formattedCustomerGivesBasisAmount,
+            value: formatNumberWithCommas(parsedFeeRuleValue || 0),
+            fee: formattedPreviewFeeAmount
+        })
+        : t('currencyExchange.feeRules.fixedFormula', {
+            fee: formattedPreviewFeeAmount,
+            basis: formattedCustomerGivesBasisAmount
+        })
 
     const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault()
@@ -1864,13 +2053,13 @@ function ExchangeFeeRulesPage({
 
             toast({
                 title: t('common.success', { defaultValue: 'Success' }),
-                description: editingRuleId ? 'Fee rule updated.' : 'Fee rule created.'
+                description: editingRuleId ? t('currencyExchange.messages.feeRuleUpdated') : t('currencyExchange.messages.feeRuleCreated')
             })
             resetForm()
         } catch (error: any) {
             toast({
                 title: t('common.error', { defaultValue: 'Error' }),
-                description: error?.message || 'Failed to save fee rule.',
+                description: error?.message || t('currencyExchange.messages.feeRuleSaveFailed'),
                 variant: 'destructive'
             })
         } finally {
@@ -1885,7 +2074,7 @@ function ExchangeFeeRulesPage({
         } catch (error: any) {
             toast({
                 title: t('common.error', { defaultValue: 'Error' }),
-                description: error?.message || 'Failed to update lock status.',
+                description: error?.message || t('currencyExchange.messages.lockUpdateFailed'),
                 variant: 'destructive'
             })
         }
@@ -1896,12 +2085,12 @@ function ExchangeFeeRulesPage({
         setIsDeleting(true)
         try {
             await deleteExchangeFeeRule(deleteTargetId)
-            toast({ title: t('common.success', { defaultValue: 'Success' }), description: 'Fee rule deleted.' })
+            toast({ title: t('common.success', { defaultValue: 'Success' }), description: t('currencyExchange.messages.feeRuleDeleted') })
             setDeleteTargetId(null)
         } catch (error: any) {
             toast({
                 title: t('common.error', { defaultValue: 'Error' }),
-                description: error?.message || 'Failed to delete fee rule.',
+                description: error?.message || t('currencyExchange.messages.feeRuleDeleteFailed'),
                 variant: 'destructive'
             })
         } finally {
@@ -1919,42 +2108,42 @@ function ExchangeFeeRulesPage({
                     onClick={onBack}
                 >
                     <ArrowLeft className="h-4 w-4" />
-                    Currency Exchange Service
+                    {t('currencyExchange.serviceTitle')}
                 </Button>
                 <h1 className="flex items-center gap-2 text-3xl font-bold tracking-tight">
                     <ClipboardList className="h-7 w-7" />
-                    Fee/Commission Rules
+                    {t('currencyExchange.feeRules.title')}
                 </h1>
                 <p className="text-sm text-muted-foreground">
-                    Configure reusable fixed or percentage fees with active dates and lock control.
+                    {t('currencyExchange.feeRules.description')}
                 </p>
             </div>
 
             <div className="grid gap-6 xl:grid-cols-[minmax(320px,420px)_1fr]">
                 <Card>
                     <CardHeader>
-                        <CardTitle>{editingRuleId ? 'Edit Rule' : 'Create Rule'}</CardTitle>
+                        <CardTitle>{editingRuleId ? t('currencyExchange.feeRules.editRule') : t('currencyExchange.feeRules.createRule')}</CardTitle>
                     </CardHeader>
                     <CardContent>
                         <form onSubmit={handleSubmit} className="grid gap-4">
                             <div className="grid gap-2">
-                                <Label>Name</Label>
+                                <Label>{t('common.name', { defaultValue: 'Name' })}</Label>
                                 <Input value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} />
                             </div>
                             <div className="grid gap-2">
-                                <Label>Valid For</Label>
+                                <Label>{t('currencyExchange.labels.validFor')}</Label>
                                 <Select value={form.transactionScope} onValueChange={(value: ExchangeFeeRuleTransactionScope) => setForm((current) => ({ ...current, transactionScope: value }))}>
                                     <SelectTrigger><SelectValue /></SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="both">Buy and Sell</SelectItem>
-                                        <SelectItem value="buy">Buy Currency</SelectItem>
-                                        <SelectItem value="sell">Sell Currency</SelectItem>
+                                        <SelectItem value="both">{t('currencyExchange.ruleScopes.both')}</SelectItem>
+                                        <SelectItem value="buy">{t('currencyExchange.ruleScopes.buy')}</SelectItem>
+                                        <SelectItem value="sell">{t('currencyExchange.ruleScopes.sell')}</SelectItem>
                                     </SelectContent>
                                 </Select>
                             </div>
                             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                                 <div className="grid gap-2">
-                                    <Label>Fee Type</Label>
+                                    <Label>{t('currencyExchange.labels.feeType')}</Label>
                                     <Select value={form.feeType} onValueChange={(value: ExchangeFeeType) => setForm((current) => ({
                                         ...current,
                                         feeType: value,
@@ -1962,8 +2151,8 @@ function ExchangeFeeRulesPage({
                                     }))}>
                                         <SelectTrigger><SelectValue /></SelectTrigger>
                                         <SelectContent>
-                                            <SelectItem value="fixed">Fixed Fee</SelectItem>
-                                            <SelectItem value="percentage">Percentage Fee</SelectItem>
+                                            <SelectItem value="fixed">{t('currencyExchange.feeTypes.fixed')}</SelectItem>
+                                            <SelectItem value="percentage">{t('currencyExchange.feeTypes.percentage')}</SelectItem>
                                         </SelectContent>
                                     </Select>
                                 </div>
@@ -1975,13 +2164,13 @@ function ExchangeFeeRulesPage({
                                         value: sanitizeNumericInput(current.value, { allowDecimal: current.feeType === 'percentage' || value !== 'iqd' }),
                                         customerGivesBasisAmount: sanitizeNumericInput(current.customerGivesBasisAmount, { allowDecimal: value !== 'iqd' })
                                     }))}
-                                    label="Currency"
+                                    label={t('common.currency', { defaultValue: 'Currency' })}
                                     iqdDisplayPreference={features.iqd_display_preference}
                                     allowedCurrencies={availableCurrencies}
                                 />
                             </div>
                             <div className="grid gap-2">
-                                <Label>{form.feeType === 'percentage' ? 'Percentage Rate' : 'Fixed Fee Amount'}</Label>
+                                <Label>{form.feeType === 'percentage' ? t('currencyExchange.labels.percentageRate') : t('currencyExchange.labels.fixedFeeAmount')}</Label>
                                 <Input
                                     type="text"
                                     inputMode="decimal"
@@ -1994,7 +2183,7 @@ function ExchangeFeeRulesPage({
                                 />
                             </div>
                             <div className="grid gap-2">
-                                <Label>Customer Gives Basis</Label>
+                                <Label>{t('currencyExchange.labels.customerGivesBasis')}</Label>
                                 <Input
                                     type="text"
                                     inputMode={form.currency === 'iqd' ? 'numeric' : 'decimal'}
@@ -2008,14 +2197,14 @@ function ExchangeFeeRulesPage({
                             </div>
                             <div className="grid gap-3 rounded-xl border bg-muted/20 p-3">
                                 <div className="grid gap-3 sm:grid-cols-3">
-                                    <InfoBlock label="Customer Gives Basis" value={formattedCustomerGivesBasisAmount} />
+                                    <InfoBlock label={t('currencyExchange.labels.customerGivesBasis')} value={formattedCustomerGivesBasisAmount} />
                                     <InfoBlock
-                                        label={form.feeType === 'percentage' ? 'Percentage Rate' : 'Fixed Fee'}
+                                        label={form.feeType === 'percentage' ? t('currencyExchange.labels.percentageRate') : t('currencyExchange.labels.fixedFee')}
                                         value={form.feeType === 'percentage'
                                             ? `${formatNumberWithCommas(parsedFeeRuleValue || 0)}%`
                                             : formatCurrency(parsedFeeRuleValue || 0, form.currency, features.iqd_display_preference)}
                                     />
-                                    <InfoBlock label="Calculated Fee" value={formattedPreviewFeeAmount} />
+                                    <InfoBlock label={t('currencyExchange.labels.calculatedFee')} value={formattedPreviewFeeAmount} />
                                 </div>
                                 <div className="rounded-lg border bg-background/60 px-3 py-2 text-xs font-medium text-muted-foreground">
                                     {feeRuleFormula}
@@ -2023,38 +2212,38 @@ function ExchangeFeeRulesPage({
                             </div>
                             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                                 <div className="grid gap-2">
-                                    <Label>Effective Start</Label>
+                                    <Label>{t('currencyExchange.labels.effectiveStart')}</Label>
                                     <DateTimePicker
                                         id="currency-exchange-fee-effective-start"
                                         mode="date-time"
                                         date={parseLocalDateTimeValue(form.effectiveStartDate)}
                                         setDate={(value) => setForm((current) => ({ ...current, effectiveStartDate: toTimestampValue(value) }))}
-                                        placeholder="Effective Start"
+                                        placeholder={t('currencyExchange.labels.effectiveStart')}
                                     />
                                 </div>
                                 <div className="grid gap-2">
-                                    <Label>Effective End</Label>
+                                    <Label>{t('currencyExchange.labels.effectiveEnd')}</Label>
                                     <DateTimePicker
                                         id="currency-exchange-fee-effective-end"
                                         mode="date-time"
                                         date={parseLocalDateTimeValue(form.effectiveEndDate)}
                                         setDate={(value) => setForm((current) => ({ ...current, effectiveEndDate: toTimestampValue(value) }))}
-                                        placeholder="Effective End"
+                                        placeholder={t('currencyExchange.labels.effectiveEnd')}
                                     />
                                 </div>
                             </div>
                             <div className="grid gap-3 rounded-xl border bg-muted/20 p-3">
                                 <div className="flex items-center justify-between gap-3">
                                     <div>
-                                        <div className="text-sm font-medium">Active</div>
-                                        <div className="text-xs text-muted-foreground">Only active rules are applied to new transactions.</div>
+                                        <div className="text-sm font-medium">{t('currencyExchange.status.active')}</div>
+                                        <div className="text-xs text-muted-foreground">{t('currencyExchange.help.activeRule')}</div>
                                     </div>
                                     <Switch checked={form.isActive} onCheckedChange={(value) => setForm((current) => ({ ...current, isActive: value }))} />
                                 </div>
                                 <div className="flex items-center justify-between gap-3">
                                     <div>
-                                        <div className="text-sm font-medium">Locked</div>
-                                        <div className="text-xs text-muted-foreground">Only admins can lock or unlock rules.</div>
+                                        <div className="text-sm font-medium">{t('currencyExchange.status.locked')}</div>
+                                        <div className="text-xs text-muted-foreground">{t('currencyExchange.help.lockedRule')}</div>
                                     </div>
                                     <Switch
                                         checked={form.isLocked}
@@ -2064,12 +2253,12 @@ function ExchangeFeeRulesPage({
                                 </div>
                             </div>
                             <div className="grid gap-2">
-                                <Label>Notes</Label>
+                                <Label>{t('currencyExchange.labels.notes')}</Label>
                                 <Textarea rows={3} value={form.notes} onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))} />
                             </div>
                             <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-between">
-                                <Button type="button" variant="outline" onClick={resetForm}>Clear</Button>
-                                <Button type="submit" disabled={isSaving}>{isSaving ? 'Saving...' : editingRuleId ? 'Save Rule' : 'Create Rule'}</Button>
+                                <Button type="button" variant="outline" onClick={resetForm}>{t('currencyExchange.buttons.clear')}</Button>
+                                <Button type="submit" disabled={isSaving}>{isSaving ? t('currencyExchange.buttons.saving') : editingRuleId ? t('currencyExchange.buttons.saveRule') : t('currencyExchange.buttons.createRule')}</Button>
                             </div>
                         </form>
                     </CardContent>
@@ -2077,17 +2266,17 @@ function ExchangeFeeRulesPage({
 
                 <Card>
                     <CardHeader>
-                        <CardTitle>Configured Rules</CardTitle>
+                        <CardTitle>{t('currencyExchange.feeRules.configuredRules')}</CardTitle>
                     </CardHeader>
                     <CardContent>
                         <Table>
                             <TableHeader>
                                 <TableRow>
-                                    <TableHead>Rule</TableHead>
-                                    <TableHead>Scope</TableHead>
-                                    <TableHead>Fee</TableHead>
-                                    <TableHead>Effective Period</TableHead>
-                                    <TableHead>Status</TableHead>
+                                    <TableHead>{t('currencyExchange.labels.rule')}</TableHead>
+                                    <TableHead>{t('currencyExchange.labels.scope')}</TableHead>
+                                    <TableHead>{t('currencyExchange.table.fee')}</TableHead>
+                                    <TableHead>{t('currencyExchange.labels.effectivePeriod')}</TableHead>
+                                    <TableHead>{t('common.status', { defaultValue: 'Status' })}</TableHead>
                                     <TableHead className="text-end">{t('common.actions', { defaultValue: 'Actions' })}</TableHead>
                                 </TableRow>
                             </TableHeader>
@@ -2095,7 +2284,7 @@ function ExchangeFeeRulesPage({
                                 {rules.length === 0 ? (
                                     <TableRow>
                                         <TableCell colSpan={6} className="py-8 text-center text-muted-foreground">
-                                            No fee rules configured.
+                                            {t('currencyExchange.empty.feeRules')}
                                         </TableCell>
                                     </TableRow>
                                 ) : rules.map((rule) => {
@@ -2106,7 +2295,7 @@ function ExchangeFeeRulesPage({
                                             <div className="font-medium">{rule.name}</div>
                                             {rule.notes ? <div className="text-xs text-muted-foreground">{rule.notes}</div> : null}
                                         </TableCell>
-                                        <TableCell>{feeScopeLabel(rule.transactionScope)}</TableCell>
+                                        <TableCell>{feeScopeLabel(rule.transactionScope, t)}</TableCell>
                                         <TableCell>
                                             <div>
                                                 {rule.feeType === 'percentage'
@@ -2115,13 +2304,13 @@ function ExchangeFeeRulesPage({
                                             </div>
                                             <div className="text-xs text-muted-foreground">
                                                 {rule.feeType === 'fixed'
-                                                    ? `per ${formatCurrency(basisAmount, rule.currency, features.iqd_display_preference)}`
-                                                    : `example basis ${formatCurrency(basisAmount, rule.currency, features.iqd_display_preference)}`}
+                                                    ? t('currencyExchange.feeRules.perBasis', { basis: formatCurrency(basisAmount, rule.currency, features.iqd_display_preference) })
+                                                    : t('currencyExchange.feeRules.exampleBasis', { basis: formatCurrency(basisAmount, rule.currency, features.iqd_display_preference) })}
                                             </div>
                                         </TableCell>
                                         <TableCell>
                                             {formatDateTime(rule.effectiveStartDate)}
-                                            {rule.effectiveEndDate ? ` - ${formatDateTime(rule.effectiveEndDate)}` : ' - Open'}
+                                            {rule.effectiveEndDate ? ` - ${formatDateTime(rule.effectiveEndDate)}` : ` - ${t('currencyExchange.status.open')}`}
                                         </TableCell>
                                         <TableCell>
                                             <div className="flex flex-wrap gap-1.5">
@@ -2129,13 +2318,13 @@ function ExchangeFeeRulesPage({
                                                     'rounded-full px-2 py-0.5 text-[11px] font-medium',
                                                     rule.isActive ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300' : 'bg-muted text-muted-foreground'
                                                 )}>
-                                                    {rule.isActive ? 'Active' : 'Inactive'}
+                                                    {safeStatusLabel(rule.isActive, t)}
                                                 </span>
                                                 <span className={cn(
                                                     'rounded-full px-2 py-0.5 text-[11px] font-medium',
                                                     rule.isLocked ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300' : 'bg-sky-500/15 text-sky-700 dark:text-sky-300'
                                                 )}>
-                                                    {rule.isLocked ? 'Locked' : 'Unlocked'}
+                                                    {rule.isLocked ? t('currencyExchange.status.locked') : t('currencyExchange.status.unlocked')}
                                                 </span>
                                             </div>
                                         </TableCell>
@@ -2147,19 +2336,19 @@ function ExchangeFeeRulesPage({
                                                         variant="ghost"
                                                         size="icon"
                                                         onClick={() => handleToggleLock(rule)}
-                                                        aria-label={rule.isLocked ? 'Unlock fee rule' : 'Lock fee rule'}
+                                                        aria-label={rule.isLocked ? t('currencyExchange.buttons.unlockFeeRule') : t('currencyExchange.buttons.lockFeeRule')}
                                                     >
                                                         {rule.isLocked ? <Unlock className="h-4 w-4" /> : <Lock className="h-4 w-4" />}
                                                     </Button>
                                                 ) : null}
-                                                <Button type="button" variant="ghost" onClick={() => startEditing(rule)}>Edit</Button>
+                                                <Button type="button" variant="ghost" onClick={() => startEditing(rule)}>{t('common.edit', { defaultValue: 'Edit' })}</Button>
                                                 <Button
                                                     type="button"
                                                     variant="ghost"
                                                     size="icon"
                                                     className="text-destructive hover:text-destructive"
                                                     onClick={() => setDeleteTargetId(rule.id)}
-                                                    aria-label="Delete fee rule"
+                                                    aria-label={t('currencyExchange.buttons.deleteFeeRule')}
                                                 >
                                                     <Trash2 className="h-4 w-4" />
                                                 </Button>
@@ -2180,8 +2369,8 @@ function ExchangeFeeRulesPage({
                 onConfirm={handleDelete}
                 itemName={rules.find((rule) => rule.id === deleteTargetId)?.name}
                 isLoading={isDeleting}
-                title="Delete Fee Rule"
-                description="Existing transactions keep their fee snapshots. New transactions will no longer use this rule."
+                title={t('currencyExchange.feeRules.deleteTitle')}
+                description={t('currencyExchange.feeRules.deleteDescription')}
             />
         </div>
     )
@@ -2190,9 +2379,9 @@ function ExchangeFeeRulesPage({
 function MetricCard({ title, value }: { title: string; value: string }) {
     return (
         <Card>
-            <CardContent className="p-4">
+            <CardContent className="min-w-0 p-4">
                 <div className="text-sm text-muted-foreground">{title}</div>
-                <div className="mt-1 text-2xl font-bold">{value}</div>
+                <div className="mt-1 break-words text-2xl font-bold leading-tight">{value}</div>
             </CardContent>
         </Card>
     )
@@ -2222,41 +2411,41 @@ function ReverseTransactionModal({
         <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose() }}>
             <DialogContent className="sm:max-w-md">
                 <DialogHeader>
-                    <DialogTitle>Reverse Exchange Transaction</DialogTitle>
+                    <DialogTitle>{t('currencyExchange.reverse.title')}</DialogTitle>
                     <DialogDescription>
-                        This will create a reversal transaction for {transaction.transactionNo} and restore safe balances to their prior state.
+                        {t('currencyExchange.reverse.description', { transactionNo: transaction.transactionNo })}
                     </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-3 rounded-lg border bg-muted/20 p-4">
-                    <div className="text-sm font-medium">Original Transaction</div>
+                    <div className="text-sm font-medium">{t('currencyExchange.reverse.originalTransaction')}</div>
                     <div className="grid grid-cols-2 gap-2 text-sm">
-                        <span className="text-muted-foreground">Type</span>
-                        <span>{transactionTypeLabel(transaction.transactionType)}</span>
-                        <span className="text-muted-foreground">Gave</span>
+                        <span className="text-muted-foreground">{t('currencyExchange.table.type')}</span>
+                        <span>{transactionTypeLabel(transaction.transactionType, t)}</span>
+                        <span className="text-muted-foreground">{t('currencyExchange.labels.gave')}</span>
                         <span>{formatCurrency(transaction.customerGivesAmount, transaction.fromCurrency, 'IQD' as any)}</span>
-                        <span className="text-muted-foreground">Received</span>
+                        <span className="text-muted-foreground">{t('currencyExchange.labels.received')}</span>
                         <span>{formatCurrency(transaction.customerReceivesAmount, transaction.toCurrency, 'IQD' as any)}</span>
                     </div>
                     <div className="h-px bg-border" />
-                    <div className="text-sm font-medium">Reversal</div>
+                    <div className="text-sm font-medium">{t('currencyExchange.status.reversal')}</div>
                     <div className="grid grid-cols-2 gap-2 text-sm">
-                        <span className="text-muted-foreground">Type</span>
-                        <span>{transactionTypeLabel(reversedType)}</span>
-                        <span className="text-muted-foreground">Customer Gives</span>
+                        <span className="text-muted-foreground">{t('currencyExchange.table.type')}</span>
+                        <span>{transactionTypeLabel(reversedType, t)}</span>
+                        <span className="text-muted-foreground">{t('currencyExchange.labels.customerGives')}</span>
                         <span>{givesLabel}</span>
-                        <span className="text-muted-foreground">Customer Receives</span>
+                        <span className="text-muted-foreground">{t('currencyExchange.labels.customerReceives')}</span>
                         <span>{receivesLabel}</span>
                     </div>
                     <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
-                        This action cannot be undone. The original transaction will be marked as reversed and a new reversal transaction will be created.
+                        {t('currencyExchange.reverse.warning')}
                     </div>
                 </div>
                 <DialogFooter className="gap-2 sm:space-x-0">
                     <Button type="button" variant="outline" onClick={onClose} disabled={isLoading}>
-                        Cancel
+                        {t('common.cancel', { defaultValue: 'Cancel' })}
                     </Button>
                     <Button type="button" variant="destructive" onClick={onConfirm} disabled={isLoading}>
-                        {isLoading ? 'Reversing...' : 'Reverse Transaction'}
+                        {isLoading ? t('currencyExchange.buttons.reversing') : t('currencyExchange.buttons.reverseTransaction')}
                     </Button>
                 </DialogFooter>
             </DialogContent>

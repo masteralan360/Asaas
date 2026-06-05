@@ -3252,5 +3252,249 @@
     "empty": "هیچ مامەڵەیەکی خانووبەرە نەدۆزرایەوە.",
     "noInstallments": "ئەم مامەڵەیە خشتەی قیستی نییە.",
     "noInstallmentRows": "هیچ ڕیزێکی قیستی خانووبەرە بەردەست نییە."
+  },
+  "currencyExchange": {
+    "serviceTitle": "خزمەتی گۆڕینەوەی دراو",
+    "serviceDescription": "مامەڵەی کڕین و فرۆشتنی دراو بۆ کڕیار، لەگەڵ وێنەی پارێزراوی نرخ و کرێ.",
+    "transactionTypes": {
+      "buy": "کڕینی دراو",
+      "sell": "فرۆشتنی دراو"
+    },
+    "ruleScopes": {
+      "both": "کڕین و فرۆشتن",
+      "buy": "کڕینی دراو",
+      "sell": "فرۆشتنی دراو"
+    },
+    "movementTypes": {
+      "opening_balance": "باڵانسی دەستپێک",
+      "adjustment": "ڕێکخستن",
+      "exchange_in": "هاتنەژووری گۆڕینەوە",
+      "exchange_out": "چوونەدەرەوەی گۆڕینەوە"
+    },
+    "feeTypes": {
+      "fixed": "کرێی جێگیر",
+      "percentage": "کرێی ڕێژەیی"
+    },
+    "rateSources": {
+      "manual": "دەستی",
+      "live": "ڕاستەوخۆ"
+    },
+    "acquisitionSources": {
+      "last_buy": "دوایین کڕین",
+      "manual": "دەستی"
+    },
+    "status": {
+      "active": "چالاک",
+      "inactive": "ناچالاک",
+      "reversed": "پێچەوانەکراو",
+      "reversal": "پێچەوانە",
+      "locked": "داخراو",
+      "unlocked": "کراوە",
+      "open": "کراوە"
+    },
+    "buttons": {
+      "createTransaction": "دروستکردنی مامەڵە",
+      "createSafe": "دروستکردنی سندوق",
+      "adjustment": "ڕێکخستن",
+      "saveAdjustment": "پاشەکەوتکردنی ڕێکخستن",
+      "swapCurrencies": "گۆڕینی دراوەکان",
+      "applyForPeriod": "جێبەجێکردن بۆ ماوە",
+      "applyManualWindow": "جێبەجێکردنی ماوەی دەستی",
+      "clear": "سڕینەوە",
+      "saving": "پاشەکەوت دەکرێت...",
+      "saveRule": "پاشەکەوتکردنی یاسا",
+      "createRule": "دروستکردنی یاسا",
+      "lockFeeRule": "داخستنی یاسای کرێ",
+      "unlockFeeRule": "کردنەوەی یاسای کرێ",
+      "deleteFeeRule": "سڕینەوەی یاسای کرێ",
+      "reversing": "پێچەوانە دەکرێت...",
+      "reverseTransaction": "پێچەوانەکردنی مامەڵە"
+    },
+    "metrics": {
+      "transactions": "مامەڵەکان",
+      "manualRates": "نرخی دەستی",
+      "realizedProfit": "قازانجی بەدەستهاتوو",
+      "activeSafes": "سندووقە چالاکەکان"
+    },
+    "transactions": {
+      "title": "مامەڵەکانی گۆڕینەوە",
+      "searchPlaceholder": "گەڕان لە مامەڵەکان..."
+    },
+    "table": {
+      "transaction": "مامەڵە",
+      "type": "جۆر",
+      "customerGives": "کڕیار دەدات",
+      "customerReceives": "کڕیار وەردەگرێت",
+      "rate": "نرخ",
+      "fee": "کرێ",
+      "payment": "پارەدان",
+      "date": "بەروار",
+      "currency": "دراو",
+      "delta": "گۆڕان",
+      "before": "پێشتر",
+      "after": "دواتر",
+      "notes": "تێبینی"
+    },
+    "empty": {
+      "transactions": "هیچ مامەڵەیەکی گۆڕینەوە نەدۆزرایەوە.",
+      "safes": "هێشتا هیچ سندوقێکی گۆڕینەوە نییە.",
+      "movements": "هێشتا هیچ جوڵەیەک بۆ ئەم سندوقە نییە.",
+      "rateSnapshot": "هێشتا هیچ وێنەی نرخێک نییە.",
+      "feeRules": "هیچ یاسایەکی کرێ ڕێک نەخراوە."
+    },
+    "labels": {
+      "profit": "قازانج",
+      "editedFromRule": "دەستکاری کراوە لە یاساکە",
+      "safeName": "ناوی سندوق",
+      "openingCurrency": "باڵانسی دەستپێکی {{currency}}",
+      "notes": "تێبینی",
+      "amountDelta": "بڕی گۆڕان",
+      "selectedSafe": "سندوقی هەڵبژێردراو",
+      "transactionType": "جۆری مامەڵە",
+      "transactionDate": "بەرواری مامەڵە",
+      "employee": "کارمەند",
+      "safe": "سندوق",
+      "fromCurrency": "لە دراو",
+      "toCurrency": "بۆ دراو",
+      "customerGives": "کڕیار دەدات",
+      "paymentMethod": "شێوازی پارەدان",
+      "customerReceives": "کڕیار وەردەگرێت",
+      "exchangeRate": "نرخی گۆڕینەوە",
+      "currencyPair": "جووتە دراو",
+      "rate": "نرخ",
+      "acquisitionRate": "نرخی تێچوونی کڕین",
+      "estimatedProfit": "قازانجی خەملێنراو",
+      "rule": "یاسا",
+      "noFee": "بێ کرێ",
+      "feeType": "جۆری کرێ",
+      "percentageRate": "ڕێژەی کرێ",
+      "fixedFee": "کرێی جێگیر",
+      "fixedFeeAmount": "بڕی کرێی جێگیر",
+      "customerGivesBasis": "بنەمای بڕی کڕیار",
+      "beforeFee": "پێش کرێ",
+      "ruleBasis": "بنەمای یاسا",
+      "feeApplied": "کرێی جێبەجێکراو",
+      "finalReceives": "وەرگرتنی کۆتایی",
+      "until": "هەتا",
+      "expires": "بەسەر دەچێت",
+      "currencyToCurrency": "{{from}} بۆ {{to}}",
+      "pair": "جووت",
+      "rateUsed": "نرخی بەکارهاتوو",
+      "source": "سەرچاوە",
+      "acquisitionSource": "سەرچاوەی تێچوون",
+      "originalValue": "بەهای سەرەکی",
+      "finalValue": "بەهای کۆتایی",
+      "feeDeducted": "کرێی لێکەمکراو",
+      "validFor": "کاریگەر بۆ",
+      "calculatedFee": "کرێی ژمێردراو",
+      "effectiveStart": "دەستپێکی کاریگەری",
+      "effectiveEnd": "کۆتایی کاریگەری",
+      "scope": "مەودا",
+      "effectivePeriod": "ماوەی کاریگەری",
+      "gave": "دا",
+      "received": "وەرگرت"
+    },
+    "placeholders": {
+      "safeName": "سندوقی سەرەکی گۆڕینەوە",
+      "negativeDecrease": "بڕی نەرێنی بەکاربهێنە بۆ کەمکردنەوە",
+      "selectSafe": "سندوق هەڵبژێرە",
+      "acquisitionRate": "تێچوون بۆ هەر {{basis}} {{to}} بە {{from}}",
+      "transactionNotes": "تێبینی ئارەزوومەندانەی مامەڵە",
+      "customEndTime": "کاتی کۆتایی تایبەت"
+    },
+    "safes": {
+      "title": "سندوقەکان",
+      "pageTitle": "سندوقەکانی FX",
+      "description": "سندوقی تایبەت بە گۆڕینەوەی دراو، بە باڵانسی جیا بۆ هەر دراوێک و تۆماری وردبینی جوڵەکان.",
+      "movementAudit": "وردبینی جوڵەکان",
+      "createTitle": "دروستکردنی سندوقی FX",
+      "createDescription": "باڵانسەکانی دەستپێک تەنها بۆ ئەدمینن و وەک جوڵەی وردبینی پاشەکەوت دەکرێن.",
+      "adminOpeningOnly": "تەنها ئەدمین دەتوانێت باڵانسی دەستپێک دابنێت.",
+      "adjustmentTitle": "ڕێکخستنی سندوق",
+      "adjustmentDescription": "جوڵەی ڕاستکردنەوەی تایبەت بە ئەدمین بۆ {{name}}."
+    },
+    "messages": {
+      "transactionReversed": "مامەڵەی گۆڕینەوە پێچەوانە کرا.",
+      "transactionReverseFailed": "پێچەوانەکردنی مامەڵەی گۆڕینەوە سەرکەوتوو نەبوو.",
+      "safeCreatedTitle": "سندوق دروست کرا.",
+      "safeCreatedDescription": "{{name}} ئامادەیە بۆ مامەڵەکانی گۆڕینەوە.",
+      "safeCreateFailedTitle": "دروستکردنی سندوق سەرکەوتوو نەبوو",
+      "safeCreateFailedDescription": "نەتوانرا سندوق دروست بکرێت.",
+      "adjustmentSavedTitle": "ڕێکخستن پاشەکەوت کرا.",
+      "adjustmentSavedDescription": "باڵانسی {{name}} نوێ کرایەوە.",
+      "adjustmentFailedTitle": "ڕێکخستنی سندوق سەرکەوتوو نەبوو",
+      "adjustmentFailedDescription": "نەتوانرا سندوق ڕێکبخرێت.",
+      "transactionCreated": "مامەڵەی گۆڕینەوە دروست کرا.",
+      "transactionCreateFailed": "دروستکردنی مامەڵەی گۆڕینەوە سەرکەوتوو نەبوو.",
+      "createSafeFirst": "پێش دروستکردنی مامەڵەی گۆڕینەوە، سندوقێکی FX دروست بکە.",
+      "currencyMustDiffer": "دراوی سەرچاوە و دراوی ئامانج دەبێت جیاواز بن.",
+      "insufficientSafeBalance": "{{safe}} بڕی {{available}} بەردەستی هەیە، بەڵام ئەم مامەڵەیە {{pays}} دەدات.",
+      "manualRateScheduledTitle": "نرخی دەستی خشتەکرا.",
+      "manualRateScheduledDescription": "{{pair}} ئەم نرخە بەکار دەهێنێت هەتا کۆتایی ماوەی هەڵبژێردراو.",
+      "feeRuleUpdated": "یاسای کرێ نوێ کرایەوە.",
+      "feeRuleCreated": "یاسای کرێ دروست کرا.",
+      "feeRuleSaveFailed": "پاشەکەوتکردنی یاسای کرێ سەرکەوتوو نەبوو.",
+      "lockUpdateFailed": "نوێکردنەوەی دۆخی داخستن سەرکەوتوو نەبوو.",
+      "feeRuleDeleted": "یاسای کرێ سڕایەوە.",
+      "feeRuleDeleteFailed": "سڕینەوەی یاسای کرێ سەرکەوتوو نەبوو.",
+      "workspaceCurrencyLockedTitle": "دراوی شوێنی کار داخراوە",
+      "workspaceCurrencyLockedDescription": "دراوی شوێنی کار داخراوە چونکە خزمەتی گۆڕینەوە سندوق یان مامەڵەی هەیە. ئەمە باڵانسە مێژووییەکان و ڕاپۆرتی قازانج دەپارێزێت."
+    },
+    "create": {
+      "title": "دروستکردنی مامەڵەی گۆڕینەوە",
+      "description": "بڕی ئەوەی کڕیار دەیدات و ئەوەی وەریدەگرێت تۆمار بکە لەگەڵ وێنەی نرخ و کرێ.",
+      "transactionDetails": "وردەکاری مامەڵە",
+      "marketRateSnapshot": "وێنەی نرخی بازاڕ"
+    },
+    "help": {
+      "acquisitionRate": "تێچوونی {{to}} بە {{from}} بۆ وێنەی قازانج.",
+      "originalRuleValue": "بەهای سەرەکی یاسا: {{value}} {{unit}}",
+      "fixedFeeBasis": "کرێی جێگیر بە پێی ئەم بڕە پێوانە دەکرێت.",
+      "percentageBasis": "ڕێژەکە بڕی ڕاستەقینەی کڕیار بەکار دەهێنێت.",
+      "activeRule": "تەنها یاسا چالاکەکان بۆ مامەڵەی نوێ جێبەجێ دەکرێن.",
+      "lockedRule": "تەنها ئەدمین دەتوانێت یاساکان دابخات یان بکاتەوە.",
+      "feeEdited": "بەهای کرێ جیاوازە لە وێنەی یاسای هەڵبژێردراو."
+    },
+    "feeRules": {
+      "title": "یاساکانی کرێ/کۆمسیۆن",
+      "sectionTitle": "کرێ / کۆمسیۆن",
+      "description": "کرێی جێگیر یان ڕێژەیی دووبارە بەکارهاتوو ڕێکبخە لەگەڵ بەرواری کاریگەری و کۆنترۆڵی داخستن.",
+      "editRule": "دەستکاریکردنی یاسا",
+      "createRule": "دروستکردنی یاسا",
+      "configuredRules": "یاسا ڕێکخراوەکان",
+      "percentageFormula": "{{basis}} × {{value}}% = {{fee}}",
+      "fixedFormula": "{{fee}} کرێی جێگیر بۆ هەر {{basis}}",
+      "perBasis": "بۆ هەر {{basis}}",
+      "exampleBasis": "بنەمای نموونە {{basis}}",
+      "deleteTitle": "سڕینەوەی یاسای کرێ",
+      "deleteDescription": "مامەڵەکانی پێشوو وێنەکانی کرێی خۆیان دەپارێزن. مامەڵەی نوێ چیتر ئەم یاسایە بەکارناهێنێت."
+    },
+    "manualRateWindow": {
+      "title": "جێبەجێکردنی ماوەی نرخی دەستی",
+      "description": "{{pair}} نرخی {{rate}} بەکار دەهێنێت هەتا کاتی هەڵبژێردراو.",
+      "discrepancyNote": "ئاگادارکردنەوەکانی جیاوازی نرخ و ڕێکخستنەکانی دواخستن هێشتا بۆ ئەم نرخە دەستییە جێبەجێ دەبن."
+    },
+    "manualRatePeriods": {
+      "1h": "١ کاتژمێر",
+      "2h": "٢ کاتژمێر",
+      "3h": "٣ کاتژمێر",
+      "4h": "٤ کاتژمێر",
+      "5h": "٥ کاتژمێر",
+      "day": "ئەمڕۆ",
+      "custom": "کاتی تایبەت"
+    },
+    "summary": {
+      "title": "پوختەی مامەڵە",
+      "draftExchange": "ڕەشنووسی گۆڕینەوە",
+      "rateSnapshot": "وێنەی نرخ",
+      "finalSummary": "پوختەی کۆتایی"
+    },
+    "reverse": {
+      "action": "پێچەوانەکردنی مامەڵەی گۆڕینەوە",
+      "title": "پێچەوانەکردنی مامەڵەی گۆڕینەوە",
+      "description": "مامەڵەی پێچەوانە بۆ {{transactionNo}} دروست دەکرێت و باڵانسی سندوق دەگەڕێتە دۆخی پێشوو.",
+      "originalTransaction": "مامەڵەی سەرەکی",
+      "warning": "ئەم کردارە پاشگەز ناکرێتەوە. مامەڵەی سەرەکی وەک پێچەوانەکراو نیشان دەدرێت و مامەڵەی پێچەوانەی نوێ دروست دەکرێت."
+    }
   }
 }

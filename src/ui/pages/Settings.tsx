@@ -556,8 +556,8 @@ export function Settings() {
     const handleCurrencySelect = (val: CurrencyCode) => {
         if (hasFxAccountingData && val !== features.default_currency) {
             toast({
-                title: 'Workspace currency locked',
-                description: 'Workspace currency is locked because Currency Exchange has safes or transactions. This protects historical balances and profit reports.',
+                title: t('currencyExchange.messages.workspaceCurrencyLockedTitle'),
+                description: t('currencyExchange.messages.workspaceCurrencyLockedDescription'),
                 variant: 'destructive'
             })
             return
@@ -573,9 +573,12 @@ export function Settings() {
                 setPendingCurrency(null)
                 setIsCurrencyModalOpen(false)
             } catch (error: any) {
+                const isFxCurrencyLock = String(error?.message || '').includes('Currency Exchange has safes or transactions')
                 toast({
-                    title: 'Workspace currency locked',
-                    description: error?.message || 'Workspace currency is locked because Currency Exchange has safes or transactions. This protects historical balances and profit reports.',
+                    title: t('currencyExchange.messages.workspaceCurrencyLockedTitle'),
+                    description: isFxCurrencyLock
+                        ? t('currencyExchange.messages.workspaceCurrencyLockedDescription')
+                        : error?.message || t('currencyExchange.messages.workspaceCurrencyLockedDescription'),
                     variant: 'destructive'
                 })
             }
@@ -2302,7 +2305,7 @@ export function Settings() {
                                     />
                                     {hasFxAccountingData && (
                                         <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-sm text-amber-700">
-                                            Workspace currency is locked because Currency Exchange has safes or transactions. This protects historical balances and profit reports.
+                                            {t('currencyExchange.messages.workspaceCurrencyLockedDescription')}
                                         </div>
                                     )}
 

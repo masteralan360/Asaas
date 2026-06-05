@@ -3275,5 +3275,249 @@
     "empty": "لم يتم العثور على معاملات عقارية.",
     "noInstallments": "هذه المعاملة لا تحتوي على جدول أقساط.",
     "noInstallmentRows": "لا توجد صفوف أقساط عقارية متاحة."
+  },
+  "currencyExchange": {
+    "serviceTitle": "خدمة صرافة العملات",
+    "serviceDescription": "معاملات شراء وبيع العملات للعملاء مع لقطات محفوظة لسعر الصرف والرسوم.",
+    "transactionTypes": {
+      "buy": "شراء عملة",
+      "sell": "بيع عملة"
+    },
+    "ruleScopes": {
+      "both": "شراء وبيع",
+      "buy": "شراء عملة",
+      "sell": "بيع عملة"
+    },
+    "movementTypes": {
+      "opening_balance": "رصيد افتتاحي",
+      "adjustment": "تسوية",
+      "exchange_in": "دخول صرف",
+      "exchange_out": "خروج صرف"
+    },
+    "feeTypes": {
+      "fixed": "رسم ثابت",
+      "percentage": "رسم نسبة"
+    },
+    "rateSources": {
+      "manual": "يدوي",
+      "live": "مباشر"
+    },
+    "acquisitionSources": {
+      "last_buy": "آخر شراء",
+      "manual": "يدوي"
+    },
+    "status": {
+      "active": "نشط",
+      "inactive": "غير نشط",
+      "reversed": "معكوس",
+      "reversal": "عكس",
+      "locked": "مقفل",
+      "unlocked": "مفتوح",
+      "open": "مفتوح"
+    },
+    "buttons": {
+      "createTransaction": "إنشاء معاملة",
+      "createSafe": "إنشاء خزنة",
+      "adjustment": "تسوية",
+      "saveAdjustment": "حفظ التسوية",
+      "swapCurrencies": "تبديل العملات",
+      "applyForPeriod": "تطبيق لفترة",
+      "applyManualWindow": "تطبيق الفترة اليدوية",
+      "clear": "مسح",
+      "saving": "جارٍ الحفظ...",
+      "saveRule": "حفظ القاعدة",
+      "createRule": "إنشاء قاعدة",
+      "lockFeeRule": "قفل قاعدة الرسوم",
+      "unlockFeeRule": "فتح قاعدة الرسوم",
+      "deleteFeeRule": "حذف قاعدة الرسوم",
+      "reversing": "جارٍ العكس...",
+      "reverseTransaction": "عكس المعاملة"
+    },
+    "metrics": {
+      "transactions": "المعاملات",
+      "manualRates": "أسعار يدوية",
+      "realizedProfit": "الربح المحقق",
+      "activeSafes": "الخزائن النشطة"
+    },
+    "transactions": {
+      "title": "معاملات الصرافة",
+      "searchPlaceholder": "ابحث في المعاملات..."
+    },
+    "table": {
+      "transaction": "المعاملة",
+      "type": "النوع",
+      "customerGives": "العميل يعطي",
+      "customerReceives": "العميل يستلم",
+      "rate": "السعر",
+      "fee": "الرسم",
+      "payment": "الدفع",
+      "date": "التاريخ",
+      "currency": "العملة",
+      "delta": "التغير",
+      "before": "قبل",
+      "after": "بعد",
+      "notes": "ملاحظات"
+    },
+    "empty": {
+      "transactions": "لا توجد معاملات صرافة.",
+      "safes": "لا توجد خزائن صرافة بعد.",
+      "movements": "لا توجد حركات لهذه الخزنة بعد.",
+      "rateSnapshot": "لا توجد لقطة سعر بعد.",
+      "feeRules": "لا توجد قواعد رسوم مهيأة."
+    },
+    "labels": {
+      "profit": "الربح",
+      "editedFromRule": "معدل من القاعدة",
+      "safeName": "اسم الخزنة",
+      "openingCurrency": "رصيد {{currency}} الافتتاحي",
+      "notes": "ملاحظات",
+      "amountDelta": "مبلغ التغير",
+      "selectedSafe": "الخزنة المحددة",
+      "transactionType": "نوع المعاملة",
+      "transactionDate": "تاريخ المعاملة",
+      "employee": "الموظف",
+      "safe": "الخزنة",
+      "fromCurrency": "من عملة",
+      "toCurrency": "إلى عملة",
+      "customerGives": "العميل يعطي",
+      "paymentMethod": "طريقة الدفع",
+      "customerReceives": "العميل يستلم",
+      "exchangeRate": "سعر الصرف",
+      "currencyPair": "زوج العملات",
+      "rate": "السعر",
+      "acquisitionRate": "سعر الاقتناء",
+      "estimatedProfit": "الربح التقديري",
+      "rule": "القاعدة",
+      "noFee": "بدون رسم",
+      "feeType": "نوع الرسم",
+      "percentageRate": "نسبة الرسم",
+      "fixedFee": "رسم ثابت",
+      "fixedFeeAmount": "مبلغ الرسم الثابت",
+      "customerGivesBasis": "أساس مبلغ العميل",
+      "beforeFee": "قبل الرسم",
+      "ruleBasis": "أساس القاعدة",
+      "feeApplied": "الرسم المطبق",
+      "finalReceives": "الاستلام النهائي",
+      "until": "حتى",
+      "expires": "ينتهي",
+      "currencyToCurrency": "{{from}} إلى {{to}}",
+      "pair": "الزوج",
+      "rateUsed": "السعر المستخدم",
+      "source": "المصدر",
+      "acquisitionSource": "مصدر الاقتناء",
+      "originalValue": "القيمة الأصلية",
+      "finalValue": "القيمة النهائية",
+      "feeDeducted": "الرسم المخصوم",
+      "validFor": "صالح لـ",
+      "calculatedFee": "الرسم المحسوب",
+      "effectiveStart": "بداية السريان",
+      "effectiveEnd": "نهاية السريان",
+      "scope": "النطاق",
+      "effectivePeriod": "فترة السريان",
+      "gave": "أعطى",
+      "received": "استلم"
+    },
+    "placeholders": {
+      "safeName": "خزنة الصرافة الرئيسية",
+      "negativeDecrease": "استخدم مبلغاً سالباً للتقليل",
+      "selectSafe": "اختر خزنة",
+      "acquisitionRate": "التكلفة لكل {{basis}} {{to}} بـ {{from}}",
+      "transactionNotes": "ملاحظات اختيارية للمعاملة",
+      "customEndTime": "وقت انتهاء مخصص"
+    },
+    "safes": {
+      "title": "الخزائن",
+      "pageTitle": "خزائن الصرافة",
+      "description": "خزائن خاصة بخدمة الصرافة فقط مع أرصدة منفصلة لكل عملة وسجل تدقيق للحركات.",
+      "movementAudit": "تدقيق الحركات",
+      "createTitle": "إنشاء خزنة صرافة",
+      "createDescription": "الأرصدة الافتتاحية للمسؤول فقط وستحفظ كحركات تدقيق.",
+      "adminOpeningOnly": "يمكن للمسؤولين فقط ضبط الأرصدة الافتتاحية.",
+      "adjustmentTitle": "تسوية الخزنة",
+      "adjustmentDescription": "حركة تصحيح للمسؤول فقط لـ {{name}}."
+    },
+    "messages": {
+      "transactionReversed": "تم عكس معاملة الصرافة.",
+      "transactionReverseFailed": "فشل عكس معاملة الصرافة.",
+      "safeCreatedTitle": "تم إنشاء الخزنة.",
+      "safeCreatedDescription": "{{name}} جاهزة لمعاملات الصرافة.",
+      "safeCreateFailedTitle": "فشل إنشاء الخزنة",
+      "safeCreateFailedDescription": "تعذر إنشاء الخزنة.",
+      "adjustmentSavedTitle": "تم حفظ التسوية.",
+      "adjustmentSavedDescription": "تم تحديث رصيد {{name}}.",
+      "adjustmentFailedTitle": "فشل تعديل الخزنة",
+      "adjustmentFailedDescription": "تعذر تعديل الخزنة.",
+      "transactionCreated": "تم إنشاء معاملة الصرافة.",
+      "transactionCreateFailed": "فشل إنشاء معاملة الصرافة.",
+      "createSafeFirst": "أنشئ خزنة صرافة قبل إنشاء معاملات الصرافة.",
+      "currencyMustDiffer": "يجب أن تكون عملة المصدر وعملة الوجهة مختلفتين.",
+      "insufficientSafeBalance": "{{safe}} لديها {{available}} متاحاً، لكن هذه المعاملة تدفع {{pays}}.",
+      "manualRateScheduledTitle": "تم جدولة السعر اليدوي.",
+      "manualRateScheduledDescription": "سيستخدم {{pair}} هذا السعر حتى نهاية الفترة المحددة.",
+      "feeRuleUpdated": "تم تحديث قاعدة الرسوم.",
+      "feeRuleCreated": "تم إنشاء قاعدة الرسوم.",
+      "feeRuleSaveFailed": "فشل حفظ قاعدة الرسوم.",
+      "lockUpdateFailed": "فشل تحديث حالة القفل.",
+      "feeRuleDeleted": "تم حذف قاعدة الرسوم.",
+      "feeRuleDeleteFailed": "فشل حذف قاعدة الرسوم.",
+      "workspaceCurrencyLockedTitle": "عملة مساحة العمل مقفلة",
+      "workspaceCurrencyLockedDescription": "عملة مساحة العمل مقفلة لأن خدمة الصرافة تحتوي على خزائن أو معاملات. هذا يحمي الأرصدة التاريخية وتقارير الربح."
+    },
+    "create": {
+      "title": "إنشاء معاملة صرافة",
+      "description": "سجل مبالغ ما يعطيه العميل وما يستلمه مع لقطة محفوظة للسعر والرسم.",
+      "transactionDetails": "تفاصيل المعاملة",
+      "marketRateSnapshot": "لقطة سعر السوق"
+    },
+    "help": {
+      "acquisitionRate": "تكلفة {{to}} معبر عنها بـ {{from}} للربح المحفوظ.",
+      "originalRuleValue": "قيمة القاعدة الأصلية: {{value}} {{unit}}",
+      "fixedFeeBasis": "يتم قياس الرسم الثابت حسب هذا المبلغ.",
+      "percentageBasis": "النسبة تستخدم مبلغ العميل الفعلي.",
+      "activeRule": "تطبق القواعد النشطة فقط على المعاملات الجديدة.",
+      "lockedRule": "يمكن للمسؤولين فقط قفل أو فتح القواعد.",
+      "feeEdited": "قيمة الرسم مختلفة عن لقطة القاعدة المحددة."
+    },
+    "feeRules": {
+      "title": "قواعد الرسوم/العمولات",
+      "sectionTitle": "الرسم / العمولة",
+      "description": "هيئ رسوماً ثابتة أو نسبية قابلة لإعادة الاستخدام مع تواريخ سريان وتحكم بالقفل.",
+      "editRule": "تعديل القاعدة",
+      "createRule": "إنشاء قاعدة",
+      "configuredRules": "القواعد المهيأة",
+      "percentageFormula": "{{basis}} × {{value}}% = {{fee}}",
+      "fixedFormula": "{{fee}} رسم ثابت لكل {{basis}}",
+      "perBasis": "لكل {{basis}}",
+      "exampleBasis": "أساس المثال {{basis}}",
+      "deleteTitle": "حذف قاعدة الرسوم",
+      "deleteDescription": "تحتفظ المعاملات الحالية بلقطات الرسوم الخاصة بها. لن تستخدم المعاملات الجديدة هذه القاعدة."
+    },
+    "manualRateWindow": {
+      "title": "تطبيق فترة سعر يدوي",
+      "description": "سيستخدم {{pair}} السعر {{rate}} حتى الوقت المحدد.",
+      "discrepancyNote": "تنبيهات اختلاف السعر وإعدادات التأجيل الحالية ستبقى مطبقة على هذا السعر اليدوي."
+    },
+    "manualRatePeriods": {
+      "1h": "ساعة واحدة",
+      "2h": "ساعتان",
+      "3h": "3 ساعات",
+      "4h": "4 ساعات",
+      "5h": "5 ساعات",
+      "day": "اليوم",
+      "custom": "وقت مخصص"
+    },
+    "summary": {
+      "title": "ملخص المعاملة",
+      "draftExchange": "مسودة صرافة",
+      "rateSnapshot": "لقطة السعر",
+      "finalSummary": "الملخص النهائي"
+    },
+    "reverse": {
+      "action": "عكس معاملة الصرافة",
+      "title": "عكس معاملة الصرافة",
+      "description": "سيتم إنشاء معاملة عكسية لـ {{transactionNo}} وإرجاع أرصدة الخزنة إلى حالتها السابقة.",
+      "originalTransaction": "المعاملة الأصلية",
+      "warning": "لا يمكن التراجع عن هذا الإجراء. سيتم تعليم المعاملة الأصلية كمعكوسة وإنشاء معاملة عكسية جديدة."
+    }
   }
 }

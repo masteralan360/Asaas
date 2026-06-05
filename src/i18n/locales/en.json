@@ -3446,5 +3446,249 @@
       "travelSuppliers": "No travel supplier totals are available.",
       "travelGroups": "No travel group totals are available."
     }
+  },
+  "currencyExchange": {
+    "serviceTitle": "Currency Exchange Service",
+    "serviceDescription": "Walk-in buy and sell currency transactions with immutable rate and fee snapshots.",
+    "transactionTypes": {
+      "buy": "Buy Currency",
+      "sell": "Sell Currency"
+    },
+    "ruleScopes": {
+      "both": "Buy and Sell",
+      "buy": "Buy Currency",
+      "sell": "Sell Currency"
+    },
+    "movementTypes": {
+      "opening_balance": "Opening Balance",
+      "adjustment": "Adjustment",
+      "exchange_in": "Exchange In",
+      "exchange_out": "Exchange Out"
+    },
+    "feeTypes": {
+      "fixed": "Fixed Fee",
+      "percentage": "Percentage Fee"
+    },
+    "rateSources": {
+      "manual": "Manual",
+      "live": "Live"
+    },
+    "acquisitionSources": {
+      "last_buy": "Last Buy",
+      "manual": "Manual"
+    },
+    "status": {
+      "active": "Active",
+      "inactive": "Inactive",
+      "reversed": "Reversed",
+      "reversal": "Reversal",
+      "locked": "Locked",
+      "unlocked": "Unlocked",
+      "open": "Open"
+    },
+    "buttons": {
+      "createTransaction": "Create Transaction",
+      "createSafe": "Create Safe",
+      "adjustment": "Adjustment",
+      "saveAdjustment": "Save Adjustment",
+      "swapCurrencies": "Swap currencies",
+      "applyForPeriod": "Apply for Period",
+      "applyManualWindow": "Apply Manual Window",
+      "clear": "Clear",
+      "saving": "Saving...",
+      "saveRule": "Save Rule",
+      "createRule": "Create Rule",
+      "lockFeeRule": "Lock fee rule",
+      "unlockFeeRule": "Unlock fee rule",
+      "deleteFeeRule": "Delete fee rule",
+      "reversing": "Reversing...",
+      "reverseTransaction": "Reverse Transaction"
+    },
+    "metrics": {
+      "transactions": "Transactions",
+      "manualRates": "Manual Rates",
+      "realizedProfit": "Realized Profit",
+      "activeSafes": "Active Safes"
+    },
+    "transactions": {
+      "title": "Exchange Transactions",
+      "searchPlaceholder": "Search transactions..."
+    },
+    "table": {
+      "transaction": "Transaction",
+      "type": "Type",
+      "customerGives": "Customer Gives",
+      "customerReceives": "Customer Receives",
+      "rate": "Rate",
+      "fee": "Fee",
+      "payment": "Payment",
+      "date": "Date",
+      "currency": "Currency",
+      "delta": "Delta",
+      "before": "Before",
+      "after": "After",
+      "notes": "Notes"
+    },
+    "empty": {
+      "transactions": "No exchange transactions found.",
+      "safes": "No FX safes yet.",
+      "movements": "No movements for this safe yet.",
+      "rateSnapshot": "No rate snapshot yet.",
+      "feeRules": "No fee rules configured."
+    },
+    "labels": {
+      "profit": "Profit",
+      "editedFromRule": "Edited from rule",
+      "safeName": "Safe Name",
+      "openingCurrency": "Opening {{currency}}",
+      "notes": "Notes",
+      "amountDelta": "Amount Delta",
+      "selectedSafe": "selected safe",
+      "transactionType": "Transaction Type",
+      "transactionDate": "Transaction Date",
+      "employee": "Employee",
+      "safe": "Safe",
+      "fromCurrency": "From Currency",
+      "toCurrency": "To Currency",
+      "customerGives": "Customer Gives",
+      "paymentMethod": "Payment Method",
+      "customerReceives": "Customer Receives",
+      "exchangeRate": "Exchange Rate",
+      "currencyPair": "Currency Pair",
+      "rate": "Rate",
+      "acquisitionRate": "Acquisition Rate",
+      "estimatedProfit": "Estimated profit",
+      "rule": "Rule",
+      "noFee": "No fee",
+      "feeType": "Fee Type",
+      "percentageRate": "Percentage Rate",
+      "fixedFee": "Fixed Fee",
+      "fixedFeeAmount": "Fixed Fee Amount",
+      "customerGivesBasis": "Customer Gives Basis",
+      "beforeFee": "Before Fee",
+      "ruleBasis": "Rule Basis",
+      "feeApplied": "Fee Applied",
+      "finalReceives": "Final Receives",
+      "until": "Until",
+      "expires": "Expires",
+      "currencyToCurrency": "{{from}} to {{to}}",
+      "pair": "Pair",
+      "rateUsed": "Rate Used",
+      "source": "Source",
+      "acquisitionSource": "Acquisition Source",
+      "originalValue": "Original Value",
+      "finalValue": "Final Value",
+      "feeDeducted": "Fee Deducted",
+      "validFor": "Valid For",
+      "calculatedFee": "Calculated Fee",
+      "effectiveStart": "Effective Start",
+      "effectiveEnd": "Effective End",
+      "scope": "Scope",
+      "effectivePeriod": "Effective Period",
+      "gave": "Gave",
+      "received": "Received"
+    },
+    "placeholders": {
+      "safeName": "Main exchange safe",
+      "negativeDecrease": "Use negative amount to decrease",
+      "selectSafe": "Select safe",
+      "acquisitionRate": "Cost per {{basis}} {{to}} in {{from}}",
+      "transactionNotes": "Optional transaction notes",
+      "customEndTime": "Custom end time"
+    },
+    "safes": {
+      "title": "Safes",
+      "pageTitle": "FX Safes",
+      "description": "Currency Exchange-only safes with per-currency balances and movement audit.",
+      "movementAudit": "Movement Audit",
+      "createTitle": "Create FX Safe",
+      "createDescription": "Opening balances are admin-only and will be saved as audit movements.",
+      "adminOpeningOnly": "Only admins can set opening balances.",
+      "adjustmentTitle": "Safe Adjustment",
+      "adjustmentDescription": "Admin-only correction movement for {{name}}."
+    },
+    "messages": {
+      "transactionReversed": "Exchange transaction reversed.",
+      "transactionReverseFailed": "Failed to reverse exchange transaction.",
+      "safeCreatedTitle": "Safe created.",
+      "safeCreatedDescription": "{{name}} is ready for exchange transactions.",
+      "safeCreateFailedTitle": "Failed to create safe",
+      "safeCreateFailedDescription": "Could not create safe.",
+      "adjustmentSavedTitle": "Adjustment saved.",
+      "adjustmentSavedDescription": "{{name}} balance was updated.",
+      "adjustmentFailedTitle": "Failed to adjust safe",
+      "adjustmentFailedDescription": "Could not adjust safe.",
+      "transactionCreated": "Exchange transaction created.",
+      "transactionCreateFailed": "Failed to create exchange transaction.",
+      "createSafeFirst": "Create an FX safe before creating exchange transactions.",
+      "currencyMustDiffer": "From currency and To currency must be different.",
+      "insufficientSafeBalance": "{{safe}} has {{available}} available, but this transaction pays {{pays}}.",
+      "manualRateScheduledTitle": "Manual rate scheduled.",
+      "manualRateScheduledDescription": "{{pair}} will use this rate until the selected period ends.",
+      "feeRuleUpdated": "Fee rule updated.",
+      "feeRuleCreated": "Fee rule created.",
+      "feeRuleSaveFailed": "Failed to save fee rule.",
+      "lockUpdateFailed": "Failed to update lock status.",
+      "feeRuleDeleted": "Fee rule deleted.",
+      "feeRuleDeleteFailed": "Failed to delete fee rule.",
+      "workspaceCurrencyLockedTitle": "Workspace currency locked",
+      "workspaceCurrencyLockedDescription": "Workspace currency is locked because Currency Exchange has safes or transactions. This protects historical balances and profit reports."
+    },
+    "create": {
+      "title": "Create Exchange Transaction",
+      "description": "Record customer-gives and customer-receives values with a saved rate and fee snapshot.",
+      "transactionDetails": "Transaction Details",
+      "marketRateSnapshot": "Market Rate Snapshot"
+    },
+    "help": {
+      "acquisitionRate": "Cost of {{to}} expressed in {{from}} for profit snapshot.",
+      "originalRuleValue": "Original rule value: {{value}} {{unit}}",
+      "fixedFeeBasis": "Fixed fee is scaled by this amount.",
+      "percentageBasis": "Percentage uses the actual customer gives amount.",
+      "activeRule": "Only active rules are applied to new transactions.",
+      "lockedRule": "Only admins can lock or unlock rules.",
+      "feeEdited": "Fee value differs from the selected rule snapshot."
+    },
+    "feeRules": {
+      "title": "Fee/Commission Rules",
+      "sectionTitle": "Fee / Commission",
+      "description": "Configure reusable fixed or percentage fees with active dates and lock control.",
+      "editRule": "Edit Rule",
+      "createRule": "Create Rule",
+      "configuredRules": "Configured Rules",
+      "percentageFormula": "{{basis}} x {{value}}% = {{fee}}",
+      "fixedFormula": "{{fee}} fixed fee per {{basis}}",
+      "perBasis": "per {{basis}}",
+      "exampleBasis": "example basis {{basis}}",
+      "deleteTitle": "Delete Fee Rule",
+      "deleteDescription": "Existing transactions keep their fee snapshots. New transactions will no longer use this rule."
+    },
+    "manualRateWindow": {
+      "title": "Apply Manual Rate Window",
+      "description": "{{pair}} will use {{rate}} until the selected time.",
+      "discrepancyNote": "Existing discrepancy alerts and snooze settings still apply to this manual rate."
+    },
+    "manualRatePeriods": {
+      "1h": "1 hour",
+      "2h": "2 hours",
+      "3h": "3 hours",
+      "4h": "4 hours",
+      "5h": "5 hours",
+      "day": "Today",
+      "custom": "Custom time"
+    },
+    "summary": {
+      "title": "Transaction Summary",
+      "draftExchange": "Draft Exchange",
+      "rateSnapshot": "Rate Snapshot",
+      "finalSummary": "Final Summary"
+    },
+    "reverse": {
+      "action": "Reverse exchange transaction",
+      "title": "Reverse Exchange Transaction",
+      "description": "This will create a reversal transaction for {{transactionNo}} and restore safe balances to their prior state.",
+      "originalTransaction": "Original Transaction",
+      "warning": "This action cannot be undone. The original transaction will be marked as reversed and a new reversal transaction will be created."
+    }
   }
 }
