@@ -29,6 +29,7 @@ import {
 import { PartnerAutocompleteInput } from '@/ui/components/crm/PartnerAutocompleteInput'
 import { BusinessPartnerFormDialog, type BusinessPartnerFormPayload } from '@/ui/components/crm/BusinessPartnerFormDialog'
 import { useWorkspace } from '@/workspace'
+import { getInitialRealEstatePartnerRole, getRealEstatePartyLabels } from '@/lib/realEstateParties'
 
 interface CreateRealEstateTransactionPageProps {
     workspaceId: string
@@ -152,6 +153,10 @@ export function CreateRealEstateTransactionPage({
         const currencies: CurrencyCode[] = Array.from(new Set([settlementCurrency, ...features.allowed_currencies])) as CurrencyCode[]
         return currencies
     }, [features.allowed_currencies, settlementCurrency])
+    const partyLabels = useMemo(
+        () => getRealEstatePartyLabels(transactionType, t),
+        [transactionType, t]
+    )
 
     const exchangeRateSnapshot = useMemo(() => {
         const parsedRate = parseFormattedNumber(exchangeRateValue || '0')
@@ -190,7 +195,7 @@ export function CreateRealEstateTransactionPage({
         if (sellerLink?.id === partner.id) {
             toast({
                 title: t('common.error', { defaultValue: 'Error' }),
-                description: t('realEstate.messages.buyerSellerSamePartner', { defaultValue: 'Buyer and seller cannot use the same business partner.' }),
+                description: partyLabels.duplicatePartnerMessage,
                 variant: 'destructive'
             })
             return
@@ -222,7 +227,7 @@ export function CreateRealEstateTransactionPage({
         if (buyerLink?.id === partner.id) {
             toast({
                 title: t('common.error', { defaultValue: 'Error' }),
-                description: t('realEstate.messages.buyerSellerSamePartner', { defaultValue: 'Buyer and seller cannot use the same business partner.' }),
+                description: partyLabels.duplicatePartnerMessage,
                 variant: 'destructive'
             })
             return
@@ -375,7 +380,7 @@ export function CreateRealEstateTransactionPage({
 
                                     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                                         <div className="grid gap-2">
-                                            <Label>{t('realEstate.buyer', { defaultValue: 'Buyer' })} <span className="text-destructive">*</span></Label>
+                                            <Label>{partyLabels.buyer.label} <span className="text-destructive">*</span></Label>
                                             <div className="flex flex-col gap-2">
                                                 <div className="flex gap-2">
                                                     <PartnerAutocompleteInput
@@ -388,7 +393,7 @@ export function CreateRealEstateTransactionPage({
                                                         }}
                                                         onSelectPartner={handleBuyerPartnerSelect}
                                                         workspaceId={workspaceId}
-                                                        placeholder={t('realEstate.buyerPlaceholder', { defaultValue: 'Search or enter buyer name' })}
+                                                        placeholder={partyLabels.buyer.placeholder}
                                                         className="flex-1"
                                                         includeRealEstateRoles={features.real_estate}
                                                         excludePartnerIds={sellerLink?.id ? [sellerLink.id] : []}
@@ -398,12 +403,12 @@ export function CreateRealEstateTransactionPage({
                                                     </Button>
                                                 </div>
                                                 {buyerLink ? (
-                                                    <LinkedPartyBadge label={t('realEstate.linkedBuyer', { defaultValue: 'Linked buyer' })} name={buyerLink.name} onClear={() => setBuyerLink(null)} />
+                                                    <LinkedPartyBadge label={partyLabels.buyer.linkedLabel} name={buyerLink.name} onClear={() => setBuyerLink(null)} />
                                                 ) : null}
                                             </div>
                                         </div>
                                         <div className="grid gap-2">
-                                            <Label>{t('realEstate.seller', { defaultValue: 'Seller' })} <span className="text-destructive">*</span></Label>
+                                            <Label>{partyLabels.seller.label} <span className="text-destructive">*</span></Label>
                                             <div className="flex flex-col gap-2">
                                                 <div className="flex gap-2">
                                                     <PartnerAutocompleteInput
@@ -416,7 +421,7 @@ export function CreateRealEstateTransactionPage({
                                                         }}
                                                         onSelectPartner={handleSellerPartnerSelect}
                                                         workspaceId={workspaceId}
-                                                        placeholder={t('realEstate.sellerPlaceholder', { defaultValue: 'Search or enter seller name' })}
+                                                        placeholder={partyLabels.seller.placeholder}
                                                         className="flex-1"
                                                         includeRealEstateRoles={features.real_estate}
                                                         excludePartnerIds={buyerLink?.id ? [buyerLink.id] : []}
@@ -426,20 +431,20 @@ export function CreateRealEstateTransactionPage({
                                                     </Button>
                                                 </div>
                                                 {sellerLink ? (
-                                                    <LinkedPartyBadge label={t('realEstate.linkedSeller', { defaultValue: 'Linked seller' })} name={sellerLink.name} onClear={() => setSellerLink(null)} />
+                                                    <LinkedPartyBadge label={partyLabels.seller.linkedLabel} name={sellerLink.name} onClear={() => setSellerLink(null)} />
                                                 ) : null}
                                             </div>
                                         </div>
                                     </div>
                                     {hasDuplicateLinkedParty ? (
                                         <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                                            {t('realEstate.messages.buyerSellerSamePartner', { defaultValue: 'Buyer and seller cannot use the same business partner.' })}
+                                            {partyLabels.duplicatePartnerMessage}
                                         </div>
                                     ) : null}
 
                                     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                                         <WitnessFields
-                                            title={t('realEstate.buyerWitness', { defaultValue: 'Buyer Witness' })}
+                                            title={partyLabels.buyer.witnessLabel}
                                             name={buyerWitnessName}
                                             address={buyerWitnessAddress}
                                             phone={buyerWitnessPhone}
@@ -448,7 +453,7 @@ export function CreateRealEstateTransactionPage({
                                             onPhoneChange={setBuyerWitnessPhone}
                                         />
                                         <WitnessFields
-                                            title={t('realEstate.sellerWitness', { defaultValue: 'Seller Witness' })}
+                                            title={partyLabels.seller.witnessLabel}
                                             name={sellerWitnessName}
                                             address={sellerWitnessAddress}
                                             phone={sellerWitnessPhone}
@@ -648,7 +653,7 @@ export function CreateRealEstateTransactionPage({
                 onOpenChange={setIsCreateBuyerOpen}
                 defaultCurrency={features.default_currency}
                 availableCurrencies={availableCurrencies}
-                initialRole={features.real_estate ? 'buyer' : 'customer'}
+                initialRole={features.real_estate ? getInitialRealEstatePartnerRole(transactionType, 'buyer') : 'customer'}
                 enableRealEstateRoles={features.real_estate}
                 isSaving={isSavingBuyer}
                 onSubmit={handleCreateBuyerPartner}
@@ -658,7 +663,7 @@ export function CreateRealEstateTransactionPage({
                 onOpenChange={setIsCreateSellerOpen}
                 defaultCurrency={features.default_currency}
                 availableCurrencies={availableCurrencies}
-                initialRole={features.real_estate ? 'seller' : 'customer'}
+                initialRole={features.real_estate ? getInitialRealEstatePartnerRole(transactionType, 'seller') : 'customer'}
                 enableRealEstateRoles={features.real_estate}
                 isSaving={isSavingSeller}
                 onSubmit={handleCreateSellerPartner}

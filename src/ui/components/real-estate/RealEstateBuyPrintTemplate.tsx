@@ -5,9 +5,11 @@ import { ReactQRCode } from '@lglab/react-qr-code'
 import { useTranslation } from 'react-i18next'
 import i18n from '@/i18n/config'
 import type { TemplatePreviewDataKey } from '@/lib/pdfPreviewStore'
+import { getRealEstateNativePrintLabels } from '@/lib/realEstateParties'
 import { platformService } from '@/services/platformService'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/ui/components/dialog'
 import { Input } from '@/ui/components/input'
+import type { RealEstateTransactionType } from '@/local-db'
 
 export type RealEstateBuyTemplateValues = Record<string, string>
 
@@ -35,6 +37,7 @@ type RealEstateBuyPrintTemplateProps = {
     fieldPlaceholders?: Record<string, string>
     transactionKeys?: TemplatePreviewDataKey[]
     tokenFieldTemplates?: Record<string, string>
+    transactionType?: RealEstateTransactionType
     printLang?: string
     onFieldChange?: (key: string, value: string) => void
 }
@@ -160,7 +163,7 @@ function TransactionKeyPickerDialog({
     const { t } = useTranslation()
     const displayT = printLang ? i18n.getFixedT(printLang) : t
     const displayLabel = (key: string, fallback?: string) =>
-        displayT(key, { defaultValue: fallback || key })
+        fallback?.trim() ? fallback : displayT(key, { defaultValue: key })
     const [query, setQuery] = useState('')
 
     useEffect(() => {
@@ -462,6 +465,7 @@ export function RealEstateBuyPrintTemplate({
     fieldPlaceholders,
     transactionKeys,
     tokenFieldTemplates,
+    transactionType = 'sell',
     printLang,
     onFieldChange
 }: RealEstateBuyPrintTemplateProps) {
@@ -470,6 +474,7 @@ export function RealEstateBuyPrintTemplate({
     const phone = joinContact(workspaceFooterContacts?.phone, '', '\n')
     const centerQr = !logoSrc && Boolean(qrValue)
     const effectivePrintLang = printLang && printLang !== 'auto' ? printLang : i18n.language
+    const nativeLabels = getRealEstateNativePrintLabels(transactionType)
     const field = (fieldKey: string, fallback = '') => (
         <TemplateField
             values={values}
@@ -535,7 +540,7 @@ export function RealEstateBuyPrintTemplate({
                             </div>
                         )}
                         <div className="flex flex-col gap-[2mm] pt-[1mm]">
-                            <span className="text-[8px] text-zinc-700">ژمارەی وصل</span>
+                            <span className="text-[8px] text-zinc-700">{nativeLabels.receiptNumber}</span>
                             <span className="flex h-[11mm] w-[11mm] items-center justify-center rounded bg-[#232439] text-base font-bold text-white">
                                 {field('receiptNumber', '3')}
                             </span>
@@ -576,16 +581,16 @@ export function RealEstateBuyPrintTemplate({
                 <section className="px-[2mm] py-[4mm]">
                     <div className="grid grid-cols-2 gap-x-[12mm] text-[8.5px] font-bold">
                         <div className="grid grid-cols-[auto_1fr_auto_1fr] items-center gap-x-1 border-b border-black py-[1.5mm]">
-                            <span>لایەنی یەکەم / فرۆشیار :</span>
+                            <span>{nativeLabels.sellerHeader}</span>
                             <UnderlineValue>{field('sellerName', '')}</UnderlineValue>
-                            <span>پێناس :</span>
-                            <UnderlineValue>{field('sellerPhone', 'ناسراوه')}</UnderlineValue>
+                            <span>{nativeLabels.idLabel} :</span>
+                            <UnderlineValue>{field('sellerPhone', nativeLabels.unknown)}</UnderlineValue>
                         </div>
                         <div className="grid grid-cols-[auto_1fr_auto_1fr] items-center gap-x-1 border-b border-black py-[1.5mm]">
-                            <span>لایەنی دووەم / کڕیار :</span>
+                            <span>{nativeLabels.buyerHeader}</span>
                             <UnderlineValue>{field('buyerName', '')}</UnderlineValue>
-                            <span>پێناس :</span>
-                            <UnderlineValue>{field('buyerPhone', 'ناسراوه')}</UnderlineValue>
+                            <span>{nativeLabels.idLabel} :</span>
+                            <UnderlineValue>{field('buyerPhone', nativeLabels.unknown)}</UnderlineValue>
                         </div>
                     </div>
                 </section>
@@ -609,25 +614,25 @@ export function RealEstateBuyPrintTemplate({
                 <footer className="border-t-2 border-black">
                     <div className="grid grid-cols-4 divide-x divide-zinc-400 divide-x-reverse">
                         <SignatureBox
-                            title="شاهید:"
+                            title={nativeLabels.sellerWitnessTitle}
                             name={field('sellerWitnessName', '')}
                             address={fieldWithLegacyFallback('sellerWitnessAddress', 'sellerWitnessRole')}
                             phone={field('sellerWitnessPhone', '')}
                         />
                         <SignatureBox
-                            title="لایەنی یەکەم (فرۆشیار):"
+                            title={nativeLabels.sellerSignatureTitle}
                             name={field('sellerSignatureName', '')}
                             address={fieldWithLegacyFallback('sellerSignatureAddress', 'sellerSignatureRole')}
                             phone={field('sellerSignaturePhone', '')}
                         />
                         <SignatureBox
-                            title="لایەنی دووەم (کڕیار):"
+                            title={nativeLabels.buyerSignatureTitle}
                             name={field('buyerSignatureName', '')}
                             address={fieldWithLegacyFallback('buyerSignatureAddress', 'buyerSignatureRole')}
                             phone={field('buyerSignaturePhone', '')}
                         />
                         <SignatureBox
-                            title="شاهید:"
+                            title={nativeLabels.buyerWitnessTitle}
                             name={field('buyerWitnessName', '')}
                             address={fieldWithLegacyFallback('buyerWitnessAddress', 'buyerWitnessRole')}
                             phone={field('buyerWitnessPhone', '')}

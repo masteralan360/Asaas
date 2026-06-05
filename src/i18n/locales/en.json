@@ -1987,6 +1987,63 @@
     "seller": "Seller",
     "sellerPlaceholder": "Search or enter seller name",
     "sellerWitness": "Seller Witness",
+    "partyLabels": {
+      "sell": {
+        "buyer": "Buyer",
+        "buyerPlaceholder": "Search or enter buyer name",
+        "linkedBuyer": "Linked buyer",
+        "buyerWitness": "Buyer Witness",
+        "seller": "Seller",
+        "sellerPlaceholder": "Search or enter seller name",
+        "linkedSeller": "Linked seller",
+        "sellerWitness": "Seller Witness",
+        "duplicatePartner": "Buyer and seller cannot use the same business partner."
+      },
+      "buy": {
+        "buyer": "Buyer",
+        "buyerPlaceholder": "Search or enter buyer name",
+        "linkedBuyer": "Linked buyer",
+        "buyerWitness": "Buyer Witness",
+        "seller": "Seller",
+        "sellerPlaceholder": "Search or enter seller name",
+        "linkedSeller": "Linked seller",
+        "sellerWitness": "Seller Witness",
+        "duplicatePartner": "Buyer and seller cannot use the same business partner."
+      },
+      "rent": {
+        "buyer": "Tenant",
+        "buyerPlaceholder": "Search or enter tenant name",
+        "linkedBuyer": "Linked tenant",
+        "buyerWitness": "Tenant Witness",
+        "seller": "Landlord",
+        "sellerPlaceholder": "Search or enter landlord name",
+        "linkedSeller": "Linked landlord",
+        "sellerWitness": "Landlord Witness",
+        "duplicatePartner": "Tenant and landlord cannot use the same business partner."
+      },
+      "lease": {
+        "buyer": "Lessee",
+        "buyerPlaceholder": "Search or enter lessee name",
+        "linkedBuyer": "Linked lessee",
+        "buyerWitness": "Lessee Witness",
+        "seller": "Lessor",
+        "sellerPlaceholder": "Search or enter lessor name",
+        "linkedSeller": "Linked lessor",
+        "sellerWitness": "Lessor Witness",
+        "duplicatePartner": "Lessee and lessor cannot use the same business partner."
+      },
+      "exchange": {
+        "buyer": "Second Party",
+        "buyerPlaceholder": "Search or enter second party name",
+        "linkedBuyer": "Linked second party",
+        "buyerWitness": "Second Party Witness",
+        "seller": "First Party",
+        "sellerPlaceholder": "Search or enter first party name",
+        "linkedSeller": "Linked first party",
+        "sellerWitness": "First Party Witness",
+        "duplicatePartner": "Both exchange parties cannot use the same business partner."
+      }
+    },
     "landArea": "Land Area (m2)",
     "profitAmount": "Commission Amount",
     "transactionType": "Transaction Type",

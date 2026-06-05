@@ -808,6 +808,7 @@ export interface Invoice extends BaseEntity {
     | "revenue"
     | "inventory"
     | "manual"
+    | "exchange"
     | "accounting"
     | "loans"
     | "Loans"

@@ -3236,6 +3236,63 @@
     "seller": "البائع",
     "sellerPlaceholder": "ابحث أو أدخل اسم البائع",
     "sellerWitness": "شاهد البائع",
+    "partyLabels": {
+      "sell": {
+        "buyer": "المشتري",
+        "buyerPlaceholder": "ابحث أو أدخل اسم المشتري",
+        "linkedBuyer": "المشتري المرتبط",
+        "buyerWitness": "شاهد المشتري",
+        "seller": "البائع",
+        "sellerPlaceholder": "ابحث أو أدخل اسم البائع",
+        "linkedSeller": "البائع المرتبط",
+        "sellerWitness": "شاهد البائع",
+        "duplicatePartner": "لا يمكن أن يستخدم المشتري والبائع نفس الشريك التجاري."
+      },
+      "buy": {
+        "buyer": "المشتري",
+        "buyerPlaceholder": "ابحث أو أدخل اسم المشتري",
+        "linkedBuyer": "المشتري المرتبط",
+        "buyerWitness": "شاهد المشتري",
+        "seller": "البائع",
+        "sellerPlaceholder": "ابحث أو أدخل اسم البائع",
+        "linkedSeller": "البائع المرتبط",
+        "sellerWitness": "شاهد البائع",
+        "duplicatePartner": "لا يمكن أن يستخدم المشتري والبائع نفس الشريك التجاري."
+      },
+      "rent": {
+        "buyer": "المستأجر",
+        "buyerPlaceholder": "ابحث أو أدخل اسم المستأجر",
+        "linkedBuyer": "المستأجر المرتبط",
+        "buyerWitness": "شاهد المستأجر",
+        "seller": "المالك",
+        "sellerPlaceholder": "ابحث أو أدخل اسم المالك",
+        "linkedSeller": "المالك المرتبط",
+        "sellerWitness": "شاهد المالك",
+        "duplicatePartner": "لا يمكن أن يستخدم المستأجر والمالك نفس الشريك التجاري."
+      },
+      "lease": {
+        "buyer": "المستأجر",
+        "buyerPlaceholder": "ابحث أو أدخل اسم المستأجر",
+        "linkedBuyer": "المستأجر المرتبط",
+        "buyerWitness": "شاهد المستأجر",
+        "seller": "المؤجر",
+        "sellerPlaceholder": "ابحث أو أدخل اسم المؤجر",
+        "linkedSeller": "المؤجر المرتبط",
+        "sellerWitness": "شاهد المؤجر",
+        "duplicatePartner": "لا يمكن أن يستخدم المستأجر والمؤجر نفس الشريك التجاري."
+      },
+      "exchange": {
+        "buyer": "الطرف الثاني",
+        "buyerPlaceholder": "ابحث أو أدخل اسم الطرف الثاني",
+        "linkedBuyer": "الطرف الثاني المرتبط",
+        "buyerWitness": "شاهد الطرف الثاني",
+        "seller": "الطرف الأول",
+        "sellerPlaceholder": "ابحث أو أدخل اسم الطرف الأول",
+        "linkedSeller": "الطرف الأول المرتبط",
+        "sellerWitness": "شاهد الطرف الأول",
+        "duplicatePartner": "لا يمكن أن يستخدم طرفا المبادلة نفس الشريك التجاري."
+      }
+    },
     "landArea": "مساحة الأرض (م2)",
     "profitAmount": "مبلغ العمولة",
     "transactionType": "نوع المعاملة",

@@ -3,9 +3,16 @@ import type { CustomTemplateLayout, TemplatePreview, TemplatePreviewDataKey } fr
 import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
 import { platformService } from '@/services/platformService'
 import {
+    getRealEstateNativeFieldPlaceholders,
+    getRealEstateNativeTemplateFieldLabels,
+    getRealEstateTemplateKeyLabels,
+    getRealEstateTransactionTypeFromModuleTypeKey
+} from '@/lib/realEstateParties'
+import {
     RealEstateBuyPrintTemplate,
     type WorkspaceFooterContacts
 } from '@/ui/components/real-estate/RealEstateBuyPrintTemplate'
+import type { RealEstateTransactionType } from '@/local-db'
 import type { WorkspaceFeatures } from '@/workspace'
 
 export type CustomTemplateTarget = {
@@ -63,7 +70,7 @@ const REAL_ESTATE_CONTRACT_MODULE_TYPE_KEYS = new Set(
 export const CUSTOM_TEMPLATE_TARGETS: CustomTemplateTarget[] = [
     ...REAL_ESTATE_CONTRACT_TARGETS.map((target) => ({
         ...target,
-        workspaceModuleKey: 'real_estate',
+        workspaceModuleKey: 'real_estate' as const,
         moduleLabel: 'Real Estate'
     }))
 ]
@@ -214,6 +221,31 @@ const REAL_ESTATE_BUY_FIELD_TYPES = Object.fromEntries(
     REAL_ESTATE_BUY_FIELDS.map((field) => [field.key, field.type])
 )
 
+function createRealEstateFieldsForTransactionType(transactionType: RealEstateTransactionType) {
+    const labels = getRealEstateNativeTemplateFieldLabels(transactionType)
+    const placeholders = getRealEstateNativeFieldPlaceholders(transactionType)
+
+    return REAL_ESTATE_BUY_FIELDS.map((field) => ({
+        ...field,
+        label: labels[field.key as keyof typeof labels] || field.label,
+        placeholder: placeholders[field.key as keyof typeof placeholders] || field.placeholder
+    }))
+}
+
+function createRealEstateDataKeysForTransactionType(transactionType: RealEstateTransactionType) {
+    const labels = getRealEstateTemplateKeyLabels(transactionType)
+
+    return REAL_ESTATE_BUY_TRANSACTION_KEYS.map((key) => ({
+        ...key,
+        label: labels[key.key as keyof typeof labels] || key.label,
+        group: key.group === 'Buyer'
+            ? labels.buyerGroup
+            : key.group === 'Seller'
+                ? labels.sellerGroup
+                : key.group
+    }))
+}
+
 function buildQrValue(workspaceId?: string, effectiveId?: string, features?: WorkspaceFeatures) {
     if (!features?.print_qr || !workspaceId || !effectiveId || isLocalWorkspaceMode(workspaceId)) {
         return null
@@ -222,10 +254,18 @@ function buildQrValue(workspaceId?: string, effectiveId?: string, features?: Wor
     return `https://asaas-r2-proxy.alanepic360.workers.dev/${workspaceId}/printed-invoices/A4/${effectiveId}.pdf`
 }
 
-function createRealEstateContractPreview(options: CustomTemplatePreviewOptions): TemplatePreview {
+function createRealEstateContractPreview(
+    options: CustomTemplatePreviewOptions,
+    moduleTypeKey = 'realEstate.Sell'
+): TemplatePreview {
+    const transactionType = getRealEstateTransactionTypeFromModuleTypeKey(moduleTypeKey)
+    const fields = createRealEstateFieldsForTransactionType(transactionType)
+    const dataKeys = createRealEstateDataKeysForTransactionType(transactionType)
+    const fieldPlaceholders = getRealEstateNativeFieldPlaceholders(transactionType)
+
     return {
-        fields: REAL_ESTATE_BUY_FIELDS,
-        dataKeys: REAL_ESTATE_BUY_TRANSACTION_KEYS,
+        fields,
+        dataKeys,
         fixedPrintLang: 'ku',
         createElement: (data, effectiveId, _printLangOverride, renderOptions) => (
             <RealEstateBuyPrintTemplate
@@ -236,9 +276,10 @@ function createRealEstateContractPreview(options: CustomTemplatePreviewOptions):
                 workspaceFooterContacts={options.workspaceFooterContacts}
                 editableFields={renderOptions?.editableFields}
                 fieldTypes={REAL_ESTATE_BUY_FIELD_TYPES}
-                fieldPlaceholders={REAL_ESTATE_BUY_FIELD_PLACEHOLDERS}
-                transactionKeys={renderOptions?.dataKeys || REAL_ESTATE_BUY_TRANSACTION_KEYS}
+                fieldPlaceholders={fieldPlaceholders}
+                transactionKeys={renderOptions?.dataKeys || dataKeys}
                 tokenFieldTemplates={renderOptions?.tokenFieldTemplates}
+                transactionType={transactionType}
                 printLang={options.features?.print_lang}
                 onFieldChange={renderOptions?.onFieldChange}
             />
@@ -256,7 +297,7 @@ export function createCustomTemplatePreview(
     options: CustomTemplatePreviewOptions = {}
 ): TemplatePreview {
     if (REAL_ESTATE_CONTRACT_MODULE_TYPE_KEYS.has(target.moduleTypeKey)) {
-        return createRealEstateContractPreview(options)
+        return createRealEstateContractPreview(options, target.moduleTypeKey)
     }
 
     return {

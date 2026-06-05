@@ -64,6 +64,7 @@ import {
 import { normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
 import type { CustomTemplateLayout } from '@/lib/pdfPreviewStore'
 import type { PrintFormat } from '@/services/pdfGenerator'
+import { getRealEstatePartyLabels } from '@/lib/realEstateParties'
 
 type RealEstateFilter = 'all' | 'active' | 'overdue' | 'completed' | 'installments'
 
@@ -809,6 +810,7 @@ function RealEstateDetails({
         : 0
     const buyerWitnessDetails = formatWitnessDetails(transaction.buyerWitnessName, transaction.buyerWitnessAddress, transaction.buyerWitnessPhone)
     const sellerWitnessDetails = formatWitnessDetails(transaction.sellerWitnessName, transaction.sellerWitnessAddress, transaction.sellerWitnessPhone)
+    const partyLabels = getRealEstatePartyLabels(transaction.transactionType, t)
 
     return (
         <div className="space-y-4">
@@ -865,17 +867,17 @@ function RealEstateDetails({
                         {transaction.propertyType ? (
                             <InfoRow label={t('realEstate.propertyType', { defaultValue: 'Property Type' })} value={t(`realEstate.propertyTypes.${transaction.propertyType}`, { defaultValue: transaction.propertyType })} />
                         ) : null}
-                        <InfoRow label={t('realEstate.buyer', { defaultValue: 'Buyer' })} value={transaction.buyerName} />
+                        <InfoRow label={partyLabels.buyer.label} value={transaction.buyerName} />
                         {buyerWitnessDetails ? (
                             <InfoRow
-                                label={t('realEstate.buyerWitness', { defaultValue: 'Buyer Witness' })}
+                                label={partyLabels.buyer.witnessLabel}
                                 value={buyerWitnessDetails}
                             />
                         ) : null}
-                        <InfoRow label={t('realEstate.seller', { defaultValue: 'Seller' })} value={transaction.sellerName} />
+                        <InfoRow label={partyLabels.seller.label} value={transaction.sellerName} />
                         {sellerWitnessDetails ? (
                             <InfoRow
-                                label={t('realEstate.sellerWitness', { defaultValue: 'Seller Witness' })}
+                                label={partyLabels.seller.witnessLabel}
                                 value={sellerWitnessDetails}
                             />
                         ) : null}

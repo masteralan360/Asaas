@@ -3213,6 +3213,63 @@
     "seller": "فرۆشیار",
     "sellerPlaceholder": "گەڕان یان داخڵکردنی ناوی فرۆشیار",
     "sellerWitness": "شاهیدی فرۆشیار",
+    "partyLabels": {
+      "sell": {
+        "buyer": "کڕیار",
+        "buyerPlaceholder": "گەڕان یان داخڵکردنی ناوی کڕیار",
+        "linkedBuyer": "کڕیاری بەستەرکراو",
+        "buyerWitness": "شاهیدی کڕیار",
+        "seller": "فرۆشیار",
+        "sellerPlaceholder": "گەڕان یان داخڵکردنی ناوی فرۆشیار",
+        "linkedSeller": "فرۆشیاری بەستەرکراو",
+        "sellerWitness": "شاهیدی فرۆشیار",
+        "duplicatePartner": "کڕیار و فرۆشیار ناتوانن هەمان هاوبەشی بازرگانی بەکاربهێنن."
+      },
+      "buy": {
+        "buyer": "کڕیار",
+        "buyerPlaceholder": "گەڕان یان داخڵکردنی ناوی کڕیار",
+        "linkedBuyer": "کڕیاری بەستەرکراو",
+        "buyerWitness": "شاهیدی کڕیار",
+        "seller": "فرۆشیار",
+        "sellerPlaceholder": "گەڕان یان داخڵکردنی ناوی فرۆشیار",
+        "linkedSeller": "فرۆشیاری بەستەرکراو",
+        "sellerWitness": "شاهیدی فرۆشیار",
+        "duplicatePartner": "کڕیار و فرۆشیار ناتوانن هەمان هاوبەشی بازرگانی بەکاربهێنن."
+      },
+      "rent": {
+        "buyer": "کرێچی",
+        "buyerPlaceholder": "گەڕان یان داخڵکردنی ناوی کرێچی",
+        "linkedBuyer": "کرێچیی بەستەرکراو",
+        "buyerWitness": "شاهیدی کرێچی",
+        "seller": "خاوەن موڵک",
+        "sellerPlaceholder": "گەڕان یان داخڵکردنی ناوی خاوەن موڵک",
+        "linkedSeller": "خاوەن موڵکی بەستەرکراو",
+        "sellerWitness": "شاهیدی خاوەن موڵک",
+        "duplicatePartner": "کرێچی و خاوەن موڵک ناتوانن هەمان هاوبەشی بازرگانی بەکاربهێنن."
+      },
+      "lease": {
+        "buyer": "بەکرێگر",
+        "buyerPlaceholder": "گەڕان یان داخڵکردنی ناوی بەکرێگر",
+        "linkedBuyer": "بەکرێگری بەستەرکراو",
+        "buyerWitness": "شاهیدی بەکرێگر",
+        "seller": "بەکرێدەر",
+        "sellerPlaceholder": "گەڕان یان داخڵکردنی ناوی بەکرێدەر",
+        "linkedSeller": "بەکرێدەری بەستەرکراو",
+        "sellerWitness": "شاهیدی بەکرێدەر",
+        "duplicatePartner": "بەکرێگر و بەکرێدەر ناتوانن هەمان هاوبەشی بازرگانی بەکاربهێنن."
+      },
+      "exchange": {
+        "buyer": "لایەنی دووەم",
+        "buyerPlaceholder": "گەڕان یان داخڵکردنی ناوی لایەنی دووەم",
+        "linkedBuyer": "لایەنی دووەمی بەستەرکراو",
+        "buyerWitness": "شاهیدی لایەنی دووەم",
+        "seller": "لایەنی یەکەم",
+        "sellerPlaceholder": "گەڕان یان داخڵکردنی ناوی لایەنی یەکەم",
+        "linkedSeller": "لایەنی یەکەمی بەستەرکراو",
+        "sellerWitness": "شاهیدی لایەنی یەکەم",
+        "duplicatePartner": "لایەنەکانی گۆڕینەوە ناتوانن هەمان هاوبەشی بازرگانی بەکاربهێنن."
+      }
+    },
     "landArea": "ڕووبەری زەوی (م2)",
     "profitAmount": "بڕی قازانج",
     "transactionType": "جۆری مامەڵە",
