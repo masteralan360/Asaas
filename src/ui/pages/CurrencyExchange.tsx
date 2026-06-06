@@ -109,8 +109,19 @@ type ExchangeRelationRange = {
 }
 
 type MarketRateCurrency = Exclude<CurrencyCode, 'iqd'>
+type ExchangeRateCardSlot = CurrencyCode | null
 
 const paymentMethods: ExchangePaymentMethod[] = ['cash', 'fib', 'qicard', 'zaincash', 'fastpay']
+const EXCHANGE_RATE_CARD_SLOT_COUNT = 4
+const EMPTY_EXCHANGE_RATE_CARD_SLOTS: ExchangeRateCardSlot[] = Array.from({ length: EXCHANGE_RATE_CARD_SLOT_COUNT }, () => null)
+const EXCHANGE_RATE_CARD_CLEAR_VALUE = '__clear'
+const EXCHANGE_RATE_CARD_STORAGE_KEY_PREFIX = 'currency_exchange_rate_card_slots'
+const fallbackCurrencyNames: Record<CurrencyCode, string> = {
+    iqd: 'Iraqi Dinar',
+    usd: 'US Dollar',
+    eur: 'Euro',
+    try: 'Turkish Lira'
+}
 
 function currentTimestamp() {
     return new Date().toISOString()
@@ -144,6 +155,58 @@ function isMarketRateCurrency(currency: CurrencyCode): currency is MarketRateCur
     return currency === 'usd' || currency === 'eur' || currency === 'try'
 }
 
+function getExchangeRateCardStorageKey(workspaceId: string) {
+    return `${EXCHANGE_RATE_CARD_STORAGE_KEY_PREFIX}:${workspaceId || 'default'}`
+}
+
+function isExchangeRateCardCurrency(value: unknown): value is CurrencyCode {
+    return typeof value === 'string' && EXCHANGE_SAFE_CURRENCIES.includes(value as CurrencyCode)
+}
+
+function normalizeExchangeRateCardSlots(value: unknown): ExchangeRateCardSlot[] {
+    const next = [...EMPTY_EXCHANGE_RATE_CARD_SLOTS]
+    const seen = new Set<CurrencyCode>()
+
+    if (!Array.isArray(value)) {
+        return next
+    }
+
+    for (let index = 0; index < EXCHANGE_RATE_CARD_SLOT_COUNT; index += 1) {
+        const currency = value[index]
+        if (isExchangeRateCardCurrency(currency) && !seen.has(currency)) {
+            next[index] = currency
+            seen.add(currency)
+        }
+    }
+
+    return next
+}
+
+function readExchangeRateCardSlots(storageKey: string) {
+    if (typeof window === 'undefined') {
+        return [...EMPTY_EXCHANGE_RATE_CARD_SLOTS]
+    }
+
+    try {
+        const rawValue = window.localStorage.getItem(storageKey)
+        return rawValue ? normalizeExchangeRateCardSlots(JSON.parse(rawValue)) : [...EMPTY_EXCHANGE_RATE_CARD_SLOTS]
+    } catch {
+        return [...EMPTY_EXCHANGE_RATE_CARD_SLOTS]
+    }
+}
+
+function writeExchangeRateCardSlots(storageKey: string, slots: ExchangeRateCardSlot[]) {
+    if (typeof window === 'undefined') {
+        return
+    }
+
+    try {
+        window.localStorage.setItem(storageKey, JSON.stringify(normalizeExchangeRateCardSlots(slots)))
+    } catch {
+        // Ignore local storage failures; the display cards still work for this session.
+    }
+}
+
 function toManualRateCurrency(currency: MarketRateCurrency): ManualRateCurrency {
     return currency.toUpperCase() as ManualRateCurrency
 }
@@ -151,6 +214,21 @@ function toManualRateCurrency(currency: MarketRateCurrency): ManualRateCurrency 
 function getRateToIqd(currency: CurrencyCode, rates: ExchangeRateMap) {
     if (currency === 'iqd') return 1
     return Number(rates[currency] || 0)
+}
+
+function getLocalizedCurrencyName(currency: CurrencyCode, language: string | undefined) {
+    const locale = language?.replace('_', '-') || 'en'
+
+    try {
+        const displayNames = new Intl.DisplayNames([locale], { type: 'currency' })
+        return displayNames.of(currency.toUpperCase()) || fallbackCurrencyNames[currency]
+    } catch {
+        return fallbackCurrencyNames[currency]
+    }
+}
+
+function formatExchangeRateDisplay(value: number | null) {
+    return value && value > 0 ? formatNumberWithCommas(value) : '-'
 }
 
 function getPairLabel(fromCurrency: CurrencyCode, toCurrency: CurrencyCode) {
@@ -478,17 +556,31 @@ function ExchangeTransactionsPage({
     onRules: () => void
     onSafes: () => void
 }) {
-    const { t } = useTranslation()
+    const { t, i18n } = useTranslation()
     const { toast } = useToast()
     const { user } = useAuth()
     const { hasPermission } = useWorkspacePermissions()
+    const { exchangeData, eurRates, tryRates } = useExchangeRate()
     const transactions = useExchangeTransactions(workspaceId)
     const safes = useExchangeSafes(workspaceId)
     const [search, setSearch] = useState('')
+    const rateCardStorageKey = getExchangeRateCardStorageKey(workspaceId)
+    const rateCardStorageKeyRef = useRef(rateCardStorageKey)
+    const skipNextRateCardSaveRef = useRef(false)
+    const [rateCardCurrencies, setRateCardCurrencies] = useState<ExchangeRateCardSlot[]>(() => readExchangeRateCardSlots(rateCardStorageKey))
     const [reverseTargetId, setReverseTargetId] = useState<string | null>(null)
     const [hoveredReversalRelationKey, setHoveredReversalRelationKey] = useState<string | null>(null)
     const [isReversing, setIsReversing] = useState(false)
     const canReverse = user?.role === 'admin' || hasPermission('currencyExchange.reverse')
+    const marketRatesToIqd = useMemo(() => (
+        buildRateMap(
+            Number(exchangeData?.rate || 0),
+            Number(eurRates.eur_iqd?.rate || 0) || null,
+            Number(tryRates.try_iqd?.rate || 0) || null
+        )
+    ), [eurRates.eur_iqd?.rate, exchangeData?.rate, tryRates.try_iqd?.rate])
+    const selectedRateCardCurrencies = useMemo(() => new Set(rateCardCurrencies.filter(Boolean) as CurrencyCode[]), [rateCardCurrencies])
+    const activeLanguage = i18n.resolvedLanguage || i18n.language
 
     const filteredTransactions = useMemo(() => {
         const query = search.trim().toLowerCase()
@@ -523,6 +615,45 @@ function ExchangeTransactionsPage({
             activeSafes: safes.filter((safe) => safe.isActive).length
         }
     }, [iqdDisplayPreference, safes, transactions])
+
+    useEffect(() => {
+        if (rateCardStorageKeyRef.current === rateCardStorageKey) {
+            return
+        }
+
+        rateCardStorageKeyRef.current = rateCardStorageKey
+        skipNextRateCardSaveRef.current = true
+        setRateCardCurrencies(readExchangeRateCardSlots(rateCardStorageKey))
+    }, [rateCardStorageKey])
+
+    useEffect(() => {
+        if (skipNextRateCardSaveRef.current) {
+            skipNextRateCardSaveRef.current = false
+            return
+        }
+
+        writeExchangeRateCardSlots(rateCardStorageKey, rateCardCurrencies)
+    }, [rateCardCurrencies, rateCardStorageKey])
+
+    const handleRateCardCurrencyChange = (slotIndex: number, value: string) => {
+        setRateCardCurrencies((current) => {
+            const next = current.slice(0, EXCHANGE_RATE_CARD_SLOT_COUNT)
+            while (next.length < EXCHANGE_RATE_CARD_SLOT_COUNT) {
+                next.push(null)
+            }
+
+            if (value === EXCHANGE_RATE_CARD_CLEAR_VALUE) {
+                next[slotIndex] = null
+                return next
+            }
+
+            const currency = value as CurrencyCode
+            return next.map((slot, index) => {
+                if (index === slotIndex) return currency
+                return slot === currency ? null : slot
+            })
+        })
+    }
 
     const handleReverse = async () => {
         if (!reverseTargetId) return
@@ -580,6 +711,29 @@ function ExchangeTransactionsPage({
                 <MetricCard title={t('currencyExchange.metrics.manualRates')} value={String(metrics.manualRates)} />
                 <MetricCard title={t('currencyExchange.metrics.realizedProfit')} value={metrics.realizedProfit} />
                 <MetricCard title={t('currencyExchange.metrics.activeSafes')} value={String(metrics.activeSafes)} />
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                {rateCardCurrencies.map((currency, slotIndex) => {
+                    const currencyOptions = EXCHANGE_SAFE_CURRENCIES.filter((option) => (
+                        option === currency || !selectedRateCardCurrencies.has(option)
+                    ))
+                    const rate = currency ? getRateToIqd(currency, marketRatesToIqd) : null
+
+                    return (
+                        <ExchangeRateDisplaySelectCard
+                            key={slotIndex}
+                            slotIndex={slotIndex}
+                            currency={currency}
+                            currencyOptions={currencyOptions}
+                            currencyName={currency ? getLocalizedCurrencyName(currency, activeLanguage) : ''}
+                            language={activeLanguage}
+                            rate={rate && rate > 0 ? rate : null}
+                            onCurrencyChange={handleRateCardCurrencyChange}
+                            t={t}
+                        />
+                    )
+                })}
             </div>
 
             <Card>
@@ -2702,8 +2856,157 @@ const currencyFlagIsoCode: Record<CurrencyCode, string> = {
     try: 'TR'
 }
 
-function CurrencyFlag({ currency }: { currency: CurrencyCode }) {
-    return <CountryFlag isoCode={currencyFlagIsoCode[currency]} size={20} />
+function ExchangeRateDisplaySelectCard({
+    slotIndex,
+    currency,
+    currencyOptions,
+    currencyName,
+    language,
+    rate,
+    onCurrencyChange,
+    t
+}: {
+    slotIndex: number
+    currency: ExchangeRateCardSlot
+    currencyOptions: CurrencyCode[]
+    currencyName: string
+    language: string | undefined
+    rate: number | null
+    onCurrencyChange: (slotIndex: number, value: string) => void
+    t: TFunction
+}) {
+    const [isPickerOpen, setIsPickerOpen] = useState(false)
+    const shouldAllowPickerOpenRef = useRef(false)
+    const buyingRate = formatExchangeRateDisplay(rate)
+    const sellingRate = formatExchangeRateDisplay(rate)
+    const handlePickerOpenChange = (open: boolean) => {
+        if (!open) {
+            shouldAllowPickerOpenRef.current = false
+            setIsPickerOpen(false)
+            return
+        }
+
+        if (!currency || shouldAllowPickerOpenRef.current) {
+            setIsPickerOpen(true)
+        }
+    }
+
+    return (
+        <Select
+            open={isPickerOpen}
+            onOpenChange={handlePickerOpenChange}
+            value={currency ?? undefined}
+            onValueChange={(value) => {
+                onCurrencyChange(slotIndex, value)
+                shouldAllowPickerOpenRef.current = false
+                setIsPickerOpen(false)
+            }}
+        >
+            <SelectTrigger
+                allowViewer
+                aria-label={currency
+                    ? t('currencyExchange.labels.currencyToCurrency', { from: currency.toUpperCase(), to: 'IQD' })
+                    : t('currencyExchange.placeholders.selectCurrency', { defaultValue: 'Select currency' })}
+                className={cn(
+                    'group h-auto min-h-[260px] items-stretch rounded-xl border border-border/80 bg-card p-0 text-card-foreground shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md',
+                    'focus:ring-2 focus:ring-ring focus:ring-offset-2 [&>svg:last-child]:hidden'
+                )}
+                onPointerDownCapture={(event) => {
+                    if (event.button === 2) {
+                        shouldAllowPickerOpenRef.current = true
+                        return
+                    }
+
+                    if (currency) {
+                        shouldAllowPickerOpenRef.current = false
+                        event.preventDefault()
+                        event.stopPropagation()
+                        setIsPickerOpen(false)
+                        return
+                    }
+
+                    shouldAllowPickerOpenRef.current = true
+                }}
+                onClickCapture={(event) => {
+                    if (!currency) return
+
+                    shouldAllowPickerOpenRef.current = false
+                    event.preventDefault()
+                    event.stopPropagation()
+                    setIsPickerOpen(false)
+                }}
+                onContextMenu={(event) => {
+                    event.preventDefault()
+                    shouldAllowPickerOpenRef.current = true
+                    setIsPickerOpen(true)
+                }}
+            >
+                {currency ? (
+                    <div className="flex w-full min-w-0 flex-col overflow-hidden rounded-xl">
+                        <div className="flex min-w-0 items-start justify-between gap-3 border-b bg-muted/20 p-4">
+                            <div className="min-w-0">
+                                <div className="text-4xl font-black leading-none tracking-normal text-foreground">{currency.toUpperCase()}</div>
+                                <div className="mt-1 line-clamp-2 text-sm font-semibold leading-tight text-muted-foreground">{currencyName}</div>
+                            </div>
+                            <div className="shrink-0 overflow-hidden rounded-md bg-background shadow-sm ring-1 ring-border/60">
+                                <CurrencyFlag currency={currency} size={42} />
+                            </div>
+                        </div>
+
+                        <div className="grid flex-1 content-end gap-3 p-4">
+                            <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-1 2xl:grid-cols-2">
+                                <div className="min-w-0 rounded-lg border border-red-500/15 bg-red-500/10 p-3">
+                                    <div className="text-xs font-semibold uppercase text-red-700 dark:text-red-300">
+                                        {t('currencyExchange.transactionTypes.buy')}
+                                    </div>
+                                    <div className="mt-2 break-words text-2xl font-black leading-tight tabular-nums text-red-600 dark:text-red-300">
+                                        {buyingRate}
+                                    </div>
+                                </div>
+                                <div className="min-w-0 rounded-lg border border-emerald-500/15 bg-emerald-500/10 p-3">
+                                    <div className="text-xs font-semibold uppercase text-emerald-700 dark:text-emerald-300">
+                                        {t('currencyExchange.transactionTypes.sell')}
+                                    </div>
+                                    <div className="mt-2 break-words text-2xl font-black leading-tight tabular-nums text-emerald-600 dark:text-emerald-300">
+                                        {sellingRate}
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                                <span>{t('currencyExchange.labels.currencyPair')}</span>
+                                <span className="font-semibold text-foreground">{currency.toUpperCase()}/IQD</span>
+                            </div>
+                        </div>
+                    </div>
+                ) : (
+                    <div className="flex min-h-[258px] w-full flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-muted-foreground/30 bg-muted/10 p-5 text-center transition-colors group-hover:border-primary/40 group-hover:bg-primary/5">
+                        <div className="flex h-14 w-14 items-center justify-center rounded-full bg-background text-muted-foreground shadow-sm ring-1 ring-border group-hover:text-primary">
+                            <Plus className="h-7 w-7" />
+                        </div>
+                        <div className="text-sm font-semibold text-foreground">
+                            {t('currencyExchange.placeholders.selectCurrency', { defaultValue: 'Select currency' })}
+                        </div>
+                    </div>
+                )}
+            </SelectTrigger>
+            <SelectContent>
+                {currency ? (
+                    <SelectItem value={EXCHANGE_RATE_CARD_CLEAR_VALUE}>
+                        {t('currencyExchange.buttons.clear')}
+                    </SelectItem>
+                ) : null}
+                {currencyOptions.map((option) => (
+                    <SelectItem key={option} value={option}>
+                        {option.toUpperCase()} - {getLocalizedCurrencyName(option, language)}
+                    </SelectItem>
+                ))}
+            </SelectContent>
+        </Select>
+    )
+}
+
+function CurrencyFlag({ currency, size = 20 }: { currency: CurrencyCode; size?: number }) {
+    return <CountryFlag isoCode={currencyFlagIsoCode[currency]} size={size} />
 }
 
 function SafeCurrencyCard({ currency, balance }: { currency: CurrencyCode; balance: string }) {
