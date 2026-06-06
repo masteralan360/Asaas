@@ -2,6 +2,7 @@ import { type FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useRoute } from 'wouter'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
+import CountryFlag from 'react-native-country-flag'
 import { ArrowLeft, ArrowRightLeft, CalendarClock, ClipboardList, Clock, HelpCircle, History, Lock, Plus, Search, Trash2, Undo2, Unlock, Vault } from 'lucide-react'
 
 import { useAuth } from '@/auth'
@@ -926,10 +927,10 @@ function ExchangeSafesPage({
                 <div className="space-y-4">
                     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                         {EXCHANGE_SAFE_CURRENCIES.map((currency) => (
-                            <MetricCard
+                            <SafeCurrencyCard
                                 key={currency}
-                                title={currency.toUpperCase()}
-                                value={formatCurrency(getSafeBalanceAmount(balances, selectedSafe?.id, currency), currency, iqdDisplayPreference)}
+                                currency={currency}
+                                balance={formatCurrency(getSafeBalanceAmount(balances, selectedSafe?.id, currency), currency, iqdDisplayPreference)}
                             />
                         ))}
                     </div>
@@ -2691,6 +2692,34 @@ function ExchangeFeeRulesPage({
                 description={t('currencyExchange.feeRules.deleteDescription')}
             />
         </div>
+    )
+}
+
+const currencyFlagIsoCode: Record<CurrencyCode, string> = {
+    iqd: 'IQ',
+    usd: 'US',
+    eur: 'EU',
+    try: 'TR'
+}
+
+function CurrencyFlag({ currency }: { currency: CurrencyCode }) {
+    return <CountryFlag isoCode={currencyFlagIsoCode[currency]} size={20} />
+}
+
+function SafeCurrencyCard({ currency, balance }: { currency: CurrencyCode; balance: string }) {
+    return (
+        <Card>
+            <CardContent className="relative min-w-0 p-4">
+                <div
+                    className="absolute right-5 top-4 overflow-hidden rounded-[2px] shadow-sm ring-1 ring-border/20"
+                    aria-label={`${currency.toUpperCase()} flag`}
+                >
+                    <CurrencyFlag currency={currency} />
+                </div>
+                <div className="text-sm text-muted-foreground">{currency.toUpperCase()}</div>
+                <div className="mt-1 break-words pr-14 text-2xl font-bold leading-tight">{balance}</div>
+            </CardContent>
+        </Card>
     )
 }
 

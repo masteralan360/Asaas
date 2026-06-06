@@ -116,7 +116,8 @@ export default defineConfig(({ mode }) => {
         },
         resolve: {
             alias: {
-                '@': path.resolve(__dirname, './src')
+                '@': path.resolve(__dirname, './src'),
+                'react-native': path.resolve(__dirname, './src/lib/reactNativeWebShim.tsx')
             }
         },
         build: {
