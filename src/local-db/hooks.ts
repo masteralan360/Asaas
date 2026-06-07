@@ -1662,7 +1662,8 @@ async function enrichSalesForUiRows(workspaceId: string, sales: Sale[]) {
                 category: categoryName || undefined,
                 can_be_returned: product?.canBeReturned ?? true,
                 return_rules: product?.returnRules,
-                unit: product?.unit || ''
+                unit: product?.unit || '',
+                is_deleted: product?.isDeleted ?? false
             }
         }
 
@@ -1725,7 +1726,7 @@ export function useSales(workspaceId: string | undefined, startDate?: string, en
                         *,
                             sale_items(
                                 *,
-                                product:product_id(name, sku, category, category_id, can_be_returned, return_rules, unit)
+                                product:product_id(name, sku, category, category_id, can_be_returned, return_rules, unit, is_deleted)
                             )
                     `)
                     .eq('workspace_id', workspaceId)
@@ -1822,7 +1823,8 @@ export function toUISale(localSale: any): any {
             sku: item.product_sku || '',
             can_be_returned: item.can_be_returned ?? true,
             return_rules: item.return_rules,
-            unit: item.product_unit || ''
+            unit: item.product_unit || '',
+            is_deleted: false
         }
     }))
 

@@ -2447,6 +2447,7 @@
       "declineTitle": "Return Not Possible",
       "declineMessage": "The following products in this sale are marked as non-returnable:",
       "returnableMessage": "The following products are returnable:",
+      "deleted": "deleted",
       "declineNote": "Please contact an administrator if you believe this is an error.",
       "moreRulesFollowing": "More rules follow for other items",
       "partialReturn": "Partial Return",

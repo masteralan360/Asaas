@@ -559,7 +559,7 @@ export function Sales() {
     const [rulesQueue, setRulesQueue] = useState<Array<{ productName: string; rules: string }>>([])
     const [currentRuleIndex, setCurrentRuleIndex] = useState(-1)
     const [showDeclineModal, setShowDeclineModal] = useState(false)
-    const [nonReturnableProducts, setNonReturnableProducts] = useState<string[]>([])
+    const [nonReturnableProducts, setNonReturnableProducts] = useState<{ name: string; isDeleted: boolean }[]>([])
     const [filteredReturnItems, setFilteredReturnItems] = useState<SaleItem[]>([])
     const [printFormat, setPrintFormat] = useState<'receipt' | 'a4'>(() => {
         return (localStorage.getItem('sales_print_format') as 'receipt' | 'a4') || 'receipt'
@@ -714,10 +714,17 @@ export function Sales() {
 
         // Flagged sales bypass non-returnable product restrictions
         if (!isFlaggedSale) {
-            const nonReturnableItems = itemsToCheck.filter(item => item.product && item.product.can_be_returned === false)
-            const returnableItems = itemsToCheck.filter(item => !item.product || item.product.can_be_returned !== false)
+            const nonReturnableItems = itemsToCheck.filter(item =>
+                item.product && (item.product.can_be_returned === false || item.product.is_deleted === true)
+            )
+            const returnableItems = itemsToCheck.filter(item =>
+                !item.product || (item.product.can_be_returned !== false && item.product.is_deleted !== true)
+            )
 
-            const nonReturnableNames = nonReturnableItems.map(item => item.product?.name || item.product_name || 'Unknown Product')
+            const nonReturnableNames = nonReturnableItems.map(item => ({
+                name: item.product?.name || item.product_name || 'Unknown Product',
+                isDeleted: item.product?.is_deleted === true
+            }))
 
             if (nonReturnableNames.length > 0) {
                 setNonReturnableProducts(nonReturnableNames)

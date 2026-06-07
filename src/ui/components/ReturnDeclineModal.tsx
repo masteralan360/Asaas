@@ -13,7 +13,7 @@ import { AlertCircle } from 'lucide-react'
 interface ReturnDeclineModalProps {
     isOpen: boolean
     onClose: () => void
-    products: string[]
+    products: { name: string; isDeleted: boolean }[]
     returnableProducts?: string[]
     onContinue?: () => void
 }
@@ -39,10 +39,11 @@ export function ReturnDeclineModal({ isOpen, onClose, products, returnableProduc
                             {t('sales.return.declineMessage') || 'The following products in this sale are marked as non-returnable:'}
                         </p>
                         <div className="bg-destructive/5 dark:bg-destructive/10 border border-destructive/20 dark:border-destructive/30 rounded-2xl p-4 space-y-2 mx-1">
-                            {products.map((name, index) => (
+                            {products.map((item, index) => (
                                 <div key={index} className="flex items-center gap-3 text-sm text-destructive font-bold font-mono">
                                     <span className="w-2 h-2 rounded-full bg-destructive animate-pulse" />
-                                    {name}
+                                    {item.name}
+                                    {item.isDeleted && <span className="italic font-normal text-destructive/70">({t('sales.return.deleted') || 'deleted'})</span>}
                                 </div>
                             ))}
                         </div>

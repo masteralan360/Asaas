@@ -38,6 +38,7 @@ export interface SaleItem {
         can_be_returned: boolean
         return_rules?: string
         unit?: string
+        is_deleted?: boolean
     }
     product_category?: string
 }
