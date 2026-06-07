@@ -3,15 +3,13 @@ import { useLocation, useRoute } from 'wouter'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import CountryFlag from 'react-native-country-flag'
-import { ArrowLeft, ArrowRightLeft, CalendarClock, ClipboardList, Clock, HelpCircle, History, Lock, Plus, Search, Trash2, Undo2, Unlock, Vault } from 'lucide-react'
+import { ArrowLeft, ArrowRightLeft, CalendarClock, ClipboardList, HelpCircle, History, Lock, Plus, Search, Trash2, Undo2, Unlock, Vault } from 'lucide-react'
 
 import { useAuth } from '@/auth'
-import { useExchangeRate } from '@/context/ExchangeRateContext'
-import { buildOrderExchangeRatesSnapshot } from '@/lib/orderCurrency'
 import { cn, formatCurrency, formatDateTime, formatNumberWithCommas, formatNumericInput, parseFormattedNumber, parseLocalDateTimeValue, sanitizeNumericInput } from '@/lib/utils'
-import { setManualExchangeRate, type ManualRateCurrency } from '@/lib/manualExchangeRates'
 import {
     buildExchangeFeeRuleSnapshot,
+    buildExchangePairOptions,
     calculateExchangeProfit,
     calculateExchangeTransaction,
     createExchangeFeeRule,
@@ -19,18 +17,26 @@ import {
     createExchangeSafeAdjustment,
     createExchangeTransaction,
     deleteExchangeFeeRule,
+    DEFAULT_EXCHANGE_PAIR_PRICE_BASIS,
     EXCHANGE_SAFE_CURRENCIES,
+    findExchangePairPrice,
     reverseExchangeTransaction,
     findLatestSafeBuyForAcquisitionRate,
     getExchangeFeeRuleTemporalStatus,
     getDefaultExchangeFeeBasisAmount,
-    getEffectiveExchangeRateUsed,
     getExchangeFeeBasisAmount,
+    getExchangePairKey,
+    getExchangePairLabel,
+    getExchangePairSidePrice,
+    getExchangePairTransactionCurrencies,
     getExchangeRateBasisAmount,
     isExchangeFeeRuleEffectiveForTransaction,
+    parseExchangePairKey,
     resolveEffectiveExchangeFeeRule,
     updateExchangeFeeRule,
+    upsertExchangePairPrice,
     useExchangeFeeRules,
+    useExchangePairPrices,
     useExchangeSafeBalances,
     useExchangeSafeMovements,
     useExchangeSafes,
@@ -41,7 +47,7 @@ import {
     type ExchangeFeeRuleTransactionScope,
     type ExchangeFeeType,
     type ExchangePaymentMethod,
-    type ExchangeRateMap,
+    type ExchangePairPrice,
     type ExchangeRateSnapshot,
     type ExchangeSafeBalance,
     type ExchangeSafeMovement,
@@ -108,8 +114,7 @@ type ExchangeRelationRange = {
     lastIndex: number
 }
 
-type MarketRateCurrency = Exclude<CurrencyCode, 'iqd'>
-type ExchangeRateCardSlot = CurrencyCode | null
+type ExchangeRateCardSlot = string | null
 
 const paymentMethods: ExchangePaymentMethod[] = ['cash', 'fib', 'qicard', 'zaincash', 'fastpay']
 const EXCHANGE_RATE_CARD_SLOT_COUNT = 4
@@ -139,43 +144,27 @@ function calculateRulePreviewFeeAmount(feeType: ExchangeFeeType, customerGivesAm
     return feeValue
 }
 
-function buildRateMap(
-    usdRate: number,
-    eurRate?: number | null,
-    tryRate?: number | null
-): ExchangeRateMap {
-    return {
-        usd: usdRate,
-        eur: eurRate || undefined,
-        try: tryRate || undefined
-    }
-}
-
-function isMarketRateCurrency(currency: CurrencyCode): currency is MarketRateCurrency {
-    return currency === 'usd' || currency === 'eur' || currency === 'try'
-}
-
 function getExchangeRateCardStorageKey(workspaceId: string) {
     return `${EXCHANGE_RATE_CARD_STORAGE_KEY_PREFIX}:${workspaceId || 'default'}`
 }
 
-function isExchangeRateCardCurrency(value: unknown): value is CurrencyCode {
-    return typeof value === 'string' && EXCHANGE_SAFE_CURRENCIES.includes(value as CurrencyCode)
+function isExchangeRateCardPair(value: unknown): value is string {
+    return typeof value === 'string' && parseExchangePairKey(value) !== null
 }
 
 function normalizeExchangeRateCardSlots(value: unknown): ExchangeRateCardSlot[] {
     const next = [...EMPTY_EXCHANGE_RATE_CARD_SLOTS]
-    const seen = new Set<CurrencyCode>()
+    const seen = new Set<string>()
 
     if (!Array.isArray(value)) {
         return next
     }
 
     for (let index = 0; index < EXCHANGE_RATE_CARD_SLOT_COUNT; index += 1) {
-        const currency = value[index]
-        if (isExchangeRateCardCurrency(currency) && !seen.has(currency)) {
-            next[index] = currency
-            seen.add(currency)
+        const pairKey = value[index]
+        if (isExchangeRateCardPair(pairKey) && !seen.has(pairKey)) {
+            next[index] = pairKey
+            seen.add(pairKey)
         }
     }
 
@@ -207,15 +196,6 @@ function writeExchangeRateCardSlots(storageKey: string, slots: ExchangeRateCardS
     }
 }
 
-function toManualRateCurrency(currency: MarketRateCurrency): ManualRateCurrency {
-    return currency.toUpperCase() as ManualRateCurrency
-}
-
-function getRateToIqd(currency: CurrencyCode, rates: ExchangeRateMap) {
-    if (currency === 'iqd') return 1
-    return Number(rates[currency] || 0)
-}
-
 function getLocalizedCurrencyName(currency: CurrencyCode, language: string | undefined) {
     const locale = language?.replace('_', '-') || 'en'
 
@@ -229,21 +209,6 @@ function getLocalizedCurrencyName(currency: CurrencyCode, language: string | und
 
 function formatExchangeRateDisplay(value: number | null) {
     return value && value > 0 ? formatNumberWithCommas(value) : '-'
-}
-
-function getPairLabel(fromCurrency: CurrencyCode, toCurrency: CurrencyCode) {
-    const anchor = fromCurrency === 'iqd' ? toCurrency : fromCurrency
-    if (anchor === 'iqd') return 'IQD/IQD'
-    return `${anchor.toUpperCase()}/IQD`
-}
-
-function getSnapshotSource(source: string) {
-    return source === 'manual' ? 'manual' : source || 'live'
-}
-
-function filterMarketSnapshotForCurrencies(snapshot: ExchangeRateSnapshot[], fromCurrency: CurrencyCode, toCurrency: CurrencyCode) {
-    const needed = new Set([fromCurrency, toCurrency].filter((currency) => currency !== 'iqd').map((currency) => `${currency.toUpperCase()}/IQD`))
-    return snapshot.filter((entry) => needed.has(entry.pair))
 }
 
 function makeDefaultRuleForm(currency: CurrencyCode): FeeRuleFormState {
@@ -292,6 +257,9 @@ function feeTypeLabel(type: ExchangeFeeType | null | undefined, t: TFunction) {
 }
 
 function rateSourceLabel(source: string | null | undefined, t: TFunction) {
+    if (source === 'manual_pair_price') {
+        return t('currencyExchange.rateSources.manualPairPrice', { defaultValue: 'Manual pair price' })
+    }
     return source === 'manual'
         ? t('currencyExchange.rateSources.manual')
         : t('currencyExchange.rateSources.live')
@@ -560,26 +528,21 @@ function ExchangeTransactionsPage({
     const { toast } = useToast()
     const { user } = useAuth()
     const { hasPermission } = useWorkspacePermissions()
-    const { exchangeData, eurRates, tryRates } = useExchangeRate()
     const transactions = useExchangeTransactions(workspaceId)
+    const pairPrices = useExchangePairPrices(workspaceId)
     const safes = useExchangeSafes(workspaceId)
     const [search, setSearch] = useState('')
     const rateCardStorageKey = getExchangeRateCardStorageKey(workspaceId)
     const rateCardStorageKeyRef = useRef(rateCardStorageKey)
     const skipNextRateCardSaveRef = useRef(false)
-    const [rateCardCurrencies, setRateCardCurrencies] = useState<ExchangeRateCardSlot[]>(() => readExchangeRateCardSlots(rateCardStorageKey))
+    const [rateCardPairs, setRateCardPairs] = useState<ExchangeRateCardSlot[]>(() => readExchangeRateCardSlots(rateCardStorageKey))
     const [reverseTargetId, setReverseTargetId] = useState<string | null>(null)
     const [hoveredReversalRelationKey, setHoveredReversalRelationKey] = useState<string | null>(null)
     const [isReversing, setIsReversing] = useState(false)
     const canReverse = user?.role === 'admin' || hasPermission('currencyExchange.reverse')
-    const marketRatesToIqd = useMemo(() => (
-        buildRateMap(
-            Number(exchangeData?.rate || 0),
-            Number(eurRates.eur_iqd?.rate || 0) || null,
-            Number(tryRates.try_iqd?.rate || 0) || null
-        )
-    ), [eurRates.eur_iqd?.rate, exchangeData?.rate, tryRates.try_iqd?.rate])
-    const selectedRateCardCurrencies = useMemo(() => new Set(rateCardCurrencies.filter(Boolean) as CurrencyCode[]), [rateCardCurrencies])
+    const canManagePrices = user?.role === 'admin' || hasPermission('currencyExchange.managePrices')
+    const exchangePairOptions = useMemo(() => buildExchangePairOptions(EXCHANGE_SAFE_CURRENCIES), [])
+    const selectedRateCardPairs = useMemo(() => new Set(rateCardPairs.filter(Boolean) as string[]), [rateCardPairs])
     const activeLanguage = i18n.resolvedLanguage || i18n.language
 
     const filteredTransactions = useMemo(() => {
@@ -610,7 +573,7 @@ function ExchangeTransactionsPage({
 
         return {
             totalCount: transactions.length,
-            manualRates: reportableTransactions.filter((transaction) => transaction.exchangeRateManuallyEdited).length,
+            manualRates: reportableTransactions.filter((transaction) => transaction.exchangeRateSource === 'manual_pair_price' || transaction.exchangeRateManuallyEdited).length,
             realizedProfit: profitSummary(reportableTransactions, iqdDisplayPreference),
             activeSafes: safes.filter((safe) => safe.isActive).length
         }
@@ -623,7 +586,7 @@ function ExchangeTransactionsPage({
 
         rateCardStorageKeyRef.current = rateCardStorageKey
         skipNextRateCardSaveRef.current = true
-        setRateCardCurrencies(readExchangeRateCardSlots(rateCardStorageKey))
+        setRateCardPairs(readExchangeRateCardSlots(rateCardStorageKey))
     }, [rateCardStorageKey])
 
     useEffect(() => {
@@ -632,11 +595,11 @@ function ExchangeTransactionsPage({
             return
         }
 
-        writeExchangeRateCardSlots(rateCardStorageKey, rateCardCurrencies)
-    }, [rateCardCurrencies, rateCardStorageKey])
+        writeExchangeRateCardSlots(rateCardStorageKey, rateCardPairs)
+    }, [rateCardPairs, rateCardStorageKey])
 
-    const handleRateCardCurrencyChange = (slotIndex: number, value: string) => {
-        setRateCardCurrencies((current) => {
+    const handleRateCardPairChange = (slotIndex: number, value: string) => {
+        setRateCardPairs((current) => {
             const next = current.slice(0, EXCHANGE_RATE_CARD_SLOT_COUNT)
             while (next.length < EXCHANGE_RATE_CARD_SLOT_COUNT) {
                 next.push(null)
@@ -647,12 +610,41 @@ function ExchangeTransactionsPage({
                 return next
             }
 
-            const currency = value as CurrencyCode
+            const pairKey = parseExchangePairKey(value) ? value : null
             return next.map((slot, index) => {
-                if (index === slotIndex) return currency
-                return slot === currency ? null : slot
+                if (index === slotIndex) return pairKey
+                return slot === pairKey ? null : slot
             })
         })
+    }
+
+    const handleRateCardPriceSave = async (
+        pair: { baseCurrency: CurrencyCode; quoteCurrency: CurrencyCode },
+        side: 'buy' | 'sell',
+        price: number
+    ) => {
+        try {
+            const existing = findExchangePairPrice(pairPrices, pair.baseCurrency, pair.quoteCurrency)
+            await upsertExchangePairPrice(workspaceId, {
+                baseCurrency: pair.baseCurrency,
+                quoteCurrency: pair.quoteCurrency,
+                buyPrice: side === 'buy' ? price : existing?.buyPrice ?? 0,
+                sellPrice: side === 'sell' ? price : existing?.sellPrice ?? 0,
+                priceBasisAmount: existing?.priceBasisAmount ?? DEFAULT_EXCHANGE_PAIR_PRICE_BASIS,
+                createdBy: user?.id ?? null,
+                updatedBy: user?.id ?? null
+            })
+            toast({
+                title: t('common.success', { defaultValue: 'Success' }),
+                description: t('currencyExchange.messages.priceUpdated', { defaultValue: 'Exchange price updated.' })
+            })
+        } catch (error: any) {
+            toast({
+                title: t('common.error', { defaultValue: 'Error' }),
+                description: error?.message || t('currencyExchange.messages.priceUpdateFailed', { defaultValue: 'Failed to update exchange price.' }),
+                variant: 'destructive'
+            })
+        }
     }
 
     const handleReverse = async () => {
@@ -714,22 +706,27 @@ function ExchangeTransactionsPage({
             </div>
 
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                {rateCardCurrencies.map((currency, slotIndex) => {
-                    const currencyOptions = EXCHANGE_SAFE_CURRENCIES.filter((option) => (
-                        option === currency || !selectedRateCardCurrencies.has(option)
+                {rateCardPairs.map((pairKey, slotIndex) => {
+                    const parsedPair = parseExchangePairKey(pairKey)
+                    const pairPrice = parsedPair
+                        ? findExchangePairPrice(pairPrices, parsedPair.baseCurrency, parsedPair.quoteCurrency)
+                        : null
+                    const pairOptions = exchangePairOptions.filter((option) => (
+                        option.key === pairKey || !selectedRateCardPairs.has(option.key)
                     ))
-                    const rate = currency ? getRateToIqd(currency, marketRatesToIqd) : null
 
                     return (
                         <ExchangeRateDisplaySelectCard
                             key={slotIndex}
                             slotIndex={slotIndex}
-                            currency={currency}
-                            currencyOptions={currencyOptions}
-                            currencyName={currency ? getLocalizedCurrencyName(currency, activeLanguage) : ''}
+                            pair={parsedPair}
+                            pairKey={pairKey}
+                            pairPrice={pairPrice}
+                            pairOptions={pairOptions}
                             language={activeLanguage}
-                            rate={rate && rate > 0 ? rate : null}
-                            onCurrencyChange={handleRateCardCurrencyChange}
+                            canManagePrices={canManagePrices}
+                            onPairChange={handleRateCardPairChange}
+                            onPriceSave={handleRateCardPriceSave}
                             t={t}
                         />
                     )
@@ -837,9 +834,11 @@ function ExchangeTransactionsPage({
                                         <div>{formatNumberWithCommas(transaction.exchangeRateUsed)}</div>
                                         <div className={cn(
                                             'mt-1 inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium',
-                                            transaction.exchangeRateManuallyEdited ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300' : 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                                            transaction.exchangeRateSource === 'manual_pair_price' || transaction.exchangeRateManuallyEdited
+                                                ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300'
+                                                : 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
                                         )}>
-                                            {transaction.exchangeRateManuallyEdited ? t('currencyExchange.rateSources.manual') : t('currencyExchange.rateSources.live')}
+                                            {rateSourceLabel(transaction.exchangeRateSource, t)}
                                         </div>
                                     </TableCell>
                                     <TableCell>
@@ -1290,37 +1289,38 @@ function CreateCurrencyExchangeTransactionPage({
     onCancel: () => void
     onCreated: () => void
 }) {
-    const { t } = useTranslation()
+    const { t, i18n } = useTranslation()
     const { toast } = useToast()
     const { user } = useAuth()
     const { features } = useWorkspace()
-    const { exchangeData, eurRates, tryRates } = useExchangeRate()
     const rules = useExchangeFeeRules(workspaceId)
+    const pairPrices = useExchangePairPrices(workspaceId)
     const safes = useExchangeSafes(workspaceId)
     const safeBalances = useExchangeSafeBalances(workspaceId)
     const [isSaving, setIsSaving] = useState(false)
     const [transactionType, setTransactionType] = useState<ExchangeTransactionType>('buy')
-    const [fromCurrency, setFromCurrency] = useState<CurrencyCode>('iqd')
-    const [toCurrency, setToCurrency] = useState<CurrencyCode>('usd')
+    const [selectedPairKey, setSelectedPairKey] = useState(getExchangePairKey('usd', 'iqd'))
     const [selectedSafeId, setSelectedSafeId] = useState('')
     const [customerGivesAmount, setCustomerGivesAmount] = useState('')
     const [transactionDate, setTransactionDate] = useState(currentTimestamp())
     const [paymentMethod, setPaymentMethod] = useState<ExchangePaymentMethod>('cash')
     const [notes, setNotes] = useState('')
-    const [exchangeRateValue, setExchangeRateValue] = useState('')
-    const [exchangeRateSource, setExchangeRateSource] = useState('live')
     const [acquisitionRateValue, setAcquisitionRateValue] = useState('')
     const [acquisitionRateSource, setAcquisitionRateSource] = useState<ExchangeAcquisitionRateSource | null>(null)
     const [selectedRuleId, setSelectedRuleId] = useState<string>('none')
     const [feeValue, setFeeValue] = useState('')
-    const [manualPeriodOpen, setManualPeriodOpen] = useState(false)
-    const prevPairRef = useRef(`${fromCurrency}:${toCurrency}`)
     const prevAcquisitionKeyRef = useRef('')
 
-    const availableCurrencies = useMemo(() => {
-        const values = new Set<CurrencyCode>([...features.allowed_currencies, features.default_currency, 'iqd', 'usd'])
-        return Array.from(values)
-    }, [features.allowed_currencies, features.default_currency])
+    const exchangePairOptions = useMemo(() => buildExchangePairOptions(EXCHANGE_SAFE_CURRENCIES), [])
+    const selectedPair = useMemo(() => (
+        parseExchangePairKey(selectedPairKey) || { baseCurrency: 'usd' as CurrencyCode, quoteCurrency: 'iqd' as CurrencyCode }
+    ), [selectedPairKey])
+    const selectedPairPrice = useMemo(() => (
+        findExchangePairPrice(pairPrices, selectedPair.baseCurrency, selectedPair.quoteCurrency)
+    ), [pairPrices, selectedPair.baseCurrency, selectedPair.quoteCurrency])
+    const { fromCurrency, toCurrency } = getExchangePairTransactionCurrencies(selectedPair, transactionType)
+    const parsedRate = selectedPairPrice ? getExchangePairSidePrice(selectedPairPrice, transactionType) : 0
+    const exchangeRateSource = 'manual_pair_price'
     const activeSafes = useMemo(() => safes.filter((safe) => safe.isActive), [safes])
     const selectedSafe = activeSafes.find((safe) => safe.id === selectedSafeId) || null
 
@@ -1331,42 +1331,6 @@ function CreateCurrencyExchangeTransactionPage({
             setSelectedSafeId(activeSafes[0].id)
         }
     }, [activeSafes, selectedSafeId])
-
-    const rawUsdRate = Number(exchangeData?.rate || 0)
-    const rawEurRate = Number(eurRates.eur_iqd?.rate || 0)
-    const rawTryRate = Number(tryRates.try_iqd?.rate || 0)
-    const parsedRate = parseFormattedNumber(exchangeRateValue || '0')
-    const editedAnchorCurrency = fromCurrency === 'iqd' ? toCurrency : fromCurrency
-    const canApplyManualPeriod = exchangeRateSource === 'manual'
-        && isMarketRateCurrency(editedAnchorCurrency)
-        && parsedRate > 0
-    const marketRatesToIqd = useMemo(() => (
-        buildRateMap(rawUsdRate, rawEurRate || null, rawTryRate || null)
-    ), [rawEurRate, rawTryRate, rawUsdRate])
-
-    const selectedPairMarketRate = useMemo(() => {
-        if (fromCurrency === toCurrency) return 1
-        if (fromCurrency === 'iqd') return getRateToIqd(toCurrency, marketRatesToIqd)
-        return getRateToIqd(fromCurrency, marketRatesToIqd)
-    }, [fromCurrency, marketRatesToIqd, toCurrency])
-
-    const ratesToIqd = useMemo(() => {
-        const base = { ...marketRatesToIqd }
-        if (isMarketRateCurrency(editedAnchorCurrency) && parsedRate > 0) {
-            base[editedAnchorCurrency] = parsedRate
-        }
-        return base
-    }, [editedAnchorCurrency, marketRatesToIqd, parsedRate])
-
-    useEffect(() => {
-        const pairKey = `${fromCurrency}:${toCurrency}`
-        if (prevPairRef.current !== pairKey || !exchangeRateValue) {
-            prevPairRef.current = pairKey
-            setExchangeRateValue(selectedPairMarketRate > 0 ? formatNumberWithCommas(selectedPairMarketRate) : '')
-            setExchangeRateSource('live')
-            setManualPeriodOpen(false)
-        }
-    }, [exchangeRateValue, fromCurrency, selectedPairMarketRate, toCurrency])
 
     const activeRule = useMemo(() => (
         resolveEffectiveExchangeFeeRule(rules, transactionType, transactionDate, fromCurrency)
@@ -1408,16 +1372,15 @@ function CreateCurrencyExchangeTransactionPage({
     const canEditFee = !selectedRule || !selectedRule.isLocked
 
     const calculation = useMemo(() => {
-        if (!parsedCustomerGives || fromCurrency === toCurrency || !parsedRate) {
+        if (!parsedCustomerGives || !selectedPairPrice || parsedRate <= 0) {
             return null
         }
 
         try {
             return calculateExchangeTransaction({
-                fromCurrency,
-                toCurrency,
+                transactionType,
+                pairPrice: selectedPairPrice,
                 customerGivesAmount: parsedCustomerGives,
-                ratesToIqd,
                 feeType,
                 feeCurrency,
                 feeValue: parsedFeeValue,
@@ -1426,7 +1389,7 @@ function CreateCurrencyExchangeTransactionPage({
         } catch {
             return null
         }
-    }, [feeBasisAmount, feeCurrency, feeType, fromCurrency, parsedCustomerGives, parsedFeeValue, parsedRate, ratesToIqd, toCurrency])
+    }, [feeBasisAmount, feeCurrency, feeType, parsedCustomerGives, parsedFeeValue, parsedRate, selectedPairPrice, transactionType])
 
     useEffect(() => {
         const acquisitionKey = `${transactionType}:${selectedSafeId}:${fromCurrency}:${toCurrency}:${transactionDate}`
@@ -1449,7 +1412,6 @@ function CreateCurrencyExchangeTransactionPage({
             safeId: selectedSafeId,
             soldCurrency: toCurrency,
             profitCurrency: fromCurrency,
-            ratesToIqd,
             beforeTransactionDate: transactionDate
         }).then((latestBuy) => {
             if (cancelled) return
@@ -1465,7 +1427,7 @@ function CreateCurrencyExchangeTransactionPage({
         return () => {
             cancelled = true
         }
-    }, [acquisitionRateSource, fromCurrency, ratesToIqd, selectedSafeId, toCurrency, transactionDate, transactionType, workspaceId])
+    }, [acquisitionRateSource, fromCurrency, selectedSafeId, toCurrency, transactionDate, transactionType, workspaceId])
 
     const profitPreview = useMemo(() => {
         if (transactionType !== 'sell' || !calculation || parsedAcquisitionRate <= 0) {
@@ -1485,31 +1447,19 @@ function CreateCurrencyExchangeTransactionPage({
         }
     }, [calculation, fromCurrency, parsedAcquisitionRate, parsedCustomerGives, toCurrency, transactionType])
 
-    const fullMarketSnapshot = useMemo(() => buildOrderExchangeRatesSnapshot({
-        exchangeData,
-        eurRates,
-        tryRates
-    }), [exchangeData, eurRates, tryRates])
-
     const marketRateSnapshot = useMemo<ExchangeRateSnapshot[]>(() => {
-        if (!parsedRate) return []
-        if (exchangeRateSource === 'manual') {
-            return [{
-                pair: getPairLabel(fromCurrency, toCurrency),
-                rate: parsedRate,
-                source: 'manual',
-                timestamp: new Date().toISOString()
-            }]
-        }
-
-        const filtered = filterMarketSnapshotForCurrencies(fullMarketSnapshot, fromCurrency, toCurrency)
-        return filtered.length > 0 ? filtered : [{
-            pair: getPairLabel(fromCurrency, toCurrency),
+        if (!selectedPairPrice || parsedRate <= 0) return []
+        return [{
+            pair: getExchangePairLabel(selectedPair.baseCurrency, selectedPair.quoteCurrency),
             rate: parsedRate,
-            source: getSnapshotSource(exchangeRateSource),
-            timestamp: new Date().toISOString()
+            source: exchangeRateSource,
+            timestamp: new Date().toISOString(),
+            side: transactionType,
+            priceBasisAmount: selectedPairPrice.priceBasisAmount,
+            priceRowId: selectedPairPrice.id,
+            priceUpdatedAt: selectedPairPrice.updatedAt
         }]
-    }, [exchangeRateSource, fromCurrency, fullMarketSnapshot, parsedRate, toCurrency])
+    }, [exchangeRateSource, parsedRate, selectedPair.baseCurrency, selectedPair.quoteCurrency, selectedPairPrice, transactionType])
 
     const outgoingSafeBalance = getSafeBalanceAmount(safeBalances, selectedSafeId, toCurrency)
     const hasInsufficientSafeBalance = Boolean(
@@ -1519,10 +1469,10 @@ function CreateCurrencyExchangeTransactionPage({
     )
     const acquisitionRateRequired = transactionType === 'sell'
 
-    const canSubmit = fromCurrency !== toCurrency &&
+    const canSubmit = Boolean(selectedPairPrice) &&
+        parsedRate > 0 &&
         Boolean(selectedSafeId) &&
         parsedCustomerGives > 0 &&
-        parsedRate > 0 &&
         Boolean(calculation) &&
         marketRateSnapshot.length > 0 &&
         !hasInsufficientSafeBalance &&
@@ -1530,7 +1480,7 @@ function CreateCurrencyExchangeTransactionPage({
 
     const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault()
-        if (!canSubmit || isSaving || !calculation) return
+        if (!canSubmit || isSaving || !calculation || !selectedPairPrice) return
 
         setIsSaving(true)
         try {
@@ -1538,13 +1488,11 @@ function CreateCurrencyExchangeTransactionPage({
                 transactionType,
                 transactionDate,
                 safeId: selectedSafeId,
-                fromCurrency,
-                toCurrency,
+                pairPrice: selectedPairPrice,
                 customerGivesAmount: parsedCustomerGives,
-                ratesToIqd,
-                exchangeRateUsed: getEffectiveExchangeRateUsed(fromCurrency, toCurrency, ratesToIqd),
+                exchangeRateUsed: parsedRate,
                 exchangeRateSource,
-                exchangeRateManuallyEdited: exchangeRateSource === 'manual',
+                exchangeRateManuallyEdited: false,
                 marketRateSnapshot,
                 feeRuleId: selectedRule?.id ?? null,
                 feeRuleSnapshot: selectedRule ? buildExchangeFeeRuleSnapshot(selectedRule) : null,
@@ -1579,9 +1527,8 @@ function CreateCurrencyExchangeTransactionPage({
         }
     }
 
-    const switchCurrencies = () => {
-        setFromCurrency(toCurrency)
-        setToCurrency(fromCurrency)
+    const switchPairCurrencies = () => {
+        setSelectedPairKey(getExchangePairKey(selectedPair.quoteCurrency, selectedPair.baseCurrency))
         setCustomerGivesAmount('')
     }
 
@@ -1667,38 +1614,49 @@ function CreateCurrencyExchangeTransactionPage({
                                     ) : null}
 
                                     <div className="grid grid-cols-1 gap-4 md:grid-cols-[1fr_auto_1fr] md:items-end">
-                                        <div className="grid gap-2">
+                                        <div className="grid gap-2 md:col-span-2">
                                             <FieldLabelWithTooltip
-                                                label={t('currencyExchange.labels.fromCurrency')}
-                                                tooltip={t('currencyExchange.tooltips.fromCurrency')}
+                                                label={t('currencyExchange.labels.currencyPair')}
+                                                tooltip={t('currencyExchange.tooltips.currencyPair', { defaultValue: 'Select the ordered pair. USD/EUR and EUR/USD are separate manual price rows.' })}
                                             />
-                                            <CurrencySelector
-                                                value={fromCurrency}
-                                                onChange={(value) => setFromCurrency(value)}
-                                                iqdDisplayPreference={features.iqd_display_preference}
-                                                allowedCurrencies={availableCurrencies}
-                                            />
+                                            <Select value={selectedPairKey} onValueChange={(value) => {
+                                                setSelectedPairKey(value)
+                                                setCustomerGivesAmount('')
+                                            }}>
+                                                <SelectTrigger><SelectValue /></SelectTrigger>
+                                                <SelectContent>
+                                                    {exchangePairOptions.map((option) => (
+                                                        <SelectItem key={option.key} value={option.key}>
+                                                            {getExchangePairLabel(option.baseCurrency, option.quoteCurrency)}
+                                                        </SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
                                         </div>
-                                        <Button type="button" variant="outline" size="icon" className="mb-0.5" onClick={switchCurrencies} aria-label={t('currencyExchange.buttons.swapCurrencies')}>
+                                        <Button type="button" variant="outline" size="icon" className="mb-0.5" onClick={switchPairCurrencies} aria-label={t('currencyExchange.buttons.swapCurrencies')}>
                                             <ArrowRightLeft className="h-4 w-4" />
                                         </Button>
-                                        <div className="grid gap-2">
-                                            <FieldLabelWithTooltip
-                                                label={t('currencyExchange.labels.toCurrency')}
-                                                tooltip={t('currencyExchange.tooltips.toCurrency')}
-                                            />
-                                            <CurrencySelector
-                                                value={toCurrency}
-                                                onChange={(value) => setToCurrency(value)}
-                                                iqdDisplayPreference={features.iqd_display_preference}
-                                                allowedCurrencies={availableCurrencies}
-                                            />
+                                        <div className="rounded-xl border bg-muted/20 p-3 md:col-span-3">
+                                            <div className="grid gap-3 text-sm sm:grid-cols-2">
+                                                <div>
+                                                    <div className="text-xs font-medium uppercase text-muted-foreground">{t('currencyExchange.labels.customerGives')}</div>
+                                                    <div className="mt-1 font-semibold">{fromCurrency.toUpperCase()} - {getLocalizedCurrencyName(fromCurrency, i18n.resolvedLanguage || i18n.language)}</div>
+                                                </div>
+                                                <div>
+                                                    <div className="text-xs font-medium uppercase text-muted-foreground">{t('currencyExchange.labels.customerReceives')}</div>
+                                                    <div className="mt-1 font-semibold">{toCurrency.toUpperCase()} - {getLocalizedCurrencyName(toCurrency, i18n.resolvedLanguage || i18n.language)}</div>
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
 
-                                    {fromCurrency === toCurrency ? (
+                                    {!selectedPairPrice || parsedRate <= 0 ? (
                                         <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                                            {t('currencyExchange.messages.currencyMustDiffer')}
+                                            {t('currencyExchange.messages.missingPairPrice', {
+                                                defaultValue: 'Set a non-zero {{side}} price for {{pair}} before creating this transaction.',
+                                                side: transactionTypeLabel(transactionType, t),
+                                                pair: getExchangePairLabel(selectedPair.baseCurrency, selectedPair.quoteCurrency)
+                                            })}
                                         </div>
                                     ) : null}
 
@@ -1761,52 +1719,36 @@ function CreateCurrencyExchangeTransactionPage({
 
                         <Card>
                             <CardHeader>
-                                <CardTitle>{t('currencyExchange.create.marketRateSnapshot')}</CardTitle>
+                                <CardTitle>{t('currencyExchange.create.manualPriceSnapshot', { defaultValue: 'Manual Price Snapshot' })}</CardTitle>
                             </CardHeader>
                             <CardContent>
                                 <div className="space-y-3 rounded-2xl border border-primary/20 bg-primary/5 p-4">
                                     <div className="flex items-center justify-between gap-3">
                                         <div className="text-sm font-semibold">{t('currencyExchange.labels.exchangeRate')}</div>
-                                        <div className="flex items-center gap-2">
-                                            <span className={cn(
-                                                'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium',
-                                                exchangeRateSource === 'manual' ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'
-                                            )}>
-                                                {rateSourceLabel(exchangeRateSource, t)}
-                                            </span>
-                                            {canApplyManualPeriod ? (
-                                                <Button
-                                                    type="button"
-                                                    variant="outline"
-                                                    size="sm"
-                                                    className="h-7 rounded-full px-2.5 text-xs"
-                                                    onClick={() => setManualPeriodOpen(true)}
-                                                >
-                                                    <Clock className="mr-1.5 h-3.5 w-3.5" />
-                                                    {t('currencyExchange.buttons.applyForPeriod')}
-                                                </Button>
-                                            ) : null}
-                                        </div>
+                                        <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
+                                            {rateSourceLabel(exchangeRateSource, t)}
+                                        </span>
                                     </div>
                                     <div className="grid gap-3 sm:grid-cols-2">
                                         <div className="grid gap-2">
                                             <Label>{t('currencyExchange.labels.currencyPair')}</Label>
                                             <div className="flex h-10 w-full items-center rounded-md border border-input bg-background px-3 py-2 text-sm">
-                                                {getPairLabel(fromCurrency, toCurrency)}
+                                                {getExchangePairLabel(selectedPair.baseCurrency, selectedPair.quoteCurrency)}
                                             </div>
                                         </div>
                                         <div className="grid gap-2">
-                                            <Label>{t('currencyExchange.labels.rate')}</Label>
-                                            <Input
-                                                type="text"
-                                                inputMode="decimal"
-                                                value={formatNumericInput(exchangeRateValue)}
-                                                onChange={(event) => {
-                                                    setExchangeRateValue(sanitizeNumericInput(event.target.value, { allowDecimal: true, maxFractionDigits: 6 }))
-                                                    setExchangeRateSource('manual')
-                                                }}
-                                                placeholder="0"
-                                            />
+                                            <Label>{transactionType === 'buy' ? t('currencyExchange.labels.buyPrice', { defaultValue: 'Buy price' }) : t('currencyExchange.labels.sellPrice', { defaultValue: 'Sell price' })}</Label>
+                                            <div className="flex h-10 w-full items-center rounded-md border border-input bg-muted/40 px-3 py-2 text-sm font-semibold">
+                                                {parsedRate > 0 ? formatNumberWithCommas(parsedRate) : '-'}
+                                            </div>
+                                            <p className="text-xs text-muted-foreground">
+                                                {t('currencyExchange.help.pairPriceBasis', {
+                                                    defaultValue: 'Price is per {{basis}} {{base}} in {{quote}}.',
+                                                    basis: formatNumberWithCommas(selectedPairPrice?.priceBasisAmount ?? DEFAULT_EXCHANGE_PAIR_PRICE_BASIS),
+                                                    base: selectedPair.baseCurrency.toUpperCase(),
+                                                    quote: selectedPair.quoteCurrency.toUpperCase()
+                                                })}
+                                            </p>
                                         </div>
                                         {transactionType === 'sell' ? (
                                             <div className="grid gap-2 sm:col-span-2">
@@ -1850,26 +1792,6 @@ function CreateCurrencyExchangeTransactionPage({
                                 </div>
                             </CardContent>
                         </Card>
-
-                        {isMarketRateCurrency(editedAnchorCurrency) ? (
-                            <ManualRatePeriodModal
-                                open={manualPeriodOpen}
-                                onOpenChange={setManualPeriodOpen}
-                                currency={toManualRateCurrency(editedAnchorCurrency)}
-                                rate={parsedRate}
-                                pairLabel={`${editedAnchorCurrency.toUpperCase()}/IQD`}
-                                iqdDisplayPreference={features.iqd_display_preference}
-                                onApplied={() => {
-                                    window.dispatchEvent(new CustomEvent('exchange-rate-refresh'))
-                                    toast({
-                                        title: t('currencyExchange.messages.manualRateScheduledTitle'),
-                                        description: t('currencyExchange.messages.manualRateScheduledDescription', {
-                                            pair: `${editedAnchorCurrency.toUpperCase()}/IQD`
-                                        })
-                                    })
-                                }}
-                            />
-                        ) : null}
 
                         <Card>
                             <CardHeader>
@@ -2079,131 +2001,6 @@ function CreateCurrencyExchangeTransactionPage({
     )
 }
 
-type ManualRatePeriodPreset = '1h' | '2h' | '3h' | '4h' | '5h' | 'day' | 'custom'
-
-const manualRatePeriodOptions: ManualRatePeriodPreset[] = ['1h', '2h', '3h', '4h', '5h', 'day', 'custom']
-
-function getManualRatePeriodEnd(preset: ManualRatePeriodPreset, customUntil: Date | undefined) {
-    const now = new Date()
-    if (preset === 'day') {
-        const endOfDay = new Date(now)
-        endOfDay.setHours(23, 59, 59, 999)
-        return endOfDay
-    }
-    if (preset === 'custom') {
-        return customUntil
-    }
-
-    const hours = Number(preset.replace('h', ''))
-    return new Date(now.getTime() + hours * 60 * 60 * 1000)
-}
-
-function ManualRatePeriodModal({
-    open,
-    onOpenChange,
-    currency,
-    rate,
-    pairLabel,
-    iqdDisplayPreference,
-    onApplied
-}: {
-    open: boolean
-    onOpenChange: (open: boolean) => void
-    currency: ManualRateCurrency
-    rate: number
-    pairLabel: string
-    iqdDisplayPreference: IQDDisplayPreference
-    onApplied: () => void
-}) {
-    const { t } = useTranslation()
-    const [preset, setPreset] = useState<ManualRatePeriodPreset>('1h')
-    const [customUntil, setCustomUntil] = useState<Date | undefined>(() => {
-        const date = new Date()
-        date.setHours(date.getHours() + 1, 0, 0, 0)
-        return date
-    })
-    const expiresAt = getManualRatePeriodEnd(preset, customUntil)
-    const isValid = Boolean(expiresAt && expiresAt.getTime() > Date.now() && rate > 0)
-
-    const handleApply = () => {
-        if (!expiresAt || !isValid) return
-
-        setManualExchangeRate(currency, rate, { expiresAt })
-        onApplied()
-        onOpenChange(false)
-    }
-
-    return (
-        <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="max-w-md p-0">
-                <DialogHeader className="border-b bg-amber-500/5 p-6 text-start">
-                    <DialogTitle className="flex items-center gap-2 text-amber-700">
-                        <CalendarClock className="h-5 w-5" />
-                        {t('currencyExchange.manualRateWindow.title')}
-                    </DialogTitle>
-                    <DialogDescription>
-                        {t('currencyExchange.manualRateWindow.description', {
-                            pair: pairLabel,
-                            rate: formatCurrency(Math.round(rate), 'iqd', iqdDisplayPreference)
-                        })}
-                    </DialogDescription>
-                </DialogHeader>
-
-                <div className="space-y-4 p-6">
-                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                        {manualRatePeriodOptions.map((option) => (
-                            <button
-                                key={option}
-                                type="button"
-                                onClick={() => setPreset(option)}
-                                className={cn(
-                                    'flex h-11 items-center justify-center rounded-lg border px-3 text-sm font-medium transition-colors',
-                                    preset === option
-                                        ? 'border-amber-500 bg-amber-500/10 text-amber-700'
-                                        : 'border-border bg-background hover:bg-muted/50'
-                                )}
-                            >
-                                {t(`currencyExchange.manualRatePeriods.${option}`)}
-                            </button>
-                        ))}
-                    </div>
-
-                    {preset === 'custom' ? (
-                        <div className="grid gap-2">
-                            <Label>{t('currencyExchange.labels.until')}</Label>
-                            <DateTimePicker
-                                id="manual-rate-period-until"
-                                mode="date-time"
-                                date={customUntil}
-                                setDate={setCustomUntil}
-                                placeholder={t('currencyExchange.placeholders.customEndTime')}
-                            />
-                        </div>
-                    ) : null}
-
-                    <div className="rounded-xl border bg-muted/20 px-3 py-2 text-sm">
-                        <div className="text-xs font-medium uppercase text-muted-foreground">{t('currencyExchange.labels.expires')}</div>
-                        <div className="mt-1 font-semibold">{expiresAt ? formatDateTime(expiresAt) : '-'}</div>
-                    </div>
-
-                    <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-xs text-amber-700">
-                        {t('currencyExchange.manualRateWindow.discrepancyNote')}
-                    </div>
-                </div>
-
-                <DialogFooter className="gap-2 border-t bg-muted/20 p-4 sm:space-x-0">
-                    <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
-                        {t('common.cancel', { defaultValue: 'Cancel' })}
-                    </Button>
-                    <Button type="button" disabled={!isValid} onClick={handleApply}>
-                        {t('currencyExchange.buttons.applyManualWindow')}
-                    </Button>
-                </DialogFooter>
-            </DialogContent>
-        </Dialog>
-    )
-}
-
 function ExchangeTransactionSummary({
     transactionType,
     transactionDate,
@@ -2307,12 +2104,12 @@ function ExchangeTransactionSummary({
 
                     <div className="grid gap-2">
                         <div className="text-xs font-semibold uppercase text-muted-foreground">{t('currencyExchange.summary.rateSnapshot')}</div>
-                        <SummaryRow label={t('currencyExchange.labels.pair')} value={getPairLabel(fromCurrency, toCurrency)} />
+                        <SummaryRow label={t('currencyExchange.labels.pair')} value={marketRateSnapshot[0]?.pair || t('currencyExchange.labels.currencyToCurrency', { from: fromCurrency.toUpperCase(), to: toCurrency.toUpperCase() })} />
                         <SummaryRow label={t('currencyExchange.labels.rateUsed')} value={exchangeRate > 0 ? formatNumberWithCommas(exchangeRate) : '-'} />
                         <SummaryRow
                             label={t('currencyExchange.labels.source')}
                             value={rateSourceLabel(exchangeRateSource, t)}
-                            valueClassName={exchangeRateSource === 'manual' ? 'text-amber-700 dark:text-amber-300' : 'text-emerald-700 dark:text-emerald-300'}
+                            valueClassName={exchangeRateSource === 'manual_pair_price' || exchangeRateSource === 'manual' ? 'text-amber-700 dark:text-amber-300' : 'text-emerald-700 dark:text-emerald-300'}
                         />
                         {acquisitionRate !== null ? (
                             <>
@@ -2858,146 +2655,269 @@ const currencyFlagIsoCode: Record<CurrencyCode, string> = {
 
 function ExchangeRateDisplaySelectCard({
     slotIndex,
-    currency,
-    currencyOptions,
-    currencyName,
+    pair,
+    pairKey,
+    pairPrice,
+    pairOptions,
     language,
-    rate,
-    onCurrencyChange,
+    canManagePrices,
+    onPairChange,
+    onPriceSave,
     t
 }: {
     slotIndex: number
-    currency: ExchangeRateCardSlot
-    currencyOptions: CurrencyCode[]
-    currencyName: string
+    pair: { baseCurrency: CurrencyCode; quoteCurrency: CurrencyCode } | null
+    pairKey: ExchangeRateCardSlot
+    pairPrice: ExchangePairPrice | null
+    pairOptions: Array<{ baseCurrency: CurrencyCode; quoteCurrency: CurrencyCode; key: string }>
     language: string | undefined
-    rate: number | null
-    onCurrencyChange: (slotIndex: number, value: string) => void
+    canManagePrices: boolean
+    onPairChange: (slotIndex: number, value: string) => void
+    onPriceSave: (pair: { baseCurrency: CurrencyCode; quoteCurrency: CurrencyCode }, side: 'buy' | 'sell', price: number) => Promise<void>
     t: TFunction
 }) {
     const [isPickerOpen, setIsPickerOpen] = useState(false)
-    const shouldAllowPickerOpenRef = useRef(false)
-    const buyingRate = formatExchangeRateDisplay(rate)
-    const sellingRate = formatExchangeRateDisplay(rate)
-    const handlePickerOpenChange = (open: boolean) => {
-        if (!open) {
-            shouldAllowPickerOpenRef.current = false
-            setIsPickerOpen(false)
-            return
-        }
+    const [editingSide, setEditingSide] = useState<'buy' | 'sell' | null>(null)
+    const [draftPrice, setDraftPrice] = useState('')
+    const [isSavingPrice, setIsSavingPrice] = useState(false)
+    const baseName = pair ? getLocalizedCurrencyName(pair.baseCurrency, language) : ''
+    const quoteName = pair ? getLocalizedCurrencyName(pair.quoteCurrency, language) : ''
+    const buyingRate = formatExchangeRateDisplay(pairPrice ? Number(pairPrice.buyPrice || 0) : null)
+    const sellingRate = formatExchangeRateDisplay(pairPrice ? Number(pairPrice.sellPrice || 0) : null)
+    const hasPair = Boolean(pair && pairKey)
 
-        if (!currency || shouldAllowPickerOpenRef.current) {
-            setIsPickerOpen(true)
+    const startEditing = (side: 'buy' | 'sell') => {
+        if (!canManagePrices || !pair) return
+        setEditingSide(side)
+        setDraftPrice(String(side === 'buy' ? pairPrice?.buyPrice ?? 0 : pairPrice?.sellPrice ?? 0))
+    }
+
+    const cancelEditing = () => {
+        setEditingSide(null)
+        setDraftPrice('')
+    }
+
+    const saveEditing = async () => {
+        if (!pair || !editingSide) return
+        const price = parseFormattedNumber(draftPrice || '0')
+        setIsSavingPrice(true)
+        try {
+            await onPriceSave(pair, editingSide, price)
+            cancelEditing()
+        } finally {
+            setIsSavingPrice(false)
         }
+    }
+
+    const handlePickerOpenChange = (open: boolean) => {
+        setIsPickerOpen(open)
+    }
+
+    const renderPricePanel = (side: 'buy' | 'sell', value: string) => {
+        const isEditing = editingSide === side
+        const tone = side === 'buy'
+            ? 'border-red-500/15 bg-red-500/10 text-red-700 dark:text-red-300'
+            : 'border-emerald-500/15 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+        const valueTone = side === 'buy' ? 'text-red-600 dark:text-red-300' : 'text-emerald-600 dark:text-emerald-300'
+
+        return (
+            <div
+                data-price-control="true"
+                className={cn('min-w-0 rounded-lg border p-3', tone)}
+                onPointerDown={(event) => event.stopPropagation()}
+                onClick={(event) => event.stopPropagation()}
+            >
+                <div className="text-xs font-semibold uppercase">
+                    {t(`currencyExchange.transactionTypes.${side}`)}
+                </div>
+                {isEditing ? (
+                    <div className="mt-2 grid gap-2">
+                        <Input
+                            autoFocus
+                            type="text"
+                            inputMode="decimal"
+                            value={formatNumericInput(draftPrice)}
+                            onChange={(event) => setDraftPrice(sanitizeNumericInput(event.target.value, { allowDecimal: true, maxFractionDigits: 6 }))}
+                            onKeyDown={(event) => {
+                                if (event.key === 'Enter') {
+                                    event.preventDefault()
+                                    void saveEditing()
+                                } else if (event.key === 'Escape') {
+                                    event.preventDefault()
+                                    cancelEditing()
+                                }
+                            }}
+                            className="h-9 bg-background text-base font-bold tabular-nums"
+                        />
+                        <div className="flex gap-2">
+                            <div
+                                role="button"
+                                tabIndex={0}
+                                className={cn(
+                                    'inline-flex h-8 flex-1 items-center justify-center rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground transition-colors',
+                                    isSavingPrice ? 'pointer-events-none opacity-50' : 'hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-ring'
+                                )}
+                                onClick={saveEditing}
+                                onKeyDown={(event) => {
+                                    if (event.key === 'Enter' || event.key === ' ') {
+                                        event.preventDefault()
+                                        void saveEditing()
+                                    }
+                                }}
+                            >
+                                {t('common.save', { defaultValue: 'Save' })}
+                            </div>
+                            <div
+                                role="button"
+                                tabIndex={0}
+                                className={cn(
+                                    'inline-flex h-8 flex-1 items-center justify-center rounded-md border border-input bg-background px-3 text-xs font-medium transition-colors',
+                                    isSavingPrice ? 'pointer-events-none opacity-50' : 'hover:bg-accent hover:text-accent-foreground focus:outline-none focus:ring-2 focus:ring-ring'
+                                )}
+                                onClick={cancelEditing}
+                                onKeyDown={(event) => {
+                                    if (event.key === 'Enter' || event.key === ' ') {
+                                        event.preventDefault()
+                                        cancelEditing()
+                                    }
+                                }}
+                            >
+                                {t('common.cancel', { defaultValue: 'Cancel' })}
+                            </div>
+                        </div>
+                    </div>
+                ) : (
+                    <div
+                        role={canManagePrices ? 'button' : undefined}
+                        tabIndex={canManagePrices ? 0 : -1}
+                        className={cn(
+                            'mt-2 block min-h-9 w-full rounded-md text-start text-2xl font-black leading-tight tabular-nums transition-colors',
+                            valueTone,
+                            canManagePrices ? 'hover:bg-background/60 focus:outline-none focus:ring-2 focus:ring-ring' : 'cursor-default'
+                        )}
+                        onClick={() => startEditing(side)}
+                        onKeyDown={(event) => {
+                            if (!canManagePrices) return
+                            if (event.key === 'Enter' || event.key === ' ') {
+                                event.preventDefault()
+                                startEditing(side)
+                            }
+                        }}
+                    >
+                        {value}
+                    </div>
+                )}
+            </div>
+        )
     }
 
     return (
         <Select
             open={isPickerOpen}
             onOpenChange={handlePickerOpenChange}
-            value={currency ?? undefined}
+            value={pairKey ?? undefined}
             onValueChange={(value) => {
-                onCurrencyChange(slotIndex, value)
-                shouldAllowPickerOpenRef.current = false
+                onPairChange(slotIndex, value)
                 setIsPickerOpen(false)
             }}
         >
-            <SelectTrigger
-                allowViewer
-                aria-label={currency
-                    ? t('currencyExchange.labels.currencyToCurrency', { from: currency.toUpperCase(), to: 'IQD' })
-                    : t('currencyExchange.placeholders.selectCurrency', { defaultValue: 'Select currency' })}
-                className={cn(
-                    'group h-auto min-h-[260px] items-stretch rounded-xl border border-border/80 bg-card p-0 text-card-foreground shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md',
-                    'focus:ring-2 focus:ring-ring focus:ring-offset-2 [&>svg:last-child]:hidden'
-                )}
-                onPointerDownCapture={(event) => {
-                    if (event.button === 2) {
-                        shouldAllowPickerOpenRef.current = true
-                        return
-                    }
-
-                    if (currency) {
-                        shouldAllowPickerOpenRef.current = false
+            <div className="relative">
+                <div
+                    role={hasPair ? undefined : 'button'}
+                    tabIndex={hasPair ? undefined : 0}
+                    aria-label={pair
+                        ? getExchangePairLabel(pair.baseCurrency, pair.quoteCurrency)
+                        : t('currencyExchange.placeholders.selectPair', { defaultValue: 'Select pair' })}
+                    className={cn(
+                        'group min-h-[260px] rounded-xl border border-border/80 bg-card p-0 text-card-foreground shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md',
+                        'focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2'
+                    )}
+                    onClick={() => {
+                        if (!hasPair) {
+                            setIsPickerOpen(true)
+                        }
+                    }}
+                    onContextMenu={(event) => {
                         event.preventDefault()
-                        event.stopPropagation()
-                        setIsPickerOpen(false)
-                        return
-                    }
-
-                    shouldAllowPickerOpenRef.current = true
-                }}
-                onClickCapture={(event) => {
-                    if (!currency) return
-
-                    shouldAllowPickerOpenRef.current = false
-                    event.preventDefault()
-                    event.stopPropagation()
-                    setIsPickerOpen(false)
-                }}
-                onContextMenu={(event) => {
-                    event.preventDefault()
-                    shouldAllowPickerOpenRef.current = true
-                    setIsPickerOpen(true)
-                }}
-            >
-                {currency ? (
-                    <div className="flex w-full min-w-0 flex-col overflow-hidden rounded-xl">
-                        <div className="flex min-w-0 items-start justify-between gap-3 border-b bg-muted/20 p-4">
-                            <div className="min-w-0">
-                                <div className="text-4xl font-black leading-none tracking-normal text-foreground">{currency.toUpperCase()}</div>
-                                <div className="mt-1 line-clamp-2 text-sm font-semibold leading-tight text-muted-foreground">{currencyName}</div>
-                            </div>
-                            <div className="shrink-0 overflow-hidden rounded-md bg-background shadow-sm ring-1 ring-border/60">
-                                <CurrencyFlag currency={currency} size={42} />
-                            </div>
-                        </div>
-
-                        <div className="grid flex-1 content-end gap-3 p-4">
-                            <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-1 2xl:grid-cols-2">
-                                <div className="min-w-0 rounded-lg border border-red-500/15 bg-red-500/10 p-3">
-                                    <div className="text-xs font-semibold uppercase text-red-700 dark:text-red-300">
-                                        {t('currencyExchange.transactionTypes.buy')}
+                        if (hasPair) {
+                            setIsPickerOpen(true)
+                        }
+                    }}
+                    onKeyDown={(event) => {
+                        if ((event.key === 'Enter' || event.key === ' ') && !hasPair) {
+                            event.preventDefault()
+                            setIsPickerOpen(true)
+                        }
+                    }}
+                >
+                    {pair ? (
+                        <div className="flex w-full min-w-0 flex-col overflow-hidden rounded-xl">
+                            <div className="flex min-w-0 items-start justify-between gap-3 border-b bg-muted/20 p-4">
+                                <div className="min-w-0">
+                                    <div className="text-4xl font-black leading-none tracking-normal text-foreground">
+                                        {getExchangePairLabel(pair.baseCurrency, pair.quoteCurrency)}
                                     </div>
-                                    <div className="mt-2 break-words text-2xl font-black leading-tight tabular-nums text-red-600 dark:text-red-300">
-                                        {buyingRate}
+                                    <div className="mt-1 line-clamp-2 text-sm font-semibold leading-tight text-muted-foreground">
+                                        {baseName} / {quoteName}
                                     </div>
                                 </div>
-                                <div className="min-w-0 rounded-lg border border-emerald-500/15 bg-emerald-500/10 p-3">
-                                    <div className="text-xs font-semibold uppercase text-emerald-700 dark:text-emerald-300">
-                                        {t('currencyExchange.transactionTypes.sell')}
-                                    </div>
-                                    <div className="mt-2 break-words text-2xl font-black leading-tight tabular-nums text-emerald-600 dark:text-emerald-300">
-                                        {sellingRate}
-                                    </div>
+                                <div className="flex shrink-0 -space-x-2">
+                                    <span className="overflow-hidden rounded-md bg-background shadow-sm ring-1 ring-border/60">
+                                        <CurrencyFlag currency={pair.baseCurrency} size={38} />
+                                    </span>
+                                    <span className="overflow-hidden rounded-md bg-background shadow-sm ring-1 ring-border/60">
+                                        <CurrencyFlag currency={pair.quoteCurrency} size={38} />
+                                    </span>
                                 </div>
                             </div>
-                            <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
-                                <span>{t('currencyExchange.labels.currencyPair')}</span>
-                                <span className="font-semibold text-foreground">{currency.toUpperCase()}/IQD</span>
+
+                            <div className="grid flex-1 content-end gap-3 p-4">
+                                <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-1 2xl:grid-cols-2">
+                                    {renderPricePanel('buy', buyingRate)}
+                                    {renderPricePanel('sell', sellingRate)}
+                                </div>
+                                <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                                    <span>{t('currencyExchange.labels.priceBasis', { defaultValue: 'Price basis' })}</span>
+                                    <span className="font-semibold text-foreground">
+                                        {formatNumberWithCommas(pairPrice?.priceBasisAmount ?? DEFAULT_EXCHANGE_PAIR_PRICE_BASIS)} {pair.baseCurrency.toUpperCase()}
+                                    </span>
+                                </div>
+                                {!canManagePrices ? (
+                                    <div className="text-xs text-muted-foreground">
+                                        {t('currencyExchange.help.priceReadOnly', { defaultValue: 'Price editing requires permission.' })}
+                                    </div>
+                                ) : null}
                             </div>
                         </div>
-                    </div>
-                ) : (
-                    <div className="flex min-h-[258px] w-full flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-muted-foreground/30 bg-muted/10 p-5 text-center transition-colors group-hover:border-primary/40 group-hover:bg-primary/5">
-                        <div className="flex h-14 w-14 items-center justify-center rounded-full bg-background text-muted-foreground shadow-sm ring-1 ring-border group-hover:text-primary">
-                            <Plus className="h-7 w-7" />
+                    ) : (
+                        <div className="flex min-h-[258px] w-full flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-muted-foreground/30 bg-muted/10 p-5 text-center transition-colors group-hover:border-primary/40 group-hover:bg-primary/5">
+                            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-background text-muted-foreground shadow-sm ring-1 ring-border group-hover:text-primary">
+                                <Plus className="h-7 w-7" />
+                            </div>
+                            <div className="text-sm font-semibold text-foreground">
+                                {t('currencyExchange.placeholders.selectPair', { defaultValue: 'Select pair' })}
+                            </div>
                         </div>
-                        <div className="text-sm font-semibold text-foreground">
-                            {t('currencyExchange.placeholders.selectCurrency', { defaultValue: 'Select currency' })}
-                        </div>
-                    </div>
-                )}
-            </SelectTrigger>
+                    )}
+                </div>
+                <SelectTrigger
+                    allowViewer
+                    aria-hidden="true"
+                    tabIndex={-1}
+                    className="pointer-events-none absolute right-4 top-4 h-1 w-1 border-0 bg-transparent p-0 opacity-0 shadow-none focus:ring-0 focus:ring-offset-0"
+                >
+                    <SelectValue />
+                </SelectTrigger>
+            </div>
             <SelectContent>
-                {currency ? (
+                {pair ? (
                     <SelectItem value={EXCHANGE_RATE_CARD_CLEAR_VALUE}>
                         {t('currencyExchange.buttons.clear')}
                     </SelectItem>
                 ) : null}
-                {currencyOptions.map((option) => (
-                    <SelectItem key={option} value={option}>
-                        {option.toUpperCase()} - {getLocalizedCurrencyName(option, language)}
+                {pairOptions.map((option) => (
+                    <SelectItem key={option.key} value={option.key}>
+                        {getExchangePairLabel(option.baseCurrency, option.quoteCurrency)} - {getLocalizedCurrencyName(option.baseCurrency, language)} / {getLocalizedCurrencyName(option.quoteCurrency, language)}
                     </SelectItem>
                 ))}
             </SelectContent>

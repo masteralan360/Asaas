@@ -2099,7 +2099,11 @@
     "kickWarning": "This user will lose access to all workspace data immediately. Their role will be preserved.",
     "kickSuccess": "Member removed successfully",
     "cannotKickAdmin": "Cannot kick other admins",
-    "you": "You"
+    "you": "You",
+    "permissions": {
+      "currencyExchangeManagePrices": "Manage FX Prices",
+      "currencyExchangeManagePricesDescription": "Edit manual buy and sell prices for currency exchange pairs."
+    }
   },
   "profileCard": {
     "title": "Profile Card",
@@ -3528,7 +3532,8 @@
     },
     "rateSources": {
       "manual": "Manual",
-      "live": "Live"
+      "live": "Live",
+      "manualPairPrice": "Manual pair price"
     },
     "acquisitionSources": {
       "last_buy": "Last Buy",
@@ -3616,6 +3621,9 @@
       "customerReceives": "Customer Receives",
       "exchangeRate": "Exchange Rate",
       "currencyPair": "Currency Pair",
+      "buyPrice": "Buy price",
+      "sellPrice": "Sell price",
+      "priceBasis": "Price basis",
       "rate": "Rate",
       "acquisitionRate": "Acquisition Rate",
       "estimatedProfit": "Estimated profit",
@@ -3654,6 +3662,7 @@
       "safe": "The FX safe that will receive the From Currency and pay out the To Currency for this transaction.",
       "fromCurrency": "The currency entering the safe from the customer.",
       "toCurrency": "The currency leaving the safe and paid to the customer.",
+      "currencyPair": "Select the ordered pair. USD/EUR and EUR/USD are separate manual price rows.",
       "customerGives": "The amount the customer gives in the From Currency. The safe balance increases by this amount.",
       "customerReceives": "The calculated amount the customer receives in the To Currency after rate and fees. The safe balance decreases by this amount."
     },
@@ -3661,6 +3670,7 @@
       "safeName": "Main exchange safe",
       "negativeDecrease": "Use negative amount to decrease",
       "selectSafe": "Select safe",
+      "selectPair": "Select pair",
       "acquisitionRate": "Cost per {{basis}} {{to}} in {{from}}",
       "transactionNotes": "Optional transaction notes",
       "customEndTime": "Custom end time"
@@ -3689,8 +3699,11 @@
       "adjustmentFailedDescription": "Could not adjust safe.",
       "transactionCreated": "Exchange transaction created.",
       "transactionCreateFailed": "Failed to create exchange transaction.",
+      "priceUpdated": "Exchange price updated.",
+      "priceUpdateFailed": "Failed to update exchange price.",
       "createSafeFirst": "Create an FX safe before creating exchange transactions.",
       "currencyMustDiffer": "From currency and To currency must be different.",
+      "missingPairPrice": "Set a non-zero {{side}} price for {{pair}} before creating this transaction.",
       "insufficientSafeBalance": "{{safe}} has {{available}} available, but this transaction pays {{pays}}.",
       "manualRateScheduledTitle": "Manual rate scheduled.",
       "manualRateScheduledDescription": "{{pair}} will use this rate until the selected period ends.",
@@ -3707,7 +3720,8 @@
       "title": "Create Exchange Transaction",
       "description": "Record customer-gives and customer-receives values with a saved rate and fee snapshot.",
       "transactionDetails": "Transaction Details",
-      "marketRateSnapshot": "Market Rate Snapshot"
+      "marketRateSnapshot": "Market Rate Snapshot",
+      "manualPriceSnapshot": "Manual Price Snapshot"
     },
     "help": {
       "acquisitionRate": "Cost of {{to}} expressed in {{from}} for profit snapshot.",
@@ -3722,7 +3736,9 @@
       "feeRuleEffectiveOpenEnded": "This rule can apply to matching transactions now and has no end time.",
       "feeRuleEnded": "Active is on, but the effective end time passed at {{end}}.",
       "feeRuleUnavailable": "This rule is not currently available for new matching transactions.",
-      "feeRuleInactive": "The active switch is off, so this rule will not apply."
+      "feeRuleInactive": "The active switch is off, so this rule will not apply.",
+      "pairPriceBasis": "Price is per {{basis}} {{base}} in {{quote}}.",
+      "priceReadOnly": "Price editing requires permission."
     },
     "feeRules": {
       "title": "Fee/Commission Rules",

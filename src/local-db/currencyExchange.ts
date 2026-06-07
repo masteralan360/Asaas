@@ -18,6 +18,7 @@ import type {
     ExchangeFeeRuleTransactionScope,
     ExchangeFeeType,
     ExchangePaymentMethod,
+    ExchangePairPrice,
     ExchangeRateSnapshot,
     ExchangeSafe,
     ExchangeSafeBalance,
@@ -28,6 +29,7 @@ import type {
 
 const TRANSACTIONS_TABLE = 'exchange_transactions'
 const FEE_RULES_TABLE = 'exchange_fee_rules'
+const PAIR_PRICES_TABLE = 'exchange_pair_prices'
 const SAFES_TABLE = 'fx_safes'
 const SAFE_BALANCES_TABLE = 'fx_safe_balances'
 const SAFE_MOVEMENTS_TABLE = 'fx_safe_movements'
@@ -35,6 +37,7 @@ const SAFE_MOVEMENTS_TABLE = 'fx_safe_movements'
 type ExchangeTableName =
     | typeof TRANSACTIONS_TABLE
     | typeof FEE_RULES_TABLE
+    | typeof PAIR_PRICES_TABLE
     | typeof SAFES_TABLE
     | typeof SAFE_BALANCES_TABLE
     | typeof SAFE_MOVEMENTS_TABLE
@@ -47,24 +50,22 @@ type ExchangeSyncEntity = Record<string, unknown> & {
 const tableByName = {
     [TRANSACTIONS_TABLE]: db.exchange_transactions,
     [FEE_RULES_TABLE]: db.exchange_fee_rules,
+    [PAIR_PRICES_TABLE]: db.exchange_pair_prices,
     [SAFES_TABLE]: db.fx_safes,
     [SAFE_BALANCES_TABLE]: db.fx_safe_balances,
     [SAFE_MOVEMENTS_TABLE]: db.fx_safe_movements
 } as const
 
 export const EXCHANGE_SAFE_CURRENCIES: CurrencyCode[] = ['iqd', 'usd', 'eur', 'try']
+export const DEFAULT_EXCHANGE_PAIR_PRICE_BASIS = 100
 
-export interface ExchangeRateMap {
-    usd: number
-    eur?: number | null
-    try?: number | null
-}
+export type ExchangePairPriceSide = 'buy' | 'sell'
+export type ExchangePairPriceQuote = Pick<ExchangePairPrice, 'id' | 'baseCurrency' | 'quoteCurrency' | 'buyPrice' | 'sellPrice' | 'priceBasisAmount' | 'updatedAt'>
 
 export interface ExchangeCalculationInput {
-    fromCurrency: CurrencyCode
-    toCurrency: CurrencyCode
+    transactionType: ExchangeTransactionType
+    pairPrice: ExchangePairPriceQuote
     customerGivesAmount: number
-    ratesToIqd: ExchangeRateMap
     feeType?: ExchangeFeeType | null
     feeCurrency?: CurrencyCode | null
     feeValue?: number | null
@@ -82,10 +83,8 @@ export interface CreateExchangeTransactionInput {
     transactionType: ExchangeTransactionType
     transactionDate?: string
     safeId: string
-    fromCurrency: CurrencyCode
-    toCurrency: CurrencyCode
+    pairPrice: ExchangePairPriceQuote
     customerGivesAmount: number
-    ratesToIqd: ExchangeRateMap
     exchangeRateUsed: number
     exchangeRateSource: string
     exchangeRateManuallyEdited: boolean
@@ -139,6 +138,16 @@ export interface SaveExchangeFeeRuleInput {
     createdBy?: string | null
 }
 
+export interface SaveExchangePairPriceInput {
+    baseCurrency: CurrencyCode
+    quoteCurrency: CurrencyCode
+    buyPrice?: number | null
+    sellPrice?: number | null
+    priceBasisAmount?: number | null
+    createdBy?: string | null
+    updatedBy?: string | null
+}
+
 export type ExchangeFeeRuleTemporalStatus = 'inactive' | 'pending' | 'effective' | 'ended'
 
 function shouldUseCloudBusinessData(workspaceId?: string | null) {
@@ -186,8 +195,7 @@ function roundSafeAmount(value: number, currency: CurrencyCode) {
 function calculateAcquisitionRateFromBuy(
     buy: ExchangeTransaction,
     soldCurrency: CurrencyCode,
-    profitCurrency: CurrencyCode,
-    ratesToIqd: ExchangeRateMap
+    profitCurrency: CurrencyCode
 ) {
     const basis = getExchangeRateBasisAmount(soldCurrency)
     const soldAmount = Number(buy.customerGivesAmount || 0)
@@ -201,7 +209,7 @@ function calculateAcquisitionRateFromBuy(
         return roundSafeAmount(paidPerBasis, profitCurrency)
     }
 
-    return roundSafeAmount(convertExchangeAmount(paidPerBasis, buy.toCurrency, profitCurrency, ratesToIqd), profitCurrency)
+    return 0
 }
 
 export async function findLatestSafeBuyForAcquisitionRate({
@@ -209,14 +217,12 @@ export async function findLatestSafeBuyForAcquisitionRate({
     safeId,
     soldCurrency,
     profitCurrency,
-    ratesToIqd,
     beforeTransactionDate
 }: {
     workspaceId: string
     safeId: string
     soldCurrency: CurrencyCode
     profitCurrency: CurrencyCode
-    ratesToIqd: ExchangeRateMap
     beforeTransactionDate?: string | null
 }) {
     if (!workspaceId || !safeId) {
@@ -238,6 +244,7 @@ export async function findLatestSafeBuyForAcquisitionRate({
             && transaction.transactionType === 'buy'
             && transaction.safeId === safeId
             && transaction.fromCurrency === soldCurrency
+            && transaction.toCurrency === profitCurrency
             && (!beforeIso || transaction.transactionDate <= beforeIso)
         )
         .toArray()
@@ -251,7 +258,7 @@ export async function findLatestSafeBuyForAcquisitionRate({
         return null
     }
 
-    const acquisitionRate = calculateAcquisitionRateFromBuy(latest, soldCurrency, profitCurrency, ratesToIqd)
+    const acquisitionRate = calculateAcquisitionRateFromBuy(latest, soldCurrency, profitCurrency)
     if (acquisitionRate <= 0) {
         return null
     }
@@ -343,67 +350,116 @@ function normalizeOptionalText(value?: string | null) {
     return text || null
 }
 
-function getQuotedRateToIqd(currency: CurrencyCode, rates: ExchangeRateMap) {
-    if (currency === 'iqd') return 1
-    const rate = rates[currency]
-    if (!rate || rate <= 0) {
-        throw new Error(`Missing ${currency.toUpperCase()}/IQD exchange rate`)
+export function getExchangePairKey(baseCurrency: CurrencyCode, quoteCurrency: CurrencyCode) {
+    return `${baseCurrency}:${quoteCurrency}`
+}
+
+export function getExchangePairLabel(baseCurrency: CurrencyCode, quoteCurrency: CurrencyCode) {
+    return `${baseCurrency.toUpperCase()}/${quoteCurrency.toUpperCase()}`
+}
+
+export function parseExchangePairKey(value: string | null | undefined) {
+    const [baseCurrency, quoteCurrency] = String(value || '').split(':') as CurrencyCode[]
+    if (
+        EXCHANGE_SAFE_CURRENCIES.includes(baseCurrency)
+        && EXCHANGE_SAFE_CURRENCIES.includes(quoteCurrency)
+        && baseCurrency !== quoteCurrency
+    ) {
+        return { baseCurrency, quoteCurrency }
     }
-    return rate
+
+    return null
 }
 
-function getUnitRateToIqd(currency: CurrencyCode, rates: ExchangeRateMap) {
-    if (currency === 'iqd') return 1
-    return getQuotedRateToIqd(currency, rates) / 100
+export function buildExchangePairOptions(currencies: CurrencyCode[] = EXCHANGE_SAFE_CURRENCIES) {
+    const allowed = currencies.filter((currency, index, list) =>
+        EXCHANGE_SAFE_CURRENCIES.includes(currency) && list.indexOf(currency) === index
+    )
+    return allowed.flatMap((baseCurrency) =>
+        allowed
+            .filter((quoteCurrency) => quoteCurrency !== baseCurrency)
+            .map((quoteCurrency) => ({ baseCurrency, quoteCurrency, key: getExchangePairKey(baseCurrency, quoteCurrency) }))
+    )
 }
 
-export function convertExchangeAmount(
-    amount: number,
-    fromCurrency: CurrencyCode,
-    toCurrency: CurrencyCode,
-    ratesToIqd: ExchangeRateMap
+export function findExchangePairPrice(
+    prices: ExchangePairPrice[],
+    baseCurrency: CurrencyCode,
+    quoteCurrency: CurrencyCode
 ) {
-    if (fromCurrency === toCurrency) {
-        return Number(amount) || 0
+    return prices.find((price) =>
+        !price.isDeleted
+        && price.baseCurrency === baseCurrency
+        && price.quoteCurrency === quoteCurrency
+    ) || null
+}
+
+export function getExchangePairTransactionCurrencies(
+    pairPrice: Pick<ExchangePairPriceQuote, 'baseCurrency' | 'quoteCurrency'>,
+    transactionType: ExchangeTransactionType
+) {
+    return transactionType === 'buy'
+        ? { fromCurrency: pairPrice.baseCurrency, toCurrency: pairPrice.quoteCurrency }
+        : { fromCurrency: pairPrice.quoteCurrency, toCurrency: pairPrice.baseCurrency }
+}
+
+export function getExchangePairSidePrice(
+    pairPrice: Pick<ExchangePairPriceQuote, 'buyPrice' | 'sellPrice'>,
+    transactionType: ExchangeTransactionType
+) {
+    return transactionType === 'buy' ? Number(pairPrice.buyPrice || 0) : Number(pairPrice.sellPrice || 0)
+}
+
+export function convertExchangePairAmount(
+    amount: number,
+    pairPrice: ExchangePairPriceQuote,
+    transactionType: ExchangeTransactionType
+) {
+    const sidePrice = getExchangePairSidePrice(pairPrice, transactionType)
+    const basisAmount = Number(pairPrice.priceBasisAmount || 0)
+    if (sidePrice <= 0) {
+        throw new Error('Exchange pair price is required')
+    }
+    if (basisAmount <= 0) {
+        throw new Error('Exchange pair price basis is required')
     }
 
-    const fromRate = getUnitRateToIqd(fromCurrency, ratesToIqd)
-    const toRate = getUnitRateToIqd(toCurrency, ratesToIqd)
-    return (Number(amount) || 0) * fromRate / toRate
+    const rawAmount = Number(amount) || 0
+    return transactionType === 'buy'
+        ? rawAmount * sidePrice / basisAmount
+        : rawAmount * basisAmount / sidePrice
 }
 
 export function calculateExchangeTransaction(input: ExchangeCalculationInput): ExchangeCalculationResult {
+    const { fromCurrency, toCurrency } = getExchangePairTransactionCurrencies(input.pairPrice, input.transactionType)
     const customerGivesAmount = Math.max(0, Number(input.customerGivesAmount || 0))
     const feeValue = Math.max(0, Number(input.feeValue || 0))
-    const feeCurrency = input.feeCurrency || input.fromCurrency
+    const feeCurrency = input.feeCurrency || fromCurrency
     const feeBasisAmount = Math.max(0, Number(input.feeBasisAmount || 0)) || getDefaultExchangeFeeBasisAmount(feeCurrency)
 
-    const baseReceivesAmount = convertExchangeAmount(
-        customerGivesAmount,
-        input.fromCurrency,
-        input.toCurrency,
-        input.ratesToIqd
-    )
+    if (feeCurrency !== fromCurrency) {
+        throw new Error('Exchange fees must use the customer-gives currency')
+    }
+
+    const baseReceivesAmount = convertExchangePairAmount(customerGivesAmount, input.pairPrice, input.transactionType)
 
     let feeAmount = 0
     if (input.feeType === 'fixed') {
-        const customerGivesInFeeCurrency = convertExchangeAmount(customerGivesAmount, input.fromCurrency, feeCurrency, input.ratesToIqd)
-        feeAmount = roundCurrencyAmount(feeValue * customerGivesInFeeCurrency / feeBasisAmount, feeCurrency)
+        feeAmount = roundCurrencyAmount(feeValue * customerGivesAmount / feeBasisAmount, feeCurrency)
     } else if (input.feeType === 'percentage') {
-        const customerGivesInFeeCurrency = convertExchangeAmount(customerGivesAmount, input.fromCurrency, feeCurrency, input.ratesToIqd)
-        feeAmount = roundCurrencyAmount(customerGivesInFeeCurrency * feeValue / 100, feeCurrency)
+        feeAmount = roundCurrencyAmount(customerGivesAmount * feeValue / 100, feeCurrency)
     }
 
     const feeAmountInToCurrency = feeAmount > 0
-        ? convertExchangeAmount(feeAmount, feeCurrency, input.toCurrency, input.ratesToIqd)
+        ? convertExchangePairAmount(feeAmount, input.pairPrice, input.transactionType)
         : 0
     const customerReceivesAmount = Math.max(0, baseReceivesAmount - feeAmountInToCurrency)
 
     return {
-        baseReceivesAmount: roundCurrencyAmount(baseReceivesAmount, input.toCurrency),
-        customerReceivesAmount: roundCurrencyAmount(customerReceivesAmount, input.toCurrency),
+        baseReceivesAmount: roundCurrencyAmount(baseReceivesAmount, toCurrency),
+        customerReceivesAmount: roundCurrencyAmount(customerReceivesAmount, toCurrency),
         feeAmount: roundCurrencyAmount(feeAmount, feeCurrency),
-        feeAmountInToCurrency: roundCurrencyAmount(feeAmountInToCurrency, input.toCurrency)
+        feeAmountInToCurrency: roundCurrencyAmount(feeAmountInToCurrency, toCurrency)
     }
 }
 
@@ -420,16 +476,6 @@ export function buildExchangeFeeRuleSnapshot(rule: ExchangeFeeRule): ExchangeFee
         effectiveEndDate: rule.effectiveEndDate ?? null,
         isLocked: rule.isLocked
     }
-}
-
-export function getEffectiveExchangeRateUsed(
-    fromCurrency: CurrencyCode,
-    toCurrency: CurrencyCode,
-    ratesToIqd: ExchangeRateMap
-) {
-    if (fromCurrency === toCurrency) return 1
-    if (fromCurrency === 'iqd') return getQuotedRateToIqd(toCurrency, ratesToIqd)
-    return getQuotedRateToIqd(fromCurrency, ratesToIqd)
 }
 
 async function generateExchangeTransactionNo(workspaceId: string, createdAt: string) {
@@ -853,14 +899,86 @@ export async function hasCurrencyExchangeAccountingData(workspaceId: string | un
     return transactions + safes + balances + movements > 0
 }
 
+export async function upsertExchangePairPrice(workspaceId: string, input: SaveExchangePairPriceInput) {
+    const now = new Date().toISOString()
+    const baseCurrency = input.baseCurrency
+    const quoteCurrency = input.quoteCurrency
+
+    if (!workspaceId) {
+        throw new Error('Workspace is required')
+    }
+    if (!EXCHANGE_SAFE_CURRENCIES.includes(baseCurrency) || !EXCHANGE_SAFE_CURRENCIES.includes(quoteCurrency)) {
+        throw new Error('Unsupported exchange pair currency')
+    }
+    if (baseCurrency === quoteCurrency) {
+        throw new Error('Exchange pair currencies must be different')
+    }
+
+    const existing = await db.exchange_pair_prices
+        .where('workspaceId')
+        .equals(workspaceId)
+        .and((price) =>
+            !price.isDeleted
+            && price.baseCurrency === baseCurrency
+            && price.quoteCurrency === quoteCurrency
+        )
+        .first()
+
+    const priceBasisAmount = input.priceBasisAmount !== undefined
+        ? Math.max(0, Number(input.priceBasisAmount || 0))
+        : Number(existing?.priceBasisAmount || DEFAULT_EXCHANGE_PAIR_PRICE_BASIS)
+    if (priceBasisAmount <= 0) {
+        throw new Error('Exchange pair price basis must be greater than zero')
+    }
+
+    const buyPrice = input.buyPrice !== undefined
+        ? Math.max(0, Number(input.buyPrice || 0))
+        : Number(existing?.buyPrice || 0)
+    const sellPrice = input.sellPrice !== undefined
+        ? Math.max(0, Number(input.sellPrice || 0))
+        : Number(existing?.sellPrice || 0)
+
+    const price: ExchangePairPrice = existing
+        ? {
+            ...existing,
+            buyPrice,
+            sellPrice,
+            priceBasisAmount,
+            updatedBy: input.updatedBy ?? input.createdBy ?? existing.updatedBy ?? null,
+            updatedAt: now,
+            version: existing.version + 1,
+            ...getSyncMetadata(workspaceId, now)
+        }
+        : {
+            id: generateId(),
+            workspaceId,
+            baseCurrency,
+            quoteCurrency,
+            buyPrice,
+            sellPrice,
+            priceBasisAmount,
+            createdBy: input.createdBy || null,
+            updatedBy: input.updatedBy ?? input.createdBy ?? null,
+            createdAt: now,
+            updatedAt: now,
+            version: 1,
+            isDeleted: false,
+            ...getSyncMetadata(workspaceId, now)
+        }
+
+    await db.exchange_pair_prices.put(price)
+    await syncUpsertEntities(PAIR_PRICES_TABLE, [price as unknown as ExchangeSyncEntity], workspaceId)
+    return await db.exchange_pair_prices.get(price.id) || price
+}
+
 export async function createExchangeTransaction(
     workspaceId: string,
     input: CreateExchangeTransactionInput
 ) {
     const now = new Date().toISOString()
     const transactionDate = input.transactionDate ? new Date(input.transactionDate).toISOString() : now
-    const fromCurrency = input.fromCurrency
-    const toCurrency = input.toCurrency
+    const pairPrice = input.pairPrice
+    const { fromCurrency, toCurrency } = getExchangePairTransactionCurrencies(pairPrice, input.transactionType)
     const customerGivesAmount = roundCurrencyAmount(Math.max(0, Number(input.customerGivesAmount || 0)), fromCurrency)
     const feeType = input.feeType ?? input.feeRuleSnapshot?.feeType ?? null
     const feeCurrency = input.feeCurrency ?? input.feeRuleSnapshot?.currency ?? null
@@ -881,11 +999,15 @@ export async function createExchangeTransaction(
     if (customerGivesAmount <= 0) {
         throw new Error('Customer gives amount must be greater than zero')
     }
-    if (!input.exchangeRateUsed || input.exchangeRateUsed <= 0) {
-        throw new Error('Exchange rate is required')
+    const sidePrice = getExchangePairSidePrice(pairPrice, input.transactionType)
+    if (!pairPrice.id || sidePrice <= 0 || Number(pairPrice.priceBasisAmount || 0) <= 0) {
+        throw new Error('Manual exchange pair price is required')
+    }
+    if (!input.exchangeRateUsed || input.exchangeRateUsed <= 0 || Math.abs(Number(input.exchangeRateUsed) - sidePrice) > 0.000001) {
+        throw new Error('Exchange pair price is required')
     }
     if (!input.marketRateSnapshot.length) {
-        throw new Error('Market rate snapshot is required')
+        throw new Error('Exchange price snapshot is required')
     }
 
     const safe = await db.fx_safes.get(safeId)
@@ -897,10 +1019,9 @@ export async function createExchangeTransaction(
     }
 
     const calculation = calculateExchangeTransaction({
-        fromCurrency,
-        toCurrency,
+        transactionType: input.transactionType,
+        pairPrice,
         customerGivesAmount,
-        ratesToIqd: input.ratesToIqd,
         feeType,
         feeCurrency,
         feeValue: finalFeeValue,
@@ -924,7 +1045,6 @@ export async function createExchangeTransaction(
                 safeId,
                 soldCurrency: toCurrency,
                 profitCurrency: fromCurrency,
-                ratesToIqd: input.ratesToIqd,
                 beforeTransactionDate: transactionDate
             })
             if (latestBuy) {
@@ -1336,6 +1456,29 @@ export function useExchangeTransaction(transactionId: string | undefined) {
         () => transactionId ? db.exchange_transactions.get(transactionId) : undefined,
         [transactionId]
     )
+}
+
+export function useExchangePairPrices(workspaceId: string | undefined) {
+    const online = useNetworkStatus()
+
+    const prices = useLiveQuery(
+        () => workspaceId
+            ? db.exchange_pair_prices
+                .where('workspaceId')
+                .equals(workspaceId)
+                .and((item) => !item.isDeleted)
+                .sortBy('updatedAt')
+            : [],
+        [workspaceId]
+    )
+
+    useEffect(() => {
+        if (online && workspaceId && shouldUseCloudBusinessData(workspaceId)) {
+            void fetchTableFromSupabase(PAIR_PRICES_TABLE, db.exchange_pair_prices, workspaceId)
+        }
+    }, [online, workspaceId])
+
+    return prices ?? []
 }
 
 export function useExchangeSafes(workspaceId: string | undefined) {

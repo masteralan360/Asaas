@@ -26,6 +26,7 @@ const realEstateTables = new Set([
 ])
 
 const fxTables = new Set([
+    'exchange_pair_prices',
     'exchange_transactions',
     'exchange_fee_rules',
     'fx_safes',

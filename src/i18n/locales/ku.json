@@ -1378,7 +1378,11 @@
     "kickWarning": "ئەم بەکارهێنەرە دەستبەجێ دەستگەیشتنی بە هەموو داتاکانی شوێنی کار لەدەست دەدات. ڕۆڵەکەی دەپارێزرێت.",
     "kickSuccess": "ئەندام بە سەرکەوتوویی دەرکرا",
     "cannotKickAdmin": "ناتوانیت بەڕێوەبەرەکانی تر دەربکەیت",
-    "you": "تۆ"
+    "you": "تۆ",
+    "permissions": {
+      "currencyExchangeManagePrices": "بەڕێوەبردنی نرخی FX",
+      "currencyExchangeManagePricesDescription": "دەستکاریکردنی نرخی کڕین و فرۆشتنی دەستی بۆ جوتە دراوەکان."
+    }
   },
   "profileCard": {
     "title": "کارتی پڕۆفایل",

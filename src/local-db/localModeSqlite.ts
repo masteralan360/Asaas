@@ -44,6 +44,7 @@ export const LOCAL_MODE_SQLITE_TABLES = [
   "real_estate_transactions",
   "real_estate_installments",
   "real_estate_payments",
+  "exchange_pair_prices",
   "exchange_transactions",
   "exchange_fee_rules",
   "fx_safes",

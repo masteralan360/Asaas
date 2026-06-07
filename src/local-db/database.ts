@@ -41,6 +41,7 @@ import type {
   RealEstateTransaction,
   RealEstateInstallment,
   RealEstatePayment,
+  ExchangePairPrice,
   ExchangeTransaction,
   ExchangeFeeRule,
   ExchangeSafe,
@@ -324,6 +325,7 @@ export class AtlasDatabase extends Dexie {
   real_estate_transactions!: EntityTable<RealEstateTransaction, "id">;
   real_estate_installments!: EntityTable<RealEstateInstallment, "id">;
   real_estate_payments!: EntityTable<RealEstatePayment, "id">;
+  exchange_pair_prices!: EntityTable<ExchangePairPrice, "id">;
   exchange_transactions!: EntityTable<ExchangeTransaction, "id">;
   exchange_fee_rules!: EntityTable<ExchangeFeeRule, "id">;
   fx_safes!: EntityTable<ExchangeSafe, "id">;
@@ -2111,6 +2113,11 @@ export class AtlasDatabase extends Dexie {
         "id, workspaceId, transactionNo, transactionType, transactionDate, fromCurrency, toCurrency, safeId, profitCurrency, paymentMethod, employeeUserId, createdAt, updatedAt, isDeleted, syncStatus, [workspaceId+createdAt], [workspaceId+transactionDate], [workspaceId+transactionType], [workspaceId+safeId]",
     });
 
+    this.version(63).stores({
+      exchange_pair_prices:
+        "id, workspaceId, baseCurrency, quoteCurrency, buyPrice, sellPrice, updatedAt, isDeleted, syncStatus, [workspaceId+baseCurrency+quoteCurrency], [workspaceId+updatedAt]",
+    });
+
     this.registerLocalModeSyncHooks();
   }
 
@@ -2148,6 +2155,7 @@ export class AtlasDatabase extends Dexie {
       "real_estate_transactions",
       "real_estate_installments",
       "real_estate_payments",
+      "exchange_pair_prices",
       "exchange_transactions",
       "exchange_fee_rules",
       "fx_safes",
@@ -2310,6 +2318,7 @@ export async function clearDatabase(): Promise<void> {
       db.real_estate_transactions,
       db.real_estate_installments,
       db.real_estate_payments,
+      db.exchange_pair_prices,
       db.exchange_transactions,
       db.exchange_fee_rules,
       db.fx_safes,
@@ -2334,6 +2343,7 @@ export async function clearDatabase(): Promise<void> {
       await db.real_estate_transactions.clear();
       await db.real_estate_installments.clear();
       await db.real_estate_payments.clear();
+      await db.exchange_pair_prices.clear();
       await db.exchange_transactions.clear();
       await db.exchange_fee_rules.clear();
       await db.fx_safes.clear();

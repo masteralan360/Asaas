@@ -331,6 +331,10 @@ export interface ExchangeRateSnapshot {
   rate: number;
   source: string;
   timestamp: string;
+  side?: ExchangeTransactionType;
+  priceBasisAmount?: number;
+  priceRowId?: string | null;
+  priceUpdatedAt?: string | null;
 }
 
 export interface OrderLineItem {
@@ -631,6 +635,16 @@ export interface ExchangeFeeRule extends BaseEntity {
   isLocked: boolean;
   notes?: string | null;
   createdBy?: string | null;
+}
+
+export interface ExchangePairPrice extends BaseEntity {
+  baseCurrency: CurrencyCode;
+  quoteCurrency: CurrencyCode;
+  buyPrice: number;
+  sellPrice: number;
+  priceBasisAmount: number;
+  createdBy?: string | null;
+  updatedBy?: string | null;
 }
 
 export interface ExchangeTransaction extends BaseEntity {
@@ -1034,6 +1048,7 @@ export interface SyncQueueItem {
     | "real_estate_transactions"
     | "real_estate_installments"
     | "real_estate_payments"
+    | "exchange_pair_prices"
     | "exchange_transactions"
     | "exchange_fee_rules"
     | "fx_safes"
@@ -1150,6 +1165,7 @@ export interface OfflineMutation {
     | "real_estate_transactions"
     | "real_estate_installments"
     | "real_estate_payments"
+    | "exchange_pair_prices"
     | "exchange_transactions"
     | "exchange_fee_rules"
     | "fx_safes"

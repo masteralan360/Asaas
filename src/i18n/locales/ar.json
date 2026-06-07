@@ -1381,7 +1381,11 @@
     "kickWarning": "سيفقد هذا المستخدم الوصول إلى جميع بيانات مساحة العمل على الفور. سيتم الاحتفاظ بدوره.",
     "kickSuccess": "تمت إزالة العضو بنجاح",
     "cannotKickAdmin": "لا يمكن طرد المسؤولين الآخرين",
-    "you": "أنت"
+    "you": "أنت",
+    "permissions": {
+      "currencyExchangeManagePrices": "إدارة أسعار الصرف",
+      "currencyExchangeManagePricesDescription": "تعديل أسعار الشراء والبيع اليدوية لأزواج العملات."
+    }
   },
   "profileCard": {
     "title": "بطاقة الملف الشخصي",

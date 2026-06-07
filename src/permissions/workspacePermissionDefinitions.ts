@@ -155,6 +155,16 @@ export const WORKSPACE_PERMISSION_DEFINITIONS = [
     section: "currency-exchange",
   },
   {
+    key: "currencyExchange.managePrices",
+    module: "currencyExchange",
+    labelKey: "members.permissions.currencyExchangeManagePrices",
+    defaultLabel: "Manage FX Prices",
+    descriptionKey: "members.permissions.currencyExchangeManagePricesDescription",
+    defaultDescription: "Edit manual buy and sell prices for currency exchange pairs.",
+    icon: TrendingUp,
+    section: "currency-exchange",
+  },
+  {
     key: "currencyExchange.reverse",
     module: "currencyExchange",
     labelKey: "members.permissions.currencyExchangeReverse",

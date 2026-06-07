@@ -1,5 +1,29 @@
 CREATE SCHEMA IF NOT EXISTS fx;
 
+CREATE TABLE fx.exchange_pair_prices (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL,
+  base_currency text NOT NULL,
+  quote_currency text NOT NULL,
+  buy_price numeric NOT NULL DEFAULT 0,
+  sell_price numeric NOT NULL DEFAULT 0,
+  price_basis_amount numeric NOT NULL DEFAULT 100,
+  created_by uuid NULL,
+  updated_by uuid NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  version bigint NOT NULL DEFAULT 1,
+  is_deleted boolean NOT NULL DEFAULT false,
+  CONSTRAINT exchange_pair_prices_currency_check CHECK (
+    base_currency IN ('usd', 'eur', 'iqd', 'try')
+    AND quote_currency IN ('usd', 'eur', 'iqd', 'try')
+    AND base_currency <> quote_currency
+  ),
+  CONSTRAINT exchange_pair_prices_price_check CHECK (buy_price >= 0 AND sell_price >= 0),
+  CONSTRAINT exchange_pair_prices_basis_check CHECK (price_basis_amount > 0),
+  PRIMARY KEY (id)
+);
+
 CREATE TABLE fx.exchange_transactions (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   workspace_id uuid NOT NULL,

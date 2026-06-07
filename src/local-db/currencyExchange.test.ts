@@ -1,8 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { ExchangeFeeRule } from './models'
+import type { ExchangeFeeRule, ExchangePairPrice } from './models'
 
 vi.mock('./database', () => ({
     db: {
+        exchange_pair_prices: {},
         exchange_transactions: {},
         exchange_fee_rules: {},
         fx_safes: {},
@@ -42,6 +43,7 @@ vi.mock('@/workspace/workspaceMode', () => ({
 }))
 
 import {
+    calculateExchangeTransaction,
     getExchangeFeeRuleTemporalStatus,
     isExchangeFeeRuleEffectiveForTransaction,
     resolveEffectiveExchangeFeeRule
@@ -69,6 +71,110 @@ const baseRule = (overrides: Partial<ExchangeFeeRule> = {}): ExchangeFeeRule => 
     syncStatus: 'synced',
     lastSyncedAt: '2026-06-05T09:00:00.000Z',
     ...overrides
+})
+
+const basePairPrice = (overrides: Partial<ExchangePairPrice> = {}): ExchangePairPrice => ({
+    id: 'price-1',
+    workspaceId: 'workspace-1',
+    baseCurrency: 'usd',
+    quoteCurrency: 'eur',
+    buyPrice: 92,
+    sellPrice: 93,
+    priceBasisAmount: 100,
+    createdBy: null,
+    updatedBy: null,
+    createdAt: '2026-06-05T09:00:00.000Z',
+    updatedAt: '2026-06-05T09:00:00.000Z',
+    version: 1,
+    isDeleted: false,
+    syncStatus: 'synced',
+    lastSyncedAt: '2026-06-05T09:00:00.000Z',
+    ...overrides
+})
+
+describe('manual exchange pair price calculations', () => {
+    it('buys the base currency using the pair buy price', () => {
+        const result = calculateExchangeTransaction({
+            transactionType: 'buy',
+            pairPrice: basePairPrice(),
+            customerGivesAmount: 100
+        })
+
+        expect(result.baseReceivesAmount).toBe(92)
+        expect(result.customerReceivesAmount).toBe(92)
+    })
+
+    it('sells the base currency using the pair sell price', () => {
+        const result = calculateExchangeTransaction({
+            transactionType: 'sell',
+            pairPrice: basePairPrice(),
+            customerGivesAmount: 93
+        })
+
+        expect(result.baseReceivesAmount).toBe(100)
+        expect(result.customerReceivesAmount).toBe(100)
+    })
+
+    it('does not invert the reversed ordered pair', () => {
+        const reversed = basePairPrice({
+            id: 'price-2',
+            baseCurrency: 'eur',
+            quoteCurrency: 'usd',
+            buyPrice: 108,
+            sellPrice: 109
+        })
+
+        const result = calculateExchangeTransaction({
+            transactionType: 'buy',
+            pairPrice: reversed,
+            customerGivesAmount: 100
+        })
+
+        expect(result.customerReceivesAmount).toBe(108)
+    })
+
+    it('blocks missing or zero side prices', () => {
+        expect(() => calculateExchangeTransaction({
+            transactionType: 'buy',
+            pairPrice: basePairPrice({ buyPrice: 0 }),
+            customerGivesAmount: 100
+        })).toThrow('Exchange pair price is required')
+
+        expect(() => calculateExchangeTransaction({
+            transactionType: 'sell',
+            pairPrice: basePairPrice({ sellPrice: 0 }),
+            customerGivesAmount: 93
+        })).toThrow('Exchange pair price is required')
+    })
+
+    it('applies fees against the customer-gives currency and deducts the converted fee from receives', () => {
+        const result = calculateExchangeTransaction({
+            transactionType: 'buy',
+            pairPrice: basePairPrice(),
+            customerGivesAmount: 100,
+            feeType: 'fixed',
+            feeCurrency: 'usd',
+            feeValue: 10,
+            feeBasisAmount: 100
+        })
+
+        expect(result.baseReceivesAmount).toBe(92)
+        expect(result.feeAmount).toBe(10)
+        expect(result.feeAmountInToCurrency).toBe(9.2)
+        expect(result.customerReceivesAmount).toBe(82.8)
+    })
+
+    it('rejects fees in a currency other than customer-gives currency', () => {
+        expect(() => calculateExchangeTransaction({
+            transactionType: 'buy',
+            pairPrice: basePairPrice(),
+            customerGivesAmount: 100,
+            feeType: 'fixed',
+            feeCurrency: 'eur',
+            feeValue: 10,
+            feeBasisAmount: 100
+        })).toThrow('Exchange fees must use the customer-gives currency')
+    })
 })
 
 describe('exchange fee rule effective dates', () => {
