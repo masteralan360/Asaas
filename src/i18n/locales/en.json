@@ -73,6 +73,7 @@
     "refresh": "Refresh",
     "view": "View",
     "thisMonth": "This Month",
+    "modernBusiness": "Modern Business",
     "all": "All",
     "print": "Print",
     "snoozedItems": "Snoozed Items",
@@ -1564,6 +1565,8 @@
     }
   },
   "auth": {
+    "patternTitle": "Built for Modern Business",
+    "patternSubtitle": "The all-in-one ERP platform designed to scale your operations and simplify your workflows.",
     "systemName": "Atlas System",
     "titleName": "Atlas System ┃ The Foundation of Your Business",
     "systemSubtitle": "The Foundation of Your Business Excellence",
