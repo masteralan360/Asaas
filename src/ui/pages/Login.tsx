@@ -39,7 +39,7 @@ export function Login() {
                         try {
                             const { checkStatus } = await import('@tauri-apps/plugin-biometric')
                             const support = await checkStatus()
-                            
+
                             if (support.isAvailable) {
                                 const { ask } = await import('@tauri-apps/plugin-dialog')
                                 const wantsBiometrics = await ask(
@@ -65,7 +65,7 @@ export function Login() {
                         }
                     }
                 }
-                
+
                 setLocation('/')
             }
         } catch (err) {
@@ -177,9 +177,6 @@ export function Login() {
                         </CardContent>
                     </Card>
 
-                    <p className="text-xs text-center text-muted-foreground">
-                        {t('auth.localDataInfo')}
-                    </p>
                 </div>
             </div>
         </div>
