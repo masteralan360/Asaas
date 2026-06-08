@@ -31,24 +31,38 @@
 @tailwind utilities;
 
 @font-face {
-  font-family: 'IBM Plex Sans Arabic';
-  src: url('/fonts/IBMPlexSansArabic-Regular.ttf') format('truetype');
+  font-family: 'Noto Kufi Arabic';
+  src: url('/fonts/NotoKufiArabic-Regular.ttf') format('truetype');
   font-weight: normal;
   font-style: normal;
   font-display: swap;
 }
 
 [lang="ar"] {
-  font-family: 'IBM Plex Sans Arabic', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
+  font-family: 'Noto Kufi Arabic', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
 }
 
 [lang="ar"] * {
-  font-family: 'IBM Plex Sans Arabic', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
+  font-family: 'Noto Kufi Arabic', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
 }
 
 [lang="ar"] .font-mono,
 [lang="ar"] code,
 [lang="ar"] pre {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace !important;
+}
+
+[lang="ku"] {
+  font-family: 'Noto Kufi Arabic', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
+}
+
+[lang="ku"] * {
+  font-family: 'Noto Kufi Arabic', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
+}
+
+[lang="ku"] .font-mono,
+[lang="ku"] code,
+[lang="ku"] pre {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace !important;
 }
 
