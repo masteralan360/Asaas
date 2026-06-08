@@ -47,7 +47,7 @@ import { assetManager } from '@/lib/assetManager'
 import { normalizeBarcodeDigits, normalizeBarcodeScannerText } from '@/lib/barcodeScanner'
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard'
 import { isTauri } from '@/lib/platform'
-import { cn, formatCurrency } from '@/lib/utils'
+import { cn, formatCurrency, formatNumericInput, parseFormattedNumber, sanitizeNumericInput } from '@/lib/utils'
 import { getInventoryRowsForProduct } from '@/local-db/inventory'
 import { platformService } from '@/services/platformService'
 import { useWorkspace } from '@/workspace'
@@ -1225,14 +1225,16 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                                     <div className="relative">
                                         <Input
                                             id="product-price"
-                                            type="number"
-                                            min="0"
-                                            step="0.01"
-                                            value={formData.price}
-                                            onChange={(event) => setFormData((current) => ({
-                                                ...current,
-                                                price: event.target.value === '' ? '' : parseFloat(event.target.value)
-                                            }))}
+                                            type="text"
+                                            inputMode="decimal"
+                                            value={formatNumericInput(formData.price !== '' ? String(formData.price) : '')}
+                                            onChange={(event) => setFormData((current) => {
+                                                const raw = sanitizeNumericInput(event.target.value)
+                                                return {
+                                                    ...current,
+                                                    price: raw === '' ? '' : parseFormattedNumber(raw)
+                                                }
+                                            })}
                                             placeholder="0.00"
                                             readOnly={isReadOnly}
                                             required
@@ -1260,14 +1262,16 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                                     <div className="relative">
                                         <Input
                                             id="product-cost-price"
-                                            type="number"
-                                            min="0"
-                                            step="0.01"
-                                            value={formData.costPrice}
-                                            onChange={(event) => setFormData((current) => ({
-                                                ...current,
-                                                costPrice: event.target.value === '' ? '' : parseFloat(event.target.value)
-                                            }))}
+                                            type="text"
+                                            inputMode="decimal"
+                                            value={formatNumericInput(formData.costPrice !== '' ? String(formData.costPrice) : '')}
+                                            onChange={(event) => setFormData((current) => {
+                                                const raw = sanitizeNumericInput(event.target.value)
+                                                return {
+                                                    ...current,
+                                                    costPrice: raw === '' ? '' : parseFormattedNumber(raw)
+                                                }
+                                            })}
                                             placeholder="0.00"
                                             readOnly={isReadOnly}
                                             required
