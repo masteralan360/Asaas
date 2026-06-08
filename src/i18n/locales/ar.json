@@ -3628,5 +3628,125 @@
       "originalTransaction": "المعاملة الأصلية",
       "warning": "لا يمكن التراجع عن هذا الإجراء. سيتم تعليم المعاملة الأصلية كمعكوسة وإنشاء معاملة عكسية جديدة."
     }
+  },
+  "clinicalAppointments": {
+    "title": "Clinical Appointments Registry",
+    "subtitle": "Schedule, manage, and track patient appointments with visit records and status updates.",
+    "createTitle": "Create Appointment",
+    "createDescription": "Record a new patient appointment with scheduling details, service info, and status tracking.",
+    "patients": "Patients",
+    "patientsSubtitle": "View and manage patient records",
+    "searchPlaceholder": "Search appointments...",
+    "searchPatient": "Search patients...",
+    "noAppointments": "No appointments found",
+    "noPatients": "No patients found",
+    "patientNotFound": "Patient not found",
+    "backToPatients": "Back to Patients",
+    "appointmentHistory": "Appointment History",
+    "registeredOn": "Registered on",
+    "newPatient": "New Patient",
+    "existingPatient": "Existing Patient",
+    "statuses": {
+      "draft": "Draft",
+      "scheduled": "Scheduled",
+      "confirmed": "Confirmed",
+      "arrived": "Arrived",
+      "in_progress": "In Progress",
+      "completed": "Completed",
+      "cancelled": "Cancelled",
+      "no_show": "No Show"
+    },
+
+    "confirmationMethods": {
+      "phone": "Phone",
+      "sms": "SMS",
+      "whatsapp": "WhatsApp",
+      "email": "Email",
+      "other": "Other"
+    },
+    "types": {
+      "consultation": "Consultation",
+      "follow_up": "Follow Up",
+      "emergency": "Emergency",
+      "checkup": "Checkup",
+      "procedure": "Procedure",
+      "treatment": "Treatment"
+    },
+    "priorities": {
+      "normal": "Normal",
+      "urgent": "Urgent",
+      "emergency": "Emergency"
+    },
+    "patientTypes": {
+      "new": "New Patient",
+      "existing": "Existing Patient"
+    },
+    "table": {
+      "date": "Date",
+      "time": "Time",
+      "patient": "Patient",
+      "type": "Type",
+      "status": "Status",
+      "priority": "Priority",
+      "confirmation": "Confirmation",
+      "fee": "Fee",
+      "actions": "Actions"
+    },
+    "form": {
+      "patient": {
+        "label": "Patient",
+        "searchPlaceholder": "Search by name or phone...",
+        "createNew": "Create New Patient",
+        "nameLabel": "Patient Name",
+        "namePlaceholder": "Enter patient name",
+        "phoneLabel": "Phone Number",
+        "phonePlaceholder": "Enter phone number",
+        "emailLabel": "Email",
+        "emailPlaceholder": "Enter email address",
+        "type": "Patient Type",
+        "notesLabel": "Notes",
+        "notesPlaceholder": "Additional notes about the patient"
+      },
+      "appointment": {
+        "dateLabel": "Appointment Date",
+        "startTimeLabel": "Start Time",
+        "typeLabel": "Appointment Type",
+        "typePlaceholder": "Select type",
+        "reasonLabel": "Reason for Visit",
+        "reasonPlaceholder": "Brief reason for the appointment"
+      },
+      "service": {
+        "label": "Service / Procedure",
+        "placeholder": "Enter service or procedure details",
+        "consultationFee": "Consultation Fee",
+        "estimatedPrice": "Estimated Price"
+      },
+      "status": {
+        "statusLabel": "Status",
+        "confirmationMethodLabel": "Confirmation Method",
+        "priorityLabel": "Priority"
+      },
+      "notes": {
+        "internalNotesLabel": "Internal Notes",
+        "internalNotesPlaceholder": "Staff-only notes about this appointment"
+      },
+      "attachments": {
+        "label": "Attachments",
+        "upload": "Upload Files",
+        "noFiles": "No files attached"
+      }
+    },
+    "messages": {
+      "created": "Appointment created successfully",
+      "createFailed": "Failed to create appointment",
+      "updated": "Appointment updated successfully",
+      "updateFailed": "Failed to update appointment",
+      "deleted": "Appointment deleted successfully",
+      "deleteFailed": "Failed to delete appointment",
+      "patientCreated": "Patient created successfully",
+      "patientCreateFailed": "Failed to create patient",
+      "patientUpdated": "Patient updated successfully",
+      "patientUpdateFailed": "Failed to update patient"
+    }
   }
 }

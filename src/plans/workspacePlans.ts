@@ -24,6 +24,7 @@ export type PlanModuleKey =
     | 'travel_agency'
     | 'real_estate'
     | 'currency_exchange'
+    | 'clinical_appointments'
     | 'loans'
     | 'installments'
     | 'discounts'
@@ -45,6 +46,7 @@ export type WorkspaceFeatureKey =
     | 'travel_agency'
     | 'real_estate'
     | 'currency_exchange'
+    | 'clinical_appointments'
     | 'loans'
     | 'installments'
     | 'net_revenue'
@@ -225,6 +227,7 @@ export const WORKSPACE_FEATURE_MODULE_MAP: Record<WorkspaceFeatureKey, PlanModul
     travel_agency: 'travel_agency',
     real_estate: 'real_estate',
     currency_exchange: 'currency_exchange',
+    clinical_appointments: 'clinical_appointments',
     loans: 'loans',
     installments: 'installments',
     net_revenue: 'revenue_analytics',

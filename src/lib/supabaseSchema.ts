@@ -34,10 +34,17 @@ const fxTables = new Set([
     'fx_safe_movements'
 ])
 
+const clinicsTables = new Set([
+    'clinical_appointments',
+    'clinical_patients',
+    'clinical_attachments'
+])
+
 const budgetClient = supabase.schema('budget')
 const crmClient = supabase.schema('crm')
 const realEstateClient = supabase.schema('real_estate')
 const fxClient = supabase.schema('fx')
+const clinicsClient = supabase.schema('clinics')
 
 export function isBudgetTable(tableName: string): boolean {
     return budgetTables.has(tableName)
@@ -55,6 +62,10 @@ export function isFxTable(tableName: string): boolean {
     return fxTables.has(tableName)
 }
 
+export function isClinicsTable(tableName: string): boolean {
+    return clinicsTables.has(tableName)
+}
+
 export function getSupabaseClientForTable(tableName: string) {
     if (isBudgetTable(tableName)) {
         return budgetClient
@@ -70,6 +81,10 @@ export function getSupabaseClientForTable(tableName: string) {
 
     if (isFxTable(tableName)) {
         return fxClient
+    }
+
+    if (isClinicsTable(tableName)) {
+        return clinicsClient
     }
 
     return supabase

@@ -47,6 +47,9 @@ import type {
   ExchangeSafe,
   ExchangeSafeBalance,
   ExchangeSafeMovement,
+  ClinicalAppointment,
+  ClinicalPatient,
+  ClinicalAttachment,
 } from "./models";
 import { isLocalWorkspaceMode } from "@/workspace/workspaceMode";
 import {
@@ -331,6 +334,9 @@ export class AtlasDatabase extends Dexie {
   fx_safes!: EntityTable<ExchangeSafe, "id">;
   fx_safe_balances!: EntityTable<ExchangeSafeBalance, "id">;
   fx_safe_movements!: EntityTable<ExchangeSafeMovement, "id">;
+  clinical_appointments!: EntityTable<ClinicalAppointment, "id">;
+  clinical_patients!: EntityTable<ClinicalPatient, "id">;
+  clinical_attachments!: EntityTable<ClinicalAttachment, "id">;
 
   constructor() {
     super("AtlasDatabase");
@@ -2118,6 +2124,15 @@ export class AtlasDatabase extends Dexie {
         "id, workspaceId, baseCurrency, quoteCurrency, buyPrice, sellPrice, updatedAt, isDeleted, syncStatus, [workspaceId+baseCurrency+quoteCurrency], [workspaceId+updatedAt]",
     });
 
+    this.version(64).stores({
+      clinical_appointments:
+        "id, workspaceId, patientId, appointmentDate, startTime, appointmentType, status, priority, createdAt, updatedAt, isDeleted, syncStatus, [workspaceId+appointmentDate], [workspaceId+status], [workspaceId+patientId]",
+      clinical_patients:
+        "id, workspaceId, name, phone, createdAt, updatedAt, isDeleted, syncStatus, [workspaceId+name], [workspaceId+phone]",
+      clinical_attachments:
+        "id, workspaceId, appointmentId, fileName, fileType, createdAt, updatedAt, isDeleted, syncStatus, [workspaceId+appointmentId]",
+    });
+
     this.registerLocalModeSyncHooks();
   }
 
@@ -2161,6 +2176,9 @@ export class AtlasDatabase extends Dexie {
       "fx_safes",
       "fx_safe_balances",
       "fx_safe_movements",
+      "clinical_appointments",
+      "clinical_patients",
+      "clinical_attachments",
       "budget_settings",
       "budget_allocations",
       "expense_series",
@@ -2324,6 +2342,9 @@ export async function clearDatabase(): Promise<void> {
       db.fx_safes,
       db.fx_safe_balances,
       db.fx_safe_movements,
+      db.clinical_appointments,
+      db.clinical_patients,
+      db.clinical_attachments,
       db.payment_transactions,
       db.syncQueue,
     ],
@@ -2349,6 +2370,9 @@ export async function clearDatabase(): Promise<void> {
       await db.fx_safes.clear();
       await db.fx_safe_balances.clear();
       await db.fx_safe_movements.clear();
+      await db.clinical_appointments.clear();
+      await db.clinical_patients.clear();
+      await db.clinical_attachments.clear();
       await db.payment_transactions.clear();
       await db.syncQueue.clear();
     },

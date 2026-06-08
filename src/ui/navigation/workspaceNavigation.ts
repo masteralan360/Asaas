@@ -5,6 +5,7 @@ import {
   Boxes,
   Building2,
   Calculator,
+  CalendarClock,
   Copy,
   CreditCard,
   FileSpreadsheet,
@@ -232,6 +233,22 @@ export function buildWorkspaceNavigation({
             })
             return result
           })(),
+        },
+      ]
+      : []),
+    ...(isCoreRole && hasFeature("clinical_appointments") && canAccessPermission("clinicalAppointments.access")
+      ? [
+        {
+          name: t("clinicalAppointments.title", { defaultValue: "Clinical Appointments Registry" }),
+          href: "/clinical-appointments",
+          icon: CalendarClock,
+          children: [
+            {
+              name: t("clinicalAppointments.patients", { defaultValue: "Patients" }),
+              href: "/clinical-appointments/patients",
+              icon: Users,
+            },
+          ],
         },
       ]
       : []),

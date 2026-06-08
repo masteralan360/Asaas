@@ -97,6 +97,13 @@ export function WorkspaceWarmup() {
         }
         if (hasFeature('real_estate')) tasks.push(() => import('@/ui/pages/RealEstate'))
         if (hasFeature('currency_exchange')) tasks.push(() => import('@/ui/pages/CurrencyExchange'))
+        if (hasFeature('clinical_appointments')) {
+          tasks.push(
+            () => import('@/ui/pages/ClinicalAppointments'),
+            () => import('@/ui/pages/ClinicalPatients'),
+            () => import('@/ui/pages/ClinicalPatientDetails'),
+          )
+        }
         if (hasFeature('ledger')) tasks.push(() => import('@/ui/pages/Ledger'))
         if (hasFeature('payments')) tasks.push(() => import('@/ui/pages/Payments'))
         if (hasFeature('direct_transactions')) tasks.push(() => import('@/ui/pages/DirectTransactions'))

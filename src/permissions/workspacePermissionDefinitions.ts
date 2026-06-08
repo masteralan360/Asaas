@@ -21,6 +21,7 @@ import {
   TrendingUp,
   Globe,
   Undo2,
+  CalendarClock,
 } from "lucide-react";
 
 export const WORKSPACE_PERMISSION_DEFINITIONS = [
@@ -183,6 +184,26 @@ export const WORKSPACE_PERMISSION_DEFINITIONS = [
     defaultDescription: "Access travel agency bookings, sales, and payments.",
     icon: Plane,
     section: "sell-and-serve",
+  },
+  {
+    key: "clinicalAppointments.access",
+    module: "clinicalAppointments",
+    labelKey: "members.permissions.clinicalAppointmentsAccess",
+    defaultLabel: "Clinical Appointments",
+    descriptionKey: "members.permissions.clinicalAppointmentsAccessDescription",
+    defaultDescription: "Access clinical appointments module.",
+    icon: CalendarClock,
+    section: "clinic-service",
+  },
+  {
+    key: "clinicalPatients.access",
+    module: "clinicalPatients",
+    labelKey: "members.permissions.clinicalPatientsAccess",
+    defaultLabel: "Patients",
+    descriptionKey: "members.permissions.clinicalPatientsAccessDescription",
+    defaultDescription: "Access patient records and details.",
+    icon: Users,
+    section: "clinic-service",
   },
   {
     key: "installments.access",

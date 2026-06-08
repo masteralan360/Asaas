@@ -8,6 +8,7 @@ import {
   Warehouse,
   Wallet,
   Globe,
+  CalendarClock,
 } from "lucide-react";
 
 export interface LauncherSection {
@@ -30,6 +31,7 @@ export const launcherSectionOrder = [
   "cash-and-control",
   "real-estate",
   "currency-exchange",
+  "clinic-service",
   "partners-and-demand",
   "insights-and-trends",
   "people-and-workspace",
@@ -107,6 +109,20 @@ export const launcherSections: Record<NavigationSectionKey, LauncherSection> = {
       text: "text-violet-700 dark:text-violet-300",
       border: "border-violet-500/20 hover:border-violet-400/40",
       glow: "bg-violet-400/18",
+    },
+  },
+  "clinic-service": {
+    title: "Clinic Service",
+    eyebrow: "Healthcare operations",
+    description:
+      "Appointment scheduling, patient records, and clinical service workflows.",
+    icon: CalendarClock,
+    theme: {
+      shell: "from-teal-500/18 via-cyan-500/10 to-transparent",
+      surface: "bg-teal-500/12 ring-1 ring-teal-500/20",
+      text: "text-teal-700 dark:text-teal-300",
+      border: "border-teal-500/20 hover:border-teal-400/40",
+      glow: "bg-teal-400/18",
     },
   },
   "partners-and-demand": {
@@ -218,6 +234,21 @@ export const moduleMetaByHref: Record<string, ModuleMeta> = {
     section: "currency-exchange",
     description: "Manage reusable exchange fee and commission rules.",
     badge: "Rules",
+  },
+  "/clinical-appointments": {
+    section: "clinic-service",
+    description: "Manage clinical appointments, scheduling, and patient visits.",
+    badge: "Appointments",
+  },
+  "/clinical-appointments/patients": {
+    section: "clinic-service",
+    description: "View and manage patient records and medical history.",
+    badge: "Patients",
+  },
+  "/clinical-appointments/patients/:patientId": {
+    section: "clinic-service",
+    description: "View patient details and appointment history.",
+    badge: "Patient",
   },
   "/products": {
     section: "stock-and-supply",

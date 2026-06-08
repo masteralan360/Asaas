@@ -711,6 +711,73 @@ export interface ExchangeSafeMovement extends BaseEntity {
   createdBy?: string | null;
 }
 
+export type ClinicalAppointmentStatus =
+  | 'draft'
+  | 'scheduled'
+  | 'confirmed'
+  | 'arrived'
+  | 'in_progress'
+  | 'completed'
+  | 'cancelled'
+  | 'no_show';
+
+export type ClinicalConfirmationMethod =
+  | 'phone'
+  | 'sms'
+  | 'whatsapp'
+  | 'email'
+  | 'other';
+
+export type ClinicalAppointmentPriority = 'normal' | 'urgent' | 'emergency';
+
+export type ClinicalAppointmentType =
+  | 'consultation'
+  | 'follow_up'
+  | 'emergency'
+  | 'checkup'
+  | 'procedure'
+  | 'treatment';
+
+export type ClinicalPatientType = 'new' | 'existing';
+
+export interface ClinicalPatient extends BaseEntity {
+  name: string;
+  phone?: string | null;
+  email?: string | null;
+  isNewPatient: boolean;
+  notes?: string | null;
+  createdBy?: string | null;
+}
+
+export interface ClinicalAppointment extends BaseEntity {
+  patientId: string;
+  patientName: string;
+  patientPhone?: string | null;
+  isNewPatient: boolean;
+  appointmentDate: string;
+  startTime: string;
+  appointmentType: ClinicalAppointmentType;
+  reasonForVisit?: string | null;
+  serviceProcedure?: string | null;
+  consultationFee: number;
+  estimatedPrice: number;
+  status: ClinicalAppointmentStatus;
+  confirmationMethod?: ClinicalConfirmationMethod | null;
+  priority: ClinicalAppointmentPriority;
+  internalNotes?: string | null;
+  createdBy?: string | null;
+}
+
+export interface ClinicalAttachment extends BaseEntity {
+  appointmentId: string;
+  fileName: string;
+  fileType: string;
+  fileSize: number;
+  r2Path?: string | null;
+  localPath?: string | null;
+  createdBy?: string | null;
+}
+
 export interface Employee extends BaseEntity {
   name: string;
   email?: string;
@@ -1053,7 +1120,10 @@ export interface SyncQueueItem {
     | "exchange_fee_rules"
     | "fx_safes"
     | "fx_safe_balances"
-    | "fx_safe_movements";
+    | "fx_safe_movements"
+    | "clinical_appointments"
+    | "clinical_patients"
+    | "clinical_attachments";
   entityId: string;
   operation: "create" | "update" | "delete";
   data: Record<string, unknown>;
@@ -1078,6 +1148,7 @@ export interface Workspace extends BaseEntity {
   travel_agency?: boolean;
   real_estate?: boolean;
   currency_exchange?: boolean;
+  clinical_appointments?: boolean;
   loans?: boolean;
   installments?: boolean;
   net_revenue?: boolean;
@@ -1170,7 +1241,10 @@ export interface OfflineMutation {
     | "exchange_fee_rules"
     | "fx_safes"
     | "fx_safe_balances"
-    | "fx_safe_movements";
+    | "fx_safe_movements"
+    | "clinical_appointments"
+    | "clinical_patients"
+    | "clinical_attachments";
   entityId: string;
   operation: "create" | "update" | "delete";
   payload: Record<string, unknown>;

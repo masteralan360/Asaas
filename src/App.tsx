@@ -247,6 +247,21 @@ const CurrencyExchange = lazy(() =>
     default: m.CurrencyExchange,
   })),
 );
+const ClinicalAppointments = lazy(() =>
+  import("@/ui/pages/ClinicalAppointments").then((m) => ({
+    default: m.ClinicalAppointments,
+  })),
+);
+const ClinicalPatients = lazy(() =>
+  import("@/ui/pages/ClinicalPatients").then((m) => ({
+    default: m.ClinicalPatients,
+  })),
+);
+const ClinicalPatientDetails = lazy(() =>
+  import("@/ui/pages/ClinicalPatientDetails").then((m) => ({
+    default: m.ClinicalPatientDetails,
+  })),
+);
 
 const Ledger = lazy(() =>
   import("@/ui/pages/Ledger").then((m) => ({ default: m.Ledger })),
@@ -1072,6 +1087,62 @@ function App() {
                         >
                           <Layout>
                             <CurrencyExchange />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+
+                      <Route path="/clinical-appointments/new">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="clinical_appointments"
+                          requiredPermission="clinicalAppointments.access"
+                        >
+                          <Layout>
+                            <ClinicalAppointments />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/clinical-appointments/:id/edit">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="clinical_appointments"
+                          requiredPermission="clinicalAppointments.access"
+                        >
+                          <Layout>
+                            <ClinicalAppointments />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/clinical-appointments">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="clinical_appointments"
+                          requiredPermission="clinicalAppointments.access"
+                        >
+                          <Layout>
+                            <ClinicalAppointments />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/clinical-appointments/patients">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="clinical_appointments"
+                          requiredPermission="clinicalPatients.access"
+                        >
+                          <Layout>
+                            <ClinicalPatients />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/clinical-appointments/patients/:patientId">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="clinical_appointments"
+                          requiredPermission="clinicalPatients.access"
+                        >
+                          <Layout>
+                            <ClinicalPatientDetails />
                           </Layout>
                         </ProtectedRoute>
                       </Route>
