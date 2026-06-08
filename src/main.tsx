@@ -65,8 +65,16 @@ if (
 window.addEventListener('unhandledrejection', (event) => {
     if (event.reason?.message?.includes('Failed to fetch dynamically imported module') ||
         event.reason?.message?.includes('Importing a stopped module')) {
-        console.error('[Critical] Chunk load failed. Auto-reloading...', event.reason)
-        window.location.reload()
+        const key = '__atlas_reload_ts__'
+        const last = parseInt(sessionStorage.getItem(key) || '0', 10)
+        const now = Date.now()
+        if (now - last > 30000) {
+            sessionStorage.setItem(key, String(now))
+            console.error('[Critical] Chunk load failed. Auto-reloading...', event.reason)
+            window.location.reload()
+        } else {
+            console.error('[Critical] Chunk load failed again within 30s. Breaking reload loop.')
+        }
     }
 })
 

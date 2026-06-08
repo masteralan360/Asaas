@@ -92,7 +92,7 @@
             "destination": "/marketplace.html"
         },
         {
-            "source": "/(.*)",
+            "source": "/((?!api-xeiqd(?:/|$)|api-forexfy(?:/|$)|assets(?:/|$)|.*\\.[^/]+$).*)",
             "destination": "/index.html"
         }
     ]
