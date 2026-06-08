@@ -1,6 +1,6 @@
 import { Route, Switch, Router, Link } from "wouter";
 import { useHashLocation } from "@/hooks/useHashLocation";
-import { AuthProvider, ProtectedRoute, GuestRoute } from "@/auth";
+import { AuthProvider, ProtectedRoute, GuestRoute, useAuth } from "@/auth";
 import { WorkspaceProvider } from "@/workspace";
 import { WorkspaceWarmup } from "@/workspace/WorkspaceWarmup";
 import { Layout, Toaster, TitleBar, PatchNoteModal } from "@/ui/components";
@@ -714,6 +714,21 @@ function WhatsAppPlanGuard() {
   return null;
 }
 
+function FirstTimeRedirect() {
+  const { isAuthenticated, isLoading } = useAuth();
+
+  useEffect(() => {
+    if (isLoading || !isAuthenticated) return;
+    if (localStorage.getItem('atlas_first_time_done')) return;
+
+    localStorage.setItem('atlas_first_time_done', 'true');
+    localStorage.setItem('modules_view_mode', 'grid');
+    window.location.hash = getPathWithLang('/modules', i18n.language);
+  }, [isAuthenticated, isLoading]);
+
+  return null;
+}
+
 function App() {
   const { showModal, currentPatch, version, dismissModal } = usePatchNotes();
 
@@ -733,6 +748,7 @@ function App() {
           <UiAccessProvider>
             <DateRangeProvider>
               <KdsStreamAutostart />
+              <FirstTimeRedirect />
               <WhatsAppPlanGuard />
               <UpdateHandler />
               <WorkspaceWarmup />

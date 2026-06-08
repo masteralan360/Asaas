@@ -147,7 +147,8 @@ export function GuestRoute({ children, redirectTo = '/' }: GuestRouteProps) {
     }
 
     if (isAuthenticated) {
-        return <Redirect to={redirectTo} />
+        const isFirstTime = !localStorage.getItem('atlas_first_time_done')
+        return <Redirect to={isFirstTime ? '/modules' : redirectTo} />
     }
 
     return <>{children}</>

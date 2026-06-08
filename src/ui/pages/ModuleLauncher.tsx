@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'wouter'
 import { useTranslation } from 'react-i18next'
 import {
@@ -29,7 +29,19 @@ export function ModuleLauncher() {
     const { workspaceName, hasFeature, features } = useWorkspace()
     const { hasPermission } = useWorkspacePermissions()
     const [query, setQuery] = useState('')
-    const [viewMode, setViewMode] = useState<'detail' | 'grid'>(() => (isMobile() ? 'grid' : 'detail'))
+    const [viewMode, setViewMode] = useState<'detail' | 'grid'>(() => {
+        if (!localStorage.getItem('atlas_first_time_done')) return 'grid'
+        const stored = localStorage.getItem('modules_view_mode')
+        if (stored === 'detail' || stored === 'grid') return stored
+        return isMobile() ? 'grid' : 'detail'
+    })
+
+    useEffect(() => {
+        if (!localStorage.getItem('atlas_first_time_done')) {
+            localStorage.setItem('atlas_first_time_done', 'true')
+        }
+        localStorage.setItem('modules_view_mode', viewMode)
+    }, [viewMode])
 
     const navigation = useMemo(() => buildWorkspaceNavigation({
         t,
