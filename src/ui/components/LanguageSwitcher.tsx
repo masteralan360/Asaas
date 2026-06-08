@@ -6,6 +6,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/ui/components/select'
+import { parseLangFromHash, getPathWithLang } from '@/lib/i18nRouting'
 
 export function LanguageSwitcher() {
     const { i18n } = useTranslation()
@@ -14,10 +15,13 @@ export function LanguageSwitcher() {
         i18n.changeLanguage(lng)
         localStorage.setItem('i18nextLng', lng)
 
-        // Update document direction
         const dir = lng === 'ar' || lng === 'ku' ? 'rtl' : 'ltr'
         document.dir = dir
         document.documentElement.lang = lng
+
+        const hash = window.location.hash.replace(/^#/, '') || '/'
+        const { path } = parseLangFromHash(hash)
+        window.location.hash = getPathWithLang(path, lng)
     }
 
     const languages = [

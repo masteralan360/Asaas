@@ -1,25 +1,37 @@
 import { useState, useEffect } from "react";
+import i18n from "@/i18n/config";
+import { parseLangFromHash, getPathWithLang } from "@/lib/i18nRouting";
 
-// Custom hook for hash-based routing in wouter
 const currentLoc = () => {
     const hash = window.location.hash.replace(/^#/, "") || "/";
-    // Return only the path part for route matching (strip query string)
-    return hash.split('?')[0] || "/";
+    const { path } = parseLangFromHash(hash);
+    return path;
 };
 
 export const useHashLocation = () => {
     const [loc, setLoc] = useState(currentLoc());
 
     useEffect(() => {
-        const handler = () => setLoc(currentLoc());
+        const handler = () => {
+            setLoc(currentLoc());
+
+            const hash = window.location.hash.replace(/^#/, "") || "/";
+            const { lang } = parseLangFromHash(hash);
+            if (lang && lang !== i18n.language) {
+                i18n.changeLanguage(lang);
+                localStorage.setItem("i18nextLng", lang);
+                const dir = lang === "ar" || lang === "ku" ? "rtl" : "ltr";
+                document.dir = dir;
+                document.documentElement.lang = lang;
+            }
+        };
 
         window.addEventListener("hashchange", handler);
         return () => window.removeEventListener("hashchange", handler);
     }, []);
 
     const navigate = (to: string) => {
-        // If navigating to a path, we just set the hash
-        window.location.hash = to;
+        window.location.hash = getPathWithLang(to, i18n.language);
     };
 
     return [loc, navigate] as [string, (to: string) => void];
