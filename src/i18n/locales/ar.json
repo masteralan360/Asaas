@@ -1166,7 +1166,8 @@
       "title": "إعدادات KDS",
       "desc": "إدارة إعدادات KDS الخاصة بك",
       "enable": "تمكين KDS",
-      "enableDesc": "تمكين KDS لمساحة العمل الخاصة بك"
+      "enableDesc": "تمكين KDS لمساحة العمل الخاصة بك",
+      "desktopOnly": "استضافة KDS متاحة فقط على تطبيق سطح المكتب."
     },
     "printing": {
       "title": "إعدادات الطباعة",
@@ -1567,6 +1568,42 @@
     "actions": {
       "startPreparation": "بدء التحضير",
       "markReady": "وضع كجاهز",
+      "serveOrder": "تقديم الطلب"
+    }
+  },
+  "kdsDashboard": {
+    "title": "لوحة تحكم KDS",
+    "subtitle": "شاشة المطبخ لتذاكر نقاط البيع الفورية",
+    "station": "المحطة",
+    "currentTime": "الوقت الحالي",
+    "streaming": "بث مباشر",
+    "remote": "عن بعد",
+    "systemOnline": "النظام متصل",
+    "systemOffline": "النظام غير متصل",
+    "kdsDisabled": "KDS معطل",
+    "hostingDisabled": "استضافة KDS معطلة (تطبيق سطح المكتب فقط)",
+    "kitchen": "المطبخ",
+    "mainKitchen": "المطبخ الرئيسي - الشواية",
+    "disabledBanner": "توجيه المطبخ معطل. قم بتمكين KDS في الإعدادات لإرسال التذاكر تلقائياً هنا.",
+    "dragOrdersHere": "اسحب الطلبات هنا",
+    "orderPrefix": "طلب #{{number}}",
+    "ticketPrefix": "تذكرة {{number}}",
+    "timeCaption": {
+      "completed": "مكتمل",
+      "ready": "جاهز",
+      "late": "متأخر",
+      "elapsed": "الوقت المنقضي"
+    },
+    "completedAt": "تم الإكتمال في {{time}}",
+    "column": {
+      "pending": "قيد الانتظار",
+      "preparing": "قيد التحضير",
+      "ready": "جاهز",
+      "served": "تم التقديم"
+    },
+    "action": {
+      "startCooking": "بدء الطهي",
+      "markReady": "تحديد جاهز",
       "serveOrder": "تقديم الطلب"
     }
   },

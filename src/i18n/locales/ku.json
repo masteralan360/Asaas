@@ -1165,7 +1165,8 @@
       "title": "ڕێکخستنەکانی KDS",
       "desc": "ڕێکخستنەکانی KDS بەڕێوەببە",
       "enable": "ڕێگەدان بە KDS",
-      "enableDesc": "ڕێگەدان بە KDS بۆ شوێنی کارەکەت"
+      "enableDesc": "ڕێگەدان بە KDS بۆ شوێنی کارەکەت",
+      "desktopOnly": "خانەخوێی KDS تەنیا لە بەرنامەی دیسکتۆپدا بەردەستە."
     },
     "printing": {
       "title": "ڕێکخستنەکانی چاپکردن",
@@ -1564,6 +1565,42 @@
     "actions": {
       "startPreparation": "دەستپێکردنی ئامادەکردن",
       "markReady": "نیشانکردن وەک ئامادە",
+      "serveOrder": "پێشکەشکردنی داواکاری"
+    }
+  },
+  "kdsDashboard": {
+    "title": "داشبۆردی KDS",
+    "subtitle": "شاشەی چێشتخانە بۆ تیکەتەکانی POSی خێرا",
+    "station": "وێستگە",
+    "currentTime": "کاتی ئێستا",
+    "streaming": "پەخش",
+    "remote": "دوورەوە",
+    "systemOnline": "سیستەم ئۆنڵاینە",
+    "systemOffline": "سیستەم ئۆفلاینە",
+    "kdsDisabled": "KDS ناچالاکە",
+    "hostingDisabled": "خانەخوێی KDS ناچالاکە (تەنیا بەرنامەی دیسکتۆپ)",
+    "kitchen": "چێشتخانە",
+    "mainKitchen": "چێشتخانەی سەرەکی - گڕیل",
+    "disabledBanner": "نێردنی چێشتخانە ناچالاکە. KDS لە ڕێکخستنەکاندا چالاک بکە بۆ ناردنی تیکەتەکان بۆ ئێرە.",
+    "dragOrdersHere": "داواکارییەکان بکێشە بۆ ئێرە",
+    "orderPrefix": "داواکاری #{{number}}",
+    "ticketPrefix": "تیکەت {{number}}",
+    "timeCaption": {
+      "completed": "تەواو بوو",
+      "ready": "ئامادەیە",
+      "late": "دواکەوتوو",
+      "elapsed": "ماوە"
+    },
+    "completedAt": "لە {{time}} تەواو بوو",
+    "column": {
+      "pending": "چاوەڕوان",
+      "preparing": "ئامادەکردن",
+      "ready": "ئامادە",
+      "served": "پێشکەشکرا"
+    },
+    "action": {
+      "startCooking": "دەستپێکردنی چێشتلێنان",
+      "markReady": "نیشانەکردن بە ئامادە",
       "serveOrder": "پێشکەشکردنی داواکاری"
     }
   },

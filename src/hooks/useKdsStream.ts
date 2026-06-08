@@ -1,10 +1,17 @@
 import { useEffect, useRef, useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { isDesktop } from '@/lib/platform'
+import i18n from '@/i18n/config'
 
 type KdsEvent = {
     event: string
     payload: any
+}
+
+function injectLangIntoUrl(url: string): string {
+    const lang = i18n.language
+    if (!url.includes('/#/')) return url
+    return url.replace('/#/kds/local', `/#/${lang}/kds/local`)
 }
 
 export function useKdsStream(isMain: boolean = true) {
@@ -20,7 +27,7 @@ export function useKdsStream(isMain: boolean = true) {
                 try {
                     const existingUrl = await invoke<string | null>('get_kds_stream_url')
                     if (existingUrl) {
-                        setStreamUrl(existingUrl)
+                        setStreamUrl(injectLangIntoUrl(existingUrl))
                         setStatus('host')
                     }
                 } catch (err) {
@@ -104,9 +111,10 @@ export function useKdsStream(isMain: boolean = true) {
         if (!isMain) return
         try {
             const url = await invoke<string>('start_kds_stream', { port })
-            setStreamUrl(url)
+            const langUrl = injectLangIntoUrl(url)
+            setStreamUrl(langUrl)
             setStatus('host')
-            return url
+            return langUrl
         } catch (err) {
             console.error('Failed to start KDS stream:', err)
             setStatus('error')

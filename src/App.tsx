@@ -20,6 +20,8 @@ import {
   isSupabaseConfigured,
 } from "@/auth/supabase";
 import { isMobile, isDesktop } from "./lib/platform";
+import { getPathWithLang } from "@/lib/i18nRouting";
+import i18n from "@/i18n/config";
 import { useFavicon } from "@/hooks/useFavicon";
 import { whatsappManager } from "@/lib/whatsappWebviewManager";
 import { useKdsStream } from "@/hooks/useKdsStream";
@@ -664,8 +666,7 @@ function KdsSecurityGuard({ children }: { children: React.ReactNode }) {
 
     if (isRemoteKds && location !== "/kds/local") {
       console.warn("[Security] Restricting remote KDS client to /kds/local");
-      // Use window.location.replace to prevent back-button loops
-      window.location.replace("/#/kds/local");
+      window.location.replace(`/#${getPathWithLang('/kds/local', i18n.language)}`);
     }
   }, [location]);
 

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type DragEvent } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useKdsStream } from '@/hooks/useKdsStream'
 import { useWorkspace } from '@/workspace'
 import { cn, formatTime, stylizeText } from '@/lib/utils'
@@ -34,47 +35,47 @@ type KdsColumnStatus = 'pending' | 'preparing' | 'ready' | 'served'
 const COLUMN_ORDER: KdsColumnStatus[] = ['pending', 'preparing', 'ready', 'served']
 
 const COLUMN_CONFIG: Record<KdsColumnStatus, {
-    label: string
+    labelKey: string
     accent: string
     stripe: string
     action?: {
-        label: string
+        labelKey: string
         next: KdsColumnStatus
         button: string
     }
 }> = {
     pending: {
-        label: 'Pending',
+        labelKey: 'kdsDashboard.column.pending',
         accent: 'text-amber-700',
         stripe: 'bg-amber-500',
         action: {
-            label: 'Start Cooking',
+            labelKey: 'kdsDashboard.action.startCooking',
             next: 'preparing',
             button: 'bg-[#F2991A] text-white hover:bg-amber-600'
         }
     },
     preparing: {
-        label: 'Preparing',
+        labelKey: 'kdsDashboard.column.preparing',
         accent: 'text-blue-700',
         stripe: 'bg-blue-500',
         action: {
-            label: 'Mark Ready',
+            labelKey: 'kdsDashboard.action.markReady',
             next: 'ready',
             button: 'bg-blue-600 text-white hover:bg-blue-500'
         }
     },
     ready: {
-        label: 'Ready',
+        labelKey: 'kdsDashboard.column.ready',
         accent: 'text-emerald-700',
         stripe: 'bg-emerald-500',
         action: {
-            label: 'Serve Order',
+            labelKey: 'kdsDashboard.action.serveOrder',
             next: 'served',
             button: 'bg-emerald-600 text-white hover:bg-emerald-500'
         }
     },
     served: {
-        label: 'Served',
+        labelKey: 'kdsDashboard.column.served',
         accent: 'text-slate-600',
         stripe: 'bg-slate-400'
     }
@@ -114,6 +115,7 @@ function formatClockTime(date: Date, withSeconds: boolean) {
 
 export function KDSDashboard() {
     const { features, workspaceName } = useWorkspace()
+    const { t } = useTranslation()
 
     const [tickets, setTickets] = useState<InstantPosTicket[]>(() => loadTickets())
     const [now, setNow] = useState(() => new Date())
@@ -203,16 +205,16 @@ export function KDSDashboard() {
         return groups
     }, [visibleTickets])
 
-    const stationLabel = workspaceName ? `${workspaceName} - Kitchen` : 'Main Kitchen - Grill'
+    const stationLabel = workspaceName ? `${workspaceName} - ${t('kdsDashboard.kitchen')}` : t('kdsDashboard.mainKitchen')
     const isOnline = typeof navigator === 'undefined' ? true : navigator.onLine
     const isSystemOnline = isMain ? (features.kds_enabled && isOnline) : isOnline
     const systemStatusLabel = isMain 
         ? (features.kds_enabled
-            ? (isOnline ? 'System Online' : 'System Offline')
-            : 'KDS Disabled') 
+            ? (isOnline ? t('kdsDashboard.systemOnline') : t('kdsDashboard.systemOffline'))
+            : t('kdsDashboard.kdsDisabled')) 
         : (isDesktop() 
-            ? (isOnline ? 'System Online' : 'System Offline') 
-            : 'KDS Hosting Disabled (Desktop Only)')
+            ? (isOnline ? t('kdsDashboard.systemOnline') : t('kdsDashboard.systemOffline')) 
+            : t('kdsDashboard.hostingDisabled'))
 
     const updateTicketStatus = (ticketId: string, status: KdsColumnStatus) => {
         const nextTickets = tickets.map((ticket: InstantPosTicket) => {
@@ -299,8 +301,8 @@ export function KDSDashboard() {
             <header className="relative z-10 flex flex-wrap items-center justify-between gap-4 border-b border-white/10 bg-slate-900/60 px-6 py-4 backdrop-blur">
                 <div className="flex flex-wrap items-center gap-4">
                     <div>
-                        <h1 className="text-xl font-semibold tracking-tight">KDS Dashboard</h1>
-                        <p className="text-xs text-slate-400">Kitchen display for Instant POS tickets</p>
+                        <h1 className="text-xl font-semibold tracking-tight">{t('kdsDashboard.title')}</h1>
+                        <p className="text-xs text-slate-400">{t('kdsDashboard.subtitle')}</p>
                     </div>
                     <span className={cn(
                         'rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-widest shadow-lg',
@@ -314,19 +316,19 @@ export function KDSDashboard() {
                                 "h-1.5 w-1.5 rounded-full",
                                 streamStatus === 'connected' || streamStatus === 'host' ? "bg-blue-400 animate-pulse" : "bg-slate-400"
                             )} />
-                            {isMain ? 'Streaming' : 'Remote'}
+                            {isMain ? t('kdsDashboard.streaming') : t('kdsDashboard.remote')}
                         </span>
                     )}
                 </div>
 
                 <div className="flex flex-wrap items-center gap-5">
                     <div className="text-right">
-                        <div className="text-[10px] uppercase tracking-[0.3em] text-slate-400">Station</div>
+                        <div className="text-[10px] uppercase tracking-[0.3em] text-slate-400">{t('kdsDashboard.station')}</div>
                         <div className="text-sm font-semibold text-slate-100">{stationLabel}</div>
                     </div>
                     <div className="h-10 w-px bg-white/10" />
                     <div className="text-right">
-                        <div className="text-[10px] uppercase tracking-[0.3em] text-slate-400">Current Time</div>
+                        <div className="text-[10px] uppercase tracking-[0.3em] text-slate-400">{t('kdsDashboard.currentTime')}</div>
                         <div className="text-lg font-mono font-semibold text-slate-100">
                             {formatClockTime(now, true)}
                         </div>
@@ -336,7 +338,7 @@ export function KDSDashboard() {
 
             {isMain && !features.kds_enabled && (
                 <div className="relative z-10 border-b border-amber-500/30 bg-amber-500/10 px-6 py-2 text-xs text-amber-200">
-                    Kitchen routing is disabled. Enable KDS in Settings to auto-send tickets here.
+                    {t('kdsDashboard.disabledBanner')}
                 </div>
             )}
 
@@ -368,7 +370,7 @@ export function KDSDashboard() {
                                 <div className="flex items-center justify-between">
                                     <div className={cn('flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.3em]', config.accent)}>
                                         <span className={cn('h-2 w-2 rounded-full', config.stripe)} />
-                                        {config.label}
+                                        {t(config.labelKey)}
                                     </div>
                                     <div className="rounded-full bg-white/10 px-2.5 py-0.5 text-xs font-semibold text-slate-200">
                                         {columnTickets.length}
@@ -378,7 +380,7 @@ export function KDSDashboard() {
                                 <div className="mt-4 flex-1 min-h-0 space-y-4 overflow-y-auto custom-scrollbar pr-1">
                                     {columnTickets.length === 0 ? (
                                         <div className="rounded-xl border border-dashed border-white/10 px-3 py-6 text-center text-xs text-slate-400">
-                                            Drag orders here
+                                            {t('kdsDashboard.dragOrdersHere')}
                                         </div>
                                     ) : (
                                         columnTickets.map((ticket: InstantPosTicket) => {
@@ -392,12 +394,12 @@ export function KDSDashboard() {
                                                 ? formatClockTime(new Date(ticket.createdAt), false)
                                                 : elapsed
                                             const timeCaption = normalizedStatus === 'served'
-                                                ? 'Completed'
+                                                ? t('kdsDashboard.timeCaption.completed')
                                                 : normalizedStatus === 'ready'
-                                                    ? 'Ready'
+                                                    ? t('kdsDashboard.timeCaption.ready')
                                                     : isLate
-                                                        ? 'Late'
-                                                        : 'Elapsed'
+                                                        ? t('kdsDashboard.timeCaption.late')
+                                                        : t('kdsDashboard.timeCaption.elapsed')
 
                                             return (
                                                 <div
@@ -421,10 +423,10 @@ export function KDSDashboard() {
                                                         <div className="flex items-start justify-between">
                                                             <div>
                                                                 <div className="text-[10px] font-bold uppercase tracking-wider text-[#7A5C33]">
-                                                                    Order #{ticket.number}
+                                                                    {t('kdsDashboard.orderPrefix', { number: ticket.number })}
                                                                 </div>
                                                                 <div className="mt-1 text-2xl font-black text-[#1A1A1A]">
-                                                                    Ticket {ticket.number}
+                                                                    {t('kdsDashboard.ticketPrefix', { number: ticket.number })}
                                                                 </div>
                                                             </div>
                                                             <div className="text-right">
@@ -463,14 +465,14 @@ export function KDSDashboard() {
                                                                     action.button
                                                                 )}
                                                             >
-                                                                {action.label}
+                                                                {t(action.labelKey)}
                                                             </button>
                                                         )}
 
                                                         {normalizedStatus === 'served' && (
                                                             <div className="mt-4 flex items-center justify-center gap-2 text-[10px] font-bold uppercase tracking-widest text-[#7A5C33]/60">
                                                                 <Check className="h-3 w-3" />
-                                                                Completed at {formatClockTime(new Date(ticket.createdAt), false)}
+                                                                {t('kdsDashboard.completedAt', { time: formatClockTime(new Date(ticket.createdAt), false) })}
                                                             </div>
                                                         )}
                                                     </div>

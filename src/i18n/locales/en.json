@@ -2290,6 +2290,42 @@
       "serveOrder": "Serve Order"
     }
   },
+  "kdsDashboard": {
+    "title": "KDS Dashboard",
+    "subtitle": "Kitchen display for Instant POS tickets",
+    "station": "Station",
+    "currentTime": "Current Time",
+    "streaming": "Streaming",
+    "remote": "Remote",
+    "systemOnline": "System Online",
+    "systemOffline": "System Offline",
+    "kdsDisabled": "KDS Disabled",
+    "hostingDisabled": "KDS Hosting Disabled (Desktop Only)",
+    "kitchen": "Kitchen",
+    "mainKitchen": "Main Kitchen - Grill",
+    "disabledBanner": "Kitchen routing is disabled. Enable KDS in Settings to auto-send tickets here.",
+    "dragOrdersHere": "Drag orders here",
+    "orderPrefix": "Order #{{number}}",
+    "ticketPrefix": "Ticket {{number}}",
+    "timeCaption": {
+      "completed": "Completed",
+      "ready": "Ready",
+      "late": "Late",
+      "elapsed": "Elapsed"
+    },
+    "completedAt": "Completed at {{time}}",
+    "column": {
+      "pending": "Pending",
+      "preparing": "Preparing",
+      "ready": "Ready",
+      "served": "Served"
+    },
+    "action": {
+      "startCooking": "Start Cooking",
+      "markReady": "Mark Ready",
+      "serveOrder": "Serve Order"
+    }
+  },
   "print": {
     "clickToExpand": "Click to expand",
     "printAndSave": "Print & Save",
