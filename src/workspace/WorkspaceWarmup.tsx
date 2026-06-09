@@ -102,6 +102,7 @@ export function WorkspaceWarmup() {
             () => import('@/ui/pages/ClinicalAppointments'),
             () => import('@/ui/pages/ClinicalPatients'),
             () => import('@/ui/pages/ClinicalPatientDetails'),
+            () => import('@/ui/pages/ClinicalPresets'),
           )
         }
         if (hasFeature('ledger')) tasks.push(() => import('@/ui/pages/Ledger'))

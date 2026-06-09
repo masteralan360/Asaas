@@ -3936,6 +3936,7 @@
         "noFiles": "No files attached"
       }
     },
+    "pricingSection": "Pricing",
     "messages": {
       "created": "Appointment created successfully",
       "createFailed": "Failed to create appointment",
@@ -3948,5 +3949,20 @@
       "patientUpdated": "Patient updated successfully",
       "patientUpdateFailed": "Failed to update patient"
     }
+  },
+  "clinicalPresets": {
+    "title": "Clinical Presets",
+    "subtitle": "Configure reusable appointment presets.",
+    "reasonForVisit": "Reasons for Visit",
+    "appointmentType": "Appointment Types",
+    "add": "Add",
+    "type": "Type",
+    "name": "Name",
+    "namePlaceholder": "Enter name...",
+    "consultationFee": "Consultation Fee",
+    "actions": "Actions",
+    "sort": "Sort",
+    "empty": "No presets configured.",
+    "deleteConfirm": "Are you sure you want to delete this preset?"
   }
 }

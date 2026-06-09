@@ -250,6 +250,11 @@ export const moduleMetaByHref: Record<string, ModuleMeta> = {
     description: "View patient details and appointment history.",
     badge: "Patient",
   },
+  "/clinical-presets": {
+    section: "clinic-service",
+    description: "Configure reusable appointment presets: reasons for visit, services, and consultation fees.",
+    badge: "Presets",
+  },
   "/products": {
     section: "stock-and-supply",
     description: "Maintain product catalog, stock rules, and pricing.",

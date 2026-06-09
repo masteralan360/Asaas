@@ -3736,6 +3736,7 @@
         "noFiles": "No files attached"
       }
     },
+    "pricingSection": "التسعير",
     "messages": {
       "created": "Appointment created successfully",
       "createFailed": "Failed to create appointment",
@@ -3748,5 +3749,20 @@
       "patientUpdated": "Patient updated successfully",
       "patientUpdateFailed": "Failed to update patient"
     }
+  },
+  "clinicalPresets": {
+    "title": "الإعدادات السريرية",
+    "subtitle": "تكوين الإعدادات القابلة لإعادة الاستخدام للمواعيد.",
+    "reasonForVisit": "أسباب الزيارة",
+    "appointmentType": "أنواع المواعيد",
+    "add": "إضافة",
+    "type": "النوع",
+    "name": "الاسم",
+    "namePlaceholder": "أدخل الاسم...",
+    "consultationFee": "رسوم الاستشارة",
+    "actions": "الإجراءات",
+    "sort": "ترتيب",
+    "empty": "لا توجد إعدادات مكونة.",
+    "deleteConfirm": "هل أنت متأكد من حذف هذا الإعداد؟"
   }
 }

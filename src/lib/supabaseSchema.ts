@@ -37,7 +37,8 @@ const fxTables = new Set([
 const clinicsTables = new Set([
     'clinical_appointments',
     'clinical_patients',
-    'clinical_attachments'
+    'clinical_attachments',
+    'clinical_presets'
 ])
 
 const budgetClient = supabase.schema('budget')

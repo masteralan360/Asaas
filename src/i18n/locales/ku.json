@@ -3714,6 +3714,7 @@
         "noFiles": "No files attached"
       }
     },
+    "pricingSection": "نرخ دانان",
     "messages": {
       "created": "Appointment created successfully",
       "createFailed": "Failed to create appointment",
@@ -3726,5 +3727,20 @@
       "patientUpdated": "Patient updated successfully",
       "patientUpdateFailed": "Failed to update patient"
     }
+  },
+  "clinicalPresets": {
+    "title": "پێشتنبێژەکانی کلینیکی",
+    "subtitle": "ڕێکخستنی پێشتنبێژەکانی بەکارهێنانی دووبارە بۆ دانیشتنەکان.",
+    "reasonForVisit": "هۆکارەکانی سەردان",
+    "appointmentType": "جۆرەکانی دانیشتن",
+    "add": "زیادکردن",
+    "type": "جۆر",
+    "name": "ناو",
+    "namePlaceholder": "ناو بنووسە...",
+    "consultationFee": "کرێی ڕاوێژکاری",
+    "actions": "کردارەکان",
+    "sort": "ڕێکخستن",
+    "empty": "هیچ پێشتنبێژێک ڕێکنەخراوە.",
+    "deleteConfirm": "ئایا دڵنیایی لە سڕینەوەی ئەم پێشتنبێژە؟"
   }
 }

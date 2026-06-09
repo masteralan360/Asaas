@@ -64,6 +64,7 @@ const SYNC_PULL_TABLES = [
   "loan_installments",
   "loan_payments",
   "payment_transactions",
+  "clinical_presets",
 ] as const;
 
 const TABLES_WITHOUT_VERSION = new Set<string>(["sales", "sale_items"]);

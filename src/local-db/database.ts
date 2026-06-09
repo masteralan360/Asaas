@@ -50,6 +50,7 @@ import type {
   ClinicalAppointment,
   ClinicalPatient,
   ClinicalAttachment,
+  ClinicalPreset,
 } from "./models";
 import { isLocalWorkspaceMode } from "@/workspace/workspaceMode";
 import {
@@ -337,6 +338,7 @@ export class AtlasDatabase extends Dexie {
   clinical_appointments!: EntityTable<ClinicalAppointment, "id">;
   clinical_patients!: EntityTable<ClinicalPatient, "id">;
   clinical_attachments!: EntityTable<ClinicalAttachment, "id">;
+  clinical_presets!: EntityTable<ClinicalPreset, "id">;
 
   constructor() {
     super("AtlasDatabase");
@@ -2133,6 +2135,11 @@ export class AtlasDatabase extends Dexie {
         "id, workspaceId, appointmentId, fileName, fileType, createdAt, updatedAt, isDeleted, syncStatus, [workspaceId+appointmentId]",
     });
 
+    this.version(65).stores({
+      clinical_presets:
+        "id, workspaceId, category, isActive, sortOrder, createdAt, updatedAt, isDeleted, syncStatus, [workspaceId+category], [workspaceId+sortOrder]",
+    });
+
     this.registerLocalModeSyncHooks();
   }
 
@@ -2179,6 +2186,7 @@ export class AtlasDatabase extends Dexie {
       "clinical_appointments",
       "clinical_patients",
       "clinical_attachments",
+      "clinical_presets",
       "budget_settings",
       "budget_allocations",
       "expense_series",
@@ -2345,6 +2353,7 @@ export async function clearDatabase(): Promise<void> {
       db.clinical_appointments,
       db.clinical_patients,
       db.clinical_attachments,
+      db.clinical_presets,
       db.payment_transactions,
       db.syncQueue,
     ],
@@ -2373,6 +2382,7 @@ export async function clearDatabase(): Promise<void> {
       await db.clinical_appointments.clear();
       await db.clinical_patients.clear();
       await db.clinical_attachments.clear();
+      await db.clinical_presets.clear();
       await db.payment_transactions.clear();
       await db.syncQueue.clear();
     },

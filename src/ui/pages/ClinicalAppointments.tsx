@@ -5,9 +5,10 @@ import { useAuth } from '@/auth'
 import { db } from '@/local-db/database'
 import { createClinicalAppointment, createClinicalPatient, searchClinicalPatients, useClinicalAppointments, useClinicalAppointment, updateClinicalAppointment } from '@/local-db/clinicalAppointments'
 import type { ClinicalAppointment, ClinicalAppointmentStatus, ClinicalAppointmentType, ClinicalAppointmentPriority, ClinicalConfirmationMethod } from '@/local-db/clinicalAppointments'
+import { useClinicalPresetsByCategory } from '@/local-db/clinicalPresets'
 import { Button, Input, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Textarea, Label, Badge, Card, CardContent, CardHeader, CardTitle, DateTimePicker } from '@/ui/components'
 import { Plus, Search, Upload, Trash2, FileText, ArrowLeft, CalendarClock, Edit } from 'lucide-react'
-import { generateId, formatNumberWithCommas } from '@/lib/utils'
+import { generateId, formatNumberWithCommas, formatTime } from '@/lib/utils'
 import { r2Service } from '@/services/r2Service'
 import { platformService } from '@/services/platformService'
 import { useLocation, useRoute } from 'wouter'
@@ -144,7 +145,7 @@ function AppointmentList({ workspaceId, navigate }: { workspaceId: string; navig
                 <TableRow key={appt.id}>
                   <TableCell className="font-medium">{appt.patientName}</TableCell>
                   <TableCell>{appt.appointmentDate}</TableCell>
-                  <TableCell>{appt.startTime}</TableCell>
+                  <TableCell>{formatTime(`${appt.appointmentDate}T${appt.startTime}`)}</TableCell>
                   <TableCell className="capitalize">{appt.appointmentType.replace(/_/g, ' ')}</TableCell>
                   <TableCell>
                     <Select
@@ -230,7 +231,9 @@ function CreateAppointmentForm({ workspaceId, appointment, onCancel, onSaved }: 
   }, [])
   const [appointmentType, setAppointmentType] = useState<ClinicalAppointmentType>(appointment?.appointmentType ?? 'consultation')
   const [reasonForVisit, setReasonForVisit] = useState(appointment?.reasonForVisit ?? '')
-  const [serviceProcedure, setServiceProcedure] = useState(appointment?.serviceProcedure ?? '')
+  const [showReasonSuggestions, setShowReasonSuggestions] = useState(false)
+  const reasonForVisitPresets = useClinicalPresetsByCategory(workspaceId, 'reason_for_visit')
+  const appointmentTypePresets = useClinicalPresetsByCategory(workspaceId, 'appointment_type')
   const [consultationFee, setConsultationFee] = useState(appointment?.consultationFee ?? 0)
   const [estimatedPrice, setEstimatedPrice] = useState(appointment?.estimatedPrice ?? 0)
   const [status, setStatus] = useState<ClinicalAppointmentStatus>(appointment?.status ?? 'draft')
@@ -298,7 +301,6 @@ function CreateAppointmentForm({ workspaceId, appointment, onCancel, onSaved }: 
             startTime,
             appointmentType,
             reasonForVisit: reasonForVisit.trim() || null,
-            serviceProcedure: serviceProcedure.trim() || null,
             consultationFee,
             estimatedPrice,
             status,
@@ -319,7 +321,6 @@ function CreateAppointmentForm({ workspaceId, appointment, onCancel, onSaved }: 
             startTime,
             appointmentType,
             reasonForVisit: reasonForVisit.trim() || null,
-            serviceProcedure: serviceProcedure.trim() || null,
             consultationFee,
             estimatedPrice,
             status,
@@ -377,7 +378,7 @@ function CreateAppointmentForm({ workspaceId, appointment, onCancel, onSaved }: 
     } finally {
       setSaving(false)
     }
-  }, [isEditing, appointment, workspaceId, patientName, patientPhone, selectedPatientId, isNewPatient, appointmentDate, startTime, appointmentType, reasonForVisit, serviceProcedure, consultationFee, estimatedPrice, status, confirmationMethod, priority, internalNotes, attachments, user, onSaved])
+  }, [isEditing, appointment, workspaceId, patientName, patientPhone, selectedPatientId, isNewPatient, appointmentDate, startTime, appointmentType, reasonForVisit, consultationFee, estimatedPrice, status, confirmationMethod, priority, internalNotes, attachments, user, onSaved])
 
   return (
     <div className="flex h-full flex-col overflow-hidden bg-background">
@@ -446,11 +447,24 @@ function CreateAppointmentForm({ workspaceId, appointment, onCancel, onSaved }: 
                           ))}
                         </div>
                       )}
-                      {!selectedPatientId && patientSearch.trim() && (!matchingPatients || matchingPatients.length === 0) && (
+                      {!selectedPatientId && (
                         <Button variant="outline" size="sm" type="button" onClick={() => setShowPatientCreate(true)}>
                           <Plus className="w-3 h-3 mr-1" />
                           {t('clinicalAppointments.createNewPatient', { defaultValue: 'Create new patient' })}
                         </Button>
+                      )}
+                      {selectedPatientId && (
+                        <div className="flex items-center gap-2 text-sm p-2 bg-accent/50 rounded-md">
+                          <span className="font-medium">{patientName}</span>
+                          {patientPhone && <span className="text-muted-foreground">{patientPhone}</span>}
+                          <button
+                            type="button"
+                            className="ml-auto text-muted-foreground hover:text-foreground"
+                            onClick={() => { setSelectedPatientId(null); setPatientName(''); setPatientPhone(''); setPatientSearch('') }}
+                          >
+                            ✕
+                          </button>
+                        </div>
                       )}
                     </div>
                   ) : (
@@ -471,14 +485,6 @@ function CreateAppointmentForm({ workspaceId, appointment, onCancel, onSaved }: 
                           {t('common.cancel', { defaultValue: 'Cancel' })}
                         </Button>
                       </div>
-                    </div>
-                  )}
-
-                  {selectedPatientId && (
-                    <div className="flex items-center gap-2 text-sm p-2 bg-accent/50 rounded-md">
-                      <span className="font-medium">{patientName}</span>
-                      {patientPhone && <span className="text-muted-foreground">{patientPhone}</span>}
-                      <Badge variant="outline" className="ml-auto">{isNewPatient ? 'New Patient' : 'Existing Patient'}</Badge>
                     </div>
                   )}
                 </div>
@@ -504,7 +510,7 @@ function CreateAppointmentForm({ workspaceId, appointment, onCancel, onSaved }: 
                     </div>
                     <div className="grid gap-2">
                       <Label>{t('clinicalAppointments.appointmentType', { defaultValue: 'Appointment Type' })}</Label>
-                      <Select value={appointmentType} onValueChange={(v: ClinicalAppointmentType) => setAppointmentType(v)}>
+                      <Select value={appointmentType} onValueChange={(v: ClinicalAppointmentType) => { setAppointmentType(v); const preset = appointmentTypePresets?.find((p) => p.name === v); if (preset?.consultationFee) setConsultationFee(preset.consultationFee) }}>
                         <SelectTrigger><SelectValue /></SelectTrigger>
                         <SelectContent>
                           {['consultation', 'follow_up', 'emergency', 'checkup', 'procedure', 'treatment'].map((type) => (
@@ -515,9 +521,32 @@ function CreateAppointmentForm({ workspaceId, appointment, onCancel, onSaved }: 
                         </SelectContent>
                       </Select>
                     </div>
-                    <div className="grid gap-2">
+                    <div className="grid gap-2 relative">
                       <Label>{t('clinicalAppointments.reasonForVisit', { defaultValue: 'Reason for Visit' })}</Label>
-                      <Input value={reasonForVisit} onChange={(e) => setReasonForVisit(e.target.value)} placeholder="e.g. Tooth pain" />
+                      <Input
+                        value={reasonForVisit}
+                        onChange={(e) => { setReasonForVisit(e.target.value); setShowReasonSuggestions(true) }}
+                        onFocus={() => setShowReasonSuggestions(true)}
+                        onBlur={() => setShowReasonSuggestions(false)}
+                        placeholder="e.g. Tooth pain"
+                      />
+                      {showReasonSuggestions && reasonForVisit.trim() && reasonForVisitPresets && reasonForVisitPresets.length > 0 && (
+                        <div className="absolute top-full mt-1 left-0 right-0 border rounded-md max-h-40 overflow-y-auto bg-background z-10 shadow-lg">
+                          {reasonForVisitPresets
+                            .filter((p) => p.name.toLowerCase().includes(reasonForVisit.toLowerCase()))
+                            .map((preset) => (
+                              <button
+                                key={preset.id}
+                                type="button"
+                                className="w-full text-left px-3 py-2 hover:bg-accent text-sm"
+                                onMouseDown={(e) => e.preventDefault()}
+                                onClick={() => { setReasonForVisit(preset.name); if (preset.consultationFee) setConsultationFee(preset.consultationFee); setShowReasonSuggestions(false) }}
+                              >
+                                {preset.name}
+                              </button>
+                            ))}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -526,28 +555,22 @@ function CreateAppointmentForm({ workspaceId, appointment, onCancel, onSaved }: 
 
             <Card>
               <CardHeader>
-                <CardTitle>{t('clinicalAppointments.serviceSection', { defaultValue: 'Service' })}</CardTitle>
+                <CardTitle>{t('clinicalAppointments.pricingSection', { defaultValue: 'Pricing' })}</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="grid gap-4">
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                    <div className="grid gap-2">
-                      <Label>{t('clinicalAppointments.serviceProcedure', { defaultValue: 'Service / Procedure' })}</Label>
-                      <Input value={serviceProcedure} onChange={(e) => setServiceProcedure(e.target.value)} placeholder="e.g. Extraction" />
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <div className="grid gap-2">
+                    <Label>{t('clinicalAppointments.consultationFee', { defaultValue: 'Consultation Fee' })}</Label>
+                    <div className="relative">
+                      <Input className="pr-12" value={consultationFee ? formatNumberWithCommas(consultationFee) : ''} onChange={(e) => setConsultationFee(Number(e.target.value.replace(/,/g, '')))} />
+                      <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold uppercase tracking-wider text-muted-foreground/60">{features.iqd_display_preference}</span>
                     </div>
-                    <div className="grid gap-2">
-                      <Label>{t('clinicalAppointments.consultationFee', { defaultValue: 'Consultation Fee' })}</Label>
-                      <div className="relative">
-                        <Input className="pr-12" value={consultationFee ? formatNumberWithCommas(consultationFee) : ''} onChange={(e) => setConsultationFee(Number(e.target.value.replace(/,/g, '')))} />
-                        <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold uppercase tracking-wider text-muted-foreground/60">{features.iqd_display_preference}</span>
-                      </div>
-                    </div>
-                    <div className="grid gap-2">
-                      <Label>{t('clinicalAppointments.estimatedPrice', { defaultValue: 'Estimated Price' })}</Label>
-                      <div className="relative">
-                        <Input className="pr-12" value={estimatedPrice ? formatNumberWithCommas(estimatedPrice) : ''} onChange={(e) => setEstimatedPrice(Number(e.target.value.replace(/,/g, '')))} />
-                        <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold uppercase tracking-wider text-muted-foreground/60">{features.iqd_display_preference}</span>
-                      </div>
+                  </div>
+                  <div className="grid gap-2">
+                    <Label>{t('clinicalAppointments.estimatedPrice', { defaultValue: 'Estimated Price' })}</Label>
+                    <div className="relative">
+                      <Input className="pr-12" value={estimatedPrice ? formatNumberWithCommas(estimatedPrice) : ''} onChange={(e) => setEstimatedPrice(Number(e.target.value.replace(/,/g, '')))} />
+                      <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold uppercase tracking-wider text-muted-foreground/60">{features.iqd_display_preference}</span>
                     </div>
                   </div>
                 </div>

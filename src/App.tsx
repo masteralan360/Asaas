@@ -262,6 +262,11 @@ const ClinicalPatientDetails = lazy(() =>
     default: m.ClinicalPatientDetails,
   })),
 );
+const ClinicalPresets = lazy(() =>
+  import("@/ui/pages/ClinicalPresets").then((m) => ({
+    default: m.ClinicalPresets,
+  })),
+);
 
 const Ledger = lazy(() =>
   import("@/ui/pages/Ledger").then((m) => ({ default: m.Ledger })),
@@ -1143,6 +1148,18 @@ function App() {
                         >
                           <Layout>
                             <ClinicalPatientDetails />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+
+                      <Route path="/clinical-presets">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="clinical_appointments"
+                          requiredPermission="clinicalAppointments.access"
+                        >
+                          <Layout>
+                            <ClinicalPresets />
                           </Layout>
                         </ProtectedRoute>
                       </Route>

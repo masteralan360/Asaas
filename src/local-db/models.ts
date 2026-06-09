@@ -740,6 +740,17 @@ export type ClinicalAppointmentType =
 
 export type ClinicalPatientType = 'new' | 'existing';
 
+export type ClinicalPresetCategory = 'reason_for_visit' | 'appointment_type';
+
+export interface ClinicalPreset extends BaseEntity {
+  category: ClinicalPresetCategory;
+  name: string;
+  consultationFee: number;
+  sortOrder: number;
+  isActive: boolean;
+  createdBy?: string | null;
+}
+
 export interface ClinicalPatient extends BaseEntity {
   name: string;
   phone?: string | null;
@@ -1123,7 +1134,8 @@ export interface SyncQueueItem {
     | "fx_safe_movements"
     | "clinical_appointments"
     | "clinical_patients"
-    | "clinical_attachments";
+    | "clinical_attachments"
+    | "clinical_presets";
   entityId: string;
   operation: "create" | "update" | "delete";
   data: Record<string, unknown>;
@@ -1244,7 +1256,8 @@ export interface OfflineMutation {
     | "fx_safe_movements"
     | "clinical_appointments"
     | "clinical_patients"
-    | "clinical_attachments";
+    | "clinical_attachments"
+    | "clinical_presets";
   entityId: string;
   operation: "create" | "update" | "delete";
   payload: Record<string, unknown>;
