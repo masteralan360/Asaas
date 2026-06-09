@@ -6,9 +6,10 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/ui/components/select'
+import { cn } from '@/lib/utils'
 import { parseLangFromHash, getPathWithLang } from '@/lib/i18nRouting'
 
-export function LanguageSwitcher() {
+export function LanguageSwitcher({ className }: { className?: string }) {
     const { i18n } = useTranslation()
 
     const changeLanguage = (lng: string) => {
@@ -32,7 +33,7 @@ export function LanguageSwitcher() {
 
     return (
         <Select value={i18n.language} onValueChange={changeLanguage}>
-            <SelectTrigger className="w-[140px]" allowViewer={true}>
+            <SelectTrigger className={cn("w-[140px]", className)} allowViewer={true}>
                 <SelectValue placeholder="Language" />
             </SelectTrigger>
             <SelectContent>

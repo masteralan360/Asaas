@@ -120,7 +120,7 @@ export function Login() {
             "flex bg-white dark:bg-slate-950 transition-colors duration-300",
             isTauri 
                 ? "h-[calc(100vh-var(--titlebar-height))] mt-[var(--titlebar-height)]" 
-                : "min-h-screen w-full"
+                : "h-screen w-full"
         )}>
             {/* Left Side: Geometric Pattern */}
             <div className="hidden lg:flex lg:w-1/2 relative bg-white dark:bg-slate-950 transition-colors duration-300">
@@ -167,8 +167,8 @@ export function Login() {
         </div>
 
             {/* Right Side: Login Form */}
-            <div className="w-full lg:w-1/2 flex flex-col items-center justify-center p-6 md:p-12 lg:p-16 bg-white dark:bg-slate-950 overflow-y-auto">
-                <div className="w-full max-w-sm space-y-8">
+            <div className="w-full lg:w-1/2 flex flex-col items-center p-6 md:p-12 lg:p-16 bg-white dark:bg-slate-950 overflow-y-auto">
+                <div className="w-full max-w-sm space-y-8 my-auto">
                     {/* Branding */}
                     <div className="flex flex-col items-center text-center space-y-4">
                         <div className="w-16 h-16 bg-black dark:bg-slate-900 rounded-2xl flex items-center justify-center p-2 shadow-lg border border-white/10">
@@ -296,11 +296,11 @@ export function Login() {
 
                     {/* Theme & Language Switchers (Floating) */}
                     <div className={cn(
-                        "fixed flex items-center gap-3 transition-all duration-300 z-[100]",
-                        isTauri ? "top-[60px] end-6" : "bottom-6 end-6"
+                        "fixed max-sm:hidden flex flex-col sm:flex-row items-center gap-3 transition-all duration-300 z-[100]",
+                        isTauri ? "top-[60px] end-6" : "top-2 end-6"
                     )}>
-                        <LanguageSwitcher />
-                        <ThemeToggle />
+                        <LanguageSwitcher className="w-[110px] sm:w-[140px]" />
+                        <ThemeToggle className="w-[100px] sm:w-[130px]" />
                     </div>
                 </div>
             </div>

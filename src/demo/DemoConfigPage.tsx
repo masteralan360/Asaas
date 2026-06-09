@@ -56,7 +56,7 @@ export function DemoConfigPage() {
       // @ts-ignore
       !!window.__TAURI_INTERNALS__
         ? "h-[calc(100vh-var(--titlebar-height))] mt-[var(--titlebar-height)]"
-        : "min-h-screen w-full"
+        : "h-screen w-full"
     )}>
       <div className="hidden lg:flex lg:w-1/2 relative bg-white dark:bg-slate-950 transition-colors duration-300">
         <div className="absolute inset-4 overflow-hidden rounded-[2.5rem] bg-teal-950 shadow-2xl shadow-teal-900/20 border border-teal-800/50">
@@ -119,8 +119,8 @@ export function DemoConfigPage() {
         </div>
       </div>
 
-      <div className="w-full lg:w-1/2 flex flex-col items-center justify-center p-6 md:p-12 lg:p-16 bg-white dark:bg-slate-950 overflow-y-auto">
-        <div className="w-full max-w-sm space-y-8">
+      <div className="w-full lg:w-1/2 flex flex-col items-center p-6 md:p-12 lg:p-16 bg-white dark:bg-slate-950 overflow-y-auto">
+        <div className="w-full max-w-sm space-y-8 my-auto">
           <div className="flex flex-col items-center text-center space-y-4">
             <div className="w-16 h-16 bg-black dark:bg-slate-900 rounded-2xl flex items-center justify-center p-2 shadow-lg border border-white/10">
               <img src="/logo.png" alt="Atlas" className="w-full h-full object-contain" />
@@ -170,7 +170,7 @@ export function DemoConfigPage() {
                           : 'border-gray-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-gray-700 dark:text-slate-300 hover:border-teal-300 dark:hover:border-teal-700'
                       )}
                     >
-                      {job.label}
+                      {t('demo.job.' + job.id, job.label)}
                     </button>
                   ))}
                 </div>
@@ -210,7 +210,7 @@ export function DemoConfigPage() {
                           : 'border-gray-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-gray-700 dark:text-slate-300 hover:border-teal-300 dark:hover:border-teal-700'
                       )}
                     >
-                      {minutes} {t('common.min', 'min')}
+                      {minutes} {t('demo.minutes', 'min')}
                     </button>
                   ))}
                 </div>
@@ -246,12 +246,12 @@ export function DemoConfigPage() {
           </div>
 
           <div className={cn(
-            "fixed flex items-center gap-3 transition-all duration-300 z-[100]",
+            "fixed max-sm:hidden flex flex-col sm:flex-row items-center gap-3 transition-all duration-300 z-[100]",
             // @ts-ignore
-            !!window.__TAURI_INTERNALS__ ? "top-[60px] end-6" : "bottom-6 end-6"
+            !!window.__TAURI_INTERNALS__ ? "top-[60px] end-6" : "top-2 end-6"
           )}>
-            <LanguageSwitcher />
-            <ThemeToggle />
+            <LanguageSwitcher className="w-[110px] sm:w-[140px]" />
+            <ThemeToggle className="w-[100px] sm:w-[130px]" />
           </div>
         </div>
       </div>

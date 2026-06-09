@@ -71,7 +71,7 @@ export function Register() {
             )}>
 
                 {/* Theme & Language Switchers */}
-                <div className={`fixed right-4 z-20 flex items-center gap-2 ${isTauri ? 'top-[60px]' : 'top-4'}`}>
+                <div className={`fixed right-4 z-20 max-sm:hidden flex items-center gap-2 ${isTauri ? 'top-[60px]' : 'top-4'}`}>
                     <LanguageSwitcher />
                     <ThemeToggle />
                 </div>

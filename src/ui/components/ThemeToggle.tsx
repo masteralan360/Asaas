@@ -7,21 +7,17 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/ui/components/select'
+import { cn } from '@/lib/utils'
 import { useTranslation } from 'react-i18next'
 
-export function ThemeToggle() {
+export function ThemeToggle({ className }: { className?: string }) {
     const { theme, setTheme } = useTheme()
     const { t } = useTranslation()
 
     return (
         <Select value={theme} onValueChange={(v) => setTheme(v as any)}>
-            <SelectTrigger className="w-[130px] rounded-xl">
-                <div className="flex items-center gap-2">
-                    {theme === 'light' && <Sun className="h-4 w-4" />}
-                    {theme === 'dark' && <Moon className="h-4 w-4" />}
-                    {theme === 'system' && <Monitor className="h-4 w-4" />}
-                    <SelectValue placeholder="Theme" />
-                </div>
+            <SelectTrigger className={cn("rounded-xl", className)}>
+                <SelectValue placeholder="Theme" />
             </SelectTrigger>
             <SelectContent className="rounded-xl">
                 <SelectItem value="light" className="cursor-pointer">

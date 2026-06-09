@@ -1587,6 +1587,7 @@
     "createAccount": "Create your account",
     "signingIn": "Signing in...",
     "signIn": "Sign in",
+    "tryDemo": "Try Demo",
     "fullName": "Full Name",
     "name": "Name",
     "createAccountBtn": "Create account",
@@ -3856,7 +3857,6 @@
       "cancelled": "Cancelled",
       "no_show": "No Show"
     },
-
     "confirmationMethods": {
       "phone": "Phone",
       "sms": "SMS",
@@ -3964,5 +3964,32 @@
     "sort": "Sort",
     "empty": "No presets configured.",
     "deleteConfirm": "Are you sure you want to delete this preset?"
+  },
+  "demo": {
+    "title": "Try Atlas Demo",
+    "subtitle": "Configure your demo workspace to explore Atlas features before signing up.",
+    "autoDelete": "Auto-deletes after the configured time limit",
+    "pickJob": "Pick a demo type to see relevant features",
+    "noSignup": "No account required — just configure and explore",
+    "configureDemo": "Configure Demo",
+    "setupSubtitle": "Set up your temporary workspace",
+    "workspaceName": "Workspace Name",
+    "wsPlaceholder": "My Demo Workspace",
+    "demoType": "Workspace Job / Demo Type",
+    "currency": "Currency",
+    "timeLimit": "Demo Time Limit",
+    "timeRange": "Between 5 and 15 minutes",
+    "creating": "Creating Demo...",
+    "start": "Start Demo",
+    "backToLogin": "Back to Sign In",
+    "minutes": "min",
+    "job": {
+      "general": "General Demo",
+      "market": "Market",
+      "shop": "Shop",
+      "real_estate": "Real Estate",
+      "currency_exchange": "Currency Exchange",
+      "clinic": "Clinic"
+    }
   }
 }
