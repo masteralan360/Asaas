@@ -310,7 +310,8 @@ export function searchClinicalPatients(workspaceId: string, query: string) {
       p.name.toLowerCase().includes(lower) ||
       (p.phone != null && p.phone.includes(query))
     ))
-    .toArray()
+    .sortBy('createdAt')
+    .then((results) => results.reverse())
 }
 
 export async function createClinicalPatient(

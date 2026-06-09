@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useAuth } from '@/auth'
@@ -235,6 +235,11 @@ function CreateAppointmentForm({ workspaceId, appointment, onCancel, onSaved }: 
   const reasonForVisitPresets = useClinicalPresetsByCategory(workspaceId, 'reason_for_visit')
   const appointmentTypePresets = useClinicalPresetsByCategory(workspaceId, 'appointment_type')
   const [consultationFee, setConsultationFee] = useState(appointment?.consultationFee ?? 0)
+  useEffect(() => {
+    if (!appointmentTypePresets || appointment) return
+    const preset = appointmentTypePresets.find((p) => p.name === appointmentType)
+    if (preset?.consultationFee) setConsultationFee(preset.consultationFee)
+  }, [appointmentTypePresets])
   const [estimatedPrice, setEstimatedPrice] = useState(appointment?.estimatedPrice ?? 0)
   const [status, setStatus] = useState<ClinicalAppointmentStatus>(appointment?.status ?? 'draft')
   const [confirmationMethod, setConfirmationMethod] = useState<ClinicalConfirmationMethod>(appointment?.confirmationMethod ?? 'phone')
@@ -510,7 +515,7 @@ function CreateAppointmentForm({ workspaceId, appointment, onCancel, onSaved }: 
                     </div>
                     <div className="grid gap-2">
                       <Label>{t('clinicalAppointments.appointmentType', { defaultValue: 'Appointment Type' })}</Label>
-                      <Select value={appointmentType} onValueChange={(v: ClinicalAppointmentType) => { setAppointmentType(v); const preset = appointmentTypePresets?.find((p) => p.name === v); if (preset?.consultationFee) setConsultationFee(preset.consultationFee) }}>
+                      <Select value={appointmentType} onValueChange={(v: ClinicalAppointmentType) => { setAppointmentType(v); const atPreset = appointmentTypePresets?.find((p) => p.name === v); const rvPreset = reasonForVisit.trim() ? reasonForVisitPresets?.find((p) => p.name === reasonForVisit) : null; if (atPreset?.consultationFee && (!rvPreset || atPreset.sortOrder <= rvPreset.sortOrder)) setConsultationFee(atPreset.consultationFee) }}>
                         <SelectTrigger><SelectValue /></SelectTrigger>
                         <SelectContent>
                           {['consultation', 'follow_up', 'emergency', 'checkup', 'procedure', 'treatment'].map((type) => (
@@ -540,7 +545,7 @@ function CreateAppointmentForm({ workspaceId, appointment, onCancel, onSaved }: 
                                 type="button"
                                 className="w-full text-left px-3 py-2 hover:bg-accent text-sm"
                                 onMouseDown={(e) => e.preventDefault()}
-                                onClick={() => { setReasonForVisit(preset.name); if (preset.consultationFee) setConsultationFee(preset.consultationFee); setShowReasonSuggestions(false) }}
+                                onClick={() => { setReasonForVisit(preset.name); const atPreset = appointmentTypePresets?.find((p) => p.name === appointmentType); if (preset.consultationFee && (!atPreset || preset.sortOrder < atPreset.sortOrder)) setConsultationFee(preset.consultationFee); setShowReasonSuggestions(false) }}
                               >
                                 {preset.name}
                               </button>
