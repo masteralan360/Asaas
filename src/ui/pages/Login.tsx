@@ -117,20 +117,23 @@ export function Login() {
 
     return (
         <div className={cn(
-            "flex min-h-screen bg-white dark:bg-slate-950 transition-colors duration-300",
-            isTauri && "mt-[var(--titlebar-height)] h-[calc(100vh-var(--titlebar-height))]"
+            "flex bg-white dark:bg-slate-950 transition-colors duration-300",
+            isTauri 
+                ? "h-[calc(100vh-var(--titlebar-height))] mt-[var(--titlebar-height)]" 
+                : "min-h-screen w-full"
         )}>
             {/* Left Side: Geometric Pattern */}
-            <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden bg-teal-950">
-                <GeometricPattern />
-                
-                <div className="relative z-10 w-full h-full p-16 flex flex-col justify-between text-white">
-                    <div className="space-y-12">
-                        <img 
-                            src="/logo-wide.png" 
-                            alt="Atlas Logo" 
-                            className="h-10 w-auto object-contain brightness-0 invert" 
-                        />
+            <div className="hidden lg:flex lg:w-1/2 relative bg-white dark:bg-slate-950 transition-colors duration-300">
+                <div className="absolute inset-4 overflow-hidden rounded-[2.5rem] bg-teal-950 shadow-2xl shadow-teal-900/20 border border-teal-800/50">
+                    <GeometricPattern />
+                    
+                    <div className="relative z-10 w-full h-full p-12 flex flex-col justify-between text-white">
+                        <div className="space-y-12">
+                            <img 
+                                src="/logo-wide.png" 
+                                alt="Atlas Logo" 
+                                className="h-10 w-auto object-contain brightness-0 invert" 
+                            />
                         
                         <div className="space-y-4">
                             <h2 className="text-5xl font-bold tracking-tight leading-tight">
@@ -161,6 +164,7 @@ export function Login() {
                     </div>
                 </div>
             </div>
+        </div>
 
             {/* Right Side: Login Form */}
             <div className="w-full lg:w-1/2 flex flex-col items-center justify-center p-6 md:p-12 lg:p-16 bg-white dark:bg-slate-950 overflow-y-auto">
