@@ -1106,14 +1106,26 @@ export function POS() {
         )
     }
 
+    const formatNumberWithCommas = (value: string) => {
+        const stripped = value.replace(/,/g, '')
+        if (stripped === '' || stripped === '.') return stripped
+        const parts = stripped.split('.')
+        parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+        return parts.join('.')
+    }
+
+    const parseFormattedNumber = (value: string) => {
+        return parseFloat(value.replace(/,/g, ''))
+    }
+
     const openPriceEdit = (item: CartItem) => {
         setEditingPriceItemKey(getCartItemKey(item))
-        setNegotiatedPriceInput(getCartEffectivePrice(item).toString())
+        setNegotiatedPriceInput(formatNumberWithCommas(getCartEffectivePrice(item).toString()))
     }
 
     const savePriceEdit = () => {
         if (editingPriceItemKey) {
-            const newPrice = parseFloat(negotiatedPriceInput)
+            const newPrice = parseFormattedNumber(negotiatedPriceInput)
             if (!isNaN(newPrice) && newPrice >= 0) {
                 setNegotiatedPrice(editingPriceItemKey, newPrice)
             }
@@ -2899,18 +2911,25 @@ export function POS() {
                                 {/* Negotiated Price - Editable */}
                                 <div>
                                     <Label>{t('pos.negotiatedPrice') || 'Negotiated Price'}</Label>
-                                    <Input
-                                        type="number"
-                                        min="0"
-                                        step="0.01"
-                                        value={negotiatedPriceInput}
-                                        onChange={(e) => setNegotiatedPriceInput(e.target.value)}
-                                        placeholder="0.00"
-                                        className="text-lg py-5 font-mono mt-1"
-                                        autoFocus
-                                    />
+                                    <div className="relative mt-1">
+                                        <Input
+                                            type="text"
+                                            inputMode="decimal"
+                                            value={negotiatedPriceInput}
+                                            onChange={(e) => {
+                                                const raw = e.target.value.replace(/[^0-9.,]/g, '')
+                                                setNegotiatedPriceInput(formatNumberWithCommas(raw))
+                                            }}
+                                            placeholder="0.00"
+                                            className="text-lg py-5 font-mono pr-14"
+                                            autoFocus
+                                        />
+                                        <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold uppercase tracking-wider text-muted-foreground/60">
+                                            {editingProduct?.currency === 'iqd' ? features.iqd_display_preference : editingProduct?.currency === 'usd' ? '$' : (editingProduct?.currency || '').toUpperCase()}
+                                        </span>
+                                    </div>
                                     {/* Live Conversion Display */}
-                                    {editingProduct && editingProduct.currency !== features.default_currency && negotiatedPriceInput && !isNaN(parseFloat(negotiatedPriceInput)) && (
+                                    {editingProduct && editingProduct.currency !== features.default_currency && negotiatedPriceInput && !isNaN(parseFormattedNumber(negotiatedPriceInput)) && (
                                         <div className="mt-2 p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20 animate-in fade-in slide-in-from-top-1 duration-200">
                                             <div className="flex items-center justify-between">
                                                 <span className="text-xs font-medium text-emerald-600/80 uppercase tracking-wider">
@@ -2922,7 +2941,7 @@ export function POS() {
                                                 </div>
                                             </div>
                                             <div className="text-xl font-mono font-black text-emerald-500 mt-0.5">
-                                                {formatCurrency(convertPrice(parseFloat(negotiatedPriceInput), editingProduct.currency as any, features.default_currency as any), features.default_currency, features.iqd_display_preference)}
+                                                {formatCurrency(convertPrice(parseFormattedNumber(negotiatedPriceInput), editingProduct.currency as any, features.default_currency as any), features.default_currency, features.iqd_display_preference)}
                                             </div>
                                         </div>
                                     )}
