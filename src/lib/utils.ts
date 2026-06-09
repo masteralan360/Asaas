@@ -14,6 +14,26 @@ export type HourDisplayPreference = '24-hour' | '12-hour'
 export const HOUR_DISPLAY_PREFERENCE_KEY = 'hour_display_preference'
 export const HOUR_DISPLAY_PREFERENCE_EVENT = 'atlas:hour-display-preference-change'
 
+/**
+ * Converts Arabic-Indic (٠١٢٣٤٥٦٧٨٩) and Persian (۰۱۲۳۴۵۶۷۸۹) digits 
+ * to Latin (0123456789) digits.
+ */
+export function convertArabicIndicToLatin(text: string): string {
+    if (!text) return text
+    return text.replace(/[٠-٩۰-۹]/g, (d) => {
+        const code = d.charCodeAt(0)
+        // Arabic-Indic range is 0x0660-0x0669
+        if (code >= 0x0660 && code <= 0x0669) {
+            return (code - 0x0660).toString()
+        }
+        // Persian range is 0x06f0-0x06f9
+        if (code >= 0x06f0 && code <= 0x06f9) {
+            return (code - 0x06f0).toString()
+        }
+        return d
+    })
+}
+
 function pad2(value: number) {
     return String(value).padStart(2, '0')
 }
@@ -264,7 +284,8 @@ export function toCamelCase(obj: Record<string, unknown>): Record<string, unknow
 }
 
 export function parseFormattedNumber(val: string): number {
-    return Number(val.replace(/,/g, ''))
+    const latinVal = convertArabicIndicToLatin(val)
+    return Number(latinVal.replace(/,/g, ''))
 }
 
 export function sanitizeNumericInput(
@@ -279,7 +300,7 @@ export function sanitizeNumericInput(
         maxFractionDigits = 2
     } = options || {}
 
-    const normalized = value
+    const normalized = convertArabicIndicToLatin(value)
         .replace(/,/g, '')
         .replace(allowDecimal ? /[^\d.]/g : /\D/g, '')
 

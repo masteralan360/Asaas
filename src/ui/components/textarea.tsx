@@ -1,6 +1,10 @@
 import * as React from "react"
-import { cn } from "@/lib/utils"
+import { cn, convertArabicIndicToLatin } from "@/lib/utils"
 import { useOptionalAuth } from "@/auth"
+
+export interface TextareaProps
+    extends React.TextareaHTMLAttributes<HTMLTextAreaElement> { }
+
 
 export interface TextareaProps
     extends React.TextareaHTMLAttributes<HTMLTextAreaElement> { }
@@ -11,6 +15,11 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps & { allowVi
         const isViewer = user?.role === 'viewer'
         const effectiveDisabled = disabled || (isViewer && !allowViewer)
 
+        const handleChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
+            event.target.value = convertArabicIndicToLatin(event.target.value)
+            props.onChange?.(event)
+        }
+
         return (
             <textarea
                 className={cn(
@@ -20,6 +29,7 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps & { allowVi
                 ref={ref}
                 disabled={effectiveDisabled}
                 {...props}
+                onChange={handleChange}
             />
         )
     }

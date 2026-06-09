@@ -1,5 +1,5 @@
 import * as React from "react"
-import { cn, formatDate, formatDateTime, formatTime } from "@/lib/utils"
+import { cn, convertArabicIndicToLatin, formatDate, formatDateTime, formatTime } from "@/lib/utils"
 import { useOptionalAuth } from "@/auth"
 
 const Input = React.forwardRef<HTMLInputElement, React.ComponentProps<"input"> & { allowViewer?: boolean }>(
@@ -10,12 +10,13 @@ const Input = React.forwardRef<HTMLInputElement, React.ComponentProps<"input"> &
         const isFormattedNativeInput = type === 'date' || type === 'datetime-local' || type === 'time'
 
         const getInitialValue = React.useCallback(() => {
-            if (typeof value === 'string') return value
-            if (typeof defaultValue === 'string') return defaultValue
-            if (typeof value === 'number') return String(value)
-            if (typeof defaultValue === 'number') return String(defaultValue)
-            return ''
-        }, [defaultValue, value])
+            const raw = typeof value === 'string' ? value :
+                       typeof defaultValue === 'string' ? defaultValue :
+                       typeof value === 'number' ? String(value) :
+                       typeof defaultValue === 'number' ? String(defaultValue) : ''
+            
+            return type !== 'password' ? convertArabicIndicToLatin(raw) : raw
+        }, [defaultValue, value, type])
 
         const [displaySourceValue, setDisplaySourceValue] = React.useState(getInitialValue)
 
@@ -60,6 +61,10 @@ const Input = React.forwardRef<HTMLInputElement, React.ComponentProps<"input"> &
         )
 
         const handleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+            if (type !== 'password') {
+                event.target.value = convertArabicIndicToLatin(event.target.value)
+            }
+
             if (isFormattedNativeInput) {
                 setDisplaySourceValue(event.target.value)
             }
