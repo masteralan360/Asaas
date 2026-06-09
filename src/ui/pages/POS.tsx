@@ -774,11 +774,16 @@ export function POS() {
 
     const { hasTrulyMissingRates, hasLoadingRates } = rateCheck
 
-    // Bulk Discount Effect
+    // Track originalSubtotal in a ref so the bulk discount effect doesn't
+    // re-run (and wipe per-item negotiated prices) when the cart changes.
+    const originalSubtotalRef = useRef(originalSubtotal)
+    useEffect(() => { originalSubtotalRef.current = originalSubtotal }, [originalSubtotal])
+
+    // Bulk Discount Effect — only runs when the user changes discountValue/discountType
     useEffect(() => {
         const numValue = parseFloat(discountValue)
 
-        // If empty or 0, clear all negotiated prices (reset to original)
+        // If empty or 0, clear only bulk-discount negotiated prices (reset to original)
         if (isNaN(numValue) || numValue <= 0) {
             setCart(prev => prev.map(item => {
                 if (item.negotiated_price === undefined) return item
@@ -792,8 +797,9 @@ export function POS() {
         if (discountType === 'percent') {
             percentToApply = numValue
         } else {
-            if (originalSubtotal > 0) {
-                percentToApply = (numValue / originalSubtotal) * 100
+            const subtotal = originalSubtotalRef.current
+            if (subtotal > 0) {
+                percentToApply = (numValue / subtotal) * 100
             }
         }
 
@@ -804,7 +810,7 @@ export function POS() {
             if (item.negotiated_price !== undefined && Math.abs(item.negotiated_price - newPrice) < 0.001) return item
             return { ...item, negotiated_price: newPrice }
         }))
-    }, [discountValue, discountType, originalSubtotal])
+    }, [discountValue, discountType])
 
     // Keyboard Navigation Effect
     useEffect(() => {
