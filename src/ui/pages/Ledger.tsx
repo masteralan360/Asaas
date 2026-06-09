@@ -669,7 +669,7 @@ function buildSaleLedgerEntry(sale: Sale, t: any): LedgerEntry | null {
         date: sale.createdAt,
         type: isInstantPos ? 'instant_pos_sale' : 'pos_sale',
         direction: 'incoming',
-        amount: sale.totalAmount,
+        amount: sale.totalAmount || 0,
         currency: sale.settlementCurrency,
         sourceModule: isInstantPos ? 'instant_pos' : 'pos',
         referenceId: buildSaleReferenceId(sale),

@@ -1008,7 +1008,7 @@ export function Sales() {
 
                         return {
                             ...s,
-                            total_amount: s.total_amount - returnValue,
+                            totalAmount: (s.totalAmount || (s as any).total_amount || 0) - returnValue,
                             is_returned: updatedItems?.every(i => i.is_returned) || false,
                             items: updatedItems
                         }
@@ -1018,7 +1018,7 @@ export function Sales() {
                     if (existingLocal) {
                         const updatedSale = updateSale({ ...existingLocal, items: (existingLocal as any)._enrichedItems } as any)
                             ; (existingLocal as any)._enrichedItems = updatedSale.items
-                            ; (existingLocal as any).totalAmount = updatedSale.total_amount
+                            ; (existingLocal as any).totalAmount = updatedSale.totalAmount
                             ; (existingLocal as any).isReturned = updatedSale.is_returned
                             ; (existingLocal as any).updatedAt = returnTimestamp
                         if (shouldQueueOfflineReturn) {
@@ -1074,7 +1074,7 @@ export function Sales() {
                         return {
                             ...s,
                             is_returned: true,
-                            total_amount: 0,
+                            totalAmount: 0,
                             return_reason: reason,
                             returned_at: returnTimestamp,
                             items: s.items?.map((i, index) => ({
@@ -1199,7 +1199,7 @@ export function Sales() {
 
                         return {
                             ...s,
-                            total_amount: s.total_amount - returnValue,
+                            totalAmount: (s.totalAmount || (s as any).total_amount || 0) - returnValue,
                             is_returned: updatedItems?.every(i => i.is_returned) || false,
                             items: updatedItems
                         }
@@ -1210,7 +1210,7 @@ export function Sales() {
                     if (existingLocal) {
                         const updatedSale = updateSale({ ...existingLocal, items: (existingLocal as any)._enrichedItems } as any)
                             ; (existingLocal as any)._enrichedItems = updatedSale.items
-                            ; (existingLocal as any).totalAmount = updatedSale.total_amount
+                            ; (existingLocal as any).totalAmount = updatedSale.totalAmount
                             ; (existingLocal as any).isReturned = updatedSale.is_returned
                             ; (existingLocal as any).updatedAt = returnTimestamp
                         await db.sales.put(existingLocal)
@@ -1261,7 +1261,7 @@ export function Sales() {
                         return {
                             ...s,
                             is_returned: true,
-                            total_amount: 0,
+                            totalAmount: 0,
                             return_reason: reason,
                             returned_at: returnTimestamp,
                             items: s.items?.map((i, index) => ({
