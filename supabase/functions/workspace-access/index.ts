@@ -855,6 +855,13 @@ async function handleDeleteDemo(adminClient: AdminClient, user: User, body: Dele
     return errorResponse(deleteError.message, 500)
   }
 
+  // Clean up the auth user
+  const { error: deleteUserError } = await adminClient.auth.admin.deleteUser(user.id)
+
+  if (deleteUserError) {
+    console.error('[Demo] Failed to delete auth user:', deleteUserError.message)
+  }
+
   return jsonResponse({ success: true, workspaceId })
 }
 

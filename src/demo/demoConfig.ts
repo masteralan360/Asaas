@@ -150,13 +150,14 @@ export const ENTERPRISE_MODULES: PlanModuleKey[] = [
 ]
 
 export function buildDemoCode(job: DemoJob, minutes: number): string {
-  return `demo.${job}.${minutes}`
+  const suffix = Math.random().toString(36).substring(2, 8)
+  return `demo.${job}.${minutes}.${suffix}`
 }
 
 export function parseDemoCode(code: string): { job: DemoJob; minutes: number } | null {
   if (!code.startsWith(DEMO_CODE_PREFIX)) return null
   const parts = code.split('.')
-  if (parts.length !== 3) return null
+  if (parts.length < 3) return null
   const minutes = parseInt(parts[2], 10)
   if (isNaN(minutes) || minutes < DEMO_TIME_MIN || minutes > DEMO_TIME_MAX) return null
   return { job: parts[1] as DemoJob, minutes }
