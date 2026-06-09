@@ -48,6 +48,7 @@ export interface Sale {
     workspace_id: string
     cashier_id: string
     total_amount: number
+    totalAmount?: number
     settlement_currency: string
     exchange_source: string | null
     exchange_rate: number | null

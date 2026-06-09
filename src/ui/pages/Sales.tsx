@@ -1008,7 +1008,7 @@ export function Sales() {
 
                         return {
                             ...s,
-                            totalAmount: (s.totalAmount || (s as any).total_amount || 0) - returnValue,
+                            totalAmount: (s.totalAmount ?? s.total_amount ?? 0) - returnValue,
                             is_returned: updatedItems?.every(i => i.is_returned) || false,
                             items: updatedItems
                         }
@@ -1199,7 +1199,7 @@ export function Sales() {
 
                         return {
                             ...s,
-                            totalAmount: (s.totalAmount || (s as any).total_amount || 0) - returnValue,
+                            totalAmount: (s.totalAmount ?? s.total_amount ?? 0) - returnValue,
                             is_returned: updatedItems?.every(i => i.is_returned) || false,
                             items: updatedItems
                         }
