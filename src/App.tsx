@@ -20,6 +20,7 @@ import {
   isSupabaseConfigured,
 } from "@/auth/supabase";
 import { isMobile, isDesktop } from "./lib/platform";
+import { isDemoEnabled } from "@/demo";
 import { getPathWithLang } from "@/lib/i18nRouting";
 import i18n from "@/i18n/config";
 import { useFavicon } from "@/hooks/useFavicon";
@@ -282,6 +283,12 @@ const DirectTransactions = lazy(() =>
 const ModuleLauncher = lazy(() =>
   import("@/ui/pages/ModuleLauncher").then((m) => ({
     default: m.ModuleLauncher,
+  })),
+);
+
+const DemoConfigPage = lazy(() =>
+  import("@/demo").then((m) => ({
+    default: m.DemoConfigPage,
   })),
 );
 
@@ -798,6 +805,11 @@ function App() {
                           <Register />
                         </GuestRoute>
                       </Route>
+                      {isDemoEnabled() && (
+                        <Route path="/demo-setup">
+                          <DemoConfigPage />
+                        </Route>
+                      )}
 
                       {/* Locked Workspace Route - no layout, standalone page */}
                       <Route path="/locked-workspace">

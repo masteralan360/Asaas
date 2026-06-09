@@ -67,6 +67,20 @@ type TransferInventoryBetweenWorkspacesRequest = {
     }>
 }
 
+type CreateDemoRequest = {
+    action: 'create-demo'
+    workspaceName?: string
+    workspaceCode?: string
+    demoJob?: string
+    demoMinutes?: number
+    demoCurrency?: string
+}
+
+type DeleteDemoRequest = {
+    action: 'delete-demo'
+    workspaceId?: string
+}
+
 type WorkspaceAccessRequest =
     | CreateWorkspaceRequest
     | JoinWorkspaceRequest
@@ -79,6 +93,8 @@ type WorkspaceAccessRequest =
     | ListInventoryTransferTargetsRequest
     | ListInventoryTransferSourceProductsRequest
     | TransferInventoryBetweenWorkspacesRequest
+    | CreateDemoRequest
+    | DeleteDemoRequest
 
 type AdminClient = ReturnType<typeof createAdminClient>
 
@@ -606,6 +622,240 @@ async function handleCreateWorkspace(adminClient: AdminClient, body: CreateWorks
     }
 
     return jsonResponse(data)
+}
+
+// Demo workspace helpers
+const DEMO_ALWAYS_AVAILABLE: PlanModuleKey[] = [
+  'ledger', 'payments', 'direct_transactions', 'revenue_analytics',
+  'sales_history', 'members', 'hr',
+]
+
+const DEMO_MARKET_MODULES: PlanModuleKey[] = [
+  'pos', 'products', 'discounts', 'storages', 'inventory_transfer',
+  'inventory_transactions', 'stock_adjustments', 'loans', 'installments',
+  'accounting', 'customers', 'suppliers', 'orders', 'business_partners',
+  ...DEMO_ALWAYS_AVAILABLE,
+]
+
+const DEMO_SHOP_MODULES: PlanModuleKey[] = [
+  ...DEMO_MARKET_MODULES, 'ecommerce',
+]
+
+const DEMO_REAL_ESTATE_MODULES: PlanModuleKey[] = [
+  'real_estate', 'loans', 'installments', 'accounting',
+  ...DEMO_ALWAYS_AVAILABLE,
+]
+
+const DEMO_CURRENCY_EXCHANGE_MODULES: PlanModuleKey[] = [
+  'currency_exchange', 'accounting',
+  ...DEMO_ALWAYS_AVAILABLE,
+]
+
+const DEMO_CLINIC_MODULES: PlanModuleKey[] = [
+  'clinical_appointments', 'customers', 'accounting',
+  ...DEMO_ALWAYS_AVAILABLE,
+]
+
+const ENTERPRISE_ALL_MODULES: PlanModuleKey[] = [
+  'pos', 'instant_pos', 'sales_history', 'products', 'storages',
+  'inventory_transfer', 'inventory_transactions', 'stock_adjustments',
+  'ledger', 'payments', 'direct_transactions', 'members',
+  'business_partners', 'customers', 'suppliers', 'orders',
+  'ecommerce', 'travel_agency', 'real_estate', 'currency_exchange',
+  'clinical_appointments', 'loans', 'installments', 'discounts',
+  'revenue_analytics', 'team_performance', 'invoice_history',
+  'accounting', 'hr', 'expenses', 'payroll', 'whatsapp',
+]
+
+function getDemoModules(job: string): PlanModuleKey[] {
+  switch (job) {
+    case 'market': return DEMO_MARKET_MODULES
+    case 'shop': return DEMO_SHOP_MODULES
+    case 'real_estate': return DEMO_REAL_ESTATE_MODULES
+    case 'currency_exchange': return DEMO_CURRENCY_EXCHANGE_MODULES
+    case 'clinic': return DEMO_CLINIC_MODULES
+    default: return ENTERPRISE_ALL_MODULES
+  }
+}
+
+async function handleCreateDemo(adminClient: AdminClient, body: CreateDemoRequest) {
+    const workspaceName = body.workspaceName?.trim() ?? 'Demo Workspace'
+  const workspaceCode = body.workspaceCode?.trim() ?? ''
+  const demoJob = body.demoJob ?? 'general'
+  const demoMinutes = body.demoMinutes ?? 15
+  const demoCurrency = (['usd', 'eur', 'try', 'iqd'].includes(body.demoCurrency ?? '')) ? body.demoCurrency! : 'usd'
+
+  try {
+    if (!workspaceCode.startsWith('demo.')) {
+      return errorResponse('Invalid demo code format')
+    }
+
+    if (demoMinutes < 5 || demoMinutes > 15) {
+      return errorResponse('Demo time limit must be between 5 and 15 minutes')
+    }
+
+    const demoModules = getDemoModules(demoJob)
+    const allowedModuleSet = new Set(demoModules)
+
+    // Try a minimal insert first — only name + code, let defaults handle the rest
+    const { data: workspace, error: workspaceError } = await adminClient
+      .from('workspaces')
+      .insert({
+        name: workspaceName,
+        code: workspaceCode,
+        plan: 'enterprise',
+        data_mode: 'cloud',
+        default_currency: demoCurrency,
+        is_configured: true,
+        subscription_expires_at: new Date(Date.now() + demoMinutes * 60 * 1000).toISOString(),
+        locked_workspace: false,
+      })
+      .select('id, name, code, data_mode, plan')
+      .single()
+
+    if (workspaceError || !workspace) {
+      console.error('[Demo] workspace insert failed:', { workspaceError, workspaceCode })
+      // Return the raw PostgREST error for debugging
+      const msg = workspaceError?.message ?? 'Failed to create demo workspace'
+      // Log exact length for debugging
+      console.error('[Demo] error length:', msg.length, 'message:', msg)
+      return errorResponse(msg, 500)
+    }
+
+    console.log('[Demo] workspace created:', workspace.id)
+
+    // Add overrides to revoke modules not allowed for this job
+    if (demoJob !== 'general') {
+      const overridesToRevoke = ENTERPRISE_ALL_MODULES
+        .filter((m) => !allowedModuleSet.has(m))
+        .map((m) => ({
+          workspace_id: workspace.id,
+          type: 'module' as const,
+          key: m,
+          value: 'revoke',
+          created_by: null,
+        }))
+
+      const overridesToGrant = demoModules
+        .filter((m) => !ENTERPRISE_ALL_MODULES.includes(m))
+        .map((m) => ({
+          workspace_id: workspace.id,
+          type: 'module' as const,
+          key: m,
+          value: 'grant',
+          created_by: null,
+        }))
+
+      const allOverrides = [...overridesToRevoke, ...overridesToGrant]
+
+      if (allOverrides.length > 0) {
+        const { error: overridesError } = await adminClient
+          .from('workspace_access_overrides')
+          .insert(allOverrides)
+
+        if (overridesError) {
+          console.error('[Demo] Failed to insert overrides:', overridesError)
+        }
+      }
+    }
+
+    // Create a demo user
+    // NOTE: auth.users has a check_registration_passkey() trigger that requires
+    // a valid 'passkey' (from public.keys) and 'role' in user_metadata.
+    // The trigger also auto-creates a profile via the separate handle_new_user() trigger,
+    // so we skip manual profile insert.
+    const randomNumericSuffix = String(Math.floor(Math.random() * 100000000)).padStart(8, '0')
+    const demoEmail = `demo-${randomNumericSuffix}@demo-workspace.com`
+    const demoPassword = `demo-${randomNumericSuffix}xYz`
+
+    // Read the admin passkey from keys table before creating the user
+    const { data: passkeyRow, error: passkeyError } = await adminClient
+      .from('keys')
+      .select('key_value')
+      .eq('key_name', 'admin')
+      .maybeSingle()
+
+    if (passkeyError || !passkeyRow) {
+      console.error('[Demo] failed to read admin passkey:', passkeyError)
+      await adminClient.from('workspaces').delete().eq('id', workspace.id)
+      return errorResponse('Failed to read registration passkey', 500)
+    }
+
+    const { data: authData, error: authError } = await adminClient.auth.admin.createUser({
+      email: demoEmail,
+      password: demoPassword,
+      email_confirm: true,
+      user_metadata: {
+        name: 'Demo User',
+        role: 'admin',
+        workspace_id: workspace.id,
+        passkey: passkeyRow.key_value,
+      },
+    })
+
+    if (authError || !authData.user) {
+      const authErrMsg = authError?.message ?? (authData ? 'User object is null' : 'Unknown auth error')
+      console.error('[Demo] auth createUser failed:', { authError, authData, demoEmail, authErrMsg })
+      await adminClient.from('workspaces').delete().eq('id', workspace.id)
+      return errorResponse('Auth: ' + authErrMsg, 500)
+    }
+
+    console.log('[Demo] auth user created:', authData.user.id)
+
+    // Profile is auto-created by the auth.users INSERT trigger (handle_new_user),
+    // so we skip the manual profile insert to avoid duplicate key conflicts.
+
+    return jsonResponse({
+      userId: authData.user.id,
+      email: demoEmail,
+      password: demoPassword,
+      workspaceId: workspace.id,
+      workspaceCode: workspaceCode,
+      workspaceName: workspaceName,
+    })
+  } catch (err) {
+    console.error('[Demo] handleCreateDemo crashed:', err)
+    return errorResponse('CRASH: ' + (err instanceof Error ? err.message : String(err)), 500)
+  }
+}
+
+async function handleDeleteDemo(adminClient: AdminClient, user: User, body: DeleteDemoRequest) {
+  const workspaceId = body.workspaceId
+
+  if (!workspaceId) {
+    return errorResponse('Workspace ID is required')
+  }
+
+  // Verify workspace is a demo
+  const { data: workspace, error: wsError } = await adminClient
+    .from('workspaces')
+    .select('id, code')
+    .eq('id', workspaceId)
+    .maybeSingle()
+
+  if (wsError) {
+    return errorResponse(wsError.message, 500)
+  }
+
+  if (!workspace) {
+    return errorResponse('Workspace not found', 404)
+  }
+
+  if (!workspace.code?.startsWith('demo.')) {
+    return errorResponse('Not a demo workspace', 403)
+  }
+
+  // Delete all demo data via cascade function
+  const { error: deleteError } = await adminClient.rpc('delete_demo_cascade', {
+    p_workspace_id: workspaceId,
+  })
+
+  if (deleteError) {
+    console.error('[Demo] Cascade delete failed:', deleteError)
+    return errorResponse(deleteError.message, 500)
+  }
+
+  return jsonResponse({ success: true, workspaceId })
 }
 
 async function handleJoinWorkspace(
@@ -2590,9 +2840,17 @@ Deno.serve(async (req) => {
             return await handleCreateWorkspace(adminClient, body)
         }
 
+        if (body.action === 'create-demo') {
+            return await handleCreateDemo(adminClient, body)
+        }
+
         const { user, error } = await getAuthenticatedUser(req)
         if (error || !user) {
             return errorResponse(error ?? 'Authentication required', 401)
+        }
+
+        if (body.action === 'delete-demo') {
+            return await handleDeleteDemo(adminClient, user, body)
         }
 
         if (body.action === 'join') {

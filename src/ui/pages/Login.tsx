@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useLocation } from 'wouter'
 import { useAuth } from '@/auth'
 import { Button, Input, Label, LanguageSwitcher, ThemeToggle } from '@/ui/components'
-import { Mail, Lock, Loader2, Eye, EyeOff } from 'lucide-react'
+import { Mail, Lock, Loader2, Eye, EyeOff, Sparkles } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { isMobile } from '@/lib/platform'
 import { cn } from '@/lib/utils'
@@ -258,14 +258,27 @@ export function Login() {
                         </Button>
                     </form>
 
-                    <div className="relative">
-                        <div className="absolute inset-0 flex items-center">
-                            <span className="w-full border-t border-gray-200 dark:border-slate-800"></span>
-                        </div>
-                        <div className="relative flex justify-center text-xs uppercase">
-                            <span className="bg-white dark:bg-slate-950 px-4 text-gray-400 dark:text-slate-500 font-medium">{t('common.or', 'or')}</span>
-                        </div>
-                    </div>
+                    {import.meta.env.VITE_ENABLE_DEMO === 'true' && (
+                        <>
+                            <div className="relative">
+                                <div className="absolute inset-0 flex items-center">
+                                    <span className="w-full border-t border-gray-200 dark:border-slate-800"></span>
+                                </div>
+                                <div className="relative flex justify-center text-xs uppercase">
+                                    <span className="bg-white dark:bg-slate-950 px-4 text-gray-400 dark:text-slate-500 font-medium">{t('common.or', 'or')}</span>
+                                </div>
+                            </div>
+
+                            <Button
+                                type="button"
+                                onClick={() => setLocation('/demo-setup')}
+                                className="w-full h-12 bg-emerald-600 hover:bg-emerald-700 dark:bg-emerald-500 dark:hover:bg-emerald-600 text-white font-semibold rounded-xl shadow-md hover:shadow-lg transition-all active:scale-[0.98]"
+                            >
+                                <Sparkles className="w-5 h-5 mr-2" />
+                                {t('auth.tryDemo', 'Try Demo')}
+                            </Button>
+                        </>
+                    )}
 
                     <div className="text-center">
                         <p className="text-sm text-gray-500 dark:text-slate-400">

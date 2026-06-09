@@ -4,6 +4,7 @@ import { cn } from '@/lib/utils'
 import { useAuth } from '@/auth'
 import { useReorderTransferRules } from '@/local-db'
 import { useWorkspace } from '@/workspace'
+import { isDemoWorkspace, deleteDemoWorkspace } from '@/demo'
 import { useWorkspacePermissions } from '@/permissions'
 import { SyncStatusIndicator } from './SyncStatusIndicator'
 import { ExchangeRateIndicator } from './ExchangeRateIndicator'
@@ -45,7 +46,9 @@ import {
     PanelRightClose,
     LayoutGrid,
     GitBranch,
-    Loader2
+    Loader2,
+    AlertTriangle,
+    Clock
 } from 'lucide-react'
 import { useState } from 'react'
 import { Button } from './button'
@@ -60,7 +63,7 @@ import {
 } from './ui/dropdown-menu'
 
 import { useTranslation } from 'react-i18next'
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { supabase } from '@/auth/supabase'
 import { isMobile, isDesktop } from '@/lib/platform'
 import { useWebHaptics } from 'web-haptics/react'
@@ -122,6 +125,7 @@ export function Layout({ children }: LayoutProps) {
     const { user, signOut } = useAuth()
     const { hasFeature, hasCapability, workspaceName, isFullscreen, features, activeWorkspace } = useWorkspace()
     const { hasPermission } = useWorkspacePermissions()
+    const demoExpiryRef = useRef<ReturnType<typeof setTimeout> | null>(null)
     const {
         branchInfo,
         branches,
@@ -135,6 +139,7 @@ export function Layout({ children }: LayoutProps) {
     const reorderRules = useReorderTransferRules(activeWorkspace?.id)
 
     const { t } = useTranslation()
+    const [demoRemainingSec, setDemoRemainingSec] = useState<number | null>(null)
     const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
     const [desktopSidebarOpen, setDesktopSidebarOpen] = useState(() => {
         if (typeof window !== 'undefined') {
@@ -321,6 +326,61 @@ export function Layout({ children }: LayoutProps) {
             setCurrencyConverterOpen(false)
         }
     }, [location])
+
+    // Demo workspace expiration auto-delete
+    useEffect(() => {
+        if (demoExpiryRef.current) {
+            clearTimeout(demoExpiryRef.current)
+            demoExpiryRef.current = null
+        }
+
+        if (user?.workspaceCode && isDemoWorkspace(user.workspaceCode) && features.subscription_expires_at) {
+            const expiresAt = new Date(features.subscription_expires_at).getTime()
+            const now = Date.now()
+            const remaining = expiresAt - now
+
+            if (remaining <= 0) {
+                console.log('[Demo] Workspace expired, deleting...')
+                ;(async () => {
+                    if (activeWorkspace?.id) {
+                        await deleteDemoWorkspace(activeWorkspace.id)
+                    }
+                    signOut()
+                })()
+            } else {
+                console.log(`[Demo] Workspace expires in ${Math.round(remaining / 1000)}s`)
+                demoExpiryRef.current = setTimeout(async () => {
+                    if (activeWorkspace?.id) {
+                        await deleteDemoWorkspace(activeWorkspace.id)
+                    }
+                    signOut()
+                }, remaining)
+            }
+        }
+
+        return () => {
+            if (demoExpiryRef.current) {
+                clearTimeout(demoExpiryRef.current)
+            }
+        }
+    }, [user?.workspaceCode, features.subscription_expires_at])
+
+    // Demo countdown timer for sidebar display
+    useEffect(() => {
+        if (!user?.workspaceCode || !isDemoWorkspace(user.workspaceCode) || !features.subscription_expires_at) {
+            setDemoRemainingSec(null)
+            return
+        }
+
+        const update = () => {
+            const remaining = new Date(features.subscription_expires_at).getTime() - Date.now()
+            setDemoRemainingSec(Math.max(0, Math.floor(remaining / 1000)))
+        }
+
+        update()
+        const interval = setInterval(update, 1000)
+        return () => clearInterval(interval)
+    }, [user?.workspaceCode, features.subscription_expires_at])
 
     const navigation = buildWorkspaceNavigation({
         t,
@@ -867,50 +927,91 @@ export function Layout({ children }: LayoutProps) {
                                         <div className="h-px bg-border/40 mx-2 mb-4" />
                                     )}
 
-                                    {/* Workspace Code */}
-                                    {user?.workspaceCode && (
-                                        <div
-                                            className={cn(
-                                                "mx-3 mb-4 rounded-sm border border-border group hover:border-primary/50 transition-all cursor-pointer relative overflow-hidden",
-                                                (isMini && !mobileSidebarOpen)
-                                                    ? "p-2 bg-transparent border-transparent hover:bg-secondary/50 flex justify-center mx-0"
-                                                    : "p-2.5 bg-secondary/30"
-                                            )}
-                                            onClick={() => {
-                                                copyToClipboard(user.workspaceCode)
-                                                triggerHaptic('success')
-                                            }}
-                                            title={(isMini && !mobileSidebarOpen) ? "Copy Workspace Code" : undefined}
-                                        >
-                                            {(isMini && !mobileSidebarOpen) ? (
-                                                <div className="relative">
-                                                    {copied ? (
-                                                        <Check className="w-5 h-5 text-emerald-500" />
-                                                    ) : (
-                                                        <Copy className="w-5 h-5 text-muted-foreground group-hover:text-primary transition-colors" />
+                                    {/* Workspace Code / Demo Timer */}
+                                    {user?.workspaceCode && (() => {
+                                        const isDemo = isDemoWorkspace(user.workspaceCode)
+
+                                        if (isDemo) {
+                                            const mins = demoRemainingSec !== null ? Math.floor(demoRemainingSec / 60) : 0
+                                            const secs = demoRemainingSec !== null ? demoRemainingSec % 60 : 0
+                                            const expired = demoRemainingSec !== null && demoRemainingSec <= 0
+
+                                            return (
+                                                <div
+                                                    className={cn(
+                                                        "mx-3 mb-4 rounded-sm border border-border relative overflow-hidden",
+                                                        (isMini && !mobileSidebarOpen)
+                                                            ? "p-2 bg-transparent border-transparent flex justify-center mx-0"
+                                                            : "p-2.5 bg-secondary/30"
                                                     )}
+                                                >
+                                                    {(isMini && !mobileSidebarOpen) ? (
+                                                        <Clock className="w-5 h-5 text-amber-500" />
+                                                    ) : (
+                                                        <div className="relative z-10">
+                                                            <p className="text-[10px] text-muted-foreground/60 uppercase font-bold mb-1">
+                                                                {expired ? t('demo.expired', 'Expired') : t('demo.timeRemaining', 'Time Remaining')}
+                                                            </p>
+                                                            <p className={cn(
+                                                                "text-sm font-mono font-bold tracking-wider",
+                                                                expired ? "text-destructive" : "text-amber-500"
+                                                            )}>
+                                                                {expired
+                                                                    ? '00:00'
+                                                                    : `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`
+                                                                }
+                                                            </p>
+                                                        </div>
+                                                    )}
+                                                    <div className="absolute inset-0 bg-amber-500/5" />
                                                 </div>
-                                            ) : (
-                                                <>
-                                                    <div className="relative z-10">
-                                                        <p className="text-[10px] text-muted-foreground/60 uppercase font-bold mb-1 flex items-center justify-between">
-                                                            {t('auth.workspaceCode')}
-                                                            {copied ? (
-                                                                <span className="flex items-center gap-1 text-emerald-500 animate-in fade-in zoom-in duration-300">
-                                                                    <Check className="w-3 h-3" />
-                                                                    {t('auth.copied')}
-                                                                </span>
-                                                            ) : (
-                                                                <Copy className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-all" />
-                                                            )}
-                                                        </p>
-                                                        <p className="text-sm font-mono font-bold tracking-wider">{user.workspaceCode}</p>
+                                            )
+                                        }
+
+                                        return (
+                                            <div
+                                                className={cn(
+                                                    "mx-3 mb-4 rounded-sm border border-border group hover:border-primary/50 transition-all cursor-pointer relative overflow-hidden",
+                                                    (isMini && !mobileSidebarOpen)
+                                                        ? "p-2 bg-transparent border-transparent hover:bg-secondary/50 flex justify-center mx-0"
+                                                        : "p-2.5 bg-secondary/30"
+                                                )}
+                                                onClick={() => {
+                                                    copyToClipboard(user.workspaceCode)
+                                                    triggerHaptic('success')
+                                                }}
+                                                title={(isMini && !mobileSidebarOpen) ? "Copy Workspace Code" : undefined}
+                                            >
+                                                {(isMini && !mobileSidebarOpen) ? (
+                                                    <div className="relative">
+                                                        {copied ? (
+                                                            <Check className="w-5 h-5 text-emerald-500" />
+                                                        ) : (
+                                                            <Copy className="w-5 h-5 text-muted-foreground group-hover:text-primary transition-colors" />
+                                                        )}
                                                     </div>
-                                                    <div className="absolute inset-0 bg-primary/5 opacity-0 group-hover:opacity-100 transition-opacity" />
-                                                </>
-                                            )}
-                                        </div>
-                                    )}
+                                                ) : (
+                                                    <>
+                                                        <div className="relative z-10">
+                                                            <p className="text-[10px] text-muted-foreground/60 uppercase font-bold mb-1 flex items-center justify-between">
+                                                                {t('auth.workspaceCode')}
+                                                                {copied ? (
+                                                                    <span className="flex items-center gap-1 text-emerald-500 animate-in fade-in zoom-in duration-300">
+                                                                        <Check className="w-3 h-3" />
+                                                                        {t('auth.copied')}
+                                                                    </span>
+                                                                ) : (
+                                                                    <Copy className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-all" />
+                                                                )}
+                                                            </p>
+                                                            <p className="text-sm font-mono font-bold tracking-wider">{user.workspaceCode}</p>
+                                                        </div>
+                                                        <div className="absolute inset-0 bg-primary/5 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                                    </>
+                                                )}
+                                            </div>
+                                        )
+                                    })()}
 
                                     <div className={cn("px-3 space-y-3", (isMini && !mobileSidebarOpen) && "px-0 space-y-2 flex flex-col items-center")}>
                                         {members.map((member) => {
@@ -1135,27 +1236,57 @@ export function Layout({ children }: LayoutProps) {
                     </div>
 
                     {/* Sign Out Confirmation Modal */}
-                    <Dialog open={isSignOutModalOpen} onOpenChange={setIsSignOutModalOpen}>
-                        <DialogContent>
-                            <DialogHeader>
-                                <DialogTitle>{t('auth.signOutConfirmTitle') || 'Sign Out'}</DialogTitle>
-                                <DialogDescription>
-                                    {t('auth.signOutConfirmDesc') || 'Are you sure you want to sign out?'}
-                                </DialogDescription>
-                            </DialogHeader>
-                            <DialogFooter>
-                                <Button variant="ghost" allowViewer={true} onClick={() => setIsSignOutModalOpen(false)}>
-                                    {t('common.cancel') || 'Cancel'}
-                                </Button>
-                                <Button variant="destructive" allowViewer={true} onClick={() => {
-                                    setIsSignOutModalOpen(false)
-                                    signOut()
-                                }}>
-                                    {t('auth.signOut') || 'Sign Out'}
-                                </Button>
-                            </DialogFooter>
-                        </DialogContent>
-                    </Dialog>
+                    {isDemoWorkspace(user?.workspaceCode) ? (
+                        <Dialog open={isSignOutModalOpen} onOpenChange={setIsSignOutModalOpen}>
+                            <DialogContent>
+                                <DialogHeader>
+                                    <DialogTitle className="flex items-center gap-2">
+                                        <AlertTriangle className="w-5 h-5 text-destructive" />
+                                        {t('demo.signOutTitle', 'Leaving Demo Workspace')}
+                                    </DialogTitle>
+                                    <DialogDescription>
+                                        {t('demo.signOutWarn', 'Signing out will permanently delete this demo workspace and all related demo data. Are you sure you want to continue?')}
+                                    </DialogDescription>
+                                </DialogHeader>
+                                <DialogFooter>
+                                    <Button variant="ghost" allowViewer={true} onClick={() => setIsSignOutModalOpen(false)}>
+                                        {t('common.cancel') || 'Cancel'}
+                                    </Button>
+                                    <Button variant="destructive" allowViewer={true} onClick={async () => {
+                                        setIsSignOutModalOpen(false)
+                                        if (activeWorkspace?.id) {
+                                            await deleteDemoWorkspace(activeWorkspace.id)
+                                        }
+                                        signOut()
+                                    }}>
+                                        {t('demo.deleteAndSignOut', 'Delete & Sign Out')}
+                                    </Button>
+                                </DialogFooter>
+                            </DialogContent>
+                        </Dialog>
+                    ) : (
+                        <Dialog open={isSignOutModalOpen} onOpenChange={setIsSignOutModalOpen}>
+                            <DialogContent>
+                                <DialogHeader>
+                                    <DialogTitle>{t('auth.signOutConfirmTitle') || 'Sign Out'}</DialogTitle>
+                                    <DialogDescription>
+                                        {t('auth.signOutConfirmDesc') || 'Are you sure you want to sign out?'}
+                                    </DialogDescription>
+                                </DialogHeader>
+                                <DialogFooter>
+                                    <Button variant="ghost" allowViewer={true} onClick={() => setIsSignOutModalOpen(false)}>
+                                        {t('common.cancel') || 'Cancel'}
+                                    </Button>
+                                    <Button variant="destructive" allowViewer={true} onClick={() => {
+                                        setIsSignOutModalOpen(false)
+                                        signOut()
+                                    }}>
+                                        {t('auth.signOut') || 'Sign Out'}
+                                    </Button>
+                                </DialogFooter>
+                            </DialogContent>
+                        </Dialog>
+                    )}
                     <CurrencyConverterPopup open={currencyConverterOpen} onClose={() => setCurrencyConverterOpen(false)} />
                 </div>
             </LoanPaymentModalProvider>
