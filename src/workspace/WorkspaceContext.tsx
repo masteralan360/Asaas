@@ -631,7 +631,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                 a4_template: workspaceRow.a4_template ?? currentFeatures.a4_template,
                 print_quality: workspaceRow.print_quality ?? currentFeatures.print_quality,
                 thermal_printing: localThermalPrinting,
-                subscription_expires_at: workspaceRow.subscription_expires_at ?? null,
+                subscription_expires_at: workspaceRow.subscription_expires_at ?? currentFeatures.subscription_expires_at,
                 upload_limit_mb: workspaceRow.upload_limit_mb ?? null,
                 visibility: workspaceRow.visibility ?? currentFeatures.visibility,
                 store_slug: workspaceRow.store_slug ?? currentFeatures.store_slug,
