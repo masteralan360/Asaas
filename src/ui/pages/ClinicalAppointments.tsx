@@ -146,7 +146,7 @@ function AppointmentList({ workspaceId, navigate }: { workspaceId: string; navig
                   <TableCell className="font-medium">{appt.patientName}</TableCell>
                   <TableCell>{appt.appointmentDate}</TableCell>
                   <TableCell>{formatTime(`${appt.appointmentDate}T${appt.startTime}`)}</TableCell>
-                  <TableCell className="capitalize">{appt.appointmentType.replace(/_/g, ' ')}</TableCell>
+                  <TableCell className="capitalize">{t('clinicalAppointments.types.' + appt.appointmentType, {defaultValue: appt.appointmentType.replace(/_/g, ' ')})}</TableCell>
                   <TableCell>
                     <Select
                       value={appt.status}
@@ -157,21 +157,21 @@ function AppointmentList({ workspaceId, navigate }: { workspaceId: string; navig
                         className="h-7 w-[140px] border-0 p-0 shadow-none focus:ring-0"
                       >
                         <Badge variant={(STATUS_VARIANTS[appt.status] as any) ?? 'secondary'} className="pointer-events-none">
-                          {appt.status.replace(/_/g, ' ')}
+                          {t('clinicalAppointments.statuses.' + appt.status, {defaultValue: appt.status.replace(/_/g, ' ')})}
                         </Badge>
                       </SelectTrigger>
                       <SelectContent>
                         {['draft', 'scheduled', 'confirmed', 'arrived', 'in_progress', 'completed', 'cancelled', 'no_show'].map((s) => (
                           <SelectItem key={s} value={s}>
                             <Badge variant={(STATUS_VARIANTS[s] as any) ?? 'secondary'} className="pointer-events-none">
-                              {s.replace(/_/g, ' ')}
+                              {t('clinicalAppointments.statuses.' + s, {defaultValue: s.replace(/_/g, ' ')})}
                             </Badge>
                           </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
                   </TableCell>
-                  <TableCell className="capitalize">{appt.priority}</TableCell>
+                  <TableCell className="capitalize">{t('clinicalAppointments.priorities.' + appt.priority, {defaultValue: appt.priority})}</TableCell>
                   <TableCell>
                     <Button variant="ghost" size="icon" onClick={() => navigate(`/clinical-appointments/${appt.id}/edit`)}>
                       <Edit className="h-4 w-4" />
@@ -520,7 +520,7 @@ function CreateAppointmentForm({ workspaceId, appointment, onCancel, onSaved }: 
                         <SelectContent>
                           {['consultation', 'follow_up', 'emergency', 'checkup', 'procedure', 'treatment'].map((type) => (
                             <SelectItem key={type} value={type}>
-                              {type.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}
+                              {t('clinicalAppointments.types.' + type, {defaultValue: type.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())})}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -533,7 +533,7 @@ function CreateAppointmentForm({ workspaceId, appointment, onCancel, onSaved }: 
                         onChange={(e) => { setReasonForVisit(e.target.value); setShowReasonSuggestions(true) }}
                         onFocus={() => setShowReasonSuggestions(true)}
                         onBlur={() => setShowReasonSuggestions(false)}
-                        placeholder="e.g. Tooth pain"
+                        placeholder={t('clinicalAppointments.reasonForVisitPlaceholder', {defaultValue: 'e.g. Tooth pain'})}
                       />
                       {showReasonSuggestions && reasonForVisit.trim() && reasonForVisitPresets && reasonForVisitPresets.length > 0 && (
                         <div className="absolute top-full mt-1 left-0 right-0 border rounded-md max-h-40 overflow-y-auto bg-background z-10 shadow-lg">
@@ -595,7 +595,7 @@ function CreateAppointmentForm({ workspaceId, appointment, onCancel, onSaved }: 
                         <SelectTrigger><SelectValue /></SelectTrigger>
                         <SelectContent>
                           {['draft', 'scheduled', 'confirmed', 'arrived', 'in_progress', 'completed', 'cancelled', 'no_show'].map((s) => (
-                            <SelectItem key={s} value={s}>{s.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}</SelectItem>
+                            <SelectItem key={s} value={s}>{t('clinicalAppointments.statuses.' + s, {defaultValue: s.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())})}</SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
@@ -606,7 +606,7 @@ function CreateAppointmentForm({ workspaceId, appointment, onCancel, onSaved }: 
                         <SelectTrigger><SelectValue /></SelectTrigger>
                         <SelectContent>
                           {['phone', 'sms', 'whatsapp', 'email', 'other'].map((m) => (
-                            <SelectItem key={m} value={m}>{m.charAt(0).toUpperCase() + m.slice(1)}</SelectItem>
+                            <SelectItem key={m} value={m}>{t('clinicalAppointments.confirmationMethods.' + m, {defaultValue: m.charAt(0).toUpperCase() + m.slice(1)})}</SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
@@ -616,9 +616,9 @@ function CreateAppointmentForm({ workspaceId, appointment, onCancel, onSaved }: 
                       <Select value={priority} onValueChange={(v: ClinicalAppointmentPriority) => setPriority(v)}>
                         <SelectTrigger><SelectValue /></SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="normal">Normal</SelectItem>
-                          <SelectItem value="urgent">Urgent</SelectItem>
-                          <SelectItem value="emergency">Emergency</SelectItem>
+                          <SelectItem value="normal">{t('clinicalAppointments.priorities.normal', {defaultValue: 'Normal'})}</SelectItem>
+                          <SelectItem value="urgent">{t('clinicalAppointments.priorities.urgent', {defaultValue: 'Urgent'})}</SelectItem>
+                          <SelectItem value="emergency">{t('clinicalAppointments.priorities.emergency', {defaultValue: 'Emergency'})}</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>

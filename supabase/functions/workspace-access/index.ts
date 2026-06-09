@@ -737,7 +737,6 @@ async function handleCreateDemo(adminClient: AdminClient, body: CreateDemoReques
         }))
 
       const overridesToGrant = demoModules
-        .filter((m) => !ENTERPRISE_ALL_MODULES.includes(m))
         .map((m) => ({
           workspace_id: workspace.id,
           type: 'module' as const,

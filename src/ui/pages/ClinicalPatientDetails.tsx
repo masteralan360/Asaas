@@ -104,13 +104,13 @@ export function ClinicalPatientDetails() {
                     <TableRow key={appt.id}>
                       <TableCell>{appt.appointmentDate}</TableCell>
                       <TableCell>{appt.startTime}</TableCell>
-                      <TableCell className="capitalize">{appt.appointmentType.replace(/_/g, ' ')}</TableCell>
+                      <TableCell className="capitalize">{t('clinicalAppointments.types.' + appt.appointmentType, {defaultValue: appt.appointmentType.replace(/_/g, ' ')})}</TableCell>
                       <TableCell>
                         <Badge variant={(STATUS_VARIANTS[appt.status] as any) ?? 'secondary'}>
-                          {appt.status.replace(/_/g, ' ')}
+                          {t('clinicalAppointments.statuses.' + appt.status, {defaultValue: appt.status.replace(/_/g, ' ')})}
                         </Badge>
                       </TableCell>
-                      <TableCell className="capitalize">{appt.priority}</TableCell>
+                      <TableCell className="capitalize">{t('clinicalAppointments.priorities.' + appt.priority, {defaultValue: appt.priority})}</TableCell>
                     </TableRow>
                   ))
                 )}
