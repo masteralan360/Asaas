@@ -8,6 +8,7 @@ on:
 env:
   VITE_R2_WORKER_URL: ${{ secrets.VITE_R2_WORKER_URL }}
   VITE_R2_AUTH_TOKEN: ${{ secrets.VITE_R2_AUTH_TOKEN }}
+  VITE_ENABLE_DEMO: ${{ secrets.VITE_ENABLE_DEMO }}
 
 jobs:
   release:
@@ -87,6 +88,7 @@ jobs:
           VITE_REQUIRE_BACKEND_CONFIGURATION: "false"
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_ENABLE_DEMO: ${{ secrets.VITE_ENABLE_DEMO }}
           VITE_R2_WORKER_URL: ${{ secrets.VITE_R2_WORKER_URL }}
           VITE_R2_AUTH_TOKEN: ${{ secrets.VITE_R2_AUTH_TOKEN }}
         with:
@@ -114,6 +116,7 @@ jobs:
           VITE_REQUIRE_BACKEND_CONFIGURATION: "false"
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_ENABLE_DEMO: ${{ secrets.VITE_ENABLE_DEMO }}
           VITE_R2_WORKER_URL: ${{ secrets.VITE_R2_WORKER_URL }}
           VITE_R2_AUTH_TOKEN: ${{ secrets.VITE_R2_AUTH_TOKEN }}
 
