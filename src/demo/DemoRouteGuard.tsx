@@ -1,7 +1,7 @@
 import { type ReactNode } from 'react'
 import { useAuth } from '@/auth'
-import { useLocation, Link } from 'wouter'
-import { isDemoWorkspace, parseDemoCode, DEMO_JOB_DISABLED_FEATURES, type DemoJob } from './demoConfig'
+import { Link } from 'wouter'
+import { isDemoWorkspace, parseDemoCode, type DemoJob } from './demoConfig'
 
 interface DemoRouteGuardProps {
   children: ReactNode
@@ -19,7 +19,6 @@ const RESTRICTED_FEATURES_BY_JOB: Record<DemoJob, string[]> = {
 
 export function DemoRouteGuard({ children, feature }: DemoRouteGuardProps) {
   const { user } = useAuth()
-  const [location] = useLocation()
 
   if (!user?.workspaceCode || !feature) {
     return <>{children}</>
@@ -38,7 +37,6 @@ export function DemoRouteGuard({ children, feature }: DemoRouteGuardProps) {
   const disabledFeatures = RESTRICTED_FEATURES_BY_JOB[job] ?? []
 
   if (disabledFeatures.includes(feature)) {
-    const isDemoSetupRoute = location.startsWith('/demo-setup')
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center max-w-md p-8">

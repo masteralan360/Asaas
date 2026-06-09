@@ -2,19 +2,18 @@ import { useState } from 'react'
 import { useLocation } from 'wouter'
 import { Button, Input, Label, LanguageSwitcher, ThemeToggle } from '@/ui/components'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/ui/components/select'
-import { Loader2, Timer, Briefcase, FileText, Coins } from 'lucide-react'
+import { Loader2, Timer, Briefcase, FileText } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { isMobile } from '@/lib/platform'
 import { cn } from '@/lib/utils'
 import { useFavicon } from '@/hooks/useFavicon'
 import { useAuth } from '@/auth'
 import type { CurrencyCode } from '@/local-db/models'
-import { DEMO_JOBS, DEMO_TIME_MIN, DEMO_TIME_MAX, DEMO_TIME_DEFAULT, type DemoJob } from './demoConfig'
+import { DEMO_JOBS, DEMO_TIME_DEFAULT, type DemoJob } from './demoConfig'
 import { createDemoWorkspace } from './demoService'
 
 export function DemoConfigPage() {
   const [, setLocation] = useLocation()
-  const { signIn, isSupabaseConfigured } = useAuth()
+  const { signIn } = useAuth()
   const { t } = useTranslation()
 
   const [workspaceName, setWorkspaceName] = useState('')

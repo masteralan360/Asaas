@@ -373,7 +373,7 @@ export function Layout({ children }: LayoutProps) {
         }
 
         const update = () => {
-            const remaining = new Date(features.subscription_expires_at).getTime() - Date.now()
+            const remaining = new Date(features.subscription_expires_at!).getTime() - Date.now()
             setDemoRemainingSec(Math.max(0, Math.floor(remaining / 1000)))
         }
 
