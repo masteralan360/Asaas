@@ -1038,7 +1038,11 @@ export function Sales() {
                                 quantity: allocation.quantity,
                                 expiryDate: allocation.expiry_date ?? null,
                                 manufacturingDate: allocation.manufacturing_date ?? null
-                            }))
+                            })),
+                            returnReason: reason,
+                            isReturned: newReturnedQty >= item.quantity,
+                            returnedAt: returnTimestamp,
+                            returnedBy: user?.id
                         } as any)
                     }))
                     if (selectedSale?.id === saleToReturn.id) {
@@ -1125,7 +1129,11 @@ export function Sales() {
                                 quantity: allocation.quantity,
                                 expiryDate: allocation.expiry_date ?? null,
                                 manufacturingDate: allocation.manufacturing_date ?? null
-                            }))
+                            })),
+                            returnReason: reason,
+                            isReturned: true,
+                            returnedAt: returnTimestamp,
+                            returnedBy: user?.id
                         } as any)
                     ))
                     if (shouldQueueOfflineReturn) {
@@ -1226,7 +1234,11 @@ export function Sales() {
                                 quantity: allocation.quantity,
                                 expiryDate: allocation.expiry_date ?? null,
                                 manufacturingDate: allocation.manufacturing_date ?? null
-                            }))
+                            })),
+                            returnReason: reason,
+                            isReturned: newReturnedQty >= item.quantity,
+                            returnedAt: returnTimestamp,
+                            returnedBy: user?.id
                         } as any)
                     }))
                     if (selectedSale?.id === saleToReturn.id) {
@@ -1306,7 +1318,11 @@ export function Sales() {
                                 quantity: allocation.quantity,
                                 expiryDate: allocation.expiry_date ?? null,
                                 manufacturingDate: allocation.manufacturing_date ?? null
-                            }))
+                            })),
+                            returnReason: reason,
+                            isReturned: true,
+                            returnedAt: returnTimestamp,
+                            returnedBy: user?.id
                         } as any)
                     ))
                     if (selectedSale?.id === saleToReturn.id) {
