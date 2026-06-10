@@ -1756,7 +1756,13 @@
         "damagedProduct": "بەرهەمی تێکچوو",
         "duplicateSale": "فرۆشتنی دووبارە",
         "other": "تر"
-      }
+      },
+      "partialReturnInfo": "زانیاری گەڕاندنەوەی بەشەکی",
+      "remaining": "ماوە",
+      "returnedAmount": "بڕی گەڕێندراوە",
+      "reason": "هۆکاری گەڕاندنەوە",
+      "returnedAt": "گەڕێندرایەوە لە",
+      "returnedBy": "گەڕێندراوەتەوە لەلایەن"
     },
     "multiCurrencyTransaction": "مامەڵەی فرە دراوی",
     "marketRatesSnapshot": "وێنەی خێرای نرخەکانی بازاڕ",

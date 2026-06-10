@@ -7,6 +7,7 @@ import { getLoanDetailsPath } from '@/lib/loanPresentation'
 import { localizeReturnReason } from '@/lib/returnReasons'
 import { whatsappManager } from '@/lib/whatsappWebviewManager'
 import { WhatsAppNumberInputModal } from '@/ui/components/modals/WhatsAppNumberInputModal'
+import { PartialReturnInfoModal } from '@/ui/components/PartialReturnInfoModal'
 import { useTheme } from '@/ui/components/theme-provider'
 import { type Loan, useLoanBySaleId } from '@/local-db'
 import {
@@ -26,7 +27,7 @@ import {
     TooltipTrigger,
     TooltipProvider
 } from '@/ui/components'
-import { RotateCcw, ArrowRight, XCircle, MessageCircle, CircleDollarSign, TrendingUp, Download } from 'lucide-react'
+import { RotateCcw, ArrowRight, XCircle, MessageCircle, CircleDollarSign, TrendingUp, Download, CircleAlert } from 'lucide-react'
 import { isMobile } from '@/lib/platform'
 import { useAuth } from '@/auth'
 import { useWorkspace } from '@/workspace'
@@ -77,6 +78,7 @@ export function SaleDetailsModal({ sale, isOpen, onClose, onReturnItem, onReturn
     const { user } = useAuth()
     const { features, hasCapability } = useWorkspace()
     const [showWhatsAppModal, setShowWhatsAppModal] = useState(false)
+    const [partialReturnItem, setPartialReturnItem] = useState<SaleItem | null>(null)
     const [, setLocation] = useLocation()
     const { style } = useTheme()
     const linkedLoan = useLoanBySaleId(sale?.id, user?.workspaceId)
@@ -552,6 +554,15 @@ export function SaleDetailsModal({ sale, isOpen, onClose, onReturnItem, onReturn
                                                             {t('sales.return.partialReturn')}
                                                         </span>
                                                     )}
+                                                    {hasItemPartialReturn && !isItemReturned && (
+                                                        <button
+                                                            onClick={(e) => { e.stopPropagation(); setPartialReturnItem(item) }}
+                                                            className="h-5 w-5 p-0 inline-flex items-center justify-center text-orange-600 hover:text-orange-700 hover:bg-orange-100 rounded-full transition-colors"
+                                                            title={t('sales.return.partialReturnInfo') || 'Partial Return Information'}
+                                                        >
+                                                            <CircleAlert className="h-3.5 w-3.5" />
+                                                        </button>
+                                                    )}
                                                 </div>
                                             </div>
 
@@ -745,6 +756,15 @@ export function SaleDetailsModal({ sale, isOpen, onClose, onReturnItem, onReturn
                                                                 {t('sales.return.partialReturn')}
                                                             </span>
                                                         )}
+                                                        {hasItemPartialReturn && !isItemReturned && (
+                                                            <button
+                                                                onClick={(e) => { e.stopPropagation(); setPartialReturnItem(item) }}
+                                                                className="h-5 w-5 p-0 inline-flex items-center justify-center text-orange-600 hover:text-orange-700 hover:bg-orange-100 rounded-full transition-colors"
+                                                                title={t('sales.return.partialReturnInfo') || 'Partial Return Information'}
+                                                            >
+                                                                <CircleAlert className="h-3.5 w-3.5" />
+                                                            </button>
+                                                        )}
                                                         {hasNegotiated && (
                                                             <span className="inline-flex items-center px-1.5 py-0.5 text-[9px] font-bold bg-emerald-500/15 text-emerald-600 rounded whitespace-nowrap leading-none">
                                                                 {t('pos.negotiatedPrice') || 'Negotiated Price'}
@@ -903,6 +923,15 @@ export function SaleDetailsModal({ sale, isOpen, onClose, onReturnItem, onReturn
                 isOpen={showWhatsAppModal}
                 onClose={() => setShowWhatsAppModal(false)}
                 onConfirm={handleShareOnWhatsApp}
+            />
+
+            <PartialReturnInfoModal
+                item={partialReturnItem!}
+                isOpen={partialReturnItem !== null}
+                onClose={() => setPartialReturnItem(null)}
+                settlementCurrency={sale.settlement_currency}
+                iqdDisplayPreference={features.iqd_display_preference}
+                workspaceId={user?.workspaceId}
             />
         </Dialog>
     )

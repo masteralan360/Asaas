@@ -1779,7 +1779,13 @@
         "damagedProduct": "منتج تالف",
         "duplicateSale": "بيع مكرر",
         "other": "أخرى"
-      }
+      },
+      "partialReturnInfo": "معلومات الإرجاع الجزئي",
+      "remaining": "المتبقي",
+      "returnedAmount": "المبلغ المرتجع",
+      "reason": "سبب الإرجاع",
+      "returnedAt": "تاريخ الإرجاع",
+      "returnedBy": "تم الإرجاع بواسطة"
     },
     "multiCurrencyTransaction": "معاملة متعددة العملات",
     "marketRatesSnapshot": "لقطة لأسعار السوق",

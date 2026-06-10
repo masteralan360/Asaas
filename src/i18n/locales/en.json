@@ -2500,7 +2500,13 @@
         "damagedProduct": "Damaged product",
         "duplicateSale": "Duplicate sale",
         "other": "Other"
-      }
+      },
+      "partialReturnInfo": "Partial Return Information",
+      "remaining": "Remaining",
+      "returnedAmount": "Returned Amount",
+      "reason": "Return Reason",
+      "returnedAt": "Returned At",
+      "returnedBy": "Returned By"
     },
     "multiCurrencyTransaction": "Multi-Currency Transaction",
     "marketRatesSnapshot": "Market Rates Snapshot",
