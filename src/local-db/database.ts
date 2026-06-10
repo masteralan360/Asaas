@@ -51,6 +51,7 @@ import type {
   ClinicalPatient,
   ClinicalAttachment,
   ClinicalPreset,
+  Profile,
 } from "./models";
 import { isLocalWorkspaceMode } from "@/workspace/workspaceMode";
 import {
@@ -339,6 +340,7 @@ export class AtlasDatabase extends Dexie {
   clinical_patients!: EntityTable<ClinicalPatient, "id">;
   clinical_attachments!: EntityTable<ClinicalAttachment, "id">;
   clinical_presets!: EntityTable<ClinicalPreset, "id">;
+  profiles!: EntityTable<Profile, "id">;
 
   constructor() {
     super("AtlasDatabase");

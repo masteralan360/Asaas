@@ -12,14 +12,14 @@ import {
 } from '@/ui/components'
 import { RotateCcw, CircleAlert } from 'lucide-react'
 import { useTheme } from '@/ui/components/theme-provider'
-import { useWorkspaceUsers } from '@/local-db'
+import { useWorkspaceUsers, type IQDDisplayPreference } from '@/local-db'
 
 interface PartialReturnInfoModalProps {
     item: SaleItem
     isOpen: boolean
     onClose: () => void
     settlementCurrency?: string
-    iqdDisplayPreference?: 'dynamic' | 'always_3' | 'always_0'
+    iqdDisplayPreference?: IQDDisplayPreference
     workspaceId?: string
 }
 
