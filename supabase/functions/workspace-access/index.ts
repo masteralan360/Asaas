@@ -216,7 +216,6 @@ type BranchSourceWorkspace = WorkspaceMetadataRow & {
     print_qr?: boolean | null
     receipt_template?: string | null
     a4_template?: string | null
-    print_quality?: string | null
     subscription_expires_at?: string | null
     visibility?: string | null
     store_slug?: string | null
@@ -244,7 +243,6 @@ const BRANCH_SOURCE_SELECT_COLUMNS = [
     'print_qr',
     'receipt_template',
     'a4_template',
-    'print_quality',
     'subscription_expires_at',
     'visibility',
     'store_slug',
@@ -1083,7 +1081,6 @@ async function handleCreateBranch(
         print_qr: sourceWorkspace.print_qr ?? false,
         receipt_template: sourceWorkspace.receipt_template ?? 'primary',
         a4_template: sourceWorkspace.a4_template ?? 'primary',
-        print_quality: sourceWorkspace.print_quality ?? 'high',
         subscription_expires_at: sourceWorkspace.subscription_expires_at ?? null,
         visibility: 'private',
         store_slug: null,

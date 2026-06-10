@@ -196,9 +196,8 @@ export function SimpleLoanListView({
             element: renderSimpleLoanListTemplate(effectiveId),
             format,
             printLang,
-            printQuality: features.print_quality
         })
-    }, [features.print_quality, printLang, renderSimpleLoanListTemplate])
+    }, [printLang, renderSimpleLoanListTemplate])
 
     const simpleLoanListPreview = useMemo<TemplatePreview | undefined>(() => ({
         fields: [
@@ -232,9 +231,8 @@ export function SimpleLoanListView({
             element,
             format: 'a4',
             printLang: printLangOverride || printLang,
-            printQuality: features.print_quality,
         }),
-    }), [workspaceName, printLang, filtered, filter, features.default_currency, features.iqd_display_preference, metrics, features.logo_url, buildQrValue, features.print_quality, t])
+    }), [workspaceName, printLang, filtered, filter, features.default_currency, features.iqd_display_preference, metrics, features.logo_url, buildQrValue, t])
 
     const loanPrintInstallments = useLoanInstallments(loanToPrint?.id, workspaceId)
     const loanPrintPayments = useLoanPayments(loanToPrint?.id, workspaceId)
@@ -260,9 +258,8 @@ export function SimpleLoanListView({
             element: template,
             format,
             printLang,
-            printQuality: features.print_quality
         })
-    }, [features.print_quality, printLang, renderLoanPrintTemplate])
+    }, [printLang, renderLoanPrintTemplate])
 
     const simpleLoanDetailsPreview = useMemo<TemplatePreview | undefined>(() => {
         if (!loanToPrint) return undefined
@@ -287,7 +284,6 @@ export function SimpleLoanListView({
                 element,
                 format: 'a4',
                 printLang: printLangOverride || printLang,
-                printQuality: features.print_quality,
             }),
         }
     }, [loanToPrint, workspaceName, printLang, features, loanPrintInstallments, loanPrintPayments, t, buildQrValue])

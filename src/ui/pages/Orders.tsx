@@ -1925,7 +1925,6 @@ function OrdersListView({ workspaceId }: { workspaceId: string }) {
                         ),
                         format,
                         printLang,
-                        printQuality: features.print_quality
                     })
                 }}
                 printTemplate={() => {

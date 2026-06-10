@@ -43,7 +43,6 @@ interface PDFGeneratorOptions {
     features: {
         logo_url?: string | null
         iqd_display_preference?: string
-        print_quality?: 'low' | 'high'
         print_lang?: string
         a4_template?: string
     }
@@ -57,7 +56,6 @@ interface TemplatePdfOptions {
     element: ReactElement
     format?: PrintFormat
     printLang?: string
-    printQuality?: 'low' | 'high'
 }
 
 const A4_WIDTH_MM = 210
@@ -85,7 +83,7 @@ async function waitForImages(container: HTMLElement) {
     })))
 }
 
-async function renderToCanvas(element: ReturnType<typeof createElement>, widthMm: number, quality: 'low' | 'high' = 'low'): Promise<RenderResult> {
+async function renderToCanvas(element: ReturnType<typeof createElement>, widthMm: number): Promise<RenderResult> {
     const { default: html2canvas } = await import('html2canvas')
     const container = document.createElement('div')
     container.id = 'pdf-render-container'
@@ -111,8 +109,8 @@ async function renderToCanvas(element: ReturnType<typeof createElement>, widthMm
     await waitForImages(container)
 
     const HIGH_SCALE = 6 // Higher scale for perfect QR pixel capture
-    const LOW_SCALE = quality === 'high' ? 2.5 : 1.25
-    const JPEG_QUALITY = quality === 'high' ? 0.9 : 0.6
+    const LOW_SCALE = 2.5
+    const JPEG_QUALITY = 0.9
 
     let sharpZones: { x: number, y: number, width: number, height: number }[] = []
 
@@ -296,7 +294,7 @@ export async function generateInvoicePdf(options: PDFGeneratorOptions): Promise<
                 })
             )
         )
-        const renderResult = await renderToCanvas(element, RECEIPT_WIDTH_MM, features?.print_quality)
+        const renderResult = await renderToCanvas(element, RECEIPT_WIDTH_MM)
         const { jsPDF } = await import('jspdf')
         return canvasToReceiptPdf(renderResult, jsPDF)
     }
@@ -337,7 +335,7 @@ export async function generateInvoicePdf(options: PDFGeneratorOptions): Promise<
                 workspaceFooterContacts
             })
     )
-    const renderResult = await renderToCanvas(element, A4_WIDTH_MM, features?.print_quality)
+    const renderResult = await renderToCanvas(element, A4_WIDTH_MM)
     const { jsPDF } = await import('jspdf')
     return canvasToA4Pdf(renderResult, jsPDF)
 
@@ -350,7 +348,6 @@ export async function generateTemplatePdf({
     element,
     format = 'a4',
     printLang,
-    printQuality
 }: TemplatePdfOptions): Promise<Blob> {
     if (!i18n.isInitialized) {
         await new Promise(resolve => i18n.on('initialized', resolve))
@@ -363,7 +360,7 @@ export async function generateTemplatePdf({
     const wrappedElement = createElement(I18nextProvider, { i18n: pdfI18n }, element)
 
     const widthMm = format === 'receipt' ? RECEIPT_WIDTH_MM : A4_WIDTH_MM
-    const renderResult = await renderToCanvas(wrappedElement, widthMm, printQuality)
+    const renderResult = await renderToCanvas(wrappedElement, widthMm)
     const { jsPDF } = await import('jspdf')
 
     return format === 'receipt' ? canvasToReceiptPdf(renderResult, jsPDF) : canvasToA4Pdf(renderResult, jsPDF)

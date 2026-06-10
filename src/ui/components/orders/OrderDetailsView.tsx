@@ -225,7 +225,6 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                     element,
                     format: 'a4',
                     printLang,
-                    printQuality: features.print_quality,
                 })
             },
         }
@@ -824,7 +823,6 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                         ),
                         format,
                         printLang,
-                        printQuality: features.print_quality
                     })
                 }}
                 printTemplate={() => {

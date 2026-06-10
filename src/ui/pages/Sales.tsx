@@ -637,9 +637,8 @@ export function Sales() {
             element: loanTemplate,
             format,
             printLang,
-            printQuality: features.print_quality
         })
-    }, [features.print_quality, printLang, renderLoanPrintTemplate, renderLoanReceiptTemplate])
+    }, [printLang, renderLoanPrintTemplate, renderLoanReceiptTemplate])
 
 
     useEffect(() => {

@@ -742,9 +742,8 @@ export function Budget() {
             element: renderBudgetPrintTemplate(effectiveId, printLangOverride),
             format,
             printLang: printLangOverride || printLang,
-            printQuality: features.print_quality
         })
-    }, [features.print_quality, printLang, renderBudgetPrintTemplate])
+    }, [printLang, renderBudgetPrintTemplate])
     const budgetReportInvoiceData = useMemo(() => ({
         totalAmount: totalAllocatedBase + dividendResult.totalBase,
         settlementCurrency: baseCurrency,
@@ -777,9 +776,8 @@ export function Budget() {
             element,
             format: 'a4',
             printLang: printLangOverride || printLang,
-            printQuality: features.print_quality,
         }),
-    }), [workspaceName, printLang, selectedMonthLabel, baseCurrency, iqdPreference, expenseRows, payrollItems, dividendResult.items, budgetPrintMetrics, features.logo_url, buildQrValue, t, features.print_quality])
+    }), [workspaceName, printLang, selectedMonthLabel, baseCurrency, iqdPreference, expenseRows, payrollItems, dividendResult.items, budgetPrintMetrics, features.logo_url, buildQrValue, t])
 
     const handleSaveStartMonth = async () => {
         if (!workspaceId) return

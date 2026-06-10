@@ -79,7 +79,7 @@ export interface WorkspaceFeatures {
     print_qr: boolean
     receipt_template: 'primary' | 'modern'
     a4_template: 'primary' | 'modern'
-    print_quality: 'low' | 'high'
+    print_quality: 'high'
     thermal_printing: boolean
     subscription_expires_at: string | null
     upload_limit_mb: number | null
@@ -119,7 +119,7 @@ interface WorkspaceContextType {
     hasFeature: (feature: ModuleFeatureKey) => boolean
     hasCapability: (capability: PlanCapabilityKey) => boolean
     refreshFeatures: () => Promise<void>
-    updateSettings: (settings: Partial<Pick<WorkspaceFeatures, 'default_currency' | 'iqd_display_preference' | 'allow_whatsapp' | 'kds_enabled' | 'instant_pos' | 'logo_url' | 'coordination' | 'print_lang' | 'print_qr' | 'receipt_template' | 'a4_template' | 'print_quality' | 'thermal_printing' | 'visibility' | 'store_slug' | 'store_description' | 'upload_limit_mb'>> & { name?: string }) => Promise<void>
+    updateSettings: (settings: Partial<Pick<WorkspaceFeatures, 'default_currency' | 'iqd_display_preference' | 'allow_whatsapp' | 'kds_enabled' | 'instant_pos' | 'logo_url' | 'coordination' | 'print_lang' | 'print_qr' | 'receipt_template' | 'a4_template' | 'thermal_printing' | 'visibility' | 'store_slug' | 'store_description' | 'upload_limit_mb'>> & { name?: string }) => Promise<void>
     switchDataMode: (newMode: 'cloud' | 'hybrid') => Promise<{ error: string | null }>
     activeWorkspace: { id: string } | undefined
 }
@@ -212,7 +212,7 @@ const defaultFeatures: WorkspaceFeatures = {
     print_qr: false,
     receipt_template: 'primary',
     a4_template: 'primary',
-    print_quality: 'high',
+    print_quality: 'high' as const,
     thermal_printing: false,
     subscription_expires_at: null,
     upload_limit_mb: null,
@@ -241,7 +241,6 @@ const WORKSPACE_FEATURE_COLUMNS = [
     'print_qr',
     'receipt_template',
     'a4_template',
-    'print_quality',
     'subscription_expires_at',
     'upload_limit_mb',
     'visibility',
@@ -292,9 +291,7 @@ function mergeWorkspaceFeatures(
         thermal_printing: capSet.has('thermalPrinter')
             ? features?.thermal_printing ?? defaultFeatures.thermal_printing
             : false,
-        print_quality: capSet.has('a4PdfInvoices')
-            ? features?.print_quality ?? defaultFeatures.print_quality
-            : 'low',
+        print_quality: 'high' as const,
         instant_pos: resolvedCapabilities.modules.includes('instant_pos')
             ? features?.instant_pos ?? defaultFeatures.instant_pos
             : false,
@@ -337,7 +334,7 @@ function getFeaturesFromLocalWorkspace(localWorkspace: Workspace): WorkspaceFeat
         print_qr: localWorkspace.print_qr ?? false,
         receipt_template: localWorkspace.receipt_template ?? 'primary',
         a4_template: localWorkspace.a4_template ?? 'primary',
-        print_quality: localWorkspace.print_quality ?? 'high',
+        print_quality: 'high' as const,
         thermal_printing: localWorkspace.thermal_printing ?? false,
         subscription_expires_at: localWorkspace.subscription_expires_at ?? null,
         upload_limit_mb: localWorkspace.upload_limit_mb ?? null,
@@ -476,7 +473,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             print_qr: nextFeatures.print_qr,
             receipt_template: nextFeatures.receipt_template,
             a4_template: nextFeatures.a4_template,
-            print_quality: nextFeatures.print_quality,
+            print_quality: 'high' as const,
             thermal_printing: nextFeatures.thermal_printing,
             subscription_expires_at: nextFeatures.subscription_expires_at,
             upload_limit_mb: nextFeatures.upload_limit_mb,
@@ -629,7 +626,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                 print_qr: workspaceRow.print_qr ?? currentFeatures.print_qr,
                 receipt_template: workspaceRow.receipt_template ?? currentFeatures.receipt_template,
                 a4_template: workspaceRow.a4_template ?? currentFeatures.a4_template,
-                print_quality: workspaceRow.print_quality ?? currentFeatures.print_quality,
+                print_quality: 'high' as const,
                 thermal_printing: localThermalPrinting,
                 subscription_expires_at: workspaceRow.subscription_expires_at ?? currentFeatures.subscription_expires_at,
                 upload_limit_mb: workspaceRow.upload_limit_mb ?? null,
@@ -808,7 +805,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                             print_qr: data.print_qr ?? currentFeatures.print_qr,
                             receipt_template: data.receipt_template ?? currentFeatures.receipt_template,
                             a4_template: data.a4_template ?? currentFeatures.a4_template,
-                            print_quality: data.print_quality ?? currentFeatures.print_quality,
+                            print_quality: 'high' as const,
                             thermal_printing: currentFeatures.thermal_printing,
                             subscription_expires_at: data.subscription_expires_at ?? currentFeatures.subscription_expires_at,
                             visibility: data.visibility ?? currentFeatures.visibility,
@@ -928,7 +925,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     }
 
     const updateSettings = async (
-        settings: Partial<Pick<WorkspaceFeatures, 'default_currency' | 'iqd_display_preference' | 'allow_whatsapp' | 'kds_enabled' | 'instant_pos' | 'logo_url' | 'coordination' | 'print_lang' | 'print_qr' | 'receipt_template' | 'a4_template' | 'print_quality' | 'thermal_printing' | 'visibility' | 'store_slug' | 'store_description' | 'upload_limit_mb'>> & { name?: string }
+        settings: Partial<Pick<WorkspaceFeatures, 'default_currency' | 'iqd_display_preference' | 'allow_whatsapp' | 'kds_enabled' | 'instant_pos' | 'logo_url' | 'coordination' | 'print_lang' | 'print_qr' | 'receipt_template' | 'a4_template' | 'thermal_printing' | 'visibility' | 'store_slug' | 'store_description' | 'upload_limit_mb'>> & { name?: string }
     ) => {
         const workspaceId = user?.workspaceId
         if (!workspaceId) return
@@ -1014,7 +1011,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                 print_qr: newFeatures.print_qr,
                 receipt_template: newFeatures.receipt_template,
                 a4_template: newFeatures.a4_template,
-                print_quality: newFeatures.print_quality,
+                print_quality: 'high' as const,
                 thermal_printing: newFeatures.thermal_printing,
                 subscription_expires_at: newFeatures.subscription_expires_at,
                 upload_limit_mb: newFeatures.upload_limit_mb,

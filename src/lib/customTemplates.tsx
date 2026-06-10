@@ -287,7 +287,6 @@ function createRealEstateContractPreview(
         buildPdf: (element) => generateTemplatePdf({
             element,
             printLang: 'ku',
-            printQuality: options.features?.print_quality
         })
     }
 }
@@ -466,6 +465,5 @@ export async function buildCustomTemplateLayoutPdf({
         element,
         format: 'a4',
         printLang: preview.fixedPrintLang,
-        printQuality: options?.features?.print_quality
     })
 }

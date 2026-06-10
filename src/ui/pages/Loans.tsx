@@ -242,9 +242,8 @@ function LoanListView({
             element: renderLoanListTemplate(effectiveId, printLangOverride),
             format,
             printLang: printLangOverride || printLang,
-            printQuality: features.print_quality
         })
-    }, [features.print_quality, printLang, renderLoanListTemplate])
+    }, [printLang, renderLoanListTemplate])
 
     const loanListPreview = useMemo<TemplatePreview | undefined>(() => ({
         fields: [
@@ -272,9 +271,8 @@ function LoanListView({
             element,
             format: 'a4',
             printLang: printLangOverride || printLang,
-            printQuality: features.print_quality,
         }),
-    }), [workspaceName, printLang, filtered, filter, currency, iqdPreference, metrics, features.logo_url, buildQrValue, features.print_quality])
+    }), [workspaceName, printLang, filtered, filter, currency, iqdPreference, metrics, features.logo_url, buildQrValue])
 
     const loanPrintInstallments = useLoanInstallments(loanToPrint?.id, workspaceId)
     const loanPrintPayments = useLoanPayments(loanToPrint?.id, workspaceId)
@@ -300,9 +298,8 @@ function LoanListView({
             element: template,
             format,
             printLang: printLangOverride || printLang,
-            printQuality: features.print_quality
         })
-    }, [features.print_quality, printLang, renderLoanPrintTemplate])
+    }, [printLang, renderLoanPrintTemplate])
 
     const loanDetailsPreview = useMemo<TemplatePreview | undefined>(() => {
         if (!loanToPrint) return undefined
@@ -327,7 +324,6 @@ function LoanListView({
                 element,
                 format: 'a4',
                 printLang: printLangOverride || printLang,
-                printQuality: features.print_quality,
             }),
         }
     }, [loanToPrint, workspaceName, printLang, features, loanPrintInstallments, loanPrintPayments, t, buildQrValue])
@@ -908,9 +904,8 @@ function LoanDetailsView({
             element: loanDetailsTemplate,
             format,
             printLang: printLangOverride || printLang,
-            printQuality: features.print_quality
         })
-    }, [features.print_quality, printLang, renderLoanDetailsTemplate])
+    }, [printLang, renderLoanDetailsTemplate])
 
     const loanDetailsInvoiceData = useMemo(() => {
         if (!loan) return null
@@ -969,7 +964,6 @@ function LoanDetailsView({
                 element,
                 format: 'a4',
                 printLang: printLangOverride || printLang,
-                printQuality: features.print_quality,
             }),
         }
     }, [loan, workspaceName, printLang, features, installments, payments, t, buildQrValue])
