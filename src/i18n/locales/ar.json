@@ -1781,6 +1781,7 @@
         "other": "أخرى"
       },
       "partialReturnInfo": "معلومات الإرجاع الجزئي",
+      "returnedInfo": "معلومات الإرجاع",
       "remaining": "المتبقي",
       "returnedAmount": "المبلغ المرتجع",
       "reason": "سبب الإرجاع",

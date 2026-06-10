@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { SaleItem } from '@/types'
+import { Sale, SaleItem } from '@/types'
 import { formatCurrency, formatDateTime, cn } from '@/lib/utils'
 import { localizeReturnReason } from '@/lib/returnReasons'
 import {
@@ -21,6 +21,7 @@ interface PartialReturnInfoModalProps {
     settlementCurrency?: string
     iqdDisplayPreference?: IQDDisplayPreference
     workspaceId?: string
+    sale?: Sale
 }
 
 export function PartialReturnInfoModal({
@@ -30,6 +31,7 @@ export function PartialReturnInfoModal({
     settlementCurrency = 'usd',
     iqdDisplayPreference,
     workspaceId,
+    sale,
 }: PartialReturnInfoModalProps) {
     const { t, i18n } = useTranslation()
     const { style } = useTheme()
@@ -38,13 +40,14 @@ export function PartialReturnInfoModal({
 
     if (!item) return null
 
+    const isFullyReturned = item.is_returned
     const displayCurrency = settlementCurrency as any
-    const returnedQty = item.returned_quantity || 0
+    const returnedQty = item.returned_quantity || (isFullyReturned ? item.quantity : 0)
     const originalQty = item.quantity || 0
     const netQty = Math.max(0, originalQty - returnedQty)
 
     const localizedReason = localizeReturnReason(
-        item.return_reason,
+        item.return_reason || sale?.return_reason,
         i18n,
         i18n.language,
         t('invoice.refund.notProvided') || 'Not provided'
@@ -53,19 +56,28 @@ export function PartialReturnInfoModal({
     const unitPrice = item.converted_unit_price || item.unit_price || 0
     const returnedAmount = unitPrice * returnedQty
 
+    const returnTimestamp = item.returned_at || sale?.returned_at
+    const returnedBy = item.returned_by || sale?.returned_by
+
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
             <DialogContent className={cn(
                 "max-w-md w-[95vw] sm:w-full max-h-[90vh] overflow-y-auto shadow-2xl animate-in fade-in zoom-in duration-300",
                 "rounded-[2rem] border-[3px] border-orange-500/50 bg-background/95 backdrop-blur-3xl",
+                isFullyReturned && "border-destructive/50",
                 style === 'neo-orange' && "neo-border rounded-none"
             )}>
                 <DialogHeader>
                     <DialogTitle className="text-xl font-black text-foreground tracking-tight flex items-center gap-2">
-                        <div className="p-1.5 rounded-xl bg-orange-500/15 text-orange-600 dark:text-orange-400">
+                        <div className={cn(
+                            "p-1.5 rounded-xl",
+                            isFullyReturned ? "bg-destructive/15 text-destructive" : "bg-orange-500/15 text-orange-600 dark:text-orange-400"
+                        )}>
                             <RotateCcw className="w-5 h-5" />
                         </div>
-                        {t('sales.return.partialReturnInfo') || 'Partial Return Information'}
+                        {isFullyReturned
+                            ? (t('sales.return.returnedInfo') || 'Return Information')
+                            : (t('sales.return.partialReturnInfo') || 'Partial Return Information')}
                     </DialogTitle>
                 </DialogHeader>
 
@@ -89,11 +101,20 @@ export function PartialReturnInfoModal({
                             </div>
                             <div className="mt-1 text-lg font-black">{originalQty}</div>
                         </div>
-                        <div className="rounded-xl border border-orange-500/30 bg-orange-500/5 p-3 text-center">
-                            <div className="text-[10px] uppercase font-bold tracking-wider text-orange-600 dark:text-orange-400">
+                        <div className={cn(
+                            "rounded-xl border p-3 text-center",
+                            isFullyReturned ? "border-destructive/30 bg-destructive/5" : "border-orange-500/30 bg-orange-500/5"
+                        )}>
+                            <div className={cn(
+                                "text-[10px] uppercase font-bold tracking-wider",
+                                isFullyReturned ? "text-destructive" : "text-orange-600 dark:text-orange-400"
+                            )}>
                                 {t('sales.return.returnedLabel') || 'Returned'}
                             </div>
-                            <div className="mt-1 text-lg font-black text-orange-600 dark:text-orange-400">
+                            <div className={cn(
+                                "mt-1 text-lg font-black",
+                                isFullyReturned ? "text-destructive" : "text-orange-600 dark:text-orange-400"
+                            )}>
                                 -{returnedQty}
                             </div>
                         </div>
@@ -129,25 +150,25 @@ export function PartialReturnInfoModal({
                     </div>
 
                     {/* Returned At */}
-                    {item.returned_at && (
+                    {returnTimestamp && (
                         <div className="rounded-xl border border-border/50 bg-card p-4 space-y-1">
                             <div className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">
                                 {t('sales.return.returnedAt') || 'Returned At'}
                             </div>
                             <div className="font-semibold text-sm">
-                                {formatDateTime(item.returned_at)}
+                                {formatDateTime(returnTimestamp)}
                             </div>
                         </div>
                     )}
 
                     {/* Returned By */}
-                    {item.returned_by && (
+                    {returnedBy && (
                         <div className="rounded-xl border border-border/50 bg-card p-4 space-y-1">
                             <div className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">
                                 {t('sales.return.returnedBy') || 'Returned By'}
                             </div>
                             <div className="font-semibold text-sm">
-                                {userMap.get(item.returned_by) || item.returned_by}
+                                {userMap.get(returnedBy) || returnedBy}
                             </div>
                         </div>
                     )}

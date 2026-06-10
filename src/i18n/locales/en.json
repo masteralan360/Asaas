@@ -2502,6 +2502,7 @@
         "other": "Other"
       },
       "partialReturnInfo": "Partial Return Information",
+      "returnedInfo": "Return Information",
       "remaining": "Remaining",
       "returnedAmount": "Returned Amount",
       "reason": "Return Reason",

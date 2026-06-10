@@ -549,6 +549,15 @@ export function SaleDetailsModal({ sale, isOpen, onClose, onReturnItem, onReturn
                                                             {t('sales.return.returnedStatus')}
                                                         </span>
                                                     )}
+                                                    {isItemReturned && !hasItemPartialReturn && (
+                                                        <button
+                                                            onClick={(e) => { e.stopPropagation(); setPartialReturnItem(item) }}
+                                                            className="h-5 w-5 p-0 inline-flex items-center justify-center text-destructive hover:text-destructive/70 hover:bg-destructive/10 rounded-full transition-colors"
+                                                            title={t('sales.return.returnedInfo') || 'Return Information'}
+                                                        >
+                                                            <CircleAlert className="h-3.5 w-3.5" />
+                                                        </button>
+                                                    )}
                                                     {hasItemPartialReturn && !isItemReturned && (
                                                         <span className="px-1.5 py-0.5 text-[8px] font-black bg-orange-500/10 text-orange-600 rounded-full uppercase">
                                                             {t('sales.return.partialReturn')}
@@ -751,6 +760,15 @@ export function SaleDetailsModal({ sale, isOpen, onClose, onReturnItem, onReturn
                                                                 {t('sales.return.returnedStatus')}
                                                             </span>
                                                         )}
+                                                        {isItemReturned && !hasItemPartialReturn && (
+                                                            <button
+                                                                onClick={(e) => { e.stopPropagation(); setPartialReturnItem(item) }}
+                                                                className="h-5 w-5 p-0 inline-flex items-center justify-center text-destructive hover:text-destructive/70 hover:bg-destructive/10 rounded-full transition-colors"
+                                                                title={t('sales.return.returnedInfo') || 'Return Information'}
+                                                            >
+                                                                <CircleAlert className="h-3.5 w-3.5" />
+                                                            </button>
+                                                        )}
                                                         {hasItemPartialReturn && !isItemReturned && (
                                                             <span className="px-1.5 py-0.5 text-[9px] font-bold bg-orange-500/10 text-orange-600 rounded-full uppercase">
                                                                 {t('sales.return.partialReturn')}
@@ -932,6 +950,7 @@ export function SaleDetailsModal({ sale, isOpen, onClose, onReturnItem, onReturn
                 settlementCurrency={sale.settlement_currency}
                 iqdDisplayPreference={features.iqd_display_preference}
                 workspaceId={user?.workspaceId}
+                sale={sale}
             />
         </Dialog>
     )
