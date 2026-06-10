@@ -1020,6 +1020,9 @@ export function Sales() {
                             ; (existingLocal as any)._enrichedItems = updatedSale.items
                             ; (existingLocal as any).totalAmount = updatedSale.totalAmount
                             ; (existingLocal as any).isReturned = updatedSale.is_returned
+                            ; (existingLocal as any).returnReason = reason
+                            ; (existingLocal as any).returnedAt = returnTimestamp
+                            ; (existingLocal as any).returnedBy = user?.id
                             ; (existingLocal as any).updatedAt = returnTimestamp
                         if (shouldQueueOfflineReturn) {
                             ; (existingLocal as any).syncStatus = 'pending'
@@ -1099,6 +1102,7 @@ export function Sales() {
                             ; (existingLocal as any).totalAmount = 0
                             ; (existingLocal as any).returnReason = reason
                             ; (existingLocal as any).returnedAt = returnTimestamp
+                            ; (existingLocal as any).returnedBy = user?.id
                             ; (existingLocal as any).updatedAt = returnTimestamp
                         const updatedItems = ((existingLocal as any)._enrichedItems || []).map((i: any, index: number) => ({
                             ...i,
@@ -1220,6 +1224,9 @@ export function Sales() {
                             ; (existingLocal as any)._enrichedItems = updatedSale.items
                             ; (existingLocal as any).totalAmount = updatedSale.totalAmount
                             ; (existingLocal as any).isReturned = updatedSale.is_returned
+                            ; (existingLocal as any).returnReason = reason
+                            ; (existingLocal as any).returnedAt = returnTimestamp
+                            ; (existingLocal as any).returnedBy = user?.id
                             ; (existingLocal as any).updatedAt = returnTimestamp
                         await db.sales.put(existingLocal)
                     }
@@ -1295,6 +1302,7 @@ export function Sales() {
                             ; (existingLocal as any).totalAmount = 0
                             ; (existingLocal as any).returnReason = reason
                             ; (existingLocal as any).returnedAt = returnTimestamp
+                            ; (existingLocal as any).returnedBy = user?.id
                             ; (existingLocal as any).updatedAt = returnTimestamp
                         const updatedItems = ((existingLocal as any)._enrichedItems || []).map((i: any, index: number) => ({
                             ...i,
@@ -1331,7 +1339,7 @@ export function Sales() {
                     await recordReturnLoanPayment(saleToReturn.total_amount)
                 }
             }
-
+        
             if (error) throw normalizeSupabaseActionError(error)
 
             // Close modal and refresh — local-db handles reactivity via useLiveQuery
