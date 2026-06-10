@@ -1203,7 +1203,13 @@ async function handleSwitchBranch(
         .eq('id', user.id)
 
     if (profileError) {
-        return errorResponse(profileError.message, 500)
+        console.error('[workspace-access] handleSwitchBranch profile update failed', {
+            userId: user.id,
+            targetWorkspaceId: targetWorkspace.id,
+            error: profileError.message
+        })
+        const isMemberLimit = profileError.message?.toLowerCase().includes('member limit')
+        return errorResponse(profileError.message, isMemberLimit ? 403 : 500)
     }
 
     try {
