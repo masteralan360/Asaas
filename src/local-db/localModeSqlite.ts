@@ -50,6 +50,7 @@ export const LOCAL_MODE_SQLITE_TABLES = [
   "fx_safes",
   "fx_safe_balances",
   "fx_safe_movements",
+  "profiles",
 ] as const;
 
 export type LocalModeSqliteTableName =

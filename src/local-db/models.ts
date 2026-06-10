@@ -81,6 +81,15 @@ export interface Product extends BaseEntity {
   createdBy?: string | null;
 }
 
+export interface Profile {
+  id: string;
+  workspaceId: string;
+  name: string;
+  role: string;
+  profile_url?: string | null;
+  created_at?: string;
+}
+
 export interface Category extends BaseEntity {
   name: string;
   description?: string;

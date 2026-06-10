@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '@/auth/supabase'
 import { runSupabaseAction, normalizeSupabaseActionError } from '@/lib/supabaseRequest'
 import { useAuth } from '@/auth'
+import { db } from '@/local-db'
 
 export interface ProfileData {
     id: string
@@ -59,6 +60,14 @@ export function useProfileData(userId: string | null): UseProfileDataResult {
                 }
 
                 setProfile(data as ProfileData)
+                db.profiles.put({
+                    id: data.id,
+                    workspaceId: data.workspace_id || '',
+                    name: data.name,
+                    role: data.role || '',
+                    profile_url: data.profile_url,
+                    created_at: data.created_at,
+                }).catch(console.error)
             } catch (err) {
                 if (!cancelled) {
                     console.error('Error fetching profile:', err)

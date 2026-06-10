@@ -2,7 +2,7 @@ import { type ReactNode, Suspense } from 'react'
 import { Link, useLocation } from 'wouter'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/auth'
-import { useReorderTransferRules } from '@/local-db'
+import { db, useReorderTransferRules } from '@/local-db'
 import { useWorkspace } from '@/workspace'
 import { isDemoWorkspace, deleteDemoWorkspace } from '@/demo'
 import { useWorkspacePermissions } from '@/permissions'
@@ -208,11 +208,18 @@ export function Layout({ children }: LayoutProps) {
         const fetchMembers = async () => {
             const { data, error } = await supabase
                 .from('profiles')
-                .select('id, name, role, profile_url')
+                .select('id, name, role, profile_url, workspace_id')
                 .eq('workspace_id', user.workspaceId)
 
             if (!error && data) {
                 setMembers(data)
+                db.profiles.bulkPut(data.map((p: any) => ({
+                    id: p.id,
+                    workspaceId: p.workspace_id,
+                    name: p.name,
+                    role: p.role || '',
+                    profile_url: p.profile_url,
+                }))).catch(console.error)
             }
         }
 

@@ -1623,6 +1623,15 @@ async function enrichSalesForUiRows(workspaceId: string, sales: Sale[]) {
             .filter((user): user is User => !!user)
             .map((user) => [user.id, user.name || user.email || 'Staff'] as const)
     )
+    // Fallback to profiles table for users not in the users table
+    if (cashierIds.length > 0) {
+        const profileRows = await db.profiles.where('id').anyOf(cashierIds).toArray()
+        for (const p of profileRows) {
+            if (!cashierNameById.has(p.id)) {
+                cashierNameById.set(p.id, p.name || 'Staff')
+            }
+        }
+    }
 
     const itemsBySaleId = new Map<string, Record<string, unknown>[]>()
     for (const item of localItems) {
@@ -1751,10 +1760,16 @@ export function useSales(workspaceId: string | undefined, startDate?: string, en
                     if (cashierIds.length > 0) {
                         const { data: profiles } = await supabase
                             .from('profiles')
-                            .select('id, name')
+                            .select('id, name, workspace_id')
                             .in('id', cashierIds)
                         if (profiles) {
                             profilesMap = profiles.reduce((acc: any, p: any) => ({ ...acc, [p.id]: p.name }), {})
+                            await db.profiles.bulkPut(profiles.map((p: any) => ({
+                                id: p.id,
+                                workspaceId: p.workspace_id,
+                                name: p.name,
+                                role: '',
+                            })))
                         }
                     }
 
@@ -2571,7 +2586,29 @@ export async function deleteEmployee(id: string): Promise<void> {
 export function useWorkspaceUsers(workspaceId: string | undefined) {
     const isOnline = useNetworkStatus()
     const users = useLiveQuery(
-        () => workspaceId ? db.users.where('workspaceId').equals(workspaceId).and(u => !u.isDeleted).toArray() : [],
+        () => {
+            if (!workspaceId) return []
+            return db.users.where('workspaceId').equals(workspaceId).and(u => !u.isDeleted).toArray().then(async (users) => {
+                // Fallback: merge profiles not yet in users table
+                const profileRows = await db.profiles.where('workspaceId').equals(workspaceId).toArray()
+                const userIds = new Set(users.map(u => u.id))
+                const missing = profileRows.filter(p => !userIds.has(p.id))
+                if (missing.length === 0) return users
+                return [...users, ...missing.map(p => ({
+                    id: p.id,
+                    workspaceId: p.workspaceId,
+                    name: p.name,
+                    email: '',
+                    role: p.role,
+                    createdAt: p.created_at || new Date().toISOString(),
+                    updatedAt: new Date().toISOString(),
+                    syncStatus: 'synced' as const,
+                    lastSyncedAt: new Date().toISOString(),
+                    version: 1,
+                    isDeleted: false,
+                } as User))]
+            })
+        },
         [workspaceId]
     )
 

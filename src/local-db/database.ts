@@ -2140,6 +2140,10 @@ export class AtlasDatabase extends Dexie {
         "id, workspaceId, category, isActive, sortOrder, createdAt, updatedAt, isDeleted, syncStatus, [workspaceId+category], [workspaceId+sortOrder]",
     });
 
+    this.version(66).stores({
+      profiles: "id, workspaceId, name, role, [workspaceId+name]",
+    });
+
     this.registerLocalModeSyncHooks();
   }
 

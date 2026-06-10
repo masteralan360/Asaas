@@ -44,6 +44,7 @@ import {
 } from '@/permissions'
 import { launcherSections, launcherSectionOrder } from '@/ui/navigation/navigationMeta'
 import type { PlanModuleKey } from '@/plans/workspacePlans'
+import { db } from '@/local-db'
 
 interface Member {
     id: string
@@ -165,13 +166,23 @@ export function Members() {
             const { data, error } = await runSupabaseAction('members.fetch', () =>
                 supabase
                     .from('profiles')
-                    .select('id, name, role, created_at, profile_url')
+                    .select('id, name, role, created_at, profile_url, workspace_id')
                     .eq('workspace_id', user.workspaceId)
                     .order('created_at', { ascending: true })
             )
 
             if (error) throw normalizeSupabaseActionError(error)
             setMembers(data || [])
+            if (data) {
+                db.profiles.bulkPut(data.map((p) => ({
+                    id: p.id,
+                    workspaceId: p.workspace_id,
+                    name: p.name,
+                    role: p.role || '',
+                    profile_url: p.profile_url,
+                    created_at: p.created_at,
+                }))).catch(console.error)
+            }
             if (user.role === 'admin') {
                 await fetchPermissions()
             } else {
