@@ -78,6 +78,7 @@ export interface Product extends BaseEntity {
   imageUrl?: string;
   canBeReturned: boolean;
   returnRules?: string;
+  createdBy?: string | null;
 }
 
 export interface Category extends BaseEntity {

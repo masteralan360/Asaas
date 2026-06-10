@@ -628,7 +628,8 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                 price: Number(formData.price) || 0,
                 costPrice: Number(formData.costPrice) || 0,
                 quantity: Number(formData.quantity) || 0,
-                minStockLevel: Number(formData.minStockLevel) || 0
+                minStockLevel: Number(formData.minStockLevel) || 0,
+                createdBy: user?.id || null
             }
 
             if (isEditing && product && !isClone) {
