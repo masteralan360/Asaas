@@ -8,6 +8,12 @@ import { useWorkspace } from '@/workspace'
 import { useAuth } from '@/auth'
 import { ReactQRCode } from '@lglab/react-qr-code'
 
+// === RECEIPT CURRENCY DISPLAY CONFIG START ===
+// Set to true to show exchange rate snapshots and original currency amounts on the receipt.
+// Set to false to hide them. This flag is self-contained and safe to remove.
+const SHOW_EXCHANGE_RATE_AND_ORIGINAL_CURRENCY = false
+// === RECEIPT CURRENCY DISPLAY CONFIG END ===
+
 interface SaleReceiptProps {
     data: UniversalInvoice
     features: any
@@ -124,7 +130,9 @@ export const SaleReceiptBase = forwardRef<HTMLDivElement, SaleReceiptBaseProps>(
                     </div>
 
                     {/* Exchange Rates Section */}
-                    {data.exchange_rates && data.exchange_rates.length > 0 && (
+                    {/* === RECEIPT CURRENCY DISPLAY CONFIG START === */}
+                    {/* ORIGINAL: {data.exchange_rates && data.exchange_rates.length > 0 && ( */}
+                    {SHOW_EXCHANGE_RATE_AND_ORIGINAL_CURRENCY && data.exchange_rates && data.exchange_rates.length > 0 && (
                         <div className="mb-6 text-start">
                             <div className={cn("text-[10px] font-bold text-gray-400 mb-2", !isRTL && "uppercase tracking-wider")}>
                                 {t('settings.exchangeRate.title')} {t('common.snapshots')}
@@ -147,6 +155,7 @@ export const SaleReceiptBase = forwardRef<HTMLDivElement, SaleReceiptBaseProps>(
                             </div>
                         </div>
                     )}
+                    {/* === RECEIPT CURRENCY DISPLAY CONFIG END === */}
                 </div>
 
                 <div className="mb-8">
@@ -174,21 +183,25 @@ export const SaleReceiptBase = forwardRef<HTMLDivElement, SaleReceiptBaseProps>(
                                         <td className="py-3 text-end align-top">
                                             <div className="flex flex-col items-end">
                                                 {formatReceiptPrice(item.unit_price, data.settlement_currency || 'usd')}
-                                                {isConverted && (
+                                                {/* === RECEIPT CURRENCY DISPLAY CONFIG START === */}
+                                                {SHOW_EXCHANGE_RATE_AND_ORIGINAL_CURRENCY && isConverted && (
                                                     <div className="mt-1 opacity-60 scale-90 origin-right">
                                                         {formatReceiptPrice(item.original_unit_price || item.unit_price, item.original_currency || 'usd')}
                                                     </div>
                                                 )}
+                                                {/* === RECEIPT CURRENCY DISPLAY CONFIG END === */}
                                             </div>
                                         </td>
                                         <td className="py-3 text-end align-top">
                                             <div className="flex flex-col items-end">
                                                 {formatReceiptPrice(item.total_price || (item.unit_price * item.quantity), data.settlement_currency || 'usd')}
-                                                {isConverted && (
+                                                {/* === RECEIPT CURRENCY DISPLAY CONFIG START === */}
+                                                {SHOW_EXCHANGE_RATE_AND_ORIGINAL_CURRENCY && isConverted && (
                                                     <div className="mt-1 opacity-60 scale-90 origin-right line-through decoration-gray-400">
                                                         {formatReceiptPrice((item.original_unit_price || item.unit_price) * item.quantity, item.original_currency || 'usd')}
                                                     </div>
                                                 )}
+                                                {/* === RECEIPT CURRENCY DISPLAY CONFIG END === */}
                                             </div>
                                         </td>
                                     </tr>
