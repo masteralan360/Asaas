@@ -274,40 +274,6 @@ async function resolveWorkspaceId(
   return null;
 }
 
-async function readCacheRowsForWorkspace(
-  cacheDb: Dexie,
-  tableName: LocalModeSqliteTableName,
-  workspaceId: string,
-) {
-  if (tableName === "workspaces") {
-    const workspace = await cacheDb.table(tableName).get(workspaceId);
-    return workspace ? [workspace] : [];
-  }
-
-  if (tableName === "sale_items") {
-    const sales = await cacheDb
-      .table("sales")
-      .where("workspaceId")
-      .equals(workspaceId)
-      .toArray();
-    const saleIds = sales
-      .map((sale: Record<string, unknown>) => sale.id)
-      .filter((saleId): saleId is string => typeof saleId === "string");
-
-    if (saleIds.length === 0) {
-      return [];
-    }
-
-    return cacheDb.table(tableName).where("saleId").anyOf(saleIds).toArray();
-  }
-
-  return cacheDb
-    .table(tableName)
-    .where("workspaceId")
-    .equals(workspaceId)
-    .toArray();
-}
-
 async function clearCacheRowsForWorkspace(cacheDb: Dexie, workspaceId: string) {
   const currentSales = await cacheDb
     .table("sales")
@@ -343,6 +309,54 @@ async function clearCacheRowsForWorkspace(cacheDb: Dexie, workspaceId: string) {
   }
 }
 
+async function readCacheRowsForWorkspace(
+  cacheDb: Dexie,
+  tableName: LocalModeSqliteTableName,
+  workspaceId: string,
+) {
+  if (tableName === "workspaces") {
+    const workspace = await cacheDb.table(tableName).get(workspaceId);
+    return workspace ? [workspace] : [];
+  }
+
+  if (tableName === "sale_items") {
+    const sales = await cacheDb
+      .table("sales")
+      .where("workspaceId")
+      .equals(workspaceId)
+      .toArray();
+    const saleIds = sales
+      .map((sale: Record<string, unknown>) => sale.id)
+      .filter((saleId): saleId is string => typeof saleId === "string");
+
+    if (saleIds.length === 0) {
+      return [];
+    }
+
+    return cacheDb.table(tableName).where("saleId").anyOf(saleIds).toArray();
+  }
+
+  return cacheDb
+    .table(tableName)
+    .where("workspaceId")
+    .equals(workspaceId)
+    .toArray();
+}
+
+export async function seedWorkspaceFromDexie(cacheDb: Dexie, workspaceId: string) {
+  for (const tableName of LOCAL_MODE_SQLITE_TABLES) {
+    const rows = await readCacheRowsForWorkspace(
+      cacheDb,
+      tableName,
+      workspaceId,
+    );
+
+    for (const row of rows) {
+      await persistEntity(cacheDb, tableName, row as Record<string, unknown>);
+    }
+  }
+}
+
 async function getStoredWorkspaceRowCount(
   connection: SqliteConnection,
   workspaceId: string,
@@ -361,20 +375,6 @@ async function getStoredWorkspaceRowCount(
   return typeof count === "string"
     ? Number.parseInt(count, 10)
     : Number(count ?? 0);
-}
-
-async function seedWorkspaceFromDexie(cacheDb: Dexie, workspaceId: string) {
-  for (const tableName of LOCAL_MODE_SQLITE_TABLES) {
-    const rows = await readCacheRowsForWorkspace(
-      cacheDb,
-      tableName,
-      workspaceId,
-    );
-
-    for (const row of rows) {
-      await persistEntity(cacheDb, tableName, row as Record<string, unknown>);
-    }
-  }
 }
 
 async function persistEntity(
@@ -491,7 +491,8 @@ export async function hydrateLocalModeCacheFromSqlite(
       workspaceId,
     );
     if (storedRowCount === 0) {
-      await seedWorkspaceFromDexie(cacheDb, workspaceId);
+      console.log(`[LocalModeSQLite] SQLite is empty for workspace ${workspaceId}. Clearing local cache.`);
+      await withMirroringPaused(() => clearCacheRowsForWorkspace(cacheDb, workspaceId));
       hydratedWorkspaces.add(workspaceId);
       return;
     }

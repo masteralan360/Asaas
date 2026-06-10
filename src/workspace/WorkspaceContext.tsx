@@ -10,7 +10,7 @@ import type {
 import { db } from '@/local-db/database'
 import { hasCurrencyExchangeAccountingData } from '@/local-db/currencyExchange'
 import { addToOfflineMutations } from '@/local-db/hooks'
-import { hydrateLocalModeCacheFromSqlite, clearWorkspaceSqliteData } from '@/local-db/localModeSqlite'
+import { hydrateLocalModeCacheFromSqlite, clearWorkspaceSqliteData, seedWorkspaceFromDexie } from '@/local-db/localModeSqlite'
 import { isMobile } from '@/lib/platform'
 import { connectionManager } from '@/lib/connectionManager'
 import {
@@ -1175,7 +1175,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             updateUser({ workspaceMode: newMode })
 
             if (newMode === 'hybrid') {
-                // Cloud → Hybrid: start mirroring by hydrating SQLite from Dexie cache
+                // Cloud → Hybrid: seed SQLite from Dexie cache, then hydrate
+                await seedWorkspaceFromDexie(db, workspaceId)
                 await hydrateLocalModeCacheFromSqlite(db, workspaceId)
             } else {
                 // Hybrid → Cloud: abandon SQLite data
