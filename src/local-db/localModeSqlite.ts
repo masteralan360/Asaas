@@ -217,7 +217,7 @@ async function ensureConnection() {
 function enqueueWrite(task: () => Promise<void>) {
   sqliteWriteQueue = sqliteWriteQueue
     .catch(() => undefined)
-    .then(task)
+    .then(() => task())
     .catch((error) => {
       console.error("[LocalModeSQLite] Write failed:", error);
     });
