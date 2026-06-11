@@ -1195,15 +1195,49 @@ export function PdfPreviewPage() {
                             </div>
                             {templatePreview.fields.map(f => (
                                 <div key={f.key} className="space-y-1">
-                                    <label className="text-[11px] font-medium text-muted-foreground">{f.label}</label>
-                                    <EditableField
-                                        value={fieldValues[f.key] ?? ''}
-                                        onChange={(v) => handleFieldChange(f.key, v)}
-                                        type={f.type}
-                                        className="text-sm"
-                                        inputClassName="w-full"
-                                        placeholder={f.placeholder}
-                                    />
+                                    {f.type === 'boolean' ? (
+                                        <div className="flex items-center justify-between gap-3">
+                                            <span className="text-[11px] font-medium text-muted-foreground">
+                                                {f.label}
+                                            </span>
+                                            <button
+                                                type="button"
+                                                role="switch"
+                                                aria-checked={fieldValues[f.key] !== 'false'}
+                                                aria-label={f.label}
+                                                onClick={() => handleFieldChange(
+                                                    f.key,
+                                                    fieldValues[f.key] === 'false' ? 'true' : 'false'
+                                                )}
+                                                className={cn(
+                                                    'relative h-5 w-9 shrink-0 rounded-full transition-colors',
+                                                    fieldValues[f.key] !== 'false' ? 'bg-primary' : 'bg-muted'
+                                                )}
+                                            >
+                                                <span
+                                                    className={cn(
+                                                        'absolute left-0 top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform',
+                                                        fieldValues[f.key] !== 'false' ? 'translate-x-[18px]' : 'translate-x-0.5'
+                                                    )}
+                                                />
+                                                <span className="sr-only">
+                                                    {fieldValues[f.key] !== 'false' ? 'Enabled' : 'Disabled'}
+                                                </span>
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        <>
+                                            <label className="text-[11px] font-medium text-muted-foreground">{f.label}</label>
+                                            <EditableField
+                                                value={fieldValues[f.key] ?? ''}
+                                                onChange={(v) => handleFieldChange(f.key, v)}
+                                                type={f.type}
+                                                className="text-sm"
+                                                inputClassName="w-full"
+                                                placeholder={f.placeholder}
+                                            />
+                                        </>
+                                    )}
                                 </div>
                             ))}
                         </div>

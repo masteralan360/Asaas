@@ -7,7 +7,7 @@ export type TemplatePreviewField = {
     key: string
     label: string
     value: string
-    type: 'text' | 'number' | 'date'
+    type: 'text' | 'number' | 'date' | 'boolean'
     placeholder?: string
 }
 

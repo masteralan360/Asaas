@@ -7,12 +7,14 @@ import { platformService } from '@/services/platformService'
 import { useWorkspace } from '@/workspace'
 import { useAuth } from '@/auth'
 import { ReactQRCode } from '@lglab/react-qr-code'
+import { EditableField } from '@/ui/components/EditableField'
 
-// === RECEIPT CURRENCY DISPLAY CONFIG START ===
-// Set to true to show exchange rate snapshots and original currency amounts on the receipt.
-// Set to false to hide them. This flag is self-contained and safe to remove.
-
-// === RECEIPT CURRENCY DISPLAY CONFIG END ===
+export const SALE_RECEIPT_TEMPLATE_FIELD_KEYS = {
+    showExchangeRateSnapshots: 'receipt.showExchangeRateSnapshots',
+    showOriginalCurrencyPrice: 'receipt.showOriginalCurrencyPrice',
+    thankYou: 'receipt.thankYou',
+    keepRecord: 'receipt.keepRecord',
+} as const
 
 interface SaleReceiptProps {
     data: UniversalInvoice
@@ -22,15 +24,37 @@ interface SaleReceiptProps {
 interface SaleReceiptBaseProps extends SaleReceiptProps {
     workspaceName?: string | null
     workspaceId?: string
+    templateFields?: Record<string, string>
+    editableFields?: boolean
+    onTemplateFieldChange?: (key: string, value: string) => void
 }
 
 export const SaleReceiptBase = forwardRef<HTMLDivElement, SaleReceiptBaseProps>(
-    ({ data, features, workspaceName, workspaceId: propWorkspaceId }, ref) => {
+    ({
+        data,
+        features,
+        workspaceName,
+        workspaceId: propWorkspaceId,
+        templateFields,
+        editableFields = false,
+        onTemplateFieldChange,
+    }, ref) => {
         const { i18n } = useTranslation()
         const printLang = features?.print_lang && features.print_lang !== 'auto' ? features.print_lang : i18n.language
         const t = i18n.getFixedT(printLang)
         const isRTL = printLang === 'ar' || printLang === 'ku'
         const effectiveWorkspaceId = propWorkspaceId || data.workspaceId
+        const fieldValue = (key: string) => templateFields?.[key]
+        const isFieldEnabled = (key: string) => fieldValue(key) !== 'false'
+        const showExchangeRateSnapshots = isFieldEnabled(SALE_RECEIPT_TEMPLATE_FIELD_KEYS.showExchangeRateSnapshots)
+        const showOriginalCurrencyPrice = isFieldEnabled(SALE_RECEIPT_TEMPLATE_FIELD_KEYS.showOriginalCurrencyPrice)
+        const thankYouText = fieldValue(SALE_RECEIPT_TEMPLATE_FIELD_KEYS.thankYou)?.trim()
+            || t('sales.receipt.thankYou')
+        const keepRecordText = fieldValue(SALE_RECEIPT_TEMPLATE_FIELD_KEYS.keepRecord)?.trim()
+            || t('sales.receipt.keepRecord')
+        const updateTemplateField = (key: string, value: string) => {
+            onTemplateFieldChange?.(key, value)
+        }
 
         const formatReceiptPrice = (amount: number, currency: string) => {
             const code = currency.toLowerCase()
@@ -129,9 +153,7 @@ export const SaleReceiptBase = forwardRef<HTMLDivElement, SaleReceiptBaseProps>(
                         </div>
                     </div>
 
-                    {/* Exchange Rates Section */}
-                    {/* === RECEIPT CURRENCY DISPLAY CONFIG START === */}
-                    {data.exchange_rates && data.exchange_rates.length > 0 && (
+                    {showExchangeRateSnapshots && data.exchange_rates && data.exchange_rates.length > 0 && (
                         <div className="mb-6 text-start">
                             <div className={cn("text-[10px] font-bold text-gray-400 mb-2", !isRTL && "uppercase tracking-wider")}>
                                 {t('settings.exchangeRate.title')} {t('common.snapshots')}
@@ -154,7 +176,6 @@ export const SaleReceiptBase = forwardRef<HTMLDivElement, SaleReceiptBaseProps>(
                             </div>
                         </div>
                     )}
-                    {/* === RECEIPT CURRENCY DISPLAY CONFIG END === */}
                 </div>
 
                 <div className="mb-8">
@@ -182,25 +203,21 @@ export const SaleReceiptBase = forwardRef<HTMLDivElement, SaleReceiptBaseProps>(
                                         <td className="py-3 text-end align-top">
                                             <div className="flex flex-col items-end">
                                                 {formatReceiptPrice(item.unit_price, data.settlement_currency || 'usd')}
-                                                {/* === RECEIPT CURRENCY DISPLAY CONFIG START === */}
-                                                {isConverted && (
+                                                {showOriginalCurrencyPrice && isConverted && (
                                                     <div className="mt-1 opacity-60 scale-90 origin-right">
                                                         {formatReceiptPrice(item.original_unit_price || item.unit_price, item.original_currency || 'usd')}
                                                     </div>
                                                 )}
-                                                {/* === RECEIPT CURRENCY DISPLAY CONFIG END === */}
                                             </div>
                                         </td>
                                         <td className="py-3 text-end align-top">
                                             <div className="flex flex-col items-end">
                                                 {formatReceiptPrice(item.total_price || (item.unit_price * item.quantity), data.settlement_currency || 'usd')}
-                                                {/* === RECEIPT CURRENCY DISPLAY CONFIG START === */}
-                                                {isConverted && (
+                                                {showOriginalCurrencyPrice && isConverted && (
                                                     <div className="mt-1 opacity-60 scale-90 origin-right line-through decoration-gray-400">
                                                         {formatReceiptPrice((item.original_unit_price || item.unit_price) * item.quantity, item.original_currency || 'usd')}
                                                     </div>
                                                 )}
-                                                {/* === RECEIPT CURRENCY DISPLAY CONFIG END === */}
                                             </div>
                                         </td>
                                     </tr>
@@ -220,8 +237,20 @@ export const SaleReceiptBase = forwardRef<HTMLDivElement, SaleReceiptBaseProps>(
                 </div>
 
                 <div className="text-center text-[10px] text-gray-400 border-t border-gray-100 pt-6">
-                    <p className="mb-1 font-medium text-gray-900">{t('sales.receipt.thankYou')}</p>
-                    <p>{t('sales.receipt.keepRecord')}</p>
+                    <p className="mb-1 font-medium text-gray-900">
+                        <EditableField
+                            value={thankYouText}
+                            onChange={(value) => updateTemplateField(SALE_RECEIPT_TEMPLATE_FIELD_KEYS.thankYou, value)}
+                            editable={editableFields}
+                        />
+                    </p>
+                    <p>
+                        <EditableField
+                            value={keepRecordText}
+                            onChange={(value) => updateTemplateField(SALE_RECEIPT_TEMPLATE_FIELD_KEYS.keepRecord, value)}
+                            editable={editableFields}
+                        />
+                    </p>
                 </div>
             </div>
         )

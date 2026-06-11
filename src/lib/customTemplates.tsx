@@ -15,7 +15,10 @@ import {
 import type { RealEstateTransactionType } from '@/local-db'
 import type { WorkspaceFeatures } from '@/workspace'
 import type { UniversalInvoice } from '@/types'
-import { SaleReceiptBase } from '@/ui/components/SaleReceipt'
+import {
+    SaleReceiptBase,
+    SALE_RECEIPT_TEMPLATE_FIELD_KEYS
+} from '@/ui/components/SaleReceipt'
 
 export const SALES_HISTORY_RECEIPT_TEMPLATE_KEY = 'salesHistory.Receipt'
 
@@ -172,24 +175,64 @@ export type CustomTemplatePreviewOptions = {
 const SAMPLE_RECEIPT_DATA: UniversalInvoice = {
     id: 'custom-template-receipt',
     sequenceId: 1,
-    invoiceid: '#00001',
+    invoiceid: '#00636',
     created_at: new Date().toISOString(),
-    cashier_name: 'Cashier',
+    cashier_name: 'Demo',
     items: [
         {
             product_id: 'sample-product',
             product_name: 'Sample Product',
-            product_sku: 'SKU-001',
-            quantity: 2,
-            unit_price: 12.5,
-            total_price: 25
+            product_sku: '42432423423',
+            quantity: 1,
+            unit_price: 100000,
+            total_price: 100000,
+            original_unit_price: 64,
+            original_currency: 'usd',
+            settlement_currency: 'iqd'
         }
     ],
-    total_amount: 25,
-    settlement_currency: 'usd',
+    total_amount: 100000,
+    settlement_currency: 'iqd',
     payment_method: 'cash',
+    exchange_rates: [
+        {
+            pair: 'USD/IQD',
+            rate: 155700,
+            source: 'XEIQD',
+            timestamp: new Date().toISOString()
+        }
+    ],
     status: 'paid'
 }
+
+const SALES_HISTORY_RECEIPT_FIELDS = [
+    {
+        key: SALE_RECEIPT_TEMPLATE_FIELD_KEYS.showExchangeRateSnapshots,
+        label: 'Exchange rate source snapshot',
+        value: 'true',
+        type: 'boolean' as const
+    },
+    {
+        key: SALE_RECEIPT_TEMPLATE_FIELD_KEYS.showOriginalCurrencyPrice,
+        label: 'Original currency price',
+        value: 'true',
+        type: 'boolean' as const
+    },
+    {
+        key: SALE_RECEIPT_TEMPLATE_FIELD_KEYS.thankYou,
+        label: 'Thank-you text',
+        value: '',
+        type: 'text' as const,
+        placeholder: 'Thank you for shopping with us!'
+    },
+    {
+        key: SALE_RECEIPT_TEMPLATE_FIELD_KEYS.keepRecord,
+        label: 'Keep-record text',
+        value: '',
+        type: 'text' as const,
+        placeholder: 'Please keep this receipt for your records.'
+    }
+]
 
 const REAL_ESTATE_BUY_FIELD_PLACEHOLDERS = {
     sellerWitnessName: 'ناوی شاهیدی فرۆشیار بنووسە',
@@ -351,15 +394,18 @@ function createSalesHistoryReceiptPreview(options: CustomTemplatePreviewOptions)
     const receiptData = options.receiptData || SAMPLE_RECEIPT_DATA
 
     return {
-        fields: [],
+        fields: SALES_HISTORY_RECEIPT_FIELDS,
         page: { widthMm: 80, heightMm: 200 },
-        createElement: () => (
+        createElement: (data, _effectiveId, _printLangOverride, renderOptions) => (
             <div className="mx-auto w-[80mm] bg-white text-black">
                 <SaleReceiptBase
                     data={receiptData}
                     features={options.features || {}}
                     workspaceName={options.workspaceName || 'Atlas'}
                     workspaceId={options.workspaceId}
+                    templateFields={data}
+                    editableFields={renderOptions?.editableFields}
+                    onTemplateFieldChange={renderOptions?.onFieldChange}
                 />
             </div>
         ),
