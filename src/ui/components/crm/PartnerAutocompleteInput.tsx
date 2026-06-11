@@ -52,8 +52,8 @@ export function PartnerAutocompleteInput({
 
     const handleSelect = useCallback((partner: BusinessPartner) => {
         setJustSelected(true)
-        onSelectPartner(partner)
         onChange(partner.name)
+        onSelectPartner(partner)
     }, [onChange, onSelectPartner])
 
     useEffect(() => {

@@ -164,11 +164,19 @@ export function PurchaseOrderFormPage({
 
         const supplier = supplierPartners.find((entry) => entry.id === supplierId)
         if (!supplier) {
-            toast({ title: t('common.error') || 'Error', description: 'Add suppliers before creating purchase orders.', variant: 'destructive' })
+            toast({
+                title: t('common.error') || 'Error',
+                description: t('orders.form.errors.noSuppliers', { defaultValue: 'Add suppliers before creating purchase orders.' }),
+                variant: 'destructive'
+            })
             return
         }
         if (isPaid && paymentMethod === 'credit') {
-            toast({ title: t('common.error') || 'Error', description: 'Select an actual payment method for paid orders.', variant: 'destructive' })
+            toast({
+                title: t('common.error') || 'Error',
+                description: t('orders.form.errors.paymentMethodRequired', { defaultValue: 'Select an actual payment method for paid orders.' }),
+                variant: 'destructive'
+            })
             return
         }
 
@@ -179,8 +187,15 @@ export function PurchaseOrderFormPage({
                 .filter((item) => item.productId && Number(item.quantity) > 0)
                 .map((item) => {
                     const product = products.find((entry) => entry.id === item.productId)
-                    if (!product) throw new Error('Selected product was not found')
-                    if (!item.storageId) throw new Error(`Select a target storage for ${product.name}`)
+                    if (!product) {
+                        throw new Error(t('orders.form.errors.productNotFound', { defaultValue: 'Selected product was not found.' }))
+                    }
+                    if (!item.storageId) {
+                        throw new Error(t('orders.form.errors.targetStorageRequired', {
+                            productName: product.name,
+                            defaultValue: `Select a target storage for ${product.name}.`
+                        }))
+                    }
 
                     const quantity = Number(item.quantity)
                     const unitPrice = Number(item.unitPrice || 0)
@@ -199,7 +214,9 @@ export function PurchaseOrderFormPage({
                     }
                 })
 
-            if (orderItems.length === 0) throw new Error('Add at least one item')
+            if (orderItems.length === 0) {
+                throw new Error(t('orders.form.errors.atLeastOneItem', { defaultValue: 'Add at least one item.' }))
+            }
             const commonStorageId = getCommonStorageId(orderItems)
             const subtotal = roundFormAmount(orderItems.reduce((sum, item) => sum + item.lineTotal, 0), currency)
             const discountNum = roundFormAmount(Number(discount || 0), currency)
@@ -240,7 +257,7 @@ export function PurchaseOrderFormPage({
         } catch (error: any) {
             toast({
                 title: t('common.error') || 'Error',
-                description: error?.message || 'Failed to save purchase order',
+                description: error?.message || t('orders.form.errors.savePurchaseFailed', { defaultValue: 'Failed to save purchase order.' }),
                 variant: 'destructive'
             })
         } finally {
@@ -419,8 +436,11 @@ export function PurchaseOrderFormPage({
                                                         </Select>
                                                         <p className="text-xs text-muted-foreground">
                                                             {item.storageId
-                                                                ? `Will be received into ${getStorageDisplayName(item.storageId)} when the order is completed.`
-                                                                : 'Choose a target storage for this line.'}
+                                                                ? t('orders.form.receiveIntoStorageHint', {
+                                                                    storageName: getStorageDisplayName(item.storageId),
+                                                                    defaultValue: `Will be received into ${getStorageDisplayName(item.storageId)} when the order is completed.`
+                                                                })
+                                                                : t('orders.form.chooseTargetStorageForLine', { defaultValue: 'Choose a target storage for this line.' })}
                                                         </p>
                                                     </div>
                                                     <div className="space-y-2">
@@ -471,14 +491,14 @@ export function PurchaseOrderFormPage({
                                             <div className="space-y-2">
                                                 <Label htmlFor="purchase-delivery" className="flex items-center gap-2">
                                                     <CalendarDays className="h-4 w-4 text-muted-foreground" />
-                                                    {t('orders.form.date', { defaultValue: 'Expected Delivery' })}
+                                                    {t('orders.form.expectedDelivery', { defaultValue: 'Expected Delivery' })}
                                                 </Label>
                                                 <DateTimePicker
                                                     id="purchase-delivery"
                                                     mode="date-time"
                                                     date={parseLocalDateTimeValue(expectedDeliveryDate)}
                                                     setDate={(value) => setExpectedDeliveryDate(value ? formatLocalDateTimeValue(value) : '')}
-                                                    placeholder={t('orders.form.date', { defaultValue: 'Date' })}
+                                                    placeholder={t('orders.form.expectedDelivery', { defaultValue: 'Expected Delivery' })}
                                                 />
                                             </div>
                                             <div className="space-y-2">
@@ -504,7 +524,7 @@ export function PurchaseOrderFormPage({
                                                     <SelectItem value="qicard">{t('directTransactions.paymentMethod.qicard', { defaultValue: 'QiCard' })}</SelectItem>
                                                     <SelectItem value="zaincash">{t('directTransactions.paymentMethod.zaincash', { defaultValue: 'ZainCash' })}</SelectItem>
                                                     <SelectItem value="fastpay">{t('directTransactions.paymentMethod.fastpay', { defaultValue: 'FastPay' })}</SelectItem>
-                                                    <SelectItem value="credit">Credit</SelectItem>
+                                                    <SelectItem value="credit">{t('orders.form.credit', { defaultValue: 'Credit' })}</SelectItem>
                                                 </SelectContent>
                                             </Select>
                                         </div>
@@ -542,7 +562,10 @@ export function PurchaseOrderFormPage({
                                             </div>
                                             <div className="mt-3 flex items-start gap-2 text-sm text-muted-foreground">
                                                 <PackagePlus className="mt-0.5 h-4 w-4" />
-                                                <span>{t('orders.form.completionHint', { defaultValue: `Completing this order will add stock to ${selectedStorageName}.` })}</span>
+                                                <span>{t('orders.form.completionHint', {
+                                                    storageName: selectedStorageName,
+                                                    defaultValue: `Completing this order will add stock to ${selectedStorageName}.`
+                                                })}</span>
                                             </div>
                                         </div>
                                     </CardContent>
