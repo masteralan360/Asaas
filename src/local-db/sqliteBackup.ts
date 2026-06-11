@@ -1,10 +1,13 @@
 import { isTauri } from '@/lib/platform'
-import { shouldMirrorToSqlite } from '@/workspace/workspaceMode'
+import { shouldMirrorToSqlite, isLocalWorkspaceMode } from '@/workspace/workspaceMode'
+import { r2Service } from '@/services/r2Service'
 
 const DB_FILENAME = 'atlas-local-mode.db'
 const BACKUP_DIR = 'db-backup'
 const MAX_BACKUP_DAYS = 7
 const BACKUP_DONE_KEY = 'atlas_db_backup_date'
+const R2_BACKUP_INTERVAL_MS = 5 * 60 * 60 * 1000
+const R2_BACKUP_TIME_KEY = 'atlas_db_r2_backup_time'
 
 function getTodayDateString() {
     const now = new Date()
@@ -106,5 +109,72 @@ export async function runDailyBackupIfNeeded(workspaceId?: string | null) {
         void pruneOldBackups()
     } catch (err) {
         console.error('[DBBackup] Failed to create daily backup:', err)
+    }
+}
+
+function isR2BackupDue(): boolean {
+    try {
+        const lastTime = localStorage.getItem(R2_BACKUP_TIME_KEY)
+        if (!lastTime) return true
+        return Date.now() - Number(lastTime) >= R2_BACKUP_INTERVAL_MS
+    } catch {
+        return true
+    }
+}
+
+function markR2BackupDone(): void {
+    try {
+        localStorage.setItem(R2_BACKUP_TIME_KEY, String(Date.now()))
+    } catch {
+        // noop
+    }
+}
+
+export async function runR2BackupIfNeeded(workspaceId: string | undefined | null): Promise<void> {
+    if (!isTauri()) return
+    if (!workspaceId || !isLocalWorkspaceMode(workspaceId)) return
+    if (!isR2BackupDue()) return
+
+    try {
+        const { exists, readFile, BaseDirectory } = await import('@tauri-apps/plugin-fs')
+
+        const dbExists = await exists(DB_FILENAME, { baseDir: BaseDirectory.AppData })
+        if (!dbExists) {
+            console.log('[R2Backup] No SQLite database file found, skipping backup')
+            return
+        }
+
+        const fileData = await readFile(DB_FILENAME, { baseDir: BaseDirectory.AppData })
+        const blob = new Blob([fileData], { type: 'application/octet-stream' })
+
+        const r2Path = `local-backup/${workspaceId}/${DB_FILENAME}`
+        await r2Service.upload(r2Path, blob, 'application/octet-stream', true)
+
+        console.log('[R2Backup] Database uploaded to R2:', r2Path)
+        markR2BackupDone()
+    } catch (err) {
+        console.warn('[R2Backup] Failed to upload database backup to R2:', err)
+    }
+}
+
+let r2BackupInterval: ReturnType<typeof setInterval> | null = null
+
+export function startR2BackupInterval(workspaceId: string | undefined | null): void {
+    if (r2BackupInterval) {
+        clearInterval(r2BackupInterval)
+        r2BackupInterval = null
+    }
+
+    void runR2BackupIfNeeded(workspaceId)
+
+    r2BackupInterval = setInterval(() => {
+        void runR2BackupIfNeeded(workspaceId)
+    }, R2_BACKUP_INTERVAL_MS)
+}
+
+export function stopR2BackupInterval(): void {
+    if (r2BackupInterval) {
+        clearInterval(r2BackupInterval)
+        r2BackupInterval = null
     }
 }

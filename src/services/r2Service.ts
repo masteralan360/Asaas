@@ -129,10 +129,12 @@ class R2Service {
     /**
      * Upload an object to R2
      */
-    public async upload(path: string, data: Blob | ArrayBuffer | string, contentType?: string): Promise<string> {
-        const workspaceId = path.split('/')[0];
-        if (workspaceId && isLocalWorkspaceMode(workspaceId)) {
-            return '';
+    public async upload(path: string, data: Blob | ArrayBuffer | string, contentType?: string, force?: boolean): Promise<string> {
+        if (!force) {
+            const workspaceId = path.split('/')[0];
+            if (workspaceId && isLocalWorkspaceMode(workspaceId)) {
+                return '';
+            }
         }
 
         if (!this.workerUrl) {

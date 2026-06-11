@@ -104,6 +104,7 @@ export function Settings() {
     const canUseBarcodeScanner = hasCapability('barcodeScanner')
     const canUseThermalPrinter = hasCapability('thermalPrinter')
     const canUseA4Invoices = hasCapability('a4PdfInvoices')
+    const canUseReceiptPrinting = hasCapability('receiptPrinting')
     const canUseMultiCurrency = features.allowed_currencies.length > 1
     const canUseMarketplace = hasCapability('marketplaceStorefronts')
     const canUseWhatsapp = hasCapability('whatsappIntegration')
@@ -2148,7 +2149,7 @@ export function Settings() {
                                     )}
                                 </div>
 
-                                {canUseA4Invoices && (<>
+                                {(canUseA4Invoices || canUseReceiptPrinting) && (<>
                                 <div className="flex flex-col gap-2 max-w-sm">
                                     <Label className="text-xs text-slate-500 uppercase font-semibold">{t('settings.printing.language') || 'Print Language'}</Label>
                                     <Select

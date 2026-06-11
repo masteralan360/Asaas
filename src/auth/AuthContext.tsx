@@ -12,7 +12,7 @@ import { clearWorkspaceModeSnapshot, writeWorkspaceModeSnapshot } from '@/worksp
 import { normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
 import { db } from '@/local-db/database'
 import { hydrateLocalModeCacheFromSqlite } from '@/local-db/localModeSqlite'
-import { runDailyBackupIfNeeded } from '@/local-db/sqliteBackup'
+import { runDailyBackupIfNeeded, runR2BackupIfNeeded } from '@/local-db/sqliteBackup'
 
 interface AuthUser {
     id: string
@@ -200,6 +200,7 @@ async function enrichUser(parsedUser: AuthUser): Promise<AuthUser> {
             if (parsedUser.workspaceMode === 'local' || parsedUser.workspaceMode === 'hybrid') {
                 await hydrateLocalModeCacheFromSqlite(db, parsedUser.workspaceId)
                 void runDailyBackupIfNeeded(parsedUser.workspaceId)
+                void runR2BackupIfNeeded(parsedUser.workspaceId)
             }
             return parsedUser
         }
@@ -220,6 +221,7 @@ async function enrichUser(parsedUser: AuthUser): Promise<AuthUser> {
         if (parsedUser.workspaceMode === 'local' || parsedUser.workspaceMode === 'hybrid') {
             await hydrateLocalModeCacheFromSqlite(db, parsedUser.workspaceId)
             void runDailyBackupIfNeeded(parsedUser.workspaceId)
+            void runR2BackupIfNeeded(parsedUser.workspaceId)
         }
     }
 

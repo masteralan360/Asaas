@@ -11,6 +11,7 @@ import { ExchangeRateIndicator } from './ExchangeRateIndicator'
 import { GlobalSearch } from './GlobalSearch'
 import { P2PSyncIndicator } from './P2PSyncStatus'
 import { assetManager } from '@/lib/assetManager'
+import { startR2BackupInterval, stopR2BackupInterval } from '@/local-db/sqliteBackup'
 import { platformService } from '@/services/platformService'
 import { whatsappManager } from '@/lib/whatsappWebviewManager'
 import { ResourceSyncOverlay } from './p2p/ResourceSyncOverlay'
@@ -230,6 +231,11 @@ export function Layout({ children }: LayoutProps) {
             assetManager.initialize(user.workspaceId);
         }
 
+        // Start R2 database backup interval for local mode
+        if (user?.workspaceId) {
+            startR2BackupInterval(user.workspaceId)
+        }
+
         // Fetch App Version
         // @ts-ignore
         if (window.__TAURI_INTERNALS__) {
@@ -255,6 +261,7 @@ export function Layout({ children }: LayoutProps) {
             window.removeEventListener('open-mobile-sidebar', handleOpen)
             window.removeEventListener('profile-updated', fetchMembers)
             window.removeEventListener('whatsapp-status-change', handleWhatsAppStatusChange)
+            stopR2BackupInterval()
         }
     }, [user?.workspaceId])
 
