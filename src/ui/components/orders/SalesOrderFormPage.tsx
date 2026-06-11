@@ -518,9 +518,12 @@ export function SalesOrderFormPage({
                                             <Select value={paymentMethod} onValueChange={(value) => setPaymentMethod(value)}>
                                                 <SelectTrigger id="sales-payment"><SelectValue /></SelectTrigger>
                                                 <SelectContent>
-                                                    <SelectItem value="cash">Cash</SelectItem>
+                                                    <SelectItem value="cash">{t('directTransactions.paymentMethod.cash', { defaultValue: 'Cash' })}</SelectItem>
+                                                    <SelectItem value="fib">{t('directTransactions.paymentMethod.fib', { defaultValue: 'FIB' })}</SelectItem>
+                                                    <SelectItem value="qicard">{t('directTransactions.paymentMethod.qicard', { defaultValue: 'QiCard' })}</SelectItem>
+                                                    <SelectItem value="zaincash">{t('directTransactions.paymentMethod.zaincash', { defaultValue: 'ZainCash' })}</SelectItem>
+                                                    <SelectItem value="fastpay">{t('directTransactions.paymentMethod.fastpay', { defaultValue: 'FastPay' })}</SelectItem>
                                                     <SelectItem value="credit">Credit</SelectItem>
-                                                    <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
                                                 </SelectContent>
                                             </Select>
                                         </div>
