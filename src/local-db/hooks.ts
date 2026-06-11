@@ -1581,6 +1581,13 @@ async function enrichSalesForUiRows(workspaceId: string, sales: Sale[]) {
     const localItems = saleIds.length > 0
         ? await db.sale_items.where('saleId').anyOf(saleIds).toArray()
         : []
+    const localReturns = saleIds.length > 0
+        ? await db.sale_returns.where('saleId').anyOf(saleIds).toArray()
+        : []
+    const returnIds = localReturns.map((saleReturn) => saleReturn.id)
+    const localReturnItems = returnIds.length > 0
+        ? await db.sale_return_items.where('returnId').anyOf(returnIds).toArray()
+        : []
 
     const productIds = Array.from(new Set(
         localItems
@@ -1659,6 +1666,7 @@ async function enrichSalesForUiRows(workspaceId: string, sales: Sale[]) {
             negotiated_price: item.negotiatedPrice,
             inventory_snapshot: item.inventorySnapshot,
             batch_allocations: item.batchAllocations,
+            original_batch_allocations: item.originalBatchAllocations,
             returned_quantity: item.returnedQuantity,
             is_returned: (item as SaleItem & { isReturned?: boolean }).isReturned,
             return_reason: (item as SaleItem & { returnReason?: string }).returnReason,
@@ -1681,6 +1689,47 @@ async function enrichSalesForUiRows(workspaceId: string, sales: Sale[]) {
         itemsBySaleId.set(item.saleId, existing)
     }
 
+    const returnItemsByReturnId = new Map<string, Record<string, unknown>[]>()
+    for (const item of localReturnItems) {
+        const existing = returnItemsByReturnId.get(item.returnId) ?? []
+        existing.push({
+            id: item.id,
+            workspace_id: item.workspaceId,
+            return_id: item.returnId,
+            sale_id: item.saleId,
+            sale_item_id: item.saleItemId,
+            quantity: item.quantity,
+            unit_refund_amount: item.unitRefundAmount,
+            refund_amount: item.refundAmount,
+            restored_storage_id: item.restoredStorageId,
+            restored_batch_allocations: item.restoredBatchAllocations,
+            created_at: item.createdAt,
+            updated_at: item.updatedAt
+        })
+        returnItemsByReturnId.set(item.returnId, existing)
+    }
+
+    const returnsBySaleId = new Map<string, Record<string, unknown>[]>()
+    for (const saleReturn of localReturns) {
+        const existing = returnsBySaleId.get(saleReturn.saleId) ?? []
+        existing.push({
+            id: saleReturn.id,
+            workspace_id: saleReturn.workspaceId,
+            sale_id: saleReturn.saleId,
+            reason: saleReturn.reason,
+            status: saleReturn.status,
+            refund_method: saleReturn.refundMethod,
+            refund_amount: saleReturn.refundAmount,
+            returned_by: saleReturn.returnedBy,
+            returned_at: saleReturn.returnedAt,
+            source: saleReturn.source,
+            created_at: saleReturn.createdAt,
+            updated_at: saleReturn.updatedAt,
+            items: returnItemsByReturnId.get(saleReturn.id) ?? []
+        })
+        returnsBySaleId.set(saleReturn.saleId, existing)
+    }
+
     return sales.map((sale) => {
         const existingItems = Array.isArray((sale as Sale & { _enrichedItems?: unknown[] })._enrichedItems)
             ? ((sale as Sale & { _enrichedItems?: Record<string, unknown>[] })._enrichedItems ?? [])
@@ -1696,7 +1745,8 @@ async function enrichSalesForUiRows(workspaceId: string, sales: Sale[]) {
             ...sale,
             workspaceId,
             _cashierName: cashierName,
-            _enrichedItems: enrichedItems
+            _enrichedItems: enrichedItems,
+            _returns: returnsBySaleId.get(sale.id) ?? []
         }
     })
 }
@@ -1748,6 +1798,10 @@ export function useSales(workspaceId: string | undefined, startDate?: string, en
                             sale_items(
                                 *,
                                 product:product_id(name, sku, category, category_id, can_be_returned, return_rules, unit, is_deleted)
+                            ),
+                            sale_returns(
+                                *,
+                                sale_return_items(*)
                             )
                     `)
                     .eq('workspace_id', workspaceId)
@@ -1789,7 +1843,7 @@ export function useSales(workspaceId: string | undefined, startDate?: string, en
                         return
                     }
 
-                    await db.transaction('rw', [db.sales, db.sale_items], async () => {
+                    await db.transaction('rw', [db.sales, db.sale_items, db.sale_returns, db.sale_return_items], async () => {
                         const remoteIds = new Set(data.map(d => d.id))
                         const localItems = await db.sales.where('workspaceId').equals(workspaceId).toArray()
 
@@ -1797,11 +1851,17 @@ export function useSales(workspaceId: string | undefined, startDate?: string, en
                             if (!remoteIds.has(local.id) && local.syncStatus === 'synced') {
                                 await db.sales.delete(local.id)
                                 await db.sale_items.where('saleId').equals(local.id).delete()
+                                await db.sale_returns.where('saleId').equals(local.id).delete()
+                                await db.sale_return_items.where('saleId').equals(local.id).delete()
                             }
                         }
 
                         for (const remoteSale of data) {
-                            const { sale_items: remoteItems, ...saleData } = remoteSale as any
+                            const {
+                                sale_items: remoteItems,
+                                sale_returns: remoteReturns,
+                                ...saleData
+                            } = remoteSale as any
                             const localSale = toCamelCase(saleData) as unknown as Sale
                             localSale.syncStatus = 'synced'
                             localSale.lastSyncedAt = new Date().toISOString()
@@ -1824,6 +1884,32 @@ export function useSales(workspaceId: string | undefined, startDate?: string, en
                                     const { product, ...itemData } = item
                                     const localItem = toCamelCase(itemData) as unknown as SaleItem
                                     await db.sale_items.put(localItem)
+                                }
+                            }
+
+                            if (remoteReturns) {
+                                for (const remoteReturn of remoteReturns) {
+                                    const {
+                                        sale_return_items: remoteReturnItems,
+                                        ...returnData
+                                    } = remoteReturn
+                                    await db.sale_returns.put({
+                                        ...(toCamelCase(returnData) as any),
+                                        syncStatus: 'synced',
+                                        lastSyncedAt: new Date().toISOString(),
+                                        version: 1,
+                                        isDeleted: false
+                                    })
+
+                                    for (const remoteReturnItem of remoteReturnItems || []) {
+                                        await db.sale_return_items.put({
+                                            ...(toCamelCase(remoteReturnItem) as any),
+                                            syncStatus: 'synced',
+                                            lastSyncedAt: new Date().toISOString(),
+                                            version: 1,
+                                            isDeleted: false
+                                        })
+                                    }
                                 }
                             }
                         }
@@ -1860,6 +1946,9 @@ export function toUISale(localSale: any): any {
         workspace_id: localSale.workspaceId,
         cashier_id: localSale.cashierId,
         total_amount: localSale.totalAmount,
+        original_total_amount: localSale.originalTotalAmount,
+        returned_amount: localSale.returnedAmount,
+        return_status: localSale.returnStatus,
         settlement_currency: localSale.settlementCurrency,
         exchange_source: localSale.exchangeSource,
         exchange_rate: localSale.exchangeRate,
@@ -1871,6 +1960,7 @@ export function toUISale(localSale: any): any {
         payment_method: localSale.payment_method ?? localSale.paymentMethod,
         cashier_name: localSale._cashierName || 'Staff',
         items: enrichedItems,
+        returns: (localSale as Sale & { _returns?: unknown[] })._returns ?? [],
         is_returned: localSale.isReturned,
         return_reason: localSale.returnReason,
         returned_at: localSale.returnedAt,

@@ -3,6 +3,9 @@ CREATE TABLE public.sales (
   workspace_id uuid NOT NULL,
   cashier_id uuid NULL,
   total_amount numeric NOT NULL DEFAULT 0,
+  original_total_amount numeric NOT NULL DEFAULT 0,
+  returned_amount numeric NOT NULL DEFAULT 0,
+  return_status text NOT NULL DEFAULT 'none'::text,
   created_at timestamp with time zone NULL DEFAULT now(),
   origin text NULL DEFAULT 'pos'::text,
   currency text NOT NULL DEFAULT 'usd'::text,
@@ -22,5 +25,7 @@ CREATE TABLE public.sales (
   sequence_id bigint NOT NULL,
   notes text NULL,
   updated_at timestamp with time zone NULL DEFAULT timezone('utc'::text, now()),
+  CONSTRAINT sales_return_status_check CHECK (return_status = ANY (ARRAY['none'::text, 'partial'::text, 'full'::text])),
+  CONSTRAINT sales_returned_amount_check CHECK (returned_amount >= 0),
   PRIMARY KEY (id)
 );

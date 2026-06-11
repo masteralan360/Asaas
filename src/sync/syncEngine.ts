@@ -42,6 +42,8 @@ const SYNC_PULL_TABLES = [
   "workspace_contacts",
   "sales",
   "sale_items",
+  "sale_returns",
+  "sale_return_items",
   "sales_orders",
   "purchase_orders",
   "travel_agency_sales",
@@ -67,7 +69,12 @@ const SYNC_PULL_TABLES = [
   "clinical_presets",
 ] as const;
 
-const TABLES_WITHOUT_VERSION = new Set<string>(["sales", "sale_items"]);
+const TABLES_WITHOUT_VERSION = new Set<string>([
+  "sales",
+  "sale_items",
+  "sale_returns",
+  "sale_return_items",
+]);
 const PROCESSABLE_MUTATION_STATUSES = ["pending", "syncing"] as const;
 const SALE_CREATE_RESULT_SELECT =
   "id, sequence_id, system_verified, system_review_status, system_review_reason";
@@ -77,6 +84,22 @@ function isSaleCreateMutation(mutation: {
   operation: string;
 }) {
   return mutation.entityType === "sales" && mutation.operation === "create";
+}
+
+function isRetriableSaleReturnMutation(mutation: {
+  entityType: string;
+  operation: string;
+  payload?: Record<string, unknown>;
+  error?: string;
+}) {
+  return (
+    mutation.entityType === "sales" &&
+    mutation.operation === "update" &&
+    mutation.payload?.__rpc_action === "process_sale_return" &&
+    /network|fetch|timeout|timed out|connection|abort/i.test(
+      mutation.error ?? "",
+    )
+  );
 }
 
 // Convert camelCase to snake_case
@@ -355,14 +378,18 @@ export async function processMutationQueue(
       db.offline_mutations.where("status").equals(status).sortBy("createdAt"),
     ),
   );
-  const failedSaleCreates = await db.offline_mutations
+  const failedRetriableSalesMutations = await db.offline_mutations
     .where("status")
     .equals("failed")
-    .filter(isSaleCreateMutation)
+    .filter(
+      (mutation) =>
+        isSaleCreateMutation(mutation) ||
+        isRetriableSaleReturnMutation(mutation),
+    )
     .sortBy("createdAt");
   const mutations = mutationGroups
     .flat()
-    .concat(failedSaleCreates)
+    .concat(failedRetriableSalesMutations)
     .sort((left, right) =>
       String(left.createdAt).localeCompare(String(right.createdAt)),
     );
@@ -471,6 +498,34 @@ export async function processMutationQueue(
               lastSyncedAt: syncedAt,
             });
             entityHandledInline = true;
+          } else if (rpcAction === "process_sale_return") {
+            const { error } = await supabase.rpc("process_sale_return", {
+              p_return_id: dbPayload.p_return_id,
+              p_sale_id: dbPayload.p_sale_id,
+              p_items: dbPayload.p_items,
+              p_return_reason: dbPayload.p_return_reason,
+              p_refund_method: dbPayload.p_refund_method,
+            });
+            if (error) throw error;
+
+            const returnId =
+              typeof dbPayload.p_return_id === "string"
+                ? dbPayload.p_return_id
+                : null;
+            if (returnId) {
+              const syncedAt = new Date().toISOString();
+              await db.sale_returns.update(returnId, {
+                syncStatus: "synced",
+                lastSyncedAt: syncedAt,
+              });
+              await db.sale_return_items
+                .where("returnId")
+                .equals(returnId)
+                .modify({
+                  syncStatus: "synced",
+                  lastSyncedAt: syncedAt,
+                });
+            }
           } else if (rpcAction === "return_sale_items") {
             const { error } = await supabase.rpc("return_sale_items", {
               p_sale_item_ids: dbPayload.p_sale_item_ids,

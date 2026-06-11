@@ -176,6 +176,7 @@ BEGIN
         workspace_id,
         cashier_id,
         total_amount,
+        original_total_amount,
         currency,
         settlement_currency,
         exchange_source,
@@ -193,6 +194,7 @@ BEGIN
         COALESCE((payload->>'id')::UUID, gen_random_uuid()),
         p_workspace_id,
         auth.uid(),
+        total_sale_amount,
         total_sale_amount,
         lower(COALESCE(payload->>'settlement_currency', payload->>'currency', 'usd')),
         lower(COALESCE(payload->>'settlement_currency', payload->>'currency', 'usd')),
@@ -314,7 +316,8 @@ BEGIN
             settlement_currency,
             negotiated_price,
             inventory_snapshot,
-            batch_allocations
+            batch_allocations,
+            original_batch_allocations
         )
         VALUES (
             new_sale_id,
@@ -331,6 +334,10 @@ BEGIN
             COALESCE(item->>'settlement_currency', 'usd'),
             (item->>'negotiated_price')::NUMERIC,
             COALESCE((item->>'inventory_snapshot')::INTEGER, 0),
+            CASE
+                WHEN v_has_active_batches AND jsonb_array_length(v_batch_allocations) > 0 THEN v_batch_allocations
+                ELSE NULL
+            END,
             CASE
                 WHEN v_has_active_batches AND jsonb_array_length(v_batch_allocations) > 0 THEN v_batch_allocations
                 ELSE NULL

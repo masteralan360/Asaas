@@ -1832,6 +1832,9 @@ export function POS() {
                         workspaceId: user.workspaceId,
                         cashierId: user.id,
                         totalAmount: totalAmount,
+                        originalTotalAmount: totalAmount,
+                        returnedAmount: 0,
+                        returnStatus: 'none',
                         settlementCurrency: settlementCurrency,
                         exchangeSource: checkoutPayload.exchange_source,
                         exchangeRate: checkoutPayload.exchange_rate,
@@ -1871,6 +1874,16 @@ export function POS() {
                             negotiatedPrice: item.negotiated_price,
                             inventorySnapshot: item.inventory_snapshot,
                             batchAllocations: item.batch_allocations?.map((allocation) => ({
+                                batchId: allocation.batch_id,
+                                batchNumber: allocation.batch_number,
+                                quantity: allocation.quantity,
+                                price: allocation.price ?? null,
+                                costPrice: allocation.cost_price ?? null,
+                                currency: allocation.currency ?? null,
+                                expiryDate: allocation.expiry_date ?? null,
+                                manufacturingDate: allocation.manufacturing_date ?? null
+                            })),
+                            originalBatchAllocations: item.batch_allocations?.map((allocation) => ({
                                 batchId: allocation.batch_id,
                                 batchNumber: allocation.batch_number,
                                 quantity: allocation.quantity,

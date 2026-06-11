@@ -8,6 +8,16 @@ const dbMock = vi.hoisted(() => {
     const invoices = {
         update: vi.fn(async () => 1)
     }
+    const saleReturns = {
+        update: vi.fn(async () => 1)
+    }
+    const saleReturnItems = {
+        where: vi.fn(() => ({
+            equals: vi.fn(() => ({
+                modify: vi.fn(async () => 1)
+            }))
+        }))
+    }
 
     const offlineMutations = {
         where: vi.fn((indexName: string) => ({
@@ -44,12 +54,16 @@ const dbMock = vi.hoisted(() => {
         offlineMutations,
         sales,
         invoices,
+        saleReturns,
+        saleReturnItems,
         reset() {
             rows.splice(0)
             offlineMutations.where.mockClear()
             offlineMutations.update.mockClear()
             sales.update.mockClear()
             invoices.update.mockClear()
+            saleReturns.update.mockClear()
+            saleReturnItems.where.mockClear()
         }
     }
 })
@@ -124,7 +138,9 @@ vi.mock('@/local-db', () => ({
     db: {
         offline_mutations: dbMock.offlineMutations,
         sales: dbMock.sales,
-        invoices: dbMock.invoices
+        invoices: dbMock.invoices,
+        sale_returns: dbMock.saleReturns,
+        sale_return_items: dbMock.saleReturnItems
     }
 }))
 
@@ -336,5 +352,50 @@ describe('fullSync error reporting', () => {
             })
         )
         expect(dbMock.rows[0]).toMatchObject({ status: 'synced', error: undefined })
+    })
+
+    it('retries a network-failed sale return with stable return and line ids', async () => {
+        dbMock.rows.push({
+            id: 'mutation-return-1',
+            workspaceId: 'workspace-1',
+            entityType: 'sales',
+            entityId: 'sale-1',
+            operation: 'update',
+            payload: {
+                __rpc_action: 'process_sale_return',
+                p_return_id: 'return-1',
+                p_sale_id: 'sale-1',
+                p_items: [{
+                    id: 'return-line-1',
+                    sale_item_id: 'sale-item-1',
+                    quantity: 2
+                }],
+                p_return_reason: 'Damaged',
+                p_refund_method: null
+            },
+            createdAt: '2026-06-03T00:00:00.000Z',
+            status: 'failed',
+            error: 'network timeout'
+        })
+
+        const result = await fullSync('user-1', 'workspace-1', null)
+
+        expect(result.success).toBe(true)
+        expect(supabaseMock.rpc).toHaveBeenCalledWith('process_sale_return', {
+            p_return_id: 'return-1',
+            p_sale_id: 'sale-1',
+            p_items: [{
+                id: 'return-line-1',
+                sale_item_id: 'sale-item-1',
+                quantity: 2
+            }],
+            p_return_reason: 'Damaged',
+            p_refund_method: null
+        })
+        expect(dbMock.saleReturns.update).toHaveBeenCalledWith(
+            'return-1',
+            expect.objectContaining({ syncStatus: 'synced' })
+        )
+        expect(dbMock.rows[0]).toMatchObject({ status: 'synced' })
     })
 })

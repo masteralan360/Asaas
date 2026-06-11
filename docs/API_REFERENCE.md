@@ -66,13 +66,18 @@ These still run through `supabase.rpc()` because they are transactional or inten
 
 - use: atomic sale creation plus inventory deduction
 
+### `process_sale_return`
+
+- use: idempotent partial or full returns with append-only audit records and inventory restoration
+- inputs: client-generated return ID, sale ID, return line JSON, reason, and optional refund method
+
 ### `return_sale_items`
 
-- use: partial or full item returns with inventory restoration
+- use: compatibility wrapper over `process_sale_return`
 
 ### `return_whole_sale`
 
-- use: admin-only wrapper over `return_sale_items`
+- use: admin-only compatibility wrapper over `process_sale_return`
 
 ## Direct Table Operations
 

@@ -940,6 +940,9 @@ export interface Invoice extends BaseEntity {
 export interface Sale extends BaseEntity {
   cashierId: string;
   totalAmount: number;
+  originalTotalAmount?: number;
+  returnedAmount?: number;
+  returnStatus?: "none" | "partial" | "full";
   settlementCurrency: CurrencyCode;
   exchangeSource: string | null;
   exchangeRate: number | null;
@@ -975,7 +978,30 @@ export interface SaleItem {
   // Immutable inventory snapshot at checkout
   inventorySnapshot: number;
   batchAllocations?: StockBatchAllocation[] | null;
+  originalBatchAllocations?: StockBatchAllocation[] | null;
   returnedQuantity?: number;
+}
+
+export interface SaleReturn extends BaseEntity {
+  saleId: string;
+  reason: string;
+  status: "posted" | "voided";
+  refundMethod?: string | null;
+  refundAmount: number;
+  returnedBy?: string | null;
+  returnedAt: string;
+  source: "app" | "legacy_backfill" | "system";
+}
+
+export interface SaleReturnItem extends BaseEntity {
+  returnId: string;
+  saleId: string;
+  saleItemId: string;
+  quantity: number;
+  unitRefundAmount: number;
+  refundAmount: number;
+  restoredStorageId?: string | null;
+  restoredBatchAllocations?: StockBatchAllocation[] | null;
 }
 
 export type LoanSource = "pos" | "manual";

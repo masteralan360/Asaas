@@ -1,0 +1,20 @@
+CREATE TABLE public.sale_returns (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL,
+  sale_id uuid NOT NULL,
+  reason text NOT NULL,
+  status text NOT NULL DEFAULT 'posted'::text,
+  refund_method text NULL,
+  refund_amount numeric NOT NULL DEFAULT 0,
+  returned_by uuid NULL,
+  returned_at timestamp with time zone NOT NULL DEFAULT now(),
+  source text NOT NULL DEFAULT 'app'::text,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT timezone('utc'::text, now()),
+  CONSTRAINT sale_returns_status_check CHECK (status = ANY (ARRAY['posted'::text, 'voided'::text])),
+  CONSTRAINT sale_returns_source_check CHECK (source = ANY (ARRAY['app'::text, 'legacy_backfill'::text, 'system'::text])),
+  CONSTRAINT sale_returns_refund_amount_check CHECK (refund_amount >= 0),
+  PRIMARY KEY (id),
+  FOREIGN KEY (workspace_id) REFERENCES public.workspaces(id),
+  FOREIGN KEY (sale_id) REFERENCES public.sales(id)
+);

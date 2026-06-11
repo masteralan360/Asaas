@@ -8,6 +8,8 @@ import type {
   SyncQueueItem,
   Sale,
   SaleItem,
+  SaleReturn,
+  SaleReturnItem,
   OfflineMutation,
   Workspace,
   AppSetting,
@@ -290,6 +292,8 @@ export class AtlasDatabase extends Dexie {
   users!: EntityTable<User, "id">;
   sales!: EntityTable<Sale, "id">;
   sale_items!: EntityTable<SaleItem, "id">;
+  sale_returns!: EntityTable<SaleReturn, "id">;
+  sale_return_items!: EntityTable<SaleReturnItem, "id">;
   workspaces!: EntityTable<Workspace, "id">;
   storages!: EntityTable<Storage, "id">;
   inventory!: EntityTable<Inventory, "id">;
@@ -2146,6 +2150,13 @@ export class AtlasDatabase extends Dexie {
       profiles: "id, workspaceId, name, role, [workspaceId+name]",
     });
 
+    this.version(67).stores({
+      sale_returns:
+        "id, workspaceId, saleId, status, returnedAt, updatedAt, [workspaceId+saleId], [workspaceId+returnedAt]",
+      sale_return_items:
+        "id, workspaceId, returnId, saleId, saleItemId, updatedAt, [returnId+saleItemId], [workspaceId+saleId]",
+    });
+
     this.registerLocalModeSyncHooks();
   }
 
@@ -2158,6 +2169,8 @@ export class AtlasDatabase extends Dexie {
       "invoices",
       "users",
       "sales",
+      "sale_returns",
+      "sale_return_items",
       "workspaces",
       "storages",
       "inventory",

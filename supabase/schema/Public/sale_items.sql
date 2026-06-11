@@ -19,5 +19,7 @@ CREATE TABLE public.sale_items (
   returned_by uuid NULL,
   returned_quantity integer NULL DEFAULT 0,
   inventory_snapshot integer NULL DEFAULT 0,
+  batch_allocations jsonb NULL,
+  original_batch_allocations jsonb NULL,
   PRIMARY KEY (id)
 );

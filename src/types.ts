@@ -26,6 +26,16 @@ export interface SaleItem {
         expiry_date?: string | null
         manufacturing_date?: string | null
     }[] | null
+    original_batch_allocations?: {
+        batch_id: string
+        batch_number: string
+        quantity: number
+        price?: number | null
+        cost_price?: number | null
+        currency?: string | null
+        expiry_date?: string | null
+        manufacturing_date?: string | null
+    }[] | null
     returned_quantity?: number
     is_returned?: boolean
     return_reason?: string
@@ -49,6 +59,9 @@ export interface Sale {
     cashier_id: string
     total_amount: number
     totalAmount?: number
+    original_total_amount?: number
+    returned_amount?: number
+    return_status?: 'none' | 'partial' | 'full'
     settlement_currency: string
     exchange_source: string | null
     exchange_rate: number | null
@@ -77,6 +90,38 @@ export interface Sale {
     _sourceChannel?: string | null
     _realEstateTransactionId?: string | null
     _counterpartyName?: string | null
+    returns?: SaleReturn[]
+}
+
+export interface SaleReturn {
+    id: string
+    workspace_id: string
+    sale_id: string
+    reason: string
+    status: 'posted' | 'voided'
+    refund_method?: string | null
+    refund_amount: number
+    returned_by?: string | null
+    returned_at: string
+    source: 'app' | 'legacy_backfill' | 'system'
+    created_at: string
+    updated_at: string
+    items?: SaleReturnItem[]
+}
+
+export interface SaleReturnItem {
+    id: string
+    workspace_id: string
+    return_id: string
+    sale_id: string
+    sale_item_id: string
+    quantity: number
+    unit_refund_amount: number
+    refund_amount: number
+    restored_storage_id?: string | null
+    restored_batch_allocations?: SaleItem['batch_allocations']
+    created_at: string
+    updated_at: string
 }
 
 export interface CartItem {
