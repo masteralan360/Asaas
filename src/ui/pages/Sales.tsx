@@ -31,6 +31,7 @@ import {
     CardTitle,
     Button,
     SaleDetailsModal,
+    ProfileCardModal,
     ReturnConfirmationModal,
     ReturnDeclineModal,
     ReturnRulesDisplayModal,
@@ -666,6 +667,8 @@ export function Sales() {
     const [isNoteModalOpen, setIsNoteModalOpen] = useState(false)
     const [selectedSaleForNote, setSelectedSaleForNote] = useState<Sale | null>(null)
     const [isExportModalOpen, setIsExportModalOpen] = useState(false)
+    const [profileCardOpen, setProfileCardOpen] = useState(false)
+    const [profileCardUserId, setProfileCardUserId] = useState<string | null>(null)
 
 
 
@@ -1911,7 +1914,21 @@ export function Sales() {
                                                                 </div>
                                                             </div>
                                                             <div className="text-sm font-bold text-foreground/80">
-                                                                {t('sales.cashier')}: <span className="text-primary font-black">{sale.cashier_name}</span>
+                                                                {t('sales.cashier')}: {sale.cashier_id ? (
+                                                                    <button
+                                                                        type="button"
+                                                                        className="text-primary font-black hover:underline cursor-pointer"
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation()
+                                                                            setProfileCardUserId(sale.cashier_id)
+                                                                            setProfileCardOpen(true)
+                                                                        }}
+                                                                    >
+                                                                        {sale.cashier_name}
+                                                                    </button>
+                                                                ) : (
+                                                                    <span className="text-primary font-black">{sale.cashier_name}</span>
+                                                                )}
                                                             </div>
                                                         </div>
                                                         <div className="text-right">
@@ -2251,7 +2268,21 @@ export function Sales() {
                                                             </div>
                                                         </TableCell>
                                                         <TableCell className="text-start">
-                                                            {sale.cashier_name}
+                                                            {sale.cashier_id ? (
+                                                                <button
+                                                                    type="button"
+                                                                    className="text-primary font-medium hover:underline cursor-pointer"
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation()
+                                                                        setProfileCardUserId(sale.cashier_id)
+                                                                        setProfileCardOpen(true)
+                                                                    }}
+                                                                >
+                                                                    {sale.cashier_name}
+                                                                </button>
+                                                            ) : (
+                                                                sale.cashier_name
+                                                            )}
                                                         </TableCell>
                                                         <TableCell className="text-start">
                                                             <span className={cn(
@@ -2723,6 +2754,12 @@ export function Sales() {
                     setSaleForWhatsApp(null)
                 }}
                 onConfirm={handleShareOnWhatsApp}
+            />
+
+            <ProfileCardModal
+                open={profileCardOpen}
+                onOpenChange={setProfileCardOpen}
+                userId={profileCardUserId}
             />
         </TooltipProvider>
     )
