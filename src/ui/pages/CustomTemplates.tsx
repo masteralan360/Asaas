@@ -111,7 +111,7 @@ export function CustomTemplates() {
     const { t } = useTranslation()
     const { toast } = useToast()
     const { user } = useAuth()
-    const { features, hasFeature, workspaceName } = useWorkspace()
+    const { features, hasFeature, workspaceName, isLocalMode } = useWorkspace()
     const [, setLocation] = useLocation()
     const [templates, setTemplates] = useState<CustomTemplateRow[]>([])
     const [isLoading, setIsLoading] = useState(true)
@@ -199,6 +199,16 @@ export function CustomTemplates() {
     const saveTemplateLayout = useCallback(async (layout: CustomTemplateLayout, options?: { label?: string }) => {
         if (!workspaceId || !user?.id) {
             throw new Error('Missing workspace context.')
+        }
+
+        if (isLocalMode) {
+            toast({
+                title: t('customTemplates.localModeNotSupported', { defaultValue: 'Local mode' }),
+                description: t('customTemplates.localModeDescription', {
+                    defaultValue: 'Custom templates are not persisted in local mode.'
+                })
+            })
+            return
         }
 
         const label = options?.label?.trim() || layout.label?.trim() || getCustomTemplateDisplayName(layout.moduleTypeKey)
