@@ -3,6 +3,7 @@
  * Public reads use shareable object URLs; privileged writes/lists use the user's Supabase session.
  */
 import { supabase } from '@/auth/supabase';
+import { isLocalWorkspaceMode } from '@/workspace/workspaceMode';
 
 class R2Service {
     constructor() {
@@ -129,6 +130,11 @@ class R2Service {
      * Upload an object to R2
      */
     public async upload(path: string, data: Blob | ArrayBuffer | string, contentType?: string): Promise<string> {
+        const workspaceId = path.split('/')[0];
+        if (workspaceId && isLocalWorkspaceMode(workspaceId)) {
+            return '';
+        }
+
         if (!this.workerUrl) {
             throw new Error('R2 configuration missing');
         }
@@ -154,6 +160,11 @@ class R2Service {
      * Delete an object from R2
      */
     public async delete(path: string): Promise<void> {
+        const workspaceId = path.split('/')[0];
+        if (workspaceId && isLocalWorkspaceMode(workspaceId)) {
+            return;
+        }
+
         if (!this.workerUrl) {
             throw new Error('R2 configuration missing');
         }
