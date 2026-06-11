@@ -1701,6 +1701,18 @@ async function enrichSalesForUiRows(workspaceId: string, sales: Sale[]) {
     })
 }
 
+export async function generateLocalSaleSequenceId(workspaceId: string): Promise<number> {
+  const sales = await db.sales
+    .where("workspaceId")
+    .equals(workspaceId)
+    .toArray();
+  const maxSequenceId = sales.reduce(
+    (max, sale) => Math.max(max, sale.sequenceId ?? 0),
+    0,
+  );
+  return maxSequenceId + 1;
+}
+
 export function useSales(workspaceId: string | undefined, startDate?: string, endDate?: string) {
     const isOnline = useNetworkStatus()
 

@@ -7,6 +7,7 @@ import {
     adjustInventoryQuantity,
     commitStockBatchAllocations,
     createLoanFromPosSale,
+    generateLocalSaleSequenceId,
     getStockBatchSalePlan,
     getPrimaryStorageFromList,
     refreshStockBatchesFromSupabase,
@@ -1825,6 +1826,7 @@ export function POS() {
                     })
 
                     // 1. Save Sale locally (with verification fields)
+                    const localSequenceId = await generateLocalSaleSequenceId(user.workspaceId)
                     await db.sales.add({
                         id: saleId,
                         workspaceId: user.workspaceId,
@@ -1837,6 +1839,7 @@ export function POS() {
                         exchangeRates: checkoutPayload.exchange_rates,
                         origin: 'pos',
                         payment_method: checkoutPayload.payment_method,
+                        sequenceId: localSequenceId,
                         createdAt: snapshotTimestamp,
                         updatedAt: snapshotTimestamp,
                         syncStatus: 'pending',
@@ -1904,8 +1907,11 @@ export function POS() {
                         )
                     ))
 
+                    const localFormattedInvoiceId = `#${String(localSequenceId).padStart(5, '0')}`
                     const saleDataOffline = mapSaleToUniversal({
                         ...checkoutPayload,
+                        sequenceId: localSequenceId,
+                        invoiceid: localFormattedInvoiceId,
                         created_at: snapshotTimestamp,
                         workspace_id: user?.workspaceId || '',
                         cashier_id: user?.id || '',
@@ -1913,10 +1919,10 @@ export function POS() {
                     } as any)
 
                     if (!isLocalMode) {
-                        // Cloud/offline mode keeps the existing invoice-history behavior.
                         await db.invoices.add({
                             id: saleId,
-                            invoiceid: `#${saleId.slice(0, 8)}`,
+                            invoiceid: `#${String(localSequenceId).padStart(5, '0')}`,
+                            sequenceId: localSequenceId,
                             workspaceId: user?.workspaceId || '',
                             customerId: '',
                             status: 'paid',
@@ -1927,7 +1933,7 @@ export function POS() {
                             createdByName: user?.name || 'System',
                             createdAt: snapshotTimestamp,
                             updatedAt: snapshotTimestamp,
-                            syncStatus: 'pending', // Will be synced by AssetManager
+                            syncStatus: 'pending',
                             lastSyncedAt: null,
                             version: 1,
                             isDeleted: false

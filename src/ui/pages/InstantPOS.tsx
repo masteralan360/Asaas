@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/auth'
 import { supabase } from '@/auth/supabase'
-import { addToOfflineMutations, adjustInventoryQuantity, commitStockBatchAllocations, getPrimaryStorageFromList, getStockBatchSalePlan, refreshStockBatchesFromSupabase, useActiveDiscountMap, useBatchAwareInventoryProducts, useCategories, useStorages } from '@/local-db'
+import { addToOfflineMutations, adjustInventoryQuantity, commitStockBatchAllocations, generateLocalSaleSequenceId, getPrimaryStorageFromList, getStockBatchSalePlan, refreshStockBatchesFromSupabase, useActiveDiscountMap, useBatchAwareInventoryProducts, useCategories, useStorages } from '@/local-db'
 import { db } from '@/local-db/database'
 import type { CurrencyCode } from '@/local-db/models'
 import { useWorkspace } from '@/workspace'
@@ -1036,6 +1036,7 @@ export function InstantPOS() {
 
             if (!navigator.onLine || isLocalMode) {
                 try {
+                    const localSequenceId = await generateLocalSaleSequenceId(user.workspaceId)
                     await db.sales.add({
                         id: saleId,
                         workspaceId: user.workspaceId,
@@ -1048,6 +1049,7 @@ export function InstantPOS() {
                         exchangeRates: null,
                         origin: 'instant_pos',
                         payment_method: 'cash',
+                        sequenceId: localSequenceId,
                         createdAt: snapshotTimestamp,
                         updatedAt: snapshotTimestamp,
                         syncStatus: 'pending',
@@ -1115,7 +1117,8 @@ export function InstantPOS() {
                     if (!isLocalMode) {
                         await db.invoices.add({
                             id: saleId,
-                            invoiceid: `#${saleId.slice(0, 8)}`,
+                            invoiceid: `#${String(localSequenceId).padStart(5, '0')}`,
+                            sequenceId: localSequenceId,
                             workspaceId: user.workspaceId,
                             customerId: '',
                             status: 'paid',
