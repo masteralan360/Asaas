@@ -3241,12 +3241,12 @@ export async function createWorkspaceContact(workspaceId: string, data: Omit<Wor
         workspaceId,
         createdAt: now,
         updatedAt: now,
-        syncStatus: isOnline() ? 'synced' : 'pending',
-        lastSyncedAt: isOnline() ? now : null,
+        syncStatus: isOnline(workspaceId) ? 'synced' : 'pending',
+        lastSyncedAt: isOnline(workspaceId) ? now : null,
         version: 1
     }
 
-    if (isOnline()) {
+    if (isOnline(workspaceId)) {
         const payload = toSnakeCase(contact as any)
         const { error } = await runMutation('workspace_contacts.create', () => supabase.from('workspace_contacts').insert(payload))
         if (error) throw normalizeSupabaseActionError(error)
@@ -3268,12 +3268,12 @@ export async function updateWorkspaceContact(id: string, data: Partial<Workspace
         ...existing,
         ...data,
         updatedAt: now,
-        syncStatus: isOnline() ? 'synced' : 'pending',
-        lastSyncedAt: isOnline() ? now : existing.lastSyncedAt,
+        syncStatus: isOnline(existing.workspaceId) ? 'synced' : 'pending',
+        lastSyncedAt: isOnline(existing.workspaceId) ? now : existing.lastSyncedAt,
         version: existing.version + 1
     } as WorkspaceContact
 
-    if (isOnline()) {
+    if (isOnline(existing.workspaceId)) {
         const payload = toSnakeCase({ ...data, updatedAt: now })
         const { error } = await runMutation('workspace_contacts.update', () => supabase.from('workspace_contacts').update(payload).eq('id', id))
         if (error) throw normalizeSupabaseActionError(error)
@@ -3288,12 +3288,11 @@ export async function deleteWorkspaceContact(id: string): Promise<void> {
     const existing = await db.workspace_contacts.get(id)
     if (!existing) return
 
-    if (isOnline()) {
+    if (isOnline(existing.workspaceId)) {
         const { error } = await runMutation('workspace_contacts.delete', () => supabase.from('workspace_contacts').delete().eq('id', id))
         if (error) throw normalizeSupabaseActionError(error)
         await db.workspace_contacts.delete(id)
     } else {
-        // OFFLINE: Local Hard Delete + Mutation Record
         await db.workspace_contacts.delete(id)
         await addToOfflineMutations('workspace_contacts', id, 'delete', { id }, existing.workspaceId)
     }

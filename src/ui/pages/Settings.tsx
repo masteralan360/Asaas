@@ -8,7 +8,7 @@ import { useWorkspace } from '@/workspace'
 import { Coins } from 'lucide-react'
 import type { IQDDisplayPreference, CurrencyCode } from '@/local-db/models'
 import { Settings as SettingsIcon, Database, Cloud, Trash2, RefreshCw, User, Copy, Check, CreditCard, Globe, Download, AlertCircle, Printer, Contact, Fingerprint, Store, ExternalLink } from 'lucide-react'
-import { formatDate, formatDateTime, formatTime, cn, getHourDisplayPreference, setHourDisplayPreference, type HourDisplayPreference } from '@/lib/utils'
+import { formatDate, formatDateTime, formatTime, cn, generateId, getHourDisplayPreference, setHourDisplayPreference, type HourDisplayPreference } from '@/lib/utils'
 import { useTheme } from '@/ui/components/theme-provider'
 import { Moon, Sun, Monitor, Unlock, Server, MessageSquare, Bell, MonitorPlay, Wifi, Zap } from 'lucide-react'
 import { useState, useEffect } from 'react'
@@ -1785,7 +1785,7 @@ export function Settings() {
                                             </span>
                                         </div>
                                     </div>
-                                    {user?.role === 'admin' && (canUseMultipleContacts || workspaceContacts.length === 0) && (
+                                    {user?.role === 'admin' && (canUseMultipleContacts || workspaceContacts.length === 0 || isLocalMode) && (
                                         <div className="space-y-1">
                                             <Label className="text-xs text-muted-foreground">{t('workspaceConfig.contacts.title', 'Workspace Contacts')}</Label>
                                             <Button
@@ -2011,9 +2011,30 @@ export function Settings() {
                             contacts={workspaceContacts.map(p => ({ type: p.type, value: p.value, label: p.label || '', isPrimary: p.isPrimary }))}
                             onContactsChange={async (newContacts) => {
                                 if (!user?.workspaceId) return
-                                const planContacts = canUseMultipleContacts
+                                const planContacts = isLocalMode || canUseMultipleContacts
                                     ? newContacts
                                     : newContacts.slice(0, 1).map((contact) => ({ ...contact, isPrimary: true }))
+
+                                if (isLocalMode) {
+                                    const now = new Date().toISOString()
+                                    await db.workspace_contacts.where('workspaceId').equals(user.workspaceId).delete()
+                                    const localRecords = planContacts.map((p: any) => ({
+                                        id: generateId(),
+                                        workspaceId: user.workspaceId,
+                                        type: p.type,
+                                        value: p.value,
+                                        label: p.label || null,
+                                        isPrimary: p.isPrimary,
+                                        syncStatus: 'synced' as const,
+                                        lastSyncedAt: now,
+                                        version: 1,
+                                        createdAt: now,
+                                        updatedAt: now
+                                    }))
+                                    await db.workspace_contacts.bulkPut(localRecords)
+                                    return
+                                }
+
                                 try {
                                     const { error: deleteError } = await runSupabaseAction('settings.replaceWorkspaceContacts.delete', () =>
                                         supabase.from('workspace_contacts').delete().eq('workspace_id', user.workspaceId)
