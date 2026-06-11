@@ -20,6 +20,7 @@ interface SyncInvoiceOptions {
         name: string
     }
     format?: 'a4' | 'receipt'
+    pdfBuilder?: () => Promise<Blob>
 }
 
 /**
@@ -51,13 +52,15 @@ export async function triggerInvoiceSync(options: SyncInvoiceOptions): Promise<v
         const now = new Date().toISOString()
 
         // 1. Generate PDF for the specific format
-        const pdfBlob = await generateInvoicePdf({
-            data: saleData,
-            format: format,
-            features: printableFeatures,
-            workspaceName: workspaceName || 'Atlas',
-            workspaceId: options.workspaceId
-        });
+        const pdfBlob = options.pdfBuilder
+            ? await options.pdfBuilder()
+            : await generateInvoicePdf({
+                data: saleData,
+                format: format,
+                features: printableFeatures,
+                workspaceName: workspaceName || 'Atlas',
+                workspaceId: options.workspaceId
+            });
 
         if (isLocalMode) {
             const existingInvoice = await db.invoices.get(invoiceId)

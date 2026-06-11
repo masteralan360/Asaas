@@ -56,13 +56,14 @@ export const LOCAL_MODE_SQLITE_TABLES = [
 export type LocalModeSqliteTableName =
   (typeof LOCAL_MODE_SQLITE_TABLES)[number];
 
-interface SqliteConnection {
+export interface SqliteConnection {
   execute(query: string, bindValues?: unknown[]): Promise<unknown>;
   select<T>(query: string, bindValues?: unknown[]): Promise<T>;
+  close?(database?: string): Promise<boolean>;
 }
 
 interface StoredEntityRow {
-  entity_type: LocalModeSqliteTableName;
+  entity_type: string;
   entity_id: string;
   workspace_id: string | null;
   payload: string;
@@ -181,6 +182,8 @@ async function ensureConnection() {
       const { default: Database } = await import("@tauri-apps/plugin-sql");
       const connection = await Database.load(LOCAL_MODE_SQLITE_PATH);
 
+      await connection.execute("PRAGMA busy_timeout = 5000");
+      await connection.execute("PRAGMA journal_mode = WAL");
       await connection.execute(`
                 CREATE TABLE IF NOT EXISTS local_entities (
                     entity_type TEXT NOT NULL,
@@ -207,6 +210,9 @@ async function ensureConnection() {
         "[LocalModeSQLite] Failed to initialize SQLite connection:",
         error,
       );
+      if (isSqliteLockedError(error)) {
+        throw error;
+      }
       return null;
     });
   }
@@ -214,15 +220,70 @@ async function ensureConnection() {
   return sqlitePromise;
 }
 
-function enqueueWrite(task: () => Promise<void>) {
-  sqliteWriteQueue = sqliteWriteQueue
+export async function getLocalModeSqliteConnection() {
+  return ensureConnection();
+}
+
+function isSqliteLockedError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  return /database is locked|code:\s*5/i.test(message);
+}
+
+async function resetSqliteConnection() {
+  const currentConnection = sqlitePromise;
+  sqlitePromise = null;
+
+  try {
+    const connection = currentConnection ? await currentConnection : null;
+    if (connection?.close) {
+      await connection.close();
+      return;
+    }
+  } catch {
+    // Fall through and close the named Tauri pool.
+  }
+
+  try {
+    const { default: Database } = await import("@tauri-apps/plugin-sql");
+    await Database.get(LOCAL_MODE_SQLITE_PATH).close();
+  } catch {
+    // Reopening on the next attempt is enough.
+  }
+}
+
+async function retrySqliteWrite<T>(task: () => Promise<T>) {
+  const retryDelays = [75, 200, 500];
+
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await task();
+    } catch (error) {
+      const delay = retryDelays[attempt];
+      if (!isSqliteLockedError(error) || delay === undefined) {
+        throw error;
+      }
+      await resetSqliteConnection();
+      await new Promise((resolve) => globalThis.setTimeout(resolve, delay));
+    }
+  }
+}
+
+export function runLocalModeSqliteWrite<T>(task: () => Promise<T>): Promise<T> {
+  const queued = sqliteWriteQueue
     .catch(() => undefined)
-    .then(() => task())
-    .catch((error) => {
+    .then(() => retrySqliteWrite(task));
+
+  sqliteWriteQueue = queued.then(
+    () => undefined,
+    () => undefined,
+  );
+  return queued;
+}
+
+function enqueueWrite(task: () => Promise<void>) {
+  return runLocalModeSqliteWrite(task).catch((error) => {
       console.error("[LocalModeSQLite] Write failed:", error);
     });
-
-  return sqliteWriteQueue;
 }
 
 async function withMirroringPaused<T>(work: () => Promise<T>) {
@@ -517,6 +578,10 @@ export async function hydrateLocalModeCacheFromSqlite(
         Record<string, unknown>[]
       >();
       for (const row of rows) {
+        if (!isMirroredTableName(row.entity_type)) {
+          continue;
+        }
+
         const payload = JSON.parse(row.payload) as unknown;
         const revived = deserializeValue(payload) as Record<string, unknown>;
         const existingGroup = groupedRows.get(row.entity_type) ?? [];

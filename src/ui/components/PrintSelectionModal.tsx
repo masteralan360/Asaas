@@ -8,15 +8,26 @@ import {
 import { Receipt, FileText, Printer } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useWorkspace } from '@/workspace'
+import {
+    getStoredCustomTemplateLabel,
+    type StoredCustomTemplateRow
+} from '@/lib/customTemplates'
 
 interface PrintSelectionModalProps {
     isOpen: boolean
     onClose: () => void
-    onSelect: (format: 'receipt' | 'a4') => void
+    onSelect: (format: 'receipt' | 'a4', template?: StoredCustomTemplateRow) => void
     a4Variant: 'standard' | 'refund'
+    receiptTemplates?: StoredCustomTemplateRow[]
 }
 
-export function PrintSelectionModal({ isOpen, onClose, onSelect, a4Variant }: PrintSelectionModalProps) {
+export function PrintSelectionModal({
+    isOpen,
+    onClose,
+    onSelect,
+    a4Variant,
+    receiptTemplates = []
+}: PrintSelectionModalProps) {
     const { t } = useTranslation()
     const { hasCapability } = useWorkspace()
     const canUseA4Invoices = hasCapability('a4PdfInvoices')
@@ -30,7 +41,7 @@ export function PrintSelectionModal({ isOpen, onClose, onSelect, a4Variant }: Pr
                         {t('common.print') || 'Select Print Format'}
                     </DialogTitle>
                 </DialogHeader>
-                <div className={canUseA4Invoices ? 'grid grid-cols-2 gap-4 py-4' : 'grid grid-cols-1 gap-4 py-4'}>
+                <div className="grid max-h-[65vh] grid-cols-1 gap-4 overflow-y-auto py-4 sm:grid-cols-2">
                     <Button
                         variant="outline"
                         className="h-32 flex flex-col gap-3 hover:border-primary hover:bg-primary/5 transition-all text-center"
@@ -44,6 +55,32 @@ export function PrintSelectionModal({ isOpen, onClose, onSelect, a4Variant }: Pr
                             <div className="text-xs text-muted-foreground">{t('sales.print.receiptdesc') || 'Detailed full-page document'}</div>
                         </div>
                     </Button>
+
+                    {receiptTemplates.map((template) => (
+                        <Button
+                            key={template.id}
+                            variant="outline"
+                            className="relative h-32 flex-col gap-3 text-center transition-all hover:border-primary hover:bg-primary/5"
+                            onClick={() => onSelect('receipt', template)}
+                        >
+                            {template.primary && (
+                                <span className="absolute end-2 top-2 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold text-primary">
+                                    {t('customTemplates.primary', { defaultValue: 'Primary' })}
+                                </span>
+                            )}
+                            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
+                                <Receipt className="h-6 w-6 text-primary" />
+                            </div>
+                            <div className="space-y-1">
+                                <div className="max-w-40 truncate font-bold">
+                                    {getStoredCustomTemplateLabel(template)}
+                                </div>
+                                <div className="text-xs text-muted-foreground">
+                                    {t('customTemplates.customReceipt', { defaultValue: 'Custom Receipt' })}
+                                </div>
+                            </div>
+                        </Button>
+                    ))}
 
                     {canUseA4Invoices && (
                         <Button

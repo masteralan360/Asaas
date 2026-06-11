@@ -1,7 +1,7 @@
 import { useAuth } from '@/auth'
 import { isBackendConfigurationRequired, supabase } from '@/auth/supabase'
 import { useSyncStatus, clearQueue } from '@/sync'
-import { db, hasCurrencyExchangeAccountingData } from '@/local-db'
+import { db, hasCurrencyExchangeAccountingData, listLocalCustomTemplates } from '@/local-db'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, Button, Label, LanguageSwitcher, Input, CurrencySelector, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Tabs, TabsList, TabsTrigger, TabsContent, Switch, Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, Textarea, useToast, RegisterWorkspaceContactsModal } from '@/ui/components'
 import { useTranslation } from 'react-i18next'
 import { useWorkspace } from '@/workspace'
@@ -780,7 +780,18 @@ export function Settings() {
             if (features.logo_url && !features.logo_url.startsWith('http')) {
                 count++
             }
-            if (isSupabaseConfigured) {
+            if (isLocalMode) {
+                const templates = await listLocalCustomTemplates(user.workspaceId)
+                const attachedImageCount = templates.reduce((sum, row) => {
+                    const layout = row.layout_json as { images?: any[] } | null
+                    const images = Array.isArray(layout?.images) ? layout.images : []
+                    return sum + images.filter((image: any) => {
+                        const path = typeof image?.path === 'string' ? image.path : ''
+                        return path && !path.startsWith('http') && !path.startsWith('data:') && !path.startsWith('blob:')
+                    }).length
+                }, 0)
+                count += attachedImageCount
+            } else if (isSupabaseConfigured) {
                 const { data } = await runSupabaseAction('customTemplates.mediaCount', () =>
                     supabase
                         .from('custom_templates')
@@ -825,7 +836,24 @@ export function Settings() {
                 itemsToSync.push({ path: features.logo_url, name: 'Workspace Logo' })
             }
 
-            if (isSupabaseConfigured) {
+            if (isLocalMode) {
+                const templates = await listLocalCustomTemplates(user.workspaceId)
+                for (const template of templates) {
+                    const layout = template.layout_json as { images?: any[] } | null
+                    const images = Array.isArray(layout?.images) ? layout.images : []
+                    for (const image of images) {
+                        const path = typeof image?.path === 'string' ? image.path : ''
+                        if (!path || path.startsWith('http') || path.startsWith('data:') || path.startsWith('blob:')) {
+                            continue
+                        }
+
+                        itemsToSync.push({
+                            path,
+                            name: template.label || template.module_type_key || 'Custom Template Image'
+                        })
+                    }
+                }
+            } else if (isSupabaseConfigured) {
                 const { data } = await runSupabaseAction('customTemplates.mediaSyncList', () =>
                     supabase
                         .from('custom_templates')

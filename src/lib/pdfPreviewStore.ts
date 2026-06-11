@@ -29,6 +29,10 @@ export type TemplatePreviewRenderOptions = {
 export type TemplatePreview = {
     fields: TemplatePreviewField[]
     dataKeys?: TemplatePreviewDataKey[]
+    page?: {
+        widthMm: number
+        heightMm: number
+    }
     createElement: (
         data: Record<string, string>,
         effectiveId?: string,

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useReactToPrint } from 'react-to-print'
 import {
@@ -14,13 +14,21 @@ import { formatCurrency, cn } from '@/lib/utils'
 import { triggerInvoiceSync } from '@/services/invoiceSyncService'
 import { disableInvoiceQrInLocalMode } from '@/services/localInvoiceStorage'
 import { printService } from '@/services/printService'
-import { useAuth } from '@/auth'
+import { isSupabaseConfigured, useAuth } from '@/auth'
 import { useWorkspace, type WorkspaceFeatures } from '@/workspace'
 import { Textarea } from '@/ui/components/textarea'
 import { supabase } from '@/auth/supabase'
-import { db } from '@/local-db'
+import { db, listLocalCustomTemplates, replaceMirroredCustomTemplates, type LocalCustomTemplateRow } from '@/local-db'
 import { useDebounce } from '@/lib/hooks'
 import { normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
+import {
+    SALES_HISTORY_RECEIPT_TEMPLATE_KEY,
+    buildCustomTemplateLayoutPdf,
+    getCustomTemplateTarget,
+    readCustomTemplateLayout,
+    renderCustomTemplateLayoutElement,
+    type StoredCustomTemplateRow
+} from '@/lib/customTemplates'
 
 interface CheckoutSuccessModalProps {
     isOpen: boolean
@@ -37,7 +45,7 @@ export function CheckoutSuccessModal({
 }: CheckoutSuccessModalProps) {
     const { t } = useTranslation()
     const { user } = useAuth()
-    const { workspaceName, activeWorkspace, isLocalMode } = useWorkspace()
+    const { workspaceName, activeWorkspace, isLocalMode, isHybridMode } = useWorkspace()
     const { toast } = useToast()
 
     const [timeLeft, setTimeLeft] = useState(15)
@@ -46,6 +54,8 @@ export function CheckoutSuccessModal({
     const [note, setNote] = useState(saleData?.notes || '')
     const debouncedNote = useDebounce(note, 1000)
     const printRef = useRef<HTMLDivElement>(null)
+    const [primaryReceiptTemplate, setPrimaryReceiptTemplate] = useState<StoredCustomTemplateRow | null>(null)
+    const [isLoadingPrimaryReceiptTemplate, setIsLoadingPrimaryReceiptTemplate] = useState(false)
     const printFeatures = useMemo(
         () => disableInvoiceQrInLocalMode(activeWorkspace?.id || user?.workspaceId, features),
         [activeWorkspace?.id, features, user?.workspaceId]
@@ -58,6 +68,100 @@ export function CheckoutSuccessModal({
             // Optional: Close modal after print? No, leave it for the timer or manual close
         }
     })
+
+    useEffect(() => {
+        const workspaceId = activeWorkspace?.id || user?.workspaceId
+        if (!isOpen || !workspaceId || (!isLocalMode && !isSupabaseConfigured)) {
+            setPrimaryReceiptTemplate(null)
+            setIsLoadingPrimaryReceiptTemplate(false)
+            return
+        }
+
+        let cancelled = false
+        setIsLoadingPrimaryReceiptTemplate(true)
+        void (async () => {
+            try {
+                if (isLocalMode) {
+                    const templates = await listLocalCustomTemplates(workspaceId, {
+                        moduleTypeKey: SALES_HISTORY_RECEIPT_TEMPLATE_KEY,
+                        activeOnly: true,
+                        primaryOnly: true
+                    })
+                    if (!cancelled) setPrimaryReceiptTemplate((templates[0] || null) as StoredCustomTemplateRow | null)
+                } else {
+                    const { data, error } = await runSupabaseAction('checkoutSuccess.primaryReceiptTemplate.fetch', () =>
+                        supabase
+                            .from('custom_templates')
+                            .select('id, workspace_id, module_type_key, label, layout_json, active, primary, created_by, updated_by, created_at, updated_at')
+                            .eq('workspace_id', workspaceId)
+                            .eq('module_type_key', SALES_HISTORY_RECEIPT_TEMPLATE_KEY)
+                            .order('primary', { ascending: false })
+                            .order('updated_at', { ascending: false })
+                    )
+                    if (error) throw normalizeSupabaseActionError(error)
+                    const cloudTemplates = (data || []) as LocalCustomTemplateRow[]
+                    if (isHybridMode) {
+                        await replaceMirroredCustomTemplates(workspaceId, cloudTemplates, {
+                            moduleTypeKey: SALES_HISTORY_RECEIPT_TEMPLATE_KEY
+                        })
+                    }
+                    const primaryTemplate = cloudTemplates.find((template) => template.active && template.primary) || null
+                    if (!cancelled) setPrimaryReceiptTemplate(primaryTemplate as StoredCustomTemplateRow | null)
+                }
+            } catch (templateError) {
+                console.error('[CheckoutSuccessModal] Failed to load primary receipt template:', templateError)
+                if (!cancelled) {
+                    if (isHybridMode) {
+                        try {
+                            const mirroredTemplates = await listLocalCustomTemplates(workspaceId, {
+                                moduleTypeKey: SALES_HISTORY_RECEIPT_TEMPLATE_KEY,
+                                activeOnly: true,
+                                primaryOnly: true
+                            })
+                            setPrimaryReceiptTemplate((mirroredTemplates[0] || null) as StoredCustomTemplateRow | null)
+                        } catch {
+                            setPrimaryReceiptTemplate(null)
+                        }
+                    } else {
+                        setPrimaryReceiptTemplate(null)
+                    }
+                }
+            } finally {
+                if (!cancelled) setIsLoadingPrimaryReceiptTemplate(false)
+            }
+        })()
+
+        return () => {
+            cancelled = true
+        }
+    }, [activeWorkspace?.id, isHybridMode, isLocalMode, isOpen, user?.workspaceId])
+
+    const primaryReceiptTarget = useMemo(
+        () => getCustomTemplateTarget(SALES_HISTORY_RECEIPT_TEMPLATE_KEY),
+        []
+    )
+    const primaryReceiptLayout = useMemo(
+        () => readCustomTemplateLayout(primaryReceiptTemplate),
+        [primaryReceiptTemplate]
+    )
+    const buildPrimaryReceiptPdf = useCallback(async () => {
+        if (!primaryReceiptTarget || !primaryReceiptLayout || !saleData) {
+            throw new Error('Primary receipt template is not available.')
+        }
+
+        return buildCustomTemplateLayoutPdf({
+            target: primaryReceiptTarget,
+            layout: primaryReceiptLayout,
+            values: {},
+            options: {
+                workspaceId: activeWorkspace?.id || user?.workspaceId,
+                workspaceName,
+                features: printFeatures,
+                receiptData: saleData
+            },
+            effectiveId: saleData.id
+        })
+    }, [activeWorkspace?.id, primaryReceiptLayout, primaryReceiptTarget, printFeatures, saleData, user?.workspaceId, workspaceName])
 
     useEffect(() => {
         if (!isOpen) {
@@ -111,7 +215,7 @@ export function CheckoutSuccessModal({
         }
 
         saveNote()
-    }, [debouncedNote, isLocalMode, saleData?.id])
+    }, [debouncedNote, isLocalMode, saleData?.id, saleData?.notes])
 
     const handlePrintAndUpload = async () => {
         if (isProcessing || !saleData || !user) {
@@ -132,12 +236,13 @@ export function CheckoutSuccessModal({
                     id: user.id,
                     name: user.name || 'System'
                 },
-                format: 'receipt'
+                format: 'receipt',
+                pdfBuilder: primaryReceiptLayout ? buildPrimaryReceiptPdf : undefined
             });
 
             // 2. Prefer native thermal printing when enabled and configured on this device.
             let handledByThermalPrinter = false
-            if (features.thermal_printing) {
+            if (features.thermal_printing && !primaryReceiptLayout) {
                 try {
                     handledByThermalPrinter = await printService.silentPrintReceipt({
                         saleData,
@@ -257,10 +362,10 @@ export function CheckoutSuccessModal({
                             size="lg"
                             className="w-full text-lg h-14 bg-[#23c55e] hover:bg-[#1ea34d] text-white rounded-xl shadow-lg shadow-green-500/20 transition-all active:scale-95 group"
                             onClick={handlePrintAndUpload}
-                            disabled={isProcessing}
+                            disabled={isProcessing || isLoadingPrimaryReceiptTemplate}
                         >
                             <Printer className="w-6 h-6 mr-3 group-hover:rotate-12 transition-transform" />
-                            {isProcessing ? t('common.loading') : t('pos.printReceipt')}
+                            {isProcessing || isLoadingPrimaryReceiptTemplate ? t('common.loading') : t('pos.printReceipt')}
                         </Button>
 
                         <Button
@@ -279,12 +384,27 @@ export function CheckoutSuccessModal({
                 <div className="hidden">
                     <div ref={printRef} className="bg-white">
                         {saleData && (
-                            <SaleReceiptBase
-                                data={saleData}
-                                features={printFeatures}
-                                workspaceName={workspaceName || user?.workspaceId || 'Atlas'}
-                                workspaceId={activeWorkspace?.id || user?.workspaceId}
-                            />
+                            primaryReceiptTarget && primaryReceiptLayout
+                                ? renderCustomTemplateLayoutElement({
+                                    target: primaryReceiptTarget,
+                                    layout: primaryReceiptLayout,
+                                    values: {},
+                                    options: {
+                                        workspaceId: activeWorkspace?.id || user?.workspaceId,
+                                        workspaceName,
+                                        features: printFeatures,
+                                        receiptData: saleData
+                                    },
+                                    effectiveId: saleData.id
+                                })
+                                : (
+                                    <SaleReceiptBase
+                                        data={saleData}
+                                        features={printFeatures}
+                                        workspaceName={workspaceName || user?.workspaceId || 'Atlas'}
+                                        workspaceId={activeWorkspace?.id || user?.workspaceId}
+                                    />
+                                )
                         )}
                     </div>
                 </div>

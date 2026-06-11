@@ -13,6 +13,8 @@ import {
     type PaymentTransaction,
     type RealEstateTransaction,
     deleteRealEstateTransaction,
+    listLocalCustomTemplates,
+    replaceMirroredCustomTemplates,
     recordObligationSettlement,
     useRealEstateInstallments,
     useRealEstatePayments,
@@ -20,7 +22,8 @@ import {
     useRealEstateTransactions,
     usePaymentTransactions,
     useBusinessPartners,
-    useWorkspaceContacts
+    useWorkspaceContacts,
+    type LocalCustomTemplateRow
 } from '@/local-db'
 import {
     Button,
@@ -61,10 +64,10 @@ import {
     readCustomTemplateLayout,
     type StoredCustomTemplateRow
 } from '@/lib/customTemplates'
-import { normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
 import type { CustomTemplateLayout } from '@/lib/pdfPreviewStore'
 import type { PrintFormat } from '@/services/pdfGenerator'
 import { getRealEstatePartyLabels } from '@/lib/realEstateParties'
+import { normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
 
 type RealEstateFilter = 'all' | 'active' | 'overdue' | 'completed' | 'installments'
 
@@ -487,7 +490,7 @@ function RealEstateDetails({
     onPaymentTargetChange: (target: { transaction: RealEstateTransaction; installment?: RealEstateInstallment | null } | null) => void
 }) {
     const { t } = useTranslation()
-    const { features, workspaceName } = useWorkspace()
+    const { features, workspaceName, isLocalMode, isHybridMode } = useWorkspace()
     const { toast } = useToast()
     const { user } = useAuth()
     const [, navigate] = useLocation()
@@ -553,7 +556,7 @@ function RealEstateDetails({
     }, [commissionBalance, t, transaction])
 
     useEffect(() => {
-        if (!transaction?.workspaceId || !isSupabaseConfigured) {
+        if (!transaction?.workspaceId || (!isLocalMode && !isSupabaseConfigured)) {
             setCustomPrintTemplates([])
             setIsLoadingPrintTemplates(false)
             return
@@ -564,23 +567,49 @@ function RealEstateDetails({
 
         void (async () => {
             try {
-                const { data, error } = await runSupabaseAction('realEstate.customTemplates.fetch', () =>
-                    supabase
-                        .from('custom_templates')
-                        .select('id, module_type_key, label, layout_json, updated_at')
-                        .eq('workspace_id', transaction.workspaceId)
-                        .like('module_type_key', 'realEstate.%')
-                        .order('updated_at', { ascending: false })
-                )
-
-                if (error) throw normalizeSupabaseActionError(error)
+                const templates = isLocalMode
+                    ? await listLocalCustomTemplates(transaction.workspaceId, {
+                        moduleTypePrefix: 'realEstate.',
+                        activeOnly: true
+                    })
+                    : await (async () => {
+                        const { data, error } = await runSupabaseAction('realEstate.customTemplates.fetch', () =>
+                            supabase
+                                .from('custom_templates')
+                                .select('id, workspace_id, module_type_key, label, layout_json, active, primary, created_by, updated_by, created_at, updated_at')
+                                .eq('workspace_id', transaction.workspaceId)
+                                .like('module_type_key', 'realEstate.%')
+                                .order('primary', { ascending: false })
+                                .order('updated_at', { ascending: false })
+                        )
+                        if (error) throw normalizeSupabaseActionError(error)
+                        const cloudTemplates = (data || []) as LocalCustomTemplateRow[]
+                        if (isHybridMode) {
+                            await replaceMirroredCustomTemplates(transaction.workspaceId, cloudTemplates, {
+                                moduleTypePrefix: 'realEstate.'
+                            })
+                        }
+                        return cloudTemplates.filter((template) => template.active)
+                    })()
                 if (!cancelled) {
-                    setCustomPrintTemplates((data || []) as StoredCustomTemplateRow[])
+                    setCustomPrintTemplates(templates as StoredCustomTemplateRow[])
                 }
             } catch (error) {
                 console.error('[RealEstate] Failed to load custom print templates:', error)
                 if (!cancelled) {
-                    setCustomPrintTemplates([])
+                    if (isHybridMode) {
+                        try {
+                            const mirroredTemplates = await listLocalCustomTemplates(transaction.workspaceId, {
+                                moduleTypePrefix: 'realEstate.',
+                                activeOnly: true
+                            })
+                            setCustomPrintTemplates(mirroredTemplates as StoredCustomTemplateRow[])
+                        } catch {
+                            setCustomPrintTemplates([])
+                        }
+                    } else {
+                        setCustomPrintTemplates([])
+                    }
                 }
             } finally {
                 if (!cancelled) {
@@ -592,7 +621,7 @@ function RealEstateDetails({
         return () => {
             cancelled = true
         }
-    }, [transaction?.workspaceId])
+    }, [isHybridMode, isLocalMode, transaction?.workspaceId])
 
     const transactionPrintModuleTypeKey = transaction
         ? getRealEstatePrintModuleTypeKey(transaction.transactionType)

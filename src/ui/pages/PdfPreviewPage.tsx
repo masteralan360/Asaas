@@ -283,6 +283,12 @@ export function PdfPreviewPage() {
     const templatePreview = source?.templatePreview
     const fixedTemplatePrintLang = templatePreview?.fixedPrintLang
     const initialTemplateLayout = source?.initialTemplateLayout
+    const templatePage = initialTemplateLayout?.page || templatePreview?.page || {
+        widthMm: 210,
+        heightMm: 297
+    }
+    const templatePageWidth = templatePage.widthMm
+    const templatePageHeight = templatePage.heightMm
     const canEditTemplateFields = Boolean(source?.allowTemplateFieldEditing || isAdmin)
     const [fieldValues, setFieldValues] = useState<Record<string, string> | null>(
         () => {
@@ -366,8 +372,8 @@ export function PdfPreviewPage() {
             moduleTypeKey: source.customTemplate.moduleTypeKey,
             nativeTemplateKey: source.customTemplate.nativeTemplateKey,
             page: {
-                widthMm: 210,
-                heightMm: 297
+                widthMm: templatePageWidth,
+                heightMm: templatePageHeight
             },
             fields: fieldValues,
             fieldTokenTemplates: initialTemplateLayout?.fieldTokenTemplates,
@@ -376,7 +382,7 @@ export function PdfPreviewPage() {
             images: templateImages,
             updatedAt: new Date().toISOString()
         }
-    }, [source, templatePreview, fieldValues, initialTemplateLayout?.label, templateAnnotations, templateTexts, templateImages])
+    }, [source, templatePreview, fieldValues, initialTemplateLayout?.label, templateAnnotations, templateTexts, templateImages, templatePageHeight, templatePageWidth])
 
     const saveTemplatePreview = useCallback(async (layout?: CustomTemplateLayout, label?: string) => {
         if (!source || !templatePreview || !fieldValues || isSaving) return
@@ -415,6 +421,7 @@ export function PdfPreviewPage() {
             }
         } catch (err) {
             console.error('Failed to save template preview:', err)
+            shouldCloseAfterAction = false
         } finally {
             setIsSaving(false)
             if (shouldCloseAfterAction) {
@@ -471,25 +478,30 @@ export function PdfPreviewPage() {
         try {
             const relPath = await platformService.pickAndSaveImage(source.workspaceId, 'attached-images')
             if (relPath) {
-                setTemplateImages(prev => [...prev, { path: relPath, x: 50, y: 50, width: 60 }])
+                setTemplateImages(prev => [...prev, {
+                    path: relPath,
+                    x: Math.max(5, templatePageWidth * 0.2),
+                    y: 50,
+                    width: Math.max(15, templatePageWidth * 0.3)
+                }])
             }
         } catch (error) {
             error instanceof Error && console.error('Failed to add image:', error.message)
         }
-    }, [source?.workspaceId])
+    }, [source?.workspaceId, templatePageWidth])
 
     const handleAddTemplateText = useCallback(() => {
         setTemplateTexts(prev => [...prev, {
             id: Math.random().toString(36).substr(2, 9),
             text: 'NEW TEXT',
-            x: 60,
+            x: Math.max(5, templatePageWidth * 0.2),
             y: 60,
-            width: 80,
+            width: Math.max(20, templatePageWidth * 0.4),
             rotation: 0,
             fontSize: 16,
             color: brushColor
         }])
-    }, [brushColor])
+    }, [brushColor, templatePageWidth])
 
     const handleAddImage = useCallback(async () => {
         if (!source.workspaceId) return
@@ -551,19 +563,19 @@ export function PdfPreviewPage() {
         setIsDrawing(true)
         const svg = e.currentTarget
         const rect = svg.getBoundingClientRect()
-        const x = (e.clientX - rect.left) * (210 / rect.width)
-        const y = (e.clientY - rect.top) * (297 / rect.height)
+        const x = (e.clientX - rect.left) * (templatePageWidth / rect.width)
+        const y = (e.clientY - rect.top) * (templatePageHeight / rect.height)
         setCurrentPath([{ x, y }])
-    }, [drawingMode])
+    }, [drawingMode, templatePageHeight, templatePageWidth])
 
     const handlePointerMove = useCallback((e: React.PointerEvent<SVGSVGElement>) => {
         if (!isDrawing || !currentPath || drawingMode === 'none') return
         const svg = e.currentTarget
         const rect = svg.getBoundingClientRect()
-        const x = (e.clientX - rect.left) * (210 / rect.width)
-        const y = (e.clientY - rect.top) * (297 / rect.height)
+        const x = (e.clientX - rect.left) * (templatePageWidth / rect.width)
+        const y = (e.clientY - rect.top) * (templatePageHeight / rect.height)
         setCurrentPath(prev => prev ? [...prev, { x, y }] : [{ x, y }])
-    }, [isDrawing, currentPath, drawingMode])
+    }, [isDrawing, currentPath, drawingMode, templatePageHeight, templatePageWidth])
 
     const handlePointerUp = useCallback(() => {
         if (!isDrawing || !currentPath) return
@@ -837,7 +849,7 @@ export function PdfPreviewPage() {
                                         "absolute inset-0 z-[40] touch-none",
                                         drawingMode !== 'none' ? "cursor-crosshair" : "pointer-events-none"
                                     )}
-                                    viewBox="0 0 210 297"
+                                    viewBox={`0 0 ${templatePageWidth} ${templatePageHeight}`}
                                     onPointerDown={handlePointerDown}
                                     onPointerMove={handlePointerMove}
                                     onPointerUp={() => {
@@ -905,9 +917,9 @@ export function PdfPreviewPage() {
                                         key={`timg-${idx}`}
                                         className="absolute z-[35] cursor-move group/img"
                                         style={{
-                                            left: `${(img.x / 210) * 100}%`,
-                                            top: `${(img.y / 297) * 100}%`,
-                                            width: `${(img.width / 210) * 100}%`,
+                                            left: `${(img.x / templatePageWidth) * 100}%`,
+                                            top: `${(img.y / templatePageHeight) * 100}%`,
+                                            width: `${(img.width / templatePageWidth) * 100}%`,
                                             transform: `rotate(${img.rotation || 0}deg)`,
                                             transformOrigin: 'top left',
                                             zIndex: 50 + idx,
@@ -922,8 +934,8 @@ export function PdfPreviewPage() {
                                             const origY = img.y
                                             const container = (e.currentTarget.parentElement as HTMLElement)
                                             const cRect = container.getBoundingClientRect()
-                                            const scaleX = 210 / cRect.width
-                                            const scaleY = 297 / cRect.height
+                                            const scaleX = templatePageWidth / cRect.width
+                                            const scaleY = templatePageHeight / cRect.height
                                             const onMove = (ev: PointerEvent) => {
                                                 const dx = (ev.clientX - startX) * scaleX
                                                 const dy = (ev.clientY - startY) * scaleY
@@ -980,7 +992,7 @@ export function PdfPreviewPage() {
                                                 const initialWidth = img.width
                                                 const container = (e.currentTarget.parentElement?.parentElement as HTMLElement)
                                                 const cRect = container.getBoundingClientRect()
-                                                const scaleX = 210 / cRect.width
+                                                const scaleX = templatePageWidth / cRect.width
                                                 const onPointerMove = (mE: PointerEvent) => {
                                                     const dx = (mE.clientX - startX) * scaleX
                                                     const newWidth = Math.max(10, initialWidth + dx)
@@ -1015,9 +1027,9 @@ export function PdfPreviewPage() {
                                         key={`ttxt-${txt.id}`}
                                         className="absolute z-[35] group/txt"
                                         style={{
-                                            left: `${(txt.x / 210) * 100}%`,
-                                            top: `${(txt.y / 297) * 100}%`,
-                                            width: `${(txt.width / 210) * 100}%`,
+                                            left: `${(txt.x / templatePageWidth) * 100}%`,
+                                            top: `${(txt.y / templatePageHeight) * 100}%`,
+                                            width: `${(txt.width / templatePageWidth) * 100}%`,
                                             transform: `rotate(${txt.rotation}deg)`,
                                             transformOrigin: 'top left',
                                             zIndex: 100 + idx,
@@ -1074,8 +1086,8 @@ export function PdfPreviewPage() {
                                                 const origY = txt.y
                                                 const container = (e.currentTarget.parentElement?.parentElement as HTMLElement)
                                                 const cRect = container.getBoundingClientRect()
-                                                const scaleX = 210 / cRect.width
-                                                const scaleY = 297 / cRect.height
+                                                const scaleX = templatePageWidth / cRect.width
+                                                const scaleY = templatePageHeight / cRect.height
                                                 const onMoveEv = (ev: PointerEvent) => {
                                                     const dx = (ev.clientX - startX) * scaleX
                                                     const dy = (ev.clientY - startY) * scaleY
@@ -1128,7 +1140,7 @@ export function PdfPreviewPage() {
                                                 const initialWidth = txt.width
                                                 const container = (e.currentTarget.parentElement?.parentElement as HTMLElement)
                                                 const cRect = container.getBoundingClientRect()
-                                                const scaleX = 210 / cRect.width
+                                                const scaleX = templatePageWidth / cRect.width
                                                 const onPointerMove = (mE: PointerEvent) => {
                                                     const dx = (mE.clientX - startX) * scaleX
                                                     const newWidth = Math.max(20, initialWidth + dx)

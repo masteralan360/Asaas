@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useLocation } from 'wouter'
-import { useAuth } from '@/auth'
+import { isSupabaseConfigured, useAuth } from '@/auth'
 import { supabase } from '@/auth/supabase'
 import { Sale } from '@/types'
 import { mapSaleToUniversal } from '@/lib/mappings'
@@ -11,7 +11,7 @@ import { formatLocalizedMonthYear } from '@/lib/monthDisplay'
 import { getLoanDetailsPath } from '@/lib/loanPresentation'
 import { getRetriableActionToast, isRetriableWebRequestError, normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
 
-import { adjustInventoryQuantity, commitStockBatchAllocations, db, recordLoanPayment, resolveReturnStorageId, restoreStockBatchAllocations, splitStockBatchAllocationsForReturn, useLoanBySaleId, useLoanInstallments, useLoanPayments, useLoans, useSales, useSalesOrders, useTravelAgencySales, useExchangeTransactions, usePaymentTransactions, toUISale, toUISaleFromOrder, toUISaleFromTravelAgency, toUISaleFromExchangeTransaction, toUISaleFromRealEstateCommissionTransaction, type Loan, type StockBatchAllocation } from '@/local-db'
+import { adjustInventoryQuantity, commitStockBatchAllocations, db, listLocalCustomTemplates, replaceMirroredCustomTemplates, recordLoanPayment, resolveReturnStorageId, restoreStockBatchAllocations, splitStockBatchAllocationsForReturn, useLoanBySaleId, useLoanInstallments, useLoanPayments, useLoans, useSales, useSalesOrders, useTravelAgencySales, useExchangeTransactions, usePaymentTransactions, toUISale, toUISaleFromOrder, toUISaleFromTravelAgency, toUISaleFromExchangeTransaction, toUISaleFromRealEstateCommissionTransaction, type LocalCustomTemplateRow, type Loan, type StockBatchAllocation } from '@/local-db'
 import { useWorkspace } from '@/workspace'
 import { isMobile } from '@/lib/platform'
 import { whatsappManager } from '@/lib/whatsappWebviewManager'
@@ -68,6 +68,16 @@ import { LoanDetailsPrintTemplate, LoanReceiptPrintTemplate } from '@/ui/compone
 import { WhatsAppNumberInputModal } from '@/ui/components/modals/WhatsAppNumberInputModal'
 import { SaleItem } from '@/types'
 import { generateTemplatePdf, type PrintFormat } from '@/services/pdfGenerator'
+import {
+    SALES_HISTORY_RECEIPT_TEMPLATE_KEY,
+    buildCustomTemplateLayoutPdf,
+    createCustomTemplatePreview,
+    getCustomTemplateTarget,
+    getStoredCustomTemplateLabel,
+    readCustomTemplateLayout,
+    type StoredCustomTemplateRow
+} from '@/lib/customTemplates'
+import type { CustomTemplateLayout } from '@/lib/pdfPreviewStore'
 import {
     Receipt,
     Eye,
@@ -183,7 +193,7 @@ export function Sales() {
     const { user } = useAuth()
     const { t, i18n } = useTranslation()
     const [, setLocation] = useLocation()
-    const { features, workspaceName, activeWorkspace, isLocalMode, hasCapability } = useWorkspace()
+    const { features, workspaceName, activeWorkspace, isLocalMode, isHybridMode, hasCapability } = useWorkspace()
     const { style } = useTheme()
     const { toast } = useToast()
     const { dateRange, customDates } = useDateRange()
@@ -651,19 +661,82 @@ export function Sales() {
     const [showPrintModal, setShowPrintModal] = useState(false)
     const [saleToPrintSelection, setSaleToPrintSelection] = useState<Sale | null>(null)
     const [showPrintPreview, setShowPrintPreview] = useState(false)
+    const [customReceiptTemplates, setCustomReceiptTemplates] = useState<StoredCustomTemplateRow[]>([])
+    const [selectedCustomReceiptTemplate, setSelectedCustomReceiptTemplate] = useState<StoredCustomTemplateRow | null>(null)
     const [isNoteModalOpen, setIsNoteModalOpen] = useState(false)
     const [selectedSaleForNote, setSelectedSaleForNote] = useState<Sale | null>(null)
     const [isExportModalOpen, setIsExportModalOpen] = useState(false)
 
 
 
+    useEffect(() => {
+        if (!showPrintModal || !user?.workspaceId || (!isLocalMode && !isSupabaseConfigured)) {
+            setCustomReceiptTemplates([])
+            return
+        }
+
+        let cancelled = false
+        void (async () => {
+            try {
+                const templates = isLocalMode
+                    ? await listLocalCustomTemplates(user.workspaceId, {
+                        moduleTypeKey: SALES_HISTORY_RECEIPT_TEMPLATE_KEY,
+                        activeOnly: true
+                    })
+                    : await (async () => {
+                        const { data, error } = await runSupabaseAction('sales.customReceiptTemplates.fetch', () =>
+                            supabase
+                                .from('custom_templates')
+                                .select('id, workspace_id, module_type_key, label, layout_json, active, primary, created_by, updated_by, created_at, updated_at')
+                                .eq('workspace_id', user.workspaceId)
+                                .eq('module_type_key', SALES_HISTORY_RECEIPT_TEMPLATE_KEY)
+                                .order('primary', { ascending: false })
+                                .order('updated_at', { ascending: false })
+                        )
+                        if (error) throw normalizeSupabaseActionError(error)
+                        const cloudTemplates = (data || []) as LocalCustomTemplateRow[]
+                        if (isHybridMode) {
+                            await replaceMirroredCustomTemplates(user.workspaceId, cloudTemplates, {
+                                moduleTypeKey: SALES_HISTORY_RECEIPT_TEMPLATE_KEY
+                            })
+                        }
+                        return cloudTemplates.filter((template) => template.active)
+                    })()
+                if (!cancelled) setCustomReceiptTemplates(templates as StoredCustomTemplateRow[])
+            } catch (templateError) {
+                console.error('[Sales] Failed to load custom receipt templates:', templateError)
+                if (!cancelled) {
+                    if (isHybridMode) {
+                        try {
+                            const mirroredTemplates = await listLocalCustomTemplates(user.workspaceId, {
+                                moduleTypeKey: SALES_HISTORY_RECEIPT_TEMPLATE_KEY,
+                                activeOnly: true
+                            })
+                            setCustomReceiptTemplates(mirroredTemplates as StoredCustomTemplateRow[])
+                        } catch {
+                            setCustomReceiptTemplates([])
+                        }
+                    } else {
+                        setCustomReceiptTemplates([])
+                    }
+                }
+            }
+        })()
+
+        return () => {
+            cancelled = true
+        }
+    }, [isHybridMode, isLocalMode, showPrintModal, user?.workspaceId])
+
     const onPrintClick = (sale: Sale) => {
+        setSelectedCustomReceiptTemplate(null)
         setSaleToPrintSelection(sale)
         setShowPrintModal(true)
     }
 
-    const handlePrintSelection = (format: 'receipt' | 'a4') => {
+    const handlePrintSelection = (format: 'receipt' | 'a4', template?: StoredCustomTemplateRow) => {
         setPrintFormat(format)
+        setSelectedCustomReceiptTemplate(format === 'receipt' ? template || null : null)
         if (format === 'a4' && saleToPrintSelection && saleHasAnyReturnActivity(saleToPrintSelection)) {
             setA4Variant('refund')
         } else {
@@ -682,7 +755,73 @@ export function Sales() {
         setPrintingSale(null)
         setSaleToPrintSelection(null)
         setA4Variant('standard')
+        setSelectedCustomReceiptTemplate(null)
     }
+
+    const customReceiptTarget = useMemo(
+        () => getCustomTemplateTarget(SALES_HISTORY_RECEIPT_TEMPLATE_KEY),
+        []
+    )
+    const selectedCustomReceiptLayout = useMemo(
+        () => readCustomTemplateLayout(selectedCustomReceiptTemplate),
+        [selectedCustomReceiptTemplate]
+    )
+    const customReceiptData = useMemo(
+        () => printingSale ? mapSaleToUniversal(printingSale, { a4Variant: 'standard' }) : undefined,
+        [printingSale]
+    )
+    const customReceiptPreview = useMemo(
+        () => customReceiptTarget && customReceiptData
+            ? createCustomTemplatePreview(customReceiptTarget, {
+                workspaceId: user?.workspaceId,
+                workspaceName,
+                features,
+                receiptData: customReceiptData
+            })
+            : undefined,
+        [customReceiptData, customReceiptTarget, features, user?.workspaceId, workspaceName]
+    )
+    const buildCustomReceiptPdf = useCallback(async ({ effectiveId }: { format: PrintFormat; effectiveId: string }) => {
+        if (!customReceiptTarget || !selectedCustomReceiptLayout || !customReceiptData) {
+            throw new Error('Custom receipt template is not available.')
+        }
+
+        return buildCustomTemplateLayoutPdf({
+            target: customReceiptTarget,
+            layout: selectedCustomReceiptLayout,
+            values: {},
+            options: {
+                workspaceId: user?.workspaceId,
+                workspaceName,
+                features,
+                receiptData: customReceiptData
+            },
+            effectiveId
+        })
+    }, [customReceiptData, customReceiptTarget, features, selectedCustomReceiptLayout, user?.workspaceId, workspaceName])
+    const buildEditableCustomReceiptPdf = useCallback(async (
+        layout: CustomTemplateLayout,
+        _printLangOverride?: string,
+        effectiveId?: string
+    ) => {
+        if (!customReceiptTarget || !customReceiptData) {
+            throw new Error('Custom receipt template is not available.')
+        }
+
+        return buildCustomTemplateLayoutPdf({
+            target: customReceiptTarget,
+            layout,
+            values: {},
+            options: {
+                workspaceId: user?.workspaceId,
+                workspaceName,
+                features,
+                receiptData: customReceiptData
+            },
+            effectiveId,
+            fieldMode: 'layoutOverrides'
+        })
+    }, [customReceiptData, customReceiptTarget, features, user?.workspaceId, workspaceName])
 
     const [isWholeSaleReturn, setIsWholeSaleReturn] = useState(false)
 
@@ -2335,6 +2474,7 @@ export function Sales() {
                     onClose={() => setShowPrintModal(false)}
                     onSelect={handlePrintSelection}
                     a4Variant={saleToPrintSelection && saleHasAnyReturnActivity(saleToPrintSelection) ? 'refund' : 'standard'}
+                    receiptTemplates={customReceiptTemplates}
                 />
 
                 {/* Print Preview Modal */}
@@ -2345,9 +2485,12 @@ export function Sales() {
                         setPrintingSale(null)
                         setSaleToPrintSelection(null)
                         setA4Variant('standard')
+                        setSelectedCustomReceiptTemplate(null)
                     }}
                     onConfirm={handleConfirmPrint}
-                    title={shouldUseLoanPrint
+                    title={selectedCustomReceiptTemplate
+                        ? getStoredCustomTemplateLabel(selectedCustomReceiptTemplate)
+                        : shouldUseLoanPrint
                         ? (printFormat === 'receipt'
                             ? (t('sales.print.receipt') || 'Receipt')
                             : (t('loans.printDetails') || 'Loan Details'))
@@ -2359,7 +2502,7 @@ export function Sales() {
                     features={features}
                     workspaceName={workspaceName}
                     module="sales"
-                    pdfData={!shouldUseLoanPrint && printingSale ? mapSaleToUniversal(printingSale, { a4Variant }) : undefined}
+                    pdfData={!shouldUseLoanPrint && !selectedCustomReceiptTemplate && printingSale ? mapSaleToUniversal(printingSale, { a4Variant }) : undefined}
                     invoiceData={printingSale ? {
                         sequenceId: printingSale.sequenceId,
                         totalAmount: printingSale.total_amount,
@@ -2369,12 +2512,26 @@ export function Sales() {
                         createdByName: user?.name || 'Unknown',
                         printFormat: printFormat
                     } : undefined}
-                    pdfBuilder={shouldUseLoanPrint ? buildLoanPrintPdf : undefined}
+                    pdfBuilder={shouldUseLoanPrint
+                        ? buildLoanPrintPdf
+                        : selectedCustomReceiptTemplate
+                            ? buildCustomReceiptPdf
+                            : undefined}
                     printTemplate={shouldUseLoanPrint
                         ? ({ effectiveId }) => (printFormat === 'receipt'
                             ? renderLoanReceiptTemplate(effectiveId)
                             : renderLoanPrintTemplate(effectiveId))
                         : undefined}
+                    templatePreview={selectedCustomReceiptTemplate ? customReceiptPreview : undefined}
+                    customTemplate={selectedCustomReceiptTemplate && customReceiptTarget ? {
+                        moduleTypeKey: customReceiptTarget.moduleTypeKey,
+                        nativeTemplateKey: customReceiptTarget.nativeTemplateKey,
+                        templateId: selectedCustomReceiptTemplate.id,
+                        label: getStoredCustomTemplateLabel(selectedCustomReceiptTemplate)
+                    } : undefined}
+                    initialTemplateLayout={selectedCustomReceiptTemplate ? selectedCustomReceiptLayout : undefined}
+                    enableTemplatePreviewSave={Boolean(selectedCustomReceiptTemplate)}
+                    generateTemplateLayoutBlob={selectedCustomReceiptTemplate ? buildEditableCustomReceiptPdf : undefined}
                 />
 
                 <Dialog open={isFilterDialogOpen} onOpenChange={setIsFilterDialogOpen}>

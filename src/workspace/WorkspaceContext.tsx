@@ -11,6 +11,7 @@ import { db } from '@/local-db/database'
 import { hasCurrencyExchangeAccountingData } from '@/local-db/currencyExchange'
 import { addToOfflineMutations } from '@/local-db/hooks'
 import { hydrateLocalModeCacheFromSqlite, clearWorkspaceSqliteData, seedWorkspaceFromDexie } from '@/local-db/localModeSqlite'
+import { replaceMirroredCustomTemplates, type LocalCustomTemplateRow } from '@/local-db/customTemplates'
 import { isMobile } from '@/lib/platform'
 import { connectionManager } from '@/lib/connectionManager'
 import {
@@ -1173,6 +1174,31 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                 // Cloud → Hybrid: seed SQLite from Dexie cache, then hydrate
                 await seedWorkspaceFromDexie(db, workspaceId)
                 await hydrateLocalModeCacheFromSqlite(db, workspaceId)
+
+                try {
+                    const { data: customTemplates, error: customTemplatesError } = await runSupabaseAction(
+                        'workspace.seedHybridCustomTemplates',
+                        () => supabase
+                            .from('custom_templates')
+                            .select('id, workspace_id, module_type_key, label, layout_json, active, primary, created_by, updated_by, created_at, updated_at')
+                            .eq('workspace_id', workspaceId),
+                        { timeoutMs: 12000, platform: 'all' }
+                    ) as any
+
+                    if (customTemplatesError) {
+                        throw normalizeSupabaseActionError(customTemplatesError)
+                    }
+
+                    await replaceMirroredCustomTemplates(
+                        workspaceId,
+                        (customTemplates || []) as LocalCustomTemplateRow[]
+                    )
+                } catch (customTemplateSeedError) {
+                    console.warn(
+                        '[Workspace] Custom templates will be mirrored on the next successful refresh:',
+                        customTemplateSeedError
+                    )
+                }
             } else {
                 // Hybrid → Cloud: abandon SQLite data
                 await clearWorkspaceSqliteData(workspaceId)

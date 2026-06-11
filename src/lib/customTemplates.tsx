@@ -14,52 +14,71 @@ import {
 } from '@/ui/components/real-estate/RealEstateBuyPrintTemplate'
 import type { RealEstateTransactionType } from '@/local-db'
 import type { WorkspaceFeatures } from '@/workspace'
+import type { UniversalInvoice } from '@/types'
+import { SaleReceiptBase } from '@/ui/components/SaleReceipt'
+
+export const SALES_HISTORY_RECEIPT_TEMPLATE_KEY = 'salesHistory.Receipt'
 
 export type CustomTemplateTarget = {
     moduleTypeKey: string
-    workspaceModuleKey: 'real_estate'
+    workspaceModuleKey: 'real_estate' | 'sales_history'
     moduleLabel: string
     typeLabel: string
     description: string
     nativeTemplateKey: string
     nativeTemplateAvailable: boolean
+    printFormat: 'a4' | 'receipt'
+    page: {
+        widthMm: number
+        heightMm: number
+    }
 }
 
-const REAL_ESTATE_CONTRACT_TARGETS: Array<Pick<CustomTemplateTarget, 'moduleTypeKey' | 'typeLabel' | 'description' | 'nativeTemplateKey' | 'nativeTemplateAvailable'>> = [
+const REAL_ESTATE_CONTRACT_TARGETS: Array<Pick<CustomTemplateTarget, 'moduleTypeKey' | 'typeLabel' | 'description' | 'nativeTemplateKey' | 'nativeTemplateAvailable' | 'printFormat' | 'page'>> = [
     {
         moduleTypeKey: 'realEstate.Sell',
         typeLabel: 'Sell',
         description: 'Real estate sell transaction print layout.',
         nativeTemplateKey: 'realEstate.Sell',
-        nativeTemplateAvailable: true
+        nativeTemplateAvailable: true,
+        printFormat: 'a4',
+        page: { widthMm: 210, heightMm: 297 }
     },
     {
         moduleTypeKey: 'realEstate.Buy',
         typeLabel: 'Buy',
         description: 'Real estate buy transaction print layout.',
         nativeTemplateKey: 'realEstate.Buy',
-        nativeTemplateAvailable: true
+        nativeTemplateAvailable: true,
+        printFormat: 'a4',
+        page: { widthMm: 210, heightMm: 297 }
     },
     {
         moduleTypeKey: 'realEstate.Rent',
         typeLabel: 'Rent',
         description: 'Real estate rent transaction print layout.',
         nativeTemplateKey: 'realEstate.Rent',
-        nativeTemplateAvailable: true
+        nativeTemplateAvailable: true,
+        printFormat: 'a4',
+        page: { widthMm: 210, heightMm: 297 }
     },
     {
         moduleTypeKey: 'realEstate.Lease',
         typeLabel: 'Lease',
         description: 'Real estate lease transaction print layout.',
         nativeTemplateKey: 'realEstate.Lease',
-        nativeTemplateAvailable: true
+        nativeTemplateAvailable: true,
+        printFormat: 'a4',
+        page: { widthMm: 210, heightMm: 297 }
     },
     {
         moduleTypeKey: 'realEstate.Exchange',
         typeLabel: 'Exchange',
         description: 'Real estate exchange transaction print layout.',
         nativeTemplateKey: 'realEstate.Exchange',
-        nativeTemplateAvailable: true
+        nativeTemplateAvailable: true,
+        printFormat: 'a4',
+        page: { widthMm: 210, heightMm: 297 }
     }
 ]
 
@@ -68,6 +87,17 @@ const REAL_ESTATE_CONTRACT_MODULE_TYPE_KEYS = new Set(
 )
 
 export const CUSTOM_TEMPLATE_TARGETS: CustomTemplateTarget[] = [
+    {
+        moduleTypeKey: SALES_HISTORY_RECEIPT_TEMPLATE_KEY,
+        workspaceModuleKey: 'sales_history',
+        moduleLabel: 'Sales History',
+        typeLabel: 'Receipt Print',
+        description: 'Sales History thermal receipt print layout.',
+        nativeTemplateKey: SALES_HISTORY_RECEIPT_TEMPLATE_KEY,
+        nativeTemplateAvailable: true,
+        printFormat: 'receipt',
+        page: { widthMm: 80, heightMm: 200 }
+    },
     ...REAL_ESTATE_CONTRACT_TARGETS.map((target) => ({
         ...target,
         workspaceModuleKey: 'real_estate' as const,
@@ -93,6 +123,8 @@ export type StoredCustomTemplateRow = {
     module_type_key: string
     label?: string | null
     layout_json: unknown
+    active?: boolean
+    primary?: boolean
     updated_at?: string | null
 }
 
@@ -134,6 +166,29 @@ export type CustomTemplatePreviewOptions = {
     workspaceName?: string | null
     features?: WorkspaceFeatures
     workspaceFooterContacts?: WorkspaceFooterContacts
+    receiptData?: UniversalInvoice
+}
+
+const SAMPLE_RECEIPT_DATA: UniversalInvoice = {
+    id: 'custom-template-receipt',
+    sequenceId: 1,
+    invoiceid: '#00001',
+    created_at: new Date().toISOString(),
+    cashier_name: 'Cashier',
+    items: [
+        {
+            product_id: 'sample-product',
+            product_name: 'Sample Product',
+            product_sku: 'SKU-001',
+            quantity: 2,
+            unit_price: 12.5,
+            total_price: 25
+        }
+    ],
+    total_amount: 25,
+    settlement_currency: 'usd',
+    payment_method: 'cash',
+    status: 'paid'
 }
 
 const REAL_ESTATE_BUY_FIELD_PLACEHOLDERS = {
@@ -266,6 +321,7 @@ function createRealEstateContractPreview(
     return {
         fields,
         dataKeys,
+        page: { widthMm: 210, heightMm: 297 },
         fixedPrintLang: 'ku',
         createElement: (data, effectiveId, _printLangOverride, renderOptions) => (
             <RealEstateBuyPrintTemplate
@@ -291,16 +347,45 @@ function createRealEstateContractPreview(
     }
 }
 
+function createSalesHistoryReceiptPreview(options: CustomTemplatePreviewOptions): TemplatePreview {
+    const receiptData = options.receiptData || SAMPLE_RECEIPT_DATA
+
+    return {
+        fields: [],
+        page: { widthMm: 80, heightMm: 200 },
+        createElement: () => (
+            <div className="mx-auto w-[80mm] bg-white text-black">
+                <SaleReceiptBase
+                    data={receiptData}
+                    features={options.features || {}}
+                    workspaceName={options.workspaceName || 'Atlas'}
+                    workspaceId={options.workspaceId}
+                />
+            </div>
+        ),
+        buildPdf: (element, printLangOverride) => generateTemplatePdf({
+            element,
+            format: 'receipt',
+            printLang: printLangOverride
+        })
+    }
+}
+
 export function createCustomTemplatePreview(
     target: CustomTemplateTarget,
     options: CustomTemplatePreviewOptions = {}
 ): TemplatePreview {
+    if (target.moduleTypeKey === SALES_HISTORY_RECEIPT_TEMPLATE_KEY) {
+        return createSalesHistoryReceiptPreview(options)
+    }
+
     if (REAL_ESTATE_CONTRACT_MODULE_TYPE_KEYS.has(target.moduleTypeKey)) {
         return createRealEstateContractPreview(options, target.moduleTypeKey)
     }
 
     return {
         fields: [],
+        page: target.page,
         createElement: () => (
             <div
                 className="mx-auto border border-slate-200 bg-white px-10 py-9 text-slate-950 shadow-sm"
@@ -337,9 +422,12 @@ function nonBlankFields(fields: Record<string, string>) {
 }
 
 function CustomTemplateLayoutOverlay({ layout }: { layout: CustomTemplateLayout }) {
+    const pageWidth = layout.page.widthMm || 210
+    const pageHeight = layout.page.heightMm || 297
+
     return (
         <div className="pointer-events-none absolute inset-0 z-50 overflow-hidden">
-            <svg className="absolute inset-0 h-full w-full" viewBox="0 0 210 297">
+            <svg className="absolute inset-0 h-full w-full" viewBox={`0 0 ${pageWidth} ${pageHeight}`}>
                 {layout.annotations.map((annotation, index) => (
                     <path
                         key={`annotation-${index}`}
@@ -361,9 +449,9 @@ function CustomTemplateLayoutOverlay({ layout }: { layout: CustomTemplateLayout 
                     alt=""
                     className="absolute block select-none"
                     style={{
-                        left: `${(image.x / 210) * 100}%`,
-                        top: `${(image.y / 297) * 100}%`,
-                        width: `${(image.width / 210) * 100}%`,
+                        left: `${(image.x / pageWidth) * 100}%`,
+                        top: `${(image.y / pageHeight) * 100}%`,
+                        width: `${(image.width / pageWidth) * 100}%`,
                         transform: `rotate(${image.rotation || 0}deg)`,
                         transformOrigin: 'top left',
                         zIndex: 60 + index
@@ -376,9 +464,9 @@ function CustomTemplateLayoutOverlay({ layout }: { layout: CustomTemplateLayout 
                     key={`text-${text.id || index}`}
                     className="absolute whitespace-pre-wrap break-words font-bold leading-snug"
                     style={{
-                        left: `${(text.x / 210) * 100}%`,
-                        top: `${(text.y / 297) * 100}%`,
-                        width: `${(text.width / 210) * 100}%`,
+                        left: `${(text.x / pageWidth) * 100}%`,
+                        top: `${(text.y / pageHeight) * 100}%`,
+                        width: `${(text.width / pageWidth) * 100}%`,
                         transform: `rotate(${text.rotation || 0}deg)`,
                         transformOrigin: 'top left',
                         zIndex: 100 + index,
@@ -414,12 +502,16 @@ export function renderCustomTemplateLayoutElement({
         ...(fieldMode === 'layoutOverrides' ? layout.fields || {} : nonBlankFields(layout.fields || {}))
     }
 
+    const isReceipt = target.printFormat === 'receipt'
+
     return (
         <div
             className="relative mx-auto overflow-hidden bg-white text-black"
             style={{
                 width: `${layout.page.widthMm || 210}mm`,
-                height: `${layout.page.heightMm || 297}mm`
+                ...(isReceipt
+                    ? { minHeight: `${layout.page.heightMm || 297}mm` }
+                    : { height: `${layout.page.heightMm || 297}mm` })
             }}
         >
             {preview.createElement(fieldValues, effectiveId, preview.fixedPrintLang, {
@@ -463,7 +555,7 @@ export async function buildCustomTemplateLayoutPdf({
 
     return generateTemplatePdf({
         element,
-        format: 'a4',
+        format: target.printFormat,
         printLang: preview.fixedPrintLang,
     })
 }
