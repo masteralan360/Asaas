@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Users } from 'lucide-react'
 
-import { useBusinessPartners, type BusinessPartner } from '@/local-db'
+import { useBusinessPartners, type BusinessPartner, type BusinessPartnerRole } from '@/local-db'
 import { Input } from '@/ui/components'
 import { cn } from '@/lib/utils'
 
@@ -16,6 +16,7 @@ interface PartnerAutocompleteInputProps {
     disabled?: boolean
     includeRealEstateRoles?: boolean
     excludePartnerIds?: string[]
+    roles?: BusinessPartnerRole[]
 }
 
 export function PartnerAutocompleteInput({
@@ -27,10 +28,11 @@ export function PartnerAutocompleteInput({
     className,
     disabled,
     includeRealEstateRoles = false,
-    excludePartnerIds = []
+    excludePartnerIds = [],
+    roles
 }: PartnerAutocompleteInputProps) {
     const { t } = useTranslation()
-    const partners = useBusinessPartners(workspaceId, { includeRealEstateRoles }) || []
+    const partners = useBusinessPartners(workspaceId, { includeRealEstateRoles, roles }) || []
     const [isFocused, setIsFocused] = useState(false)
     const [justSelected, setJustSelected] = useState(false)
     const containerRef = useRef<HTMLDivElement>(null)

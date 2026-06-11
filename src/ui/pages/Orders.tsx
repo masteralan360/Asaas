@@ -3,6 +3,9 @@ import { CalendarDays, CreditCard, Eye, LayoutGrid, List, Lock, PackagePlus, Pen
 import { useTranslation } from 'react-i18next'
 import { useLocation, useRoute } from 'wouter'
 
+import { SalesOrderFormPage } from '@/ui/components/orders/SalesOrderFormPage'
+import { PurchaseOrderFormPage } from '@/ui/components/orders/PurchaseOrderFormPage'
+
 import { useAuth } from '@/auth'
 import { useDateRange } from '@/context/DateRangeContext'
 import { useExchangeRate } from '@/context/ExchangeRateContext'
@@ -538,13 +541,6 @@ function OrdersListView({ workspaceId }: { workspaceId: string }) {
             paymentMethod: 'credit',
             items: [createEmptyItem(defaultStorageId)]
         })
-    }
-
-    function openCreateDialog(tab: OrderTab) {
-        setActiveTab(tab)
-        if (tab === 'sales') resetSalesForm()
-        else resetPurchaseForm()
-        setDialogOpen(true)
     }
 
     function openSalesEdit(order: SalesOrder) {
@@ -1170,7 +1166,7 @@ function OrdersListView({ workspaceId }: { workspaceId: string }) {
                     {canManageOrders && (
                         <Button
                             className="gap-2 self-start sm:self-center w-full sm:w-auto rounded-xl"
-                            onClick={() => openCreateDialog(activeTab)}
+                            onClick={() => navigate(activeTab === 'sales' ? '/orders/new/sales' : '/orders/new/purchase')}
                             disabled={(activeTab === 'sales' && salesDisabled) || (activeTab === 'purchase' && purchaseDisabled)}
                         >
                             <Plus className="h-4 w-4" />
@@ -1956,11 +1952,34 @@ function OrdersListView({ workspaceId }: { workspaceId: string }) {
 
 export function Orders() {
     const { user } = useAuth()
+    const [, navigate] = useLocation()
+    const [salesNewMatch] = useRoute('/orders/new/sales')
+    const [purchaseNewMatch] = useRoute('/orders/new/purchase')
     const [detailMatch, params] = useRoute('/orders/:orderId')
     const workspaceId = user?.workspaceId
 
     if (!workspaceId) {
         return null
+    }
+
+    if (salesNewMatch) {
+        return (
+            <SalesOrderFormPage
+                workspaceId={workspaceId}
+                onCancel={() => navigate('/orders')}
+                onCreated={(orderId) => navigate(`/orders/${orderId}`)}
+            />
+        )
+    }
+
+    if (purchaseNewMatch) {
+        return (
+            <PurchaseOrderFormPage
+                workspaceId={workspaceId}
+                onCancel={() => navigate('/orders')}
+                onCreated={(orderId) => navigate(`/orders/${orderId}`)}
+            />
+        )
     }
 
     if (detailMatch && params?.orderId) {

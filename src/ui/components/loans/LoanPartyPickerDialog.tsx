@@ -2,7 +2,7 @@ import { type ReactNode, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { MapPin, Phone, Plus, Search, UserRound } from 'lucide-react'
 
-import { createBusinessPartner, type BusinessPartner, type CurrencyCode, useBusinessPartners } from '@/local-db'
+import { createBusinessPartner, type BusinessPartner, type BusinessPartnerRole, type CurrencyCode, useBusinessPartners } from '@/local-db'
 import type { LoanPartySelection } from '@/lib/loanParties'
 import { cn } from '@/lib/utils'
 import { useWorkspace } from '@/workspace'
@@ -25,6 +25,7 @@ interface LoanPartyPickerDialogProps {
     workspaceId: string
     onSelect: (selection: LoanPartySelection) => void
     selectedPartyId?: string | null
+    roles?: BusinessPartnerRole[]
 }
 
 function composeAddress(parts: Array<string | null | undefined>) {
@@ -99,12 +100,13 @@ export function LoanPartyPickerDialog({
     onOpenChange,
     workspaceId,
     onSelect,
-    selectedPartyId
+    selectedPartyId,
+    roles
 }: LoanPartyPickerDialogProps) {
     const { t } = useTranslation()
     const { toast } = useToast()
     const { features } = useWorkspace()
-    const businessPartners = useBusinessPartners(workspaceId)
+    const businessPartners = useBusinessPartners(workspaceId, { roles })
     const [search, setSearch] = useState('')
     const [isCreateOpen, setIsCreateOpen] = useState(false)
     const [isSavingPartner, setIsSavingPartner] = useState(false)
