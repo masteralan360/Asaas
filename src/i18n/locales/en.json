@@ -1011,11 +1011,31 @@
     "activityTimeline": "Unified Activity Timeline",
     "noActivity": "No related activity yet.",
     "noMergeCandidates": "No merge candidates found.",
+    "partnerDetailsPrint": "Partner Details",
+    "printA4": "Print A4",
+    "selectPrintTemplateTitle": "Select Partner Details Template",
+    "selectPrintTemplate": "Choose the A4 layout to use for this partner details print.",
+    "nativeA4Template": "Partner Details A4",
+    "nativeA4TemplateDescription": "Use the built-in Partner Details A4 layout.",
+    "customA4TemplateDescription": "Use this saved custom Partner Details layout.",
+    "memberSince": "Partner Since",
+    "financialSummary": "Financial Summary",
+    "creditLimit": "Credit Limit",
+    "balance": "Balance",
+    "totalValue": "Total Value",
+    "outstanding": "Outstanding",
+    "activeItems": "Active Items",
+    "cashFlow": "Cash Flow",
+    "notes": "Notes",
+    "moreActivities": "+{{count}} additional activities",
     "form": {
-      "role": "Role"
+      "role": "Role",
+      "contactName": "Contact Name"
     },
     "roles": {
-      "both": "Both"
+      "both": "Both",
+      "buyer": "Buyer",
+      "seller": "Seller"
     },
     "messages": {
       "addSuccess": "Business partner created successfully",
@@ -1914,9 +1934,9 @@
     "existingTitle": "Existing Custom Templates",
     "existingDescription": "Saved layout JSON is scoped to the current workspace and module/type key.",
     "emptyTitle": "No custom templates yet",
-    "emptyDescription": "Create a Real Estate print customization to save the first layout.",
+    "emptyDescription": "Create a print customization to save the first layout.",
     "addTitle": "Add New Template",
-    "addDescription": "Select the module and print type to customize. Real Estate is the only supported module in this release.",
+    "addDescription": "Select the module and print type to customize.",
     "moduleTypeLabel": "Module / Print Type",
     "selectPlaceholder": "Select module/type",
     "openPreview": "Open Print Preview",

@@ -2814,11 +2814,31 @@
     "activityTimeline": "الجدول الزمني الموحد للنشاط",
     "noActivity": "لا يوجد نشاط ذو صلة بعد.",
     "noMergeCandidates": "لم يتم العثور على مرشحين للدمج.",
+    "partnerDetailsPrint": "تفاصيل شريك الأعمال",
+    "printA4": "طباعة A4",
+    "selectPrintTemplateTitle": "اختيار قالب تفاصيل الشريك",
+    "selectPrintTemplate": "اختر تخطيط A4 لاستخدامه في طباعة تفاصيل هذا الشريك.",
+    "nativeA4Template": "تفاصيل الشريك A4",
+    "nativeA4TemplateDescription": "استخدم تخطيط A4 المدمج لتفاصيل الشريك.",
+    "customA4TemplateDescription": "استخدم تخطيط تفاصيل الشريك المخصص المحفوظ.",
+    "memberSince": "شريك منذ",
+    "financialSummary": "الملخص المالي",
+    "creditLimit": "حد الائتمان",
+    "balance": "الرصيد",
+    "totalValue": "القيمة الإجمالية",
+    "outstanding": "المبلغ المستحق",
+    "activeItems": "العناصر النشطة",
+    "cashFlow": "التدفق النقدي",
+    "notes": "ملاحظات",
+    "moreActivities": "+{{count}} أنشطة إضافية",
     "form": {
-      "role": "الدور"
+      "role": "الدور",
+      "contactName": "اسم جهة الاتصال"
     },
     "roles": {
-      "both": "كلاهما"
+      "both": "كلاهما",
+      "buyer": "المشتري",
+      "seller": "البائع"
     },
     "messages": {
       "addSuccess": "تم إنشاء شريك الأعمال بنجاح",
@@ -3211,9 +3231,9 @@
     "existingTitle": "القوالب المخصصة الموجودة",
     "existingDescription": "يتم حفظ JSON التخطيط لنطاق مساحة العمل الحالية ومفتاح الوحدة/النوع.",
     "emptyTitle": "لا توجد قوالب مخصصة بعد",
-    "emptyDescription": "قم بإنشاء تخصيص طباعة للعقارات لحفظ التخطيط الأول.",
+    "emptyDescription": "أنشئ تخصيص طباعة لحفظ التخطيط الأول.",
     "addTitle": "إضافة قالب جديد",
-    "addDescription": "اختر الوحدة ونوع الطباعة للتخصيص. العقارات هي الوحدة المدعومة الوحيدة في هذا الإصدار.",
+    "addDescription": "اختر الوحدة ونوع الطباعة للتخصيص.",
     "moduleTypeLabel": "الوحدة / نوع الطباعة",
     "selectPlaceholder": "اختر الوحدة/النوع",
     "openPreview": "فتح معاينة الطباعة",

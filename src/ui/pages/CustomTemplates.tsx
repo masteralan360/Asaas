@@ -104,7 +104,7 @@ function getR2KeyForStoredMediaPath(path: string, workspaceId: string) {
 }
 
 export function CustomTemplates() {
-    const { t } = useTranslation()
+    const { t, i18n } = useTranslation()
     const { toast } = useToast()
     const { user } = useAuth()
     const {
@@ -353,7 +353,10 @@ export function CustomTemplates() {
                 workspaceId,
                 workspaceName,
                 features,
-                workspaceFooterContacts
+                workspaceFooterContacts,
+                printLang: features.print_lang && features.print_lang !== 'auto'
+                    ? features.print_lang
+                    : i18n.language
             }),
             customTemplate: {
                 moduleTypeKey,
@@ -368,7 +371,7 @@ export function CustomTemplates() {
 
         setIsAddOpen(false)
         setLocation('/pdf-preview')
-    }, [availableTargets, features, saveTemplateLayout, setLocation, t, workspaceFooterContacts, workspaceId, workspaceName])
+    }, [availableTargets, features, i18n.language, saveTemplateLayout, setLocation, t, workspaceFooterContacts, workspaceId, workspaceName])
 
     const updateTemplateStatus = useCallback(async (
         template: CustomTemplateRow,

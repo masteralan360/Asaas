@@ -19,12 +19,17 @@ import {
     SaleReceiptBase,
     SALE_RECEIPT_TEMPLATE_FIELD_KEYS
 } from '@/ui/components/SaleReceipt'
+import {
+    PartnerDetailsPrintTemplate,
+    type PartnerDetailsPrintData
+} from '@/ui/components/crm/PartnerDetailsPrintTemplate'
 
 export const SALES_HISTORY_RECEIPT_TEMPLATE_KEY = 'salesHistory.Receipt'
+export const PARTNER_DETAILS_TEMPLATE_KEY = 'businessPartners.Details'
 
 export type CustomTemplateTarget = {
     moduleTypeKey: string
-    workspaceModuleKey: 'real_estate' | 'sales_history'
+    workspaceModuleKey: 'real_estate' | 'sales_history' | 'crm'
     moduleLabel: string
     typeLabel: string
     description: string
@@ -101,6 +106,17 @@ export const CUSTOM_TEMPLATE_TARGETS: CustomTemplateTarget[] = [
         printFormat: 'receipt',
         page: { widthMm: 80, heightMm: 200 }
     },
+    {
+        moduleTypeKey: PARTNER_DETAILS_TEMPLATE_KEY,
+        workspaceModuleKey: 'crm',
+        moduleLabel: 'Business Partners',
+        typeLabel: 'Partner Details',
+        description: 'Business partner details A4 print layout.',
+        nativeTemplateKey: PARTNER_DETAILS_TEMPLATE_KEY,
+        nativeTemplateAvailable: true,
+        printFormat: 'a4',
+        page: { widthMm: 210, heightMm: 297 }
+    },
     ...REAL_ESTATE_CONTRACT_TARGETS.map((target) => ({
         ...target,
         workspaceModuleKey: 'real_estate' as const,
@@ -170,6 +186,8 @@ export type CustomTemplatePreviewOptions = {
     features?: WorkspaceFeatures
     workspaceFooterContacts?: WorkspaceFooterContacts
     receiptData?: UniversalInvoice
+    partnerDetailsData?: PartnerDetailsPrintData
+    printLang?: string
 }
 
 const SAMPLE_RECEIPT_DATA: UniversalInvoice = {
@@ -203,6 +221,76 @@ const SAMPLE_RECEIPT_DATA: UniversalInvoice = {
         }
     ],
     status: 'paid'
+}
+
+const SAMPLE_PARTNER_DETAILS_DATA: PartnerDetailsPrintData = {
+    partner: {
+        name: 'Sample Business Partner',
+        role: 'both',
+        contactName: 'Primary Contact',
+        email: 'partner@example.com',
+        phone: '+964 750 000 0000',
+        address: 'Business District',
+        city: 'Erbil',
+        country: 'Iraq',
+        defaultCurrency: 'usd',
+        createdAt: new Date().toISOString(),
+        notes: 'Partner notes appear here.',
+        creditLimit: 50000,
+        receivableBalance: 12500,
+        payableBalance: 4200,
+        loanOutstandingBalance: 2500,
+        netExposure: 10800
+    },
+    period: {
+        type: 'allTime'
+    },
+    generatedAt: new Date().toISOString(),
+    metrics: {
+        totalValue: 86500,
+        outstandingValue: 16700,
+        averageDocumentValue: 10812.5,
+        activeItems: 5,
+        completedItems: 3,
+        settledItems: 4,
+        totalUnits: 128,
+        moneyIn: 42000,
+        moneyOut: 18500
+    },
+    transactions: [
+        {
+            id: 'sample-sales-order',
+            source: 'sales_order',
+            reference: 'SO-00042',
+            displayDate: new Date().toISOString(),
+            status: 'completed',
+            statusLabel: 'Completed',
+            isPaid: true,
+            summary: 'Sample product order',
+            total: 12000,
+            currency: 'usd'
+        },
+        {
+            id: 'sample-loan',
+            source: 'loan',
+            reference: 'LN-00007',
+            displayDate: new Date().toISOString(),
+            status: 'active',
+            statusLabel: 'Active',
+            isPaid: false,
+            summary: 'Installment loan',
+            total: 2500,
+            currency: 'usd'
+        }
+    ],
+    topProducts: [
+        {
+            id: 'sample-product',
+            name: 'Sample Product',
+            quantity: 48,
+            amount: 24000
+        }
+    ]
 }
 
 const SALES_HISTORY_RECEIPT_FIELDS = [
@@ -417,12 +505,48 @@ function createSalesHistoryReceiptPreview(options: CustomTemplatePreviewOptions)
     }
 }
 
+function createPartnerDetailsPreview(options: CustomTemplatePreviewOptions): TemplatePreview {
+    const partnerDetailsData = options.partnerDetailsData || SAMPLE_PARTNER_DETAILS_DATA
+    const configuredPrintLang = options.features?.print_lang
+    const printLang = options.printLang
+        || (configuredPrintLang && configuredPrintLang !== 'auto' ? configuredPrintLang : 'en')
+    const fixedPrintLang: TemplatePreview['fixedPrintLang'] = printLang.startsWith('ar')
+        ? 'ar'
+        : printLang.startsWith('ku')
+            ? 'ku'
+            : 'en'
+
+    return {
+        fields: [],
+        page: { widthMm: 210, heightMm: 297 },
+        fixedPrintLang,
+        createElement: (_data, _effectiveId, printLangOverride) => (
+            <PartnerDetailsPrintTemplate
+                workspaceName={options.workspaceName}
+                printLang={printLangOverride || fixedPrintLang}
+                data={partnerDetailsData}
+                iqdPreference={options.features?.iqd_display_preference}
+                logoUrl={options.features?.logo_url}
+            />
+        ),
+        buildPdf: (element, printLangOverride) => generateTemplatePdf({
+            element,
+            format: 'a4',
+            printLang: printLangOverride || fixedPrintLang
+        })
+    }
+}
+
 export function createCustomTemplatePreview(
     target: CustomTemplateTarget,
     options: CustomTemplatePreviewOptions = {}
 ): TemplatePreview {
     if (target.moduleTypeKey === SALES_HISTORY_RECEIPT_TEMPLATE_KEY) {
         return createSalesHistoryReceiptPreview(options)
+    }
+
+    if (target.moduleTypeKey === PARTNER_DETAILS_TEMPLATE_KEY) {
+        return createPartnerDetailsPreview(options)
     }
 
     if (REAL_ESTATE_CONTRACT_MODULE_TYPE_KEYS.has(target.moduleTypeKey)) {

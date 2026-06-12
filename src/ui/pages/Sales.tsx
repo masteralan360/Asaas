@@ -40,7 +40,6 @@ import {
     SelectItem,
     SelectTrigger,
     SelectValue,
-    PrintSelectionModal,
     PrintPreviewModal,
     SalesNoteModal,
     ExportPreviewModal,
@@ -659,7 +658,6 @@ export function Sales() {
     useEffect(() => {
         localStorage.setItem('sales_print_format', printFormat)
     }, [printFormat])
-    const [showPrintModal, setShowPrintModal] = useState(false)
     const [saleToPrintSelection, setSaleToPrintSelection] = useState<Sale | null>(null)
     const [showPrintPreview, setShowPrintPreview] = useState(false)
     const [customReceiptTemplates, setCustomReceiptTemplates] = useState<StoredCustomTemplateRow[]>([])
@@ -673,7 +671,7 @@ export function Sales() {
 
 
     useEffect(() => {
-        if (!showPrintModal || !user?.workspaceId || (!isLocalMode && !isSupabaseConfigured)) {
+        if (!showPrintPreview || !user?.workspaceId || (!isLocalMode && !isSupabaseConfigured)) {
             setCustomReceiptTemplates([])
             return
         }
@@ -729,15 +727,16 @@ export function Sales() {
         return () => {
             cancelled = true
         }
-    }, [isHybridMode, isLocalMode, showPrintModal, user?.workspaceId])
+    }, [isHybridMode, isLocalMode, showPrintPreview, user?.workspaceId])
 
     const onPrintClick = (sale: Sale) => {
         setSelectedCustomReceiptTemplate(null)
         setSaleToPrintSelection(sale)
-        setShowPrintModal(true)
+        setPrintingSale(sale)
+        setShowPrintPreview(true)
     }
 
-    const handlePrintSelection = (format: 'receipt' | 'a4', template?: StoredCustomTemplateRow) => {
+    const handlePrintSelection = (format: PrintFormat, template?: StoredCustomTemplateRow) => {
         setPrintFormat(format)
         setSelectedCustomReceiptTemplate(format === 'receipt' ? template || null : null)
         if (format === 'a4' && saleToPrintSelection && saleHasAnyReturnActivity(saleToPrintSelection)) {
@@ -745,12 +744,30 @@ export function Sales() {
         } else {
             setA4Variant('standard')
         }
-        setShowPrintModal(false)
-        if (saleToPrintSelection) {
-            setPrintingSale(saleToPrintSelection)
-            setShowPrintPreview(true) // Open preview instead of printing directly
-        }
     }
+    const salesPrintSelectionOptions = useMemo(() => [{
+        format: 'receipt' as const,
+        label: t('sales.print.receipt', { defaultValue: 'Thermal Receipt' }),
+        description: t('sales.print.receiptdesc', { defaultValue: 'Thermal receipt document' })
+    }, {
+        format: 'a4' as const,
+        label: saleToPrintSelection && saleHasAnyReturnActivity(saleToPrintSelection)
+            ? t('sales.print.a4Refund', { defaultValue: 'A4 Refund Invoice' })
+            : t('sales.print.a4', { defaultValue: 'A4 Invoice' }),
+        description: saleToPrintSelection && saleHasAnyReturnActivity(saleToPrintSelection)
+            ? t('sales.print.a4RefundDesc', { defaultValue: 'Refund-focused full-page A4' })
+            : t('sales.print.a4desc', { defaultValue: 'Detailed full-page document' })
+    }], [saleToPrintSelection, t])
+    const salesCustomPrintOptions = useMemo(
+        () => customReceiptTemplates.map((template) => ({
+            format: 'receipt' as const,
+            template,
+            label: getStoredCustomTemplateLabel(template),
+            description: t('customTemplates.customReceipt', { defaultValue: 'Custom Receipt' }),
+            primary: template.primary
+        })),
+        [customReceiptTemplates, t]
+    )
 
     const handleConfirmPrint = () => {
         // PrintPreviewModal handles PDF rendering/printing internally
@@ -2684,14 +2701,6 @@ export function Sales() {
                     onSave={handleSaveNote}
                 />
 
-                <PrintSelectionModal
-                    isOpen={showPrintModal}
-                    onClose={() => setShowPrintModal(false)}
-                    onSelect={handlePrintSelection}
-                    a4Variant={saleToPrintSelection && saleHasAnyReturnActivity(saleToPrintSelection) ? 'refund' : 'standard'}
-                    receiptTemplates={customReceiptTemplates}
-                />
-
                 {/* Print Preview Modal */}
                 <PrintPreviewModal
                     isOpen={showPrintPreview}
@@ -2747,6 +2756,9 @@ export function Sales() {
                     initialTemplateLayout={selectedCustomReceiptTemplate ? selectedCustomReceiptLayout : undefined}
                     enableTemplatePreviewSave={Boolean(selectedCustomReceiptTemplate)}
                     generateTemplateLayoutBlob={selectedCustomReceiptTemplate ? buildEditableCustomReceiptPdf : undefined}
+                    printSelectionOptions={salesPrintSelectionOptions}
+                    printSelectionTemplates={salesCustomPrintOptions}
+                    onPrintSelection={handlePrintSelection}
                 />
 
                 <Dialog open={isFilterDialogOpen} onOpenChange={setIsFilterDialogOpen}>

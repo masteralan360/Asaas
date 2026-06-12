@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useLocation, useRoute } from 'wouter'
 import { useTranslation } from 'react-i18next'
 import i18n from '@/i18n/config'
-import { ArrowLeft, Building2, CalendarClock, FileText, HandCoins, Loader2, MapPin, Plus, Printer, Search, Trash2 } from 'lucide-react'
+import { ArrowLeft, Building2, CalendarClock, HandCoins, Loader2, MapPin, Plus, Printer, Search, Trash2 } from 'lucide-react'
 
 import { isSupabaseConfigured, supabase, useAuth } from '@/auth'
 import { cn, formatCurrency, formatDate, formatDateTime } from '@/lib/utils'
@@ -32,11 +32,6 @@ import {
     CardHeader,
     CardTitle,
     DeleteConfirmationModal,
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogHeader,
-    DialogTitle,
     Input,
     PrintPreviewModal,
     Table,
@@ -58,7 +53,6 @@ import { useWorkspace } from '@/workspace'
 import {
     buildCustomTemplateLayoutPdf,
     createCustomTemplatePreview,
-    getCustomTemplateDisplayName,
     getCustomTemplateTarget,
     getStoredCustomTemplateLabel,
     readCustomTemplateLayout,
@@ -507,8 +501,7 @@ function RealEstateDetails({
     const [isCommissionOpen, setIsCommissionOpen] = useState(false)
     const [isSubmittingCommission, setIsSubmittingCommission] = useState(false)
     const [customPrintTemplates, setCustomPrintTemplates] = useState<StoredCustomTemplateRow[]>([])
-    const [isLoadingPrintTemplates, setIsLoadingPrintTemplates] = useState(false)
-    const [isPrintSelectionOpen, setIsPrintSelectionOpen] = useState(false)
+    const [isLoadingPrintTemplates, setIsLoadingPrintTemplates] = useState(true)
     const [isPrintPreviewOpen, setIsPrintPreviewOpen] = useState(false)
     const [selectedPrintTemplate, setSelectedPrintTemplate] = useState<StoredCustomTemplateRow | null>(null)
     const [isDeleteOpen, setIsDeleteOpen] = useState(false)
@@ -661,16 +654,35 @@ function RealEstateDetails({
         [buyerPartner, features.iqd_display_preference, printT, sellerPartner, transaction]
     )
     const selectedPrintTarget = useMemo(
-        () => selectedPrintTemplate ? getCustomTemplateTarget(selectedPrintTemplate.module_type_key) : undefined,
-        [selectedPrintTemplate]
+        () => transactionPrintModuleTypeKey
+            ? getCustomTemplateTarget(transactionPrintModuleTypeKey)
+            : undefined,
+        [transactionPrintModuleTypeKey]
     )
     const selectedPrintLayout = useMemo(
         () => selectedPrintTemplate ? readCustomTemplateLayout(selectedPrintTemplate) : null,
         [selectedPrintTemplate]
     )
+    const activePrintLayout = useMemo<CustomTemplateLayout | null>(() => {
+        if (selectedPrintLayout) return selectedPrintLayout
+        if (!selectedPrintTarget) return null
+
+        return {
+            version: 1,
+            label: t('realEstate.nativeA4Template', { defaultValue: 'Real Estate Contract A4' }),
+            moduleTypeKey: selectedPrintTarget.moduleTypeKey,
+            nativeTemplateKey: selectedPrintTarget.nativeTemplateKey,
+            page: selectedPrintTarget.page,
+            fields: {},
+            annotations: [],
+            texts: [],
+            images: [],
+            updatedAt: new Date().toISOString()
+        }
+    }, [selectedPrintLayout, selectedPrintTarget, t])
     const selectedRuntimePrintLayout = useMemo(
-        () => selectedPrintLayout ? buildRuntimePrintLayout(selectedPrintLayout, realEstatePrintValues) : null,
-        [realEstatePrintValues, selectedPrintLayout]
+        () => activePrintLayout ? buildRuntimePrintLayout(activePrintLayout, realEstatePrintValues) : null,
+        [activePrintLayout, realEstatePrintValues]
     )
     const selectedPrintPreview = useMemo(
         () => selectedPrintTarget
@@ -699,31 +711,44 @@ function RealEstateDetails({
             printFormat: 'a4' as const
         }
     }, [transaction, user?.id, user?.name])
-    const openPrintTemplate = useCallback((template: StoredCustomTemplateRow) => {
-        setSelectedPrintTemplate(template)
-        setIsPrintSelectionOpen(false)
+    const realEstatePrintSelectionOptions = useMemo(() => [{
+        format: 'a4' as const,
+        label: t('realEstate.nativeA4Template', { defaultValue: 'Real Estate Contract A4' }),
+        description: t('realEstate.nativeA4TemplateDescription', {
+            defaultValue: 'Use the built-in A4 contract layout.'
+        })
+    }], [t])
+    const realEstateCustomPrintOptions = useMemo(
+        () => availablePrintTemplates.map((template) => ({
+            format: 'a4' as const,
+            template,
+            label: getStoredCustomTemplateLabel(template),
+            description: t('realEstate.customA4TemplateDescription', {
+                defaultValue: 'Use this saved custom contract layout.'
+            }),
+            primary: template.primary
+        })),
+        [availablePrintTemplates, t]
+    )
+    const handlePrintSelection = useCallback((
+        _format: PrintFormat,
+        template?: StoredCustomTemplateRow
+    ) => {
+        setSelectedPrintTemplate(template || null)
+    }, [])
+    const handlePrintClick = useCallback(() => {
+        setSelectedPrintTemplate(null)
         setIsPrintPreviewOpen(true)
     }, [])
 
-    const handlePrintClick = useCallback(() => {
-        if (availablePrintTemplates.length === 0) return
-
-        if (availablePrintTemplates.length === 1) {
-            openPrintTemplate(availablePrintTemplates[0])
-            return
-        }
-
-        setIsPrintSelectionOpen(true)
-    }, [availablePrintTemplates, openPrintTemplate])
-
     const buildRealEstatePrintPdf = useCallback(async ({ effectiveId }: { format: PrintFormat; effectiveId: string }) => {
-        if (!transaction || !selectedPrintTarget || !selectedPrintTarget.nativeTemplateAvailable || !selectedPrintLayout) {
-            throw new Error('Custom print template is not available.')
+        if (!transaction || !selectedPrintTarget || !selectedPrintTarget.nativeTemplateAvailable || !activePrintLayout) {
+            throw new Error('Print template is not available.')
         }
 
         return buildCustomTemplateLayoutPdf({
             target: selectedPrintTarget,
-            layout: selectedPrintLayout,
+            layout: activePrintLayout,
             values: realEstatePrintValues,
             options: {
                 workspaceId: transaction.workspaceId,
@@ -733,7 +758,7 @@ function RealEstateDetails({
             },
             effectiveId
         })
-    }, [features, realEstatePrintValues, selectedPrintLayout, selectedPrintTarget, transaction, workspaceFooterContacts, workspaceName])
+    }, [activePrintLayout, features, realEstatePrintValues, selectedPrintTarget, transaction, workspaceFooterContacts, workspaceName])
 
     const buildEditableRealEstatePrintPdf = useCallback(async (
         layout: CustomTemplateLayout,
@@ -857,7 +882,7 @@ function RealEstateDetails({
                         variant="outline"
                         className="gap-2"
                         onClick={handlePrintClick}
-                        disabled={isLoadingPrintTemplates || availablePrintTemplates.length === 0}
+                        disabled={isLoadingPrintTemplates || !selectedPrintTarget || !selectedRuntimePrintLayout}
                     >
                         {isLoadingPrintTemplates ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
                         {t('common.print', { defaultValue: 'Print' })}
@@ -1121,13 +1146,7 @@ function RealEstateDetails({
                     defaultValue: 'This will hide the contract and its installment schedule. Existing payments, commission collections, and ledger history will remain for audit.'
                 })}
             />
-            <RealEstatePrintSelectionModal
-                isOpen={isPrintSelectionOpen}
-                onClose={() => setIsPrintSelectionOpen(false)}
-                templates={availablePrintTemplates}
-                onSelect={openPrintTemplate}
-            />
-            {selectedPrintTemplate && selectedPrintLayout && selectedRuntimePrintLayout && selectedPrintTarget && selectedPrintPreview ? (
+            {selectedRuntimePrintLayout && selectedPrintTarget && selectedPrintPreview ? (
                 <PrintPreviewModal
                     isOpen={isPrintPreviewOpen}
                     onClose={() => {
@@ -1147,8 +1166,10 @@ function RealEstateDetails({
                     customTemplate={{
                         moduleTypeKey: selectedPrintTarget.moduleTypeKey,
                         nativeTemplateKey: selectedPrintTarget.nativeTemplateKey,
-                        templateId: selectedPrintTemplate.id,
-                        label: getStoredCustomTemplateLabel(selectedPrintTemplate)
+                        templateId: selectedPrintTemplate?.id,
+                        label: selectedPrintTemplate
+                            ? getStoredCustomTemplateLabel(selectedPrintTemplate)
+                            : t('realEstate.nativeA4Template', { defaultValue: 'Real Estate Contract A4' })
                     }}
                     initialTemplateLayout={selectedRuntimePrintLayout}
                     allowTemplateFieldEditing
@@ -1158,6 +1179,9 @@ function RealEstateDetails({
                     features={features}
                     workspaceName={workspaceName}
                     module="real_estate"
+                    printSelectionOptions={realEstatePrintSelectionOptions}
+                    printSelectionTemplates={realEstateCustomPrintOptions}
+                    onPrintSelection={handlePrintSelection}
                 />
             ) : null}
         </div>
@@ -1181,61 +1205,5 @@ function InfoRow({ label, value }: { label: string; value: string }) {
             <span className="text-muted-foreground">{label}</span>
             <span className="max-w-[60%] text-right font-medium">{value}</span>
         </div>
-    )
-}
-
-function RealEstatePrintSelectionModal({
-    isOpen,
-    onClose,
-    templates,
-    onSelect
-}: {
-    isOpen: boolean
-    onClose: () => void
-    templates: StoredCustomTemplateRow[]
-    onSelect: (template: StoredCustomTemplateRow) => void
-}) {
-    const { t } = useTranslation()
-
-    return (
-        <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-            <DialogContent className="sm:max-w-md">
-                <DialogHeader>
-                    <DialogTitle className="flex items-center gap-2">
-                        <Printer className="h-5 w-5 text-primary" />
-                        {t('common.print', { defaultValue: 'Print' })}
-                    </DialogTitle>
-                    <DialogDescription>
-                        {t('realEstate.selectPrintTemplate', {
-                            defaultValue: 'Choose the custom template to use for this contract.'
-                        })}
-                    </DialogDescription>
-                </DialogHeader>
-
-                <div className="grid grid-cols-1 gap-4 py-4 sm:grid-cols-2">
-                    {templates.map((template) => {
-                        const target = getCustomTemplateTarget(template.module_type_key)
-                        return (
-                            <Button
-                                key={template.id}
-                                variant="outline"
-                                className="flex h-32 flex-col gap-3 text-center transition-all hover:border-primary hover:bg-primary/5"
-                                onClick={() => onSelect(template)}
-                            >
-                                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-secondary">
-                                    <FileText className="h-6 w-6 text-foreground" />
-                                </div>
-                                <div className="min-w-0 space-y-1">
-                                    <div className="max-w-full truncate font-bold">{getStoredCustomTemplateLabel(template)}</div>
-                                    <div className="text-xs text-muted-foreground">
-                                        {target ? getCustomTemplateDisplayName(target.moduleTypeKey) : template.module_type_key}
-                                    </div>
-                                </div>
-                            </Button>
-                        )
-                    })}
-                </div>
-            </DialogContent>
-        </Dialog>
     )
 }

@@ -2792,11 +2792,31 @@
     "activityTimeline": "هێڵی کاتی چالاکی یەکگرتوو",
     "noActivity": "هیچ چالاکییەکی پەیوەندیدار نییە تاکو ئێستا.",
     "noMergeCandidates": "هیچ بەرەوپێشخوازێکی تێکەڵکردن نەدۆزرایەوە.",
+    "partnerDetailsPrint": "وردەکاری هاوبەشی کار",
+    "printA4": "چاپی A4",
+    "selectPrintTemplateTitle": "هەڵبژاردنی قاڵبی وردەکاری هاوبەش",
+    "selectPrintTemplate": "شێوازی A4 هەڵبژێرە بۆ چاپکردنی وردەکاری ئەم هاوبەشە.",
+    "nativeA4Template": "وردەکاری هاوبەش A4",
+    "nativeA4TemplateDescription": "شێوازی بنەڕەتی A4 بۆ وردەکاری هاوبەش بەکاربهێنە.",
+    "customA4TemplateDescription": "ئەم شێوازی تایبەتە پاشەکەوتکراوە بەکاربهێنە.",
+    "memberSince": "هاوبەشە لە",
+    "financialSummary": "پوختەی دارایی",
+    "creditLimit": "سنووری قەرز",
+    "balance": "باڵانس",
+    "totalValue": "کۆی بەها",
+    "outstanding": "ماوە",
+    "activeItems": "دانە چالاکەکان",
+    "cashFlow": "ڕەوتی پارە",
+    "notes": "تێبینییەکان",
+    "moreActivities": "+{{count}} چالاکی زیاتر",
     "form": {
-      "role": "ڕۆڵ"
+      "role": "ڕۆڵ",
+      "contactName": "ناوی پەیوەندی"
     },
     "roles": {
-      "both": "هەردووکیان"
+      "both": "هەردووکیان",
+      "buyer": "کڕیار",
+      "seller": "فرۆشیار"
     },
     "messages": {
       "addSuccess": "هاوبەشی کار بە سەرکەوتوویی دروستکرا",
@@ -3189,9 +3209,9 @@
     "existingTitle": "قاڵبە تایبەتەکانی هەنووکە",
     "existingDescription": "JSONی ڕێکخستن بۆ شوێنی کار و کلیلی مۆدیول/جۆر پاشەکەوت دەکرێت.",
     "emptyTitle": "هێشتا هیچ قاڵبێکی تایبەت نییە",
-    "emptyDescription": "ڕێکخستنی چاپی خانووبەرە دروست بکە بۆ پاشەکەوتکردنی یەکەم ڕێکخستن.",
+    "emptyDescription": "ڕێکخستنێکی چاپ دروست بکە بۆ پاشەکەوتکردنی یەکەم ڕێکخستن.",
     "addTitle": "زیادکردنی قاڵبی نوێ",
-    "addDescription": "مۆدیول و جۆری چاپ هەڵبژێرە بۆ ڕێکخستن. خانووبەرە تەنها مۆدیولی پشتیوانیکراوە لەم وەشانەدا.",
+    "addDescription": "مۆدیول و جۆری چاپ هەڵبژێرە بۆ ڕێکخستن.",
     "moduleTypeLabel": "مۆدیول / جۆری چاپ",
     "selectPlaceholder": "مۆدیول/جۆر هەڵبژێرە",
     "openPreview": "کردنەوەی پێشبینینی چاپ",

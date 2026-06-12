@@ -1,16 +1,31 @@
-import { useEffect, useMemo, useState } from 'react'
-import { ArrowLeft, CalendarDays, CreditCard, Eye, LayoutGrid, List, Mail, MapPin, Package, Phone, Receipt, ShoppingCart, Truck, UsersRound, TrendingUp, TrendingDown, Activity } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useLiveQuery } from 'dexie-react-hooks'
+import { ArrowLeft, CalendarDays, CreditCard, Eye, LayoutGrid, List, Mail, MapPin, Package, Phone, Printer, Receipt, ShoppingCart, Truck, UsersRound, TrendingUp, TrendingDown, Activity } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Link, useLocation } from 'wouter'
 
+import { isSupabaseConfigured, supabase } from '@/auth'
 import { useExchangeRate } from '@/context/ExchangeRateContext'
 import { buildConversionRates } from '@/lib/budget'
 import { convertToStoreBase } from '@/lib/currency'
+import {
+    PARTNER_DETAILS_TEMPLATE_KEY,
+    buildCustomTemplateLayoutPdf,
+    createCustomTemplatePreview,
+    getCustomTemplateTarget,
+    getStoredCustomTemplateLabel,
+    readCustomTemplateLayout,
+    type StoredCustomTemplateRow
+} from '@/lib/customTemplates'
 import { convertCurrencyAmountWithAvailableSnapshot, convertCurrencyAmountWithSnapshot } from '@/lib/orderCurrency'
 import { getLoanDetailsPath, getLoanDirection, getLoanDirectionLabel, isSimpleLoan } from '@/lib/loanPresentation'
+import type { CustomTemplateLayout } from '@/lib/pdfPreviewStore'
+import { normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
 import { getTravelSaleCost, getTravelStatusLabel } from '@/lib/travelAgency'
 import { cn, formatCurrency, formatDate, formatDateTime } from '@/lib/utils'
 import {
+    listLocalCustomTemplates,
+    replaceMirroredCustomTemplates,
     useBusinessPartner,
     useCustomerSalesOrders,
     useLoans,
@@ -18,28 +33,31 @@ import {
     useSupplierPurchaseOrders,
     useSupplierTravelAgencySales,
     type BusinessPartnerRole,
+    type LocalCustomTemplateRow,
     type Loan,
     type PurchaseOrder,
     type PaymentTransaction,
     type SalesOrder,
-    type TravelAgencySale
+    type TravelAgencySale,
+    type LoanInstallment,
+    db
 } from '@/local-db'
+import { Button } from '@/ui/components/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@/ui/components/card'
+import { PrintPreviewModal } from '@/ui/components/PrintPreviewModal'
 import {
-    Button,
-    Card,
-    CardContent,
-    CardHeader,
-    CardTitle,
     Table,
     TableBody,
     TableCell,
     TableHead,
     TableHeader,
     TableRow
-} from '@/ui/components'
+} from '@/ui/components/table'
 import { useWorkspace } from '@/workspace'
 import { useDateRange } from '@/context/DateRangeContext'
 import { DateRangeFilters } from '@/ui/components/DateRangeFilters'
+import type { PartnerDetailsPrintData } from '@/ui/components/crm/PartnerDetailsPrintTemplate'
+import type { PrintFormat } from '@/services/pdfGenerator'
 
 type PartnerKind = 'customer' | 'supplier' | 'business_partner'
 type RelatedProductOrder = SalesOrder | PurchaseOrder
@@ -55,6 +73,9 @@ type RelatedTransaction = {
     isPaid: boolean
     summary: string
     total: number
+    originalAmount: number
+    paidAmount: number
+    remainingAmount: number
     currency: SalesOrder['currency']
     totalInPartnerCurrency: number
     units: number
@@ -101,7 +122,7 @@ function sourceLabel(source: RelatedTransaction['source'], t: TranslationFn) {
         case 'direct_transaction':
             return t('ledger.type.direct_transaction', { defaultValue: 'Direct Transaction' })
         default:
-            return t('loans.installmentLoan', { defaultValue: 'Installment Loan' })
+            return t('loans.installmentRepayment', { defaultValue: 'Installment Repayment' })
     }
 }
 
@@ -180,6 +201,9 @@ function normalizeSalesOrder(order: SalesOrder, currency: SalesOrder['currency']
         isPaid: order.isPaid,
         summary: getOrderSummary(order.items),
         total: order.total,
+        originalAmount: order.total,
+        paidAmount: order.isPaid ? order.total : 0,
+        remainingAmount: order.isPaid ? 0 : order.total,
         currency: order.currency,
         totalInPartnerCurrency: toPartnerCurrency(order, currency),
         units: order.items.reduce((sum, item) => sum + item.quantity, 0),
@@ -203,6 +227,9 @@ function normalizePurchaseOrder(order: PurchaseOrder, currency: SalesOrder['curr
         isPaid: order.isPaid,
         summary: getOrderSummary(order.items),
         total: order.total,
+        originalAmount: order.total,
+        paidAmount: order.isPaid ? order.total : 0,
+        remainingAmount: order.isPaid ? 0 : order.total,
         currency: order.currency,
         totalInPartnerCurrency: toPartnerCurrency(order, currency),
         units: order.items.reduce((sum, item) => sum + item.quantity, 0),
@@ -214,6 +241,7 @@ function normalizePurchaseOrder(order: PurchaseOrder, currency: SalesOrder['curr
 }
 
 function normalizeTravelSale(sale: TravelAgencySale, currency: SalesOrder['currency']): RelatedTransaction {
+    const cost = getTravelSaleCost(sale)
     return {
         id: sale.id,
         source: 'travel_sale',
@@ -225,7 +253,10 @@ function normalizeTravelSale(sale: TravelAgencySale, currency: SalesOrder['curre
         statusLabel: getTravelStatusLabel(sale.status),
         isPaid: sale.isPaid,
         summary: getTravelSaleSummary(sale),
-        total: getTravelSaleCost(sale),
+        total: cost,
+        originalAmount: cost,
+        paidAmount: sale.paidAmount,
+        remainingAmount: cost - sale.paidAmount,
         currency: sale.currency,
         totalInPartnerCurrency: toPartnerCurrencyFromTravelSale(sale, currency),
         units: 0,
@@ -243,7 +274,7 @@ function loanStatusLabel(t: TranslationFn, status: Loan['status']) {
     return status
 }
 
-function normalizeLoan(loan: Loan, currency: SalesOrder['currency'], t: TranslationFn): RelatedTransaction {
+function normalizeLoan(loan: Loan, currency: SalesOrder['currency'], t: TranslationFn, installments?: LoanInstallment[]): RelatedTransaction {
     const direction = getLoanDirection(loan)
     const directionLabel = getLoanDirectionLabel(direction, t)
     const totalInPartnerCurrency = convertCurrencyAmountWithAvailableSnapshot(
@@ -252,6 +283,11 @@ function normalizeLoan(loan: Loan, currency: SalesOrder['currency'], t: Translat
         currency,
         loan.exchangeRateSnapshot
     ) ?? 0
+    const paidInsts = installments?.filter((i) => i.status === 'paid' || i.balanceAmount <= 0).length ?? 0
+    const totalInsts = installments?.length ?? 0
+    const installmentSummary = totalInsts > 0
+        ? ` • ${paidInsts} ${t('loans.of', { defaultValue: 'of' })} ${totalInsts} ${t('loans.installments', { defaultValue: 'installments' })}`
+        : ''
 
     return {
         id: loan.id,
@@ -263,8 +299,11 @@ function normalizeLoan(loan: Loan, currency: SalesOrder['currency'], t: Translat
         status: loan.status,
         statusLabel: loanStatusLabel(t, loan.status),
         isPaid: loan.balanceAmount <= 0 || loan.status === 'completed',
-        summary: isSimpleLoan(loan) ? `${directionLabel} • ${loan.borrowerName}` : loan.borrowerName,
-        total: loan.balanceAmount,
+        summary: isSimpleLoan(loan) ? `${directionLabel} • ${loan.borrowerName}` : `${loan.borrowerName}${installmentSummary}`,
+        total: loan.principalAmount,
+        originalAmount: loan.principalAmount,
+        paidAmount: loan.totalPaidAmount,
+        remainingAmount: loan.balanceAmount,
         currency: loan.settlementCurrency,
         totalInPartnerCurrency,
         units: 0,
@@ -294,6 +333,9 @@ function normalizePaymentTransaction(
         isPaid: true,
         summary: tx.note || (isIncoming ? t('ledger.type.direct_inflow', { defaultValue: 'Direct Inflow' }) : t('ledger.type.direct_outflow', { defaultValue: 'Direct Outflow' })),
         total: tx.amount,
+        originalAmount: tx.amount,
+        paidAmount: tx.amount,
+        remainingAmount: 0,
         currency: tx.currency,
         totalInPartnerCurrency: convertToStoreBase(tx.amount, tx.currency, baseCurrency, conversionRates),
         units: 0,
@@ -319,8 +361,13 @@ export function PartnerDetailsView({
     partnerId: string
     kind: PartnerKind
 }) {
-    const { t } = useTranslation()
-    const { features } = useWorkspace()
+    const { t, i18n } = useTranslation()
+    const {
+        features,
+        workspaceName,
+        isLocalMode,
+        isHybridMode
+    } = useWorkspace()
     const { exchangeData, eurRates, tryRates } = useExchangeRate()
     const conversionRates = useMemo(() => buildConversionRates(exchangeData, eurRates, tryRates), [exchangeData, eurRates, tryRates])
     const [, navigate] = useLocation()
@@ -332,10 +379,76 @@ export function PartnerDetailsView({
     const paymentTransactions = usePaymentTransactions(workspaceId)
     const { dateRange, customDates } = useDateRange()
     const [viewMode, setViewMode] = useState<'table' | 'grid'>(() => readViewMode(kind))
+    const [customPrintTemplates, setCustomPrintTemplates] = useState<StoredCustomTemplateRow[]>([])
+    const [selectedPrintTemplate, setSelectedPrintTemplate] = useState<StoredCustomTemplateRow | null>(null)
+    const [isPrintPreviewOpen, setIsPrintPreviewOpen] = useState(false)
 
     useEffect(() => {
         localStorage.setItem(`partner_details_view_mode_${kind}`, viewMode)
     }, [kind, viewMode])
+
+    useEffect(() => {
+        if (!workspaceId || (!isLocalMode && !isSupabaseConfigured)) {
+            setCustomPrintTemplates([])
+            return
+        }
+
+        let cancelled = false
+
+        void (async () => {
+            try {
+                const templates = isLocalMode
+                    ? await listLocalCustomTemplates(workspaceId, {
+                        moduleTypeKey: PARTNER_DETAILS_TEMPLATE_KEY,
+                        activeOnly: true
+                    })
+                    : await (async () => {
+                        const { data, error } = await runSupabaseAction('businessPartners.customTemplates.fetch', () =>
+                            supabase
+                                .from('custom_templates')
+                                .select('id, workspace_id, module_type_key, label, layout_json, active, primary, created_by, updated_by, created_at, updated_at')
+                                .eq('workspace_id', workspaceId)
+                                .eq('module_type_key', PARTNER_DETAILS_TEMPLATE_KEY)
+                                .order('primary', { ascending: false })
+                                .order('updated_at', { ascending: false })
+                        )
+                        if (error) throw normalizeSupabaseActionError(error)
+                        const cloudTemplates = (data || []) as LocalCustomTemplateRow[]
+                        if (isHybridMode) {
+                            await replaceMirroredCustomTemplates(workspaceId, cloudTemplates, {
+                                moduleTypeKey: PARTNER_DETAILS_TEMPLATE_KEY
+                            })
+                        }
+                        return cloudTemplates.filter((template) => template.active)
+                    })()
+
+                if (!cancelled) {
+                    setCustomPrintTemplates(templates as StoredCustomTemplateRow[])
+                }
+            } catch (error) {
+                console.error('[PartnerDetails] Failed to load custom print templates:', error)
+                if (!cancelled) {
+                    if (isHybridMode) {
+                        try {
+                            const mirroredTemplates = await listLocalCustomTemplates(workspaceId, {
+                                moduleTypeKey: PARTNER_DETAILS_TEMPLATE_KEY,
+                                activeOnly: true
+                            })
+                            setCustomPrintTemplates(mirroredTemplates as StoredCustomTemplateRow[])
+                        } catch {
+                            setCustomPrintTemplates([])
+                        }
+                    } else {
+                        setCustomPrintTemplates([])
+                    }
+                }
+            }
+        })()
+
+        return () => {
+            cancelled = true
+        }
+    }, [isHybridMode, isLocalMode, workspaceId])
 
     const dateBounds = useMemo(() => {
         const now = new Date()
@@ -362,31 +475,44 @@ export function PartnerDetailsView({
         () => loans.filter((loan) => loan.linkedPartyType === 'business_partner' && loan.linkedPartyId === partner?.id),
         [loans, partner?.id]
     )
-    const filterByDate = <T extends { updatedAt?: string; createdAt: string }>(items: T[], dateField?: (item: T) => string) =>
-        dateRange === 'allTime' ? items : items.filter((item) => {
-            const d = dateField ? dateField(item) : (item.updatedAt || item.createdAt)
-            if (dateBounds.startDate && d < dateBounds.startDate) return false
-            if (dateBounds.endDate && d >= dateBounds.endDate) return false
-            return true
-        })
-    const dateFilteredCustomerOrders = useMemo(() => filterByDate(customerOrders), [customerOrders, dateRange, dateBounds])
-    const dateFilteredSupplierOrders = useMemo(() => filterByDate(supplierOrders), [supplierOrders, dateRange, dateBounds])
+    const filterByDate = useCallback(<T extends { updatedAt?: string; createdAt: string },>(
+        items: T[],
+        dateField?: (item: T) => string
+    ) => dateRange === 'allTime' ? items : items.filter((item) => {
+        const d = dateField ? dateField(item) : (item.updatedAt || item.createdAt)
+        if (dateBounds.startDate && d < dateBounds.startDate) return false
+        if (dateBounds.endDate && d >= dateBounds.endDate) return false
+        return true
+    }), [dateBounds.endDate, dateBounds.startDate, dateRange])
+    const dateFilteredCustomerOrders = useMemo(() => filterByDate(customerOrders), [customerOrders, filterByDate])
+    const dateFilteredSupplierOrders = useMemo(() => filterByDate(supplierOrders), [filterByDate, supplierOrders])
     const dateFilteredTravelSales = useMemo(
         () => filterByDate(supplierTravelSales, (s) => s.updatedAt || s.saleDate || s.createdAt),
-        [supplierTravelSales, dateRange, dateBounds]
+        [filterByDate, supplierTravelSales]
     )
-    const dateFilteredLoans = useMemo(() => filterByDate(partnerLoans), [partnerLoans, dateRange, dateBounds])
+    const dateFilteredLoans = useMemo(() => filterByDate(partnerLoans), [filterByDate, partnerLoans])
     const directTransactions = useMemo(
         () => paymentTransactions.filter(tx => tx.sourceType === 'direct_transaction' && tx.metadata?.businessPartnerId === partnerId),
         [paymentTransactions, partnerId]
     )
     const dateFilteredPayments = useMemo(
         () => filterByDate(directTransactions, (tx) => tx.paidAt || tx.createdAt),
-        [directTransactions, dateRange, dateBounds]
+        [directTransactions, filterByDate]
     )
     const dateFilteredAllPayments = useMemo(
         () => filterByDate(paymentTransactions, (tx) => tx.paidAt || tx.createdAt),
-        [paymentTransactions, dateRange, dateBounds]
+        [filterByDate, paymentTransactions]
+    )
+    const partnerLoanIds = useMemo(() => partnerLoans.map(l => l.id), [partnerLoans])
+    const allInstallments = useLiveQuery(
+        () => partnerLoanIds.length > 0
+            ? db.loan_installments.where('loanId').anyOf(partnerLoanIds).toArray()
+            : [],
+        [partnerLoanIds]
+    ) ?? []
+    const dateFilteredInstallments = useMemo(
+        () => filterByDate(allInstallments, (inst) => inst.updatedAt || inst.createdAt),
+        [filterByDate, allInstallments]
     )
     const allowedByRoute = useMemo(() => {
         if (!partner) {
@@ -418,14 +544,20 @@ export function PartnerDetailsView({
     const emptyRelatedLabel = t('businessPartners.noActivity', { defaultValue: 'No related activity yet.' })
     const completedLabel = t('businessPartners.completedItems', { defaultValue: 'Completed Items' })
     const paidLabel = t('businessPartners.settledItems', { defaultValue: 'Settled Items' })
-    const listTitle = t('businessPartners.activityTimeline', { defaultValue: 'Unified Activity Timeline' })
+    const providedByYouLabel = t('businessPartners.providedByYou', { defaultValue: 'What You Provided' })
+    const providedByPartnerLabel = t('businessPartners.providedByPartner', { defaultValue: 'What the Partner Provided' })
+    const amountLabel = t('common.amount', { defaultValue: 'Amount' })
+    const paidLabel2 = t('common.paid', { defaultValue: 'Paid' })
+    const remainingLabel = t('common.remaining', { defaultValue: 'Remaining' })
     const overviewTitle = t('businessPartners.overview', { defaultValue: 'Partner Overview' })
     const lastActivityLabel = t('businessPartners.lastActivity', { defaultValue: 'Last Activity' })
     const firstActivityLabel = t('businessPartners.firstActivity', { defaultValue: 'First Activity' })
     const detailsColumnLabel = t('common.details', { defaultValue: 'Details' })
     const referenceColumnLabel = t('common.reference', { defaultValue: 'Reference' })
-    const productOrders = [...customerOrders, ...supplierOrders]
-    const filteredProductOrders = [...dateFilteredCustomerOrders, ...dateFilteredSupplierOrders]
+    const filteredProductOrders = useMemo(
+        () => [...dateFilteredCustomerOrders, ...dateFilteredSupplierOrders],
+        [dateFilteredCustomerOrders, dateFilteredSupplierOrders]
+    )
 
     const relatedTransactions = useMemo(
         () => [
@@ -473,6 +605,45 @@ export function PartnerDetailsView({
         () => filteredActive.filter((tx) => tx.isCompleted),
         [filteredActive]
     )
+    const providedByYou = useMemo(() => {
+        const rows: RelatedTransaction[] = [
+            ...dateFilteredCustomerOrders.map((order) => normalizeSalesOrder(order, defaultCurrency, t)),
+            ...dateFilteredPayments
+                .filter((tx) => tx.direction === 'outgoing')
+                .map((tx) => normalizePaymentTransaction(tx, defaultCurrency, conversionRates, t)),
+        ]
+        for (const loan of dateFilteredLoans) {
+            const direction = getLoanDirection(loan)
+            const isProvidedByYou = isSimpleLoan(loan)
+                ? direction !== 'borrowed'
+                : direction === 'borrowed'
+            if (isProvidedByYou) {
+                rows.push(normalizeLoan(loan, defaultCurrency, t, dateFilteredInstallments.filter((i) => i.loanId === loan.id)))
+            }
+        }
+        rows.sort((a, b) => new Date(b.sortDate).getTime() - new Date(a.sortDate).getTime())
+        return rows
+    }, [dateFilteredCustomerOrders, dateFilteredPayments, dateFilteredLoans, dateFilteredInstallments, defaultCurrency, conversionRates, t])
+    const providedByPartner = useMemo(() => {
+        const rows: RelatedTransaction[] = [
+            ...dateFilteredSupplierOrders.map((order) => normalizePurchaseOrder(order, defaultCurrency, t)),
+            ...dateFilteredTravelSales.map((sale) => normalizeTravelSale(sale, defaultCurrency)),
+            ...dateFilteredPayments
+                .filter((tx) => tx.direction === 'incoming')
+                .map((tx) => normalizePaymentTransaction(tx, defaultCurrency, conversionRates, t)),
+        ]
+        for (const loan of dateFilteredLoans) {
+            const direction = getLoanDirection(loan)
+            const isProvidedByPartner = isSimpleLoan(loan)
+                ? direction === 'borrowed'
+                : direction !== 'borrowed'
+            if (isProvidedByPartner) {
+                rows.push(normalizeLoan(loan, defaultCurrency, t, dateFilteredInstallments.filter((i) => i.loanId === loan.id)))
+            }
+        }
+        rows.sort((a, b) => new Date(b.sortDate).getTime() - new Date(a.sortDate).getTime())
+        return rows
+    }, [dateFilteredSupplierOrders, dateFilteredTravelSales, dateFilteredPayments, dateFilteredLoans, dateFilteredInstallments, defaultCurrency, conversionRates, t])
     const directTransactionsVolume = useMemo(
         () => dateFilteredPayments.reduce((sum, tx) => sum + convertToStoreBase(tx.amount, tx.currency, defaultCurrency, conversionRates), 0),
         [dateFilteredPayments, defaultCurrency, conversionRates]
@@ -603,7 +774,199 @@ export function PartnerDetailsView({
 
             return b.quantity - a.quantity
         }).slice(0, 5)
-    }, [defaultCurrency, productOrders])
+    }, [defaultCurrency, filteredProductOrders])
+    const printLang = features.print_lang && features.print_lang !== 'auto'
+        ? features.print_lang
+        : i18n.language
+    const partnerPrintData = useMemo<PartnerDetailsPrintData | null>(() => {
+        if (!partner) return null
+
+        return {
+            partner: {
+                name: partner.name,
+                role: partner.role,
+                contactName: partner.contactName,
+                email: partner.email,
+                phone: partner.phone,
+                address: partner.address,
+                city: partner.city,
+                country: partner.country,
+                defaultCurrency,
+                createdAt: partner.createdAt,
+                notes: partner.notes,
+                creditLimit: partner.creditLimit,
+                receivableBalance: partner.receivableBalance,
+                payableBalance: partner.payableBalance,
+                loanOutstandingBalance: partner.loanOutstandingBalance,
+                netExposure: partner.netExposure
+            },
+            period: {
+                type: dateRange,
+                start: customDates.start || undefined,
+                end: customDates.end || undefined
+            },
+            generatedAt: new Date().toISOString(),
+            metrics: {
+                totalValue,
+                outstandingValue,
+                averageDocumentValue: averageOrderValue,
+                activeItems: filteredActive.length,
+                completedItems: filteredCompleted.length,
+                settledItems: filteredSettled.length,
+                totalUnits,
+                moneyIn: partnerFlows.incoming,
+                moneyOut: partnerFlows.outgoing
+            },
+            transactions: filteredTransactions.map((transaction) => ({
+                id: transaction.id,
+                source: transaction.source,
+                reference: transaction.reference,
+                displayDate: transaction.displayDate,
+                status: transaction.status,
+                statusLabel: transaction.statusLabel,
+                isPaid: transaction.isPaid,
+                summary: transaction.summary,
+                total: transaction.total,
+                currency: transaction.currency
+            })),
+            topProducts
+        }
+    }, [
+        averageOrderValue,
+        customDates.end,
+        customDates.start,
+        dateRange,
+        defaultCurrency,
+        filteredActive.length,
+        filteredCompleted.length,
+        filteredSettled.length,
+        filteredTransactions,
+        outstandingValue,
+        partner,
+        partnerFlows.incoming,
+        partnerFlows.outgoing,
+        topProducts,
+        totalUnits,
+        totalValue
+    ])
+    const partnerPrintTarget = useMemo(
+        () => getCustomTemplateTarget(PARTNER_DETAILS_TEMPLATE_KEY),
+        []
+    )
+    const availablePrintTemplates = useMemo(
+        () => customPrintTemplates.filter((template) =>
+            template.module_type_key === PARTNER_DETAILS_TEMPLATE_KEY
+            && template.active
+            && Boolean(readCustomTemplateLayout(template))
+        ),
+        [customPrintTemplates]
+    )
+    const selectedPrintLayout = useMemo(
+        () => readCustomTemplateLayout(selectedPrintTemplate),
+        [selectedPrintTemplate]
+    )
+    const activePrintLayout = useMemo<CustomTemplateLayout | null>(() => {
+        if (selectedPrintLayout) return selectedPrintLayout
+        if (!partnerPrintTarget) return null
+
+        return {
+            version: 1,
+            label: t('businessPartners.nativeA4Template', { defaultValue: 'Partner Details A4' }),
+            moduleTypeKey: PARTNER_DETAILS_TEMPLATE_KEY,
+            nativeTemplateKey: partnerPrintTarget.nativeTemplateKey,
+            page: partnerPrintTarget.page,
+            fields: {},
+            annotations: [],
+            texts: [],
+            images: [],
+            updatedAt: new Date().toISOString()
+        }
+    }, [partnerPrintTarget, selectedPrintLayout, t])
+    const partnerPrintPreview = useMemo(
+        () => partnerPrintTarget && partnerPrintData
+            ? createCustomTemplatePreview(partnerPrintTarget, {
+                workspaceId,
+                workspaceName,
+                features,
+                partnerDetailsData: partnerPrintData,
+                printLang
+            })
+            : undefined,
+        [features, partnerPrintData, partnerPrintTarget, printLang, workspaceId, workspaceName]
+    )
+    const buildPartnerPrintPdf = useCallback(async ({ effectiveId }: { format: PrintFormat; effectiveId: string }) => {
+        if (!partnerPrintTarget || !partnerPrintData || !activePrintLayout) {
+            throw new Error('Partner details print data is not available.')
+        }
+
+        return buildCustomTemplateLayoutPdf({
+            target: partnerPrintTarget,
+            layout: activePrintLayout,
+            values: {},
+            options: {
+                workspaceId,
+                workspaceName,
+                features,
+                partnerDetailsData: partnerPrintData,
+                printLang
+            },
+            effectiveId,
+            fieldMode: 'layoutOverrides'
+        })
+    }, [activePrintLayout, features, partnerPrintData, partnerPrintTarget, printLang, workspaceId, workspaceName])
+    const buildEditablePartnerPrintPdf = useCallback(async (
+        layout: CustomTemplateLayout,
+        printLangOverride?: string,
+        effectiveId?: string
+    ) => {
+        if (!partnerPrintTarget || !partnerPrintData) {
+            throw new Error('Partner details print data is not available.')
+        }
+
+        return buildCustomTemplateLayoutPdf({
+            target: partnerPrintTarget,
+            layout,
+            values: {},
+            options: {
+                workspaceId,
+                workspaceName,
+                features,
+                partnerDetailsData: partnerPrintData,
+                printLang: printLangOverride || printLang
+            },
+            effectiveId,
+            fieldMode: 'layoutOverrides'
+        })
+    }, [features, partnerPrintData, partnerPrintTarget, printLang, workspaceId, workspaceName])
+    const partnerPrintSelectionOptions = useMemo(() => [{
+        format: 'a4' as const,
+        label: t('businessPartners.nativeA4Template', { defaultValue: 'Partner Details A4' }),
+        description: t('businessPartners.nativeA4TemplateDescription', {
+            defaultValue: 'Use the built-in Partner Details A4 layout.'
+        })
+    }], [t])
+    const partnerCustomPrintOptions = useMemo(
+        () => availablePrintTemplates.map((template) => ({
+            format: 'a4' as const,
+            template,
+            label: getStoredCustomTemplateLabel(template),
+            description: t('businessPartners.customA4TemplateDescription', {
+                defaultValue: 'Use this saved custom Partner Details layout.'
+            }),
+            primary: template.primary
+        })),
+        [availablePrintTemplates, t]
+    )
+    const handlePrintSelection = useCallback((
+        _format: PrintFormat,
+        template?: StoredCustomTemplateRow
+    ) => {
+        setSelectedPrintTemplate(template || null)
+    }, [])
+    const handlePrintClick = useCallback(() => {
+        setSelectedPrintTemplate(null)
+        setIsPrintPreviewOpen(true)
+    }, [])
 
     if (!partner || !allowedByRoute) {
         return (
@@ -637,6 +1000,16 @@ export function PartnerDetailsView({
                     <span>/</span>
                     <span className="font-semibold text-foreground">{partner.name}</span>
                 </div>
+                <Button
+                    variant="outline"
+                    className="h-10 gap-2 rounded-xl px-4 print:hidden"
+                    allowViewer={true}
+                    onClick={handlePrintClick}
+                    disabled={!partnerPrintPreview || !activePrintLayout}
+                >
+                    <Printer className="h-4 w-4" />
+                    <span className="hidden sm:inline">{t('common.print', { defaultValue: 'Print' })}</span>
+                </Button>
             </div>
 
             <DateRangeFilters />
@@ -1080,154 +1453,121 @@ export function PartnerDetailsView({
                         </CardContent>
                     </Card>
 
-                    <Card>
-                        <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                            <CardTitle>{listTitle}</CardTitle>
-                            <div className="hidden items-center rounded-lg border bg-muted/30 p-1 md:flex">
-                                <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => setViewMode('table')}
-                                    className={cn(
-                                        'h-8 gap-1.5 px-3 text-[10px] font-black uppercase tracking-[0.16em]',
-                                        viewMode === 'table' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground'
-                                    )}
-                                >
-                                    <List className="h-3 w-3" />
-                                    {t('common.table', { defaultValue: 'Table' })}
-                                </Button>
-                                <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => setViewMode('grid')}
-                                    className={cn(
-                                        'h-8 gap-1.5 px-3 text-[10px] font-black uppercase tracking-[0.16em]',
-                                        viewMode === 'grid' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground'
-                                    )}
-                                >
-                                    <LayoutGrid className="h-3 w-3" />
-                                    {t('common.grid', { defaultValue: 'Grid' })}
-                                </Button>
-                            </div>
-                        </CardHeader>
-                        <CardContent>
-                            {filteredTransactions.length === 0 ? (
-                                <div className="rounded-2xl border py-12 text-center text-muted-foreground">
-                                    {emptyRelatedLabel}
-                                </div>
-                            ) : viewMode === 'grid' ? (
-                                <div className="grid gap-4 md:grid-cols-2">
-                                    {filteredTransactions.map((transaction) => (
-                                        <div key={transaction.id} className="rounded-3xl border bg-background/80 p-4 shadow-sm">
-                                            <div className="flex items-start justify-between gap-3">
-                                                <div>
-                                                    <div className="flex flex-wrap items-center gap-2">
-                                                        <div className="text-lg font-semibold">{transaction.reference}</div>
-                                                        <span className={cn('inline-flex rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide', sourceBadgeClass(transaction.source))}>
-                                                            {sourceLabel(transaction.source, t)}
-                                                        </span>
-                                                    </div>
-                                                    <div className="text-xs text-muted-foreground">{formatDate(transaction.displayDate)}</div>
-                                                </div>
-                                                <span className={cn('inline-flex rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide', statusBadgeClass(transaction.status))}>
-                                                    {transaction.statusLabel}
-                                                </span>
-                                            </div>
-
-                                            <div className="mt-4 rounded-2xl border bg-muted/20 p-3">
-                                                <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">
-                                                    {detailsColumnLabel}
-                                                </div>
-                                                <div className="mt-1 text-sm font-medium">{transaction.summary}</div>
-                                            </div>
-
-                                            <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                                                <div className="rounded-2xl border bg-muted/20 p-3">
-                                                    <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">
-                                                        {t('common.status', { defaultValue: 'Status' })}
-                                                    </div>
-                                                    <div className="mt-1">
-                                                        <span className={cn('inline-flex rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide', paymentBadgeClass(transaction.isPaid))}>
-                                                            {transaction.isPaid
-                                                                ? t('customers.details.paid', { defaultValue: 'Paid' })
-                                                                : t('customers.details.unpaid', { defaultValue: 'Unpaid' })}
-                                                        </span>
-                                                    </div>
-                                                </div>
-                                                <div className="rounded-2xl border bg-muted/20 p-3">
-                                                    <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">
-                                                        {t('common.total', { defaultValue: 'Total' })}
-                                                    </div>
-                                                    <div className="mt-1 font-medium">{formatCurrency(transaction.total, transaction.currency, iqdPreference)}</div>
-                                                </div>
-                                            </div>
-
-                                            <div className="mt-4">
-                                                <Button variant="outline" className="w-full gap-2" onClick={() => navigate(transaction.viewHref)}>
-                                                    <Eye className="h-4 w-4" />
-                                                    {t('common.view', { defaultValue: 'View' })}
-                                                </Button>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            ) : (
-                                <div className="overflow-x-auto rounded-2xl border">
-                                    <Table>
-                                        <TableHeader>
-                                            <TableRow>
-                                                <TableHead>{t('common.type', { defaultValue: 'Type' })}</TableHead>
-                                                <TableHead>{referenceColumnLabel}</TableHead>
-                                                <TableHead>{t('common.date', { defaultValue: 'Date' })}</TableHead>
-                                                <TableHead>{t('common.status', { defaultValue: 'Status' })}</TableHead>
-                                                <TableHead>{detailsColumnLabel}</TableHead>
-                                                <TableHead>{t('pos.paymentMethod', { defaultValue: 'Payment' })}</TableHead>
-                                                <TableHead className="text-end">{t('common.total', { defaultValue: 'Total' })}</TableHead>
-                                                <TableHead className="text-end">{t('common.actions', { defaultValue: 'Actions' })}</TableHead>
-                                            </TableRow>
-                                        </TableHeader>
-                                        <TableBody>
-                                            {filteredTransactions.map((transaction) => (
-                                                <TableRow key={transaction.id}>
-                                                    <TableCell>
-                                                        <span className={cn('inline-flex rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide', sourceBadgeClass(transaction.source))}>
-                                                            {sourceLabel(transaction.source, t)}
-                                                        </span>
-                                                    </TableCell>
-                                                    <TableCell className="font-semibold">{transaction.reference}</TableCell>
-                                                    <TableCell>{formatDate(transaction.displayDate)}</TableCell>
-                                                    <TableCell>
-                                                        <span className={cn('inline-flex rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide', statusBadgeClass(transaction.status))}>
-                                                            {transaction.statusLabel}
-                                                        </span>
-                                                    </TableCell>
-                                                    <TableCell>{transaction.summary}</TableCell>
-                                                    <TableCell>
-                                                        <span className={cn('inline-flex rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide', paymentBadgeClass(transaction.isPaid))}>
-                                                            {transaction.isPaid
-                                                                ? t('customers.details.paid', { defaultValue: 'Paid' })
-                                                                : t('customers.details.unpaid', { defaultValue: 'Unpaid' })}
-                                                        </span>
-                                                    </TableCell>
-                                                    <TableCell className="text-end font-semibold">
-                                                        {formatCurrency(transaction.total, transaction.currency, iqdPreference)}
-                                                    </TableCell>
-                                                    <TableCell className="text-end">
-                                                        <Button variant="ghost" size="sm" className="gap-1.5" onClick={() => navigate(transaction.viewHref)}>
-                                                            <Eye className="h-4 w-4" />
-                                                            {t('common.view', { defaultValue: 'View' })}
-                                                        </Button>
-                                                    </TableCell>
+                    {[{
+                        title: providedByYouLabel,
+                        rows: providedByYou,
+                        key: 'you'
+                    }, {
+                        title: providedByPartnerLabel,
+                        rows: providedByPartner,
+                        key: 'partner'
+                    }].map(({ title, rows, key }) => (
+                        <Card key={key}>
+                            <CardHeader>
+                                <CardTitle>{title}</CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                                {rows.length === 0 ? (
+                                    <div className="rounded-2xl border py-12 text-center text-muted-foreground">
+                                        {emptyRelatedLabel}
+                                    </div>
+                                ) : (
+                                    <div className="overflow-x-auto rounded-2xl border">
+                                        <Table>
+                                            <TableHeader>
+                                                <TableRow>
+                                                    <TableHead>{t('common.date', { defaultValue: 'Date' })}</TableHead>
+                                                    <TableHead>{t('common.type', { defaultValue: 'Type' })}</TableHead>
+                                                    <TableHead>{referenceColumnLabel}</TableHead>
+                                                    <TableHead>{detailsColumnLabel}</TableHead>
+                                                    <TableHead className="text-end">{amountLabel}</TableHead>
+                                                    <TableHead className="text-end">{paidLabel2}</TableHead>
+                                                    <TableHead className="text-end">{remainingLabel}</TableHead>
+                                                    <TableHead>{t('common.status', { defaultValue: 'Status' })}</TableHead>
+                                                    <TableHead className="text-end">{t('common.actions', { defaultValue: 'Actions' })}</TableHead>
                                                 </TableRow>
-                                            ))}
-                                        </TableBody>
-                                    </Table>
-                                </div>
-                            )}
-                        </CardContent>
-                    </Card>
+                                            </TableHeader>
+                                            <TableBody>
+                                                {rows.map((tx) => (
+                                                    <TableRow key={tx.id}>
+                                                        <TableCell>{formatDate(tx.displayDate)}</TableCell>
+                                                        <TableCell>
+                                                            <span className={cn('inline-flex rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide', sourceBadgeClass(tx.source))}>
+                                                                {sourceLabel(tx.source, t)}
+                                                            </span>
+                                                        </TableCell>
+                                                        <TableCell className="font-semibold">{tx.reference}</TableCell>
+                                                        <TableCell>{tx.summary}</TableCell>
+                                                        <TableCell className="text-end font-semibold">
+                                                            {formatCurrency(tx.originalAmount, tx.currency, iqdPreference)}
+                                                        </TableCell>
+                                                        <TableCell className="text-end font-semibold">
+                                                            {formatCurrency(tx.paidAmount, tx.currency, iqdPreference)}
+                                                        </TableCell>
+                                                        <TableCell className="text-end font-semibold">
+                                                            {tx.remainingAmount === 0 || tx.remainingAmount < 0.001
+                                                                ? '\u2014'
+                                                                : formatCurrency(tx.remainingAmount, tx.currency, iqdPreference)}
+                                                        </TableCell>
+                                                        <TableCell>
+                                                            <span className={cn('inline-flex rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide', statusBadgeClass(tx.status))}>
+                                                                {tx.statusLabel}
+                                                            </span>
+                                                        </TableCell>
+                                                        <TableCell className="text-end">
+                                                            <Button variant="ghost" size="sm" className="gap-1.5" onClick={() => navigate(tx.viewHref)}>
+                                                                <Eye className="h-4 w-4" />
+                                                                {t('common.view', { defaultValue: 'View' })}
+                                                            </Button>
+                                                        </TableCell>
+                                                    </TableRow>
+                                                ))}
+                                            </TableBody>
+                                        </Table>
+                                    </div>
+                                )}
+                            </CardContent>
+                        </Card>
+                    ))}
                 </div>
             </div>
+
+            {partnerPrintPreview && partnerPrintTarget && activePrintLayout && partnerPrintData ? (
+                <PrintPreviewModal
+                    isOpen={isPrintPreviewOpen}
+                    onClose={() => {
+                        setIsPrintPreviewOpen(false)
+                        setSelectedPrintTemplate(null)
+                    }}
+                    onConfirm={() => {
+                        setIsPrintPreviewOpen(false)
+                        setSelectedPrintTemplate(null)
+                    }}
+                    title={t('businessPartners.printA4', { defaultValue: 'Print A4' })}
+                    showSaveButton={false}
+                    documentId={partner.id}
+                    pdfBuilder={buildPartnerPrintPdf}
+                    templatePreview={partnerPrintPreview}
+                    customTemplate={{
+                        moduleTypeKey: PARTNER_DETAILS_TEMPLATE_KEY,
+                        nativeTemplateKey: partnerPrintTarget.nativeTemplateKey,
+                        templateId: selectedPrintTemplate?.id,
+                        label: selectedPrintTemplate
+                            ? getStoredCustomTemplateLabel(selectedPrintTemplate)
+                            : t('businessPartners.nativeA4Template', { defaultValue: 'Partner Details A4' })
+                    }}
+                    initialTemplateLayout={activePrintLayout}
+                    enableTemplatePreviewSave
+                    templatePrimaryActionLabel={t('businessPartners.printA4', { defaultValue: 'Print A4' })}
+                    generateTemplateLayoutBlob={buildEditablePartnerPrintPdf}
+                    features={features}
+                    workspaceName={workspaceName}
+                    module="businessPartners"
+                    printSelectionOptions={partnerPrintSelectionOptions}
+                    printSelectionTemplates={partnerCustomPrintOptions}
+                    onPrintSelection={handlePrintSelection}
+                />
+            ) : null}
         </div>
     )
 }
