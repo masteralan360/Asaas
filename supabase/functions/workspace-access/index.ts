@@ -64,6 +64,10 @@ type TransferInventoryBetweenWorkspacesRequest = {
     items?: Array<{
         productId?: string
         quantity?: number
+        batchAllocations?: Array<{
+            batchId?: string
+            quantity?: number
+        }>
     }>
 }
 
@@ -145,6 +149,39 @@ type SourceInventoryRow = {
     updated_at?: string | null
     version?: number | null
     is_deleted?: boolean | null
+}
+
+type SourceStockBatchRow = {
+    id: string
+    workspace_id: string
+    product_id: string
+    storage_id: string
+    batch_number: string
+    quantity: number
+    price?: number | null
+    cost_price?: number | null
+    currency?: string | null
+    expiry_date?: string | null
+    manufacturing_date?: string | null
+    notes?: string | null
+    source_purchase_order_id?: string | null
+    source_purchase_order_item_id?: string | null
+    created_at?: string | null
+    updated_at?: string | null
+    version?: number | null
+    is_deleted?: boolean | null
+}
+
+type PlannedTransferBatchAllocation = {
+    sourceBatchId: string
+    destinationBatchId?: string
+    batchNumber: string
+    quantity: number
+    price: number
+    costPrice: number
+    currency: string
+    expiryDate: string | null
+    manufacturingDate: string | null
 }
 
 type SourceProductBarcodeRow = {
@@ -1471,6 +1508,124 @@ function parseTransferQuantity(value: unknown) {
     return Number.isInteger(quantity) ? quantity : NaN
 }
 
+function sortTransferBatches(batches: SourceStockBatchRow[]) {
+    return [...batches].sort((left, right) =>
+        (left.expiry_date ?? '9999-12-31').localeCompare(right.expiry_date ?? '9999-12-31')
+        || (left.manufacturing_date ?? '9999-12-31').localeCompare(right.manufacturing_date ?? '9999-12-31')
+        || (left.created_at ?? '').localeCompare(right.created_at ?? '')
+        || left.batch_number.localeCompare(right.batch_number)
+    )
+}
+
+function toPlannedBatchAllocation(
+    batch: SourceStockBatchRow,
+    quantity: number
+): PlannedTransferBatchAllocation {
+    return {
+        sourceBatchId: batch.id,
+        batchNumber: batch.batch_number,
+        quantity,
+        price: Number(batch.price ?? 0),
+        costPrice: Number(batch.cost_price ?? 0),
+        currency: String(batch.currency ?? 'usd').toLowerCase(),
+        expiryDate: batch.expiry_date ?? null,
+        manufacturingDate: batch.manufacturing_date ?? null
+    }
+}
+
+function planTransferBatchAllocations(input: {
+    inventoryQuantity: number
+    batches: SourceStockBatchRow[]
+    requestedQuantity: number
+    selectedBatchAllocations?: Array<{ batchId: string; quantity: number }>
+}) {
+    const activeBatches = sortTransferBatches(
+        input.batches.filter((batch) => !batch.is_deleted && Number(batch.quantity) > 0)
+    )
+    const batchQuantity = activeBatches.reduce(
+        (sum, batch) => sum + Number(batch.quantity),
+        0
+    )
+    const unbatchedAvailable = Math.max(input.inventoryQuantity - batchQuantity, 0)
+
+    if (input.selectedBatchAllocations === undefined) {
+        const allocations: PlannedTransferBatchAllocation[] = []
+        let remaining = input.requestedQuantity
+
+        for (const batch of activeBatches) {
+            if (remaining <= 0) {
+                break
+            }
+
+            const quantity = Math.min(Number(batch.quantity), remaining)
+            if (quantity > 0) {
+                allocations.push(toPlannedBatchAllocation(batch, quantity))
+                remaining -= quantity
+            }
+        }
+
+        if (remaining > unbatchedAvailable) {
+            throw new Error('Insufficient regular stock in source storage')
+        }
+
+        return {
+            allocations,
+            unbatchedQuantity: remaining
+        }
+    }
+
+    const selectedByBatchId = new Map<string, number>()
+    for (const selection of input.selectedBatchAllocations) {
+        selectedByBatchId.set(
+            selection.batchId,
+            (selectedByBatchId.get(selection.batchId) ?? 0) + selection.quantity
+        )
+    }
+
+    const batchesById = new Map(activeBatches.map((batch) => [batch.id, batch] as const))
+    const allocations = Array.from(selectedByBatchId.entries()).map(([batchId, quantity]) => {
+        const batch = batchesById.get(batchId)
+        if (!batch) {
+            throw new Error('One or more selected batches are no longer available')
+        }
+
+        if (quantity > Number(batch.quantity)) {
+            throw new Error(`Batch ${batch.batch_number} does not have enough stock`)
+        }
+
+        return toPlannedBatchAllocation(batch, quantity)
+    })
+    const selectedBatchQuantity = allocations.reduce(
+        (sum, allocation) => sum + allocation.quantity,
+        0
+    )
+
+    if (selectedBatchQuantity > input.requestedQuantity) {
+        throw new Error('Selected batch quantity exceeds transfer quantity')
+    }
+
+    const unbatchedQuantity = input.requestedQuantity - selectedBatchQuantity
+    if (unbatchedQuantity > unbatchedAvailable) {
+        throw new Error('Insufficient regular stock in source storage')
+    }
+
+    return {
+        allocations,
+        unbatchedQuantity
+    }
+}
+
+function transferBatchSnapshotsAreCompatible(
+    batch: SourceStockBatchRow,
+    allocation: PlannedTransferBatchAllocation
+) {
+    return Number(batch.price ?? 0) === allocation.price
+        && Number(batch.cost_price ?? 0) === allocation.costPrice
+        && String(batch.currency ?? 'usd').toLowerCase() === allocation.currency
+        && (batch.expiry_date ?? null) === allocation.expiryDate
+        && (batch.manufacturing_date ?? null) === allocation.manufacturingDate
+}
+
 async function handleListInventoryTransferTargets(
     adminClient: AdminClient,
     user: User
@@ -1619,6 +1774,25 @@ async function handleListInventoryTransferSourceProducts(
     const productsById = new Map(
         ((productRows ?? []) as SourceProductRow[]).map((product) => [product.id, product] as const)
     )
+    const { data: batchRows, error: batchesError } = await adminClient
+        .from('stock_batches')
+        .select('*')
+        .eq('workspace_id', sourceWorkspaceId)
+        .eq('storage_id', sourceStorageId)
+        .eq('is_deleted', false)
+        .gt('quantity', 0)
+        .in('product_id', productIds)
+
+    if (batchesError) {
+        return errorResponse(batchesError.message, 500)
+    }
+
+    const batchesByProductId = new Map<string, SourceStockBatchRow[]>()
+    for (const batch of (batchRows ?? []) as SourceStockBatchRow[]) {
+        const rows = batchesByProductId.get(batch.product_id) ?? []
+        rows.push(batch)
+        batchesByProductId.set(batch.product_id, rows)
+    }
 
     const products = sourceInventoryRows
         .map((row) => {
@@ -1627,12 +1801,31 @@ async function handleListInventoryTransferSourceProducts(
                 return null
             }
 
+            const batches = sortTransferBatches(
+                batchesByProductId.get(product.id) ?? []
+            )
+            const batchQuantity = batches.reduce(
+                (sum, batch) => sum + Number(batch.quantity),
+                0
+            )
+
             return {
                 productId: product.id,
                 sku: product.sku,
                 name: product.name,
                 unit: product.unit ?? 'pcs',
-                availableQuantity: Number(row.quantity ?? 0)
+                availableQuantity: Number(row.quantity ?? 0),
+                unbatchedQuantity: Math.max(Number(row.quantity ?? 0) - batchQuantity, 0),
+                batches: batches.map((batch) => ({
+                    id: batch.id,
+                    batchNumber: batch.batch_number,
+                    quantity: Number(batch.quantity),
+                    price: Number(batch.price ?? 0),
+                    costPrice: Number(batch.cost_price ?? 0),
+                    currency: String(batch.currency ?? 'usd').toLowerCase(),
+                    expiryDate: batch.expiry_date ?? null,
+                    manufacturingDate: batch.manufacturing_date ?? null
+                }))
             }
         })
         .filter((product): product is NonNullable<typeof product> => Boolean(product))
@@ -1656,7 +1849,25 @@ async function handleTransferInventoryBetweenWorkspaces(
                 .map((item) => {
                     const productId = item?.productId?.trim() ?? ''
                     const quantity = parseTransferQuantity(item?.quantity)
-                    return [productId, { productId, quantity }] as const
+                    const rawBatchAllocations = Array.isArray(item?.batchAllocations)
+                        ? item.batchAllocations
+                        : undefined
+                    const batchAllocations = rawBatchAllocations
+                        ? rawBatchAllocations
+                            .map((allocation) => ({
+                                batchId: allocation?.batchId?.trim() ?? '',
+                                quantity: parseTransferQuantity(allocation?.quantity)
+                            }))
+                            .filter((allocation) => Boolean(allocation.batchId))
+                        : undefined
+                    return [
+                        productId,
+                        {
+                            productId,
+                            quantity,
+                            batchAllocations
+                        }
+                    ] as const
                 })
                 .filter(([productId]) => Boolean(productId))
         ).values()
@@ -1689,6 +1900,12 @@ async function handleTransferInventoryBetweenWorkspaces(
     for (const item of normalizedItems) {
         if (!Number.isInteger(item.quantity) || item.quantity <= 0) {
             return errorResponse('Transfer quantity must be a whole number greater than zero', 400)
+        }
+
+        for (const allocation of item.batchAllocations ?? []) {
+            if (!Number.isInteger(allocation.quantity) || allocation.quantity <= 0) {
+                return errorResponse('Batch transfer quantity must be a whole number greater than zero', 400)
+            }
         }
     }
 
@@ -2125,6 +2342,7 @@ async function handleTransferInventoryBetweenWorkspaces(
         .in('product_id', sourceProductIds)
 
     if (sourceInventoryError) {
+        await cleanupInsertedDestinationEntities()
         return errorResponse(sourceInventoryError.message, 500)
     }
 
@@ -2139,8 +2357,60 @@ async function handleTransferInventoryBetweenWorkspaces(
         const requestedQuantity = quantityBySourceProductId.get(product.id) ?? 0
 
         if (availableQuantity < requestedQuantity) {
+            await cleanupInsertedDestinationEntities()
             return errorResponse(`Insufficient inventory for "${product.name}" in the selected source storage`, 400)
         }
+    }
+
+    const { data: sourceBatchRows, error: sourceBatchesError } = await adminClient
+        .from('stock_batches')
+        .select('*')
+        .eq('workspace_id', sourceWorkspaceId)
+        .eq('storage_id', sourceStorageId)
+        .eq('is_deleted', false)
+        .gt('quantity', 0)
+        .in('product_id', sourceProductIds)
+
+    if (sourceBatchesError) {
+        await cleanupInsertedDestinationEntities()
+        return errorResponse(sourceBatchesError.message, 500)
+    }
+
+    const sourceBatches = (sourceBatchRows ?? []) as SourceStockBatchRow[]
+    const sourceBatchesById = new Map(
+        sourceBatches.map((batch) => [batch.id, batch] as const)
+    )
+    const sourceBatchesByProductId = new Map<string, SourceStockBatchRow[]>()
+    for (const batch of sourceBatches) {
+        const rows = sourceBatchesByProductId.get(batch.product_id) ?? []
+        rows.push(batch)
+        sourceBatchesByProductId.set(batch.product_id, rows)
+    }
+
+    const batchPlansBySourceProductId = new Map<string, {
+        allocations: PlannedTransferBatchAllocation[]
+        unbatchedQuantity: number
+    }>()
+
+    try {
+        for (const item of normalizedItems) {
+            const sourceRow = sourceInventoryByProductId.get(item.productId)
+            batchPlansBySourceProductId.set(
+                item.productId,
+                planTransferBatchAllocations({
+                    inventoryQuantity: Number(sourceRow?.quantity ?? 0),
+                    batches: sourceBatchesByProductId.get(item.productId) ?? [],
+                    requestedQuantity: item.quantity,
+                    selectedBatchAllocations: item.batchAllocations
+                })
+            )
+        }
+    } catch (error) {
+        await cleanupInsertedDestinationEntities()
+        return errorResponse(
+            error instanceof Error ? error.message : 'Invalid batch transfer selection',
+            400
+        )
     }
 
     const inventoryRowsByWorkspaceId = new Map<string, SourceInventoryRow[]>()
@@ -2160,6 +2430,7 @@ async function handleTransferInventoryBetweenWorkspaces(
             .in('product_id', productIds)
 
         if (inventoryError) {
+            await cleanupInsertedDestinationEntities()
             return errorResponse(inventoryError.message, 500)
         }
 
@@ -2205,6 +2476,35 @@ async function handleTransferInventoryBetweenWorkspaces(
         activeInventoryRowsByWorkspaceProductKey.set(productKey, remainingRows)
     }
 
+    const { data: destinationBatchRows, error: destinationBatchesError } = await adminClient
+        .from('stock_batches')
+        .select('*')
+        .eq('workspace_id', destinationWorkspaceId)
+        .eq('storage_id', destinationStorageId)
+        .in('product_id', destinationProductIds)
+
+    if (destinationBatchesError) {
+        await cleanupInsertedDestinationEntities()
+        return errorResponse(destinationBatchesError.message, 500)
+    }
+
+    const destinationBatches = (destinationBatchRows ?? []) as SourceStockBatchRow[]
+    const destinationBatchByKey = new Map<string, SourceStockBatchRow>()
+    for (const batch of destinationBatches) {
+        const key = `${batch.product_id}::${batch.batch_number.trim().toLowerCase()}`
+        const existing = destinationBatchByKey.get(key)
+        if (!existing || (existing.is_deleted && !batch.is_deleted)) {
+            destinationBatchByKey.set(key, batch)
+        }
+    }
+    const stockBatchRowsToUpsert = new Map<string, SourceStockBatchRow>()
+    const insertedStockBatchIds = new Set<string>()
+    const previousStockBatchRows = Array.from(
+        new Map(
+            [...sourceBatches, ...destinationBatches].map((batch) => [batch.id, { ...batch }] as const)
+        ).values()
+    )
+
     const transferTransactionSeedId = crypto.randomUUID()
     const inventoryTransactionRows: Record<string, unknown>[] = []
     const inventoryTransferTransactionRows: Record<string, unknown>[] = []
@@ -2219,6 +2519,7 @@ async function handleTransferInventoryBetweenWorkspaces(
             : null
 
         if (!sourceProduct || !destinationProductId || !destinationProduct) {
+            await cleanupInsertedDestinationEntities()
             return errorResponse('Transfer could not resolve one or more selected products', 400)
         }
 
@@ -2288,6 +2589,88 @@ async function handleTransferInventoryBetweenWorkspaces(
         applyInventoryState(destinationWorkspaceId, destinationProductId, destinationStorageId, updatedDestinationRow)
         changedProductKeys.add(buildWorkspaceProductKey(destinationWorkspaceId, destinationProductId))
 
+        const batchPlan = batchPlansBySourceProductId.get(item.productId)
+        if (!batchPlan) {
+            await cleanupInsertedDestinationEntities()
+            return errorResponse('Transfer could not resolve the batch selection', 400)
+        }
+
+        for (const allocation of batchPlan.allocations) {
+            const sourceBatch = stockBatchRowsToUpsert.get(allocation.sourceBatchId)
+                ?? sourceBatchesById.get(allocation.sourceBatchId)
+            if (!sourceBatch || sourceBatch.product_id !== sourceProduct.id) {
+                await cleanupInsertedDestinationEntities()
+                return errorResponse(`Batch ${allocation.batchNumber} is no longer available`, 400)
+            }
+
+            const sourceBatchQuantity = Number(sourceBatch.quantity)
+            const nextSourceBatchQuantity = sourceBatchQuantity - allocation.quantity
+            if (nextSourceBatchQuantity < 0) {
+                await cleanupInsertedDestinationEntities()
+                return errorResponse(`Batch ${allocation.batchNumber} does not have enough stock`, 400)
+            }
+
+            const updatedSourceBatch: SourceStockBatchRow = {
+                ...sourceBatch,
+                quantity: nextSourceBatchQuantity,
+                is_deleted: nextSourceBatchQuantity <= 0,
+                updated_at: transactionTimestamp,
+                version: Number(sourceBatch.version ?? 0) + 1
+            }
+            stockBatchRowsToUpsert.set(updatedSourceBatch.id, updatedSourceBatch)
+
+            const destinationBatchKey = `${destinationProductId}::${allocation.batchNumber.trim().toLowerCase()}`
+            const existingDestinationBatch = destinationBatchByKey.get(destinationBatchKey)
+
+            if (
+                existingDestinationBatch
+                && !transferBatchSnapshotsAreCompatible(existingDestinationBatch, allocation)
+            ) {
+                await cleanupInsertedDestinationEntities()
+                return errorResponse(
+                    `Destination batch ${allocation.batchNumber} has different pricing or dates`,
+                    400
+                )
+            }
+
+            const destinationBatch: SourceStockBatchRow = existingDestinationBatch
+                ? {
+                    ...existingDestinationBatch,
+                    quantity: Number(existingDestinationBatch.quantity) + allocation.quantity,
+                    is_deleted: false,
+                    updated_at: transactionTimestamp,
+                    version: Number(existingDestinationBatch.version ?? 0) + 1
+                }
+                : {
+                    id: crypto.randomUUID(),
+                    workspace_id: destinationWorkspaceId,
+                    product_id: destinationProductId,
+                    storage_id: destinationStorageId,
+                    batch_number: allocation.batchNumber,
+                    quantity: allocation.quantity,
+                    price: allocation.price,
+                    cost_price: allocation.costPrice,
+                    currency: allocation.currency,
+                    expiry_date: allocation.expiryDate,
+                    manufacturing_date: allocation.manufacturingDate,
+                    notes: sourceBatch.notes ?? null,
+                    source_purchase_order_id: null,
+                    source_purchase_order_item_id: null,
+                    created_at: transactionTimestamp,
+                    updated_at: transactionTimestamp,
+                    version: 1,
+                    is_deleted: false
+                }
+
+            if (!existingDestinationBatch) {
+                insertedStockBatchIds.add(destinationBatch.id)
+            }
+
+            destinationBatchByKey.set(destinationBatchKey, destinationBatch)
+            stockBatchRowsToUpsert.set(destinationBatch.id, destinationBatch)
+            allocation.destinationBatchId = destinationBatch.id
+        }
+
         const operationReferenceId = transferTransactionSeedId
 
         inventoryTransactionRows.push({
@@ -2338,6 +2721,17 @@ async function handleTransferInventoryBetweenWorkspaces(
             source_storage_name: sourceStorage.name,
             destination_storage_name: destinationStorage.name
         }
+        const batchAllocationSnapshot = batchPlan.allocations.map((allocation) => ({
+            sourceBatchId: allocation.sourceBatchId,
+            destinationBatchId: allocation.destinationBatchId,
+            batchNumber: allocation.batchNumber,
+            quantity: allocation.quantity,
+            price: allocation.price,
+            costPrice: allocation.costPrice,
+            currency: allocation.currency,
+            expiryDate: allocation.expiryDate,
+            manufacturingDate: allocation.manufacturingDate
+        }))
 
         if (sourceWorkspaceId === destinationWorkspaceId) {
             inventoryTransferTransactionRows.push({
@@ -2347,6 +2741,7 @@ async function handleTransferInventoryBetweenWorkspaces(
                 source_storage_id: sourceStorageId,
                 destination_storage_id: destinationStorageId,
                 quantity: item.quantity,
+                batch_allocations: batchAllocationSnapshot,
                 transfer_type: 'manual',
                 reorder_rule_id: null,
                 created_at: transactionTimestamp,
@@ -2363,6 +2758,7 @@ async function handleTransferInventoryBetweenWorkspaces(
                 source_storage_id: sourceStorageId,
                 destination_storage_id: destinationStorageId,
                 quantity: item.quantity,
+                batch_allocations: batchAllocationSnapshot,
                 transfer_type: 'manual',
                 reorder_rule_id: null,
                 created_at: transactionTimestamp,
@@ -2378,6 +2774,7 @@ async function handleTransferInventoryBetweenWorkspaces(
                 source_storage_id: sourceStorageId,
                 destination_storage_id: destinationStorageId,
                 quantity: item.quantity,
+                batch_allocations: batchAllocationSnapshot,
                 transfer_type: 'manual',
                 reorder_rule_id: null,
                 created_at: transactionTimestamp,
@@ -2436,6 +2833,19 @@ async function handleTransferInventoryBetweenWorkspaces(
     let inventoryTransactionsInserted = false
 
     const rollbackChanges = async () => {
+        if (insertedStockBatchIds.size > 0) {
+            await adminClient
+                .from('stock_batches')
+                .delete()
+                .in('id', Array.from(insertedStockBatchIds))
+        }
+
+        if (previousStockBatchRows.length > 0) {
+            await adminClient
+                .from('stock_batches')
+                .upsert(previousStockBatchRows)
+        }
+
         if (inventoryTransactionsInserted && inventoryTransactionRows.length > 0) {
             await adminClient
                 .from('inventory_transactions')
@@ -2491,6 +2901,18 @@ async function handleTransferInventoryBetweenWorkspaces(
                 console.error('[workspace-access] transfer products upsert failed', productsUpsertError)
                 await rollbackChanges()
                 return errorResponse(productsUpsertError.message, 500)
+            }
+        }
+
+        if (stockBatchRowsToUpsert.size > 0) {
+            const { error: stockBatchesUpsertError } = await adminClient
+                .from('stock_batches')
+                .upsert(Array.from(stockBatchRowsToUpsert.values()))
+
+            if (stockBatchesUpsertError) {
+                console.error('[workspace-access] transfer stock batch upsert failed', stockBatchesUpsertError)
+                await rollbackChanges()
+                return errorResponse(stockBatchesUpsertError.message, 500)
             }
         }
 

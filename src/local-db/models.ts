@@ -197,6 +197,18 @@ export interface StockBatchAllocation {
   manufacturingDate?: string | null;
 }
 
+export interface InventoryTransferBatchAllocation {
+  sourceBatchId: string;
+  destinationBatchId: string;
+  batchNumber: string;
+  quantity: number;
+  price?: number | null;
+  costPrice?: number | null;
+  currency?: CurrencyCode | null;
+  expiryDate?: string | null;
+  manufacturingDate?: string | null;
+}
+
 export type DiscountType = "percentage" | "fixed_amount";
 export type DiscountSource = "product" | "category";
 
@@ -240,6 +252,7 @@ export interface InventoryTransferTransaction extends BaseEntity {
   sourceStorageId: string;
   destinationStorageId: string;
   quantity: number;
+  batchAllocations?: InventoryTransferBatchAllocation[] | null;
   transferType: InventoryTransferTransactionType;
   reorderRuleId?: string | null;
   sourceWorkspaceId?: string | null;

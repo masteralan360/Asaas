@@ -11,7 +11,10 @@ import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
 
 import { db } from './database'
 import { createInventoryTransferTransactions } from './inventoryTransferTransactions'
-import { transferInventoryQuantity, getInventoryQuantityForProductStorage } from './inventory'
+import {
+    getInventoryQuantityForProductStorage,
+    transferInventoryQuantityWithBatches
+} from './inventory'
 import { addToOfflineMutations } from './offlineMutations'
 import type { ReorderTransferRule } from './models'
 
@@ -277,7 +280,7 @@ export async function evaluateReorderTransferRule(ruleId: string) {
         }
 
         const now = new Date().toISOString()
-        await transferInventoryQuantity({
+        const transferResult = await transferInventoryQuantityWithBatches({
             workspaceId: rule.workspaceId,
             productId: rule.productId,
             sourceStorageId: rule.sourceStorageId,
@@ -295,6 +298,7 @@ export async function evaluateReorderTransferRule(ruleId: string) {
                     sourceStorageId: rule.sourceStorageId,
                     destinationStorageId: rule.destinationStorageId,
                     quantity: rule.transferQuantity,
+                    batchAllocations: transferResult.batchAllocations,
                     transferType: 'automation',
                     reorderRuleId: rule.id
                 }],
@@ -302,12 +306,13 @@ export async function evaluateReorderTransferRule(ruleId: string) {
             )
         } catch (error) {
             try {
-                await transferInventoryQuantity({
+                await transferInventoryQuantityWithBatches({
                     workspaceId: rule.workspaceId,
                     productId: rule.productId,
                     sourceStorageId: rule.destinationStorageId,
                     targetStorageId: rule.sourceStorageId,
                     quantity: rule.transferQuantity,
+                    batchSelections: transferResult.reverseBatchSelections,
                     timestamp: new Date().toISOString(),
                     skipReorderCheck: true,
                     skipTransactionLog: true

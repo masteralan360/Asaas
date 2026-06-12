@@ -5,12 +5,13 @@ import { db } from './database'
 import { createInventoryTransferTransactions } from './inventoryTransferTransactions'
 import { createInventoryTransaction } from './inventoryTransactions'
 import { addToOfflineMutations } from './offlineMutations'
+import { refreshStockBatchesFromSupabase } from './stockBatches'
 import { getPrimaryStorageId as getPrimaryStorageIdForWorkspace, normalizeStorageRecord, sortStoragesByPriority } from './storageUtils'
 import {
     deleteInventoryForProduct,
     getInventoryQuantityForProductStorage,
     setProductInventoryFromLegacyInput,
-    transferInventoryQuantity,
+    transferInventoryQuantityWithBatches,
     useInventory
 } from './inventory'
 import type {
@@ -2403,14 +2404,25 @@ export async function transferInventoryBetweenStorages(
     workspaceId: string,
     sourceStorageId: string,
     targetStorageId: string,
-    items: Array<{ productId: string; quantity: number }>
+    items: Array<{
+        productId: string
+        quantity: number
+        batchSelections?: Array<{ batchId: string; quantity: number }>
+    }>
 ): Promise<{ movedCount: number }> {
-    const completedTransfers: Array<{ productId: string; quantity: number }> = []
+    const completedTransfers: Array<{
+        productId: string
+        quantity: number
+        batchAllocations: Awaited<ReturnType<typeof transferInventoryQuantityWithBatches>>['batchAllocations']
+        reverseBatchSelections: Awaited<ReturnType<typeof transferInventoryQuantityWithBatches>>['reverseBatchSelections']
+    }> = []
     const updatedProducts: Product[] = []
     const affectedProductIds = new Set<string>()
     const now = new Date().toISOString()
 
     try {
+        await refreshStockBatchesFromSupabase(workspaceId)
+
         for (const item of items) {
             const quantity = Number(item.quantity)
             if (!Number.isInteger(quantity) || quantity <= 0) {
@@ -2422,20 +2434,27 @@ export async function transferInventoryBetweenStorages(
                 throw new Error('Insufficient inventory in source storage')
             }
 
-            const updatedProduct = await transferInventoryQuantity({
+            const transferResult = await transferInventoryQuantityWithBatches({
                 workspaceId,
                 productId: item.productId,
                 sourceStorageId,
                 targetStorageId,
                 quantity,
+                batchSelections: item.batchSelections,
                 timestamp: now,
+                skipBatchRefresh: true,
                 skipReorderCheck: true
             })
 
-            completedTransfers.push({ productId: item.productId, quantity })
+            completedTransfers.push({
+                productId: item.productId,
+                quantity,
+                batchAllocations: transferResult.batchAllocations,
+                reverseBatchSelections: transferResult.reverseBatchSelections
+            })
             affectedProductIds.add(item.productId)
-            if (updatedProduct) {
-                updatedProducts.push(updatedProduct)
+            if (transferResult.updatedProduct) {
+                updatedProducts.push(transferResult.updatedProduct)
             }
         }
 
@@ -2454,6 +2473,7 @@ export async function transferInventoryBetweenStorages(
                 sourceStorageId,
                 destinationStorageId: targetStorageId,
                 quantity: transfer.quantity,
+                batchAllocations: transfer.batchAllocations,
                 transferType: 'manual' as const
             })),
             { timestamp: now }
@@ -2463,13 +2483,15 @@ export async function transferInventoryBetweenStorages(
     } catch (error) {
         for (const transfer of [...completedTransfers].reverse()) {
             try {
-                await transferInventoryQuantity({
+                await transferInventoryQuantityWithBatches({
                     workspaceId,
                     productId: transfer.productId,
                     sourceStorageId: targetStorageId,
                     targetStorageId: sourceStorageId,
                     quantity: transfer.quantity,
+                    batchSelections: transfer.reverseBatchSelections,
                     timestamp: now,
+                    skipBatchRefresh: true,
                     skipReorderCheck: true,
                     skipTransactionLog: true
                 })
@@ -2494,24 +2516,35 @@ export async function deleteStorage(id: string, moveProductsToStorageId: string)
 
     const now = new Date().toISOString()
     const inventoryToMove = await db.inventory.where('storageId').equals(id).and((row) => !row.isDeleted).toArray()
-    const completedMoves: Array<{ productId: string; quantity: number }> = []
+    const completedMoves: Array<{
+        productId: string
+        quantity: number
+        reverseBatchSelections: Awaited<ReturnType<typeof transferInventoryQuantityWithBatches>>['reverseBatchSelections']
+    }> = []
     const updatedProducts: Product[] = []
 
     try {
+        await refreshStockBatchesFromSupabase(existing.workspaceId)
+
         for (const row of inventoryToMove) {
-            const updatedProduct = await transferInventoryQuantity({
+            const transferResult = await transferInventoryQuantityWithBatches({
                 workspaceId: existing.workspaceId,
                 productId: row.productId,
                 sourceStorageId: id,
                 targetStorageId: moveProductsToStorageId,
                 quantity: row.quantity,
                 timestamp: now,
+                skipBatchRefresh: true,
                 skipReorderCheck: true
             })
 
-            completedMoves.push({ productId: row.productId, quantity: row.quantity })
-            if (updatedProduct) {
-                updatedProducts.push(updatedProduct)
+            completedMoves.push({
+                productId: row.productId,
+                quantity: row.quantity,
+                reverseBatchSelections: transferResult.reverseBatchSelections
+            })
+            if (transferResult.updatedProduct) {
+                updatedProducts.push(transferResult.updatedProduct)
             }
         }
     } catch (error) {
@@ -2579,13 +2612,15 @@ export async function deleteStorage(id: string, moveProductsToStorageId: string)
                     await db.storages.put(normalizeStorageRecord(fallbackStorage))
                 }
                 for (const move of [...completedMoves].reverse()) {
-                    await transferInventoryQuantity({
+                    await transferInventoryQuantityWithBatches({
                         workspaceId: existing.workspaceId,
                         productId: move.productId,
                         sourceStorageId: moveProductsToStorageId,
                         targetStorageId: id,
                         quantity: move.quantity,
+                        batchSelections: move.reverseBatchSelections,
                         timestamp: now,
+                        skipBatchRefresh: true,
                         skipReorderCheck: true,
                         skipTransactionLog: true
                     })

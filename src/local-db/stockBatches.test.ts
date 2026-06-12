@@ -66,6 +66,7 @@ vi.mock('@/workspace/workspaceMode', () => ({
 import {
     calculateStockBatchUnitCost,
     getStockBatchSalePlans,
+    planStockBatchTransfer,
     shouldCreatePurchaseCostBatch
 } from './stockBatches'
 
@@ -218,5 +219,73 @@ describe('multi-line stock batch allocation', () => {
 
         expect(plan.requestedQuantity).toBe(9)
         expect(plan.allocations.reduce((sum, allocation) => sum + allocation.quantity, 0)).toBe(7)
+    })
+})
+
+describe('stock batch transfer planning', () => {
+    const batches = [
+        createBatch({
+            id: 'batch-early',
+            batchNumber: 'EARLY',
+            quantity: 3,
+            expiryDate: '2026-07-01'
+        }),
+        createBatch({
+            id: 'batch-late',
+            batchNumber: 'LATE',
+            quantity: 2,
+            expiryDate: '2026-08-01'
+        })
+    ]
+
+    it('uses FEFO batches before regular stock for callers without an explicit selection', () => {
+        const plan = planStockBatchTransfer({
+            inventoryQuantity: 8,
+            batches,
+            requestedQuantity: 6
+        })
+
+        expect(plan.batchAllocations).toEqual([
+            expect.objectContaining({ batchId: 'batch-early', quantity: 3 }),
+            expect.objectContaining({ batchId: 'batch-late', quantity: 2 })
+        ])
+        expect(plan.unbatchedQuantity).toBe(1)
+    })
+
+    it('moves only the explicitly selected batch and regular-stock remainder', () => {
+        const plan = planStockBatchTransfer({
+            inventoryQuantity: 8,
+            batches,
+            requestedQuantity: 4,
+            selectedBatchAllocations: [
+                { batchId: 'batch-late', quantity: 1 }
+            ]
+        })
+
+        expect(plan.batchAllocations).toEqual([
+            expect.objectContaining({ batchId: 'batch-late', quantity: 1 })
+        ])
+        expect(plan.unbatchedQuantity).toBe(3)
+    })
+
+    it('allows a regular-stock-only transfer when batches exist', () => {
+        const plan = planStockBatchTransfer({
+            inventoryQuantity: 8,
+            batches,
+            requestedQuantity: 3,
+            selectedBatchAllocations: []
+        })
+
+        expect(plan.batchAllocations).toEqual([])
+        expect(plan.unbatchedQuantity).toBe(3)
+    })
+
+    it('rejects regular-stock quantity beyond the unbatched balance', () => {
+        expect(() => planStockBatchTransfer({
+            inventoryQuantity: 8,
+            batches,
+            requestedQuantity: 4,
+            selectedBatchAllocations: []
+        })).toThrow('Insufficient regular stock')
     })
 })

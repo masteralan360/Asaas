@@ -14,6 +14,7 @@ import {
   useProducts,
   useStockAdjustments,
   useStorages,
+  type InventoryTransferBatchAllocation,
   type Storage,
 } from "@/local-db";
 import { formatDateTime } from "@/lib/utils";
@@ -40,6 +41,7 @@ type InventoryActivityRecord =
       sourceStorageName?: string | null;
       destinationStorageName?: string | null;
       sourceKind: "manual" | "automation";
+      batchAllocations?: InventoryTransferBatchAllocation[] | null;
     }
   | {
       id: string;
@@ -113,6 +115,7 @@ export function InventoryTransactionsPage() {
         sourceStorageName: transaction.sourceStorageName,
         destinationStorageName: transaction.destinationStorageName,
         sourceKind: transaction.transferType,
+        batchAllocations: transaction.batchAllocations,
       }),
     );
 
@@ -245,6 +248,14 @@ export function InventoryTransactionsPage() {
                 <div className="divide-y">
                   {activityRecords.map((record) => {
                     const product = productsById.get(record.productId);
+                    const allocatedBatchQuantity =
+                      record.kind === "transfer"
+                        ? (record.batchAllocations ?? []).reduce(
+                          (sum, allocation) =>
+                            sum + allocation.quantity,
+                          0,
+                        )
+                        : 0;
 
                     return (
                       <div
@@ -271,6 +282,32 @@ export function InventoryTransactionsPage() {
                           <div className="mt-1 text-xs text-muted-foreground">
                             SKU: {product?.sku || "N/A"}
                           </div>
+                          {record.kind === "transfer" &&
+                            record.batchAllocations != null && (
+                              <div className="mt-2 flex flex-wrap gap-1.5">
+                                {record.batchAllocations.map((allocation) => (
+                                  <span
+                                    key={`${allocation.sourceBatchId}:${allocation.destinationBatchId}`}
+                                    className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-300"
+                                  >
+                                    {t("sales.batchNumber", "Batch")}{" "}
+                                    {allocation.batchNumber} x{" "}
+                                    {allocation.quantity}
+                                  </span>
+                                ))}
+                                {record.quantity - allocatedBatchQuantity >
+                                  0 && (
+                                    <span className="rounded-full border bg-muted/60 px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                                      {t(
+                                        "inventoryTransfer.regularStock",
+                                        "Regular stock",
+                                      )}{" "}
+                                      x{" "}
+                                      {record.quantity - allocatedBatchQuantity}
+                                    </span>
+                                  )}
+                              </div>
+                            )}
                         </div>
 
                         <div className="flex items-center gap-2 text-sm">

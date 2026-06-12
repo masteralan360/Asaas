@@ -11,7 +11,12 @@ import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
 import { db } from './database'
 import { getInventoryQuantityForProductStorage, useInventoryProducts, type InventoryProduct } from './inventory'
 import { addToOfflineMutations } from './offlineMutations'
-import type { CurrencyCode, StockBatch, StockBatchAllocation } from './models'
+import type {
+    CurrencyCode,
+    InventoryTransferBatchAllocation,
+    StockBatch,
+    StockBatchAllocation
+} from './models'
 
 const TABLE_NAME = 'stock_batches'
 
@@ -50,6 +55,17 @@ export interface StockBatchSaleRequest {
     productId: string
     storageId: string
     quantity: number
+}
+
+export interface StockBatchTransferSelection {
+    batchId: string
+    quantity: number
+}
+
+export interface StockBatchTransferPlan {
+    requestedQuantity: number
+    batchAllocations: StockBatchAllocation[]
+    unbatchedQuantity: number
 }
 
 export type BatchAwareInventoryProduct = InventoryProduct & {
@@ -220,6 +236,123 @@ function sortBatchesForConsumption(batches: StockBatch[]) {
 
         return left.batchNumber.localeCompare(right.batchNumber)
     })
+}
+
+function toBatchAllocation(batch: StockBatch, quantity: number): StockBatchAllocation {
+    return {
+        batchId: batch.id,
+        batchNumber: batch.batchNumber,
+        quantity,
+        price: batch.price,
+        costPrice: batch.costPrice,
+        currency: batch.currency,
+        expiryDate: batch.expiryDate ?? null,
+        manufacturingDate: batch.manufacturingDate ?? null
+    }
+}
+
+export function planStockBatchTransfer(input: {
+    inventoryQuantity: number
+    batches: StockBatch[]
+    requestedQuantity: number
+    selectedBatchAllocations?: StockBatchTransferSelection[]
+}): StockBatchTransferPlan {
+    const inventoryQuantity = Number(input.inventoryQuantity)
+    const requestedQuantity = Number(input.requestedQuantity)
+
+    if (!Number.isInteger(inventoryQuantity) || inventoryQuantity < 0) {
+        throw new Error('Inventory quantity must be a whole number greater than or equal to zero')
+    }
+
+    if (!Number.isInteger(requestedQuantity) || requestedQuantity <= 0) {
+        throw new Error('Transfer quantity must be a whole number greater than zero')
+    }
+
+    if (requestedQuantity > inventoryQuantity) {
+        throw new Error('Insufficient inventory in source storage')
+    }
+
+    const activeBatches = sortBatchesForConsumption(
+        input.batches.filter((batch) => !batch.isDeleted && batch.quantity > 0)
+    )
+    const batchQuantity = activeBatches.reduce((sum, batch) => sum + batch.quantity, 0)
+    const unbatchedAvailable = Math.max(inventoryQuantity - batchQuantity, 0)
+
+    if (input.selectedBatchAllocations === undefined) {
+        const batchAllocations: StockBatchAllocation[] = []
+        let remaining = requestedQuantity
+
+        for (const batch of activeBatches) {
+            if (remaining <= 0) {
+                break
+            }
+
+            const quantity = Math.min(batch.quantity, remaining)
+            if (quantity > 0) {
+                batchAllocations.push(toBatchAllocation(batch, quantity))
+                remaining -= quantity
+            }
+        }
+
+        if (remaining > unbatchedAvailable) {
+            throw new Error('Insufficient regular stock in source storage')
+        }
+
+        return {
+            requestedQuantity,
+            batchAllocations,
+            unbatchedQuantity: remaining
+        }
+    }
+
+    const requestedByBatchId = new Map<string, number>()
+    for (const selection of input.selectedBatchAllocations) {
+        const batchId = selection.batchId?.trim()
+        const quantity = Number(selection.quantity)
+
+        if (!batchId) {
+            throw new Error('Batch selection is missing a batch ID')
+        }
+
+        if (!Number.isInteger(quantity) || quantity <= 0) {
+            throw new Error('Batch transfer quantity must be a whole number greater than zero')
+        }
+
+        requestedByBatchId.set(batchId, (requestedByBatchId.get(batchId) || 0) + quantity)
+    }
+
+    const batchesById = new Map(activeBatches.map((batch) => [batch.id, batch] as const))
+    const batchAllocations = Array.from(requestedByBatchId.entries()).map(([batchId, quantity]) => {
+        const batch = batchesById.get(batchId)
+        if (!batch) {
+            throw new Error('One or more selected batches are no longer available')
+        }
+
+        if (quantity > batch.quantity) {
+            throw new Error(`Batch ${batch.batchNumber} does not have enough stock`)
+        }
+
+        return toBatchAllocation(batch, quantity)
+    })
+    const selectedBatchQuantity = batchAllocations.reduce(
+        (sum, allocation) => sum + allocation.quantity,
+        0
+    )
+
+    if (selectedBatchQuantity > requestedQuantity) {
+        throw new Error('Selected batch quantity exceeds the transfer quantity')
+    }
+
+    const unbatchedQuantity = requestedQuantity - selectedBatchQuantity
+    if (unbatchedQuantity > unbatchedAvailable) {
+        throw new Error('Insufficient regular stock in source storage')
+    }
+
+    return {
+        requestedQuantity,
+        batchAllocations,
+        unbatchedQuantity
+    }
 }
 
 function normalizeAllocationList(allocations: StockBatchAllocation[]) {
@@ -489,6 +622,25 @@ export async function getStockBatchSalePlan(
         quantity: requestedQuantity
     }])
     return plan
+}
+
+export async function getStockBatchTransferPlan(
+    productId: string,
+    storageId: string,
+    requestedQuantity: number,
+    selectedBatchAllocations?: StockBatchTransferSelection[]
+) {
+    const [inventoryQuantity, batches] = await Promise.all([
+        getInventoryQuantityForProductStorage(productId, storageId),
+        getActiveBatchesForProductStorage(productId, storageId)
+    ])
+
+    return planStockBatchTransfer({
+        inventoryQuantity,
+        batches,
+        requestedQuantity,
+        selectedBatchAllocations
+    })
 }
 
 export async function getStockBatchSalePlans(
@@ -777,11 +929,13 @@ export async function restoreStockBatchAllocations(
                 continue
             }
 
-            const matchingBatchNumber = await db.stock_batches
+            const matchingBatchNumbers = await db.stock_batches
                 .where('[productId+storageId]')
                 .equals([productId, storageId])
                 .filter((row) => row.batchNumber.trim().toLowerCase() === allocation.batchNumber.toLowerCase())
-                .first()
+                .toArray()
+            const matchingBatchNumber = matchingBatchNumbers.find((batch) => !batch.isDeleted)
+                ?? matchingBatchNumbers[0]
 
             if (matchingBatchNumber) {
                 const updated: StockBatch = {
@@ -880,6 +1034,107 @@ export async function restoreStockBatchAllocations(
         await syncStockBatchesBestEffort(restorationResult.rowsToSync, workspaceId)
     }
     return restorationResult.appliedAllocations
+}
+
+function batchSnapshotsAreCompatible(
+    batch: StockBatch,
+    allocation: StockBatchAllocation
+) {
+    return batch.price === Number(allocation.price ?? batch.price)
+        && batch.costPrice === Number(allocation.costPrice ?? batch.costPrice)
+        && batch.currency === normalizeCurrencyCode(allocation.currency, batch.currency)
+        && (batch.expiryDate ?? null) === (allocation.expiryDate ?? null)
+        && (batch.manufacturingDate ?? null) === (allocation.manufacturingDate ?? null)
+}
+
+export async function transferStockBatchAllocations(input: {
+    workspaceId: string
+    productId: string
+    sourceStorageId: string
+    targetStorageId: string
+    allocations: StockBatchAllocation[]
+    timestamp?: string
+}): Promise<InventoryTransferBatchAllocation[]> {
+    const allocations = normalizeAllocationList(input.allocations)
+    if (allocations.length === 0) {
+        return []
+    }
+
+    for (const allocation of allocations) {
+        const matchingTargetBatches = await db.stock_batches
+            .where('[productId+storageId]')
+            .equals([input.productId, input.targetStorageId])
+            .filter((batch) =>
+                batch.batchNumber.trim().toLowerCase()
+                === allocation.batchNumber.trim().toLowerCase()
+            )
+            .toArray()
+        const matchingTargetBatch = matchingTargetBatches.find((batch) => !batch.isDeleted)
+            ?? matchingTargetBatches[0]
+
+        if (matchingTargetBatch && !batchSnapshotsAreCompatible(matchingTargetBatch, allocation)) {
+            throw new Error(
+                `Destination batch ${allocation.batchNumber} has different pricing or dates`
+            )
+        }
+    }
+
+    const timestamp = input.timestamp || new Date().toISOString()
+    await commitStockBatchAllocations(
+        input.workspaceId,
+        input.productId,
+        input.sourceStorageId,
+        allocations,
+        { timestamp }
+    )
+
+    let destinationAllocations: StockBatchAllocation[]
+    try {
+        destinationAllocations = await restoreStockBatchAllocations(
+            input.workspaceId,
+            input.productId,
+            input.targetStorageId,
+            allocations,
+            { timestamp }
+        )
+    } catch (error) {
+        await restoreStockBatchAllocations(
+            input.workspaceId,
+            input.productId,
+            input.sourceStorageId,
+            allocations,
+            { timestamp: new Date().toISOString() }
+        )
+        throw error
+    }
+
+    const destinationByBatchNumber = new Map(
+        destinationAllocations.map((allocation) => [
+            allocation.batchNumber.trim().toLowerCase(),
+            allocation
+        ] as const)
+    )
+
+    return allocations.map((allocation) => {
+        const destination = destinationByBatchNumber.get(
+            allocation.batchNumber.trim().toLowerCase()
+        )
+        if (!destination) {
+            throw new Error(`Destination batch ${allocation.batchNumber} was not created`)
+        }
+
+        return {
+            sourceBatchId: allocation.batchId,
+            destinationBatchId: destination.batchId,
+            batchNumber: allocation.batchNumber,
+            quantity: allocation.quantity,
+            price: allocation.price ?? null,
+            costPrice: allocation.costPrice ?? null,
+            currency: allocation.currency ?? null,
+            expiryDate: allocation.expiryDate ?? null,
+            manufacturingDate: allocation.manufacturingDate ?? null
+        }
+    })
 }
 
 export async function createStockBatch(

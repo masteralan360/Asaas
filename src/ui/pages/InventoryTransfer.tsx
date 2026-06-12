@@ -3,6 +3,7 @@ import {
   fetchInventoryWorkspaceFromSupabase,
   refreshInventoryTransactionsFromSupabase,
   refreshInventoryTransferTransactionsFromSupabase,
+  refreshStockBatchesFromSupabase,
   createReorderTransferRule,
   deleteReorderTransferRule,
   transferInventoryBetweenStorages,
@@ -10,9 +11,10 @@ import {
   useInventory,
   useProducts,
   useReorderTransferRules,
+  useStockBatches,
   useStorages,
 } from "@/local-db";
-import type { Product, ReorderTransferRule } from "@/local-db";
+import type { Product, ReorderTransferRule, StockBatch } from "@/local-db";
 import { useWorkspace } from "@/workspace";
 import { useAuth } from "@/auth";
 import {
@@ -63,6 +65,7 @@ import {
 import { useTranslation } from "react-i18next";
 import { useToast } from "@/ui/components/use-toast";
 import {
+  formatCurrency,
   formatDate,
   formatLocalDateValue,
   parseLocalDateValue,
@@ -97,6 +100,16 @@ interface TransferSourceProductOption {
   sku: string;
   name: string;
   unit: string;
+  availableQuantity: number;
+  batches: StockBatch[];
+}
+
+interface TransferStockLine {
+  key: string;
+  productId: string;
+  selectionType: "product" | "batch";
+  batchId?: string;
+  batch?: StockBatch;
   availableQuantity: number;
 }
 
@@ -142,6 +155,35 @@ function createEmptyRuleForm(): RuleFormState {
     expiresOn: getDefaultRuleExpiryDate(),
     isIndefinite: false,
   };
+}
+
+function getProductStockKey(productId: string) {
+  return `product:${productId}`;
+}
+
+function getBatchStockKey(batchId: string) {
+  return `batch:${batchId}`;
+}
+
+function getProductStockLines(
+  product: TransferSourceProductOption,
+): TransferStockLine[] {
+  return [
+    {
+      key: getProductStockKey(product.productId),
+      productId: product.productId,
+      selectionType: "product",
+      availableQuantity: product.availableQuantity,
+    },
+    ...product.batches.map((batch) => ({
+      key: getBatchStockKey(batch.id),
+      productId: product.productId,
+      selectionType: "batch" as const,
+      batchId: batch.id,
+      batch,
+      availableQuantity: Math.min(batch.quantity, product.availableQuantity),
+    })),
+  ];
 }
 
 function formatDateLabel(value?: string | null) {
@@ -209,10 +251,11 @@ export default function InventoryTransfer() {
   const { user, session } = useAuth();
   const canEdit = user?.role === "admin" || user?.role === "staff";
   const { t } = useTranslation();
-  const { activeWorkspace, branchInfo, workspaceName } = useWorkspace();
+  const { activeWorkspace, branchInfo, features, workspaceName } = useWorkspace();
   const storages = useStorages(activeWorkspace?.id);
   const inventory = useInventory(activeWorkspace?.id);
   const products = useProducts(activeWorkspace?.id);
+  const stockBatches = useStockBatches(activeWorkspace?.id);
   const reorderRules = useReorderTransferRules(activeWorkspace?.id);
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState<InventoryTransferTab>(
@@ -226,7 +269,7 @@ export default function InventoryTransfer() {
   const [sourceStorageId, setSourceStorageId] = useState<string>("");
   const [targetWorkspaceId, setTargetWorkspaceId] = useState<string>("");
   const [targetStorageId, setTargetStorageId] = useState<string>("");
-  const [selectedProductIds, setSelectedProductIds] = useState<Set<string>>(
+  const [selectedStockKeys, setSelectedStockKeys] = useState<Set<string>>(
     new Set(),
   );
   const [transferQuantities, setTransferQuantities] = useState<
@@ -349,8 +392,33 @@ export default function InventoryTransfer() {
   ]);
 
   const sourceProducts = useMemo(
-    () =>
-      inventory
+    () => {
+      const batchesByProductId = new Map<string, StockBatch[]>();
+      for (const batch of stockBatches) {
+        if (
+          batch.storageId !== sourceStorageId ||
+          batch.isDeleted ||
+          batch.quantity <= 0
+        ) {
+          continue;
+        }
+
+        const rows = batchesByProductId.get(batch.productId) ?? [];
+        rows.push(batch);
+        batchesByProductId.set(batch.productId, rows);
+      }
+
+      for (const rows of batchesByProductId.values()) {
+        rows.sort((left, right) =>
+          (left.expiryDate ?? "9999-12-31").localeCompare(
+            right.expiryDate ?? "9999-12-31",
+          ) ||
+          left.createdAt.localeCompare(right.createdAt) ||
+          left.batchNumber.localeCompare(right.batchNumber),
+        );
+      }
+
+      return inventory
         .filter((row) => row.storageId === sourceStorageId)
         .map((row) => {
           const product = products.find((entry) => entry.id === row.productId);
@@ -358,12 +426,15 @@ export default function InventoryTransfer() {
             return null;
           }
 
+          const batches = batchesByProductId.get(product.id) ?? [];
+
           return {
             productId: product.id,
             sku: product.sku,
             name: product.name,
             unit: product.unit,
             availableQuantity: row.quantity,
+            batches,
           };
         })
         .filter(
@@ -371,8 +442,9 @@ export default function InventoryTransfer() {
             entry,
           ): entry is TransferSourceProductOption => !!entry,
         )
-        .sort((left, right) => left.name.localeCompare(right.name)),
-    [inventory, products, sourceStorageId],
+        .sort((left, right) => left.name.localeCompare(right.name));
+    },
+    [inventory, products, sourceStorageId, stockBatches],
   );
 
   const availableTargetStorages = useMemo(
@@ -426,26 +498,91 @@ export default function InventoryTransfer() {
     [inventory, products, ruleForm.sourceStorageId],
   );
 
+  const sourceStockLines = useMemo(
+    () => sourceProducts.flatMap(getProductStockLines),
+    [sourceProducts],
+  );
+
+  const selectedTransferLines = useMemo(
+    () =>
+      sourceStockLines
+        .filter((line) => selectedStockKeys.has(line.key))
+        .map((line) => ({
+          ...line,
+          quantity: Number(transferQuantities[line.key] || 0),
+        })),
+    [selectedStockKeys, sourceStockLines, transferQuantities],
+  );
+
   const selectedTransferItems = useMemo(
     () =>
       sourceProducts
-        .filter((product) => selectedProductIds.has(product.productId))
-        .map((product) => ({
-          productId: product.productId,
-          productName: product.name,
-          unit: product.unit,
-          availableQuantity: product.availableQuantity,
-          quantity: Number(transferQuantities[product.productId] || 0),
-        })),
-    [selectedProductIds, sourceProducts, transferQuantities],
+        .map((product) => {
+          const selectedLines = selectedTransferLines.filter(
+            (line) => line.productId === product.productId,
+          );
+          if (selectedLines.length === 0) {
+            return null;
+          }
+
+          const selectedProductLine = selectedLines.find(
+            (line) => line.selectionType === "product",
+          );
+          if (selectedProductLine) {
+            return {
+              productId: product.productId,
+              productName: product.name,
+              unit: product.unit,
+              availableQuantity: product.availableQuantity,
+              quantity: selectedProductLine.quantity,
+              batchSelections: undefined,
+            };
+          }
+
+          return {
+            productId: product.productId,
+            productName: product.name,
+            unit: product.unit,
+            availableQuantity: product.availableQuantity,
+            quantity: selectedLines.reduce(
+              (sum, line) => sum + line.quantity,
+              0,
+            ),
+            batchSelections: selectedLines
+              .filter(
+                (
+                  line,
+                ): line is typeof line & { batchId: string } =>
+                  line.selectionType === "batch" && !!line.batchId,
+              )
+              .map((line) => ({
+                batchId: line.batchId,
+                quantity: line.quantity,
+              })),
+          };
+        })
+        .filter(
+          (
+            item,
+          ): item is NonNullable<typeof item> => !!item,
+        ),
+    [selectedTransferLines, sourceProducts],
   );
 
-  const hasInvalidTransferQuantity = selectedTransferItems.some(
-    (item) =>
-      !Number.isInteger(item.quantity) ||
-      item.quantity <= 0 ||
-      item.quantity > item.availableQuantity,
+  const hasInvalidTransferQuantity = selectedTransferLines.some(
+    (line) =>
+      !Number.isInteger(line.quantity) ||
+      line.quantity <= 0 ||
+      line.quantity > line.availableQuantity,
+  ) || selectedTransferItems.some(
+    (item) => item.quantity > item.availableQuantity,
   );
+  const selectedProductCount = selectedTransferItems.length;
+  const areAllProductRowsSelected =
+    sourceProducts.length > 0 &&
+    sourceProducts.every((product) =>
+      selectedStockKeys.has(getProductStockKey(product.productId)),
+    );
 
   const automationStats = useMemo(() => {
     const triggeredToday = activeRules.filter((rule) =>
@@ -655,46 +792,95 @@ export default function InventoryTransfer() {
     setIsRuleDialogOpen(true);
   };
 
-  const toggleProduct = (productId: string, availableQuantity: number) => {
-    setSelectedProductIds((previous) => {
+  const resetTransferSelection = () => {
+    setSelectedStockKeys(new Set());
+    setTransferQuantities({});
+  };
+
+  const toggleStockLine = (line: TransferStockLine) => {
+    const isSelected = selectedStockKeys.has(line.key);
+    const productKey = getProductStockKey(line.productId);
+    setSelectedStockKeys((previous) => {
       const next = new Set(previous);
-      const isSelected = next.has(productId);
 
       if (isSelected) {
-        next.delete(productId);
+        next.delete(line.key);
       } else {
-        next.add(productId);
+        next.delete(productKey);
+        next.add(line.key);
       }
 
-      setTransferQuantities((current) => {
-        const nextQuantities = { ...current };
-        if (isSelected) {
-          delete nextQuantities[productId];
-        } else if (!nextQuantities[productId]) {
-          nextQuantities[productId] = String(availableQuantity);
+      return next;
+    });
+    setTransferQuantities((current) => {
+      const nextQuantities = { ...current };
+      if (isSelected) {
+        delete nextQuantities[line.key];
+      } else {
+        delete nextQuantities[productKey];
+        if (!nextQuantities[line.key]) {
+          nextQuantities[line.key] = String(line.availableQuantity);
         }
-        return nextQuantities;
-      });
+      }
+      return nextQuantities;
+    });
+  };
 
+  const toggleProduct = (product: TransferSourceProductOption) => {
+    const lines = getProductStockLines(product);
+    const productLine = lines.find((line) => line.selectionType === "product");
+    if (!productLine) {
+      return;
+    }
+
+    const isSelected = selectedStockKeys.has(productLine.key);
+
+    setSelectedStockKeys((previous) => {
+      const next = new Set(previous);
+
+      if (isSelected) {
+        next.delete(productLine.key);
+        return next;
+      }
+
+      for (const line of lines) {
+        next.delete(line.key);
+      }
+      next.add(productLine.key);
+      return next;
+    });
+
+    setTransferQuantities((current) => {
+      const next = { ...current };
+
+      for (const line of lines) {
+        delete next[line.key];
+      }
+
+      if (!isSelected) {
+        next[productLine.key] = String(productLine.availableQuantity);
+      }
       return next;
     });
   };
 
   const selectAllProducts = () => {
-    if (selectedProductIds.size === sourceProducts.length) {
-      setSelectedProductIds(new Set());
-      setTransferQuantities({});
+    const productLines = sourceProducts.map(
+      (product) => getProductStockLines(product)[0],
+    );
+    const areAllSelected =
+      productLines.length > 0 &&
+      productLines.every((line) => selectedStockKeys.has(line.key));
+    if (areAllSelected) {
+      resetTransferSelection();
       return;
     }
 
-    setSelectedProductIds(
-      new Set(sourceProducts.map((product) => product.productId)),
-    );
-    setTransferQuantities((current) => {
+    setSelectedStockKeys(new Set(productLines.map((line) => line.key)));
+    setTransferQuantities(() => {
       const nextQuantities: Record<string, string> = {};
-      for (const product of sourceProducts) {
-        nextQuantities[product.productId] =
-          current[product.productId] || String(product.availableQuantity);
+      for (const line of productLines) {
+        nextQuantities[line.key] = String(line.availableQuantity);
       }
       return nextQuantities;
     });
@@ -707,7 +893,7 @@ export default function InventoryTransfer() {
       !targetWorkspaceId ||
       !sourceStorageId ||
       !targetStorageId ||
-      selectedProductIds.size === 0
+      selectedTransferLines.length === 0
     ) {
       return;
     }
@@ -741,6 +927,7 @@ export default function InventoryTransfer() {
           selectedTransferItems.map((item) => ({
             productId: item.productId,
             quantity: item.quantity,
+            batchSelections: item.batchSelections,
           })),
         );
         movedCount = result.movedCount;
@@ -758,6 +945,7 @@ export default function InventoryTransfer() {
             items: selectedTransferItems.map((item) => ({
               productId: item.productId,
               quantity: item.quantity,
+              batchAllocations: item.batchSelections,
             })),
           },
         });
@@ -778,6 +966,7 @@ export default function InventoryTransfer() {
             fetchInventoryWorkspaceFromSupabase(activeWorkspace.id),
             refreshInventoryTransactionsFromSupabase(activeWorkspace.id),
             refreshInventoryTransferTransactionsFromSupabase(activeWorkspace.id),
+            refreshStockBatchesFromSupabase(activeWorkspace.id),
           ]);
         }
       }
@@ -799,8 +988,7 @@ export default function InventoryTransfer() {
         ),
       });
 
-      setSelectedProductIds(new Set());
-      setTransferQuantities({});
+      resetTransferSelection();
     } catch (error) {
       showTransferActionError(
         error,
@@ -1012,8 +1200,7 @@ export default function InventoryTransfer() {
                     value={sourceStorageId}
                     onValueChange={(id) => {
                       setSourceStorageId(id);
-                      setSelectedProductIds(new Set());
-                      setTransferQuantities({});
+                      resetTransferSelection();
                     }}
                     disabled={!sourceWorkspaceId}
                   >
@@ -1113,12 +1300,16 @@ export default function InventoryTransfer() {
                     </p>
                   </div>
                 ) : (
-                  <div className="max-h-64 space-y-2 overflow-y-auto">
+                  <div className="max-h-[28rem] space-y-2 overflow-y-auto">
                     <div className="flex items-center gap-2 border-b pb-2">
                       <Checkbox
                         id="select-all"
-                        checked={
-                          selectedProductIds.size === sourceProducts.length
+                        checked={areAllProductRowsSelected}
+                        aria-checked={
+                          selectedTransferLines.length > 0 &&
+                          !areAllProductRowsSelected
+                            ? "mixed"
+                            : areAllProductRowsSelected
                         }
                         onCheckedChange={selectAllProducts}
                       />
@@ -1131,59 +1322,145 @@ export default function InventoryTransfer() {
                       </Label>
                     </div>
 
-                    {sourceProducts.map((product) => (
-                      <div
-                        key={product.productId}
-                        className="flex items-center gap-3 rounded-lg p-2 transition-colors hover:bg-muted/30"
-                      >
-                        <Checkbox
-                          id={product.productId}
-                          checked={selectedProductIds.has(product.productId)}
-                          onCheckedChange={() =>
-                            toggleProduct(product.productId, product.availableQuantity)
-                          }
-                        />
-                        <Label
-                          htmlFor={product.productId}
-                          className="flex-1 cursor-pointer"
+                    {sourceProducts.map((product) => {
+                      const stockLines = getProductStockLines(product);
+                      const productLine = stockLines[0];
+                      const batchLines = stockLines.slice(1);
+                      const productChecked = selectedStockKeys.has(
+                        productLine.key,
+                      );
+                      const hasBatchBreakdown = product.batches.length > 0;
+
+                      return (
+                        <div
+                          key={product.productId}
+                          className="rounded-xl border border-transparent transition-colors hover:border-border hover:bg-muted/20"
                         >
-                          <div className="flex items-center justify-between">
-                            <span className="text-sm font-medium">
-                              {product.name}
-                            </span>
-                            <span className="text-xs text-muted-foreground">
-                              {product.availableQuantity} {product.unit}
-                            </span>
+                          <div className="flex items-center gap-3 p-2">
+                            <Checkbox
+                              id={`product-${product.productId}`}
+                              checked={productChecked}
+                              onCheckedChange={() => toggleProduct(product)}
+                            />
+                            <Label
+                              htmlFor={`product-${product.productId}`}
+                              className="min-w-0 flex-1 cursor-pointer"
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="truncate text-sm font-medium">
+                                  {product.name}
+                                </span>
+                                <span className="shrink-0 text-xs text-muted-foreground">
+                                  {product.availableQuantity} {product.unit}
+                                </span>
+                              </div>
+                              <div className="text-xs text-muted-foreground">
+                                {product.sku}
+                                {hasBatchBreakdown &&
+                                  ` / ${t("inventoryTransfer.batchCount", {
+                                    count: product.batches.length,
+                                    defaultValue: "{{count}} batches",
+                                  })}`}
+                              </div>
+                            </Label>
+
+                            <div className="w-24">
+                              <Input
+                                type="number"
+                                min="1"
+                                max={productLine.availableQuantity}
+                                step="1"
+                                value={transferQuantities[productLine.key] || ""}
+                                disabled={!productChecked}
+                                onChange={(event) =>
+                                  setTransferQuantities((current) => ({
+                                    ...current,
+                                    [productLine.key]: event.target.value,
+                                  }))
+                                }
+                                className="h-9 rounded-lg text-center"
+                                aria-label={`${product.name} ${t("common.quantity", "Quantity")}`}
+                              />
+                              {productChecked && (
+                                <div className="mt-1 text-center text-[11px] text-muted-foreground">
+                                  {`${t("inventoryTransfer.available", "Available")}: ${productLine.availableQuantity} ${product.unit}`}
+                                </div>
+                              )}
+                            </div>
                           </div>
-                          <div className="text-xs text-muted-foreground">
-                            {product.sku}
-                          </div>
-                        </Label>
-                        <div className="w-24">
-                          <Input
-                            type="number"
-                            min="1"
-                            max={product.availableQuantity}
-                            step="1"
-                            value={transferQuantities[product.productId] || ""}
-                            disabled={!selectedProductIds.has(product.productId)}
-                            onChange={(event) =>
-                              setTransferQuantities((current) => ({
-                                ...current,
-                                [product.productId]: event.target.value,
-                              }))
-                            }
-                            className="h-9 rounded-lg text-center"
-                            aria-label={`${product.name} ${t("common.quantity", "Quantity")}`}
-                          />
-                          {selectedProductIds.has(product.productId) && (
-                            <div className="mt-1 text-center text-[11px] text-muted-foreground">
-                              {`${t("inventoryTransfer.available", "Available")}: ${product.availableQuantity} ${product.unit}`}
+
+                          {hasBatchBreakdown && (
+                            <div className="mb-2 ms-8 space-y-1 border-s ps-3">
+                              {batchLines.map((line) => {
+                                const batch = line.batch;
+                                const isSelected = selectedStockKeys.has(line.key);
+
+                                return (
+                                  <div
+                                    key={line.key}
+                                    className="flex items-center gap-3 rounded-lg bg-background/70 p-2"
+                                  >
+                                    <Checkbox
+                                      id={`stock-${line.key}`}
+                                      checked={isSelected}
+                                      onCheckedChange={() => toggleStockLine(line)}
+                                    />
+                                    <Label
+                                      htmlFor={`stock-${line.key}`}
+                                      className="min-w-0 flex-1 cursor-pointer"
+                                    >
+                                      <div className="flex items-center justify-between gap-2">
+                                        <span className="truncate text-xs font-semibold">
+                                          {`${t("sales.batchNumber", "Batch")} ${batch?.batchNumber}`}
+                                        </span>
+                                        <span className="shrink-0 text-[11px] text-muted-foreground">
+                                          {line.availableQuantity} {product.unit}
+                                        </span>
+                                      </div>
+                                      {batch && (
+                                        <div className="mt-0.5 text-[10px] text-muted-foreground">
+                                          {formatCurrency(
+                                            batch.price,
+                                            batch.currency,
+                                            features.iqd_display_preference,
+                                          )}
+                                          {" / "}
+                                          {t("products.form.cost", "Cost Price")}:{" "}
+                                          {formatCurrency(
+                                            batch.costPrice,
+                                            batch.currency,
+                                            features.iqd_display_preference,
+                                          )}
+                                          {batch.expiryDate
+                                            ? ` / ${t("products.expiryDate", "Expiry")}: ${formatDateLabel(batch.expiryDate)}`
+                                            : ""}
+                                        </div>
+                                      )}
+                                    </Label>
+                                    <Input
+                                      type="number"
+                                      min="1"
+                                      max={line.availableQuantity}
+                                      step="1"
+                                      value={transferQuantities[line.key] || ""}
+                                      disabled={!isSelected}
+                                      onChange={(event) =>
+                                        setTransferQuantities((current) => ({
+                                          ...current,
+                                          [line.key]: event.target.value,
+                                        }))
+                                      }
+                                      className="h-8 w-20 rounded-lg text-center text-xs"
+                                      aria-label={`${product.name} ${batch?.batchNumber} ${t("common.quantity", "Quantity")}`}
+                                    />
+                                  </div>
+                                );
+                              })}
                             </div>
                           )}
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </CardContent>
@@ -1268,7 +1545,7 @@ export default function InventoryTransfer() {
                   </SelectContent>
                 </Select>
 
-                {selectedProductIds.size > 0 && targetStorageId && (
+                {selectedProductCount > 0 && targetStorageId && (
                   <div className="rounded-xl border border-primary/20 bg-primary/5 p-3">
                     <div className="flex items-center gap-2 text-sm">
                       <span className="font-medium">
@@ -1280,7 +1557,7 @@ export default function InventoryTransfer() {
                       </span>
                     </div>
                     <div className="mt-1 text-xs text-muted-foreground">
-                      {selectedProductIds.size}{" "}
+                      {selectedProductCount}{" "}
                       {t(
                         "inventoryTransfer.productsSelected",
                         "products selected",
@@ -1300,7 +1577,7 @@ export default function InventoryTransfer() {
                 !targetWorkspaceId ||
                 !sourceStorageId ||
                 !targetStorageId ||
-                selectedProductIds.size === 0 ||
+                selectedTransferLines.length === 0 ||
                 hasInvalidTransferQuantity ||
                 isTransferring ||
                 !canEdit

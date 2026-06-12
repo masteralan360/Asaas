@@ -5,6 +5,7 @@ CREATE TABLE public.inventory_transfer_transactions (
   source_storage_id uuid NOT NULL,
   destination_storage_id uuid NOT NULL,
   quantity integer NOT NULL DEFAULT 1,
+  batch_allocations jsonb NULL,
   transfer_type text NOT NULL,
   reorder_rule_id uuid NULL,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
@@ -12,6 +13,11 @@ CREATE TABLE public.inventory_transfer_transactions (
   version integer NOT NULL DEFAULT 1,
   is_deleted boolean NOT NULL DEFAULT false,
   PRIMARY KEY (id),
+  CONSTRAINT inventory_transfer_transactions_batch_allocations_check
+    CHECK (
+      batch_allocations IS NULL
+      OR jsonb_typeof(batch_allocations) = 'array'
+    ),
   CONSTRAINT inventory_transfer_transactions_transfer_type_check
     CHECK (transfer_type IN ('manual', 'automation'))
 );

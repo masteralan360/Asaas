@@ -10,9 +10,14 @@ import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
 
 import { db } from './database'
 import { addToOfflineMutations } from './offlineMutations'
-import type { Inventory, Product } from './models'
+import type {
+    Inventory,
+    InventoryTransferBatchAllocation,
+    Product
+} from './models'
 import { createInventoryTransaction } from './inventoryTransactions'
 import { syncProductBarcodeCachesForWorkspace } from './productBarcodes'
+import type { StockBatchTransferSelection } from './stockBatches'
 
 type InventorySyncSource = 'local' | 'remote'
 
@@ -608,12 +613,13 @@ export async function adjustInventoryQuantity(input: {
     return updatedProduct
 }
 
-export async function transferInventoryQuantity(input: {
+export interface TransferInventoryQuantityInput {
     workspaceId: string
     productId: string
     sourceStorageId: string
     targetStorageId: string
     quantity: number
+    batchSelections?: StockBatchTransferSelection[]
     referenceId?: string | null
     referenceType?: string | null
     notes?: string | null
@@ -621,9 +627,17 @@ export async function transferInventoryQuantity(input: {
     timestamp?: string
     syncSource?: InventorySyncSource
     skipRemoteSync?: boolean
+    skipBatchRefresh?: boolean
     skipReorderCheck?: boolean
     skipTransactionLog?: boolean
-}) {
+}
+
+async function transferInventoryQuantityCore(
+    input: Omit<
+        TransferInventoryQuantityInput,
+        'batchSelections' | 'skipBatchRefresh' | 'skipReorderCheck' | 'skipTransactionLog'
+    >
+) {
     if (input.sourceStorageId === input.targetStorageId) {
         throw new Error('Source and target storages must be different')
     }
@@ -681,44 +695,156 @@ export async function transferInventoryQuantity(input: {
         await syncInventoryRowsBestEffort([sourceRow, targetRow], input.workspaceId)
     }
 
-    if (!input.skipTransactionLog) {
-        const referenceType = input.referenceType || 'transfer'
-        await Promise.all([
-            createInventoryTransaction(input.workspaceId, {
-                productId: input.productId,
-                storageId: input.sourceStorageId,
-                transactionType: 'transfer_out',
-                quantityDelta: -input.quantity,
-                previousQuantity: sourcePreviousQuantity,
-                newQuantity: Math.max(sourcePreviousQuantity - input.quantity, 0),
-                referenceId: input.referenceId ?? null,
-                referenceType,
-                notes: input.notes ?? null,
-                createdBy: input.createdBy ?? null
-            }, { timestamp }),
-            createInventoryTransaction(input.workspaceId, {
-                productId: input.productId,
-                storageId: input.targetStorageId,
-                transactionType: 'transfer_in',
-                quantityDelta: input.quantity,
-                previousQuantity: targetPreviousQuantity,
-                newQuantity: targetPreviousQuantity + input.quantity,
-                referenceId: input.referenceId ?? null,
-                referenceType,
-                notes: input.notes ?? null,
-                createdBy: input.createdBy ?? null
-            }, { timestamp })
-        ])
+    return {
+        updatedProduct,
+        timestamp,
+        syncSource,
+        sourcePreviousQuantity,
+        targetPreviousQuantity
+    }
+}
+
+function toReverseBatchSelections(
+    allocations: InventoryTransferBatchAllocation[]
+): StockBatchTransferSelection[] {
+    return allocations.map((allocation) => ({
+        batchId: allocation.destinationBatchId,
+        quantity: allocation.quantity
+    }))
+}
+
+export async function transferInventoryQuantityWithBatches(
+    input: TransferInventoryQuantityInput
+) {
+    const {
+        getStockBatchTransferPlan,
+        refreshStockBatchesFromSupabase,
+        transferStockBatchAllocations
+    } = await import('./stockBatches')
+
+    if (!input.skipBatchRefresh && (input.syncSource || 'local') === 'local') {
+        await refreshStockBatchesFromSupabase(input.workspaceId)
+    }
+
+    const batchPlan = await getStockBatchTransferPlan(
+        input.productId,
+        input.sourceStorageId,
+        input.quantity,
+        input.batchSelections
+    )
+    const coreResult = await transferInventoryQuantityCore(input)
+    let batchAllocations: InventoryTransferBatchAllocation[] = []
+
+    try {
+        batchAllocations = await transferStockBatchAllocations({
+            workspaceId: input.workspaceId,
+            productId: input.productId,
+            sourceStorageId: input.sourceStorageId,
+            targetStorageId: input.targetStorageId,
+            allocations: batchPlan.batchAllocations,
+            timestamp: coreResult.timestamp
+        })
+    } catch (error) {
+        try {
+            await transferInventoryQuantityCore({
+                ...input,
+                sourceStorageId: input.targetStorageId,
+                targetStorageId: input.sourceStorageId,
+                timestamp: new Date().toISOString(),
+                referenceId: null,
+                referenceType: null,
+                notes: null
+            })
+        } catch (rollbackError) {
+            console.error('[InventoryTransfer] Failed to rollback inventory quantity:', rollbackError)
+        }
+        throw error
+    }
+
+    try {
+        if (!input.skipTransactionLog) {
+            const referenceType = input.referenceType || 'transfer'
+            await Promise.all([
+                createInventoryTransaction(input.workspaceId, {
+                    productId: input.productId,
+                    storageId: input.sourceStorageId,
+                    transactionType: 'transfer_out',
+                    quantityDelta: -input.quantity,
+                    previousQuantity: coreResult.sourcePreviousQuantity,
+                    newQuantity: Math.max(coreResult.sourcePreviousQuantity - input.quantity, 0),
+                    referenceId: input.referenceId ?? null,
+                    referenceType,
+                    notes: input.notes ?? null,
+                    createdBy: input.createdBy ?? null
+                }, { timestamp: coreResult.timestamp }),
+                createInventoryTransaction(input.workspaceId, {
+                    productId: input.productId,
+                    storageId: input.targetStorageId,
+                    transactionType: 'transfer_in',
+                    quantityDelta: input.quantity,
+                    previousQuantity: coreResult.targetPreviousQuantity,
+                    newQuantity: coreResult.targetPreviousQuantity + input.quantity,
+                    referenceId: input.referenceId ?? null,
+                    referenceType,
+                    notes: input.notes ?? null,
+                    createdBy: input.createdBy ?? null
+                }, { timestamp: coreResult.timestamp })
+            ])
+        }
+    } catch (error) {
+        try {
+            if (batchAllocations.length > 0) {
+                await transferStockBatchAllocations({
+                    workspaceId: input.workspaceId,
+                    productId: input.productId,
+                    sourceStorageId: input.targetStorageId,
+                    targetStorageId: input.sourceStorageId,
+                    allocations: batchAllocations.map((allocation) => ({
+                        batchId: allocation.destinationBatchId,
+                        batchNumber: allocation.batchNumber,
+                        quantity: allocation.quantity,
+                        price: allocation.price,
+                        costPrice: allocation.costPrice,
+                        currency: allocation.currency,
+                        expiryDate: allocation.expiryDate,
+                        manufacturingDate: allocation.manufacturingDate
+                    })),
+                    timestamp: new Date().toISOString()
+                })
+            }
+
+            await transferInventoryQuantityCore({
+                ...input,
+                sourceStorageId: input.targetStorageId,
+                targetStorageId: input.sourceStorageId,
+                timestamp: new Date().toISOString(),
+                referenceId: null,
+                referenceType: null,
+                notes: null
+            })
+        } catch (rollbackError) {
+            console.error('[InventoryTransfer] Failed to rollback transfer after logging error:', rollbackError)
+        }
+        throw error
     }
 
     await evaluateReorderRulesIfNeeded({
         workspaceId: input.workspaceId,
         productId: input.productId,
-        syncSource,
+        syncSource: coreResult.syncSource,
         skipReorderCheck: input.skipReorderCheck
     })
 
-    return updatedProduct
+    return {
+        updatedProduct: coreResult.updatedProduct,
+        batchAllocations,
+        reverseBatchSelections: toReverseBatchSelections(batchAllocations)
+    }
+}
+
+export async function transferInventoryQuantity(input: TransferInventoryQuantityInput) {
+    const result = await transferInventoryQuantityWithBatches(input)
+    return result.updatedProduct
 }
 
 export async function deleteInventoryForProduct(

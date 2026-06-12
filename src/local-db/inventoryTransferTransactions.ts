@@ -12,6 +12,7 @@ import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
 import { db } from './database'
 import { addToOfflineMutations } from './offlineMutations'
 import type {
+    InventoryTransferBatchAllocation,
     InventoryTransferTransaction,
     InventoryTransferTransactionType
 } from './models'
@@ -21,6 +22,7 @@ export interface InventoryTransferTransactionInput {
     sourceStorageId: string
     destinationStorageId: string
     quantity: number
+    batchAllocations?: InventoryTransferBatchAllocation[] | null
     transferType: InventoryTransferTransactionType
     reorderRuleId?: string | null
     sourceWorkspaceId?: string | null
@@ -62,6 +64,13 @@ function normalizeTransactionInput(input: InventoryTransferTransactionInput) {
     const sourceStorageId = input.sourceStorageId.trim()
     const destinationStorageId = input.destinationStorageId.trim()
     const quantity = Number(input.quantity)
+    const batchAllocations = input.batchAllocations?.map((allocation) => ({
+        ...allocation,
+        sourceBatchId: allocation.sourceBatchId.trim(),
+        destinationBatchId: allocation.destinationBatchId.trim(),
+        batchNumber: allocation.batchNumber.trim(),
+        quantity: Number(allocation.quantity)
+    })) ?? null
     const transferType = input.transferType
     const reorderRuleId = input.reorderRuleId?.trim() || null
     const sourceWorkspaceId = input.sourceWorkspaceId?.trim() || null
@@ -95,11 +104,30 @@ function normalizeTransactionInput(input: InventoryTransferTransactionInput) {
         throw new Error('Transfer type is invalid')
     }
 
+    for (const allocation of batchAllocations ?? []) {
+        if (!allocation.sourceBatchId || !allocation.destinationBatchId || !allocation.batchNumber) {
+            throw new Error('Batch allocation is incomplete')
+        }
+
+        if (!Number.isInteger(allocation.quantity) || allocation.quantity <= 0) {
+            throw new Error('Batch allocation quantity must be a whole number greater than zero')
+        }
+    }
+
+    const allocatedQuantity = (batchAllocations ?? []).reduce(
+        (sum, allocation) => sum + allocation.quantity,
+        0
+    )
+    if (allocatedQuantity > quantity) {
+        throw new Error('Batch allocation quantity exceeds transfer quantity')
+    }
+
     return {
         productId,
         sourceStorageId,
         destinationStorageId,
         quantity,
+        batchAllocations,
         transferType,
         reorderRuleId,
         sourceWorkspaceId,
