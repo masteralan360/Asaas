@@ -173,7 +173,8 @@ export const PLAN_DEFINITIONS: Record<WorkspacePlan, WorkspacePlanDefinition> = 
             'excelExportLedger',
             'excelExportRevenue',
             'workspaceStorageUploads',
-            'workspacePdfUploads'
+            'workspacePdfUploads',
+            'stockBatches'
         ],
         allowedCurrencies: ['iqd', 'usd', 'eur', 'try'],
         limits: {

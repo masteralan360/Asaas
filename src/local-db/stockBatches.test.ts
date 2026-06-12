@@ -1,0 +1,222 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+import type { StockBatch } from './models'
+
+const testState = vi.hoisted(() => ({
+    batches: [] as StockBatch[],
+    inventoryByPosition: new Map<string, number>()
+}))
+
+vi.mock('./database', () => ({
+    db: {
+        products: {},
+        stock_batches: {
+            where: vi.fn(() => ({
+                equals: vi.fn(([productId, storageId]: [string, string]) => ({
+                    and: vi.fn((predicate: (batch: StockBatch) => boolean) => ({
+                        toArray: vi.fn(async () => testState.batches.filter((batch) =>
+                            batch.productId === productId
+                            && batch.storageId === storageId
+                            && predicate(batch)
+                        ))
+                    }))
+                }))
+            }))
+        }
+    }
+}))
+
+vi.mock('./inventory', () => ({
+    getInventoryQuantityForProductStorage: vi.fn(async (productId: string, storageId: string) =>
+        testState.inventoryByPosition.get(`${productId}:${storageId}`) ?? 0
+    ),
+    useInventoryProducts: vi.fn(() => [])
+}))
+
+vi.mock('./offlineMutations', () => ({
+    addToOfflineMutations: vi.fn()
+}))
+
+vi.mock('@/hooks/useNetworkStatus', () => ({
+    useNetworkStatus: vi.fn(() => false)
+}))
+
+vi.mock('@/lib/network', () => ({
+    isOnline: vi.fn(() => false)
+}))
+
+vi.mock('@/lib/supabaseSchema', () => ({
+    getSupabaseClientForTable: vi.fn()
+}))
+
+vi.mock('@/lib/supabaseRequest', () => ({
+    runSupabaseAction: vi.fn()
+}))
+
+vi.mock('@/lib/utils', () => ({
+    generateId: vi.fn(() => 'generated-id'),
+    toCamelCase: vi.fn((value: Record<string, unknown>) => value),
+    toSnakeCase: vi.fn((value: Record<string, unknown>) => value)
+}))
+
+vi.mock('@/workspace/workspaceMode', () => ({
+    isLocalWorkspaceMode: vi.fn(() => true)
+}))
+
+import {
+    calculateStockBatchUnitCost,
+    getStockBatchSalePlans,
+    shouldCreatePurchaseCostBatch
+} from './stockBatches'
+
+function createBatch(overrides: Partial<StockBatch>): StockBatch {
+    return {
+        id: 'batch-1',
+        workspaceId: 'workspace-1',
+        productId: 'product-1',
+        storageId: 'storage-1',
+        batchNumber: 'B-1',
+        quantity: 1,
+        price: 20,
+        costPrice: 10,
+        currency: 'usd',
+        expiryDate: null,
+        manufacturingDate: null,
+        notes: null,
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+        version: 1,
+        isDeleted: false,
+        syncStatus: 'synced',
+        lastSyncedAt: '2026-01-01T00:00:00.000Z',
+        ...overrides
+    }
+}
+
+describe('stock batch costing', () => {
+    it('creates a purchase batch only when the line cost differs from the product cost', () => {
+        expect(shouldCreatePurchaseCostBatch(10, 10, 'usd')).toBe(false)
+        expect(shouldCreatePurchaseCostBatch(10.004, 10, 'usd')).toBe(false)
+        expect(shouldCreatePurchaseCostBatch(10.01, 10, 'usd')).toBe(true)
+        expect(shouldCreatePurchaseCostBatch(10_000.4, 10_000, 'iqd')).toBe(false)
+        expect(shouldCreatePurchaseCostBatch(10_001, 10_000, 'iqd')).toBe(true)
+    })
+
+    it('calculates weighted unit cost from all consumed batches', () => {
+        const result = calculateStockBatchUnitCost([
+            {
+                batchId: 'batch-1',
+                batchNumber: 'B-1',
+                quantity: 3,
+                costPrice: 10,
+                currency: 'usd'
+            },
+            {
+                batchId: 'batch-2',
+                batchNumber: 'B-2',
+                quantity: 2,
+                costPrice: 14,
+                currency: 'usd'
+            }
+        ], 8, 'usd')
+
+        expect(result).toBeCloseTo(11.6)
+    })
+
+    it('converts each batch cost before weighting it', () => {
+        const result = calculateStockBatchUnitCost([
+            {
+                batchId: 'batch-usd',
+                batchNumber: 'USD',
+                quantity: 2,
+                costPrice: 10,
+                currency: 'usd'
+            },
+            {
+                batchId: 'batch-iqd',
+                batchNumber: 'IQD',
+                quantity: 1,
+                costPrice: 18_000,
+                currency: 'iqd'
+            }
+        ], 0, 'iqd', (amount, from, to) => {
+            if (from === 'usd' && to === 'iqd') {
+                return amount * 1_500
+            }
+            return amount
+        })
+
+        expect(result).toBe(16_000)
+    })
+
+    it('uses the product cost for the unbatched portion of a sale', () => {
+        const result = calculateStockBatchUnitCost([
+            {
+                batchId: 'exception-batch',
+                batchNumber: 'EXCEPTION',
+                quantity: 2,
+                costPrice: 14,
+                currency: 'usd'
+            }
+        ], 10, 'usd', undefined, 5)
+
+        expect(result).toBe(11.6)
+    })
+})
+
+describe('multi-line stock batch allocation', () => {
+    beforeEach(() => {
+        testState.batches = [
+            createBatch({
+                id: 'batch-early',
+                batchNumber: 'EARLY',
+                quantity: 4,
+                expiryDate: '2026-07-01',
+                costPrice: 10
+            }),
+            createBatch({
+                id: 'batch-late',
+                batchNumber: 'LATE',
+                quantity: 3,
+                expiryDate: '2026-08-01',
+                costPrice: 14
+            })
+        ]
+        testState.inventoryByPosition = new Map([
+            ['product-1:storage-1', 7]
+        ])
+    })
+
+    it('reserves earlier allocations before planning duplicate lines', async () => {
+        const plans = await getStockBatchSalePlans([
+            { productId: 'product-1', storageId: 'storage-1', quantity: 3 },
+            { productId: 'product-1', storageId: 'storage-1', quantity: 2 }
+        ])
+
+        expect(plans[0].allocations).toEqual([
+            expect.objectContaining({ batchId: 'batch-early', quantity: 3 })
+        ])
+        expect(plans[1].allocations).toEqual([
+            expect.objectContaining({ batchId: 'batch-early', quantity: 1 }),
+            expect.objectContaining({ batchId: 'batch-late', quantity: 1 })
+        ])
+    })
+
+    it('rejects requests whose combined quantity exceeds batch coverage', async () => {
+        await expect(getStockBatchSalePlans([
+            { productId: 'product-1', storageId: 'storage-1', quantity: 4 },
+            { productId: 'product-1', storageId: 'storage-1', quantity: 4 }
+        ])).rejects.toThrow('Insufficient inventory')
+    })
+
+    it('allows ordinary inventory to cover quantity beyond exceptional batches', async () => {
+        testState.inventoryByPosition.set('product-1:storage-1', 10)
+
+        const [plan] = await getStockBatchSalePlans([
+            { productId: 'product-1', storageId: 'storage-1', quantity: 9 }
+        ])
+
+        expect(plan.requestedQuantity).toBe(9)
+        expect(plan.allocations.reduce((sum, allocation) => sum + allocation.quantity, 0)).toBe(7)
+    })
+})

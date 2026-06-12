@@ -96,7 +96,7 @@ async function reconcileInventoryRowsSynced(
     })
 }
 
-async function hydrateInventoryProductStoragesFromSupabase(
+export async function hydrateInventoryProductStoragesFromSupabase(
     workspaceId: string,
     productId: string,
     storageIds: string[]
@@ -173,7 +173,7 @@ async function hydrateInventoryProductStoragesFromSupabase(
     })
 }
 
-async function syncInventoryRowsBestEffort(rows: Array<Inventory | null>, workspaceId: string) {
+export async function syncInventoryRowsBestEffort(rows: Array<Inventory | null>, workspaceId: string) {
     const dedupedRows = Array.from(
         new Map(rows.filter((row): row is Inventory => !!row).map((row) => [row.id, row])).values()
     )
@@ -334,7 +334,7 @@ async function getInventoryRowsForProductStorage(productId: string, storageId: s
     return db.inventory.where('[productId+storageId]').equals([productId, storageId]).toArray()
 }
 
-async function putInventoryQuantity(
+export async function putInventoryQuantity(
     workspaceId: string,
     productId: string,
     storageId: string,

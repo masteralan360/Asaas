@@ -296,9 +296,6 @@ BEGIN
                 v_batch_remaining := v_batch_remaining - v_allocated_quantity;
             END LOOP;
 
-            IF v_batch_remaining > 0 THEN
-                RAISE EXCEPTION 'Insufficient batched inventory for product % in storage %', v_product_id, v_storage_id;
-            END IF;
         END IF;
 
         INSERT INTO public.sale_items (

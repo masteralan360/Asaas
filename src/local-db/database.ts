@@ -2157,6 +2157,11 @@ export class AtlasDatabase extends Dexie {
         "id, workspaceId, returnId, saleId, saleItemId, updatedAt, [returnId+saleItemId], [workspaceId+saleId]",
     });
 
+    this.version(68).stores({
+      stock_batches:
+        "id, workspaceId, productId, storageId, batchNumber, expiryDate, sourcePurchaseOrderId, sourcePurchaseOrderItemId, isDeleted, [workspaceId+productId], [productId+storageId], [sourcePurchaseOrderId+sourcePurchaseOrderItemId]",
+    });
+
     this.registerLocalModeSyncHooks();
   }
 

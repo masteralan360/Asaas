@@ -5,10 +5,11 @@ import { ArrowLeft, CalendarDays, CreditCard, PackagePlus, Plus, ShoppingCart, T
 import { useAuth } from '@/auth'
 import { useExchangeRate } from '@/context/ExchangeRateContext'
 import { buildOrderExchangeRatesSnapshot, convertCurrencyAmountWithLiveRates, getPrimaryExchangeDetails } from '@/lib/orderCurrency'
-import { formatCurrency, formatLocalDateTimeValue, parseLocalDateTimeValue } from '@/lib/utils'
+import { formatCurrency, formatLocalDateTimeValue, generateId, parseLocalDateTimeValue } from '@/lib/utils'
 import {
     createPurchaseOrder,
     getPrimaryStorageFromList,
+    shouldCreatePurchaseCostBatch,
     updatePurchaseOrder,
     useBusinessPartners,
     useProducts,
@@ -51,14 +52,29 @@ interface PurchaseOrderFormPageProps {
 }
 
 type FormItem = {
+    id: string
     productId: string
     storageId: string
     quantity: string
     unitPrice: string
+    batchNumber: string
+    batchSalePrice: string
+    batchExpiryDate: string
+    batchManufacturingDate: string
 }
 
 function createEmptyItem(storageId = ''): FormItem {
-    return { productId: '', storageId, quantity: '1', unitPrice: '' }
+    return {
+        id: generateId(),
+        productId: '',
+        storageId,
+        quantity: '1',
+        unitPrice: '',
+        batchNumber: '',
+        batchSalePrice: '',
+        batchExpiryDate: '',
+        batchManufacturingDate: ''
+    }
 }
 
 function roundFormAmount(value: number, currency: CurrencyCode) {
@@ -103,10 +119,15 @@ export function PurchaseOrderFormPage({
     const [items, setItems] = useState<FormItem[]>(() => {
         if (editingOrder) {
             return editingOrder.items.map((item) => ({
+                id: item.id || generateId(),
                 productId: item.productId,
                 storageId: item.storageId || editingOrder.destinationStorageId || defaultStorageId,
                 quantity: String(item.quantity),
-                unitPrice: String(item.convertedUnitPrice)
+                unitPrice: String(item.convertedUnitPrice),
+                batchNumber: item.batchNumber || '',
+                batchSalePrice: item.batchSalePrice == null ? '' : String(item.batchSalePrice),
+                batchExpiryDate: item.batchExpiryDate || '',
+                batchManufacturingDate: item.batchManufacturingDate || ''
             }))
         }
         return [createEmptyItem(defaultStorageId)]
@@ -135,6 +156,8 @@ export function PurchaseOrderFormPage({
                 const next = { ...item, ...changes }
                 if (changes.productId && (!item.unitPrice || changes.productId !== item.productId)) {
                     next.unitPrice = applyDefaultItemPrice(changes.productId, currency)
+                    const product = products.find((entry) => entry.id === changes.productId)
+                    next.batchSalePrice = product ? String(product.price) : ''
                 }
                 return next
             })
@@ -199,8 +222,15 @@ export function PurchaseOrderFormPage({
 
                     const quantity = Number(item.quantity)
                     const unitPrice = Number(item.unitPrice || 0)
+                    const batchSalePrice = item.batchSalePrice === '' ? null : Number(item.batchSalePrice)
+                    if (batchSalePrice !== null && (!Number.isFinite(batchSalePrice) || batchSalePrice < 0)) {
+                        throw new Error(t('orders.form.errors.invalidBatchSalePrice', {
+                            productName: product.name,
+                            defaultValue: `Enter a valid batch selling price for ${product.name}.`
+                        }))
+                    }
                     return {
-                        id: `${product.id}-${item.storageId}-${quantity}-${unitPrice}`,
+                        id: item.id,
                         productId: product.id,
                         storageId: item.storageId,
                         productName: product.name,
@@ -210,7 +240,11 @@ export function PurchaseOrderFormPage({
                         originalCurrency: product.currency,
                         originalUnitPrice: convertCurrencyAmountWithLiveRates(unitPrice, currency, product.currency, liveRates),
                         convertedUnitPrice: roundFormAmount(unitPrice, currency),
-                        settlementCurrency: currency
+                        settlementCurrency: currency,
+                        batchNumber: item.batchNumber.trim() || null,
+                        batchSalePrice,
+                        batchExpiryDate: item.batchExpiryDate || null,
+                        batchManufacturingDate: item.batchManufacturingDate || null
                     }
                 })
 
@@ -246,14 +280,12 @@ export function PurchaseOrderFormPage({
                 notes: notes || undefined
             }
 
-            if (editingOrderId) {
-                await updatePurchaseOrder(editingOrderId, payload)
-            } else {
-                await createPurchaseOrder(workspaceId, payload)
-            }
+            const savedOrder = editingOrderId
+                ? await updatePurchaseOrder(editingOrderId, payload)
+                : await createPurchaseOrder(workspaceId, payload)
 
             toast({ title: editingOrderId ? (t('common.save') || 'Saved') : (t('common.create') || 'Created') })
-            onCreated?.(editingOrderId || '')
+            onCreated?.(savedOrder.id)
         } catch (error: any) {
             toast({
                 title: t('common.error') || 'Error',
@@ -408,9 +440,21 @@ export function PurchaseOrderFormPage({
                                         {items.map((item, index) => {
                                             const product = products.find((entry) => entry.id === item.productId)
                                             const lineTotal = roundFormAmount((Number(item.quantity) || 0) * (Number(item.unitPrice) || 0), currency)
+                                            const createsBatch = product
+                                                ? shouldCreatePurchaseCostBatch(
+                                                    convertCurrencyAmountWithLiveRates(
+                                                        Number(item.unitPrice) || 0,
+                                                        currency,
+                                                        product.currency,
+                                                        liveRates
+                                                    ),
+                                                    product.costPrice,
+                                                    product.currency
+                                                )
+                                                : false
 
                                             return (
-                                                <div key={`purchase-item-${index}`} className="grid gap-3 rounded-2xl border bg-background p-4 md:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)_110px_140px_40px]">
+                                                <div key={item.id} className="grid gap-3 rounded-2xl border bg-background p-4 md:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)_110px_140px_40px]">
                                                     <div className="space-y-2">
                                                         <Label className="md:hidden">{t('orders.form.table.product', { defaultValue: 'Product' })}</Label>
                                                         <Select value={item.productId} onValueChange={(value) => updateItem(index, { productId: value })}>
@@ -460,6 +504,46 @@ export function PurchaseOrderFormPage({
                                                         <span>{product?.sku ? `SKU: ${product.sku}` : '\u00A0'}</span>
                                                         <span>{(t('orders.form.table.total', { defaultValue: 'Total' }))}: {formatCurrency(lineTotal, currency, features.iqd_display_preference)}</span>
                                                     </div>
+                                                    {createsBatch && <div className="grid gap-3 border-t pt-3 md:col-span-5 md:grid-cols-4">
+                                                        <div className="space-y-2">
+                                                            <Label>{t('orders.form.batchNumber', { defaultValue: 'Batch / Lot Number' })}</Label>
+                                                            <Input
+                                                                value={item.batchNumber}
+                                                                onChange={(event) => updateItem(index, { batchNumber: event.target.value })}
+                                                                placeholder={t('orders.form.autoGenerated', { defaultValue: 'Auto-generated' })}
+                                                            />
+                                                        </div>
+                                                        <div className="space-y-2">
+                                                            <Label>
+                                                                {t('orders.form.batchSalePrice', { defaultValue: 'Batch Selling Price' })}
+                                                                {product ? ` (${product.currency.toUpperCase()})` : ''}
+                                                            </Label>
+                                                            <Input
+                                                                type="number"
+                                                                min="0"
+                                                                step="0.01"
+                                                                value={item.batchSalePrice}
+                                                                onChange={(event) => updateItem(index, { batchSalePrice: event.target.value })}
+                                                                placeholder={product ? String(product.price) : '0'}
+                                                            />
+                                                        </div>
+                                                        <div className="space-y-2">
+                                                            <Label>{t('orders.form.manufacturingDate', { defaultValue: 'Manufacturing Date' })}</Label>
+                                                            <Input
+                                                                type="date"
+                                                                value={item.batchManufacturingDate}
+                                                                onChange={(event) => updateItem(index, { batchManufacturingDate: event.target.value })}
+                                                            />
+                                                        </div>
+                                                        <div className="space-y-2">
+                                                            <Label>{t('orders.form.expiryDate', { defaultValue: 'Expiry Date' })}</Label>
+                                                            <Input
+                                                                type="date"
+                                                                value={item.batchExpiryDate}
+                                                                onChange={(event) => updateItem(index, { batchExpiryDate: event.target.value })}
+                                                            />
+                                                        </div>
+                                                    </div>}
                                                 </div>
                                             )
                                         })}

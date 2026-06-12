@@ -11,7 +11,7 @@ import { useDateRange } from '@/context/DateRangeContext'
 import { useExchangeRate } from '@/context/ExchangeRateContext'
 import { formatLocalizedMonthYear } from '@/lib/monthDisplay'
 import { buildOrderExchangeRatesSnapshot, convertCurrencyAmountWithLiveRates, getPrimaryExchangeDetails } from '@/lib/orderCurrency'
-import { formatCurrency, formatDate, formatLocalDateTimeValue, parseLocalDateTimeValue } from '@/lib/utils'
+import { formatCurrency, formatDate, formatLocalDateTimeValue, generateId, parseLocalDateTimeValue } from '@/lib/utils'
 import { generateTemplatePdf, type PrintFormat } from '@/services/pdfGenerator'
 import {
     createPurchaseOrder,
@@ -24,6 +24,7 @@ import {
     lockSalesOrder,
     recordObligationSettlement,
     reversePaymentTransaction,
+    shouldCreatePurchaseCostBatch,
     updatePurchaseOrder,
     updatePurchaseOrderStatus,
     updateSalesOrder,
@@ -92,10 +93,15 @@ import { OrderStatusBadge } from '@/ui/components/orders/OrderStatusBadge'
 type OrderTab = 'sales' | 'purchase'
 
 type FormItem = {
+    id: string
     productId: string
     storageId: string
     quantity: string
     unitPrice: string
+    batchNumber: string
+    batchSalePrice: string
+    batchExpiryDate: string
+    batchManufacturingDate: string
 }
 
 type SalesFormState = {
@@ -130,10 +136,15 @@ type DeleteTarget =
 
 function createEmptyItem(storageId = ''): FormItem {
     return {
+        id: generateId(),
         productId: '',
         storageId,
         quantity: '1',
-        unitPrice: ''
+        unitPrice: '',
+        batchNumber: '',
+        batchSalePrice: '',
+        batchExpiryDate: '',
+        batchManufacturingDate: ''
     }
 }
 
@@ -558,10 +569,15 @@ function OrdersListView({ workspaceId }: { workspaceId: string }) {
             isPaid: order.isPaid,
             paymentMethod: order.paymentMethod || 'credit',
             items: order.items.map((item) => ({
+                id: item.id || generateId(),
                 productId: item.productId,
                 storageId: item.storageId || order.sourceStorageId || defaultStorageId,
                 quantity: String(item.quantity),
-                unitPrice: String(item.convertedUnitPrice)
+                unitPrice: String(item.convertedUnitPrice),
+                batchNumber: '',
+                batchSalePrice: '',
+                batchExpiryDate: '',
+                batchManufacturingDate: ''
             }))
         })
         setDialogOpen(true)
@@ -580,10 +596,15 @@ function OrdersListView({ workspaceId }: { workspaceId: string }) {
             isPaid: order.isPaid,
             paymentMethod: order.paymentMethod || 'credit',
             items: order.items.map((item) => ({
+                id: item.id || generateId(),
                 productId: item.productId,
                 storageId: item.storageId || order.destinationStorageId || defaultStorageId,
                 quantity: String(item.quantity),
-                unitPrice: String(item.convertedUnitPrice)
+                unitPrice: String(item.convertedUnitPrice),
+                batchNumber: item.batchNumber || '',
+                batchSalePrice: item.batchSalePrice == null ? '' : String(item.batchSalePrice),
+                batchExpiryDate: item.batchExpiryDate || '',
+                batchManufacturingDate: item.batchManufacturingDate || ''
             }))
         })
         setDialogOpen(true)
@@ -675,6 +696,8 @@ function OrdersListView({ workspaceId }: { workspaceId: string }) {
                 const next = { ...item, ...changes }
                 if (changes.productId && (!item.unitPrice || changes.productId !== item.productId)) {
                     next.unitPrice = applyDefaultItemPrice('purchase', changes.productId, current.currency)
+                    const product = products.find((entry) => entry.id === changes.productId)
+                    next.batchSalePrice = product ? String(product.price) : ''
                 }
                 return next
             })
@@ -693,7 +716,7 @@ function OrdersListView({ workspaceId }: { workspaceId: string }) {
                 const quantity = Number(item.quantity)
                 const unitPrice = Number(item.unitPrice || 0)
                 return {
-                    id: `${product.id}-${item.storageId}-${quantity}-${unitPrice}`,
+                    id: item.id,
                     productId: product.id,
                     storageId: item.storageId,
                     productName: product.name,
@@ -723,8 +746,12 @@ function OrdersListView({ workspaceId }: { workspaceId: string }) {
 
                 const quantity = Number(item.quantity)
                 const unitPrice = Number(item.unitPrice || 0)
+                const batchSalePrice = item.batchSalePrice === '' ? null : Number(item.batchSalePrice)
+                if (batchSalePrice !== null && (!Number.isFinite(batchSalePrice) || batchSalePrice < 0)) {
+                    throw new Error(`Enter a valid batch selling price for ${product.name}`)
+                }
                 return {
-                    id: `${product.id}-${item.storageId}-${quantity}-${unitPrice}`,
+                    id: item.id,
                     productId: product.id,
                     storageId: item.storageId,
                     productName: product.name,
@@ -734,7 +761,11 @@ function OrdersListView({ workspaceId }: { workspaceId: string }) {
                     originalCurrency: product.currency,
                     originalUnitPrice: convertCurrencyAmountWithLiveRates(unitPrice, orderCurrency, product.currency, liveRates),
                     convertedUnitPrice: roundFormAmount(unitPrice, orderCurrency),
-                    settlementCurrency: orderCurrency
+                    settlementCurrency: orderCurrency,
+                    batchNumber: item.batchNumber.trim() || null,
+                    batchSalePrice,
+                    batchExpiryDate: item.batchExpiryDate || null,
+                    batchManufacturingDate: item.batchManufacturingDate || null
                 }
             })
 
@@ -1654,9 +1685,21 @@ function OrdersListView({ workspaceId }: { workspaceId: string }) {
                                             {purchaseForm.items.map((item, index) => {
                                                 const product = products.find((entry) => entry.id === item.productId)
                                                 const lineTotal = roundFormAmount((Number(item.quantity) || 0) * (Number(item.unitPrice) || 0), purchaseForm.currency)
+                                                const createsBatch = product
+                                                    ? shouldCreatePurchaseCostBatch(
+                                                        convertCurrencyAmountWithLiveRates(
+                                                            Number(item.unitPrice) || 0,
+                                                            purchaseForm.currency,
+                                                            product.currency,
+                                                            liveRates
+                                                        ),
+                                                        product.costPrice,
+                                                        product.currency
+                                                    )
+                                                    : false
 
                                                 return (
-                                                    <div key={`purchase-item-${index}`} className="grid gap-3 rounded-2xl border bg-background p-4 md:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)_110px_140px_40px]">
+                                                    <div key={item.id} className="grid gap-3 rounded-2xl border bg-background p-4 md:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)_110px_140px_40px]">
                                                         <div className="space-y-2">
                                                             <Label className="md:hidden">{t('orders.form.table.product') || 'Product'}</Label>
                                                             <Select value={item.productId} onValueChange={(value) => updatePurchaseItem(index, { productId: value })}>
@@ -1703,6 +1746,24 @@ function OrdersListView({ workspaceId }: { workspaceId: string }) {
                                                             <span>{product?.sku ? `SKU: ${product.sku}` : '\u00A0'}</span>
                                                             <span>{(t('orders.form.table.total') || 'Total')}: {formatCurrency(lineTotal, purchaseForm.currency, features.iqd_display_preference)}</span>
                                                         </div>
+                                                        {createsBatch && <div className="grid gap-3 border-t pt-3 md:col-span-5 md:grid-cols-4">
+                                                            <div className="space-y-2">
+                                                                <Label>Batch / Lot Number</Label>
+                                                                <Input value={item.batchNumber} onChange={(event) => updatePurchaseItem(index, { batchNumber: event.target.value })} placeholder="Auto-generated" />
+                                                            </div>
+                                                            <div className="space-y-2">
+                                                                <Label>Batch Selling Price{product ? ` (${product.currency.toUpperCase()})` : ''}</Label>
+                                                                <Input type="number" min="0" step="0.01" value={item.batchSalePrice} onChange={(event) => updatePurchaseItem(index, { batchSalePrice: event.target.value })} placeholder={product ? String(product.price) : '0'} />
+                                                            </div>
+                                                            <div className="space-y-2">
+                                                                <Label>Manufacturing Date</Label>
+                                                                <Input type="date" value={item.batchManufacturingDate} onChange={(event) => updatePurchaseItem(index, { batchManufacturingDate: event.target.value })} />
+                                                            </div>
+                                                            <div className="space-y-2">
+                                                                <Label>Expiry Date</Label>
+                                                                <Input type="date" value={item.batchExpiryDate} onChange={(event) => updatePurchaseItem(index, { batchExpiryDate: event.target.value })} />
+                                                            </div>
+                                                        </div>}
                                                     </div>
                                                 )
                                             })}

@@ -26,6 +26,8 @@ export interface StockBatchInput {
     expiryDate?: string | null
     manufacturingDate?: string | null
     notes?: string | null
+    sourcePurchaseOrderId?: string | null
+    sourcePurchaseOrderItemId?: string | null
 }
 
 export interface StockBatchCoverage {
@@ -42,6 +44,12 @@ export interface StockBatchSalePlan {
     batchQuantity: number
     sellableQuantity: number
     allocations: StockBatchAllocation[]
+}
+
+export interface StockBatchSaleRequest {
+    productId: string
+    storageId: string
+    quantity: number
 }
 
 export type BatchAwareInventoryProduct = InventoryProduct & {
@@ -129,6 +137,54 @@ function normalizeMoneyValue(value: unknown, fieldLabel: string) {
     return amount
 }
 
+export function calculateStockBatchUnitCost(
+    allocations: StockBatchAllocation[],
+    fallbackCost: number,
+    targetCurrency: CurrencyCode,
+    convertCurrency: (
+        amount: number,
+        from: CurrencyCode,
+        to: CurrencyCode
+    ) => number = (amount) => amount,
+    requestedQuantity?: number
+) {
+    const normalizedFallback = normalizeMoneyValue(fallbackCost, 'Fallback cost')
+    const validAllocations = allocations.filter((allocation) =>
+        Number.isInteger(allocation.quantity) && allocation.quantity > 0
+    )
+    const allocatedQuantity = validAllocations.reduce((sum, allocation) => sum + allocation.quantity, 0)
+    const totalQuantity = requestedQuantity == null
+        ? allocatedQuantity
+        : Math.max(Number(requestedQuantity), allocatedQuantity)
+    if (!Number.isFinite(totalQuantity) || totalQuantity <= 0) {
+        return normalizedFallback
+    }
+    const totalCost = validAllocations.reduce((sum, allocation) => {
+        const hasBatchCost = allocation.costPrice != null
+        const unitCost = hasBatchCost
+            ? normalizeMoneyValue(allocation.costPrice, 'Batch allocation cost')
+            : normalizedFallback
+        const sourceCurrency = hasBatchCost
+            ? normalizeCurrencyCode(allocation.currency, targetCurrency)
+            : targetCurrency
+
+        return sum + (convertCurrency(unitCost, sourceCurrency, targetCurrency) * allocation.quantity)
+    }, normalizedFallback * (totalQuantity - allocatedQuantity))
+
+    return totalCost / totalQuantity
+}
+
+export function shouldCreatePurchaseCostBatch(
+    purchaseUnitCost: number,
+    productUnitCost: number,
+    currency: CurrencyCode
+) {
+    const precision = currency === 'iqd' ? 1 : 100
+    const normalize = (value: number) =>
+        Math.round(normalizeMoneyValue(value, 'Purchase cost') * precision) / precision
+    return normalize(purchaseUnitCost) !== normalize(productUnitCost)
+}
+
 function compareOptionalDate(left?: string | null, right?: string | null) {
     if (!left && !right) {
         return 0
@@ -209,12 +265,8 @@ function normalizeAllocationList(allocations: StockBatchAllocation[]) {
 }
 
 function getSellableQuantity(inventoryQuantity: number, batches: StockBatch[]) {
-    if (batches.length === 0) {
-        return inventoryQuantity
-    }
-
-    const batchQuantity = batches.reduce((sum, row) => sum + row.quantity, 0)
-    return Math.max(0, Math.min(inventoryQuantity, batchQuantity))
+    void batches
+    return inventoryQuantity
 }
 
 async function getProductBatchDefaults(
@@ -289,7 +341,13 @@ async function normalizeBatchInput(
         ),
         expiryDate: normalizeDateString(input.expiryDate),
         manufacturingDate: normalizeDateString(input.manufacturingDate),
-        notes: normalizeOptionalString(input.notes)
+        notes: normalizeOptionalString(input.notes),
+        sourcePurchaseOrderId: normalizeOptionalString(
+            input.sourcePurchaseOrderId ?? existing?.sourcePurchaseOrderId
+        ),
+        sourcePurchaseOrderItemId: normalizeOptionalString(
+            input.sourcePurchaseOrderItemId ?? existing?.sourcePurchaseOrderItemId
+        )
     }
 }
 
@@ -322,22 +380,25 @@ async function queueOfflineUpserts(
     ))
 }
 
-async function syncUpsertBatches(
+export async function syncStockBatchesBestEffort(
     batches: StockBatch[],
     workspaceId: string
 ) {
-    if (!batches.length || !shouldUseCloudBusinessData(workspaceId)) {
+    const dedupedBatches = Array.from(
+        new Map(batches.map((batch) => [batch.id, batch])).values()
+    )
+    if (!dedupedBatches.length || !shouldUseCloudBusinessData(workspaceId)) {
         return
     }
 
     if (!isOnline()) {
-        await queueOfflineUpserts(batches, workspaceId)
+        await queueOfflineUpserts(dedupedBatches, workspaceId)
         return
     }
 
     try {
         const client = getSupabaseClientForTable(TABLE_NAME)
-        const payload = batches.map((batch) =>
+        const payload = dedupedBatches.map((batch) =>
             sanitizeBatchPayload(batch as unknown as Record<string, unknown>)
         )
 
@@ -349,10 +410,10 @@ async function syncUpsertBatches(
             throw error
         }
 
-        await markBatchesSynced(batches.map((batch) => batch.id))
+        await markBatchesSynced(dedupedBatches.map((batch) => batch.id))
     } catch (error) {
         console.error('[StockBatches] Failed to sync batches:', error)
-        await queueOfflineUpserts(batches, workspaceId)
+        await queueOfflineUpserts(dedupedBatches, workspaceId)
     }
 }
 
@@ -422,75 +483,111 @@ export async function getStockBatchSalePlan(
     storageId: string,
     requestedQuantity: number
 ): Promise<StockBatchSalePlan> {
-    const quantity = Number(requestedQuantity)
-    if (!Number.isInteger(quantity) || quantity <= 0) {
-        throw new Error('Sale quantity must be a whole number greater than zero')
-    }
-
-    const [inventoryQuantity, activeBatches] = await Promise.all([
-        getInventoryQuantityForProductStorage(productId, storageId),
-        getActiveBatchesForProductStorage(productId, storageId)
-    ])
-
-    const sortedBatches = sortBatchesForConsumption(activeBatches)
-    const batchQuantity = sortedBatches.reduce((sum, row) => sum + row.quantity, 0)
-    const sellableQuantity = getSellableQuantity(inventoryQuantity, sortedBatches)
-
-    if (quantity > sellableQuantity) {
-        throw new Error('Insufficient batched inventory for this product')
-    }
-
-    if (sortedBatches.length === 0) {
-        return {
-            productId,
-            storageId,
-            requestedQuantity: quantity,
-            inventoryQuantity,
-            batchQuantity,
-            sellableQuantity,
-            allocations: []
-        }
-    }
-
-    let remaining = quantity
-    const allocations: StockBatchAllocation[] = []
-
-    for (const batch of sortedBatches) {
-        if (remaining <= 0) {
-            break
-        }
-
-        const allocatedQuantity = Math.min(remaining, batch.quantity)
-        if (allocatedQuantity <= 0) {
-            continue
-        }
-
-        allocations.push({
-            batchId: batch.id,
-            batchNumber: batch.batchNumber,
-            quantity: allocatedQuantity,
-            price: batch.price,
-            costPrice: batch.costPrice,
-            currency: batch.currency,
-            expiryDate: batch.expiryDate ?? null,
-            manufacturingDate: batch.manufacturingDate ?? null
-        })
-        remaining -= allocatedQuantity
-    }
-
-    if (remaining > 0) {
-        throw new Error('Insufficient batched inventory for this product')
-    }
-
-    return {
+    const [plan] = await getStockBatchSalePlans([{
         productId,
         storageId,
-        requestedQuantity: quantity,
-        inventoryQuantity,
-        batchQuantity,
-        sellableQuantity,
-        allocations
-    }
+        quantity: requestedQuantity
+    }])
+    return plan
+}
+
+export async function getStockBatchSalePlans(
+    requests: StockBatchSaleRequest[]
+): Promise<StockBatchSalePlan[]> {
+    const normalizedRequests = requests.map((request) => {
+        const quantity = Number(request.quantity)
+        if (!Number.isInteger(quantity) || quantity <= 0) {
+            throw new Error('Sale quantity must be a whole number greater than zero')
+        }
+        return {
+            productId: request.productId,
+            storageId: request.storageId,
+            quantity
+        }
+    })
+    const positionKeys = Array.from(new Set(normalizedRequests.map((request) =>
+        `${request.productId}:${request.storageId}`
+    )))
+    const positionState = new Map<string, {
+        inventoryQuantity: number
+        remainingInventory: number
+        batchQuantity: number
+        sellableQuantity: number
+        batches: Array<StockBatch & { remainingQuantity: number }>
+    }>()
+
+    await Promise.all(positionKeys.map(async (positionKey) => {
+        const request = normalizedRequests.find((entry) =>
+            `${entry.productId}:${entry.storageId}` === positionKey
+        )
+        if (!request) {
+            return
+        }
+
+        const [inventoryQuantity, activeBatches] = await Promise.all([
+            getInventoryQuantityForProductStorage(request.productId, request.storageId),
+            getActiveBatchesForProductStorage(request.productId, request.storageId)
+        ])
+        const sortedBatches = sortBatchesForConsumption(activeBatches)
+        const batchQuantity = sortedBatches.reduce((sum, row) => sum + row.quantity, 0)
+
+        positionState.set(positionKey, {
+            inventoryQuantity,
+            remainingInventory: inventoryQuantity,
+            batchQuantity,
+            sellableQuantity: getSellableQuantity(inventoryQuantity, sortedBatches),
+            batches: sortedBatches.map((batch) => ({
+                ...batch,
+                remainingQuantity: batch.quantity
+            }))
+        })
+    }))
+
+    return normalizedRequests.map((request) => {
+        const positionKey = `${request.productId}:${request.storageId}`
+        const state = positionState.get(positionKey)
+        if (!state || request.quantity > state.remainingInventory) {
+            throw new Error('Insufficient inventory for this product')
+        }
+
+        const allocations: StockBatchAllocation[] = []
+        let remaining = request.quantity
+
+        for (const batch of state.batches) {
+            if (remaining <= 0) {
+                break
+            }
+
+            const allocatedQuantity = Math.min(remaining, batch.remainingQuantity)
+            if (allocatedQuantity <= 0) {
+                continue
+            }
+
+            allocations.push({
+                batchId: batch.id,
+                batchNumber: batch.batchNumber,
+                quantity: allocatedQuantity,
+                price: batch.price,
+                costPrice: batch.costPrice,
+                currency: batch.currency,
+                expiryDate: batch.expiryDate ?? null,
+                manufacturingDate: batch.manufacturingDate ?? null
+            })
+            batch.remainingQuantity -= allocatedQuantity
+            remaining -= allocatedQuantity
+        }
+
+        state.remainingInventory -= request.quantity
+        return {
+            productId: request.productId,
+            storageId: request.storageId,
+            requestedQuantity: request.quantity,
+            inventoryQuantity: state.inventoryQuantity,
+            batchQuantity: state.batchQuantity,
+            sellableQuantity: state.sellableQuantity,
+            allocations
+        }
+    })
 }
 
 export async function commitStockBatchAllocations(
@@ -546,7 +643,7 @@ export async function commitStockBatchAllocations(
     })
 
     if (!options?.skipRemoteSync && syncSource !== 'remote') {
-        await syncUpsertBatches(updatedBatches, workspaceId)
+        await syncStockBatchesBestEffort(updatedBatches, workspaceId)
     }
     return updatedBatches
 }
@@ -780,7 +877,7 @@ export async function restoreStockBatchAllocations(
     })
 
     if (!options?.skipRemoteSync && syncSource !== 'remote') {
-        await syncUpsertBatches(restorationResult.rowsToSync, workspaceId)
+        await syncStockBatchesBestEffort(restorationResult.rowsToSync, workspaceId)
     }
     return restorationResult.appliedAllocations
 }
@@ -791,9 +888,12 @@ export async function createStockBatch(
     options?: {
         timestamp?: string
         id?: string
+        syncSource?: 'local' | 'remote'
+        skipRemoteSync?: boolean
     }
 ) {
     const timestamp = options?.timestamp || new Date().toISOString()
+    const syncSource = options?.syncSource || 'local'
     const normalized = await normalizeBatchInput(input)
     await validateBatchTotals(workspaceId, normalized)
 
@@ -805,11 +905,13 @@ export async function createStockBatch(
         updatedAt: timestamp,
         version: 1,
         isDeleted: false,
-        ...getSyncMetadata(workspaceId, timestamp)
+        ...getSyncMetadata(workspaceId, timestamp, syncSource)
     }
 
     await db.stock_batches.put(batch)
-    await syncUpsertBatches([batch], workspaceId)
+    if (!options?.skipRemoteSync && syncSource !== 'remote') {
+        await syncStockBatchesBestEffort([batch], workspaceId)
+    }
     return batch
 }
 
@@ -830,7 +932,9 @@ export async function updateStockBatch(id: string, data: Partial<StockBatchInput
         currency: data.currency ?? existing.currency,
         expiryDate: data.expiryDate ?? existing.expiryDate,
         manufacturingDate: data.manufacturingDate ?? existing.manufacturingDate,
-        notes: data.notes ?? existing.notes
+        notes: data.notes ?? existing.notes,
+        sourcePurchaseOrderId: data.sourcePurchaseOrderId ?? existing.sourcePurchaseOrderId,
+        sourcePurchaseOrderItemId: data.sourcePurchaseOrderItemId ?? existing.sourcePurchaseOrderItemId
     }, existing)
     await validateBatchTotals(existing.workspaceId, normalized, existing.id)
 
@@ -843,7 +947,7 @@ export async function updateStockBatch(id: string, data: Partial<StockBatchInput
     }
 
     await db.stock_batches.put(updated)
-    await syncUpsertBatches([updated], existing.workspaceId)
+    await syncStockBatchesBestEffort([updated], existing.workspaceId)
     return updated
 }
 
@@ -863,7 +967,7 @@ export async function deleteStockBatch(id: string) {
     }
 
     await db.stock_batches.put(deleted)
-    await syncUpsertBatches([deleted], existing.workspaceId)
+    await syncStockBatchesBestEffort([deleted], existing.workspaceId)
 }
 
 export async function refreshStockBatchesFromSupabase(workspaceId: string) {
@@ -919,6 +1023,37 @@ export async function refreshStockBatchesFromSupabase(workspaceId: string) {
 
         if (staleIds.length > 0) {
             await db.stock_batches.bulkDelete(staleIds)
+        }
+    })
+}
+
+export async function hydrateStockBatchesForPurchaseOrder(
+    workspaceId: string,
+    purchaseOrderId: string
+) {
+    if (!workspaceId || !purchaseOrderId || !shouldUseCloudBusinessData(workspaceId) || !isOnline()) {
+        return
+    }
+
+    const client = getSupabaseClientForTable(TABLE_NAME)
+    const { data, error } = await runSupabaseAction(`${TABLE_NAME}.purchaseReceipt.fetch`, () =>
+        client
+            .from(TABLE_NAME)
+            .select('*')
+            .eq('workspace_id', workspaceId)
+            .eq('source_purchase_order_id', purchaseOrderId)
+    )
+    if (error || !data) {
+        return
+    }
+
+    const syncedAt = new Date().toISOString()
+    await db.transaction('rw', db.stock_batches, async () => {
+        for (const remoteItem of data) {
+            const localItem = toCamelCase(remoteItem as Record<string, unknown>) as unknown as StockBatch
+            localItem.syncStatus = 'synced'
+            localItem.lastSyncedAt = syncedAt
+            await db.stock_batches.put(localItem)
         }
     })
 }

@@ -12,8 +12,8 @@ BEGIN
 
     SELECT jsonb_build_object(
         'totalRevenue', COALESCE(SUM(CASE WHEN COALESCE(s.is_returned, FALSE) = FALSE THEN (si.quantity - si.returned_quantity) * COALESCE(si.converted_unit_price, si.unit_price) ELSE 0 END), 0),
-        'totalCost', COALESCE(SUM(CASE WHEN COALESCE(s.is_returned, FALSE) = FALSE THEN (si.quantity - si.returned_quantity) * si.cost_price ELSE 0 END), 0),
-        'netProfit', COALESCE(SUM(CASE WHEN COALESCE(s.is_returned, FALSE) = FALSE THEN ((si.quantity - si.returned_quantity) * COALESCE(si.converted_unit_price, si.unit_price)) - ((si.quantity - si.returned_quantity) * si.cost_price) ELSE 0 END), 0),
+        'totalCost', COALESCE(SUM(CASE WHEN COALESCE(s.is_returned, FALSE) = FALSE THEN (si.quantity - si.returned_quantity) * COALESCE(si.converted_cost_price, si.cost_price) ELSE 0 END), 0),
+        'netProfit', COALESCE(SUM(CASE WHEN COALESCE(s.is_returned, FALSE) = FALSE THEN ((si.quantity - si.returned_quantity) * COALESCE(si.converted_unit_price, si.unit_price)) - ((si.quantity - si.returned_quantity) * COALESCE(si.converted_cost_price, si.cost_price)) ELSE 0 END), 0),
         'totalSales', COUNT(DISTINCT CASE WHEN COALESCE(s.is_returned, FALSE) = FALSE THEN s.id END),
         'totalItems', SUM(CASE WHEN COALESCE(s.is_returned, FALSE) = FALSE THEN si.quantity - si.returned_quantity ELSE 0 END),
         'averageSaleValue', COALESCE(AVG(CASE WHEN COALESCE(s.is_returned, FALSE) = FALSE THEN s.total_amount END), 0),

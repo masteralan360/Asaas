@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/auth'
 import { supabase } from '@/auth/supabase'
-import { addToOfflineMutations, adjustInventoryQuantity, commitStockBatchAllocations, generateLocalSaleSequenceId, getPrimaryStorageFromList, getStockBatchSalePlan, refreshStockBatchesFromSupabase, useActiveDiscountMap, useBatchAwareInventoryProducts, useCategories, useStorages } from '@/local-db'
+import { addToOfflineMutations, adjustInventoryQuantity, calculateStockBatchUnitCost, commitStockBatchAllocations, generateLocalSaleSequenceId, getPrimaryStorageFromList, getStockBatchSalePlans, refreshStockBatchesFromSupabase, useActiveDiscountMap, useBatchAwareInventoryProducts, useCategories, useStorages } from '@/local-db'
 import { db } from '@/local-db/database'
 import type { CurrencyCode } from '@/local-db/models'
 import { useWorkspace } from '@/workspace'
@@ -13,6 +13,7 @@ import { normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseR
 import { platformService } from '@/services/platformService'
 import { useKdsStream } from '@/hooks/useKdsStream'
 import { createVerificationSale, verifySale } from '@/lib/saleVerification'
+import { convertCurrencyAmountWithAvailableSnapshot } from '@/lib/orderCurrency'
 
 const TICKETS_STORAGE_KEY = 'instant_pos_tickets'
 const TICKET_COUNTER_KEY = 'instant_pos_ticket_counter'
@@ -868,15 +869,19 @@ export function InstantPOS() {
             }
         }
 
-        let batchSalePlans: Awaited<ReturnType<typeof getStockBatchSalePlan>>[]
+        let batchSalePlans: Awaited<ReturnType<typeof getStockBatchSalePlans>>
         try {
-            batchSalePlans = await Promise.all(activeTicket.items.map(async (item) => {
+            batchSalePlans = await getStockBatchSalePlans(activeTicket.items.map((item) => {
                 const resolvedStorageId = item.storageId || resolveTicketProduct(item)?.storageId
                 if (!resolvedStorageId) {
                     throw new Error('Storage is required for batched sale items')
                 }
 
-                return getStockBatchSalePlan(item.productId, resolvedStorageId, item.quantity)
+                return {
+                    productId: item.productId,
+                    storageId: resolvedStorageId,
+                    quantity: item.quantity
+                }
             }))
         } catch (error) {
             const normalized = normalizeSupabaseActionError(error)
@@ -891,10 +896,27 @@ export function InstantPOS() {
 
         const itemsWithMetadata = activeTicket.items.map((item, index) => {
             const product = resolveTicketProduct(item)
-            const costPrice = product?.costPrice || 0
             const inventorySnapshot = product?.quantity ?? 0
             const batchPlan = batchSalePlans[index]
             const resolvedStorageId = item.storageId || product?.storageId || null
+            const originalCurrency = item.currency as CurrencyCode
+            const targetCurrency = settlementCurrency as CurrencyCode
+            const convertBatchCost = (amount: number, from: CurrencyCode, to: CurrencyCode) =>
+                convertCurrencyAmountWithAvailableSnapshot(amount, from, to) ?? amount
+            const costPrice = calculateStockBatchUnitCost(
+                batchPlan.allocations,
+                product?.costPrice || 0,
+                originalCurrency,
+                convertBatchCost,
+                batchPlan.requestedQuantity
+            )
+            const convertedCostPrice = calculateStockBatchUnitCost(
+                batchPlan.allocations,
+                convertBatchCost(product?.costPrice || 0, originalCurrency, targetCurrency),
+                targetCurrency,
+                convertBatchCost,
+                batchPlan.requestedQuantity
+            )
             return {
                 product_id: item.productId,
                 storage_id: resolvedStorageId,
@@ -904,7 +926,7 @@ export function InstantPOS() {
                 unit_price: item.unitPrice,
                 total_price: item.unitPrice * item.quantity,
                 cost_price: costPrice,
-                converted_cost_price: costPrice,
+                converted_cost_price: convertedCostPrice,
                 original_currency: item.currency,
                 original_unit_price: item.baseUnitPrice,
                 converted_unit_price: item.unitPrice,

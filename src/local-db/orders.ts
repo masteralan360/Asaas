@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
+import { v5 as uuidv5 } from 'uuid'
 
 import { useNetworkStatus } from '@/hooks/useNetworkStatus'
 import { getTravelSaleCost } from '@/lib/travelAgency'
@@ -17,17 +18,32 @@ import {
     recalculateBusinessPartnerSummary
 } from './businessPartners'
 import {
-    adjustInventoryQuantity,
-    getInventoryQuantityForProductStorage
+    getInventoryQuantityForProductStorage,
+    hydrateInventoryProductStoragesFromSupabase,
+    putInventoryQuantity,
+    syncInventoryRowsBestEffort,
+    syncProductStockSnapshot
 } from './inventory'
 import { addToOfflineMutations, fetchTableFromSupabase } from './hooks'
+import {
+    calculateStockBatchUnitCost,
+    commitStockBatchAllocations,
+    createStockBatch,
+    getStockBatchSalePlans,
+    hydrateStockBatchesForPurchaseOrder,
+    refreshStockBatchesFromSupabase,
+    shouldCreatePurchaseCostBatch,
+    syncStockBatchesBestEffort
+} from './stockBatches'
 import type {
     Customer,
     CurrencyCode,
+    Inventory,
     PurchaseOrder,
     PurchaseOrderStatus,
     SalesOrder,
     SalesOrderStatus,
+    StockBatch,
     Supplier,
     TravelAgencySale
 } from './models'
@@ -35,6 +51,8 @@ import type {
 type SimpleEntityTableName = 'customers' | 'suppliers'
 type OrderTableName = 'sales_orders' | 'purchase_orders'
 type SyncableTableName = SimpleEntityTableName | OrderTableName | 'products'
+
+const PURCHASE_BATCH_UUID_NAMESPACE = '82244d4d-29dd-55b5-a907-50f74e8b49bb'
 
 type BaseEntityPayload = {
     id: string
@@ -661,86 +679,285 @@ async function assertSalesStockAvailable(order: SalesOrder, excludeOrderId?: str
 async function deductInventoryForSalesOrder(order: SalesOrder) {
     const now = new Date().toISOString()
     const updatedProducts: ProductLike[] = []
+    const changedInventoryRows: Inventory[] = []
+    const changedBatches: StockBatch[] = []
+    const updatedItems = [...order.items]
 
-    for (const item of order.items) {
-        const product = await db.products.get(item.productId)
-        if (!product || product.isDeleted) {
-            throw new Error(`Product not found: ${item.productName}`)
-        }
-
+    await refreshStockBatchesFromSupabase(order.workspaceId)
+    await Promise.all(order.items.map(async (item) => {
         const storageId = resolveSalesOrderItemStorageId(order, item)
         if (!storageId) {
             throw new Error(`Select a source storage for ${item.productName}`)
         }
 
-        const updatedProduct = await adjustInventoryQuantity({
-            workspaceId: order.workspaceId,
-            productId: item.productId,
-            storageId,
-            quantityDelta: -item.quantity,
-            timestamp: now
-        })
+        await hydrateInventoryProductStoragesFromSupabase(
+            order.workspaceId,
+            item.productId,
+            [storageId]
+        )
+    }))
+    const salePlans = await getStockBatchSalePlans(order.items.map((item) => ({
+        productId: item.productId,
+        storageId: resolveSalesOrderItemStorageId(order, item) as string,
+        quantity: item.quantity
+    })))
 
-        if (!updatedProduct) {
-            throw new Error(`Product not found: ${item.productName}`)
+    await db.transaction(
+        'rw',
+        [db.inventory, db.products, db.storages, db.stock_batches],
+        async () => {
+            for (const [itemIndex, item] of order.items.entries()) {
+                const product = await db.products.get(item.productId)
+                if (!product || product.isDeleted) {
+                    throw new Error(`Product not found: ${item.productName}`)
+                }
+
+                const storageId = resolveSalesOrderItemStorageId(order, item)
+                if (!storageId) {
+                    throw new Error(`Select a source storage for ${item.productName}`)
+                }
+
+                const salePlan = salePlans[itemIndex]
+                const costPrice = calculateStockBatchUnitCost(
+                    salePlan.allocations,
+                    item.costPrice,
+                    item.originalCurrency,
+                    (amount, from, to) => convertCurrencyAmountWithSnapshot(
+                        amount,
+                        from,
+                        to,
+                        order.exchangeRates
+                    ),
+                    salePlan.requestedQuantity
+                )
+                const convertedCostPrice = calculateStockBatchUnitCost(
+                    salePlan.allocations,
+                    item.convertedCostPrice,
+                    order.currency,
+                    (amount, from, to) => convertCurrencyAmountWithSnapshot(
+                        amount,
+                        from,
+                        to,
+                        order.exchangeRates
+                    ),
+                    salePlan.requestedQuantity
+                )
+
+                const committedBatches = await commitStockBatchAllocations(
+                    order.workspaceId,
+                    item.productId,
+                    storageId,
+                    salePlan.allocations,
+                    {
+                        timestamp: now,
+                        skipRemoteSync: true
+                    }
+                )
+                changedBatches.push(...committedBatches)
+
+                const currentInventoryQuantity = await getInventoryQuantityForProductStorage(
+                    item.productId,
+                    storageId
+                )
+                const changedInventoryRow = await putInventoryQuantity(
+                    order.workspaceId,
+                    item.productId,
+                    storageId,
+                    currentInventoryQuantity - item.quantity,
+                    now
+                )
+                const updatedProduct = await syncProductStockSnapshot(item.productId, now)
+
+                if (!updatedProduct) {
+                    throw new Error(`Product not found: ${item.productName}`)
+                }
+
+                if (changedInventoryRow) {
+                    changedInventoryRows.push(changedInventoryRow)
+                }
+
+                updatedProducts.push(updatedProduct)
+                updatedItems[itemIndex] = {
+                    ...item,
+                    costPrice,
+                    convertedCostPrice,
+                    batchAllocations: salePlan.allocations.length > 0 ? salePlan.allocations : null
+                }
+            }
         }
+    )
 
-        updatedProducts.push(updatedProduct)
+    await Promise.all([
+        syncInventoryRowsBestEffort(changedInventoryRows, order.workspaceId),
+        syncStockBatchesBestEffort(changedBatches, order.workspaceId)
+    ])
+
+    const { evaluateReorderTransferRulesForProduct } = await import('./reorderTransferRules')
+    await Promise.all(Array.from(new Set(order.items.map((item) => item.productId))).map((productId) =>
+        evaluateReorderTransferRulesForProduct(order.workspaceId, productId)
+    ))
+
+    return {
+        updatedProducts: Array.from(
+            new Map(updatedProducts.map((product) => [product.id, product])).values()
+        ),
+        updatedItems
     }
+}
 
-    return updatedProducts
+function getPurchaseOrderReceiptSources(order: PurchaseOrder) {
+    const itemIdCounts = order.items.reduce((counts, item) => {
+        counts.set(item.id, (counts.get(item.id) ?? 0) + 1)
+        return counts
+    }, new Map<string, number>())
+
+    return order.items.map((item, itemIndex) => {
+        const sourceItemId = (itemIdCounts.get(item.id) ?? 0) > 1
+            ? `${item.id}:${itemIndex}`
+            : item.id
+        return {
+            sourceItemId,
+            sourceLineKey: `${order.id}:${sourceItemId}`
+        }
+    })
 }
 
 async function receiveInventoryForPurchaseOrder(order: PurchaseOrder) {
     const now = new Date().toISOString()
-    const updatedProducts: ProductLike[] = []
-    const syncMetadata = getSyncMetadata(order.workspaceId, now)
+    const changedInventoryRows: Inventory[] = []
+    const changedBatches: StockBatch[] = []
+    const affectedProductIds = new Set<string>()
+    const receiptSources = getPurchaseOrderReceiptSources(order)
 
-    for (const item of order.items) {
+    for (const [itemIndex, item] of order.items.entries()) {
         const product = await db.products.get(item.productId)
         if (!product || product.isDeleted) {
             throw new Error(`Product not found: ${item.productName}`)
         }
 
         const receivedQuantity = item.receivedQuantity ?? item.quantity
-        const actualUnitCost = item.originalUnitPrice
+        const actualUnitCost = roundAmount(item.originalUnitPrice, product.currency)
+        const productUnitCost = roundAmount(product.costPrice, product.currency)
+        const hasDifferentPurchaseCost = shouldCreatePurchaseCostBatch(
+            actualUnitCost,
+            productUnitCost,
+            product.currency
+        )
         const storageId = resolvePurchaseOrderItemStorageId(order, item)
         if (!storageId) {
             throw new Error(`Select a target storage for ${item.productName}`)
         }
-        const nextQuantity = product.quantity + receivedQuantity
-        const nextCost = nextQuantity <= 0
-            ? actualUnitCost
-            : roundAmount(
-                ((product.quantity * product.costPrice) + (receivedQuantity * actualUnitCost)) / nextQuantity,
-                product.currency
-            )
 
-        const inventoryUpdatedProduct = await adjustInventoryQuantity({
-            workspaceId: order.workspaceId,
-            productId: item.productId,
+        if (!Number.isInteger(receivedQuantity) || receivedQuantity <= 0) {
+            throw new Error(`Received quantity must be greater than zero for ${item.productName}`)
+        }
+        if (!Number.isFinite(actualUnitCost) || actualUnitCost < 0) {
+            throw new Error(`Purchase cost is invalid for ${item.productName}`)
+        }
+
+        const { sourceItemId, sourceLineKey } = receiptSources[itemIndex]
+        if (hasDifferentPurchaseCost) {
+            const existingReceiptBatch = await db.stock_batches
+                .where('[sourcePurchaseOrderId+sourcePurchaseOrderItemId]')
+                .equals([order.id, sourceItemId])
+                .first()
+            if (existingReceiptBatch) {
+                continue
+            }
+        }
+
+        const currentInventoryQuantity = await getInventoryQuantityForProductStorage(item.productId, storageId)
+
+        const changedInventoryRow = await putInventoryQuantity(
+            order.workspaceId,
+            item.productId,
             storageId,
-            quantityDelta: receivedQuantity,
-            timestamp: now
-        })
-
-        if (!inventoryUpdatedProduct) {
-            throw new Error(`Product not found: ${item.productName}`)
+            currentInventoryQuantity + receivedQuantity,
+            now
+        )
+        if (changedInventoryRow) {
+            changedInventoryRows.push(changedInventoryRow)
         }
 
-        const updatedProduct = {
-            ...inventoryUpdatedProduct,
-            costPrice: nextCost,
-            updatedAt: now,
-            version: inventoryUpdatedProduct.version + 1,
-            ...syncMetadata
+        if (hasDifferentPurchaseCost) {
+            const receiptBatchId = uuidv5(
+                sourceLineKey,
+                PURCHASE_BATCH_UUID_NAMESPACE
+            )
+            const receiptBatch = await createStockBatch(order.workspaceId, {
+                productId: item.productId,
+                storageId,
+                batchNumber: item.batchNumber?.trim() || `${order.orderNumber}-${String(itemIndex + 1).padStart(2, '0')}`,
+                quantity: receivedQuantity,
+                price: item.batchSalePrice ?? product.price,
+                costPrice: actualUnitCost,
+                currency: product.currency,
+                expiryDate: item.batchExpiryDate ?? null,
+                manufacturingDate: item.batchManufacturingDate ?? null,
+                notes: `Received from purchase order ${order.orderNumber}.`,
+                sourcePurchaseOrderId: order.id,
+                sourcePurchaseOrderItemId: sourceItemId
+            }, {
+                id: receiptBatchId,
+                timestamp: now,
+                skipRemoteSync: true
+            })
+            changedBatches.push(receiptBatch)
         }
-
-        await db.products.put(updatedProduct)
-        updatedProducts.push(updatedProduct)
+        affectedProductIds.add(item.productId)
     }
 
-    return updatedProducts
+    const updatedProducts: ProductLike[] = []
+    for (const productId of affectedProductIds) {
+        const inventoryUpdatedProduct = await syncProductStockSnapshot(productId, now)
+        if (!inventoryUpdatedProduct) {
+            continue
+        }
+
+        updatedProducts.push(inventoryUpdatedProduct)
+    }
+
+    return {
+        updatedProducts,
+        changedInventoryRows,
+        changedBatches
+    }
+}
+
+async function preparePurchaseOrderReceipt(order: PurchaseOrder) {
+    await refreshStockBatchesFromSupabase(order.workspaceId)
+    await Promise.all([
+        hydrateStockBatchesForPurchaseOrder(order.workspaceId, order.id),
+        ...order.items.map(async (item) => {
+            const storageId = resolvePurchaseOrderItemStorageId(order, item)
+            if (!storageId) {
+                throw new Error(`Select a target storage for ${item.productName}`)
+            }
+            await hydrateInventoryProductStoragesFromSupabase(
+                order.workspaceId,
+                item.productId,
+                [storageId]
+            )
+        })
+    ])
+}
+
+type PurchaseReceiptResult = Awaited<ReturnType<typeof receiveInventoryForPurchaseOrder>>
+
+async function syncPurchaseReceiptResult(workspaceId: string, result: PurchaseReceiptResult | null) {
+    if (!result) {
+        return
+    }
+
+    await Promise.all([
+        syncInventoryRowsBestEffort(result.changedInventoryRows, workspaceId),
+        syncStockBatchesBestEffort(result.changedBatches, workspaceId),
+        syncUpsertEntities(
+            'products',
+            result.updatedProducts as unknown as Array<Record<string, unknown> & { id: string; version: number }>,
+            workspaceId
+        )
+    ])
 }
 
 export function useSalesOrders(workspaceId: string | undefined, startDate?: string, endDate?: string) {
@@ -829,9 +1046,12 @@ export async function createSalesOrder(
 
     let updatedProducts: ProductLike[] = []
     if (status === 'completed') {
-        updatedProducts = await deductInventoryForSalesOrder(order)
+        const fulfillment = await deductInventoryForSalesOrder(order)
+        updatedProducts = fulfillment.updatedProducts
+        order.items = fulfillment.updatedItems
         const now = new Date().toISOString()
         await db.sales_orders.update(order.id, {
+            items: fulfillment.updatedItems,
             actualDeliveryDate: now,
             updatedAt: now
         })
@@ -953,7 +1173,9 @@ export async function updateSalesOrderStatus(id: string, status: SalesOrderStatu
     if (status === 'completed') {
         await assertSalesCreditLimit(updated, existing.id)
         await assertSalesStockAvailable(updated, existing.id)
-        updatedProducts = await deductInventoryForSalesOrder(updated)
+        const fulfillment = await deductInventoryForSalesOrder(updated)
+        updatedProducts = fulfillment.updatedProducts
+        updated.items = fulfillment.updatedItems
     }
 
     await db.sales_orders.put(updated)
@@ -1094,17 +1316,23 @@ export async function createPurchaseOrder(
         status
     }) as PurchaseOrder
 
-    await db.purchase_orders.put(order)
-
-    let updatedProducts: ProductLike[] = []
+    let receiptResult: PurchaseReceiptResult | null = null
     if (status === 'received' || status === 'completed') {
-        updatedProducts = await receiveInventoryForPurchaseOrder(order)
+        await preparePurchaseOrderReceipt(order)
     }
+    await db.transaction(
+        'rw',
+        [db.purchase_orders, db.products, db.inventory, db.stock_batches, db.storages],
+        async () => {
+            await db.purchase_orders.put(order)
+            if (status === 'received' || status === 'completed') {
+                receiptResult = await receiveInventoryForPurchaseOrder(order)
+            }
+        }
+    )
 
     await syncUpsertEntities('purchase_orders', [order as unknown as Record<string, unknown> & { id: string; version: number }], workspaceId)
-    if (updatedProducts.length > 0) {
-        await syncUpsertEntities('products', updatedProducts as unknown as Array<Record<string, unknown> & { id: string; version: number }>, workspaceId)
-    }
+    await syncPurchaseReceiptResult(workspaceId, receiptResult)
     await recalculateSupplierAndPartnerSummaries(workspaceId, order.supplierId, order.businessPartnerId)
     const createdOrder = (await db.purchase_orders.get(order.id)) as PurchaseOrder
 
@@ -1206,17 +1434,23 @@ export async function updatePurchaseOrderStatus(id: string, status: PurchaseOrde
         ...getSyncMetadata(existing.workspaceId, now)
     }
 
-    let updatedProducts: ProductLike[] = []
+    let receiptResult: PurchaseReceiptResult | null = null
     if ((status === 'received' || status === 'completed') && existing.status !== 'received' && existing.status !== 'completed') {
-        updatedProducts = await receiveInventoryForPurchaseOrder(updated)
+        await preparePurchaseOrderReceipt(updated)
     }
-
-    await db.purchase_orders.put(updated)
+    await db.transaction(
+        'rw',
+        [db.purchase_orders, db.products, db.inventory, db.stock_batches, db.storages],
+        async () => {
+            if ((status === 'received' || status === 'completed') && existing.status !== 'received' && existing.status !== 'completed') {
+                receiptResult = await receiveInventoryForPurchaseOrder(updated)
+            }
+            await db.purchase_orders.put(updated)
+        }
+    )
 
     await syncUpsertEntities('purchase_orders', [updated as unknown as Record<string, unknown> & { id: string; version: number }], existing.workspaceId)
-    if (updatedProducts.length > 0) {
-        await syncUpsertEntities('products', updatedProducts as unknown as Array<Record<string, unknown> & { id: string; version: number }>, existing.workspaceId)
-    }
+    await syncPurchaseReceiptResult(existing.workspaceId, receiptResult)
     await Promise.all(
         Array.from(new Set([
             `${existing.supplierId}::${existing.businessPartnerId || ''}`,

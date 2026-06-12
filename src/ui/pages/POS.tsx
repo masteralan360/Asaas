@@ -5,10 +5,11 @@ import { supabase } from '@/auth/supabase'
 import {
     addToOfflineMutations,
     adjustInventoryQuantity,
+    calculateStockBatchUnitCost,
     commitStockBatchAllocations,
     createLoanFromPosSale,
     generateLocalSaleSequenceId,
-    getStockBatchSalePlan,
+    getStockBatchSalePlans,
     getPrimaryStorageFromList,
     refreshStockBatchesFromSupabase,
     useBatchAwareInventoryProducts,
@@ -1595,15 +1596,19 @@ export function POS() {
         const hasExchangeSnapshot = exchangeRatesSnapshot.length > 0
         const exchangeRatesPayload = hasExchangeSnapshot ? exchangeRatesSnapshot : null
 
-        let batchSalePlans: Awaited<ReturnType<typeof getStockBatchSalePlan>>[]
+        let batchSalePlans: Awaited<ReturnType<typeof getStockBatchSalePlans>>
         try {
-            batchSalePlans = await Promise.all(cart.map(async (item) => {
+            batchSalePlans = await getStockBatchSalePlans(cart.map((item) => {
                 const storageId = item.storageId || selectedStorageId
                 if (!storageId) {
                     throw new Error('Storage is required for batched sale items')
                 }
 
-                return getStockBatchSalePlan(item.product_id, storageId, item.quantity)
+                return {
+                    productId: item.product_id,
+                    storageId,
+                    quantity: item.quantity
+                }
             }))
         } catch (error) {
             const normalized = normalizeSupabaseActionError(error)
@@ -1621,9 +1626,21 @@ export function POS() {
             const originalCurrency = product?.currency || 'usd'
             const effectivePrice = getCartEffectivePrice(item)
             const convertedUnitPrice = convertPrice(effectivePrice, originalCurrency, settlementCurrency)
-            const costPrice = product?.costPrice || 0
-            const convertedCostPrice = convertPrice(costPrice, originalCurrency, settlementCurrency)
             const batchPlan = batchSalePlans[index]
+            const costPrice = calculateStockBatchUnitCost(
+                batchPlan.allocations,
+                product?.costPrice || 0,
+                originalCurrency,
+                convertPrice,
+                batchPlan.requestedQuantity
+            )
+            const convertedCostPrice = calculateStockBatchUnitCost(
+                batchPlan.allocations,
+                convertPrice(product?.costPrice || 0, originalCurrency, settlementCurrency),
+                settlementCurrency,
+                convertPrice,
+                batchPlan.requestedQuantity
+            )
 
             return {
                 product_id: item.product_id,

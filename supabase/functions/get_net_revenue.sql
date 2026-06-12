@@ -11,8 +11,8 @@ BEGIN
     RETURN QUERY
     SELECT 
         COALESCE(SUM((si.quantity - si.returned_quantity) * COALESCE(si.converted_unit_price, si.unit_price)), 0) as total_revenue,
-        COALESCE(SUM((si.quantity - si.returned_quantity) * si.cost_price), 0) as total_cost,
-        COALESCE(SUM(((si.quantity - si.returned_quantity) * COALESCE(si.converted_unit_price, si.unit_price)) - ((si.quantity - si.returned_quantity) * si.cost_price)), 0) as net_profit,
+        COALESCE(SUM((si.quantity - si.returned_quantity) * COALESCE(si.converted_cost_price, si.cost_price)), 0) as total_cost,
+        COALESCE(SUM(((si.quantity - si.returned_quantity) * COALESCE(si.converted_unit_price, si.unit_price)) - ((si.quantity - si.returned_quantity) * COALESCE(si.converted_cost_price, si.cost_price))), 0) as net_profit,
         COUNT(DISTINCT s.id) as total_sales_count,
         SUM(si.quantity - si.returned_quantity) as total_items_count
     FROM public.sales s

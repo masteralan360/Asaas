@@ -166,6 +166,8 @@ export interface StockBatch extends BaseEntity {
   expiryDate?: string | null;
   manufacturingDate?: string | null;
   notes?: string | null;
+  sourcePurchaseOrderId?: string | null;
+  sourcePurchaseOrderItemId?: string | null;
 }
 
 export interface StockBatchAllocation {
@@ -366,10 +368,15 @@ export interface SalesOrderItem extends OrderLineItem {
   convertedCostPrice: number;
   reservedQuantity?: number;
   fulfilledQuantity?: number;
+  batchAllocations?: StockBatchAllocation[] | null;
 }
 
 export interface PurchaseOrderItem extends OrderLineItem {
   receivedQuantity?: number;
+  batchNumber?: string | null;
+  batchSalePrice?: number | null;
+  batchExpiryDate?: string | null;
+  batchManufacturingDate?: string | null;
 }
 
 export interface SalesOrder extends BaseEntity {

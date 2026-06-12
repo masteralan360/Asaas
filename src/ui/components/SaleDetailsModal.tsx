@@ -506,6 +506,30 @@ export function SaleDetailsModal({ sale, isOpen, onClose, onReturnItem, onReturn
                                                                                         <span className="text-muted-foreground">{t('common.id') || 'ID'}:</span>
                                                                                         <span className="font-mono text-[10px] text-foreground text-right break-all">{a.batch_id}</span>
                                                                                     </div>
+                                                                                    <div className="flex justify-between gap-2">
+                                                                                        <span className="text-muted-foreground">{t('common.quantity') || 'Quantity'}:</span>
+                                                                                        <span className="font-medium text-foreground text-right">{a.quantity}</span>
+                                                                                    </div>
+                                                                                    <div className="flex justify-between gap-2">
+                                                                                        <span className="text-muted-foreground">{t('products.form.price') || 'Selling Price'}:</span>
+                                                                                        <span className="font-medium text-foreground text-right">
+                                                                                            {a.price == null
+                                                                                                ? '—'
+                                                                                                : formatCurrency(a.price, a.currency || item.original_currency || 'usd', features.iqd_display_preference)}
+                                                                                        </span>
+                                                                                    </div>
+                                                                                    <div className="flex justify-between gap-2">
+                                                                                        <span className="text-muted-foreground">{t('products.form.cost') || 'Cost Price'}:</span>
+                                                                                        <span className="font-medium text-foreground text-right">
+                                                                                            {a.cost_price == null
+                                                                                                ? '—'
+                                                                                                : formatCurrency(a.cost_price, a.currency || item.original_currency || 'usd', features.iqd_display_preference)}
+                                                                                        </span>
+                                                                                    </div>
+                                                                                    <div className="flex justify-between gap-2">
+                                                                                        <span className="text-muted-foreground">{t('common.currency') || 'Currency'}:</span>
+                                                                                        <span className="font-medium text-foreground text-right uppercase">{a.currency || item.original_currency || 'usd'}</span>
+                                                                                    </div>
                                                                                     {a.manufacturing_date && (
                                                                                         <div className="flex justify-between gap-2">
                                                                                             <span className="text-muted-foreground">{t('products.manufacturingDate') || 'Mfg'}:</span>
@@ -724,6 +748,30 @@ export function SaleDetailsModal({ sale, isOpen, onClose, onReturnItem, onReturn
                                                                                     <div className="flex justify-between gap-2">
                                                                                         <span className="text-muted-foreground">{t('common.id') || 'ID'}:</span>
                                                                                         <span className="font-mono text-[10px] text-foreground text-right break-all">{a.batch_id}</span>
+                                                                                    </div>
+                                                                                    <div className="flex justify-between gap-2">
+                                                                                        <span className="text-muted-foreground">{t('common.quantity') || 'Quantity'}:</span>
+                                                                                        <span className="font-medium text-foreground text-right">{a.quantity}</span>
+                                                                                    </div>
+                                                                                    <div className="flex justify-between gap-2">
+                                                                                        <span className="text-muted-foreground">{t('products.form.price') || 'Selling Price'}:</span>
+                                                                                        <span className="font-medium text-foreground text-right">
+                                                                                            {a.price == null
+                                                                                                ? '—'
+                                                                                                : formatCurrency(a.price, a.currency || item.original_currency || 'usd', features.iqd_display_preference)}
+                                                                                        </span>
+                                                                                    </div>
+                                                                                    <div className="flex justify-between gap-2">
+                                                                                        <span className="text-muted-foreground">{t('products.form.cost') || 'Cost Price'}:</span>
+                                                                                        <span className="font-medium text-foreground text-right">
+                                                                                            {a.cost_price == null
+                                                                                                ? '—'
+                                                                                                : formatCurrency(a.cost_price, a.currency || item.original_currency || 'usd', features.iqd_display_preference)}
+                                                                                        </span>
+                                                                                    </div>
+                                                                                    <div className="flex justify-between gap-2">
+                                                                                        <span className="text-muted-foreground">{t('common.currency') || 'Currency'}:</span>
+                                                                                        <span className="font-medium text-foreground text-right uppercase">{a.currency || item.original_currency || 'usd'}</span>
                                                                                     </div>
                                                                                     {a.manufacturing_date && (
                                                                                         <div className="flex justify-between gap-2">
