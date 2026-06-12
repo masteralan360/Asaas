@@ -20,7 +20,10 @@ import {
     writeWorkspaceCache,
     type WorkspaceCacheSnapshot
 } from './workspaceCache'
-import { writeWorkspaceModeSnapshot } from './workspaceMode'
+import {
+    normalizeWorkspaceDataMode,
+    writeWorkspaceModeSnapshot
+} from './workspaceMode'
 import { runSupabaseAction, normalizeSupabaseActionError } from '@/lib/supabaseRequest'
 import {
     applyWorkspaceOverrides,
@@ -115,6 +118,7 @@ interface WorkspaceContextType {
     isFullscreen: boolean
     isLocked: boolean
     isLocalMode: boolean
+    isDemoMode: boolean
     isCloudMode: boolean
     isHybridMode: boolean
     hasFeature: (feature: ModuleFeatureKey) => boolean
@@ -272,6 +276,7 @@ function mergeWorkspaceFeatures(
         ...(features ?? {}),
         ...getResolvedFeatureFlags(resolvedCapabilities),
         plan,
+        data_mode: normalizeWorkspaceDataMode(features?.data_mode),
         default_currency: defaultCurrency,
         allowed_currencies: allowedCurrencies,
         allow_whatsapp: capSet.has('whatsappIntegration')
@@ -891,7 +896,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 
     const hasFeature = (feature: ModuleFeatureKey): boolean => {
         if (feature === 'ecommerce') {
-            return features.data_mode !== 'local' && planCapabilities.modules.includes('ecommerce')
+            return features.data_mode !== 'local'
+                && features.data_mode !== 'demo'
+                && planCapabilities.modules.includes('ecommerce')
         }
         if (feature === 'travel_agency') {
             return features[feature]
@@ -967,12 +974,14 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         })
 
         const existing = await db.workspaces.get(workspaceId)
+        const usesCloudBusinessData = features.data_mode === 'cloud'
+            || features.data_mode === 'hybrid'
         const supabaseUpdate: Record<string, unknown> = { ...featureSettings }
         delete supabaseUpdate.thermal_printing
         if (name !== undefined) {
             supabaseUpdate.name = name
         }
-        const shouldSync = Object.keys(supabaseUpdate).length > 0
+        const shouldSync = usesCloudBusinessData && Object.keys(supabaseUpdate).length > 0
 
         const localUpdateData = {
             ...featureSettings,
@@ -1225,7 +1234,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         user?.workspaceId
     ])
 
-    const isLocalMode = features.data_mode === 'local'
+    const isLocalMode = features.data_mode === 'local' || features.data_mode === 'demo'
+    const isDemoMode = features.data_mode === 'demo'
     const isCloudMode = features.data_mode === 'cloud'
     const isHybridMode = features.data_mode === 'hybrid'
     const isLocked = isWorkspaceCurrentlyLocked(features)
@@ -1245,6 +1255,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             setPendingUpdate,
             isLocked,
             isLocalMode,
+            isDemoMode,
             isCloudMode,
             isHybridMode,
             hasFeature,

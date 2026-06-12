@@ -99,7 +99,9 @@ export function buildWorkspaceNavigation({
   const canAccessPermission = hasPermission ?? (() => true);
 
   const canUseEcommerce =
-    features.data_mode !== "local" && hasFeature("ecommerce");
+    features.data_mode !== "local" &&
+    features.data_mode !== "demo" &&
+    hasFeature("ecommerce");
 
   // 1. Define all possible individual navigation items with their visibility logic
   const dashboardItem: WorkspaceNavigationItem = {

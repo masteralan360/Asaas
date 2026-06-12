@@ -4,7 +4,7 @@ import { cn } from '@/lib/utils'
 import { useAuth } from '@/auth'
 import { db, useReorderTransferRules } from '@/local-db'
 import { useWorkspace } from '@/workspace'
-import { isDemoWorkspace, deleteDemoWorkspace } from '@/demo'
+import { isDemoWorkspace } from '@/demo'
 import { useWorkspacePermissions } from '@/permissions'
 import { SyncStatusIndicator } from './SyncStatusIndicator'
 import { ExchangeRateIndicator } from './ExchangeRateIndicator'
@@ -276,7 +276,12 @@ export function Layout({ children }: LayoutProps) {
     }, [isLocalMode, user?.id, user?.workspaceId])
 
     useEffect(() => {
-        if (!user?.workspaceId || features.data_mode === 'local' || !hasFeature('ecommerce')) {
+        if (
+            !user?.workspaceId
+            || features.data_mode === 'local'
+            || features.data_mode === 'demo'
+            || !hasFeature('ecommerce')
+        ) {
             setPendingEcommerceCount(0)
             return
         }
@@ -365,19 +370,11 @@ export function Layout({ children }: LayoutProps) {
 
             if (remaining <= 0) {
                 console.log('[Demo] Workspace expired, deleting...')
-                ;(async () => {
-                    if (activeWorkspace?.id) {
-                        await deleteDemoWorkspace(activeWorkspace.id)
-                    }
-                    signOut()
-                })()
+                void signOut()
             } else {
                 console.log(`[Demo] Workspace expires in ${Math.round(remaining / 1000)}s`)
                 demoExpiryRef.current = setTimeout(async () => {
-                    if (activeWorkspace?.id) {
-                        await deleteDemoWorkspace(activeWorkspace.id)
-                    }
-                    signOut()
+                    await signOut()
                 }, remaining)
             }
         }
@@ -387,7 +384,7 @@ export function Layout({ children }: LayoutProps) {
                 clearTimeout(demoExpiryRef.current)
             }
         }
-    }, [user?.workspaceCode, features.subscription_expires_at])
+    }, [features.subscription_expires_at, signOut, user?.workspaceCode])
 
     // Demo countdown timer for sidebar display
     useEffect(() => {
@@ -1284,10 +1281,7 @@ export function Layout({ children }: LayoutProps) {
                                     </Button>
                                     <Button variant="destructive" allowViewer={true} onClick={async () => {
                                         setIsSignOutModalOpen(false)
-                                        if (activeWorkspace?.id) {
-                                            await deleteDemoWorkspace(activeWorkspace.id)
-                                        }
-                                        signOut()
+                                        await signOut()
                                     }}>
                                         {t('demo.deleteAndSignOut', 'Delete & Sign Out')}
                                     </Button>

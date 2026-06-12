@@ -8,11 +8,18 @@ import type {
 import { connectionManager } from '@/lib/connectionManager'
 import { setActiveBusinessUser, setActiveBusinessWorkspace } from '@/lib/network'
 import { clearWorkspaceCache } from '@/workspace/workspaceCache'
-import { clearWorkspaceModeSnapshot, writeWorkspaceModeSnapshot } from '@/workspace/workspaceMode'
+import {
+    clearWorkspaceModeSnapshot,
+    normalizeWorkspaceDataMode,
+    writeWorkspaceModeSnapshot
+} from '@/workspace/workspaceMode'
 import { normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
 import { db } from '@/local-db/database'
 import { hydrateLocalModeCacheFromSqlite } from '@/local-db/localModeSqlite'
 import { runDailyBackupIfNeeded, runR2BackupIfNeeded } from '@/local-db/sqliteBackup'
+import { clearLocalDemoWorkspaceData, clearStoredDemoWorkspaces } from '@/demo/demoCleanup'
+import { isDemoWorkspace } from '@/demo/demoConfig'
+import { deleteDemoWorkspace } from '@/demo/demoService'
 import {
     enrollLocalAccountCredential,
     getLocalWorkspaceAccount,
@@ -96,8 +103,37 @@ function parseUserFromSupabase(user: User): AuthUser {
             : undefined,
         profileUrl: user.user_metadata?.profile_url,
         isConfigured: user.user_metadata?.is_configured,
-        workspaceMode: user.user_metadata?.data_mode === 'local' ? 'local' : user.user_metadata?.data_mode === 'hybrid' ? 'hybrid' : 'cloud'
+        workspaceMode: normalizeWorkspaceDataMode(user.user_metadata?.data_mode)
     }
+}
+
+async function clearStoredDemoWorkspacesBestEffort() {
+    try {
+        await clearStoredDemoWorkspaces()
+    } catch (error) {
+        console.error('[Auth] Failed to clear stale local demo data:', error)
+    }
+}
+
+async function hydrateDemoProfile(user: AuthUser) {
+    if (user.workspaceMode !== 'demo' || !user.workspaceId) {
+        return
+    }
+
+    const localProfile = await db.profiles.get(user.id)
+    if (localProfile?.workspaceId === user.workspaceId) {
+        user.profileUrl = localProfile.profile_url ?? undefined
+        return
+    }
+
+    await db.profiles.put({
+        id: user.id,
+        workspaceId: user.workspaceId,
+        name: user.name,
+        role: user.role,
+        profile_url: user.profileUrl ?? null,
+        created_at: new Date().toISOString()
+    })
 }
 
 function clearPreviousWorkspaceArtifacts(previousWorkspaceId?: string | null, nextWorkspaceId?: string | null) {
@@ -372,7 +408,7 @@ async function enrichUser(parsedUser: AuthUser): Promise<AuthUser> {
             parsedUser.workspaceName = workspaceRow.name || parsedUser.workspaceName
             parsedUser.workspaceCode = workspaceRow.code || parsedUser.workspaceCode
             parsedUser.isConfigured = workspaceRow.is_configured ?? parsedUser.isConfigured
-            parsedUser.workspaceMode = workspaceRow.data_mode === 'local' ? 'local' : workspaceRow.data_mode === 'hybrid' ? 'hybrid' : 'cloud'
+            parsedUser.workspaceMode = normalizeWorkspaceDataMode(workspaceRow.data_mode)
             writeWorkspaceModeSnapshot({
                 workspaceId: parsedUser.workspaceId,
                 dataMode: parsedUser.workspaceMode
@@ -382,6 +418,7 @@ async function enrichUser(parsedUser: AuthUser): Promise<AuthUser> {
                 void runDailyBackupIfNeeded(parsedUser.workspaceId)
                 void runR2BackupIfNeeded(parsedUser.workspaceId)
             }
+            await hydrateDemoProfile(parsedUser)
             return parsedUser
         }
     } catch (error) {
@@ -393,7 +430,7 @@ async function enrichUser(parsedUser: AuthUser): Promise<AuthUser> {
         parsedUser.workspaceCode = localWorkspace.code || parsedUser.workspaceCode
         parsedUser.workspaceName = localWorkspace.name || parsedUser.workspaceName
         parsedUser.isConfigured = localWorkspace.is_configured
-        parsedUser.workspaceMode = localWorkspace.data_mode === 'local' ? 'local' : localWorkspace.data_mode === 'hybrid' ? 'hybrid' : parsedUser.workspaceMode
+        parsedUser.workspaceMode = normalizeWorkspaceDataMode(localWorkspace.data_mode ?? parsedUser.workspaceMode)
         writeWorkspaceModeSnapshot({
             workspaceId: parsedUser.workspaceId,
             dataMode: parsedUser.workspaceMode
@@ -403,6 +440,7 @@ async function enrichUser(parsedUser: AuthUser): Promise<AuthUser> {
             void runDailyBackupIfNeeded(parsedUser.workspaceId)
             void runR2BackupIfNeeded(parsedUser.workspaceId)
         }
+        await hydrateDemoProfile(parsedUser)
     }
 
     return parsedUser
@@ -507,6 +545,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                     return
                 }
 
+                await clearStoredDemoWorkspacesBestEffort()
                 clearWorkspaceCache()
                 clearWorkspaceModeSnapshot()
                 setUser(null)
@@ -566,6 +605,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                         saveRecovery(effectiveUser)
                     }
                 } else {
+                    await clearStoredDemoWorkspacesBestEffort()
                     const recovered = getRecoveredUser()
                     if (recovered?.workspaceMode === 'local' && recovered.workspaceId) {
                         setUser(recovered)
@@ -593,7 +633,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             } catch (e) {
                 console.error('[Auth] Initial session fetch failed:', e);
                 const recoveredUser = getRecoveredUser()
-                let allowRecovery = canUseRecoveryBridge(e) || recoveredUser?.workspaceMode === 'local'
+                let allowRecovery = recoveredUser?.workspaceMode !== 'demo'
+                    && (canUseRecoveryBridge(e) || recoveredUser?.workspaceMode === 'local')
 
                 // Second chance: try refreshSession directly (different code path)
                 try {
@@ -616,7 +657,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                     }
                 } catch (refreshErr) {
                     console.warn('[Auth] refreshSession also failed:', refreshErr)
-                    allowRecovery = allowRecovery || canUseRecoveryBridge(refreshErr)
+                    allowRecovery = recoveredUser?.workspaceMode !== 'demo'
+                        && (allowRecovery || canUseRecoveryBridge(refreshErr))
 
                     if (!allowRecovery) {
                         clearRecovery()
@@ -904,6 +946,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const signOut = async () => {
         explicitSignOutRef.current = true
+        const signingOutUser = userRef.current
+        const isDemoSession = signingOutUser?.workspaceMode === 'demo'
+            || isDemoWorkspace(signingOutUser?.workspaceCode)
         try {
             console.log('[Auth] Signing out...')
 
@@ -914,12 +959,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 console.error('[Auth] Error stopping assetManager:', e)
             }
 
+            if (isDemoSession && signingOutUser?.workspaceId && isSupabaseConfigured) {
+                await deleteDemoWorkspace(signingOutUser.workspaceId)
+            }
+
             if (isSupabaseConfigured) {
                 await supabase.auth.signOut()
             }
         } catch (err) {
             console.error('[Auth] Error during signOut:', err)
         } finally {
+            if (isDemoSession && signingOutUser?.workspaceId) {
+                try {
+                    await clearLocalDemoWorkspaceData(signingOutUser.workspaceId)
+                } catch (cleanupError) {
+                    console.error('[Auth] Failed to clear local demo data:', cleanupError)
+                }
+            }
+
             setUser(null)
             setSession(null)
 

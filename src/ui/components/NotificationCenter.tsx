@@ -169,7 +169,7 @@ export function NotificationCenter() {
     const [isSyncing, setIsSyncing] = useState(false)
     const [syncError, setSyncError] = useState<string | null>(null)
     const refreshRequestRef = useRef(0)
-    const isLocalMode = user?.workspaceMode === 'local'
+    const isLocalMode = user?.workspaceMode === 'local' || user?.workspaceMode === 'demo'
     const trackerKey = isLocalMode ? '' : `${user?.id ?? ''}:${user?.workspaceId ?? ''}`
 
     useEffect(() => {

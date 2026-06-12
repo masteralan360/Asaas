@@ -38,7 +38,7 @@ export function Settings() {
     const { user, signOut, isSupabaseConfigured, updateUser } = useAuth()
     const { syncState, pendingCount, lastSyncTime, sync, isSyncing, isOnline } = useSyncStatus()
     const { theme, setTheme, style, setStyle } = useTheme()
-    const { features, updateSettings, refreshFeatures, workspaceName, isLocked, isLocalMode, hasCapability, planCapabilities } = useWorkspace()
+    const { features, updateSettings, refreshFeatures, workspaceName, isLocked, isLocalMode, isDemoMode, hasCapability, planCapabilities } = useWorkspace()
     const { streamUrl, status: kdsStatus, startStream } = useKdsStream(true)
 
     useEffect(() => {
@@ -642,6 +642,13 @@ export function Settings() {
     }
 
     const handleSubscribeToNotifications = async () => {
+        if (isDemoMode) {
+            toast({
+                title: t('notifications.localModeUnavailable', { defaultValue: 'Cloud notifications are unavailable in Demo Mode.' }),
+            })
+            return
+        }
+
         try {
             let permissionGranted = false
 
@@ -815,6 +822,9 @@ export function Settings() {
 
     const handleSyncMedia = async () => {
         setIsSyncMediaModalOpen(false)
+        if (isDemoMode) {
+            return
+        }
         if (!isOnline) {
             alert(t('settings.messages.onlineRequired') || 'Internet connection is required for media sync.')
             return
@@ -902,6 +912,10 @@ export function Settings() {
     }
 
     const handleDownloadWorkspaceMedia = async () => {
+        if (isDemoMode) {
+            return
+        }
+
         if (!user?.workspaceId) return
         if (!isElectron) return
 
@@ -1022,7 +1036,7 @@ export function Settings() {
             }
 
             // 4. Update Supabase profile
-            if (isSupabaseConfigured) {
+            if (isSupabaseConfigured && !isDemoMode) {
                 // Update the profiles table
                 const { error: profileError } = await runSupabaseAction('settings.updateProfileImage', () =>
                     supabase
@@ -1048,6 +1062,16 @@ export function Settings() {
                 }
             }
 
+            if (isDemoMode) {
+                await db.profiles.put({
+                    id: user.id,
+                    workspaceId: user.workspaceId,
+                    name: user.name,
+                    role: user.role,
+                    profile_url: resizedPath,
+                })
+            }
+
             // 5. Update local state
             updateUser({ profileUrl: resizedPath })
 
@@ -1069,7 +1093,7 @@ export function Settings() {
             await assetManager.deleteAsset(user.profileUrl);
 
             // Update cloud profile (Supabase)
-            if (isSupabaseConfigured) {
+            if (isSupabaseConfigured && !isDemoMode) {
                 const { error: profileError } = await runSupabaseAction('settings.removeProfileImage', () =>
                     supabase.from('profiles').update({ profile_url: null }).eq('id', user.id)
                 )
@@ -1079,6 +1103,16 @@ export function Settings() {
                     supabase.auth.updateUser({ data: { profile_url: null } })
                 )
                 if (authError) throw normalizeSupabaseActionError(authError)
+            }
+
+            if (isDemoMode) {
+                await db.profiles.put({
+                    id: user.id,
+                    workspaceId: user.workspaceId,
+                    name: user.name,
+                    role: user.role,
+                    profile_url: null,
+                })
             }
 
             // Update local state

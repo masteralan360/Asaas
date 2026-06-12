@@ -23,6 +23,10 @@ export function getActiveBusinessUserId() {
     return activeBusinessUserId;
 }
 
+export function getActiveBusinessWorkspaceId() {
+    return activeBusinessWorkspaceId;
+}
+
 function getWorkspaceIdForBusinessData(workspaceId?: string | null) {
     return workspaceId ?? activeBusinessWorkspaceId;
 }

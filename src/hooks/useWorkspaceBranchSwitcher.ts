@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useLocation } from 'wouter'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/auth'
+import { normalizeWorkspaceDataMode } from '@/workspace/workspaceMode'
 import { supabase } from '@/auth/supabase'
 import { useWorkspace } from '@/workspace'
 import { useToast } from '@/ui/components'
@@ -180,11 +181,7 @@ export function useWorkspaceBranchSwitcher(options: UseWorkspaceBranchSwitcherOp
                 workspaceName: data.workspace_name,
                 branchSourceWorkspaceId: data.branch_source_workspace_id ?? undefined,
                 branchWorkspaceId: data.branch_workspace_id ?? undefined,
-                workspaceMode: data.data_mode === 'local'
-                    ? 'local'
-                    : data.data_mode === 'hybrid'
-                        ? 'hybrid'
-                        : 'cloud'
+                workspaceMode: normalizeWorkspaceDataMode(data.data_mode)
             })
 
             void refreshUser()

@@ -13,8 +13,18 @@ import { r2Service } from '@/services/r2Service'
 import { platformService } from '@/services/platformService'
 import { useLocation, useRoute } from 'wouter'
 import { useWorkspace } from '@/workspace'
+import { isDemoWorkspaceMode, isLocalWorkspaceMode } from '@/workspace/workspaceMode'
 
 const CLINIC_ATTACHMENTS_PREFIX = 'clinic-attachments'
+
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onerror = () => reject(reader.error ?? new Error('Failed to read attachment'))
+    reader.onload = () => resolve(String(reader.result))
+    reader.readAsDataURL(file)
+  })
+}
 
 const STATUS_VARIANTS: Record<string, string> = {
   draft: 'secondary',
@@ -342,25 +352,31 @@ function CreateAppointmentForm({ workspaceId, appointment, onCancel, onSaved }: 
       for (const file of attachments) {
         const fileName = `${apptId}/${file.name}`
         const r2Path = `${CLINIC_ATTACHMENTS_PREFIX}/${workspaceId}/${fileName}`
+        const isDemoMode = isDemoWorkspaceMode(workspaceId)
         const localPath = await platformService.joinPath(
           await platformService.getAppDataDir(),
           CLINIC_ATTACHMENTS_PREFIX,
           workspaceId,
           fileName,
         )
-        if (r2Service.isConfigured()) {
+        if (!isLocalWorkspaceMode(workspaceId) && r2Service.isConfigured()) {
           try {
             await r2Service.upload(r2Path.replace(/\\/g, '/'), file, file.type)
           } catch (e) {
             console.error('[ClinicalAppointments] R2 upload failed:', e)
           }
         }
-        try {
-          const { writeTextFile, BaseDirectory } = await import('@tauri-apps/plugin-fs')
-          const buffer = await file.arrayBuffer()
-          await writeTextFile(localPath, new Uint8Array(buffer) as any, { baseDir: BaseDirectory.AppData })
-        } catch (e) {
-          console.warn('[ClinicalAppointments] Local file save not available:', e)
+        let storedLocalPath = localPath
+        if (isDemoMode) {
+          storedLocalPath = await fileToDataUrl(file)
+        } else {
+          try {
+            const { writeTextFile, BaseDirectory } = await import('@tauri-apps/plugin-fs')
+            const buffer = await file.arrayBuffer()
+            await writeTextFile(localPath, new Uint8Array(buffer) as any, { baseDir: BaseDirectory.AppData })
+          } catch (e) {
+            console.warn('[ClinicalAppointments] Local file save not available:', e)
+          }
         }
         const { createClinicalAttachment } = await import('@/local-db/clinicalAppointments')
         await createClinicalAttachment(
@@ -369,8 +385,8 @@ function CreateAppointmentForm({ workspaceId, appointment, onCancel, onSaved }: 
             fileName: file.name,
             fileType: file.type,
             fileSize: file.size,
-            r2Path: r2Path.replace(/\\/g, '/'),
-            localPath,
+            r2Path: isDemoMode ? null : r2Path.replace(/\\/g, '/'),
+            localPath: storedLocalPath,
             createdBy: user?.id ?? null,
           } as any,
           workspaceId,

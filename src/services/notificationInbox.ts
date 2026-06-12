@@ -1,5 +1,7 @@
 import { supabase } from '@/auth/supabase'
 import type { RealtimePostgresChangesPayload } from '@supabase/supabase-js'
+import { getActiveBusinessWorkspaceId } from '@/lib/network'
+import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
 
 export type NotificationInboxRecord = {
     id: string
@@ -39,6 +41,10 @@ export function normalizeNotificationInboxRow(row: NotificationInboxRow): Notifi
 }
 
 export async function listNotificationInbox(limit = 200) {
+    if (isLocalWorkspaceMode(getActiveBusinessWorkspaceId())) {
+        return { data: [], error: null }
+    }
+
     const { data, error } = await supabase.rpc('list_notifications_inbox', {
         p_limit: limit
     })
@@ -50,6 +56,10 @@ export async function listNotificationInbox(limit = 200) {
 }
 
 export async function markNotificationInboxRead(notificationId: string, read = true) {
+    if (isLocalWorkspaceMode(getActiveBusinessWorkspaceId())) {
+        return { success: false, error: null }
+    }
+
     const { data, error } = await supabase.rpc('mark_notification_inbox_read', {
         p_notification_id: notificationId,
         p_read: read
@@ -62,6 +72,10 @@ export async function markNotificationInboxRead(notificationId: string, read = t
 }
 
 export async function markNotificationInboxArchived(notificationId: string, archived = true) {
+    if (isLocalWorkspaceMode(getActiveBusinessWorkspaceId())) {
+        return { success: false, error: null }
+    }
+
     const { data, error } = await supabase.rpc('mark_notification_inbox_archived', {
         p_notification_id: notificationId,
         p_archived: archived
@@ -74,6 +88,10 @@ export async function markNotificationInboxArchived(notificationId: string, arch
 }
 
 export async function markAllNotificationInboxRead() {
+    if (isLocalWorkspaceMode(getActiveBusinessWorkspaceId())) {
+        return { updatedCount: 0, error: null }
+    }
+
     const { data, error } = await supabase.rpc('mark_all_notifications_inbox_read')
 
     return {
@@ -86,6 +104,10 @@ export function subscribeToNotificationInbox(
     userId: string,
     callback: (payload: NotificationInboxRealtimePayload) => void,
 ) {
+    if (isLocalWorkspaceMode(getActiveBusinessWorkspaceId())) {
+        return () => undefined
+    }
+
     const channel = supabase
         .channel(`notifications-inbox-${userId}`)
         .on(

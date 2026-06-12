@@ -282,7 +282,7 @@ function EcommerceListView({
                 </Button>
             </div>
 
-            {features.data_mode === 'local' && (
+            {(features.data_mode === 'local' || features.data_mode === 'demo') && (
                 <Card className="border-amber-500/20 bg-amber-500/5">
                     <CardContent className="p-5 text-sm text-amber-700 dark:text-amber-300">
                         {t('settings.marketplace.localUnsupported', {

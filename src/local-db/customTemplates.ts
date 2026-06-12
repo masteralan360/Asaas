@@ -4,11 +4,14 @@ import {
   type SqliteConnection,
 } from "./localModeSqlite";
 import {
+  isDemoWorkspaceMode,
   isLocalWorkspaceMode,
   shouldMirrorToSqlite,
 } from "@/workspace/workspaceMode";
+import { db } from "./database";
 
 const CUSTOM_TEMPLATE_ENTITY_TYPE = "custom_templates";
+const DEMO_TEMPLATE_SETTING_PREFIX = "demo_custom_template";
 
 export type LocalCustomTemplateRow = {
   id: string;
@@ -71,6 +74,94 @@ function assertMirroredWorkspace(workspaceId: string) {
       "Custom templates are stored in SQLite only for local and hybrid workspaces.",
     );
   }
+}
+
+function getDemoTemplateSettingPrefix(workspaceId: string) {
+  return `${DEMO_TEMPLATE_SETTING_PREFIX}:${workspaceId}:`;
+}
+
+function getDemoTemplateSettingKey(workspaceId: string, templateId: string) {
+  return `${getDemoTemplateSettingPrefix(workspaceId)}${templateId}`;
+}
+
+async function listDemoTemplates(workspaceId: string) {
+  const prefix = getDemoTemplateSettingPrefix(workspaceId);
+  const settings = await db.app_settings
+    .filter((setting) => setting.key.startsWith(prefix))
+    .toArray();
+
+  return settings.flatMap((setting) => {
+    try {
+      const row = JSON.parse(setting.value) as LocalCustomTemplateRow;
+      return row.workspace_id === workspaceId ? [row] : [];
+    } catch {
+      return [];
+    }
+  });
+}
+
+async function persistDemoTemplates(rows: LocalCustomTemplateRow[]) {
+  await db.app_settings.bulkPut(
+    rows.map((row) => ({
+      key: getDemoTemplateSettingKey(row.workspace_id, row.id),
+      value: JSON.stringify(row),
+    })),
+  );
+}
+
+async function saveDemoTemplate(input: SaveLocalCustomTemplateInput) {
+  const label = input.label.trim();
+  if (!label) {
+    throw new Error("Template label is required.");
+  }
+
+  const workspaceTemplates = await listDemoTemplates(input.workspaceId);
+  const existing = input.id
+    ? workspaceTemplates.find((row) => row.id === input.id)
+    : undefined;
+  if (input.id && !existing) {
+    throw new Error("Custom template not found.");
+  }
+  if (existing && existing.module_type_key !== input.moduleTypeKey) {
+    throw new Error("A custom template cannot be moved to another module type.");
+  }
+
+  const id = existing?.id ?? input.id ?? crypto.randomUUID();
+  const active = input.active ?? existing?.active ?? true;
+  if (input.primary === true && !active) {
+    throw new Error("An inactive template cannot be primary.");
+  }
+
+  const now = new Date().toISOString();
+  const savedRow: LocalCustomTemplateRow = {
+    id,
+    workspace_id: input.workspaceId,
+    module_type_key: input.moduleTypeKey,
+    label,
+    layout_json: input.layoutJson,
+    active,
+    primary: active && (input.primary ?? existing?.primary ?? false),
+    created_by: existing?.created_by ?? input.userId ?? null,
+    updated_by: input.userId ?? null,
+    created_at: existing?.created_at ?? now,
+    updated_at: now,
+  };
+
+  const moduleRows = workspaceTemplates
+    .filter(
+      (row) =>
+        row.module_type_key === input.moduleTypeKey && row.id !== savedRow.id,
+    )
+    .concat(savedRow);
+  const reconciledRows = reconcilePrimaryTemplate(
+    moduleRows,
+    savedRow.primary ? savedRow.id : undefined,
+    now,
+    input.userId ?? null,
+  );
+
+  await persistDemoTemplates(reconciledRows);
+  return reconciledRows.find((row) => row.id === savedRow.id)!;
 }
 
 async function requireConnection() {
@@ -356,6 +447,11 @@ export async function listLocalCustomTemplates(
   workspaceId: string,
   options: ListLocalCustomTemplatesOptions = {},
 ) {
+  if (isDemoWorkspaceMode(workspaceId)) {
+    const rows = await listDemoTemplates(workspaceId);
+    return rows.filter((row) => matchesOptions(row, options));
+  }
+
   assertMirroredWorkspace(workspaceId);
   await ensureCustomTemplateEntityStorage();
   const connection = await requireConnection();
@@ -411,6 +507,10 @@ export async function saveLocalCustomTemplate(
   input: SaveLocalCustomTemplateInput,
 ) {
   assertLocalWorkspace(input.workspaceId);
+  if (isDemoWorkspaceMode(input.workspaceId)) {
+    return saveDemoTemplate(input);
+  }
+
   return runTemplateWrite((connection) =>
     saveTemplateInWrite(connection, input),
   );
@@ -423,6 +523,26 @@ export async function updateLocalCustomTemplateStatus(
   userId?: string | null,
 ) {
   assertLocalWorkspace(workspaceId);
+  if (isDemoWorkspaceMode(workspaceId)) {
+    const existing = (await listDemoTemplates(workspaceId)).find(
+      (row) => row.id === templateId,
+    );
+    if (!existing) {
+      throw new Error("Custom template not found.");
+    }
+
+    return saveDemoTemplate({
+      id: existing.id,
+      workspaceId,
+      moduleTypeKey: existing.module_type_key,
+      label: existing.label,
+      layoutJson: existing.layout_json,
+      active: changes.active ?? existing.active,
+      primary: changes.primary,
+      userId,
+    });
+  }
+
   return runTemplateWrite(async (connection) => {
     const existing = (
       await selectWorkspaceTemplates(connection, workspaceId)

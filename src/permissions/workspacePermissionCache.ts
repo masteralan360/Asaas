@@ -52,3 +52,21 @@ export function writeCachedPermissions(
     console.warn("[Permissions] Failed to cache permissions:", error);
   }
 }
+
+export function clearCachedPermissionsForWorkspace(workspaceId: string) {
+  if (typeof localStorage === "undefined" || !workspaceId) {
+    return;
+  }
+
+  const prefix = `atlas_workspace_permissions:${workspaceId}:`;
+  const keysToRemove: string[] = [];
+
+  for (let index = 0; index < localStorage.length; index += 1) {
+    const key = localStorage.key(index);
+    if (key?.startsWith(prefix)) {
+      keysToRemove.push(key);
+    }
+  }
+
+  keysToRemove.forEach((key) => localStorage.removeItem(key));
+}

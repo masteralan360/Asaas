@@ -51,6 +51,7 @@ import { cn, formatCurrency, formatNumericInput, parseFormattedNumber, sanitizeN
 import { getInventoryRowsForProduct } from '@/local-db/inventory'
 import { platformService } from '@/services/platformService'
 import { useWorkspace } from '@/workspace'
+import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
 import { BarcodeScannerToggleButton } from '@/ui/components/BarcodeScannerToggleButton'
 import {
     Button,
@@ -416,7 +417,7 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
         const r2Path = `${workspaceId}/product-images/${fileName}`
 
         const { r2Service } = await import('@/services/r2Service')
-        if (r2Service.isConfigured()) {
+        if (!isLocalWorkspaceMode(workspaceId) && r2Service.isConfigured()) {
             const success = await r2Service.upload(r2Path, file)
             if (success) {
                 setFormData((current) => ({ ...current, imageUrl: targetPath }))

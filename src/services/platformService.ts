@@ -1,5 +1,6 @@
 import { isDesktop, isMobile, isTauri, PlatformAPI } from '../lib/platform';
 import { r2Service } from './r2Service';
+import { isDemoWorkspaceMode, isLocalWorkspaceMode } from '@/workspace/workspaceMode';
 
 /**
  * Service to handle platform-specific operations
@@ -17,7 +18,7 @@ class PlatformService implements PlatformAPI {
     }
 
     private async uploadSavedImageToR2(workspaceId: string, subDir: string, fileName: string, data: Blob | ArrayBuffer, contentType: string): Promise<void> {
-        if (!workspaceId || !r2Service.isConfigured()) return;
+        if (!workspaceId || isLocalWorkspaceMode(workspaceId) || !r2Service.isConfigured()) return;
 
         const r2Path = `${workspaceId}/${subDir}/${fileName}`.replace(/\\/g, '/');
         try {
@@ -351,6 +352,11 @@ class PlatformService implements PlatformAPI {
         }
     }
     async pickAndSaveImage(workspaceId: string, subDir: string = 'product-images'): Promise<string | null> {
+        if (isDemoWorkspaceMode(workspaceId)) {
+            const selectedFile = await this.pickImageFileFromInput();
+            return selectedFile ? this.blobToDataUrl(selectedFile) : null;
+        }
+
         if (isTauri()) {
             if (isMobile()) {
                 try {
@@ -381,7 +387,7 @@ class PlatformService implements PlatformAPI {
 
                     const relativeDest = `${relativeDir}/${fileName}`.replace(/\\/g, '/');
                     await copyFile(selected, relativeDest, { toPathBaseDir: BaseDirectory.AppData });
-                    if (r2Service.isConfigured()) {
+                    if (!isLocalWorkspaceMode(workspaceId) && r2Service.isConfigured()) {
                         const fileData = await readFile(relativeDest, { baseDir: BaseDirectory.AppData });
                         const arrayBuffer = fileData.buffer.slice(fileData.byteOffset, fileData.byteOffset + fileData.byteLength);
                         await this.uploadSavedImageToR2(workspaceId, subDir, fileName, arrayBuffer, this.getImageContentType(ext));
@@ -408,7 +414,7 @@ class PlatformService implements PlatformAPI {
             const relativeDest = `${subDir}/${workspaceId}/${fileName}`.replace(/\\/g, '/');
             const r2Path = `${workspaceId}/${subDir}/${fileName}`.replace(/\\/g, '/');
 
-            if (r2Service.isConfigured()) {
+            if (!isLocalWorkspaceMode(workspaceId) && r2Service.isConfigured()) {
                 try {
                     await r2Service.upload(r2Path, fileToPersist, fileToPersist.type || this.getImageContentType(ext));
                     return relativeDest;
@@ -429,6 +435,10 @@ class PlatformService implements PlatformAPI {
      * Save an image from a File or Blob directly to AppData
      */
     async saveImageFile(file: File | Blob, workspaceId: string, subDir: string = 'product-images'): Promise<string | null> {
+        if (isDemoWorkspaceMode(workspaceId)) {
+            return this.blobToDataUrl(file);
+        }
+
         if (isTauri()) {
             try {
                 const { mkdir, writeFile, BaseDirectory } = await import('@tauri-apps/plugin-fs');

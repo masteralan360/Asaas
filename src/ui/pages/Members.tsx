@@ -108,7 +108,7 @@ const PERMISSION_MODULE_PLAN_MODULES: Partial<Record<WorkspacePermissionModule, 
 
 export function Members() {
     const { user, session } = useAuth()
-    const { hasCapability, planCapabilities } = useWorkspace()
+    const { hasCapability, isDemoMode, planCapabilities } = useWorkspace()
     const { t } = useTranslation()
     const [members, setMembers] = useState<Member[]>([])
     const [permissions, setPermissions] = useState<WorkspacePermission[]>([])
@@ -121,7 +121,8 @@ export function Members() {
     const [selectedPermissionModule, setSelectedPermissionModule] = useState<string>('global')
     const [profileUserId, setProfileUserId] = useState<string | null>(null)
     const [error, setError] = useState<string | null>(null)
-    const canManageWorkspacePermissions = hasCapability('workspaceManagementPermissions')
+    const canManageWorkspacePermissions = !isDemoMode
+        && hasCapability('workspaceManagementPermissions')
 
     const getErrorMessage = (err: unknown) => {
         const normalized = normalizeSupabaseActionError(err)
@@ -132,7 +133,12 @@ export function Members() {
     }
 
     const fetchPermissions = async () => {
-        if (user?.role !== 'admin' || !user?.workspaceId || !canManageWorkspacePermissions) {
+        if (
+            isDemoMode
+            || user?.role !== 'admin'
+            || !user?.workspaceId
+            || !canManageWorkspacePermissions
+        ) {
             setPermissions([])
             return
         }
@@ -163,6 +169,22 @@ export function Members() {
         setIsLoading(true)
         setError(null)
         try {
+            if (isDemoMode) {
+                const localProfiles = await db.profiles
+                    .where('workspaceId')
+                    .equals(user.workspaceId)
+                    .toArray()
+                setMembers(localProfiles.map((profile) => ({
+                    id: profile.id,
+                    name: profile.name,
+                    role: profile.role,
+                    profile_url: profile.profile_url ?? undefined,
+                    created_at: profile.created_at ?? new Date().toISOString()
+                })))
+                setPermissions([])
+                return
+            }
+
             const { data, error } = await runSupabaseAction('members.fetch', () =>
                 supabase
                     .from('profiles')
@@ -198,7 +220,7 @@ export function Members() {
 
     useEffect(() => {
         fetchMembers()
-    }, [canManageWorkspacePermissions, user?.workspaceId, user?.role])
+    }, [canManageWorkspacePermissions, isDemoMode, user?.workspaceId, user?.role])
 
     const permissionsByUserId = useMemo(() => {
         const next = new Map<string, Set<WorkspacePermissionKey>>()
@@ -309,7 +331,7 @@ export function Members() {
     }
 
     const handleKick = async () => {
-        if (!memberToKick) return
+        if (!memberToKick || isDemoMode) return
 
         setKickingMemberId(memberToKick.id)
         setError(null)
@@ -339,6 +361,7 @@ export function Members() {
     }
 
     const canKick = (member: Member) => {
+        if (isDemoMode) return false
         // Can't kick yourself
         if (member.id === user?.id) return false
         // Can't kick admins

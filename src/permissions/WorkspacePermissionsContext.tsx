@@ -50,7 +50,8 @@ export function WorkspacePermissionsProvider({
   const workspaceId = user?.workspaceId ?? "";
   const userId = user?.id ?? "";
   const userRole = user?.role;
-  const isLocalMode = user?.workspaceMode === "local";
+  const isLocalMode =
+    user?.workspaceMode === "local" || user?.workspaceMode === "demo";
   const permissionsEnabled = hasCapability("workspaceManagementPermissions");
 
   const refreshPermissions = useCallback(async () => {

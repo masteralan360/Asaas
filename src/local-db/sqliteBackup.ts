@@ -1,5 +1,5 @@
 import { isTauri } from '@/lib/platform'
-import { shouldMirrorToSqlite, isLocalWorkspaceMode } from '@/workspace/workspaceMode'
+import { shouldMirrorToSqlite } from '@/workspace/workspaceMode'
 import { r2Service } from '@/services/r2Service'
 
 const DB_FILENAME = 'atlas-local-mode.db'
@@ -132,7 +132,7 @@ function markR2BackupDone(): void {
 
 export async function runR2BackupIfNeeded(workspaceId: string | undefined | null): Promise<void> {
     if (!isTauri()) return
-    if (!workspaceId || !isLocalWorkspaceMode(workspaceId)) return
+    if (!workspaceId || !shouldMirrorToSqlite(workspaceId)) return
     if (!isR2BackupDue()) return
 
     try {

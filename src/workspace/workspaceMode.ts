@@ -27,8 +27,16 @@ function normalizeWorkspaceModeSnapshot(
 ): WorkspaceModeSnapshot {
     return {
         workspaceId,
-        dataMode: input?.dataMode === 'local' ? 'local' : input?.dataMode === 'hybrid' ? 'hybrid' : 'cloud'
+        dataMode: normalizeWorkspaceDataMode(input?.dataMode)
     }
+}
+
+export function normalizeWorkspaceDataMode(value?: string | null): WorkspaceDataMode {
+    if (value === 'local' || value === 'hybrid' || value === 'demo') {
+        return value
+    }
+
+    return 'cloud'
 }
 
 function parseWorkspaceModeSnapshot(value: string, workspaceId: string): WorkspaceModeSnapshot | null {
@@ -123,7 +131,8 @@ export function getWorkspaceDataMode(workspaceId?: string | null): WorkspaceData
 }
 
 export function isLocalWorkspaceMode(workspaceId?: string | null) {
-    return getWorkspaceDataMode(workspaceId) === 'local'
+    const mode = getWorkspaceDataMode(workspaceId)
+    return mode === 'local' || mode === 'demo'
 }
 
 export function isCloudWorkspaceMode(workspaceId?: string | null) {
@@ -132,6 +141,14 @@ export function isCloudWorkspaceMode(workspaceId?: string | null) {
 
 export function isHybridWorkspaceMode(workspaceId?: string | null) {
     return getWorkspaceDataMode(workspaceId) === 'hybrid'
+}
+
+export function isDemoWorkspaceMode(workspaceId?: string | null) {
+    return getWorkspaceDataMode(workspaceId) === 'demo'
+}
+
+export function isStrictLocalWorkspaceMode(workspaceId?: string | null) {
+    return getWorkspaceDataMode(workspaceId) === 'local'
 }
 
 export function shouldMirrorToSqlite(workspaceId?: string | null) {

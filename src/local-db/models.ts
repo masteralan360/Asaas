@@ -6,7 +6,7 @@ export type SyncStatus = "pending" | "synced" | "conflict";
 export type UserRole = "admin" | "staff" | "viewer";
 
 export type CurrencyCode = "usd" | "eur" | "iqd" | "try";
-export type WorkspaceDataMode = "cloud" | "local" | "hybrid";
+export type WorkspaceDataMode = "cloud" | "local" | "hybrid" | "demo";
 export type WorkspacePlan = "basic" | "business" | "enterprise";
 
 export type PaymentMethod =

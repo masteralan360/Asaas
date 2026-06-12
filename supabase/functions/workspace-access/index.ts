@@ -330,6 +330,25 @@ async function requireCallerWorkspace(adminClient: AdminClient, user: User, requ
     return { response: null, profile }
 }
 
+async function isDemoCallerWorkspace(adminClient: AdminClient, user: User) {
+    const profile = await getCallerProfile(adminClient, user.id)
+    if (!profile?.workspace_id) {
+        return false
+    }
+
+    const { data, error } = await adminClient
+        .from('workspaces')
+        .select('data_mode')
+        .eq('id', profile.workspace_id)
+        .maybeSingle()
+
+    if (error) {
+        throw error
+    }
+
+    return data?.data_mode === 'demo'
+}
+
 function hasInventoryTransferRole(role: string | null | undefined) {
     return role === 'admin' || role === 'staff'
 }
@@ -702,7 +721,7 @@ async function handleCreateDemo(adminClient: AdminClient, body: CreateDemoReques
         name: workspaceName,
         code: workspaceCode,
         plan: 'enterprise',
-        data_mode: 'cloud',
+        data_mode: 'demo',
         default_currency: demoCurrency,
         is_configured: true,
         subscription_expires_at: new Date(Date.now() + demoMinutes * 60 * 1000).toISOString(),
@@ -786,6 +805,7 @@ async function handleCreateDemo(adminClient: AdminClient, body: CreateDemoReques
         name: 'Demo User',
         role: 'admin',
         workspace_id: workspace.id,
+        data_mode: 'demo',
         passkey: passkeyRow.key_value,
       },
     })
@@ -2860,6 +2880,10 @@ Deno.serve(async (req) => {
 
         if (body.action === 'delete-demo') {
             return await handleDeleteDemo(adminClient, user, body)
+        }
+
+        if (await isDemoCallerWorkspace(adminClient, user)) {
+            return errorResponse('Demo workspace actions are local-only', 403)
         }
 
         if (body.action === 'join') {

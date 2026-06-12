@@ -107,7 +107,14 @@ export function CustomTemplates() {
     const { t } = useTranslation()
     const { toast } = useToast()
     const { user } = useAuth()
-    const { features, hasFeature, workspaceName, isLocalMode, isHybridMode } = useWorkspace()
+    const {
+        features,
+        hasFeature,
+        workspaceName,
+        isLocalMode,
+        isDemoMode,
+        isHybridMode
+    } = useWorkspace()
     const [, setLocation] = useLocation()
     const [templates, setTemplates] = useState<CustomTemplateRow[]>([])
     const [isLoading, setIsLoading] = useState(true)
@@ -314,7 +321,11 @@ export function CustomTemplates() {
 
         toast({
             title: t('customTemplates.savedTitle', { defaultValue: 'Template saved' }),
-            description: isLocalMode
+            description: isDemoMode
+                ? t('customTemplates.savedDemoDescription', {
+                    defaultValue: 'The custom print layout was saved in IndexedDB for this demo session.'
+                })
+                : isLocalMode
                 ? t('customTemplates.savedLocalDescription', {
                     defaultValue: 'The custom print layout was saved to atlas-local-mode.db.'
                 })
@@ -326,7 +337,7 @@ export function CustomTemplates() {
                     defaultValue: 'The custom print layout was saved to Supabase.'
                 })
         })
-    }, [fetchTemplates, isHybridMode, isLocalMode, loadCloudTemplates, t, templates, toast, user?.id, workspaceId])
+    }, [fetchTemplates, isDemoMode, isHybridMode, isLocalMode, loadCloudTemplates, t, templates, toast, user?.id, workspaceId])
 
     const openPreview = useCallback((moduleTypeKey: string, template?: CustomTemplateRow) => {
         const target = availableTargets.find((item) => item.moduleTypeKey === moduleTypeKey)

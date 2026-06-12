@@ -136,6 +136,7 @@ export function GlobalMarketplaceOrderReminders() {
         Boolean(workspaceId)
         && !isReadOnly
         && features.data_mode !== 'local'
+        && features.data_mode !== 'demo'
         && hasFeature('ecommerce')
     const iqdPreference = features.iqd_display_preference as IQDDisplayPreference
 

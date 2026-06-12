@@ -77,7 +77,7 @@ export function UploadFilesTab({ invoices, onPreview }: UploadFilesTabProps) {
     const { t } = useTranslation()
     const { toast } = useToast()
     const { user } = useAuth()
-    const { activeWorkspace, features, branchInfo, planCapabilities } = useWorkspace()
+    const { activeWorkspace, features, branchInfo, planCapabilities, isDemoMode } = useWorkspace()
     const [documentName, setDocumentName] = useState('')
     const [selectedFile, setSelectedFile] = useState<File | null>(null)
     const [uploadProgress, setUploadProgress] = useState(0)
@@ -232,6 +232,32 @@ export function UploadFilesTab({ invoices, onPreview }: UploadFilesTabProps) {
             return
         }
 
+        if (isDemoMode) {
+            const invoiceId = generateId()
+            const uploadMimeType = getFileMimeType(selectedFile)
+
+            await createInvoice(activeWorkspace.id, {
+                invoiceid: trimmedName,
+                totalAmount: 0,
+                settlementCurrency: features.default_currency || 'usd',
+                origin: 'upload',
+                createdBy: user.id,
+                createdByName: user.name,
+                cashierName: user.name,
+                printFormat: 'a4',
+                pdfBlobA4: selectedFile,
+                fileSize: selectedFile.size,
+                fileMimeType: uploadMimeType,
+            }, invoiceId)
+
+            toast({
+                title: t('uploadFile.uploadComplete', { defaultValue: 'Upload complete' }),
+                description: t('uploadFile.uploadSavedDescription', { defaultValue: '"{{name}}" was saved locally for this demo.', name: trimmedName }),
+            })
+            resetForm()
+            return
+        }
+
         if (!navigator.onLine) {
             toast({
                 title: t('common.error', { defaultValue: 'Error' }),
@@ -376,7 +402,7 @@ export function UploadFilesTab({ invoices, onPreview }: UploadFilesTabProps) {
                     </p>
                 </CardHeader>
                 <CardContent className="space-y-6 p-6">
-                    {!r2Service.isConfigured() && (
+                    {!isDemoMode && !r2Service.isConfigured() && (
                         <div className="flex items-start gap-3 rounded-2xl border border-destructive/20 bg-destructive/5 p-4 text-sm text-destructive">
                             <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0" />
                             <p>{t('uploadFile.r2NotConfiguredDesc', { defaultValue: 'R2 storage is not configured on this device. Uploads will stay blocked until the worker URL is available.' })}</p>
@@ -449,7 +475,7 @@ export function UploadFilesTab({ invoices, onPreview }: UploadFilesTabProps) {
                             <Button
                                 type="submit"
                                 allowViewer={true}
-                                disabled={isUploading || !selectedFile || !documentName.trim() || !r2Service.isConfigured() || allowedUploadMimeTypes.length === 0}
+                                disabled={isUploading || !selectedFile || !documentName.trim() || (!isDemoMode && !r2Service.isConfigured()) || allowedUploadMimeTypes.length === 0}
                             >
                                 {isUploading ? t('uploadFile.uploading', { defaultValue: 'Uploading...' }) : t('uploadFile.uploadPdf', { defaultValue: 'Upload File' })}
                             </Button>

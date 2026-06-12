@@ -6,6 +6,7 @@ import { Boxes, Key, Loader2, LogOut } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { getRetriableActionToast, isRetriableWebRequestError, normalizeSupabaseActionError } from '@/lib/supabaseRequest'
 import { invokeWorkspaceAccess } from '@/lib/workspaceAccess'
+import { normalizeWorkspaceDataMode } from '@/workspace/workspaceMode'
 
 export function WorkspaceRegistration() {
     const [, setLocation] = useLocation()
@@ -56,7 +57,7 @@ export function WorkspaceRegistration() {
                     workspaceName: data.workspace_name,
                     branchSourceWorkspaceId: data.branch_source_workspace_id ?? undefined,
                     branchWorkspaceId: data.branch_workspace_id ?? undefined,
-                    workspaceMode: data.data_mode === 'local' ? 'local' : data.data_mode === 'hybrid' ? 'hybrid' : 'cloud'
+                    workspaceMode: normalizeWorkspaceDataMode(data.data_mode)
                 })
             }
 

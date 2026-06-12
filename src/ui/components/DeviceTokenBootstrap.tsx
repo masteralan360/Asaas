@@ -20,14 +20,15 @@ export function DeviceTokenBootstrap() {
     const language = i18n.resolvedLanguage ?? i18n.language
     const userId = user?.id
     const workspaceMode = user?.workspaceMode
+    const usesLocalBusinessData = workspaceMode === 'local' || workspaceMode === 'demo'
 
     useEffect(() => {
-        if (!isAuthenticated || !userId || workspaceMode === 'local') return
+        if (!isAuthenticated || !userId || usesLocalBusinessData) return
         void registerDeviceTokenIfNeeded(userId, language)
-    }, [isAuthenticated, language, userId, workspaceMode])
+    }, [isAuthenticated, language, userId, usesLocalBusinessData])
 
     useEffect(() => {
-        if (!isAuthenticated || !userId || workspaceMode === 'local') return
+        if (!isAuthenticated || !userId || usesLocalBusinessData) return
         if (isTauri() && isMobile()) return
 
         let unsubscribe: (() => void) | undefined
@@ -58,7 +59,7 @@ export function DeviceTokenBootstrap() {
         return () => {
             unsubscribe?.()
         }
-    }, [isAuthenticated, userId, workspaceMode])
+    }, [isAuthenticated, userId, usesLocalBusinessData])
 
     return null
 }

@@ -2,6 +2,8 @@
 import { requestFirebaseTokenSync } from '@/lib/firebase'
 import { normalizeNotificationLanguage } from '@/lib/notificationLocalization'
 import { isMobile, isTauri } from '@/lib/platform'
+import { getActiveBusinessWorkspaceId } from '@/lib/network'
+import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
 
 const TOKEN_STORAGE_KEY_PREFIX = 'atlas_device_token'
 
@@ -67,6 +69,10 @@ async function readWebPushToken(): Promise<string | null> {
 
 export async function registerDeviceTokenIfNeeded(userId: string, requestedLanguage?: string | null): Promise<void> {
     console.log('[Notifications] registerDeviceTokenIfNeeded called. userId:', userId)
+
+    if (isLocalWorkspaceMode(getActiveBusinessWorkspaceId())) {
+        return
+    }
 
     if (!isSupabaseConfigured) {
         console.log('[Notifications] Skipped: Supabase not configured')

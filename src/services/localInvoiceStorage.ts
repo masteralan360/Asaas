@@ -1,6 +1,6 @@
 import type { Invoice } from '@/local-db/models'
 import { isTauri } from '@/lib/platform'
-import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
+import { isStrictLocalWorkspaceMode } from '@/workspace/workspaceMode'
 
 import { type PrintFormat } from './pdfGenerator'
 import { platformService } from './platformService'
@@ -12,7 +12,7 @@ type InvoicePrintFeatures = {
 type InvoicePdfRecord = Pick<Invoice, 'localPathA4' | 'localPathReceipt'>
 
 export function shouldUseLocalInvoiceStorage(workspaceId?: string | null) {
-    return !!workspaceId && isLocalWorkspaceMode(workspaceId)
+    return !!workspaceId && isStrictLocalWorkspaceMode(workspaceId)
 }
 
 export function canPersistLocalInvoiceFiles(workspaceId?: string | null) {

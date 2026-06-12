@@ -10,6 +10,7 @@ import { useAuth } from '@/auth'
 import type { CurrencyCode } from '@/local-db/models'
 import { DEMO_JOBS, DEMO_TIME_DEFAULT, type DemoJob } from './demoConfig'
 import { createDemoWorkspace } from './demoService'
+import { captureDemoBrowserState, clearStoredDemoWorkspaces } from './demoCleanup'
 
 export function DemoConfigPage() {
   const [, setLocation] = useLocation()
@@ -33,7 +34,9 @@ export function DemoConfigPage() {
     const name = workspaceName.trim() || `${selectedJob.charAt(0).toUpperCase() + selectedJob.slice(1)} Demo`
 
     try {
+      await clearStoredDemoWorkspaces()
       const result = await createDemoWorkspace(name, selectedJob, timeLimit, currency)
+      await captureDemoBrowserState(result.workspaceId)
       const signInResult = await signIn(result.email, result.password)
       if (signInResult.error) {
         setError(signInResult.error.message)
