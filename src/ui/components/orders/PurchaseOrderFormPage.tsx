@@ -205,7 +205,6 @@ export function PurchaseOrderFormPage({
 
         setIsSaving(true)
         try {
-            const snapshot = buildOrderExchangeRatesSnapshot(liveRates)
             const orderItems: PurchaseOrderItem[] = items
                 .filter((item) => item.productId && Number(item.quantity) > 0)
                 .map((item) => {
@@ -251,11 +250,13 @@ export function PurchaseOrderFormPage({
             if (orderItems.length === 0) {
                 throw new Error(t('orders.form.errors.atLeastOneItem', { defaultValue: 'Add at least one item.' }))
             }
+            const hasMultiCurrency = orderItems.some(item => item.originalCurrency !== item.settlementCurrency)
+            const snapshot = hasMultiCurrency ? buildOrderExchangeRatesSnapshot(liveRates) : []
+            const primaryRate = hasMultiCurrency ? getPrimaryExchangeDetails(currency, features.default_currency, snapshot) : null
             const commonStorageId = getCommonStorageId(orderItems)
             const subtotal = roundFormAmount(orderItems.reduce((sum, item) => sum + item.lineTotal, 0), currency)
             const discountNum = roundFormAmount(Number(discount || 0), currency)
             const total = roundFormAmount(subtotal - discountNum, currency)
-            const primaryRate = getPrimaryExchangeDetails(currency, features.default_currency, snapshot)
 
             const payload = {
                 businessPartnerId: supplier.id,
@@ -267,10 +268,10 @@ export function PurchaseOrderFormPage({
                 discount: discountNum,
                 total,
                 currency,
-                exchangeRate: primaryRate.exchangeRate,
-                exchangeRateSource: primaryRate.exchangeRateSource,
-                exchangeRateTimestamp: primaryRate.exchangeRateTimestamp,
-                exchangeRates: snapshot,
+                exchangeRate: primaryRate?.exchangeRate ?? null,
+                exchangeRateSource: primaryRate?.exchangeRateSource ?? null,
+                exchangeRateTimestamp: primaryRate?.exchangeRateTimestamp ?? null,
+                exchangeRates: hasMultiCurrency ? snapshot : null,
                 status: 'draft' as PurchaseOrderStatus,
                 expectedDeliveryDate: expectedDeliveryDate || null,
                 actualDeliveryDate: null,

@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState, type ReactElement } from 'react'
-import { ArrowLeft, CalendarDays, CreditCard, LayoutGrid, List, Lock, Package, Printer, Receipt, ShoppingCart, Trash2, Truck, UsersRound, Warehouse } from 'lucide-react'
+import { ArrowLeft, CalendarDays, CreditCard, LayoutGrid, List, Lock, Package, Printer, Receipt, ShoppingCart, Trash2, TrendingUp, Truck, UsersRound, Warehouse } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Link, useLocation } from 'wouter'
 
 import { useAuth } from '@/auth'
-import { cn, formatCurrency, formatDate, formatDateTime } from '@/lib/utils'
+import { cn, formatCurrency, formatDate, formatDateTime, formatSnapshotTime } from '@/lib/utils'
 import { generateTemplatePdf, type PrintFormat } from '@/services/pdfGenerator'
 import type { TemplatePreview } from '@/lib/pdfPreviewStore'
 import {
@@ -492,6 +492,41 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                                     </div>
                                 </div>
                             </div>
+                            {order.items.some(item => item.originalCurrency !== item.settlementCurrency) && order.exchangeRates && order.exchangeRates.length > 0 && (
+                                <div className="rounded-2xl border border-primary/10 bg-primary/5 p-4 space-y-3">
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-2">
+                                            <TrendingUp className="w-4 h-4 text-primary" />
+                                            <span className="text-xs font-bold uppercase tracking-[0.14em] text-primary">
+                                                {t('sales.marketRatesSnapshot') || 'Market Rates Snapshot'}
+                                            </span>
+                                        </div>
+                                        <span className="text-[10px] text-muted-foreground italic">
+                                            {t('sales.ratesLockedAt') || 'Rates locked at'}: {formatSnapshotTime(order.exchangeRates[0].timestamp)}
+                                        </span>
+                                    </div>
+                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                        {order.exchangeRates.map((rate, idx) => (
+                                            <div key={idx} className="bg-card border border-primary/10 shadow-sm rounded-sm p-3 space-y-1 relative overflow-hidden">
+                                                {rate.source && (
+                                                    <div className="absolute top-0 right-0 px-1.5 py-0.5 bg-primary/10 text-primary text-[8px] font-bold uppercase tracking-wider rounded-bl-sm border-l border-b border-primary/5">
+                                                        {rate.source}
+                                                    </div>
+                                                )}
+                                                <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+                                                    {rate.pair}
+                                                </div>
+                                                <div className="flex items-baseline gap-2">
+                                                    <span className="text-base font-black">100 {rate.pair.split('/')[0]}</span>
+                                                    <span className="text-sm text-muted-foreground font-medium">
+                                                        {formatCurrency(rate.rate, rate.pair.split('/')[1].toLowerCase() as any, iqd)}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
                             {order.notes && (
                                 <div className="rounded-2xl border bg-background/70 p-4">
                                     <div className="text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">{t('orders.details.notes') || 'Notes'}</div>
