@@ -20,6 +20,10 @@ import {
   normalizeSupabaseActionError,
   runSupabaseAction,
 } from "@/lib/supabaseRequest";
+import {
+  readCachedPermissions,
+  writeCachedPermissions,
+} from "./workspacePermissionCache";
 
 interface WorkspacePermissionsContextType {
   permissionKeys: WorkspacePermissionKey[];
@@ -30,45 +34,6 @@ interface WorkspacePermissionsContextType {
 
 const WorkspacePermissionsContext =
   createContext<WorkspacePermissionsContextType | undefined>(undefined);
-
-function getCacheKey(workspaceId: string, userId: string) {
-  return `atlas_workspace_permissions:${workspaceId}:${userId}`;
-}
-
-function readCachedPermissions(workspaceId: string, userId: string) {
-  if (typeof localStorage === "undefined") {
-    return [];
-  }
-
-  try {
-    const raw = localStorage.getItem(getCacheKey(workspaceId, userId));
-    if (!raw) return [];
-
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-
-    return parsed.filter(isSupportedWorkspacePermissionKey);
-  } catch (error) {
-    console.warn("[Permissions] Failed to read cached permissions:", error);
-    return [];
-  }
-}
-
-function writeCachedPermissions(
-  workspaceId: string,
-  userId: string,
-  keys: WorkspacePermissionKey[],
-) {
-  if (typeof localStorage === "undefined") {
-    return;
-  }
-
-  try {
-    localStorage.setItem(getCacheKey(workspaceId, userId), JSON.stringify(keys));
-  } catch (error) {
-    console.warn("[Permissions] Failed to cache permissions:", error);
-  }
-}
 
 export function WorkspacePermissionsProvider({
   children,
@@ -85,6 +50,7 @@ export function WorkspacePermissionsProvider({
   const workspaceId = user?.workspaceId ?? "";
   const userId = user?.id ?? "";
   const userRole = user?.role;
+  const isLocalMode = user?.workspaceMode === "local";
   const permissionsEnabled = hasCapability("workspaceManagementPermissions");
 
   const refreshPermissions = useCallback(async () => {
@@ -101,11 +67,9 @@ export function WorkspacePermissionsProvider({
     }
 
     const cached = readCachedPermissions(workspaceId, userId);
-    if (cached.length > 0) {
-      setPermissionKeys(cached);
-    }
+    setPermissionKeys(cached);
 
-    if (!isSupabaseConfigured) {
+    if (isLocalMode || !isSupabaseConfigured) {
       setIsLoading(false);
       return;
     }
@@ -145,7 +109,7 @@ export function WorkspacePermissionsProvider({
     } finally {
       setIsLoading(false);
     }
-  }, [isAuthenticated, permissionsEnabled, userId, userRole, workspaceId]);
+  }, [isAuthenticated, isLocalMode, permissionsEnabled, userId, userRole, workspaceId]);
 
   useEffect(() => {
     void refreshPermissions();
@@ -154,6 +118,7 @@ export function WorkspacePermissionsProvider({
   useEffect(() => {
     if (
       !isSupabaseConfigured ||
+      isLocalMode ||
       !isAuthenticated ||
       !workspaceId ||
       !userId ||
@@ -195,7 +160,7 @@ export function WorkspacePermissionsProvider({
         handlePermissionsChanged,
       );
     };
-  }, [isAuthenticated, permissionsEnabled, refreshPermissions, userId, userRole, workspaceId]);
+  }, [isAuthenticated, isLocalMode, permissionsEnabled, refreshPermissions, userId, userRole, workspaceId]);
 
   const permissionSet = useMemo(
     () => new Set<WorkspacePermissionKey>(permissionKeys),

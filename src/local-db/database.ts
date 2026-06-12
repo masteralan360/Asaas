@@ -54,6 +54,7 @@ import type {
   ClinicalAttachment,
   ClinicalPreset,
   Profile,
+  LocalAccountCredential,
 } from "./models";
 import { isLocalWorkspaceMode } from "@/workspace/workspaceMode";
 import {
@@ -345,6 +346,7 @@ export class AtlasDatabase extends Dexie {
   clinical_attachments!: EntityTable<ClinicalAttachment, "id">;
   clinical_presets!: EntityTable<ClinicalPreset, "id">;
   profiles!: EntityTable<Profile, "id">;
+  local_account_credentials!: EntityTable<LocalAccountCredential, "id">;
 
   constructor() {
     super("AtlasDatabase");
@@ -2160,6 +2162,11 @@ export class AtlasDatabase extends Dexie {
     this.version(68).stores({
       stock_batches:
         "id, workspaceId, productId, storageId, batchNumber, expiryDate, sourcePurchaseOrderId, sourcePurchaseOrderItemId, isDeleted, [workspaceId+productId], [productId+storageId], [sourcePurchaseOrderId+sourcePurchaseOrderItemId]",
+    });
+
+    this.version(69).stores({
+      local_account_credentials:
+        "id, workspaceId, userId, email, [workspaceId+userId]",
     });
 
     this.registerLocalModeSyncHooks();

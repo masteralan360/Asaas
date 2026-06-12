@@ -6,15 +6,22 @@ import type {
     WorkspaceDataMode
 } from '@/local-db/models'
 import { connectionManager } from '@/lib/connectionManager'
-import { setActiveBusinessWorkspace } from '@/lib/network'
+import { setActiveBusinessUser, setActiveBusinessWorkspace } from '@/lib/network'
 import { clearWorkspaceCache } from '@/workspace/workspaceCache'
 import { clearWorkspaceModeSnapshot, writeWorkspaceModeSnapshot } from '@/workspace/workspaceMode'
 import { normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
 import { db } from '@/local-db/database'
 import { hydrateLocalModeCacheFromSqlite } from '@/local-db/localModeSqlite'
 import { runDailyBackupIfNeeded, runR2BackupIfNeeded } from '@/local-db/sqliteBackup'
+import {
+    enrollLocalAccountCredential,
+    getLocalWorkspaceAccount,
+    persistLocalAccountProfile,
+    verifyLocalAccountPassword
+} from './localAccountAuth'
+import { writeCachedPermissions } from '@/permissions/workspacePermissionCache'
 
-interface AuthUser {
+export interface AuthUser {
     id: string
     email: string
     name: string
@@ -51,6 +58,7 @@ interface AuthContextType {
     hasRole: (roles: UserRole[]) => boolean
     refreshUser: () => Promise<void>
     updateUser: (updates: Partial<AuthUser>) => void
+    switchLocalAccount: (userId: string, password: string) => Promise<{ error: Error | null }>
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -69,6 +77,7 @@ const DEMO_USER: AuthUser = {
 }
 
 const AUTH_WORKSPACE_BOOTSTRAP_COLUMNS = 'name, code, is_configured, data_mode'
+const ACTIVE_LOCAL_ACCOUNT_PREFIX = 'atlas_active_local_account:'
 
 function parseUserFromSupabase(user: User): AuthUser {
     return {
@@ -98,6 +107,177 @@ function clearPreviousWorkspaceArtifacts(previousWorkspaceId?: string | null, ne
 
     clearWorkspaceCache(previousWorkspaceId)
     clearWorkspaceModeSnapshot(previousWorkspaceId)
+}
+
+function getActiveLocalAccountKey(workspaceId: string) {
+    return `${ACTIVE_LOCAL_ACCOUNT_PREFIX}${workspaceId}`
+}
+
+function readActiveLocalAccountId(workspaceId: string) {
+    return localStorage.getItem(getActiveLocalAccountKey(workspaceId))
+}
+
+function writeActiveLocalAccountId(workspaceId: string, userId: string) {
+    localStorage.setItem(getActiveLocalAccountKey(workspaceId), userId)
+}
+
+function clearActiveLocalAccount(workspaceId?: string | null) {
+    if (workspaceId) {
+        localStorage.removeItem(getActiveLocalAccountKey(workspaceId))
+        return
+    }
+
+    const keysToRemove: string[] = []
+    for (let index = 0; index < localStorage.length; index += 1) {
+        const key = localStorage.key(index)
+        if (key?.startsWith(ACTIVE_LOCAL_ACCOUNT_PREFIX)) {
+            keysToRemove.push(key)
+        }
+    }
+    keysToRemove.forEach((key) => localStorage.removeItem(key))
+}
+
+async function persistAuthUserLocally(user: AuthUser) {
+    if (user.workspaceMode !== 'local' || !user.workspaceId) return
+
+    await persistLocalAccountProfile({
+        id: user.id,
+        workspaceId: user.workspaceId,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        profileUrl: user.profileUrl
+    })
+}
+
+async function cacheLocalAccountPermissions(workspaceId: string, userId: string) {
+    const { data, error } = await runSupabaseAction(
+        'auth.cacheLocalAccountPermissions',
+        () => supabase
+            .from('workspace_permissions')
+            .select('key')
+            .eq('workspace_id', workspaceId)
+            .eq('user_uuid', userId),
+        { timeoutMs: 8000, platform: 'all' }
+    ) as { data: Array<{ key: string }> | null; error?: unknown }
+
+    if (error) {
+        throw normalizeSupabaseActionError(error)
+    }
+
+    writeCachedPermissions(
+        workspaceId,
+        userId,
+        (data ?? []).map((permission) => permission.key)
+    )
+}
+
+async function cacheLocalWorkspaceAccounts(workspaceId: string) {
+    const { data, error } = await runSupabaseAction(
+        'auth.cacheLocalWorkspaceAccounts',
+        () => supabase
+            .from('profiles')
+            .select('id, name, role, profile_url, workspace_id, created_at')
+            .eq('workspace_id', workspaceId),
+        { timeoutMs: 8000, platform: 'all' }
+    ) as {
+        data: Array<{
+            id: string
+            name: string | null
+            role: string | null
+            profile_url: string | null
+            workspace_id: string
+            created_at: string | null
+        }> | null
+        error?: unknown
+    }
+
+    if (error) {
+        throw normalizeSupabaseActionError(error)
+    }
+
+    const remoteProfiles = data ?? []
+    const existingProfiles = await db.profiles.where('workspaceId').equals(workspaceId).toArray()
+    const remoteProfileIds = new Set(remoteProfiles.map((profile) => profile.id))
+    const removedProfiles = existingProfiles.filter((profile) => !remoteProfileIds.has(profile.id))
+    const now = new Date().toISOString()
+
+    await db.transaction('rw', db.profiles, db.users, async () => {
+        await db.profiles.bulkPut(remoteProfiles.map((profile) => ({
+            id: profile.id,
+            workspaceId: profile.workspace_id,
+            name: profile.name || 'User',
+            role: profile.role || 'viewer',
+            profile_url: profile.profile_url,
+            created_at: profile.created_at || undefined
+        })))
+
+        for (const profile of remoteProfiles) {
+            const existingUser = await db.users.get(profile.id)
+            await db.users.put({
+                ...existingUser,
+                id: profile.id,
+                workspaceId: profile.workspace_id,
+                email: existingUser?.email || '',
+                name: profile.name || 'User',
+                role: profile.role === 'admin' || profile.role === 'staff' ? profile.role : 'viewer',
+                profileUrl: profile.profile_url || undefined,
+                createdAt: existingUser?.createdAt || profile.created_at || now,
+                updatedAt: now,
+                syncStatus: 'synced',
+                lastSyncedAt: now,
+                version: existingUser?.version ?? 1,
+                isDeleted: false
+            })
+        }
+
+        for (const profile of removedProfiles) {
+            const existingUser = await db.users.get(profile.id)
+            await db.users.put({
+                ...existingUser,
+                id: profile.id,
+                workspaceId,
+                email: existingUser?.email || '',
+                name: existingUser?.name || profile.name || 'User',
+                role: existingUser?.role || (profile.role === 'admin' || profile.role === 'staff' ? profile.role : 'viewer'),
+                profileUrl: existingUser?.profileUrl || profile.profile_url || undefined,
+                createdAt: existingUser?.createdAt || profile.created_at || now,
+                updatedAt: now,
+                syncStatus: 'synced',
+                lastSyncedAt: now,
+                version: existingUser?.version ?? 1,
+                isDeleted: true
+            })
+        }
+    })
+}
+
+async function restoreActiveLocalAccount(baseUser: AuthUser): Promise<AuthUser> {
+    if (baseUser.workspaceMode !== 'local' || !baseUser.workspaceId) {
+        return baseUser
+    }
+
+    await persistAuthUserLocally(baseUser)
+
+    const activeUserId = readActiveLocalAccountId(baseUser.workspaceId)
+    if (!activeUserId || activeUserId === baseUser.id) {
+        return baseUser
+    }
+
+    const localAccount = await getLocalWorkspaceAccount(baseUser.workspaceId, activeUserId)
+    if (!localAccount?.hasCredential) {
+        clearActiveLocalAccount(baseUser.workspaceId)
+        return baseUser
+    }
+
+    return {
+        ...baseUser,
+        id: localAccount.id,
+        email: localAccount.email || baseUser.email,
+        name: localAccount.name,
+        role: localAccount.role,
+        profileUrl: localAccount.profileUrl
+    }
 }
 
 function resetWorkspaceAssignment(user: AuthUser, previousWorkspaceId?: string | null): AuthUser {
@@ -281,12 +461,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const sessionRef = useRef<Session | null>(null)
     const watchdogRef = useRef<ReturnType<typeof setInterval> | null>(null)
     const authStateTaskRef = useRef(0)
+    const userRef = useRef<AuthUser | null>(null)
+    const explicitSignOutRef = useRef(false)
 
     // Keep sessionRef in sync
     useEffect(() => { sessionRef.current = session }, [session])
+    useEffect(() => { userRef.current = user }, [user])
     useEffect(() => {
         setActiveBusinessWorkspace(user?.workspaceId ?? null)
-    }, [user?.workspaceId])
+        setActiveBusinessUser(user?.id ?? null)
+    }, [user?.id, user?.workspaceId])
 
     useEffect(() => {
         if (!isSupabaseConfigured) {
@@ -308,6 +492,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             const parsedUser = session?.user ? parseUserFromSupabase(session.user) : null
 
             if (!parsedUser) {
+                const recovered = getRecoveredUser()
+                if (
+                    !explicitSignOutRef.current
+                    && recovered?.workspaceMode === 'local'
+                    && recovered.workspaceId
+                ) {
+                    setUser(recovered)
+                    writeWorkspaceModeSnapshot({
+                        workspaceId: recovered.workspaceId,
+                        dataMode: 'local'
+                    })
+                    setIsLoading(false)
+                    return
+                }
+
                 clearWorkspaceCache()
                 clearWorkspaceModeSnapshot()
                 setUser(null)
@@ -317,6 +516,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             }
 
             const enriched = await enrichUser(parsedUser)
+            const effectiveUser = await restoreActiveLocalAccount(enriched)
 
             if (!isMounted || taskId !== authStateTaskRef.current) return
 
@@ -330,8 +530,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             if (!isMounted || taskId !== authStateTaskRef.current) return
 
             if (currentSession?.user?.id === parsedUser.id) {
-                setUser({ ...enriched })
-                saveRecovery(enriched)
+                setUser({ ...effectiveUser })
+                saveRecovery(effectiveUser)
             }
 
             if (!isMounted || taskId !== authStateTaskRef.current) return
@@ -361,12 +561,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
                     if (parsedUser) {
                         const enriched = await enrichUser(parsedUser)
-                        setUser(enriched)
-                        saveRecovery(enriched)
+                        const effectiveUser = await restoreActiveLocalAccount(enriched)
+                        setUser(effectiveUser)
+                        saveRecovery(effectiveUser)
                     }
                 } else {
-                    if (canUseRecoveryBridge()) {
-                        const recovered = getRecoveredUser()
+                    const recovered = getRecoveredUser()
+                    if (recovered?.workspaceMode === 'local' && recovered.workspaceId) {
+                        setUser(recovered)
+                        writeWorkspaceModeSnapshot({
+                            workspaceId: recovered.workspaceId,
+                            dataMode: 'local'
+                        })
+                    } else if (canUseRecoveryBridge()) {
                         if (recovered) {
                             const maxAge = 7 * 24 * 60 * 60 * 1000
                             const isStale = recovered.recoveredAt && (Date.now() - recovered.recoveredAt > maxAge)
@@ -385,7 +592,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 }
             } catch (e) {
                 console.error('[Auth] Initial session fetch failed:', e);
-                let allowRecovery = canUseRecoveryBridge(e)
+                const recoveredUser = getRecoveredUser()
+                let allowRecovery = canUseRecoveryBridge(e) || recoveredUser?.workspaceMode === 'local'
 
                 // Second chance: try refreshSession directly (different code path)
                 try {
@@ -401,8 +609,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                         setSession(data.session)
                         const parsedUser = parseUserFromSupabase(data.session.user)
                         const enriched = await enrichUser(parsedUser)
-                        setUser(enriched)
-                        saveRecovery(enriched)
+                        const effectiveUser = await restoreActiveLocalAccount(enriched)
+                        setUser(effectiveUser)
+                        saveRecovery(effectiveUser)
                         return // Success — skip recovery bridge
                     }
                 } catch (refreshErr) {
@@ -419,7 +628,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 }
 
                 if (allowRecovery) {
-                    const recovered = getRecoveredUser()
+                    const recovered = recoveredUser ?? getRecoveredUser()
                     if (recovered) {
                         console.log('[Auth] Using recovery bridge (limited mode).')
                         setUser(recovered)
@@ -446,6 +655,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         const handleConnectionEvent = async (event: string) => {
             if (event !== 'wake' && event !== 'online') return
+            if (userRef.current?.workspaceMode === 'local') return
             if (!sessionRef.current) return
 
             console.log(`[Auth] Connection event: ${event} — verifying session...`)
@@ -498,6 +708,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         // Check every 5 minutes if token is about to expire
         watchdogRef.current = setInterval(async () => {
+            if (userRef.current?.workspaceMode === 'local') return
             const currentSession = sessionRef.current
             if (!currentSession?.expires_at) return
 
@@ -534,7 +745,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
 
         try {
-            const { error } = await runSupabaseAction(
+            const { data, error } = await runSupabaseAction(
                 'auth.signIn',
                 () => supabase.auth.signInWithPassword({
                     email,
@@ -542,6 +753,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 }),
                 { timeoutMs: 15000, platform: 'all' }
             ) as any
+            if (!error && data?.user) {
+                const enriched = await enrichUser(parseUserFromSupabase(data.user))
+                if (enriched.workspaceMode === 'local' && enriched.workspaceId) {
+                    await persistAuthUserLocally(enriched)
+                    try {
+                        await Promise.all([
+                            cacheLocalWorkspaceAccounts(enriched.workspaceId),
+                            cacheLocalAccountPermissions(enriched.workspaceId, enriched.id)
+                        ])
+                    } catch (preparationError) {
+                        console.warn('[Auth] Failed to fully prepare local workspace accounts:', preparationError)
+                    }
+                    await enrollLocalAccountCredential({
+                        workspaceId: enriched.workspaceId,
+                        userId: enriched.id,
+                        email: enriched.email,
+                        password
+                    })
+                    writeActiveLocalAccountId(enriched.workspaceId, enriched.id)
+                }
+            }
+
             return { error: error as Error | null }
         } catch (err: any) {
             console.error('[Auth] Sign in failed/timeout:', err)
@@ -617,7 +850,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
             const resolvedWorkspaceCode = workspaceCode
 
-            const { error } = await supabase.auth.signUp({
+            const { data: signUpData, error } = await supabase.auth.signUp({
                 email,
                 password,
                 options: {
@@ -632,6 +865,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                     }
                 }
             })
+
+            if (!error && signUpData.user && workspaceId) {
+                await persistLocalAccountProfile({
+                    id: signUpData.user.id,
+                    workspaceId,
+                    email,
+                    name,
+                    role
+                })
+                await enrollLocalAccountCredential({
+                    workspaceId,
+                    userId: signUpData.user.id,
+                    email,
+                    password
+                })
+                writeActiveLocalAccountId(workspaceId, signUpData.user.id)
+            }
 
             // Insert workspace contacts AFTER signUp so the session is active for RLS
             if (!error && role === 'admin' && workspaceId && adminContacts && adminContacts.length > 0) {
@@ -653,6 +903,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     const signOut = async () => {
+        explicitSignOutRef.current = true
         try {
             console.log('[Auth] Signing out...')
 
@@ -675,8 +926,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             clearWorkspaceCache()
             clearWorkspaceModeSnapshot()
             clearRecovery()
+            clearActiveLocalAccount()
 
             console.log('[Auth] Sign out complete')
+            explicitSignOutRef.current = false
         }
     }
 
@@ -703,8 +956,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setSession(session)
             const parsedUser = parseUserFromSupabase(session.user)
             const enriched = await enrichUser(parsedUser)
-            setUser(enriched)
-            saveRecovery(enriched)
+            const effectiveUser = await restoreActiveLocalAccount(enriched)
+            setUser(effectiveUser)
+            saveRecovery(effectiveUser)
         }
     }
 
@@ -731,6 +985,131 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
     }
 
+    const switchLocalAccount = async (userId: string, password: string) => {
+        const currentUser = userRef.current
+        if (!currentUser?.workspaceId || currentUser.workspaceMode !== 'local') {
+            return { error: new Error('Account switching is available only in Local Mode.') }
+        }
+        if (!password) {
+            return { error: new Error('Enter the account password.') }
+        }
+
+        try {
+            const workspaceId = currentUser.workspaceId
+            let account = await getLocalWorkspaceAccount(workspaceId, userId)
+            if (!account) {
+                return { error: new Error('This account is not available in the local workspace data.') }
+            }
+
+            const verification = await verifyLocalAccountPassword(workspaceId, userId, password)
+            if (!verification.ok && verification.reason === 'missing') {
+                if (!account.email) {
+                    return {
+                        error: new Error('This account must sign in online on this device once before it can be used offline.')
+                    }
+                }
+                if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+                    return {
+                        error: new Error('This account has not been prepared for offline access. Sign in with it once while online.')
+                    }
+                }
+
+                const accountEmail = account.email
+                const previousSession = sessionRef.current
+                const restorePreviousSession = async () => {
+                    if (previousSession?.access_token && previousSession.refresh_token) {
+                        await supabase.auth.setSession({
+                            access_token: previousSession.access_token,
+                            refresh_token: previousSession.refresh_token
+                        })
+                    }
+                }
+                const { data, error } = await runSupabaseAction(
+                    'auth.enrollLocalAccount',
+                    () => supabase.auth.signInWithPassword({
+                        email: accountEmail,
+                        password
+                    }),
+                    { timeoutMs: 15000, platform: 'all' }
+                ) as any
+
+                if (error || !data?.user) {
+                    return { error: normalizeSupabaseActionError(error ?? new Error('Account validation failed.')) }
+                }
+                if (data.user.id !== userId) {
+                    await restorePreviousSession()
+                    return { error: new Error('The password belongs to a different account.') }
+                }
+
+                const enrolledUser = await enrichUser(parseUserFromSupabase(data.user))
+                if (
+                    enrolledUser.workspaceId !== workspaceId
+                    || enrolledUser.workspaceMode !== 'local'
+                ) {
+                    await restorePreviousSession()
+                    return { error: new Error('The selected account does not belong to this Local Mode workspace.') }
+                }
+
+                try {
+                    await cacheLocalWorkspaceAccounts(workspaceId)
+                } catch (profileError) {
+                    console.warn('[Auth] Failed to refresh local workspace accounts:', profileError)
+                }
+
+                try {
+                    await cacheLocalAccountPermissions(workspaceId, userId)
+                } catch (permissionError) {
+                    await restorePreviousSession()
+                    return {
+                        error: new Error(
+                            `The account was validated, but its offline permissions could not be prepared: ${normalizeSupabaseActionError(permissionError).message}`
+                        )
+                    }
+                }
+
+                if (data.session) {
+                    setSession(data.session)
+                }
+                await persistAuthUserLocally(enrolledUser)
+                await enrollLocalAccountCredential({
+                    workspaceId,
+                    userId,
+                    email: enrolledUser.email,
+                    password
+                })
+                account = await getLocalWorkspaceAccount(workspaceId, userId)
+                if (!account) {
+                    return { error: new Error('Failed to prepare the selected account for offline access.') }
+                }
+            } else if (!verification.ok && verification.reason === 'locked') {
+                const seconds = Math.max(1, Math.ceil((verification.retryAfterMs ?? 0) / 1000))
+                return { error: new Error(`Too many failed attempts. Try again in ${seconds} seconds.`) }
+            } else if (!verification.ok) {
+                return { error: new Error('Incorrect password.') }
+            }
+
+            const nextUser: AuthUser = {
+                ...currentUser,
+                id: account.id,
+                email: account.email || currentUser.email,
+                name: account.name,
+                role: account.role,
+                profileUrl: account.profileUrl
+            }
+
+            await persistAuthUserLocally(nextUser)
+            writeActiveLocalAccountId(workspaceId, nextUser.id)
+            setUser(nextUser)
+            saveRecovery(nextUser)
+
+            return { error: null }
+        } catch (error) {
+            return {
+                error: error instanceof Error ? error : new Error(String(error))
+            }
+        }
+    }
+
     // User is kicked if authenticated but has no workspace
     const isKicked = !!user && !user.workspaceId
 
@@ -748,7 +1127,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 signOut,
                 hasRole,
                 refreshUser,
-                updateUser
+                updateUser,
+                switchLocalAccount
             }}
         >
             {children}

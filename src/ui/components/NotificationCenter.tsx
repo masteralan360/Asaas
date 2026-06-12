@@ -169,7 +169,8 @@ export function NotificationCenter() {
     const [isSyncing, setIsSyncing] = useState(false)
     const [syncError, setSyncError] = useState<string | null>(null)
     const refreshRequestRef = useRef(0)
-    const trackerKey = `${user?.id ?? ''}:${user?.workspaceId ?? ''}`
+    const isLocalMode = user?.workspaceMode === 'local'
+    const trackerKey = isLocalMode ? '' : `${user?.id ?? ''}:${user?.workspaceId ?? ''}`
 
     useEffect(() => {
         syncInboxTracker(trackerKey)
@@ -226,7 +227,7 @@ export function NotificationCenter() {
     }, [announceNewNotifications, trackerKey])
 
     const refreshInbox = useCallback(async () => {
-        if (!user?.id) {
+        if (!user?.id || isLocalMode) {
             setItems([])
             setSyncError(null)
             return
@@ -244,10 +245,10 @@ export function NotificationCenter() {
         setSyncError(null)
         applyInboxSnapshot(data)
         setIsSyncing(false)
-    }, [applyInboxSnapshot, user?.id])
+    }, [applyInboxSnapshot, isLocalMode, user?.id])
 
     useEffect(() => {
-        if (!user?.id) return
+        if (!user?.id || isLocalMode) return
         void refreshInbox()
         const unsubscribeRealtime = subscribeToNotificationInbox(user.id, (payload) => {
             if (payload.eventType === 'INSERT' && payload.new) {
@@ -273,7 +274,7 @@ export function NotificationCenter() {
             unsubscribeRealtime()
             unsubscribeConnection()
         }
-    }, [refreshInbox, sendDesktopNotification, showNotificationToast, user?.id])
+    }, [isLocalMode, refreshInbox, sendDesktopNotification, showNotificationToast, user?.id])
 
     const navigateToUrl = useCallback((url: string) => {
         if (/^https?:\/\//i.test(url)) {
@@ -333,8 +334,8 @@ export function NotificationCenter() {
         return <button className="relative p-2 rounded-md text-muted-foreground animate-pulse" type="button"><Bell className="w-4 h-4" /></button>
     }
 
-    if (!user?.id) {
-        return <button className="relative hover:bg-secondary rounded-md transition-colors text-muted-foreground hover:text-foreground cursor-pointer mr-1 opacity-50" title={t('notifications.waitingSession', { defaultValue: 'Waiting for user session...' })} type="button"><Bell className="w-4 h-4" /></button>
+    if (!user?.id || isLocalMode) {
+        return <button className="relative hover:bg-secondary rounded-md transition-colors text-muted-foreground hover:text-foreground cursor-pointer mr-1 opacity-50" title={isLocalMode ? t('notifications.localModeUnavailable', { defaultValue: 'Cloud notifications are unavailable in Local Mode.' }) : t('notifications.waitingSession', { defaultValue: 'Waiting for user session...' })} type="button"><Bell className="w-4 h-4" /></button>
     }
 
     return (

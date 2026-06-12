@@ -53,6 +53,7 @@ export const LOCAL_MODE_SQLITE_TABLES = [
   "fx_safe_balances",
   "fx_safe_movements",
   "profiles",
+  "local_account_credentials",
 ] as const;
 
 export type LocalModeSqliteTableName =
@@ -80,7 +81,7 @@ let sqliteWriteQueue: Promise<void> = Promise.resolve();
 let mirroringPauseDepth = 0;
 
 function isSupported() {
-  return isTauri();
+  return typeof window !== "undefined" && isTauri();
 }
 
 function isMirroredTableName(

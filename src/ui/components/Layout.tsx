@@ -26,6 +26,7 @@ import { GlobalExchangeRateReminders } from './exchange/GlobalExchangeRateRemind
 import { CurrencyConverterPopup } from './CurrencyConverterPopup'
 import { UnifiedSnoozedRemindersBell } from './reminders/UnifiedSnoozedRemindersBell'
 import { ThemeAwareLogo } from './ThemeAwareLogo'
+import { LocalAccountSwitcher } from './LocalAccountSwitcher'
 import { buildWorkspaceNavigation } from '@/ui/navigation/workspaceNavigation'
 import { useWorkspaceBranchSwitcher } from '@/hooks/useWorkspaceBranchSwitcher'
 
@@ -124,7 +125,7 @@ function prefetchRoute(href: string) {
 export function Layout({ children }: LayoutProps) {
     const [location, setLocation] = useLocation()
     const { user, signOut } = useAuth()
-    const { hasFeature, hasCapability, workspaceName, isFullscreen, features, activeWorkspace } = useWorkspace()
+    const { hasFeature, hasCapability, workspaceName, isFullscreen, features, activeWorkspace, isLocalMode } = useWorkspace()
     const { hasPermission } = useWorkspacePermissions()
     const demoExpiryRef = useRef<ReturnType<typeof setTimeout> | null>(null)
     const {
@@ -182,7 +183,7 @@ export function Layout({ children }: LayoutProps) {
         }
     }, [expandedNavGroups])
 
-    const [members, setMembers] = useState<{ id: string, name: string, role: string, profile_url?: string }[]>([])
+    const [members, setMembers] = useState<{ id: string, name: string, role: string, profile_url?: string | null }[]>([])
     const [logoError, setLogoError] = useState(false)
     const [copied, setCopied] = useState(false)
     const [version, setVersion] = useState('')
@@ -207,6 +208,15 @@ export function Layout({ children }: LayoutProps) {
         if (!user?.workspaceId) return
 
         const fetchMembers = async () => {
+            if (isLocalMode) {
+                const localProfiles = await db.profiles
+                    .where('workspaceId')
+                    .equals(user.workspaceId)
+                    .toArray()
+                setMembers(localProfiles)
+                return
+            }
+
             const { data, error } = await supabase
                 .from('profiles')
                 .select('id, name, role, profile_url, workspace_id')
@@ -263,7 +273,7 @@ export function Layout({ children }: LayoutProps) {
             window.removeEventListener('whatsapp-status-change', handleWhatsAppStatusChange)
             stopR2BackupInterval()
         }
-    }, [user?.workspaceId])
+    }, [isLocalMode, user?.id, user?.workspaceId])
 
     useEffect(() => {
         if (!user?.workspaceId || features.data_mode === 'local' || !hasFeature('ecommerce')) {
@@ -1069,29 +1079,35 @@ export function Layout({ children }: LayoutProps) {
                             mobileSidebarOpen ? "bg-card" : "bg-background/50 backdrop-blur-md",
                             (isMini && !mobileSidebarOpen) && "flex flex-col items-center gap-4 py-6"
                         )}>
-                            <div className={cn("flex items-center gap-3 px-3 py-2", (isMini && !mobileSidebarOpen) && "flex-col p-0 gap-2")}>
-                                <div className="w-9 h-9 rounded-full bg-gradient-to-br from-primary to-emerald-600 flex items-center justify-center text-sm font-bold text-white overflow-hidden shadow-sm">
-                                    {user?.profileUrl ? (
-                                        <img
-                                            src={user.profileUrl.startsWith('http') ? user.profileUrl : platformService.convertFileSrc(user.profileUrl)}
-                                            alt={user.name}
-                                            className="w-full h-full object-cover"
-                                        />
-                                    ) : (
-                                        user?.name?.charAt(0).toUpperCase() || 'U'
-                                    )}
-                                </div>
-
-                                {(isMini && !mobileSidebarOpen) ? (
-                                    <div className="text-center">
-                                        <p className="text-xs font-medium truncate max-w-[80px]">{user?.name}</p>
-                                        <p className="text-[10px] text-muted-foreground capitalize">{user?.role}</p>
-                                    </div>
+                            <div className={cn("flex items-center gap-2 px-2 py-1", (isMini && !mobileSidebarOpen) && "flex-col p-0 gap-2")}>
+                                {isLocalMode && !isDemoWorkspace(user?.workspaceCode) ? (
+                                    <LocalAccountSwitcher isCompact={isMini && !mobileSidebarOpen} />
                                 ) : (
-                                    <div className="flex-1 min-w-0">
-                                        <p className="text-sm font-medium truncate text-start">{user?.name}</p>
-                                        <p className="text-xs text-muted-foreground capitalize text-start">{user?.role}</p>
-                                    </div>
+                                    <>
+                                        <div className="w-9 h-9 rounded-full bg-gradient-to-br from-primary to-emerald-600 flex items-center justify-center text-sm font-bold text-white overflow-hidden shadow-sm">
+                                            {user?.profileUrl ? (
+                                                <img
+                                                    src={user.profileUrl.startsWith('http') ? user.profileUrl : platformService.convertFileSrc(user.profileUrl)}
+                                                    alt={user.name}
+                                                    className="w-full h-full object-cover"
+                                                />
+                                            ) : (
+                                                user?.name?.charAt(0).toUpperCase() || 'U'
+                                            )}
+                                        </div>
+
+                                        {(isMini && !mobileSidebarOpen) ? (
+                                            <div className="text-center">
+                                                <p className="text-xs font-medium truncate max-w-[80px]">{user?.name}</p>
+                                                <p className="text-[10px] text-muted-foreground capitalize">{user?.role}</p>
+                                            </div>
+                                        ) : (
+                                            <div className="flex-1 min-w-0">
+                                                <p className="text-sm font-medium truncate text-start">{user?.name}</p>
+                                                <p className="text-xs text-muted-foreground capitalize text-start">{user?.role}</p>
+                                            </div>
+                                        )}
+                                    </>
                                 )}
 
                                 <Button

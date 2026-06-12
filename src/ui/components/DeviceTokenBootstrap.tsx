@@ -18,14 +18,16 @@ export function DeviceTokenBootstrap() {
     const { user, isAuthenticated } = useAuth()
     const { i18n } = useTranslation()
     const language = i18n.resolvedLanguage ?? i18n.language
+    const userId = user?.id
+    const workspaceMode = user?.workspaceMode
 
     useEffect(() => {
-        if (!isAuthenticated || !user) return
-        void registerDeviceTokenIfNeeded(user.id, language)
-    }, [isAuthenticated, language, user?.id])
+        if (!isAuthenticated || !userId || workspaceMode === 'local') return
+        void registerDeviceTokenIfNeeded(userId, language)
+    }, [isAuthenticated, language, userId, workspaceMode])
 
     useEffect(() => {
-        if (!isAuthenticated || !user) return
+        if (!isAuthenticated || !userId || workspaceMode === 'local') return
         if (isTauri() && isMobile()) return
 
         let unsubscribe: (() => void) | undefined
@@ -56,7 +58,7 @@ export function DeviceTokenBootstrap() {
         return () => {
             unsubscribe?.()
         }
-    }, [isAuthenticated, user?.id])
+    }, [isAuthenticated, userId, workspaceMode])
 
     return null
 }

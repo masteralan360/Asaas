@@ -90,6 +90,22 @@ export interface Profile {
   created_at?: string;
 }
 
+export interface LocalAccountCredential {
+  id: string;
+  workspaceId: string;
+  userId: string;
+  email: string;
+  salt: string;
+  verifier: string;
+  iterations: number;
+  digest: "SHA-256";
+  failedAttempts: number;
+  lockedUntil: string | null;
+  createdAt: string;
+  updatedAt: string;
+  lastVerifiedAt: string | null;
+}
+
 export interface Category extends BaseEntity {
   name: string;
   description?: string;

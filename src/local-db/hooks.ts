@@ -58,7 +58,7 @@ import {
 import { generateId, toSnakeCase, toCamelCase } from '@/lib/utils'
 import { supabase } from '@/auth/supabase'
 import { useNetworkStatus } from '@/hooks/useNetworkStatus'
-import { isOnline } from '@/lib/network'
+import { getActiveBusinessUserId, isOnline } from '@/lib/network'
 import { resolveActiveDiscountMap, type ResolvedActiveDiscount } from '@/lib/discounts'
 import { convertCurrencyAmountWithAvailableSnapshot, getEffectiveExchangeRatesSnapshot } from '@/lib/orderCurrency'
 import { isRetriableWebRequestError, normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
@@ -274,7 +274,7 @@ export async function createCategory(workspaceId: string, data: Omit<Category, '
         ...data,
         id,
         workspaceId,
-        createdBy: data.createdBy ?? session?.user?.id ?? null,
+        createdBy: data.createdBy ?? getActiveBusinessUserId() ?? session?.user?.id ?? null,
         createdAt: now,
         updatedAt: now,
         syncStatus: (isOnline() ? 'synced' : 'pending') as any, // Optimistic status
@@ -1023,7 +1023,7 @@ async function createDiscountEntity<T extends DiscountEntity>(
         ...data,
         id,
         workspaceId,
-        createdBy: data.createdBy ?? session?.user?.id,
+        createdBy: data.createdBy ?? getActiveBusinessUserId() ?? session?.user?.id ?? undefined,
         createdAt: now,
         updatedAt: now,
         syncStatus,
@@ -1437,7 +1437,7 @@ export async function createInvoice(
         // ONLINE
         // Get current auth user to satisfy RLS 'user_id' check
         const session = await getMutationSession('invoices.create')
-        const currentUserId = session?.user?.id
+        const currentUserId = getActiveBusinessUserId() ?? session?.user?.id
 
         const payload = toSnakeCase(sanitizeInvoiceRemotePayload({
             ...invoice,
