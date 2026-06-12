@@ -8,6 +8,7 @@ CREATE TABLE clinics.clinical_patients (
   email text NULL,
   is_new_patient boolean NOT NULL DEFAULT true,
   notes text NULL,
+  birth_year integer NULL,
   created_by uuid NULL,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   updated_at timestamp with time zone NOT NULL DEFAULT now(),
