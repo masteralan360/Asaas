@@ -804,6 +804,7 @@ export interface ClinicalPatient extends BaseEntity {
   isNewPatient: boolean;
   notes?: string | null;
   createdBy?: string | null;
+  birthYear?: number | null;
 }
 
 export interface ClinicalAppointment extends BaseEntity {

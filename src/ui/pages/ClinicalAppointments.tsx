@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useAuth } from '@/auth'
 import { db } from '@/local-db/database'
-import { createClinicalAppointment, createClinicalPatient, searchClinicalPatients, useClinicalAppointments, useClinicalAppointment, updateClinicalAppointment } from '@/local-db/clinicalAppointments'
+import { createClinicalAppointment, createClinicalPatient, searchClinicalPatients, useClinicalAppointments, useClinicalAppointment, updateClinicalAppointment, calculateAge } from '@/local-db/clinicalAppointments'
 import type { ClinicalAppointment, ClinicalAppointmentStatus, ClinicalAppointmentType, ClinicalAppointmentPriority, ClinicalConfirmationMethod } from '@/local-db/clinicalAppointments'
 import { useClinicalPresetsByCategory } from '@/local-db/clinicalPresets'
 import { Button, Input, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Textarea, Label, Badge, Card, CardContent, CardHeader, CardTitle, DateTimePicker } from '@/ui/components'
@@ -211,6 +211,8 @@ function CreateAppointmentForm({ workspaceId, appointment, onCancel, onSaved }: 
   const [showPatientCreate, setShowPatientCreate] = useState(false)
   const [newPatientName, setNewPatientName] = useState('')
   const [newPatientPhone, setNewPatientPhone] = useState('')
+  const [patientBirthYear, setPatientBirthYear] = useState<number | null>(null)
+  const [newPatientBirthYear, setNewPatientBirthYear] = useState('')
 
   const [appointmentDate, setAppointmentDate] = useState(appointment?.appointmentDate ?? '')
   const [startTime, setStartTime] = useState(appointment?.startTime ?? '')
@@ -270,6 +272,7 @@ function CreateAppointmentForm({ workspaceId, appointment, onCancel, onSaved }: 
       setSelectedPatientId(patientId)
       setPatientName(patient.name)
       setPatientPhone(patient.phone ?? '')
+      setPatientBirthYear(patient.birthYear ?? null)
       setIsNewPatient(patient.isNewPatient)
       setShowPatientCreate(false)
       setPatientSearch('')
@@ -278,18 +281,21 @@ function CreateAppointmentForm({ workspaceId, appointment, onCancel, onSaved }: 
 
   const handleCreateNewPatient = useCallback(async () => {
     if (!newPatientName.trim() || !workspaceId) return
+    const by = newPatientBirthYear ? parseInt(newPatientBirthYear, 10) : null
     const patient = await createClinicalPatient(
-      { name: newPatientName.trim(), phone: newPatientPhone.trim() || null, email: null, isNewPatient: true, notes: null, createdBy: user?.id ?? null } as any,
+      { name: newPatientName.trim(), phone: newPatientPhone.trim() || null, email: null, isNewPatient: true, notes: null, birthYear: by && !isNaN(by) ? by : null, createdBy: user?.id ?? null } as any,
       workspaceId,
     )
     setSelectedPatientId(patient.id)
     setPatientName(patient.name)
     setPatientPhone(patient.phone ?? '')
+    setPatientBirthYear(patient.birthYear ?? null)
     setIsNewPatient(true)
     setShowPatientCreate(false)
     setNewPatientName('')
     setNewPatientPhone('')
-  }, [newPatientName, newPatientPhone, workspaceId, user])
+    setNewPatientBirthYear('')
+  }, [newPatientName, newPatientPhone, newPatientBirthYear, workspaceId, user])
 
   const handleFileAttach = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? [])
@@ -478,10 +484,11 @@ function CreateAppointmentForm({ workspaceId, appointment, onCancel, onSaved }: 
                         <div className="flex items-center gap-2 text-sm p-2 bg-accent/50 rounded-md">
                           <span className="font-medium">{patientName}</span>
                           {patientPhone && <span className="text-muted-foreground">{patientPhone}</span>}
+                          {patientBirthYear && <span className="text-muted-foreground">· {t('clinicalAppointments.age', { defaultValue: 'Age' })}: {calculateAge(patientBirthYear)}</span>}
                           <button
                             type="button"
                             className="ml-auto text-muted-foreground hover:text-foreground"
-                            onClick={() => { setSelectedPatientId(null); setPatientName(''); setPatientPhone(''); setPatientSearch('') }}
+                            onClick={() => { setSelectedPatientId(null); setPatientName(''); setPatientPhone(''); setPatientBirthYear(null); setPatientSearch('') }}
                           >
                             ✕
                           </button>
@@ -497,6 +504,20 @@ function CreateAppointmentForm({ workspaceId, appointment, onCancel, onSaved }: 
                       <div className="grid gap-2">
                         <Label>{t('clinicalAppointments.phone', { defaultValue: 'Phone' })}</Label>
                         <Input value={newPatientPhone} onChange={(e) => setNewPatientPhone(e.target.value)} />
+                      </div>
+                      <div className="grid gap-2">
+                        <Label>{t('clinicalAppointments.birthYear', { defaultValue: 'Birth Year' })}</Label>
+                        <Input
+                          type="number"
+                          min={1900}
+                          max={new Date().getFullYear()}
+                          value={newPatientBirthYear}
+                          onChange={(e) => setNewPatientBirthYear(e.target.value)}
+                          placeholder="e.g. 1990"
+                        />
+                        {newPatientBirthYear && (
+                          <p className="text-xs text-muted-foreground">{t('clinicalAppointments.age', { defaultValue: 'Age' })}: {new Date().getFullYear() - parseInt(newPatientBirthYear)}</p>
+                        )}
                       </div>
                       <div className="flex gap-2">
                         <Button size="sm" type="button" onClick={handleCreateNewPatient} disabled={!newPatientName.trim()}>

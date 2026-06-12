@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next'
-import { useClinicalPatient, useClinicalAppointmentsByPatient } from '@/local-db/clinicalAppointments'
+import { useClinicalPatient, useClinicalAppointmentsByPatient, calculateAge } from '@/local-db/clinicalAppointments'
 import { Badge, Button, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/ui/components'
 import { ArrowLeft } from 'lucide-react'
 import { useRoute, useLocation } from 'wouter'
@@ -47,6 +47,12 @@ export function ClinicalPatientDetails() {
               <div className="text-sm">
                 <span className="text-muted-foreground">{t('clinicalAppointments.phone', { defaultValue: 'Phone' })}:</span>
                 <span className="ml-2">{patient.phone}</span>
+              </div>
+            )}
+            {patient.birthYear && (
+              <div className="text-sm">
+                <span className="text-muted-foreground">{t('clinicalAppointments.age', { defaultValue: 'Age' })}:</span>
+                <span className="ml-2">{calculateAge(patient.birthYear)}</span>
               </div>
             )}
             {patient.email && (

@@ -23,6 +23,11 @@ const APPOINTMENTS_TABLE = 'clinical_appointments'
 const PATIENTS_TABLE = 'clinical_patients'
 const ATTACHMENTS_TABLE = 'clinical_attachments'
 
+export function calculateAge(birthYear: number | null | undefined): number | null {
+  if (!birthYear) return null
+  return new Date().getFullYear() - birthYear
+}
+
 type ClinicalTableName =
   | typeof APPOINTMENTS_TABLE
   | typeof PATIENTS_TABLE

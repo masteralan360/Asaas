@@ -2138,7 +2138,7 @@ export class AtlasDatabase extends Dexie {
       clinical_appointments:
         "id, workspaceId, patientId, appointmentDate, startTime, appointmentType, status, priority, createdAt, updatedAt, isDeleted, syncStatus, [workspaceId+appointmentDate], [workspaceId+status], [workspaceId+patientId]",
       clinical_patients:
-        "id, workspaceId, name, phone, createdAt, updatedAt, isDeleted, syncStatus, [workspaceId+name], [workspaceId+phone]",
+        "id, workspaceId, name, phone, birthYear, createdAt, updatedAt, isDeleted, syncStatus, [workspaceId+name], [workspaceId+phone]",
       clinical_attachments:
         "id, workspaceId, appointmentId, fileName, fileType, createdAt, updatedAt, isDeleted, syncStatus, [workspaceId+appointmentId]",
     });

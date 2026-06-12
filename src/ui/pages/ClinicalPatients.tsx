@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/auth'
 import { useClinicalPatients } from '@/local-db/clinicalAppointments'
+import { calculateAge } from '@/local-db/clinicalAppointments'
 import { useLocation } from 'wouter'
 import { Input, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/ui/components'
 import { Search } from 'lucide-react'
@@ -50,6 +51,7 @@ export function ClinicalPatients() {
           <TableHeader>
             <TableRow>
               <TableHead>{t('clinicalAppointments.patientName', { defaultValue: 'Name' })}</TableHead>
+              <TableHead>{t('clinicalAppointments.age', { defaultValue: 'Age' })}</TableHead>
               <TableHead>{t('clinicalAppointments.phone', { defaultValue: 'Phone' })}</TableHead>
               <TableHead>{t('clinicalAppointments.type', { defaultValue: 'Type' })}</TableHead>
               <TableHead>{t('clinicalAppointments.createdAt', { defaultValue: 'Created' })}</TableHead>
@@ -70,6 +72,7 @@ export function ClinicalPatients() {
                   onClick={() => navigate(`/clinical-appointments/patients/${patient.id}`)}
                 >
                   <TableCell className="font-medium">{patient.name}</TableCell>
+                  <TableCell>{calculateAge(patient.birthYear) ?? '—'}</TableCell>
                   <TableCell>{patient.phone ?? '—'}</TableCell>
                   <TableCell>
                     {patient.isNewPatient
