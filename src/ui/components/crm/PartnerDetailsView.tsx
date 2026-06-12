@@ -38,6 +38,8 @@ import {
     TableRow
 } from '@/ui/components'
 import { useWorkspace } from '@/workspace'
+import { useDateRange } from '@/context/DateRangeContext'
+import { DateRangeFilters } from '@/ui/components/DateRangeFilters'
 
 type PartnerKind = 'customer' | 'supplier' | 'business_partner'
 type RelatedProductOrder = SalesOrder | PurchaseOrder
@@ -328,15 +330,63 @@ export function PartnerDetailsView({
     const supplierTravelSales = useSupplierTravelAgencySales(partnerId, workspaceId)
     const loans = useLoans(workspaceId)
     const paymentTransactions = usePaymentTransactions(workspaceId)
+    const { dateRange, customDates } = useDateRange()
     const [viewMode, setViewMode] = useState<'table' | 'grid'>(() => readViewMode(kind))
 
     useEffect(() => {
         localStorage.setItem(`partner_details_view_mode_${kind}`, viewMode)
     }, [kind, viewMode])
 
+    const dateBounds = useMemo(() => {
+        const now = new Date()
+        if (dateRange === 'today') {
+            const start = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+            const end = new Date(start)
+            end.setDate(end.getDate() + 1)
+            return { startDate: start.toISOString(), endDate: end.toISOString() }
+        }
+        if (dateRange === 'month') {
+            const start = new Date(now.getFullYear(), now.getMonth(), 1)
+            const end = new Date(now.getFullYear(), now.getMonth() + 1, 1)
+            return { startDate: start.toISOString(), endDate: end.toISOString() }
+        }
+        if (dateRange === 'custom' && (customDates.start || customDates.end)) {
+            const start = customDates.start ? new Date(customDates.start) : undefined
+            const end = customDates.end ? new Date(customDates.end) : undefined
+            return { startDate: start?.toISOString(), endDate: end?.toISOString() }
+        }
+        return { startDate: undefined, endDate: undefined }
+    }, [dateRange, customDates])
+
     const partnerLoans = useMemo(
         () => loans.filter((loan) => loan.linkedPartyType === 'business_partner' && loan.linkedPartyId === partner?.id),
         [loans, partner?.id]
+    )
+    const filterByDate = <T extends { updatedAt?: string; createdAt: string }>(items: T[], dateField?: (item: T) => string) =>
+        dateRange === 'allTime' ? items : items.filter((item) => {
+            const d = dateField ? dateField(item) : (item.updatedAt || item.createdAt)
+            if (dateBounds.startDate && d < dateBounds.startDate) return false
+            if (dateBounds.endDate && d >= dateBounds.endDate) return false
+            return true
+        })
+    const dateFilteredCustomerOrders = useMemo(() => filterByDate(customerOrders), [customerOrders, dateRange, dateBounds])
+    const dateFilteredSupplierOrders = useMemo(() => filterByDate(supplierOrders), [supplierOrders, dateRange, dateBounds])
+    const dateFilteredTravelSales = useMemo(
+        () => filterByDate(supplierTravelSales, (s) => s.updatedAt || s.saleDate || s.createdAt),
+        [supplierTravelSales, dateRange, dateBounds]
+    )
+    const dateFilteredLoans = useMemo(() => filterByDate(partnerLoans), [partnerLoans, dateRange, dateBounds])
+    const directTransactions = useMemo(
+        () => paymentTransactions.filter(tx => tx.sourceType === 'direct_transaction' && tx.metadata?.businessPartnerId === partnerId),
+        [paymentTransactions, partnerId]
+    )
+    const dateFilteredPayments = useMemo(
+        () => filterByDate(directTransactions, (tx) => tx.paidAt || tx.createdAt),
+        [directTransactions, dateRange, dateBounds]
+    )
+    const dateFilteredAllPayments = useMemo(
+        () => filterByDate(paymentTransactions, (tx) => tx.paidAt || tx.createdAt),
+        [paymentTransactions, dateRange, dateBounds]
     )
     const allowedByRoute = useMemo(() => {
         if (!partner) {
@@ -366,10 +416,8 @@ export function PartnerDetailsView({
     const typeLabel = partner ? roleBadgeLabel(partner.role, t) : t('businessPartners.title', { defaultValue: 'Business Partner' })
     const contactName = partner?.contactName
     const emptyRelatedLabel = t('businessPartners.noActivity', { defaultValue: 'No related activity yet.' })
-    const totalValueLabel = t('businessPartners.relationshipValue', { defaultValue: 'Relationship Value' })
     const completedLabel = t('businessPartners.completedItems', { defaultValue: 'Completed Items' })
     const paidLabel = t('businessPartners.settledItems', { defaultValue: 'Settled Items' })
-    const activeLabel = t('businessPartners.activeItems', { defaultValue: 'Active Items' })
     const listTitle = t('businessPartners.activityTimeline', { defaultValue: 'Unified Activity Timeline' })
     const overviewTitle = t('businessPartners.overview', { defaultValue: 'Partner Overview' })
     const lastActivityLabel = t('businessPartners.lastActivity', { defaultValue: 'Last Activity' })
@@ -377,62 +425,84 @@ export function PartnerDetailsView({
     const detailsColumnLabel = t('common.details', { defaultValue: 'Details' })
     const referenceColumnLabel = t('common.reference', { defaultValue: 'Reference' })
     const productOrders = [...customerOrders, ...supplierOrders]
-
-    const directTransactions = useMemo(
-        () => paymentTransactions.filter(tx => tx.sourceType === 'direct_transaction' && tx.metadata?.businessPartnerId === partnerId),
-        [paymentTransactions, partnerId]
-    )
+    const filteredProductOrders = [...dateFilteredCustomerOrders, ...dateFilteredSupplierOrders]
 
     const relatedTransactions = useMemo(
         () => [
-            ...customerOrders.map((order) => normalizeSalesOrder(order, defaultCurrency, t)),
-            ...supplierOrders.map((order) => normalizePurchaseOrder(order, defaultCurrency, t)),
-            ...supplierTravelSales.map((sale) => normalizeTravelSale(sale, defaultCurrency)),
-            ...partnerLoans.map((loan) => normalizeLoan(loan, defaultCurrency, t)),
-            ...directTransactions.map((tx) => normalizePaymentTransaction(tx, defaultCurrency, conversionRates, t))
+            ...dateFilteredCustomerOrders.map((order) => normalizeSalesOrder(order, defaultCurrency, t)),
+            ...dateFilteredSupplierOrders.map((order) => normalizePurchaseOrder(order, defaultCurrency, t)),
+            ...dateFilteredTravelSales.map((sale) => normalizeTravelSale(sale, defaultCurrency)),
+            ...dateFilteredLoans.map((loan) => normalizeLoan(loan, defaultCurrency, t)),
+            ...dateFilteredPayments.map((tx) => normalizePaymentTransaction(tx, defaultCurrency, conversionRates, t))
         ],
-        [customerOrders, defaultCurrency, partnerLoans, supplierOrders, supplierTravelSales, directTransactions, conversionRates, t]
-    )
-    const activeTransactions = useMemo(
-        () => relatedTransactions.filter((transaction) => transaction.isActive),
-        [relatedTransactions]
-    )
-    const settledTransactions = useMemo(
-        () => activeTransactions.filter((transaction) => transaction.isPaid),
-        [activeTransactions]
-    )
-    const completedTransactions = useMemo(
-        () => activeTransactions.filter((transaction) => transaction.isCompleted),
-        [activeTransactions]
+        [dateFilteredCustomerOrders, defaultCurrency, dateFilteredLoans, dateFilteredSupplierOrders, dateFilteredTravelSales, dateFilteredPayments, conversionRates, t]
     )
     const sortedTransactions = useMemo(
         () => [...relatedTransactions].sort((a, b) => new Date(b.sortDate).getTime() - new Date(a.sortDate).getTime()),
         [relatedTransactions]
     )
+    const filteredTransactions = useMemo(
+        () => dateRange === 'allTime'
+            ? sortedTransactions
+            : sortedTransactions.filter((tx) => {
+                if (dateBounds.startDate && tx.sortDate < dateBounds.startDate) return false
+                if (dateBounds.endDate && tx.sortDate >= dateBounds.endDate) return false
+                return true
+            }),
+        [sortedTransactions, dateRange, dateBounds]
+    )
+    const filteredRelatedTransactions = useMemo(
+        () => dateRange === 'allTime'
+            ? relatedTransactions
+            : relatedTransactions.filter((tx) => {
+                if (dateBounds.startDate && tx.sortDate < dateBounds.startDate) return false
+                if (dateBounds.endDate && tx.sortDate >= dateBounds.endDate) return false
+                return true
+            }),
+        [relatedTransactions, dateRange, dateBounds]
+    )
+    const filteredActive = useMemo(
+        () => filteredRelatedTransactions.filter((tx) => tx.isActive),
+        [filteredRelatedTransactions]
+    )
+    const filteredSettled = useMemo(
+        () => filteredActive.filter((tx) => tx.isPaid),
+        [filteredActive]
+    )
+    const filteredCompleted = useMemo(
+        () => filteredActive.filter((tx) => tx.isCompleted),
+        [filteredActive]
+    )
     const directTransactionsVolume = useMemo(
-        () => directTransactions.reduce((sum, tx) => sum + convertToStoreBase(tx.amount, tx.currency, defaultCurrency, conversionRates), 0),
-        [directTransactions, defaultCurrency, conversionRates]
+        () => dateFilteredPayments.reduce((sum, tx) => sum + convertToStoreBase(tx.amount, tx.currency, defaultCurrency, conversionRates), 0),
+        [dateFilteredPayments, defaultCurrency, conversionRates]
     )
 
-    const totalValue = (partner ? partner.totalSalesValue + partner.totalPurchaseValue : 0) + directTransactionsVolume
-    const outstandingValue = (partner?.receivableBalance || 0) + (partner?.payableBalance || 0) + (partner?.loanOutstandingBalance || 0)
-    const averageOrderItemsCount = customerOrders.length + supplierOrders.length + supplierTravelSales.length + directTransactions.length
+    const totalValue = dateFilteredCustomerOrders.reduce(
+        (sum, o) => sum + convertCurrencyAmountWithSnapshot(o.total, o.currency, defaultCurrency, o.exchangeRates), 0
+    ) + dateFilteredSupplierOrders.reduce(
+        (sum, o) => sum + convertCurrencyAmountWithSnapshot(o.total, o.currency, defaultCurrency, o.exchangeRates), 0
+    ) + dateFilteredTravelSales.reduce(
+        (sum, s) => sum + convertCurrencyAmountWithSnapshot(getTravelSaleCost(s), s.currency, defaultCurrency, s.exchangeRateSnapshot ? [s.exchangeRateSnapshot] as any : undefined), 0
+    ) + directTransactionsVolume
+    const outstandingValue = (partner?.receivableBalance || 0) + (partner?.payableBalance || 0)
+    const averageOrderItemsCount = dateFilteredCustomerOrders.length + dateFilteredSupplierOrders.length + dateFilteredTravelSales.length + dateFilteredPayments.length
     const averageOrderValue = averageOrderItemsCount > 0
         ? totalValue / averageOrderItemsCount
         : 0
     const totalUnits = useMemo(
-        () => productOrders
+        () => filteredProductOrders
             .filter((order) => order.status !== 'cancelled')
             .reduce((sum, order) => sum + order.items.reduce((lineSum, item) => lineSum + item.quantity, 0), 0),
-        [productOrders]
+        [filteredProductOrders]
     )
-    const settledPercent = relatedTransactions.length > 0 ? Math.min(100, (settledTransactions.length / relatedTransactions.length) * 100) : 0
+    const settledPercent = filteredRelatedTransactions.length > 0 ? Math.min(100, (filteredSettled.length / filteredRelatedTransactions.length) * 100) : 0
     const creditUsagePercent = partner?.creditLimit && partner.creditLimit > 0 ? Math.min(100, (Math.max(partner.netExposure, 0) / partner.creditLimit) * 100) : 0
-    const latestTransaction = sortedTransactions[0]
-    const earliestTransaction = sortedTransactions[sortedTransactions.length - 1]
+    const latestTransaction = filteredTransactions[0]
+    const earliestTransaction = filteredTransactions[filteredTransactions.length - 1]
     const locationLabel = partner ? [partner.city, partner.country].filter(Boolean).join(', ') || 'N/A' : 'N/A'
     const activityRows = useMemo(
-        () => sortedTransactions.slice(0, 8).map((transaction) => ({
+        () => filteredTransactions.slice(0, 8).map((transaction) => ({
             id: transaction.id,
             date: transaction.activityDate,
             title: transaction.reference,
@@ -441,18 +511,18 @@ export function PartnerDetailsView({
             currency: transaction.currency,
             source: transaction.source
         })),
-        [sortedTransactions]
+        [filteredTransactions]
     )
 
     const partnerFlows = useMemo(() => {
         let incoming = 0
         let outgoing = 0
 
-        const customerOrderIds = new Set(customerOrders.map(o => o.id))
-        const supplierOrderIds = new Set(supplierOrders.map(o => o.id))
-        const partnerLoanIds = new Set(partnerLoans.map(l => l.id))
+        const customerOrderIds = new Set(dateFilteredCustomerOrders.map(o => o.id))
+        const supplierOrderIds = new Set(dateFilteredSupplierOrders.map(o => o.id))
+        const partnerLoanIds = new Set(dateFilteredLoans.map(l => l.id))
 
-        for (const tx of paymentTransactions) {
+        for (const tx of dateFilteredAllPayments) {
             let isRelated = false
             if (tx.metadata?.businessPartnerId === partnerId) {
                 isRelated = true
@@ -480,18 +550,39 @@ export function PartnerDetailsView({
             net: incoming - outgoing
         }
     }, [
-        paymentTransactions,
+        dateFilteredAllPayments,
         partnerId,
-        customerOrders,
-        supplierOrders,
-        supplierTravelSales,
-        partnerLoans,
+        dateFilteredCustomerOrders,
+        dateFilteredSupplierOrders,
+        dateFilteredLoans,
         defaultCurrency,
         conversionRates
     ])
+    const totalLoanPaidByPartner = useMemo(
+        () => dateFilteredLoans
+            .filter((loan) => (loan.direction ?? 'lent') !== 'borrowed')
+            .reduce((sum, loan) => sum + (convertCurrencyAmountWithAvailableSnapshot(
+                loan.totalPaidAmount,
+                loan.settlementCurrency,
+                defaultCurrency,
+                loan.exchangeRateSnapshot
+            ) ?? 0), 0),
+        [dateFilteredLoans, defaultCurrency]
+    )
+    const totalLoanPaidToPartner = useMemo(
+        () => dateFilteredLoans
+            .filter((loan) => loan.direction === 'borrowed')
+            .reduce((sum, loan) => sum + (convertCurrencyAmountWithAvailableSnapshot(
+                loan.totalPaidAmount,
+                loan.settlementCurrency,
+                defaultCurrency,
+                loan.exchangeRateSnapshot
+            ) ?? 0), 0),
+        [dateFilteredLoans, defaultCurrency]
+    )
     const topProducts = useMemo(() => {
         const rows = new Map<string, { id: string; name: string; quantity: number; amount: number }>()
-        for (const order of productOrders.filter((row) => row.status !== 'cancelled')) {
+        for (const order of filteredProductOrders.filter((row) => row.status !== 'cancelled')) {
             for (const item of order.items) {
                 const current = rows.get(item.productId) ?? {
                     id: item.productId,
@@ -547,6 +638,8 @@ export function PartnerDetailsView({
                     <span className="font-semibold text-foreground">{partner.name}</span>
                 </div>
             </div>
+
+            <DateRangeFilters />
 
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
                 <div className="space-y-4">
@@ -650,58 +743,6 @@ export function PartnerDetailsView({
                         </CardContent>
                     </Card>
 
-                    <Card className="overflow-hidden border-none bg-transparent shadow-none">
-                        <CardHeader className="flex flex-row items-center justify-between pb-2">
-                            <CardTitle className="text-xl font-bold">{t('businessPartners.relationship', { defaultValue: 'Relationship Summary' })}</CardTitle>
-                            <span className="rounded-md bg-primary/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-primary">
-                                {typeLabel}
-                            </span>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
-                            <div className="rounded-2xl border border-border/40 bg-muted/30 p-6 text-center">
-                                <div className="text-sm font-medium text-muted-foreground">
-                                    {totalValueLabel}
-                                </div>
-                                <div className="mt-1 text-4xl font-black tracking-tight">
-                                    {formatCurrency(totalValue, defaultCurrency, iqdPreference)}
-                                </div>
-                                <div className="mt-2 text-sm text-muted-foreground">
-                                    {outstandingValue > 0
-                                        ? `${t('orders.details.outstanding', { defaultValue: 'Outstanding' })}: ${formatCurrency(outstandingValue, defaultCurrency, iqdPreference)}`
-                                        : t('orders.details.fullySettled', { defaultValue: 'Fully settled' })}
-                                </div>
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-4 text-center">
-                                <div className="rounded-2xl border border-border/40 bg-muted/20 p-5">
-                                    <div className="mb-2 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-                                        {completedLabel}
-                                    </div>
-                                    <div className="text-2xl font-bold text-emerald-500">{completedTransactions.length}</div>
-                                </div>
-                                <div className="rounded-2xl border border-border/40 bg-muted/20 p-5">
-                                    <div className="mb-2 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-                                        {paidLabel}
-                                    </div>
-                                    <div className="text-2xl font-bold text-blue-500">{settledTransactions.length}</div>
-                                </div>
-                            </div>
-
-                            <div className="space-y-2 pt-2">
-                                <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                                    <span>{t('businessPartners.settlementProgress', { defaultValue: 'Settlement Progress' })}</span>
-                                    <span>{Math.round(settledPercent)}%</span>
-                                </div>
-                                <div className="h-1.5 overflow-hidden rounded-full bg-muted/40">
-                                    <div
-                                        className="h-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.3)] transition-all duration-500"
-                                        style={{ width: `${settledPercent}%` }}
-                                    />
-                                </div>
-                            </div>
-                        </CardContent>
-                    </Card>
-
                     <Card>
                         <CardHeader>
                             <CardTitle>{t('orders.details.activity.title', { defaultValue: 'Activity' })}</CardTitle>
@@ -748,115 +789,65 @@ export function PartnerDetailsView({
                             <CardTitle>{overviewTitle}</CardTitle>
                         </CardHeader>
                         <CardContent>
-                            <div className="grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(0,0.95fr)]">
-                                <div className="rounded-3xl border border-border/50 bg-background/80 p-5 shadow-sm">
-                                    <div className="flex flex-wrap items-center gap-2">
-                                        <span className="rounded-full bg-primary/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-primary">
-                                            {typeLabel}
-                                        </span>
-                                        <span className="rounded-full border bg-muted/30 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-muted-foreground">
-                                            {defaultCurrency.toUpperCase()}
-                                        </span>
-                                    </div>
-                                    <div className="mt-6 text-xs font-bold uppercase tracking-[0.18em] text-muted-foreground">
-                                        {t('businessPartners.relationshipValue', { defaultValue: 'Relationship Value' })}
-                                    </div>
-                                    <div className="mt-2 text-4xl font-black tracking-tight">
-                                        {formatCurrency(totalValue, defaultCurrency, iqdPreference)}
-                                    </div>
-                                    <div className="mt-2 text-sm text-muted-foreground">
-                                        {latestTransaction
-                                            ? `${lastActivityLabel}: ${formatDate(latestTransaction.displayDate)}`
-                                            : emptyRelatedLabel}
-                                    </div>
-                                    <div className="mt-6 space-y-2">
-                                        <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
-                                            <span>{t('businessPartners.creditUsage', { defaultValue: 'Credit Usage' })}</span>
-                                            <span>{Math.round(creditUsagePercent)}%</span>
+                            <div className="mt-6">
+                                <h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                                    {t('businessPartners.loans', { defaultValue: 'Loans' })}
+                                </h3>
+                                <div className="grid gap-4 sm:grid-cols-2">
+                                    <div className="rounded-3xl border border-emerald-200/50 bg-emerald-500/[0.04] p-6">
+                                        <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-emerald-600 dark:text-emerald-400">
+                                            <TrendingUp className="h-5 w-5" />
+                                            {t('businessPartners.receivable', { defaultValue: 'Receivable' })}
+                                            <span className="ml-auto rounded-full border border-emerald-200/50 bg-emerald-500/10 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
+                                                {t('businessPartners.theyOweUs', { defaultValue: 'They owe us' })}
+                                            </span>
                                         </div>
-                                        <div className="h-2 overflow-hidden rounded-full bg-background/80">
-                                            <div
-                                                className={cn(
-                                                    'h-full rounded-full transition-all duration-500',
-                                                    creditUsagePercent >= 80 ? 'bg-rose-500' : creditUsagePercent >= 50 ? 'bg-amber-500' : 'bg-primary'
-                                                )}
-                                                style={{ width: `${creditUsagePercent}%` }}
-                                            />
+                                        <div className="mt-3 text-4xl font-black tracking-tight text-emerald-600 dark:text-emerald-400">
+                                            {formatCurrency(partner.receivableBalance || 0, defaultCurrency, iqdPreference)}
                                         </div>
                                     </div>
-                                </div>
-
-                                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
-                                    <div className="rounded-2xl border bg-muted/20 p-4">
-                                        <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">
-                                            <CreditCard className="h-4 w-4" />
-                                            {t('customers.form.creditLimit', { defaultValue: 'Credit Limit' })}
+                                    <div className="rounded-3xl border border-amber-200/50 bg-amber-500/[0.04] p-6">
+                                        <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-amber-600 dark:text-amber-400">
+                                            <TrendingDown className="h-5 w-5" />
+                                            {t('businessPartners.payable', { defaultValue: 'Payable' })}
+                                            <span className="ml-auto rounded-full border border-amber-200/50 bg-amber-500/10 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-amber-600 dark:text-amber-400">
+                                                {t('businessPartners.weOweThem', { defaultValue: 'We owe them' })}
+                                            </span>
                                         </div>
-                                        <div className="mt-2 text-xl font-black">
-                                            {formatCurrency(partner.creditLimit || 0, defaultCurrency, iqdPreference)}
-                                        </div>
-                                    </div>
-                                    <div className="rounded-2xl border bg-muted/20 p-4">
-                                        <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">
-                                            <Receipt className="h-4 w-4" />
-                                            {t('orders.details.outstanding', { defaultValue: 'Outstanding' })}
-                                        </div>
-                                        <div className="mt-2 text-xl font-black">
-                                            {formatCurrency(outstandingValue, defaultCurrency, iqdPreference)}
-                                        </div>
-                                    </div>
-                                    <div className="rounded-2xl border bg-muted/20 p-4">
-                                        <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">
-                                            <ShoppingCart className="h-4 w-4" />
-                                            {t('businessPartners.averageDocument', { defaultValue: 'Average Document' })}
-                                        </div>
-                                        <div className="mt-2 text-xl font-black">
-                                            {formatCurrency(averageOrderValue, defaultCurrency, iqdPreference)}
-                                        </div>
-                                    </div>
-                                    <div className="rounded-2xl border bg-muted/20 p-4">
-                                        <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">
-                                            <CalendarDays className="h-4 w-4" />
-                                            {firstActivityLabel}
-                                        </div>
-                                        <div className="mt-2 text-xl font-black">
-                                            {earliestTransaction ? formatDate(earliestTransaction.displayDate) : 'N/A'}
+                                        <div className="mt-3 text-4xl font-black tracking-tight text-amber-600 dark:text-amber-400">
+                                            {formatCurrency(partner.payableBalance || 0, defaultCurrency, iqdPreference)}
                                         </div>
                                     </div>
                                 </div>
                             </div>
 
-                            <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                                <div className="rounded-2xl border bg-background/70 p-4">
-                                    <div className="text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">
-                                        {t('businessPartners.receivable', { defaultValue: 'Receivable' })}
+                            <div className="mt-6">
+                                <div className="grid gap-4 sm:grid-cols-2">
+                                    <div className="rounded-2xl border border-emerald-200/30 bg-emerald-500/[0.02] p-5">
+                                        <div className="flex items-center justify-between gap-2">
+                                            <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-emerald-600 dark:text-emerald-400">
+                                                {t('businessPartners.loanPaymentsReceived', { defaultValue: 'Loan payments received' })}
+                                            </div>
+                                            <span className="rounded-full border border-emerald-200/30 bg-emerald-500/10 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
+                                                {t('customers.details.paid', { defaultValue: 'Collected' })}
+                                            </span>
+                                        </div>
+                                        <div className="mt-2 text-2xl font-black tracking-tight text-emerald-600/80 dark:text-emerald-400/80">
+                                            {formatCurrency(totalLoanPaidByPartner, defaultCurrency, iqdPreference)}
+                                        </div>
                                     </div>
-                                    <div className="mt-2 text-2xl font-black text-emerald-600">
-                                        {formatCurrency(partner.receivableBalance || 0, defaultCurrency, iqdPreference)}
-                                    </div>
-                                </div>
-                                <div className="rounded-2xl border bg-background/70 p-4">
-                                    <div className="text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">
-                                        {t('businessPartners.payable', { defaultValue: 'Payable' })}
-                                    </div>
-                                    <div className="mt-2 text-2xl font-black text-amber-600">
-                                        {formatCurrency(partner.payableBalance || 0, defaultCurrency, iqdPreference)}
-                                    </div>
-                                </div>
-                                <div className="rounded-2xl border bg-background/70 p-4">
-                                    <div className="text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">
-                                        {t('businessPartners.loans', { defaultValue: 'Loans' })}
-                                    </div>
-                                    <div className="mt-2 text-2xl font-black text-sky-600">
-                                        {formatCurrency(partner.loanOutstandingBalance || 0, defaultCurrency, iqdPreference)}
-                                    </div>
-                                </div>
-                                <div className="rounded-2xl border bg-background/70 p-4">
-                                    <div className="text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">
-                                        {t('businessPartners.netExposure', { defaultValue: 'Net Exposure' })}
-                                    </div>
-                                    <div className="mt-2 text-2xl font-black text-primary">
-                                        {formatCurrency(partner.netExposure || 0, defaultCurrency, iqdPreference)}
+                                    <div className="rounded-2xl border border-amber-200/30 bg-amber-500/[0.02] p-5">
+                                        <div className="flex items-center justify-between gap-2">
+                                            <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-amber-600 dark:text-amber-400">
+                                                {t('businessPartners.loanPaymentsMade', { defaultValue: 'Loan payments made' })}
+                                            </div>
+                                            <span className="rounded-full border border-amber-200/30 bg-amber-500/10 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider text-amber-600 dark:text-amber-400">
+                                                {t('customers.details.settled', { defaultValue: 'Settled' })}
+                                            </span>
+                                        </div>
+                                        <div className="mt-2 text-2xl font-black tracking-tight text-amber-600/80 dark:text-amber-400/80">
+                                            {formatCurrency(totalLoanPaidToPartner, defaultCurrency, iqdPreference)}
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -867,27 +858,42 @@ export function PartnerDetailsView({
                                 </h3>
                                 <div className="grid gap-3 sm:grid-cols-3">
                                     <div className="rounded-2xl border bg-emerald-500/5 p-4">
-                                        <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-emerald-600 dark:text-emerald-400">
-                                            <TrendingUp className="h-4 w-4" />
-                                            {t('ledger.incoming', { defaultValue: 'Incoming' })}
+                                        <div className="flex items-center justify-between gap-2">
+                                            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-emerald-600 dark:text-emerald-400">
+                                                <TrendingUp className="h-4 w-4" />
+                                                {t('ledger.incoming', { defaultValue: 'Incoming' })}
+                                            </div>
+                                            <span className="rounded-full border border-emerald-200/30 bg-emerald-500/10 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
+                                                {t('businessPartners.moneyIn', { defaultValue: 'Money in' })}
+                                            </span>
                                         </div>
                                         <div className="mt-2 text-2xl font-black text-emerald-600 dark:text-emerald-400">
                                             {formatCurrency(partnerFlows.incoming, defaultCurrency, iqdPreference)}
                                         </div>
                                     </div>
                                     <div className="rounded-2xl border bg-amber-500/5 p-4">
-                                        <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-amber-600 dark:text-amber-400">
-                                            <TrendingDown className="h-4 w-4" />
-                                            {t('ledger.outgoing', { defaultValue: 'Outgoing' })}
+                                        <div className="flex items-center justify-between gap-2">
+                                            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-amber-600 dark:text-amber-400">
+                                                <TrendingDown className="h-4 w-4" />
+                                                {t('ledger.outgoing', { defaultValue: 'Outgoing' })}
+                                            </div>
+                                            <span className="rounded-full border border-amber-200/30 bg-amber-500/10 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider text-amber-600 dark:text-amber-400">
+                                                {t('businessPartners.moneyOut', { defaultValue: 'Money out' })}
+                                            </span>
                                         </div>
                                         <div className="mt-2 text-2xl font-black text-amber-600 dark:text-amber-400">
                                             {formatCurrency(partnerFlows.outgoing, defaultCurrency, iqdPreference)}
                                         </div>
                                     </div>
                                     <div className={cn("rounded-2xl border p-4", partnerFlows.net < 0 ? "bg-amber-500/5" : "bg-emerald-500/5")}>
-                                        <div className={cn("flex items-center gap-2 text-xs font-bold uppercase tracking-[0.16em]", partnerFlows.net < 0 ? "text-amber-600 dark:text-amber-400" : "text-emerald-600 dark:text-emerald-400")}>
-                                            <Activity className="h-4 w-4" />
-                                            {t('ledger.netFlow', { defaultValue: 'Net Flow' })}
+                                        <div className="flex items-center justify-between gap-2">
+                                            <div className={cn("flex items-center gap-2 text-xs font-bold uppercase tracking-[0.16em]", partnerFlows.net < 0 ? "text-amber-600 dark:text-amber-400" : "text-emerald-600 dark:text-emerald-400")}>
+                                                <Activity className="h-4 w-4" />
+                                                {t('ledger.netFlow', { defaultValue: 'Net Flow' })}
+                                            </div>
+                                            <span className={cn("rounded-full border px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider", partnerFlows.net < 0 ? "border-amber-200/30 bg-amber-500/10 text-amber-600 dark:text-amber-400" : "border-emerald-200/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400")}>
+                                                {t('businessPartners.balance', { defaultValue: 'Balance' })}
+                                            </span>
                                         </div>
                                         <div className={cn("mt-2 text-2xl font-black", partnerFlows.net < 0 ? "text-amber-600 dark:text-amber-400" : "text-emerald-600 dark:text-emerald-400")}>
                                             {formatCurrency(partnerFlows.net, defaultCurrency, iqdPreference)}
@@ -896,30 +902,146 @@ export function PartnerDetailsView({
                                 </div>
                             </div>
 
-                            <div className="mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                                <div className="rounded-2xl border bg-background/70 p-4">
-                                    <div className="text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">
-                                        {activeLabel}
+                            <div className="mt-6 grid gap-4 sm:grid-cols-2">
+                                <div className="rounded-2xl border bg-muted/20 p-5">
+                                    <h3 className="mb-4 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                                        {t('businessPartners.relationship', { defaultValue: 'Relationship Summary' })}
+                                    </h3>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div className="rounded-xl border border-border/40 bg-background/60 p-3">
+                                            <div className="flex items-center justify-between gap-2">
+                                                <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{completedLabel}</div>
+                                                <span className="rounded-full border border-emerald-200/30 bg-emerald-500/10 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
+                                                    {t('common.done', { defaultValue: 'Done' })}
+                                                </span>
+                                            </div>
+                                            <div className="mt-1 text-2xl font-bold text-emerald-500">{filteredCompleted.length}</div>
+                                        </div>
+                                        <div className="rounded-xl border border-border/40 bg-background/60 p-3">
+                                            <div className="flex items-center justify-between gap-2">
+                                                <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{paidLabel}</div>
+                                                <span className="rounded-full border border-blue-200/30 bg-blue-500/10 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider text-blue-600 dark:text-blue-400">
+                                                    {t('customers.details.paid', { defaultValue: 'Paid' })}
+                                                </span>
+                                            </div>
+                                            <div className="mt-1 text-2xl font-bold text-blue-500">{filteredSettled.length}</div>
+                                        </div>
                                     </div>
-                                    <div className="mt-2 text-2xl font-black">{activeTransactions.length}</div>
+                                    <div className="mt-4 space-y-1.5">
+                                        <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                                            <span>{t('businessPartners.settlementProgress', { defaultValue: 'Settlement Progress' })}</span>
+                                            <span>{Math.round(settledPercent)}%</span>
+                                        </div>
+                                        <div className="h-1.5 overflow-hidden rounded-full bg-muted/40">
+                                            <div
+                                                className="h-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.3)] transition-all duration-500"
+                                                style={{ width: `${settledPercent}%` }}
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="rounded-2xl border bg-muted/20 p-5">
+                                    <h3 className="mb-4 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                                        {t('businessPartners.creditUsage', { defaultValue: 'Credit Usage' })}
+                                    </h3>
+                                    <div className="space-y-1.5">
+                                        <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                                            <span>{t('businessPartners.creditUsage', { defaultValue: 'Credit Usage' })}</span>
+                                            <span>{Math.round(creditUsagePercent)}%</span>
+                                        </div>
+                                        <div className="h-1.5 overflow-hidden rounded-full bg-background/80">
+                                            <div
+                                                className={cn(
+                                                    'h-full rounded-full transition-all duration-500',
+                                                    creditUsagePercent >= 80 ? 'bg-rose-500' : creditUsagePercent >= 50 ? 'bg-amber-500' : 'bg-primary'
+                                                )}
+                                                style={{ width: `${creditUsagePercent}%` }}
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="mt-4 grid grid-cols-2 gap-3">
+                                        <div className="rounded-xl border border-border/40 bg-background/60 p-3">
+                                            <div className="flex items-center justify-between gap-2">
+                                                <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                                                    <CreditCard className="h-3 w-3" />
+                                                    {t('customers.form.creditLimit', { defaultValue: 'Limit' })}
+                                                </div>
+                                                <span className="rounded-full border border-muted-foreground/20 bg-muted-foreground/10 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider text-muted-foreground">
+                                                    {t('businessPartners.ceiling', { defaultValue: 'Ceiling' })}
+                                                </span>
+                                            </div>
+                                            <div className="mt-1 text-lg font-black">{formatCurrency(partner.creditLimit || 0, defaultCurrency, iqdPreference)}</div>
+                                        </div>
+                                        <div className="rounded-xl border border-border/40 bg-background/60 p-3">
+                                            <div className="flex items-center justify-between gap-2">
+                                                <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                                                    <Receipt className="h-3 w-3" />
+                                                    {t('orders.details.outstanding', { defaultValue: 'Outstanding' })}
+                                                </div>
+                                                <span className="rounded-full border border-amber-200/30 bg-amber-500/10 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider text-amber-600 dark:text-amber-400">
+                                                    {t('orders.details.due', { defaultValue: 'Due' })}
+                                                </span>
+                                            </div>
+                                            <div className="mt-1 text-lg font-black">{formatCurrency(outstandingValue, defaultCurrency, iqdPreference)}</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="mt-4 grid gap-3 sm:grid-cols-4">
+                                <div className="rounded-2xl border bg-background/70 p-4">
+                                    <div className="flex items-center justify-between gap-2">
+                                        <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">
+                                            <ShoppingCart className="h-4 w-4" />
+                                            {t('businessPartners.averageDocument', { defaultValue: 'Average Document' })}
+                                        </div>
+                                        <span className="rounded-full border border-muted-foreground/20 bg-muted-foreground/10 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider text-muted-foreground">
+                                            {t('businessPartners.perDocument', { defaultValue: 'Per doc' })}
+                                        </span>
+                                    </div>
+                                    <div className="mt-2 text-xl font-black">
+                                        {formatCurrency(averageOrderValue, defaultCurrency, iqdPreference)}
+                                    </div>
                                 </div>
                                 <div className="rounded-2xl border bg-background/70 p-4">
-                                    <div className="text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">
-                                        {completedLabel}
+                                    <div className="flex items-center justify-between gap-2">
+                                        <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">
+                                            <CalendarDays className="h-4 w-4" />
+                                            {firstActivityLabel}
+                                        </div>
+                                        <span className="rounded-full border border-sky-200/30 bg-sky-500/10 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider text-sky-600 dark:text-sky-400">
+                                            {t('businessPartners.started', { defaultValue: 'Started' })}
+                                        </span>
                                     </div>
-                                    <div className="mt-2 text-2xl font-black">{completedTransactions.length}</div>
+                                    <div className="mt-2 text-xl font-black">
+                                        {earliestTransaction ? formatDate(earliestTransaction.displayDate) : 'N/A'}
+                                    </div>
                                 </div>
                                 <div className="rounded-2xl border bg-background/70 p-4">
-                                    <div className="text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">
-                                        {paidLabel}
+                                    <div className="flex items-center justify-between gap-2">
+                                        <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">
+                                            <Activity className="h-4 w-4" />
+                                            {lastActivityLabel}
+                                        </div>
+                                        <span className="rounded-full border border-violet-200/30 bg-violet-500/10 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider text-violet-600 dark:text-violet-400">
+                                            {t('businessPartners.recent', { defaultValue: 'Recent' })}
+                                        </span>
                                     </div>
-                                    <div className="mt-2 text-2xl font-black">{settledTransactions.length}</div>
+                                    <div className="mt-2 text-xl font-black">
+                                        {latestTransaction ? formatDate(latestTransaction.displayDate) : 'N/A'}
+                                    </div>
                                 </div>
                                 <div className="rounded-2xl border bg-background/70 p-4">
-                                    <div className="text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">
-                                        {t('orders.details.units', { defaultValue: 'Units' })}
+                                    <div className="flex items-center justify-between gap-2">
+                                        <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">
+                                            <Package className="h-4 w-4" />
+                                            {t('orders.details.units', { defaultValue: 'Units' })}
+                                        </div>
+                                        <span className="rounded-full border border-muted-foreground/20 bg-muted-foreground/10 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider text-muted-foreground">
+                                            {t('businessPartners.count', { defaultValue: 'Count' })}
+                                        </span>
                                     </div>
-                                    <div className="mt-2 text-2xl font-black">{totalUnits}</div>
+                                    <div className="mt-2 text-xl font-black">{totalUnits}</div>
                                 </div>
                             </div>
 
@@ -989,13 +1111,13 @@ export function PartnerDetailsView({
                             </div>
                         </CardHeader>
                         <CardContent>
-                            {relatedTransactions.length === 0 ? (
+                            {filteredTransactions.length === 0 ? (
                                 <div className="rounded-2xl border py-12 text-center text-muted-foreground">
                                     {emptyRelatedLabel}
                                 </div>
                             ) : viewMode === 'grid' ? (
                                 <div className="grid gap-4 md:grid-cols-2">
-                                    {sortedTransactions.map((transaction) => (
+                                    {filteredTransactions.map((transaction) => (
                                         <div key={transaction.id} className="rounded-3xl border bg-background/80 p-4 shadow-sm">
                                             <div className="flex items-start justify-between gap-3">
                                                 <div>
@@ -1065,7 +1187,7 @@ export function PartnerDetailsView({
                                             </TableRow>
                                         </TableHeader>
                                         <TableBody>
-                                            {sortedTransactions.map((transaction) => (
+                                            {filteredTransactions.map((transaction) => (
                                                 <TableRow key={transaction.id}>
                                                     <TableCell>
                                                         <span className={cn('inline-flex rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide', sourceBadgeClass(transaction.source))}>

@@ -596,7 +596,8 @@ export async function recalculateBusinessPartnerSummary(workspaceId: string, par
             .reduce(
                 (sum, order) => sum + convertCurrencyAmountWithSnapshot(order.total, order.currency, partner.defaultCurrency, order.exchangeRates),
                 0
-            ),
+            )
+            + activeLentLoans.reduce((sum, loan) => sum + convertLoanAmountForPartner(loan, partner.defaultCurrency), 0),
         partner.defaultCurrency
     )
 
@@ -647,7 +648,7 @@ export async function recalculateBusinessPartnerSummary(workspaceId: string, par
         activeLentLoans.reduce((sum, loan) => sum + convertLoanAmountForPartner(loan, partner.defaultCurrency), 0),
         partner.defaultCurrency
     )
-    const netExposure = roundAmount(receivableBalance + loanOutstandingBalance - payableBalance, partner.defaultCurrency)
+    const netExposure = roundAmount(receivableBalance - payableBalance, partner.defaultCurrency)
 
     if (
         partner.totalSalesOrders === totalSalesOrders
