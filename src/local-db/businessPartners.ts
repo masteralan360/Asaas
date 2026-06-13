@@ -15,6 +15,8 @@ import { fetchTableFromSupabase } from './hooks'
 import { addToOfflineMutations } from './offlineMutations'
 import { getOrderBalanceAmount } from './orderInstallments'
 import type {
+    Agent,
+    AgentFacetInput,
     BusinessPartner,
     BusinessPartnerMergeCandidate,
     BusinessPartnerRole,
@@ -28,16 +30,47 @@ import type {
 } from './models'
 import { isRealEstateBusinessPartnerRole } from './models'
 
-type PartnerTableName = 'business_partners' | 'business_partner_merge_candidates' | 'customers' | 'suppliers'
+type PartnerTableName = 'business_partners' | 'business_partner_merge_candidates' | 'customers' | 'suppliers' | 'agents'
 type PartnerFacetType = 'customer' | 'supplier'
 type SyncEntity = { id: string; version: number } & Record<string, unknown>
 type PartnerFilterOptions = {
     roles?: BusinessPartnerRole[]
     includeMerged?: boolean
     includeRealEstateRoles?: boolean
+    includeAgentRoles?: boolean
 }
 type BusinessPartnerRoleAccessOptions = {
     allowRealEstateRoles?: boolean
+    allowAgentRole?: boolean
+}
+export type BusinessPartnerCreateInput = Omit<
+    BusinessPartner,
+    'id'
+    | 'workspaceId'
+    | 'createdAt'
+    | 'updatedAt'
+    | 'syncStatus'
+    | 'lastSyncedAt'
+    | 'version'
+    | 'isDeleted'
+    | 'customerFacetId'
+    | 'supplierFacetId'
+    | 'agentFacetId'
+    | 'totalSalesOrders'
+    | 'totalSalesValue'
+    | 'receivableBalance'
+    | 'totalPurchaseOrders'
+    | 'totalPurchaseValue'
+    | 'payableBalance'
+    | 'totalLoanCount'
+    | 'loanOutstandingBalance'
+    | 'netExposure'
+    | 'mergedIntoBusinessPartnerId'
+> & {
+    agent?: AgentFacetInput
+}
+export type BusinessPartnerUpdateInput = Partial<BusinessPartner> & {
+    agent?: Partial<AgentFacetInput>
 }
 
 type BaseEntityPayload = {
@@ -314,6 +347,10 @@ function roleIncludesSupplier(role: BusinessPartnerRole) {
     return role === 'supplier' || role === 'both'
 }
 
+function roleIncludesAgent(role: BusinessPartnerRole) {
+    return role === 'agent'
+}
+
 function nextRoleWithFacet(role: BusinessPartnerRole, facetType: PartnerFacetType): BusinessPartnerRole {
     if (facetType === 'customer') {
         return role === 'supplier' ? 'both' : role
@@ -395,6 +432,14 @@ async function getPartnerByAnyId(id: string) {
         const supplierPartner = await db.business_partners.get(supplierFacet.businessPartnerId)
         if (supplierPartner && !supplierPartner.isDeleted) {
             return supplierPartner
+        }
+    }
+
+    const agentFacet = await db.agents.get(id)
+    if (agentFacet?.businessPartnerId) {
+        const agentPartner = await db.business_partners.get(agentFacet.businessPartnerId)
+        if (agentPartner && !agentPartner.isDeleted) {
+            return agentPartner
         }
     }
 
@@ -529,6 +574,91 @@ async function getPartnerLoans(partner: BusinessPartner) {
     return rows as Loan[]
 }
 
+async function syncAgentFacet(agent: Agent) {
+    await db.agents.put(agent)
+    await syncUpsertEntities('agents', [agent as unknown as SyncEntity], agent.workspaceId)
+}
+
+function normalizeAgentFacetInput(input: Partial<AgentFacetInput> | undefined, existing?: Agent): AgentFacetInput {
+    const agentType = input?.agentType ?? existing?.agentType
+    const status = input?.status ?? existing?.status ?? 'active'
+    const zone = String(input?.zone ?? existing?.zone ?? '').trim()
+    const carModel = String(input?.carModel ?? existing?.carModel ?? '').trim() || null
+    const plateNumber = String(input?.plateNumber ?? existing?.plateNumber ?? '').trim() || null
+
+    if (agentType !== 'driver' && agentType !== 'field_agent') {
+        throw new Error('Agent type is required')
+    }
+    if (!zone) {
+        throw new Error('Agent operational territory is required')
+    }
+    if (agentType === 'driver' && (!carModel || !plateNumber)) {
+        throw new Error('Car model and plate number are required for drivers')
+    }
+    if (status !== 'active' && status !== 'inactive' && status !== 'blocked') {
+        throw new Error('Agent status is invalid')
+    }
+
+    return {
+        imageUrl: input?.imageUrl === undefined ? existing?.imageUrl ?? null : input.imageUrl,
+        zone,
+        agentType,
+        carModel: agentType === 'driver' ? carModel : null,
+        plateNumber: agentType === 'driver' ? plateNumber : null,
+        linkedUserId: input?.linkedUserId === undefined ? existing?.linkedUserId ?? null : input.linkedUserId,
+        status
+    }
+}
+
+async function createOrUpdateAgentFacet(partner: BusinessPartner, input?: Partial<AgentFacetInput>) {
+    const existing = partner.agentFacetId
+        ? await db.agents.get(partner.agentFacetId)
+        : await db.agents.where('businessPartnerId').equals(partner.id).first()
+    const agentData = normalizeAgentFacetInput(input, existing)
+
+    if (existing) {
+        const now = new Date().toISOString()
+        const updated: Agent = {
+            ...existing,
+            ...agentData,
+            businessPartnerId: partner.id,
+            isDeleted: false,
+            updatedAt: now,
+            version: existing.version + 1,
+            ...getSyncMetadata(partner.workspaceId, now)
+        }
+        await syncAgentFacet(updated)
+        return updated
+    }
+
+    const agent = buildBaseEntity(partner.workspaceId, {
+        businessPartnerId: partner.id,
+        ...agentData
+    }) as Agent
+    await syncAgentFacet(agent)
+    return agent
+}
+
+async function setAgentFacetInactive(partner: BusinessPartner) {
+    if (!partner.agentFacetId) {
+        return
+    }
+
+    const agent = await db.agents.get(partner.agentFacetId)
+    if (!agent || agent.isDeleted || agent.status === 'inactive') {
+        return
+    }
+
+    const now = new Date().toISOString()
+    await syncAgentFacet({
+        ...agent,
+        status: 'inactive',
+        updatedAt: now,
+        version: agent.version + 1,
+        ...getSyncMetadata(agent.workspaceId, now)
+    })
+}
+
 function assertBusinessPartnerRoleAllowed(role: BusinessPartnerRole, options?: BusinessPartnerRoleAccessOptions) {
     if (isRemovedBusinessPartnerRole(role)) {
         throw new Error('Witness is not a supported business partner role')
@@ -536,6 +666,10 @@ function assertBusinessPartnerRoleAllowed(role: BusinessPartnerRole, options?: B
 
     if (isRealEstateBusinessPartnerRole(role) && !options?.allowRealEstateRoles) {
         throw new Error('Real Estate partner roles require workspace Real Estate access')
+    }
+
+    if (roleIncludesAgent(role) && !options?.allowAgentRole) {
+        throw new Error('Agent roles require workspace Agents module access')
     }
 }
 
@@ -930,6 +1064,10 @@ export function useBusinessPartners(workspaceId: string | undefined, filters?: P
                     return false
                 }
 
+                if (!filters?.includeAgentRoles && roleIncludesAgent(item.role)) {
+                    return false
+                }
+
                 if (filters?.roles?.length) {
                     return filters.roles.some((role) => item.role === role || (item.role === 'both' && (role === 'customer' || role === 'supplier')))
                 }
@@ -953,6 +1091,7 @@ export function useBusinessPartners(workspaceId: string | undefined, filters?: P
                     fetchTableFromSupabase('business_partner_merge_candidates', db.business_partner_merge_candidates, workspaceId),
                     fetchTableFromSupabase('customers', db.customers, workspaceId),
                     fetchTableFromSupabase('suppliers', db.suppliers, workspaceId),
+                    fetchTableFromSupabase('agents', db.agents, workspaceId),
                     fetchTableFromSupabase('sales_orders', db.sales_orders, workspaceId),
                     fetchTableFromSupabase('purchase_orders', db.purchase_orders, workspaceId),
                     fetchTableFromSupabase('travel_agency_sales', db.travel_agency_sales, workspaceId),
@@ -974,6 +1113,28 @@ export function useBusinessPartners(workspaceId: string | undefined, filters?: P
 
 export function useBusinessPartner(partnerId: string | undefined) {
     return useLiveQuery(() => partnerId ? getPartnerByAnyId(partnerId) : undefined, [partnerId])
+}
+
+export function useAgents(workspaceId: string | undefined) {
+    return useLiveQuery(
+        () => workspaceId
+            ? db.agents.where('workspaceId').equals(workspaceId).and((item) => !item.isDeleted).toArray()
+            : [],
+        [workspaceId]
+    ) ?? []
+}
+
+export function useAgent(agentId: string | null | undefined) {
+    return useLiveQuery(
+        async () => {
+            if (!agentId) {
+                return undefined
+            }
+            const agent = await db.agents.get(agentId)
+            return agent && !agent.isDeleted ? agent : undefined
+        },
+        [agentId]
+    )
 }
 
 export function useBusinessPartnerMergeCandidates(workspaceId: string | undefined) {
@@ -1010,16 +1171,21 @@ export function useBusinessPartnerMergeCandidates(workspaceId: string | undefine
 
 export async function createBusinessPartner(
     workspaceId: string,
-    data: Omit<BusinessPartner, 'id' | 'workspaceId' | 'createdAt' | 'updatedAt' | 'syncStatus' | 'lastSyncedAt' | 'version' | 'isDeleted' | 'customerFacetId' | 'supplierFacetId' | 'totalSalesOrders' | 'totalSalesValue' | 'receivableBalance' | 'totalPurchaseOrders' | 'totalPurchaseValue' | 'payableBalance' | 'totalLoanCount' | 'loanOutstandingBalance' | 'netExposure' | 'mergedIntoBusinessPartnerId'>,
+    data: BusinessPartnerCreateInput,
     options?: BusinessPartnerRoleAccessOptions
 ) {
     assertBusinessPartnerRoleAllowed(data.role, options)
+    const { agent: agentInput, ...partnerData } = data
+    const normalizedAgentInput = roleIncludesAgent(data.role)
+        ? normalizeAgentFacetInput(agentInput)
+        : undefined
 
     const partner = buildBaseEntity(workspaceId, {
-        ...data,
-        isEcommerce: data.isEcommerce ?? false,
+        ...partnerData,
+        isEcommerce: partnerData.isEcommerce ?? false,
         customerFacetId: null,
         supplierFacetId: null,
+        agentFacetId: null,
         totalSalesOrders: 0,
         totalSalesValue: 0,
         receivableBalance: 0,
@@ -1050,8 +1216,19 @@ export async function createBusinessPartner(
             supplierFacetId: supplier.id
         }
     }
+    if (roleIncludesAgent(partner.role)) {
+        const agent = await createOrUpdateAgentFacet(workingPartner, normalizedAgentInput)
+        workingPartner = {
+            ...workingPartner,
+            agentFacetId: agent.id
+        }
+    }
 
-    if (workingPartner.customerFacetId !== partner.customerFacetId || workingPartner.supplierFacetId !== partner.supplierFacetId) {
+    if (
+        workingPartner.customerFacetId !== partner.customerFacetId
+        || workingPartner.supplierFacetId !== partner.supplierFacetId
+        || workingPartner.agentFacetId !== partner.agentFacetId
+    ) {
         const now = new Date().toISOString()
         workingPartner = {
             ...workingPartner,
@@ -1067,20 +1244,27 @@ export async function createBusinessPartner(
     return workingPartner
 }
 
-export async function updateBusinessPartner(id: string, data: Partial<BusinessPartner>, options?: BusinessPartnerRoleAccessOptions) {
+export async function updateBusinessPartner(id: string, data: BusinessPartnerUpdateInput, options?: BusinessPartnerRoleAccessOptions) {
     const existing = await getPartnerByAnyId(id)
     if (!existing || existing.isDeleted) {
         throw new Error('Business partner not found')
     }
 
-    const nextRole = (data.role || existing.role) as BusinessPartnerRole
+    const { agent: agentInput, ...partnerChanges } = data
+    const nextRole = (partnerChanges.role || existing.role) as BusinessPartnerRole
     assertBusinessPartnerRoleAllowed(nextRole, options)
     await assertRoleRemovalAllowed(existing, nextRole)
+    const existingAgent = existing.agentFacetId
+        ? await db.agents.get(existing.agentFacetId)
+        : await db.agents.where('businessPartnerId').equals(existing.id).first()
+    const normalizedAgentInput = roleIncludesAgent(nextRole)
+        ? normalizeAgentFacetInput(agentInput, existingAgent)
+        : undefined
 
     const now = new Date().toISOString()
     let updated: BusinessPartner = {
         ...existing,
-        ...data,
+        ...partnerChanges,
         role: nextRole,
         updatedAt: now,
         version: existing.version + 1,
@@ -1107,8 +1291,21 @@ export async function updateBusinessPartner(id: string, data: Partial<BusinessPa
             role: nextRoleWithFacet(updated.role, 'supplier')
         }
     }
+    if (roleIncludesAgent(nextRole)) {
+        const agent = await createOrUpdateAgentFacet(updated, normalizedAgentInput)
+        updated = {
+            ...updated,
+            agentFacetId: agent.id
+        }
+    } else if (roleIncludesAgent(existing.role)) {
+        await setAgentFacetInactive(existing)
+    }
 
-    if (updated.customerFacetId !== existing.customerFacetId || updated.supplierFacetId !== existing.supplierFacetId) {
+    if (
+        updated.customerFacetId !== existing.customerFacetId
+        || updated.supplierFacetId !== existing.supplierFacetId
+        || updated.agentFacetId !== existing.agentFacetId
+    ) {
         const timestamp = new Date().toISOString()
         updated = {
             ...updated,
@@ -1181,6 +1378,20 @@ export async function deleteBusinessPartner(id: string) {
             await syncSoftDelete('suppliers', supplier.id, supplier.workspaceId)
         }
     }
+
+    if (partner.agentFacetId) {
+        const agent = await db.agents.get(partner.agentFacetId)
+        if (agent && !agent.isDeleted) {
+            await db.agents.put({
+                ...agent,
+                isDeleted: true,
+                updatedAt: now,
+                version: agent.version + 1,
+                ...getSyncMetadata(agent.workspaceId, now)
+            })
+            await syncSoftDelete('agents', agent.id, agent.workspaceId)
+        }
+    }
 }
 
 export async function mergeBusinessPartners(primaryPartnerId: string, secondaryPartnerId: string) {
@@ -1191,6 +1402,9 @@ export async function mergeBusinessPartners(primaryPartnerId: string, secondaryP
     }
     if (primary.workspaceId !== secondary.workspaceId) {
         throw new Error('Partners must belong to the same workspace')
+    }
+    if (roleIncludesAgent(primary.role) !== roleIncludesAgent(secondary.role)) {
+        throw new Error('Agents can only be merged with other agents')
     }
     if (primary.defaultCurrency !== secondary.defaultCurrency) {
         throw new Error('Cannot merge business partners with different default currencies. Align the currencies first.')
@@ -1214,6 +1428,7 @@ export async function mergeBusinessPartners(primaryPartnerId: string, secondaryP
         creditLimit: Math.max(primary.creditLimit || 0, secondary.creditLimit || 0),
         customerFacetId: primary.customerFacetId || secondary.customerFacetId || null,
         supplierFacetId: primary.supplierFacetId || secondary.supplierFacetId || null,
+        agentFacetId: primary.agentFacetId || secondary.agentFacetId || null,
         isEcommerce: Boolean(primary.isEcommerce || secondary.isEcommerce),
         updatedAt: now,
         version: primary.version + 1,
@@ -1254,6 +1469,24 @@ export async function mergeBusinessPartners(primaryPartnerId: string, secondaryP
                 ...getSyncMetadata(primary.workspaceId, now)
             })
         }
+    }
+
+    if (secondary.agentFacetId) {
+        const agent = await db.agents.get(secondary.agentFacetId)
+        if (agent) {
+            await syncAgentFacet({
+                ...agent,
+                businessPartnerId: mergedPrimary.agentFacetId === agent.id ? primary.id : secondary.id,
+                status: mergedPrimary.agentFacetId === agent.id && mergedRole === 'agent' ? agent.status : 'inactive',
+                updatedAt: now,
+                version: agent.version + 1,
+                ...getSyncMetadata(primary.workspaceId, now)
+            })
+        }
+    }
+
+    if (mergedRole !== 'agent') {
+        await setAgentFacetInactive(mergedPrimary)
     }
 
     const salesOrders = await db.sales_orders.where('workspaceId').equals(primary.workspaceId).and((item) => !item.isDeleted && item.businessPartnerId === secondary.id).toArray()

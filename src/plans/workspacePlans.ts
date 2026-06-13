@@ -17,6 +17,7 @@ export type PlanModuleKey =
     | 'direct_transactions'
     | 'members'
     | 'business_partners'
+    | 'agents'
     | 'customers'
     | 'suppliers'
     | 'orders'
@@ -42,6 +43,7 @@ export type WorkspaceFeatureKey =
     | 'instant_pos'
     | 'sales_history'
     | 'crm'
+    | 'agents'
     | 'ecommerce'
     | 'travel_agency'
     | 'real_estate'
@@ -224,6 +226,7 @@ export const WORKSPACE_FEATURE_MODULE_MAP: Record<WorkspaceFeatureKey, PlanModul
     instant_pos: 'instant_pos',
     sales_history: 'sales_history',
     crm: 'customers',
+    agents: 'agents',
     ecommerce: 'ecommerce',
     travel_agency: 'travel_agency',
     real_estate: 'real_estate',
@@ -334,7 +337,7 @@ export function applyWorkspaceOverrides(
     let modules = [...resolved.modules]
     let capabilities = [...resolved.capabilities]
     let allowedCurrencies = [...resolved.allowedCurrencies]
-    let limits = { ...resolved.limits }
+    const limits = { ...resolved.limits }
 
     for (const override of overrides) {
         const val = override.value ?? 'grant'

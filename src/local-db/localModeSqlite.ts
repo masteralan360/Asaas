@@ -26,6 +26,7 @@ export const LOCAL_MODE_SQLITE_TABLES = [
   "reorder_transfer_rules",
   "suppliers",
   "customers",
+  "agents",
   "business_partners",
   "business_partner_merge_candidates",
   "employees",

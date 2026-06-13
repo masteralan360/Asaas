@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { ArrowLeft, ArrowLeftRight, CalendarDays, CreditCard, Eye, Mail, MapPin, Package, Phone, Printer, Receipt, ShoppingCart, Truck, UsersRound, TrendingUp, TrendingDown, Activity } from 'lucide-react'
+import { ArrowLeft, ArrowLeftRight, CalendarDays, Car, CreditCard, Eye, Mail, MapPin, Package, Phone, Printer, Receipt, ShoppingCart, Truck, UserRound, UsersRound, TrendingUp, TrendingDown, Activity } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Link, useLocation } from 'wouter'
 
@@ -29,6 +29,7 @@ import { cn, formatCurrency, formatDate, formatDateTime } from '@/lib/utils'
 import {
     listLocalCustomTemplates,
     replaceMirroredCustomTemplates,
+    useAgent,
     useBusinessPartner,
     useCustomerSalesOrders,
     useLoans,
@@ -36,6 +37,7 @@ import {
     useSales,
     useSupplierPurchaseOrders,
     useSupplierTravelAgencySales,
+    useWorkspaceUsers,
     type BusinessPartnerRole,
     type LocalCustomTemplateRow,
     type Loan,
@@ -62,8 +64,9 @@ import { useDateRange } from '@/context/DateRangeContext'
 import { DateRangeFilters } from '@/ui/components/DateRangeFilters'
 import type { PartnerDetailsPrintData } from '@/ui/components/crm/PartnerDetailsPrintTemplate'
 import type { PrintFormat } from '@/services/pdfGenerator'
+import { platformService } from '@/services/platformService'
 
-type PartnerKind = 'customer' | 'supplier' | 'business_partner'
+type PartnerKind = 'customer' | 'supplier' | 'agent' | 'business_partner'
 type RelatedProductOrder = SalesOrder | PurchaseOrder
 type RelatedTransaction = {
     id: string
@@ -109,6 +112,8 @@ function roleBadgeLabel(role: BusinessPartnerRole, t: TranslationFn) {
             return t('businessPartners.roles.buyer', { defaultValue: 'Buyer' })
         case 'seller':
             return t('businessPartners.roles.seller', { defaultValue: 'Seller' })
+        case 'agent':
+            return t('businessPartners.roles.agent', { defaultValue: 'Agent' })
         default:
             return t('businessPartners.roles.both', { defaultValue: 'Both' })
     }
@@ -154,6 +159,8 @@ function statusBadgeClass(status: string) {
     if (status === 'completed') return 'bg-emerald-100 text-emerald-800 border-emerald-200'
     if (status === 'cancelled') return 'bg-rose-100 text-rose-800 border-rose-200'
     if (status === 'active') return 'bg-emerald-100 text-emerald-800 border-emerald-200'
+    if (status === 'inactive') return 'bg-slate-100 text-slate-700 border-slate-200'
+    if (status === 'blocked') return 'bg-rose-100 text-rose-800 border-rose-200'
     if (status === 'overdue') return 'bg-rose-100 text-rose-800 border-rose-200'
     return 'bg-muted text-muted-foreground border-border'
 }
@@ -378,6 +385,8 @@ export function PartnerDetailsView({
     const conversionRates = useMemo(() => buildConversionRates(exchangeData, eurRates, tryRates), [exchangeData, eurRates, tryRates])
     const [, navigate] = useLocation()
     const partner = useBusinessPartner(partnerId)
+    const agent = useAgent(partner?.agentFacetId)
+    const workspaceUsers = useWorkspaceUsers(workspaceId)
     const customerOrders = useCustomerSalesOrders(partnerId, workspaceId)
     const supplierOrders = useSupplierPurchaseOrders(partnerId, workspaceId)
     const supplierTravelSales = useSupplierTravelAgencySales(partnerId, workspaceId)
@@ -515,12 +524,16 @@ export function PartnerDetailsView({
         ])),
         [sales]
     )
-    const allInstallments = useLiveQuery(
+    const queriedInstallments = useLiveQuery(
         () => partnerLoanIds.length > 0
             ? db.loan_installments.where('loanId').anyOf(partnerLoanIds).toArray()
             : [],
         [partnerLoanIds]
-    ) ?? []
+    )
+    const allInstallments = useMemo(
+        () => queriedInstallments ?? [],
+        [queriedInstallments]
+    )
     const dateFilteredInstallments = useMemo(
         () => filterByDate(allInstallments, (inst) => inst.updatedAt || inst.createdAt),
         [filterByDate, allInstallments]
@@ -529,14 +542,20 @@ export function PartnerDetailsView({
         if (!partner) {
             return false
         }
+        if (partner.role === 'agent' && !features.agents) {
+            return false
+        }
         if (kind === 'customer') {
             return roleIncludesCustomer(partner.role)
         }
         if (kind === 'supplier') {
             return roleIncludesSupplier(partner.role)
         }
+        if (kind === 'agent') {
+            return partner.role === 'agent'
+        }
         return true
-    }, [kind, partner])
+    }, [features.agents, kind, partner])
 
     const defaultCurrency = partner?.defaultCurrency ?? features.default_currency
     const iqdPreference = features.iqd_display_preference
@@ -544,14 +563,21 @@ export function PartnerDetailsView({
         ? '/customers'
         : kind === 'supplier'
             ? '/suppliers'
+            : kind === 'agent'
+                ? '/agents'
             : '/business-partners'
     const listLabel = kind === 'customer'
         ? t('customers.title', { defaultValue: 'Customers' })
         : kind === 'supplier'
             ? t('suppliers.title', { defaultValue: 'Suppliers' })
+            : kind === 'agent'
+                ? t('agents.title', { defaultValue: 'Agents' })
             : t('businessPartners.title', { defaultValue: 'Business Partners' })
     const typeLabel = partner ? roleBadgeLabel(partner.role, t) : t('businessPartners.title', { defaultValue: 'Business Partner' })
     const contactName = partner?.contactName
+    const linkedAgentUser = agent?.linkedUserId
+        ? workspaceUsers.find((workspaceUser) => workspaceUser.id === agent.linkedUserId)
+        : undefined
     const emptyRelatedLabel = t('businessPartners.noActivity', { defaultValue: 'No related activity yet.' })
     const completedLabel = t('businessPartners.completedItems', { defaultValue: 'Completed Items' })
     const paidLabel = t('businessPartners.settledItems', { defaultValue: 'Settled Items' })
@@ -1198,8 +1224,20 @@ export function PartnerDetailsView({
                         </CardHeader>
                         <CardContent className="space-y-3 text-sm">
                             <div className="flex items-start gap-3 rounded-2xl border bg-muted/20 p-4">
-                                <div className="rounded-xl bg-primary/10 p-2 text-primary">
-                                    {partner.role === 'supplier' ? <Truck className="h-4 w-4" /> : <UsersRound className="h-4 w-4" />}
+                                <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-primary/10 text-primary">
+                                    {agent?.imageUrl ? (
+                                        <img
+                                            src={platformService.convertFileSrc(agent.imageUrl)}
+                                            alt={partner.name}
+                                            className="h-full w-full object-cover"
+                                        />
+                                    ) : partner.role === 'supplier' ? (
+                                        <Truck className="h-4 w-4" />
+                                    ) : partner.role === 'agent' ? (
+                                        <UserRound className="h-5 w-5" />
+                                    ) : (
+                                        <UsersRound className="h-4 w-4" />
+                                    )}
                                 </div>
                                 <div className="min-w-0">
                                     <div className="text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">{typeLabel}</div>
@@ -1231,6 +1269,64 @@ export function PartnerDetailsView({
                                                 {t('suppliers.form.contactName', { defaultValue: 'Contact Name' })}
                                             </div>
                                             <div className="font-medium">{contactName}</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : null}
+
+                            {partner.role === 'agent' && agent ? (
+                                <div className="space-y-3 rounded-2xl border bg-background/70 p-4">
+                                    <div className="flex flex-wrap items-center justify-between gap-2">
+                                        <div className="text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">
+                                            {t('businessPartners.agent.operationalProfile', { defaultValue: 'Operational Profile' })}
+                                        </div>
+                                        <span className={`rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] ${statusBadgeClass(agent.status)}`}>
+                                            {t(`businessPartners.agent.statuses.${agent.status}`, { defaultValue: agent.status })}
+                                        </span>
+                                    </div>
+                                    <div className="grid gap-3 sm:grid-cols-2">
+                                        <div>
+                                            <div className="text-xs text-muted-foreground">
+                                                {t('businessPartners.agent.zone', { defaultValue: 'Operational Territory' })}
+                                            </div>
+                                            <div className="font-medium">{agent.zone}</div>
+                                        </div>
+                                        <div>
+                                            <div className="text-xs text-muted-foreground">
+                                                {t('businessPartners.agent.type', { defaultValue: 'Agent Type' })}
+                                            </div>
+                                            <div className="font-medium">
+                                                {agent.agentType === 'driver'
+                                                    ? t('businessPartners.agent.types.driver', { defaultValue: 'Driver' })
+                                                    : t('businessPartners.agent.types.fieldAgent', { defaultValue: 'Field Agent' })}
+                                            </div>
+                                        </div>
+                                        {agent.agentType === 'driver' ? (
+                                            <>
+                                                <div className="flex items-start gap-2">
+                                                    <Car className="mt-0.5 h-4 w-4 text-muted-foreground" />
+                                                    <div>
+                                                        <div className="text-xs text-muted-foreground">
+                                                            {t('businessPartners.agent.carModel', { defaultValue: 'Car Model' })}
+                                                        </div>
+                                                        <div className="font-medium">{agent.carModel || 'N/A'}</div>
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <div className="text-xs text-muted-foreground">
+                                                        {t('businessPartners.agent.plateNumber', { defaultValue: 'Plate Number' })}
+                                                    </div>
+                                                    <div className="font-medium">{agent.plateNumber || 'N/A'}</div>
+                                                </div>
+                                            </>
+                                        ) : null}
+                                        <div className="sm:col-span-2">
+                                            <div className="text-xs text-muted-foreground">
+                                                {t('businessPartners.agent.linkedUser', { defaultValue: 'Workspace User' })}
+                                            </div>
+                                            <div className="font-medium">
+                                                {linkedAgentUser?.name || linkedAgentUser?.email || t('businessPartners.agent.noLinkedUser', { defaultValue: 'Not linked' })}
+                                            </div>
                                         </div>
                                     </div>
                                 </div>

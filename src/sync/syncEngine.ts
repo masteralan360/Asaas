@@ -34,6 +34,7 @@ const SYNC_PULL_TABLES = [
   "categories",
   "customers",
   "suppliers",
+  "agents",
   "business_partners",
   "business_partner_merge_candidates",
   "invoices",

@@ -21,6 +21,7 @@ import type {
   ReorderTransferRule,
   Supplier,
   Customer,
+  Agent,
   BusinessPartner,
   BusinessPartnerMergeCandidate,
   Employee,
@@ -311,6 +312,7 @@ export class AtlasDatabase extends Dexie {
   reorder_transfer_rules!: EntityTable<ReorderTransferRule, "id">;
   suppliers!: EntityTable<Supplier, "id">;
   customers!: EntityTable<Customer, "id">;
+  agents!: EntityTable<Agent, "id">;
   business_partners!: EntityTable<BusinessPartner, "id">;
   business_partner_merge_candidates!: EntityTable<
     BusinessPartnerMergeCandidate,
@@ -2215,6 +2217,13 @@ export class AtlasDatabase extends Dexie {
         "id, workspaceId, userUuid, key, module, [workspaceId+userUuid], [workspaceId+userUuid+key]",
     });
 
+    this.version(72).stores({
+      agents:
+        "id, workspaceId, businessPartnerId, agentType, status, linkedUserId, updatedAt, isDeleted, syncStatus, [workspaceId+status], [workspaceId+agentType]",
+      business_partners:
+        "id, name, workspaceId, role, customerFacetId, supplierFacetId, agentFacetId, defaultCurrency, updatedAt, isDeleted, syncStatus, mergedIntoBusinessPartnerId",
+    });
+
     this.registerLocalModeSyncHooks();
   }
 
@@ -2240,6 +2249,7 @@ export class AtlasDatabase extends Dexie {
       "reorder_transfer_rules",
       "suppliers",
       "customers",
+      "agents",
       "business_partners",
       "business_partner_merge_candidates",
       "employees",

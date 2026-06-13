@@ -128,6 +128,7 @@ export const ENTERPRISE_MODULES: PlanModuleKey[] = [
   'direct_transactions',
   'members',
   'business_partners',
+  'agents',
   'customers',
   'suppliers',
   'orders',

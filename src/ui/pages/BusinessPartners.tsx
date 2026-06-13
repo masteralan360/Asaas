@@ -10,6 +10,7 @@ import {
     dismissBusinessPartnerMergeCandidate,
     mergeBusinessPartners,
     updateBusinessPartner,
+    useAgents,
     useBusinessPartnerMergeCandidates,
     useBusinessPartners,
     type BusinessPartner,
@@ -17,6 +18,7 @@ import {
     type CurrencyCode
 } from '@/local-db'
 import { formatCurrency } from '@/lib/utils'
+import { platformService } from '@/services/platformService'
 import { useWorkspace } from '@/workspace'
 import {
     Button,
@@ -52,6 +54,8 @@ function roleLabel(role: BusinessPartnerRole, t: (key: string, options?: Record<
             return t('businessPartners.roles.buyer', { defaultValue: 'Buyer' })
         case 'seller':
             return t('businessPartners.roles.seller', { defaultValue: 'Seller' })
+        case 'agent':
+            return t('businessPartners.roles.agent', { defaultValue: 'Agent' })
         default:
             return t('businessPartners.roles.both') || 'Both'
     }
@@ -83,7 +87,11 @@ export function BusinessPartners() {
     const { features } = useWorkspace()
     const { toast } = useToast()
     const [, navigate] = useLocation()
-    const partners = useBusinessPartners(user?.workspaceId, { includeRealEstateRoles: features.real_estate })
+    const partners = useBusinessPartners(user?.workspaceId, {
+        includeRealEstateRoles: features.real_estate,
+        includeAgentRoles: features.agents
+    })
+    const agents = useAgents(user?.workspaceId)
     const mergeCandidates = useBusinessPartnerMergeCandidates(user?.workspaceId)
     const [search, setSearch] = useState('')
     const [activeTab, setActiveTab] = useState<'partners' | 'merge-review'>('partners')
@@ -108,6 +116,10 @@ export function BusinessPartners() {
 
         return partners.filter((partner) => !partner.isEcommerce)
     }, [partners, showEcommercePartners])
+    const agentMap = useMemo(
+        () => new Map(agents.map((agent) => [agent.id, agent])),
+        [agents]
+    )
 
     const filteredPartners = useMemo(() => {
         const query = search.trim().toLowerCase()
@@ -115,12 +127,13 @@ export function BusinessPartners() {
             return visiblePartners
         }
 
-        return visiblePartners.filter((partner) =>
-            [partner.name, partner.contactName, partner.email, partner.phone, partner.city, partner.country]
+        return visiblePartners.filter((partner) => {
+            const agent = partner.agentFacetId ? agentMap.get(partner.agentFacetId) : undefined
+            return [partner.name, partner.contactName, partner.email, partner.phone, partner.city, partner.country, agent?.zone, agent?.agentType, agent?.status]
                 .filter((value): value is string => typeof value === 'string' && value.length > 0)
                 .some((value) => value.toLowerCase().includes(query))
-        )
-    }, [visiblePartners, search])
+        })
+    }, [agentMap, visiblePartners, search])
 
     const partnerMap = useMemo(
         () => new Map(partners.map((partner) => [partner.id, partner])),
@@ -170,10 +183,16 @@ export function BusinessPartners() {
         setIsSaving(true)
         try {
             if (editingPartner) {
-                await updateBusinessPartner(editingPartner.id, payload, { allowRealEstateRoles: features.real_estate })
+                await updateBusinessPartner(editingPartner.id, payload, {
+                    allowRealEstateRoles: features.real_estate,
+                    allowAgentRole: features.agents
+                })
                 toast({ title: t('businessPartners.messages.updateSuccess') || 'Business partner updated successfully' })
             } else {
-                await createBusinessPartner(user.workspaceId, payload, { allowRealEstateRoles: features.real_estate })
+                await createBusinessPartner(user.workspaceId, payload, {
+                    allowRealEstateRoles: features.real_estate,
+                    allowAgentRole: features.agents
+                })
                 toast({ title: t('businessPartners.messages.addSuccess') || 'Business partner created successfully' })
             }
 
@@ -363,55 +382,87 @@ export function BusinessPartners() {
                                                     {t('common.noData') || 'No data available'}
                                                 </TableCell>
                                             </TableRow>
-                                        ) : filteredPartners.map((partner) => (
-                                            <TableRow key={partner.id}>
-                                                <TableCell className="font-semibold">
-                                                    <div className="flex flex-wrap items-center gap-2">
-                                                        <span>{partner.name}</span>
-                                                        {partner.isEcommerce ? (
-                                                            <span className="inline-flex rounded-full border border-sky-500/30 bg-sky-500/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-sky-700 dark:text-sky-300">
-                                                                {t('ecommerce.title', { defaultValue: 'E-Commerce' })}
-                                                            </span>
+                                        ) : filteredPartners.map((partner) => {
+                                            const agent = partner.agentFacetId ? agentMap.get(partner.agentFacetId) : undefined
+                                            return (
+                                                <TableRow key={partner.id}>
+                                                    <TableCell className="font-semibold">
+                                                        <div className="flex flex-wrap items-center gap-2">
+                                                            {partner.role === 'agent' ? (
+                                                                <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full border bg-muted">
+                                                                    {agent?.imageUrl ? (
+                                                                        <img
+                                                                            src={platformService.convertFileSrc(agent.imageUrl)}
+                                                                            alt=""
+                                                                            className="h-full w-full object-cover"
+                                                                        />
+                                                                    ) : (
+                                                                        <UsersRound className="h-4 w-4 text-muted-foreground" />
+                                                                    )}
+                                                                </div>
+                                                            ) : null}
+                                                            <span>{partner.name}</span>
+                                                            {partner.isEcommerce ? (
+                                                                <span className="inline-flex rounded-full border border-sky-500/30 bg-sky-500/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-sky-700 dark:text-sky-300">
+                                                                    {t('ecommerce.title', { defaultValue: 'E-Commerce' })}
+                                                                </span>
+                                                            ) : null}
+                                                        </div>
+                                                    </TableCell>
+                                                    <TableCell>{partner.contactName || partner.phone || 'N/A'}</TableCell>
+                                                    <TableCell>
+                                                        <span className={partner.role === 'both'
+                                                            ? 'inline-flex rounded-full border border-primary/20 bg-primary/10 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-primary'
+                                                            : partner.role === 'customer'
+                                                                ? 'inline-flex rounded-full border border-secondary bg-secondary px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-secondary-foreground'
+                                                                : partner.role === 'supplier'
+                                                                    ? 'inline-flex rounded-full border border-border bg-background px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-foreground'
+                                                                    : 'inline-flex rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-emerald-700 dark:text-emerald-300'}>
+                                                            {roleLabel(partner.role, t)}
+                                                        </span>
+                                                        {agent ? (
+                                                            <div className="mt-1 flex flex-wrap gap-1.5">
+                                                                <span className="text-xs text-muted-foreground">
+                                                                    {agent.agentType === 'driver'
+                                                                        ? t('businessPartners.agent.types.driver', { defaultValue: 'Driver' })
+                                                                        : t('businessPartners.agent.types.fieldAgent', { defaultValue: 'Field Agent' })}
+                                                                </span>
+                                                                <span className={agent.status === 'active'
+                                                                    ? 'rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold uppercase text-emerald-700 dark:text-emerald-300'
+                                                                    : agent.status === 'blocked'
+                                                                        ? 'rounded-full bg-rose-500/10 px-2 py-0.5 text-[10px] font-bold uppercase text-rose-700 dark:text-rose-300'
+                                                                        : 'rounded-full bg-muted px-2 py-0.5 text-[10px] font-bold uppercase text-muted-foreground'}>
+                                                                    {t(`businessPartners.agent.statuses.${agent.status}`, { defaultValue: agent.status })}
+                                                                </span>
+                                                            </div>
                                                         ) : null}
-                                                    </div>
-                                                </TableCell>
-                                                <TableCell>{partner.contactName || partner.phone || 'N/A'}</TableCell>
-                                                <TableCell>
-                                                    <span className={partner.role === 'both'
-                                                        ? 'inline-flex rounded-full border border-primary/20 bg-primary/10 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-primary'
-                                                        : partner.role === 'customer'
-                                                            ? 'inline-flex rounded-full border border-secondary bg-secondary px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-secondary-foreground'
-                                                            : partner.role === 'supplier'
-                                                                ? 'inline-flex rounded-full border border-border bg-background px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-foreground'
-                                                                : 'inline-flex rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-emerald-700 dark:text-emerald-300'}>
-                                                        {roleLabel(partner.role, t)}
-                                                    </span>
-                                                </TableCell>
-                                                <TableCell>{partner.defaultCurrency.toUpperCase()}</TableCell>
-                                                <TableCell>{formatCurrency(partner.creditLimit || 0, partner.defaultCurrency, features.iqd_display_preference)}</TableCell>
-                                                <TableCell>{formatCurrency(partner.receivableBalance, partner.defaultCurrency, features.iqd_display_preference)}</TableCell>
-                                                <TableCell>{formatCurrency(partner.payableBalance, partner.defaultCurrency, features.iqd_display_preference)}</TableCell>
-                                                <TableCell>{formatCurrency(partner.loanOutstandingBalance, partner.defaultCurrency, features.iqd_display_preference)}</TableCell>
-                                                <TableCell>{formatCurrency(partner.netExposure, partner.defaultCurrency, features.iqd_display_preference)}</TableCell>
-                                                <TableCell className="text-right">
-                                                    <div className="flex justify-end gap-1">
-                                                        <Button variant="ghost" size="icon" allowViewer={true} onClick={() => navigate(`/business-partners/${partner.id}`)}>
-                                                            <Eye className="h-4 w-4" />
-                                                        </Button>
-                                                        {canEdit ? (
-                                                            <Button variant="ghost" size="icon" onClick={() => { setEditingPartner(partner); setDialogOpen(true) }}>
-                                                                <Pencil className="h-4 w-4" />
+                                                    </TableCell>
+                                                    <TableCell>{partner.defaultCurrency.toUpperCase()}</TableCell>
+                                                    <TableCell>{formatCurrency(partner.creditLimit || 0, partner.defaultCurrency, features.iqd_display_preference)}</TableCell>
+                                                    <TableCell>{formatCurrency(partner.receivableBalance, partner.defaultCurrency, features.iqd_display_preference)}</TableCell>
+                                                    <TableCell>{formatCurrency(partner.payableBalance, partner.defaultCurrency, features.iqd_display_preference)}</TableCell>
+                                                    <TableCell>{formatCurrency(partner.loanOutstandingBalance, partner.defaultCurrency, features.iqd_display_preference)}</TableCell>
+                                                    <TableCell>{formatCurrency(partner.netExposure, partner.defaultCurrency, features.iqd_display_preference)}</TableCell>
+                                                    <TableCell className="text-right">
+                                                        <div className="flex justify-end gap-1">
+                                                            <Button variant="ghost" size="icon" allowViewer={true} onClick={() => navigate(`/business-partners/${partner.id}`)}>
+                                                                <Eye className="h-4 w-4" />
                                                             </Button>
-                                                        ) : null}
-                                                        {canDelete ? (
-                                                            <Button variant="ghost" size="icon" className="text-destructive" onClick={() => setDeleteTarget(partner)}>
-                                                                <Trash2 className="h-4 w-4" />
-                                                            </Button>
-                                                        ) : null}
-                                                    </div>
-                                                </TableCell>
-                                            </TableRow>
-                                        ))}
+                                                            {canEdit ? (
+                                                                <Button variant="ghost" size="icon" onClick={() => { setEditingPartner(partner); setDialogOpen(true) }}>
+                                                                    <Pencil className="h-4 w-4" />
+                                                                </Button>
+                                                            ) : null}
+                                                            {canDelete ? (
+                                                                <Button variant="ghost" size="icon" className="text-destructive" onClick={() => setDeleteTarget(partner)}>
+                                                                    <Trash2 className="h-4 w-4" />
+                                                                </Button>
+                                                            ) : null}
+                                                        </div>
+                                                    </TableCell>
+                                                </TableRow>
+                                            )
+                                        })}
                                     </TableBody>
                                 </Table>
                             </div>
@@ -482,6 +533,8 @@ export function BusinessPartners() {
                 defaultCurrency={features.default_currency}
                 availableCurrencies={availableCurrencies}
                 enableRealEstateRoles={features.real_estate}
+                enableAgentRole={features.agents}
+                workspaceId={user?.workspaceId}
                 isSaving={isSaving}
                 onSubmit={handleSubmit}
             />

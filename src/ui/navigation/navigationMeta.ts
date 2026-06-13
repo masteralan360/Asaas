@@ -4,6 +4,7 @@ import {
   Building2,
   CreditCard,
   type LucideIcon,
+  UserRound,
   UsersRound,
   Warehouse,
   Wallet,
@@ -32,6 +33,7 @@ export const launcherSectionOrder = [
   "real-estate",
   "currency-exchange",
   "clinic-service",
+  "agents",
   "partners-and-demand",
   "insights-and-trends",
   "people-and-workspace",
@@ -123,6 +125,20 @@ export const launcherSections: Record<NavigationSectionKey, LauncherSection> = {
       text: "text-teal-700 dark:text-teal-300",
       border: "border-teal-500/20 hover:border-teal-400/40",
       glow: "bg-teal-400/18",
+    },
+  },
+  agents: {
+    title: "Agents",
+    eyebrow: "Field operations",
+    description:
+      "Drivers, field agents, assigned territories, vehicles, and accountable workspace users.",
+    icon: UserRound,
+    theme: {
+      shell: "from-orange-500/18 via-amber-500/10 to-transparent",
+      surface: "bg-orange-500/12 ring-1 ring-orange-500/20",
+      text: "text-orange-700 dark:text-orange-300",
+      border: "border-orange-500/20 hover:border-orange-400/40",
+      glow: "bg-orange-400/18",
     },
   },
   "partners-and-demand": {
@@ -234,6 +250,16 @@ export const moduleMetaByHref: Record<string, ModuleMeta> = {
     section: "currency-exchange",
     description: "Manage reusable exchange fee and commission rules.",
     badge: "Rules",
+  },
+  "/agents": {
+    section: "agents",
+    description: "Manage drivers and field agents with territories, vehicles, status, and user links.",
+    badge: "Field team",
+  },
+  "/agents/:agentId": {
+    section: "agents",
+    description: "Review an agent profile, territory, vehicle, and operational status.",
+    badge: "Agent",
   },
   "/clinical-appointments": {
     section: "clinic-service",

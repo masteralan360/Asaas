@@ -14,6 +14,7 @@ CREATE TABLE crm.business_partners (
   credit_limit numeric NULL DEFAULT 0,
   customer_facet_id uuid NULL,
   supplier_facet_id uuid NULL,
+  agent_facet_id uuid NULL,
   total_sales_orders numeric NULL DEFAULT 0,
   total_sales_value numeric NULL DEFAULT 0,
   receivable_balance numeric NULL DEFAULT 0,
@@ -31,7 +32,7 @@ CREATE TABLE crm.business_partners (
   version bigint NULL DEFAULT 1,
   is_deleted boolean NULL DEFAULT false,
   CONSTRAINT business_partners_role_check CHECK (
-    role IN ('customer', 'supplier', 'both', 'buyer', 'seller')
+    role IN ('customer', 'supplier', 'both', 'agent', 'buyer', 'seller')
   ),
   PRIMARY KEY (id)
 );
@@ -55,26 +56,76 @@ CREATE POLICY crm_business_partners_select
   ON crm.business_partners
   FOR SELECT
   TO authenticated
-  USING (workspace_id = public.current_workspace_id());
+  USING (
+    workspace_id = public.current_workspace_id()
+    AND (
+      role <> 'agent'
+      OR public.workspace_module_allowed(
+        workspace_id,
+        (SELECT w.plan::text FROM public.workspaces w WHERE w.id = business_partners.workspace_id),
+        'agents'
+      )
+    )
+  );
 
 DROP POLICY IF EXISTS crm_business_partners_insert ON crm.business_partners;
 CREATE POLICY crm_business_partners_insert
   ON crm.business_partners
   FOR INSERT
   TO authenticated
-  WITH CHECK (workspace_id = public.current_workspace_id());
+  WITH CHECK (
+    workspace_id = public.current_workspace_id()
+    AND (
+      role <> 'agent'
+      OR public.workspace_module_allowed(
+        workspace_id,
+        (SELECT w.plan::text FROM public.workspaces w WHERE w.id = business_partners.workspace_id),
+        'agents'
+      )
+    )
+  );
 
 DROP POLICY IF EXISTS crm_business_partners_update ON crm.business_partners;
 CREATE POLICY crm_business_partners_update
   ON crm.business_partners
   FOR UPDATE
   TO authenticated
-  USING (workspace_id = public.current_workspace_id())
-  WITH CHECK (workspace_id = public.current_workspace_id());
+  USING (
+    workspace_id = public.current_workspace_id()
+    AND (
+      role <> 'agent'
+      OR public.workspace_module_allowed(
+        workspace_id,
+        (SELECT w.plan::text FROM public.workspaces w WHERE w.id = business_partners.workspace_id),
+        'agents'
+      )
+    )
+  )
+  WITH CHECK (
+    workspace_id = public.current_workspace_id()
+    AND (
+      role <> 'agent'
+      OR public.workspace_module_allowed(
+        workspace_id,
+        (SELECT w.plan::text FROM public.workspaces w WHERE w.id = business_partners.workspace_id),
+        'agents'
+      )
+    )
+  );
 
 DROP POLICY IF EXISTS crm_business_partners_delete ON crm.business_partners;
 CREATE POLICY crm_business_partners_delete
   ON crm.business_partners
   FOR DELETE
   TO authenticated
-  USING (workspace_id = public.current_workspace_id());
+  USING (
+    workspace_id = public.current_workspace_id()
+    AND (
+      role <> 'agent'
+      OR public.workspace_module_allowed(
+        workspace_id,
+        (SELECT w.plan::text FROM public.workspaces w WHERE w.id = business_partners.workspace_id),
+        'agents'
+      )
+    )
+  );

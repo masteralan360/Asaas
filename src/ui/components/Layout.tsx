@@ -83,6 +83,7 @@ const routePrefetchMap: Record<string, () => Promise<unknown>> = {
     '/kds': () => import('@/ui/pages/KDSDashboard'),
     '/sales': () => import('@/ui/pages/Sales'),
     '/business-partners': () => import('@/ui/pages/BusinessPartners'),
+    '/agents': () => import('@/ui/pages/Agents'),
     '/customers': () => import('@/ui/pages/Customers'),
     '/suppliers': () => import('@/ui/pages/Suppliers'),
     '/orders': () => import('@/ui/pages/Orders'),

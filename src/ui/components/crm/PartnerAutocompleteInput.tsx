@@ -32,7 +32,7 @@ export function PartnerAutocompleteInput({
     roles
 }: PartnerAutocompleteInputProps) {
     const { t } = useTranslation()
-    const partners = useBusinessPartners(workspaceId, { includeRealEstateRoles, roles }) || []
+    const partners = useBusinessPartners(workspaceId, { includeRealEstateRoles, roles })
     const [isFocused, setIsFocused] = useState(false)
     const [justSelected, setJustSelected] = useState(false)
     const containerRef = useRef<HTMLDivElement>(null)
@@ -114,6 +114,8 @@ export function PartnerAutocompleteInput({
                                             ? t('businessPartners.roles.buyer', { defaultValue: 'Buyer' })
                                             : partner.role === 'seller'
                                                 ? t('businessPartners.roles.seller', { defaultValue: 'Seller' })
+                                                : partner.role === 'agent'
+                                                    ? t('businessPartners.roles.agent', { defaultValue: 'Agent' })
                                                 : t('customers.title', { defaultValue: 'Customer' })}
                             </span>
                         </button>

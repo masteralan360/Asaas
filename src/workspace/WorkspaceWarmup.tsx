@@ -97,6 +97,12 @@ export function WorkspaceWarmup() {
         }
         if (hasFeature('real_estate')) tasks.push(() => import('@/ui/pages/RealEstate'))
         if (hasFeature('currency_exchange')) tasks.push(() => import('@/ui/pages/CurrencyExchange'))
+        if (hasFeature('agents')) {
+            tasks.push(
+                () => import('@/ui/pages/Agents'),
+                () => import('@/ui/pages/AgentDetails')
+            )
+        }
         if (hasFeature('clinical_appointments')) {
           tasks.push(
             () => import('@/ui/pages/ClinicalAppointments'),

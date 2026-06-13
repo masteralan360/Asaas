@@ -27,6 +27,7 @@ import {
   TrendingUp,
   Truck,
   Users,
+  UserRound,
   UsersRound,
   Upload,
   Warehouse,
@@ -202,6 +203,15 @@ export function buildWorkspaceNavigation({
           name: t("nav.travelAgency", { defaultValue: "Travel Agency" }),
           href: "/travel-agency",
           icon: Plane,
+        },
+      ]
+      : []),
+    ...(isCoreRole && hasFeature("agents") && canAccessPermission("agents.access")
+      ? [
+        {
+          name: t("agents.title", { defaultValue: "Agents" }),
+          href: "/agents",
+          icon: UserRound,
         },
       ]
       : []),

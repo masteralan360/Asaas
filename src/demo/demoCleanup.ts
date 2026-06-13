@@ -139,6 +139,7 @@ async function clearLegacyDemoFiles(workspaceId: string) {
     `printed-invoices/${workspaceId}`,
     `product-images/${workspaceId}`,
     `profile-images/${workspaceId}`,
+    `agents-images/${workspaceId}`,
     `workspace-logos/${workspaceId}`,
     `clinic-attachments/${workspaceId}`,
   ]

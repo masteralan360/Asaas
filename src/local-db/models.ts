@@ -298,7 +298,14 @@ export interface Customer extends BaseEntity {
 }
 
 export type RealEstateBusinessPartnerRole = "buyer" | "seller";
-export type BusinessPartnerRole = "customer" | "supplier" | "both" | RealEstateBusinessPartnerRole;
+export type BusinessPartnerRole =
+  | "customer"
+  | "supplier"
+  | "both"
+  | "agent"
+  | RealEstateBusinessPartnerRole;
+export type AgentType = "driver" | "field_agent";
+export type AgentStatus = "active" | "inactive" | "blocked";
 
 export const REAL_ESTATE_BUSINESS_PARTNER_ROLES: readonly RealEstateBusinessPartnerRole[] = [
   "buyer",
@@ -309,6 +316,33 @@ export function isRealEstateBusinessPartnerRole(
   role: BusinessPartnerRole | string | null | undefined,
 ): role is RealEstateBusinessPartnerRole {
   return role === "buyer" || role === "seller";
+}
+
+export function isAgentBusinessPartnerRole(
+  role: BusinessPartnerRole | string | null | undefined,
+): role is "agent" {
+  return role === "agent";
+}
+
+export interface Agent extends BaseEntity {
+  businessPartnerId: string;
+  imageUrl?: string | null;
+  zone: string;
+  agentType: AgentType;
+  carModel?: string | null;
+  plateNumber?: string | null;
+  linkedUserId?: string | null;
+  status: AgentStatus;
+}
+
+export interface AgentFacetInput {
+  imageUrl?: string | null;
+  zone: string;
+  agentType: AgentType;
+  carModel?: string | null;
+  plateNumber?: string | null;
+  linkedUserId?: string | null;
+  status: AgentStatus;
 }
 
 export interface BusinessPartner extends BaseEntity {
@@ -325,6 +359,7 @@ export interface BusinessPartner extends BaseEntity {
   creditLimit: number;
   customerFacetId?: string | null;
   supplierFacetId?: string | null;
+  agentFacetId?: string | null;
   totalSalesOrders: number;
   totalSalesValue: number;
   receivableBalance: number;
@@ -1221,6 +1256,7 @@ export interface SyncQueueItem {
     | "dividend_statuses"
     | "customers"
     | "suppliers"
+    | "agents"
     | "business_partners"
     | "business_partner_merge_candidates"
     | "sales_orders"
@@ -1264,6 +1300,7 @@ export interface Workspace extends BaseEntity {
   travel_agency?: boolean;
   real_estate?: boolean;
   currency_exchange?: boolean;
+  agents?: boolean;
   clinical_appointments?: boolean;
   loans?: boolean;
   installments?: boolean;
@@ -1343,6 +1380,7 @@ export interface OfflineMutation {
     | "dividend_statuses"
     | "customers"
     | "suppliers"
+    | "agents"
     | "business_partners"
     | "business_partner_merge_candidates"
     | "sales_orders"

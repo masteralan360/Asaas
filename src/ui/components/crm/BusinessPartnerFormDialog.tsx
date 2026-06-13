@@ -1,13 +1,22 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import { ImagePlus, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import {
     REAL_ESTATE_BUSINESS_PARTNER_ROLES,
+    isAgentBusinessPartnerRole,
     isRealEstateBusinessPartnerRole,
+    useAgent,
+    useWorkspaceUsers,
+    type Agent,
+    type AgentFacetInput,
+    type AgentStatus,
+    type AgentType,
     type BusinessPartner,
     type BusinessPartnerRole,
     type CurrencyCode
 } from '@/local-db'
+import { platformService } from '@/services/platformService'
 import {
     Button,
     Dialog,
@@ -37,6 +46,13 @@ type BusinessPartnerFormState = {
     notes: string
     creditLimit: string
     role: BusinessPartnerRole
+    agentImageUrl: string
+    agentZone: string
+    agentType: AgentType
+    agentCarModel: string
+    agentPlateNumber: string
+    agentLinkedUserId: string
+    agentStatus: AgentStatus
 }
 
 const DEFAULT_ROLE: BusinessPartnerRole = 'both'
@@ -53,11 +69,18 @@ function createEmptyState(defaultCurrency: CurrencyCode, role: BusinessPartnerRo
         defaultCurrency,
         notes: '',
         creditLimit: '',
-        role
+        role,
+        agentImageUrl: '',
+        agentZone: '',
+        agentType: 'field_agent',
+        agentCarModel: '',
+        agentPlateNumber: '',
+        agentLinkedUserId: '',
+        agentStatus: 'active'
     }
 }
 
-function mapPartnerToState(partner: BusinessPartner): BusinessPartnerFormState {
+function mapPartnerToState(partner: BusinessPartner, agent?: Agent): BusinessPartnerFormState {
     return {
         name: partner.name,
         contactName: partner.contactName || '',
@@ -69,7 +92,14 @@ function mapPartnerToState(partner: BusinessPartner): BusinessPartnerFormState {
         defaultCurrency: partner.defaultCurrency,
         notes: partner.notes || '',
         creditLimit: partner.creditLimit ? String(partner.creditLimit) : '',
-        role: partner.role
+        role: partner.role,
+        agentImageUrl: agent?.imageUrl || '',
+        agentZone: agent?.zone || '',
+        agentType: agent?.agentType || 'field_agent',
+        agentCarModel: agent?.carModel || '',
+        agentPlateNumber: agent?.plateNumber || '',
+        agentLinkedUserId: agent?.linkedUserId || '',
+        agentStatus: agent?.status || 'active'
     }
 }
 
@@ -85,6 +115,7 @@ export interface BusinessPartnerFormPayload {
     notes?: string
     creditLimit: number
     role: BusinessPartnerRole
+    agent?: AgentFacetInput
 }
 
 interface BusinessPartnerFormDialogProps {
@@ -94,7 +125,10 @@ interface BusinessPartnerFormDialogProps {
     defaultCurrency: CurrencyCode
     availableCurrencies: CurrencyCode[]
     initialRole?: BusinessPartnerRole
+    lockedRole?: BusinessPartnerRole
     enableRealEstateRoles?: boolean
+    enableAgentRole?: boolean
+    workspaceId?: string
     isSaving?: boolean
     title?: string
     submitLabel?: string
@@ -108,14 +142,20 @@ export function BusinessPartnerFormDialog({
     defaultCurrency,
     availableCurrencies,
     initialRole = DEFAULT_ROLE,
+    lockedRole,
     enableRealEstateRoles = false,
+    enableAgentRole = false,
+    workspaceId,
     isSaving = false,
     title,
     submitLabel,
     onSubmit
 }: BusinessPartnerFormDialogProps) {
     const { t } = useTranslation()
-    const [formState, setFormState] = useState<BusinessPartnerFormState>(() => createEmptyState(defaultCurrency, initialRole))
+    const [formState, setFormState] = useState<BusinessPartnerFormState>(() => createEmptyState(defaultCurrency, lockedRole ?? initialRole))
+    const [isUploadingAgentImage, setIsUploadingAgentImage] = useState(false)
+    const agent = useAgent(partner?.agentFacetId)
+    const workspaceUsers = useWorkspaceUsers(workspaceId)
     const roleOptions = useMemo<Array<{ value: BusinessPartnerRole; label: string }>>(() => {
         const options: Array<{ value: BusinessPartnerRole; label: string }> = [
             { value: 'both', label: t('businessPartners.roles.both') || 'Both' },
@@ -134,16 +174,15 @@ export function BusinessPartnerFormDialog({
             })))
         }
 
-        return options
-    }, [enableRealEstateRoles, t])
-
-    const normalizeAllowedRole = (role: BusinessPartnerRole): BusinessPartnerRole => {
-        if (enableRealEstateRoles || !isRealEstateBusinessPartnerRole(role)) {
-            return role
+        if (enableAgentRole) {
+            options.push({
+                value: 'agent',
+                label: t('businessPartners.roles.agent', { defaultValue: 'Agent' })
+            })
         }
 
-        return DEFAULT_ROLE
-    }
+        return options
+    }, [enableAgentRole, enableRealEstateRoles, t])
 
     useEffect(() => {
         if (!isOpen) {
@@ -152,17 +191,37 @@ export function BusinessPartnerFormDialog({
 
         const nextState =
             partner
-                ? mapPartnerToState(partner)
+                ? mapPartnerToState(partner, agent)
                 : createEmptyState(defaultCurrency, initialRole)
+        const hasAllowedRole = (enableRealEstateRoles || !isRealEstateBusinessPartnerRole(nextState.role))
+            && (enableAgentRole || !isAgentBusinessPartnerRole(nextState.role))
 
         setFormState({
             ...nextState,
-            role: normalizeAllowedRole(nextState.role)
+            role: lockedRole ?? (hasAllowedRole ? nextState.role : DEFAULT_ROLE)
         })
-    }, [defaultCurrency, enableRealEstateRoles, initialRole, isOpen, partner])
+    }, [agent, defaultCurrency, enableAgentRole, enableRealEstateRoles, initialRole, isOpen, lockedRole, partner])
+
+    async function handleAgentImageUpload() {
+        if (!workspaceId || isUploadingAgentImage) {
+            return
+        }
+
+        setIsUploadingAgentImage(true)
+        try {
+            const imageUrl = await platformService.pickAndSaveImage(workspaceId, 'agents-images')
+            if (imageUrl) {
+                setFormState((current) => ({ ...current, agentImageUrl: imageUrl }))
+            }
+        } finally {
+            setIsUploadingAgentImage(false)
+        }
+    }
 
     async function handleSubmit(event: FormEvent) {
         event.preventDefault()
+        const effectiveRole = lockedRole ?? formState.role
+        const isAgent = isAgentBusinessPartnerRole(effectiveRole)
         await onSubmit({
             name: formState.name.trim(),
             contactName: formState.contactName.trim() || undefined,
@@ -174,9 +233,20 @@ export function BusinessPartnerFormDialog({
             defaultCurrency: formState.defaultCurrency,
             notes: formState.notes.trim() || undefined,
             creditLimit: Number(formState.creditLimit || 0),
-            role: formState.role
+            role: effectiveRole,
+            agent: isAgent ? {
+                imageUrl: formState.agentImageUrl.trim() || null,
+                zone: formState.agentZone.trim(),
+                agentType: formState.agentType,
+                carModel: formState.agentType === 'driver' ? formState.agentCarModel.trim() : null,
+                plateNumber: formState.agentType === 'driver' ? formState.agentPlateNumber.trim() : null,
+                linkedUserId: formState.agentLinkedUserId || null,
+                status: formState.agentStatus
+            } : undefined
         })
     }
+
+    const isAgentRole = isAgentBusinessPartnerRole(formState.role)
 
     return (
         <Dialog open={isOpen} onOpenChange={onOpenChange}>
@@ -193,7 +263,12 @@ export function BusinessPartnerFormDialog({
                     <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6 sm:py-6">
                         <div className="grid gap-4 md:grid-cols-2">
                             <div className="space-y-2">
-                                <Label htmlFor="business-partner-name">{t('suppliers.form.name') || 'Company Name'} <span className="text-destructive">*</span></Label>
+                                <Label htmlFor="business-partner-name">
+                                    {isAgentRole
+                                        ? t('businessPartners.agent.name', { defaultValue: 'Agent Name' })
+                                        : (t('suppliers.form.name') || 'Company Name')}{' '}
+                                    <span className="text-destructive">*</span>
+                                </Label>
                                 <Input
                                     id="business-partner-name"
                                     value={formState.name}
@@ -224,21 +299,156 @@ export function BusinessPartnerFormDialog({
                                     id="business-partner-phone"
                                     value={formState.phone}
                                     onChange={(event) => setFormState((current) => ({ ...current, phone: event.target.value }))}
+                                    required={isAgentRole}
                                 />
                             </div>
-                            <div className="space-y-2">
-                                <Label>{t('businessPartners.form.role') || 'Role'}</Label>
-                                <Select value={formState.role} onValueChange={(value) => setFormState((current) => ({ ...current, role: value as BusinessPartnerRole }))}>
-                                    <SelectTrigger>
-                                        <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {roleOptions.map((role) => (
-                                            <SelectItem key={role.value} value={role.value}>{role.label}</SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </div>
+                            {!lockedRole ? (
+                                <div className="space-y-2">
+                                    <Label>{t('businessPartners.form.role') || 'Role'}</Label>
+                                    <Select value={formState.role} onValueChange={(value) => setFormState((current) => ({ ...current, role: value as BusinessPartnerRole }))}>
+                                        <SelectTrigger>
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {roleOptions.map((role) => (
+                                                <SelectItem key={role.value} value={role.value}>{role.label}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                            ) : null}
+                            {isAgentRole ? (
+                                <>
+                                    <div className="space-y-2 md:col-span-2">
+                                        <Label>{t('businessPartners.agent.image', { defaultValue: 'Profile Picture' })}</Label>
+                                        <div className="flex flex-col gap-4 rounded-2xl border bg-muted/20 p-4 sm:flex-row sm:items-center">
+                                            <div className="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-2xl border bg-background">
+                                                {formState.agentImageUrl ? (
+                                                    <img
+                                                        src={platformService.convertFileSrc(formState.agentImageUrl)}
+                                                        alt={formState.name || t('businessPartners.agent.image', { defaultValue: 'Agent profile' })}
+                                                        className="h-full w-full object-cover"
+                                                    />
+                                                ) : (
+                                                    <ImagePlus className="h-8 w-8 text-muted-foreground" />
+                                                )}
+                                            </div>
+                                            <div className="flex flex-1 flex-wrap gap-2">
+                                                <Button
+                                                    type="button"
+                                                    variant="outline"
+                                                    onClick={handleAgentImageUpload}
+                                                    disabled={!workspaceId || isUploadingAgentImage}
+                                                    className="gap-2"
+                                                >
+                                                    <ImagePlus className="h-4 w-4" />
+                                                    {isUploadingAgentImage
+                                                        ? t('common.loading', { defaultValue: 'Loading...' })
+                                                        : t('businessPartners.agent.uploadImage', { defaultValue: 'Upload Image' })}
+                                                </Button>
+                                                {formState.agentImageUrl ? (
+                                                    <Button
+                                                        type="button"
+                                                        variant="ghost"
+                                                        onClick={() => setFormState((current) => ({ ...current, agentImageUrl: '' }))}
+                                                        className="gap-2 text-destructive"
+                                                    >
+                                                        <Trash2 className="h-4 w-4" />
+                                                        {t('common.delete', { defaultValue: 'Remove' })}
+                                                    </Button>
+                                                ) : null}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label htmlFor="business-partner-agent-zone">
+                                            {t('businessPartners.agent.zone', { defaultValue: 'Operational Territory' })}{' '}
+                                            <span className="text-destructive">*</span>
+                                        </Label>
+                                        <Input
+                                            id="business-partner-agent-zone"
+                                            value={formState.agentZone}
+                                            onChange={(event) => setFormState((current) => ({ ...current, agentZone: event.target.value }))}
+                                            required
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label>{t('businessPartners.agent.type', { defaultValue: 'Agent Type' })}</Label>
+                                        <Select value={formState.agentType} onValueChange={(value) => setFormState((current) => ({ ...current, agentType: value as AgentType }))}>
+                                            <SelectTrigger>
+                                                <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="driver">{t('businessPartners.agent.types.driver', { defaultValue: 'Driver' })}</SelectItem>
+                                                <SelectItem value="field_agent">{t('businessPartners.agent.types.fieldAgent', { defaultValue: 'Field Agent' })}</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                    {formState.agentType === 'driver' ? (
+                                        <>
+                                            <div className="space-y-2">
+                                                <Label htmlFor="business-partner-agent-car-model">
+                                                    {t('businessPartners.agent.carModel', { defaultValue: 'Car Model' })}{' '}
+                                                    <span className="text-destructive">*</span>
+                                                </Label>
+                                                <Input
+                                                    id="business-partner-agent-car-model"
+                                                    value={formState.agentCarModel}
+                                                    onChange={(event) => setFormState((current) => ({ ...current, agentCarModel: event.target.value }))}
+                                                    required
+                                                />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <Label htmlFor="business-partner-agent-plate-number">
+                                                    {t('businessPartners.agent.plateNumber', { defaultValue: 'Plate Number' })}{' '}
+                                                    <span className="text-destructive">*</span>
+                                                </Label>
+                                                <Input
+                                                    id="business-partner-agent-plate-number"
+                                                    value={formState.agentPlateNumber}
+                                                    onChange={(event) => setFormState((current) => ({ ...current, agentPlateNumber: event.target.value }))}
+                                                    required
+                                                />
+                                            </div>
+                                        </>
+                                    ) : null}
+                                    <div className="space-y-2">
+                                        <Label>{t('businessPartners.agent.linkedUser', { defaultValue: 'Workspace User' })}</Label>
+                                        <Select
+                                            value={formState.agentLinkedUserId || 'unlinked'}
+                                            onValueChange={(value) => setFormState((current) => ({
+                                                ...current,
+                                                agentLinkedUserId: value === 'unlinked' ? '' : value
+                                            }))}
+                                        >
+                                            <SelectTrigger>
+                                                <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="unlinked">{t('businessPartners.agent.noLinkedUser', { defaultValue: 'Not linked' })}</SelectItem>
+                                                {workspaceUsers.map((workspaceUser) => (
+                                                    <SelectItem key={workspaceUser.id} value={workspaceUser.id}>
+                                                        {workspaceUser.name || workspaceUser.email || workspaceUser.id}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label>{t('businessPartners.agent.status', { defaultValue: 'Operational Status' })}</Label>
+                                        <Select value={formState.agentStatus} onValueChange={(value) => setFormState((current) => ({ ...current, agentStatus: value as AgentStatus }))}>
+                                            <SelectTrigger>
+                                                <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="active">{t('businessPartners.agent.statuses.active', { defaultValue: 'Active' })}</SelectItem>
+                                                <SelectItem value="inactive">{t('businessPartners.agent.statuses.inactive', { defaultValue: 'Inactive' })}</SelectItem>
+                                                <SelectItem value="blocked">{t('businessPartners.agent.statuses.blocked', { defaultValue: 'Blocked' })}</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                </>
+                            ) : null}
                             <div className="space-y-2">
                                 <Label>{t('customers.form.defaultCurrency') || 'Default Currency'}</Label>
                                 <Select value={formState.defaultCurrency} onValueChange={(value) => setFormState((current) => ({ ...current, defaultCurrency: value as CurrencyCode }))}>

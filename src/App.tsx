@@ -200,6 +200,12 @@ const BusinessPartnerDetails = lazy(() =>
     default: m.BusinessPartnerDetails,
   })),
 );
+const Agents = lazy(() =>
+  import("@/ui/pages/Agents").then((m) => ({ default: m.Agents })),
+);
+const AgentDetails = lazy(() =>
+  import("@/ui/pages/AgentDetails").then((m) => ({ default: m.AgentDetails })),
+);
 const Customers = lazy(() =>
   import("@/ui/pages/Customers").then((m) => ({ default: m.Customers })),
 );
@@ -894,6 +900,28 @@ function App() {
                         >
                           <Layout>
                             <BusinessPartnerDetails />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/agents">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="agents"
+                          requiredPermission="agents.access"
+                        >
+                          <Layout>
+                            <Agents />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/agents/:agentId">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="agents"
+                          requiredPermission="agents.access"
+                        >
+                          <Layout>
+                            <AgentDetails />
                           </Layout>
                         </ProtectedRoute>
                       </Route>
