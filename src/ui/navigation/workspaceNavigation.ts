@@ -28,6 +28,8 @@ import {
   Truck,
   Users,
   UserRound,
+  MapPinned,
+  LocateFixed,
   UsersRound,
   Upload,
   Warehouse,
@@ -212,8 +214,38 @@ export function buildWorkspaceNavigation({
           name: t("agents.title", { defaultValue: "Agents" }),
           href: "/agents",
           icon: UserRound,
+          children: canAccessPermission("fleet.access")
+            ? [
+                {
+                  name: t("fleet.title", { defaultValue: "Fleet Management" }),
+                  href: "/agents/fleet",
+                  icon: MapPinned,
+                },
+              ]
+            : undefined,
         },
       ]
+      : []),
+    ...(isCoreRole &&
+    hasFeature("agents") &&
+    !canAccessPermission("agents.access") &&
+    canAccessPermission("fleet.access")
+      ? [
+          {
+            name: t("fleet.title", { defaultValue: "Fleet Management" }),
+            href: "/agents/fleet",
+            icon: MapPinned,
+          },
+        ]
+      : []),
+    ...(isCoreRole && hasFeature("agents")
+      ? [
+          {
+            name: t("fleet.shareLocation", { defaultValue: "Share My Location" }),
+            href: "/agents/location-sharing",
+            icon: LocateFixed,
+          },
+        ]
       : []),
     ...(isCoreRole && hasFeature("real_estate") && canAccessPermission("realEstate.access")
       ? [

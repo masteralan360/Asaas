@@ -157,10 +157,26 @@ describe('business partner agent facets', () => {
             }
         }, { allowAgentRole: true })
 
+        const activeAssignment = await db.fleet_vehicle_assignments
+            .where('agentId')
+            .equals(partner.agentFacetId!)
+            .first()
+        const vehicle = activeAssignment
+            ? await db.fleet_vehicles.get(activeAssignment.vehicleId)
+            : undefined
+        expect(vehicle).toMatchObject({
+            plateNumber: '12 A 3456',
+            model: 'Toyota Hilux'
+        })
+        expect(activeAssignment?.status).toBe('active')
+
         await updateBusinessPartner(partner.id, { role: 'customer' }, { allowAgentRole: true })
 
         const agent = await db.agents.get(partner.agentFacetId!)
         expect(agent?.status).toBe('inactive')
+        const endedAssignment = await db.fleet_vehicle_assignments.get(activeAssignment!.id)
+        expect(endedAssignment?.status).toBe('ended')
+        expect(endedAssignment?.endedAt).toBeTruthy()
     })
 
     it('prevents one workspace user from being linked to multiple agents', async () => {

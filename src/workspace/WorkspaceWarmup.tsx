@@ -100,7 +100,9 @@ export function WorkspaceWarmup() {
         if (hasFeature('agents')) {
             tasks.push(
                 () => import('@/ui/pages/Agents'),
-                () => import('@/ui/pages/AgentDetails')
+                () => import('@/ui/pages/AgentDetails'),
+                () => import('@/ui/pages/FleetManagement'),
+                () => import('@/ui/pages/AgentLocationSharing')
             )
         }
         if (hasFeature('clinical_appointments')) {

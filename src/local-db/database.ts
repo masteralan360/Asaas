@@ -22,6 +22,8 @@ import type {
   Supplier,
   Customer,
   Agent,
+  FleetVehicle,
+  FleetVehicleAssignment,
   BusinessPartner,
   BusinessPartnerMergeCandidate,
   Employee,
@@ -313,6 +315,8 @@ export class AtlasDatabase extends Dexie {
   suppliers!: EntityTable<Supplier, "id">;
   customers!: EntityTable<Customer, "id">;
   agents!: EntityTable<Agent, "id">;
+  fleet_vehicles!: EntityTable<FleetVehicle, "id">;
+  fleet_vehicle_assignments!: EntityTable<FleetVehicleAssignment, "id">;
   business_partners!: EntityTable<BusinessPartner, "id">;
   business_partner_merge_candidates!: EntityTable<
     BusinessPartnerMergeCandidate,
@@ -2224,6 +2228,13 @@ export class AtlasDatabase extends Dexie {
         "id, name, workspaceId, role, customerFacetId, supplierFacetId, agentFacetId, defaultCurrency, updatedAt, isDeleted, syncStatus, mergedIntoBusinessPartnerId",
     });
 
+    this.version(73).stores({
+      fleet_vehicles:
+        "id, workspaceId, plateNumber, status, updatedAt, isDeleted, syncStatus, [workspaceId+plateNumber], [workspaceId+status]",
+      fleet_vehicle_assignments:
+        "id, workspaceId, vehicleId, agentId, status, assignedAt, endedAt, updatedAt, isDeleted, syncStatus, [workspaceId+status], [workspaceId+vehicleId], [workspaceId+agentId]",
+    });
+
     this.registerLocalModeSyncHooks();
   }
 
@@ -2250,6 +2261,8 @@ export class AtlasDatabase extends Dexie {
       "suppliers",
       "customers",
       "agents",
+      "fleet_vehicles",
+      "fleet_vehicle_assignments",
       "business_partners",
       "business_partner_merge_candidates",
       "employees",
@@ -2442,6 +2455,8 @@ export async function clearDatabase(): Promise<void> {
       db.clinical_patients,
       db.clinical_attachments,
       db.clinical_presets,
+      db.fleet_vehicles,
+      db.fleet_vehicle_assignments,
       db.payment_transactions,
       db.order_installments,
       db.syncQueue,
@@ -2472,6 +2487,8 @@ export async function clearDatabase(): Promise<void> {
       await db.clinical_patients.clear();
       await db.clinical_attachments.clear();
       await db.clinical_presets.clear();
+      await db.fleet_vehicles.clear();
+      await db.fleet_vehicle_assignments.clear();
       await db.payment_transactions.clear();
       await db.order_installments.clear();
       await db.syncQueue.clear();

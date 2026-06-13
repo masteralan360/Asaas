@@ -14,6 +14,7 @@ import { ExchangeRateProvider } from "@/context/ExchangeRateContext";
 import { DateRangeProvider } from "@/context/DateRangeContext";
 import { UiAccessProvider } from "@/context/UiAccessContext";
 import { WorkspacePermissionsProvider } from "@/permissions";
+import { FleetLocationSharingProvider } from "@/fleet/FleetLocationSharingContext";
 import { AutoSyncOverlay } from "@/ui/components/AutoSyncOverlay";
 import {
   isBackendConfigurationRequired,
@@ -205,6 +206,12 @@ const Agents = lazy(() =>
 );
 const AgentDetails = lazy(() =>
   import("@/ui/pages/AgentDetails").then((m) => ({ default: m.AgentDetails })),
+);
+const FleetManagement = lazy(() =>
+  import("@/ui/pages/FleetManagement").then((m) => ({ default: m.FleetManagement })),
+);
+const AgentLocationSharing = lazy(() =>
+  import("@/ui/pages/AgentLocationSharing").then((m) => ({ default: m.AgentLocationSharing })),
 );
 const Customers = lazy(() =>
   import("@/ui/pages/Customers").then((m) => ({ default: m.Customers })),
@@ -778,7 +785,8 @@ function App() {
       <DeviceTokenBootstrap />
       <WorkspaceProvider>
         <WorkspacePermissionsProvider>
-          <UiAccessProvider>
+          <FleetLocationSharingProvider>
+            <UiAccessProvider>
             <DateRangeProvider>
               <KdsStreamAutostart />
               <FirstTimeRedirect />
@@ -911,6 +919,27 @@ function App() {
                         >
                           <Layout>
                             <Agents />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/agents/fleet">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="agents"
+                          requiredPermission="fleet.access"
+                        >
+                          <Layout>
+                            <FleetManagement />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/agents/location-sharing">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="agents"
+                        >
+                          <Layout>
+                            <AgentLocationSharing />
                           </Layout>
                         </ProtectedRoute>
                       </Route>
@@ -1553,7 +1582,8 @@ function App() {
                 />
               )}
             </DateRangeProvider>
-          </UiAccessProvider>
+            </UiAccessProvider>
+          </FleetLocationSharingProvider>
         </WorkspacePermissionsProvider>
       </WorkspaceProvider>
     </AuthProvider>

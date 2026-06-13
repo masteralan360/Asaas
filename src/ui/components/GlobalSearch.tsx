@@ -1,4 +1,4 @@
-import { Search, Command, LayoutDashboard, ShoppingCart, Package, ListOrdered, Settings as SettingsIcon, BarChart3, Users2, UserRound, Globe, MessageSquare, Moon, Sun, LogOut, ChevronRight, ArrowRightLeft, NotebookPen, Wallet, Zap, FileSpreadsheet, Building2, FileText } from 'lucide-react'
+import { Search, Command, LayoutDashboard, ShoppingCart, Package, ListOrdered, Settings as SettingsIcon, BarChart3, Users2, UserRound, Globe, MessageSquare, Moon, Sun, LogOut, ChevronRight, ArrowRightLeft, NotebookPen, Wallet, Zap, FileSpreadsheet, Building2, FileText, MapPinned, LocateFixed } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useState, useEffect, useRef } from 'react'
 import { useHashLocation } from '@/hooks/useHashLocation'
@@ -55,6 +55,8 @@ export function GlobalSearch({ className, placeholder }: GlobalSearchProps) {
         ...(features.real_estate && hasPermission('realEstate.access') ? [{ id: 'nav-real-estate', title: t('realEstate.title', { defaultValue: 'Real Estate' }), category: 'Navigation' as const, icon: Building2, action: () => setLocation('/real-estate') }] : []),
         ...(features.currency_exchange && hasPermission('currencyExchange.access') ? [{ id: 'nav-currency-exchange', title: t('currencyExchange.title', { defaultValue: 'Currency Exchange Service' }), category: 'Navigation' as const, icon: ArrowRightLeft, action: () => setLocation('/currency-exchange') }] : []),
         ...(features.agents && hasPermission('agents.access') ? [{ id: 'nav-agents', title: t('agents.title', { defaultValue: 'Agents' }), category: 'Navigation' as const, icon: UserRound, action: () => setLocation('/agents') }] : []),
+        ...(features.agents && hasPermission('fleet.access') ? [{ id: 'nav-fleet', title: t('fleet.title', { defaultValue: 'Fleet Management' }), category: 'Navigation' as const, icon: MapPinned, action: () => setLocation('/agents/fleet') }] : []),
+        ...(features.agents ? [{ id: 'nav-share-location', title: t('fleet.shareLocation', { defaultValue: 'Share My Location' }), category: 'Navigation' as const, icon: LocateFixed, action: () => setLocation('/agents/location-sharing') }] : []),
         ...(features.currency_exchange && hasPermission('currencyExchangeFeeRules.access') ? [{ id: 'nav-currency-exchange-rules', title: t('currencyExchange.feeRules.title', { defaultValue: 'Fee/Commission Rules' }), category: 'Navigation' as const, icon: FileText, action: () => setLocation('/currency-exchange/rules') }] : []),
         ...(user?.role === 'admin' ? [{ id: 'nav-custom-templates', title: t('customTemplates.title', { defaultValue: 'Custom Templates' }), category: 'Navigation' as const, icon: FileText, action: () => setLocation('/custom-templates') }] : []),
         ...(features.monthly_comparison ? [{ id: 'nav-monthly-comparison', title: t('monthlyComparison.title'), category: 'Navigation' as const, icon: ArrowRightLeft, action: () => setLocation('/monthly-comparison') }] : []),

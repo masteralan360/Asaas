@@ -14,6 +14,10 @@ import { db } from './database'
 import { fetchTableFromSupabase } from './hooks'
 import { addToOfflineMutations } from './offlineMutations'
 import { getOrderBalanceAmount } from './orderInstallments'
+import {
+    endActiveFleetAssignmentsForAgent,
+    ensureDriverFleetAssignment
+} from './fleet'
 import type {
     Agent,
     AgentFacetInput,
@@ -656,6 +660,7 @@ async function createOrUpdateAgentFacet(partner: BusinessPartner, input?: Partia
             ...getSyncMetadata(partner.workspaceId, now)
         }
         await syncAgentFacet(updated)
+        await ensureDriverFleetAssignment(updated)
         return updated
     }
 
@@ -664,6 +669,7 @@ async function createOrUpdateAgentFacet(partner: BusinessPartner, input?: Partia
         ...agentData
     }) as Agent
     await syncAgentFacet(agent)
+    await ensureDriverFleetAssignment(agent)
     return agent
 }
 
@@ -685,6 +691,7 @@ async function setAgentFacetInactive(partner: BusinessPartner) {
         version: agent.version + 1,
         ...getSyncMetadata(agent.workspaceId, now)
     })
+    await endActiveFleetAssignmentsForAgent(agent.id)
 }
 
 function assertBusinessPartnerRoleAllowed(role: BusinessPartnerRole, options?: BusinessPartnerRoleAccessOptions) {

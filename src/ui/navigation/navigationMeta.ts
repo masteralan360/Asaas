@@ -261,6 +261,16 @@ export const moduleMetaByHref: Record<string, ModuleMeta> = {
     description: "Review an agent profile, territory, vehicle, and operational status.",
     badge: "Agent",
   },
+  "/agents/fleet": {
+    section: "agents",
+    description: "Manage fleet vehicles, agent assignments, live locations, and movement history.",
+    badge: "Fleet",
+  },
+  "/agents/location-sharing": {
+    section: "agents",
+    description: "Explicitly enable or stop foreground location sharing for a linked agent.",
+    badge: "Location",
+  },
   "/clinical-appointments": {
     section: "clinic-service",
     description: "Manage clinical appointments, scheduling, and patient visits.",

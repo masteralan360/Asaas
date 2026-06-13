@@ -345,6 +345,60 @@ export interface AgentFacetInput {
   status: AgentStatus;
 }
 
+export type FleetVehicleStatus = "active" | "maintenance" | "inactive";
+export type FleetAssignmentStatus = "active" | "ended";
+
+export interface FleetVehicle extends BaseEntity {
+  plateNumber: string;
+  make?: string | null;
+  model: string;
+  year?: number | null;
+  color?: string | null;
+  vin?: string | null;
+  status: FleetVehicleStatus;
+  notes?: string | null;
+}
+
+export interface FleetVehicleAssignment extends BaseEntity {
+  vehicleId: string;
+  agentId: string;
+  assignedAt: string;
+  endedAt?: string | null;
+  status: FleetAssignmentStatus;
+  notes?: string | null;
+}
+
+export type FleetLocationSessionStatus = "active" | "stopped" | "expired";
+
+export interface FleetLocationSession {
+  id: string;
+  workspaceId: string;
+  agentId: string;
+  userId: string;
+  status: FleetLocationSessionStatus;
+  startedAt: string;
+  endedAt?: string | null;
+  lastSeenAt?: string | null;
+  deviceLabel?: string | null;
+}
+
+export interface FleetLocationPoint {
+  id?: string;
+  workspaceId: string;
+  agentId: string;
+  sessionId: string;
+  userId: string;
+  latitude: number;
+  longitude: number;
+  accuracy?: number | null;
+  heading?: number | null;
+  speed?: number | null;
+  altitude?: number | null;
+  recordedAt: string;
+  receivedAt?: string;
+  isSharing: boolean;
+}
+
 export interface BusinessPartner extends BaseEntity {
   name: string;
   contactName?: string;
@@ -1257,6 +1311,8 @@ export interface SyncQueueItem {
     | "customers"
     | "suppliers"
     | "agents"
+    | "fleet_vehicles"
+    | "fleet_vehicle_assignments"
     | "business_partners"
     | "business_partner_merge_candidates"
     | "sales_orders"
@@ -1381,6 +1437,8 @@ export interface OfflineMutation {
     | "customers"
     | "suppliers"
     | "agents"
+    | "fleet_vehicles"
+    | "fleet_vehicle_assignments"
     | "business_partners"
     | "business_partner_merge_candidates"
     | "sales_orders"
