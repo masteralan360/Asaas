@@ -560,6 +560,15 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             }
         }
 
+        // Demo workspaces use local DB exclusively — skip Supabase queries
+        if (user?.workspaceMode === 'demo') {
+            await applyFallback()
+            if (!silent && isCurrentWorkspaceRequest(workspaceId, requestId)) {
+                setIsLoading(false)
+            }
+            return
+        }
+
         if (isOffline()) {
             await applyFallback()
             if (!silent && isCurrentWorkspaceRequest(workspaceId, requestId)) {

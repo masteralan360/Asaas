@@ -51,6 +51,7 @@ interface AuthContextType {
     isKicked: boolean
     isSupabaseConfigured: boolean
     signIn: (email: string, password: string) => Promise<{ error: Error | null }>
+    signInWithDemo: (result: { userId: string; email: string; password: string; workspaceId: string; workspaceCode: string; workspaceName: string }) => Promise<void>
     signUp: (params: {
         email: string;
         password: string;
@@ -533,13 +534,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 const recovered = getRecoveredUser()
                 if (
                     !explicitSignOutRef.current
-                    && recovered?.workspaceMode === 'local'
+                    && (recovered?.workspaceMode === 'local' || recovered?.workspaceMode === 'demo')
                     && recovered.workspaceId
                 ) {
                     setUser(recovered)
                     writeWorkspaceModeSnapshot({
                         workspaceId: recovered.workspaceId,
-                        dataMode: 'local'
+                        dataMode: recovered.workspaceMode
                     })
                     setIsLoading(false)
                     return
@@ -605,36 +606,46 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                         saveRecovery(effectiveUser)
                     }
                 } else {
-                    await clearStoredDemoWorkspacesBestEffort()
                     const recovered = getRecoveredUser()
-                    if (recovered?.workspaceMode === 'local' && recovered.workspaceId) {
+
+                    if (recovered?.workspaceMode === 'demo' && recovered.workspaceId) {
+                        setUser(recovered)
+                        writeWorkspaceModeSnapshot({
+                            workspaceId: recovered.workspaceId,
+                            dataMode: 'demo'
+                        })
+                    } else if (recovered?.workspaceMode === 'local' && recovered.workspaceId) {
                         setUser(recovered)
                         writeWorkspaceModeSnapshot({
                             workspaceId: recovered.workspaceId,
                             dataMode: 'local'
                         })
-                    } else if (canUseRecoveryBridge()) {
-                        if (recovered) {
-                            const maxAge = 7 * 24 * 60 * 60 * 1000
-                            const isStale = recovered.recoveredAt && (Date.now() - recovered.recoveredAt > maxAge)
-
-                            if (!isStale) {
-                                console.log('[Auth] Restoring session from recovery bridge...')
-                                setUser(recovered)
-                            } else {
-                                console.log('[Auth] Recovery bridge is stale (>7 days), clearing.')
-                                clearRecovery()
-                            }
-                        }
                     } else {
-                        clearRecovery()
+                        await clearStoredDemoWorkspacesBestEffort()
+                        if (canUseRecoveryBridge()) {
+                            if (recovered) {
+                                const maxAge = 7 * 24 * 60 * 60 * 1000
+                                const isStale = recovered.recoveredAt && (Date.now() - recovered.recoveredAt > maxAge)
+
+                                if (!isStale) {
+                                    console.log('[Auth] Restoring session from recovery bridge...')
+                                    setUser(recovered)
+                                } else {
+                                    console.log('[Auth] Recovery bridge is stale (>7 days), clearing.')
+                                    clearRecovery()
+                                }
+                            }
+                        } else {
+                            clearRecovery()
+                        }
                     }
                 }
             } catch (e) {
                 console.error('[Auth] Initial session fetch failed:', e);
                 const recoveredUser = getRecoveredUser()
-                let allowRecovery = recoveredUser?.workspaceMode !== 'demo'
-                    && (canUseRecoveryBridge(e) || recoveredUser?.workspaceMode === 'local')
+                let allowRecovery = canUseRecoveryBridge(e)
+                    || recoveredUser?.workspaceMode === 'local'
+                    || recoveredUser?.workspaceMode === 'demo'
 
                 // Second chance: try refreshSession directly (different code path)
                 try {
@@ -657,8 +668,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                     }
                 } catch (refreshErr) {
                     console.warn('[Auth] refreshSession also failed:', refreshErr)
-                    allowRecovery = recoveredUser?.workspaceMode !== 'demo'
-                        && (allowRecovery || canUseRecoveryBridge(refreshErr))
+                    allowRecovery = canUseRecoveryBridge(refreshErr)
+                        || recoveredUser?.workspaceMode === 'local'
+                        || recoveredUser?.workspaceMode === 'demo'
 
                     if (!allowRecovery) {
                         clearRecovery()
@@ -944,6 +956,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
     }
 
+    const signInWithDemo = async (result: { userId: string; email: string; password: string; workspaceId: string; workspaceCode: string; workspaceName: string }) => {
+        const demoUser: AuthUser = {
+            id: result.userId,
+            email: result.email,
+            name: 'Demo User',
+            role: 'admin',
+            workspaceId: result.workspaceId,
+            workspaceCode: result.workspaceCode,
+            workspaceName: result.workspaceName,
+            profileUrl: undefined,
+            workspaceMode: 'demo',
+            isConfigured: true,
+        }
+        setUser(demoUser)
+        setSession(null)
+        writeWorkspaceModeSnapshot({
+            workspaceId: demoUser.workspaceId,
+            dataMode: 'demo',
+        })
+        saveRecovery(demoUser)
+    }
+
     const signOut = async () => {
         explicitSignOutRef.current = true
         const signingOutUser = userRef.current
@@ -959,11 +993,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 console.error('[Auth] Error stopping assetManager:', e)
             }
 
-            if (isDemoSession && signingOutUser?.workspaceId && isSupabaseConfigured) {
+            if (isDemoSession && signingOutUser?.workspaceId) {
                 await deleteDemoWorkspace(signingOutUser.workspaceId)
             }
 
-            if (isSupabaseConfigured) {
+            if (isSupabaseConfigured && !isDemoSession) {
                 await supabase.auth.signOut()
             }
         } catch (err) {
@@ -1180,6 +1214,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 isKicked,
                 isSupabaseConfigured,
                 signIn,
+                signInWithDemo,
                 signUp,
                 signOut,
                 hasRole,

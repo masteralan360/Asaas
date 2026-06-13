@@ -14,7 +14,7 @@ import { captureDemoBrowserState, clearStoredDemoWorkspaces } from './demoCleanu
 
 export function DemoConfigPage() {
   const [, setLocation] = useLocation()
-  const { signIn } = useAuth()
+  const { signInWithDemo } = useAuth()
   const { t } = useTranslation()
 
   const [workspaceName, setWorkspaceName] = useState('')
@@ -37,11 +37,7 @@ export function DemoConfigPage() {
       await clearStoredDemoWorkspaces()
       const result = await createDemoWorkspace(name, selectedJob, timeLimit, currency)
       await captureDemoBrowserState(result.workspaceId)
-      const signInResult = await signIn(result.email, result.password)
-      if (signInResult.error) {
-        setError(signInResult.error.message)
-        return
-      }
+      await signInWithDemo(result)
       setLocation('/')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create demo workspace')

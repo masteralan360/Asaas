@@ -1,8 +1,8 @@
-import { supabase } from '@/auth/supabase'
-import { runSupabaseAction } from '@/lib/supabaseRequest'
+import { db } from '@/local-db/database'
 import type { DemoJob } from './demoConfig'
 import { buildDemoCode } from './demoConfig'
 import type { CurrencyCode } from '@/local-db/models'
+import { clearLocalDemoWorkspaceData } from './demoCleanup'
 
 export interface CreateDemoResult {
   userId: string
@@ -13,6 +13,23 @@ export interface CreateDemoResult {
   workspaceName: string
 }
 
+function generateId(): string {
+  return crypto.randomUUID()
+}
+
+function generateDemoEmail(workspaceId: string): string {
+  return `demo-${workspaceId.slice(0, 8)}@demo-workspace.com`
+}
+
+function generatePassword(): string {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*'
+  let password = ''
+  for (let i = 0; i < 12; i++) {
+    password += chars.charAt(Math.floor(Math.random() * chars.length))
+  }
+  return password
+}
+
 export async function createDemoWorkspace(
   workspaceName: string,
   job: DemoJob,
@@ -20,69 +37,51 @@ export async function createDemoWorkspace(
   currency: CurrencyCode = 'usd',
 ): Promise<CreateDemoResult> {
   const code = buildDemoCode(job, minutes)
+  const workspaceId = generateId()
+  const userId = generateId()
+  const email = generateDemoEmail(workspaceId)
+  const password = generatePassword()
+  const now = new Date().toISOString()
 
-  const result = await runSupabaseAction(
-    'demo.create',
-    () =>
-      supabase.functions.invoke('workspace-access', {
-        body: {
-          action: 'create-demo',
-          workspaceName,
-          workspaceCode: code,
-          demoJob: job,
-          demoMinutes: minutes,
-          demoCurrency: currency,
-        },
-      }),
-    { timeoutMs: 30000, platform: 'all' },
-  ) as { data?: CreateDemoResult & { error?: string }; error?: unknown }
+  await db.workspaces.put({
+    id: workspaceId,
+    workspaceId,
+    name: workspaceName,
+    code,
+    data_mode: 'demo',
+    plan: 'enterprise',
+    default_currency: currency,
+    iqd_display_preference: 'د.ع',
+    locked_workspace: false,
+    is_configured: true,
+    subscription_expires_at: new Date(Date.now() + minutes * 60000).toISOString(),
+    syncStatus: 'synced',
+    lastSyncedAt: null,
+    version: 1,
+    isDeleted: false,
+    createdAt: now,
+    updatedAt: now,
+  })
 
-  const res = result as any
+  await db.profiles.put({
+    id: userId,
+    workspaceId,
+    name: 'Demo User',
+    role: 'admin',
+    profile_url: null,
+    created_at: now,
+  })
 
-  if (res.error) {
-    let detail = res.error?.message ?? 'Failed to create demo workspace'
-
-    if (res.response && typeof res.response.json === 'function') {
-      try {
-        const body = await res.response.json()
-        if (body?.error) {
-          detail = body.error
-        }
-      } catch {
-        // response body already consumed
-      }
-    } else if (res.error?.context && typeof res.error.context.json === 'function') {
-      try {
-        const body = await (res.error as any).context.json()
-        if (body?.error) {
-          detail = body.error
-        }
-      } catch {
-        // response body already consumed
-      }
-    }
-
-    console.error('[Demo] create error:', res.error, 'detail:', detail)
-    throw new Error(detail)
+  return {
+    userId,
+    email,
+    password,
+    workspaceId,
+    workspaceCode: code,
+    workspaceName,
   }
-
-  const data = res.data as any
-  if (data?.error) {
-    throw new Error(data.error)
-  }
-
-  return data as CreateDemoResult
 }
 
 export async function deleteDemoWorkspace(workspaceId: string): Promise<void> {
-  const { error } = await supabase.functions.invoke('workspace-access', {
-    body: {
-      action: 'delete-demo',
-      workspaceId,
-    },
-  }) as { error?: unknown }
-
-  if (error) {
-    console.error('[Demo] Failed to delete demo workspace:', error)
-  }
+  await clearLocalDemoWorkspaceData(workspaceId)
 }
