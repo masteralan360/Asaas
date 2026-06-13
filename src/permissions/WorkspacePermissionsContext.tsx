@@ -116,7 +116,7 @@ export function WorkspacePermissionsProvider({
     } catch (error) {
       const normalized = normalizeSupabaseActionError(error);
       console.warn("[Permissions] Failed to fetch workspace permissions:", normalized);
-      if (cached.length === 0) {
+      if (permissionKeys.length === 0) {
         setPermissionKeys([]);
       }
     } finally {
@@ -184,13 +184,13 @@ export function WorkspacePermissionsProvider({
     (permission: WorkspacePermissionKey) => {
       // 1. Check for global.NOprint restriction first for any print-related checks
       const isPrintAction = permission === 'global.NOprint' || (permission.split('.').length === 2 && permission.split('.')[1] === 'print')
-      
+
       if (isPrintAction) {
         // If they have the explicit NOprint restriction, they don't have permission
         if (permissionSet.has('global.NOprint')) {
           return false
         }
-        
+
         // For above staff roles (admin), print is always ON by default if not restricted
         if (userRole === "admin") {
           return true
@@ -221,8 +221,8 @@ export function WorkspacePermissionsProvider({
       if (parts.length === 2 && parts[0] !== "global") {
         const action = parts[1];
         if (action === 'print') {
-           // We already handled print above, but just to be sure
-           return !permissionSet.has('global.NOprint')
+          // We already handled print above, but just to be sure
+          return !permissionSet.has('global.NOprint')
         }
 
         const globalKey = `global.${action}` as WorkspacePermissionKey;

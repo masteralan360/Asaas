@@ -1,7 +1,7 @@
 {
   "name": "atlas",
   "private": true,
-  "version": "0.1.54",
+  "version": "0.1.55",
   "main": "electron/main.cjs",
   "type": "module",
   "repository": {
@@ -144,5 +144,5 @@
     "vitest": "^4.1.8",
     "workbox-window": "^7.1.0"
   },
-  "min_version": "0.1.54"
+  "min_version": "0.1.55"
 }

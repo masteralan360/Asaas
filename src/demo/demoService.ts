@@ -3,6 +3,7 @@ import type { DemoJob } from './demoConfig'
 import { buildDemoCode } from './demoConfig'
 import type { CurrencyCode } from '@/local-db/models'
 import { clearLocalDemoWorkspaceData } from './demoCleanup'
+import { supabase, isSupabaseConfigured } from '@/auth/supabase'
 
 export interface CreateDemoResult {
   userId: string
@@ -72,6 +73,17 @@ export async function createDemoWorkspace(
     created_at: now,
   })
 
+  // Best-effort: register the timer on the server so it can enforce expiry
+  // independently of the client clock. Non-blocking — local timer still works.
+  if (isSupabaseConfigured) {
+    supabase.rpc('insert_demo', {
+      p_workspace_id: workspaceId,
+      p_expires_at: new Date(Date.now() + minutes * 60000).toISOString(),
+    }).then(({ error }) => {
+      if (error) console.warn('[Demo] insert_demo RPC failed (non-fatal):', error)
+    })
+  }
+
   return {
     userId,
     email,
@@ -83,5 +95,12 @@ export async function createDemoWorkspace(
 }
 
 export async function deleteDemoWorkspace(workspaceId: string): Promise<void> {
+  // Best-effort: remove the server-side timer record
+  if (isSupabaseConfigured) {
+    supabase.rpc('delete_demo', { p_workspace_id: workspaceId }).then(({ error }) => {
+      if (error) console.warn('[Demo] delete_demo RPC failed (non-fatal):', error)
+    })
+  }
+
   await clearLocalDemoWorkspaceData(workspaceId)
 }

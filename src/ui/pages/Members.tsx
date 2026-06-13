@@ -268,7 +268,6 @@ export function Members() {
         try {
             if (isLocalMode) {
                 if (shouldGrant) {
-                    const now = new Date().toISOString()
                     const existing = await db.workspace_permissions
                         .where('[workspaceId+userUuid+key]')
                         .equals([user.workspaceId, member.id, permissionKey])

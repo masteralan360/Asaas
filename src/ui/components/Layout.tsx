@@ -66,7 +66,7 @@ import {
 
 import { useTranslation } from 'react-i18next'
 import { useEffect, useRef } from 'react'
-import { supabase } from '@/auth/supabase'
+import { supabase, isSupabaseConfigured } from '@/auth/supabase'
 import { isMobile, isDesktop } from '@/lib/platform'
 import { useWebHaptics } from 'web-haptics/react'
 
@@ -402,6 +402,35 @@ export function Layout({ children }: LayoutProps) {
         const interval = setInterval(update, 1000)
         return () => clearInterval(interval)
     }, [user?.workspaceCode, features.subscription_expires_at])
+
+    // Server-side demo expiry poll: periodically check the demos table
+    // to enforce the time limit independently of the client clock.
+    useEffect(() => {
+        if (!isSupabaseConfigured) return
+        if (!user?.workspaceCode || !isDemoWorkspace(user.workspaceCode)) return
+
+        const poll = async () => {
+            try {
+                const { data, error } = await supabase.rpc('check_demo_expired', {
+                    p_workspace_id: user?.workspaceId,
+                })
+                if (error) {
+                    console.warn('[Demo] check_demo_expired RPC failed (non-fatal):', error)
+                    return
+                }
+                if (data?.expired === true) {
+                    console.log('[Demo] Server reports demo expired — signing out')
+                    await signOut()
+                }
+            } catch (e) {
+                console.warn('[Demo] check_demo_expired threw (non-fatal):', e)
+            }
+        }
+
+        poll()
+        const interval = setInterval(poll, 30_000)
+        return () => clearInterval(interval)
+    }, [user?.workspaceCode, user?.workspaceId, signOut])
 
     const navigation = buildWorkspaceNavigation({
         t,
