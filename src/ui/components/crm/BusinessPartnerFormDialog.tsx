@@ -7,6 +7,7 @@ import {
     isAgentBusinessPartnerRole,
     isRealEstateBusinessPartnerRole,
     useAgent,
+    useAgents,
     useWorkspaceUsers,
     type Agent,
     type AgentFacetInput,
@@ -155,7 +156,20 @@ export function BusinessPartnerFormDialog({
     const [formState, setFormState] = useState<BusinessPartnerFormState>(() => createEmptyState(defaultCurrency, lockedRole ?? initialRole))
     const [isUploadingAgentImage, setIsUploadingAgentImage] = useState(false)
     const agent = useAgent(partner?.agentFacetId)
+    const agents = useAgents(workspaceId)
     const workspaceUsers = useWorkspaceUsers(workspaceId)
+    const linkedUserIds = useMemo(
+        () => new Set(
+            agents
+                .filter((candidate) =>
+                    candidate.id !== agent?.id
+                    && candidate.businessPartnerId !== partner?.id
+                    && Boolean(candidate.linkedUserId)
+                )
+                .map((candidate) => candidate.linkedUserId as string)
+        ),
+        [agent?.id, agents, partner?.id]
+    )
     const roleOptions = useMemo<Array<{ value: BusinessPartnerRole; label: string }>>(() => {
         const options: Array<{ value: BusinessPartnerRole; label: string }> = [
             { value: 'both', label: t('businessPartners.roles.both') || 'Both' },
@@ -426,11 +440,21 @@ export function BusinessPartnerFormDialog({
                                             </SelectTrigger>
                                             <SelectContent>
                                                 <SelectItem value="unlinked">{t('businessPartners.agent.noLinkedUser', { defaultValue: 'Not linked' })}</SelectItem>
-                                                {workspaceUsers.map((workspaceUser) => (
-                                                    <SelectItem key={workspaceUser.id} value={workspaceUser.id}>
-                                                        {workspaceUser.name || workspaceUser.email || workspaceUser.id}
-                                                    </SelectItem>
-                                                ))}
+                                                {workspaceUsers.map((workspaceUser) => {
+                                                    const isLinkedElsewhere = linkedUserIds.has(workspaceUser.id)
+                                                    return (
+                                                        <SelectItem
+                                                            key={workspaceUser.id}
+                                                            value={workspaceUser.id}
+                                                            disabled={isLinkedElsewhere}
+                                                        >
+                                                            {workspaceUser.name || workspaceUser.email || workspaceUser.id}
+                                                            {isLinkedElsewhere
+                                                                ? ` (${t('businessPartners.agent.alreadyLinked', { defaultValue: 'Already linked' })})`
+                                                                : ''}
+                                                        </SelectItem>
+                                                    )
+                                                })}
                                             </SelectContent>
                                         </Select>
                                     </div>

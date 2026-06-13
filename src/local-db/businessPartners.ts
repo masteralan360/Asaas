@@ -585,6 +585,9 @@ function normalizeAgentFacetInput(input: Partial<AgentFacetInput> | undefined, e
     const zone = String(input?.zone ?? existing?.zone ?? '').trim()
     const carModel = String(input?.carModel ?? existing?.carModel ?? '').trim() || null
     const plateNumber = String(input?.plateNumber ?? existing?.plateNumber ?? '').trim() || null
+    const linkedUserId = String(
+        input?.linkedUserId === undefined ? existing?.linkedUserId ?? '' : input.linkedUserId ?? ''
+    ).trim() || null
 
     if (agentType !== 'driver' && agentType !== 'field_agent') {
         throw new Error('Agent type is required')
@@ -605,8 +608,32 @@ function normalizeAgentFacetInput(input: Partial<AgentFacetInput> | undefined, e
         agentType,
         carModel: agentType === 'driver' ? carModel : null,
         plateNumber: agentType === 'driver' ? plateNumber : null,
-        linkedUserId: input?.linkedUserId === undefined ? existing?.linkedUserId ?? null : input.linkedUserId,
+        linkedUserId,
         status
+    }
+}
+
+async function assertAgentLinkedUserAvailable(
+    workspaceId: string,
+    linkedUserId: string | null | undefined,
+    currentAgentId?: string
+) {
+    if (!linkedUserId) {
+        return
+    }
+
+    const linkedAgent = await db.agents
+        .where('linkedUserId')
+        .equals(linkedUserId)
+        .and((item) =>
+            item.workspaceId === workspaceId
+            && !item.isDeleted
+            && item.id !== currentAgentId
+        )
+        .first()
+
+    if (linkedAgent) {
+        throw new Error('Workspace user is already linked to another agent')
     }
 }
 
@@ -615,6 +642,7 @@ async function createOrUpdateAgentFacet(partner: BusinessPartner, input?: Partia
         ? await db.agents.get(partner.agentFacetId)
         : await db.agents.where('businessPartnerId').equals(partner.id).first()
     const agentData = normalizeAgentFacetInput(input, existing)
+    await assertAgentLinkedUserAvailable(partner.workspaceId, agentData.linkedUserId, existing?.id)
 
     if (existing) {
         const now = new Date().toISOString()
@@ -1179,6 +1207,7 @@ export async function createBusinessPartner(
     const normalizedAgentInput = roleIncludesAgent(data.role)
         ? normalizeAgentFacetInput(agentInput)
         : undefined
+    await assertAgentLinkedUserAvailable(workspaceId, normalizedAgentInput?.linkedUserId)
 
     const partner = buildBaseEntity(workspaceId, {
         ...partnerData,
@@ -1260,6 +1289,11 @@ export async function updateBusinessPartner(id: string, data: BusinessPartnerUpd
     const normalizedAgentInput = roleIncludesAgent(nextRole)
         ? normalizeAgentFacetInput(agentInput, existingAgent)
         : undefined
+    await assertAgentLinkedUserAvailable(
+        existing.workspaceId,
+        normalizedAgentInput?.linkedUserId,
+        existingAgent?.id
+    )
 
     const now = new Date().toISOString()
     let updated: BusinessPartner = {

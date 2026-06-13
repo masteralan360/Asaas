@@ -47,6 +47,11 @@ CREATE INDEX IF NOT EXISTS idx_crm_agents_workspace_type
 CREATE INDEX IF NOT EXISTS idx_crm_agents_linked_user
   ON crm.agents (linked_user_id);
 
+CREATE UNIQUE INDEX IF NOT EXISTS ux_crm_agents_workspace_linked_user
+  ON crm.agents (workspace_id, linked_user_id)
+  WHERE linked_user_id IS NOT NULL
+    AND COALESCE(is_deleted, false) = false;
+
 ALTER TABLE crm.agents ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS crm_agents_select ON crm.agents;

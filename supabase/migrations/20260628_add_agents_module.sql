@@ -159,6 +159,18 @@ BEGIN
       USING ERRCODE = '23514';
   END IF;
 
+  IF NEW.linked_user_id IS NOT NULL AND EXISTS (
+    SELECT 1
+    FROM crm.agents a
+    WHERE a.workspace_id = NEW.workspace_id
+      AND a.linked_user_id = NEW.linked_user_id
+      AND a.id <> NEW.id
+      AND COALESCE(a.is_deleted, false) = false
+  ) THEN
+    RAISE EXCEPTION 'Workspace user is already linked to another agent'
+      USING ERRCODE = '23505';
+  END IF;
+
   RETURN NEW;
 END;
 $function$;

@@ -163,6 +163,79 @@ describe('business partner agent facets', () => {
         expect(agent?.status).toBe('inactive')
     })
 
+    it('prevents one workspace user from being linked to multiple agents', async () => {
+        const linkedUserId = '00000000-0000-4000-8000-000000000099'
+        await createBusinessPartner(WORKSPACE_ID, {
+            name: 'First Linked Agent',
+            phone: '07500000004',
+            defaultCurrency: 'iqd',
+            creditLimit: 0,
+            role: 'agent',
+            agent: {
+                zone: 'North District',
+                agentType: 'field_agent',
+                linkedUserId,
+                status: 'active'
+            }
+        }, { allowAgentRole: true })
+
+        await expect(createBusinessPartner(WORKSPACE_ID, {
+            name: 'Second Linked Agent',
+            phone: '07500000005',
+            defaultCurrency: 'iqd',
+            creditLimit: 0,
+            role: 'agent',
+            agent: {
+                zone: 'South District',
+                agentType: 'field_agent',
+                linkedUserId,
+                status: 'active'
+            }
+        }, { allowAgentRole: true })).rejects.toThrow('Workspace user is already linked to another agent')
+
+        expect(await db.business_partners.count()).toBe(1)
+        expect(await db.agents.count()).toBe(1)
+    })
+
+    it('rejects reassigning an agent to a workspace user linked elsewhere', async () => {
+        const linkedUserId = '00000000-0000-4000-8000-000000000098'
+        await createBusinessPartner(WORKSPACE_ID, {
+            name: 'Assigned Agent',
+            phone: '07500000006',
+            defaultCurrency: 'iqd',
+            creditLimit: 0,
+            role: 'agent',
+            agent: {
+                zone: 'East District',
+                agentType: 'field_agent',
+                linkedUserId,
+                status: 'active'
+            }
+        }, { allowAgentRole: true })
+        const unassignedAgent = await createBusinessPartner(WORKSPACE_ID, {
+            name: 'Unassigned Agent',
+            phone: '07500000007',
+            defaultCurrency: 'iqd',
+            creditLimit: 0,
+            role: 'agent',
+            agent: {
+                zone: 'West District',
+                agentType: 'field_agent',
+                status: 'active'
+            }
+        }, { allowAgentRole: true })
+
+        await expect(updateBusinessPartner(unassignedAgent.id, {
+            name: 'Must Not Persist',
+            agent: { linkedUserId }
+        }, { allowAgentRole: true })).rejects.toThrow('Workspace user is already linked to another agent')
+
+        const unchangedPartner = await db.business_partners.get(unassignedAgent.id)
+        const unchangedAgent = await db.agents.get(unassignedAgent.agentFacetId!)
+        expect(unchangedPartner?.name).toBe('Unassigned Agent')
+        expect(unchangedAgent?.linkedUserId).toBeNull()
+    })
+
     it('does not collapse agent and commercial roles during a merge', async () => {
         const agent = await createBusinessPartner(WORKSPACE_ID, {
             name: 'Shared Name',
