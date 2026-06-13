@@ -9,6 +9,7 @@ env:
   VITE_R2_WORKER_URL: ${{ secrets.VITE_R2_WORKER_URL }}
   VITE_R2_AUTH_TOKEN: ${{ secrets.VITE_R2_AUTH_TOKEN }}
   VITE_ENABLE_DEMO: ${{ secrets.VITE_ENABLE_DEMO }}
+  VITE_ENCRYPTION_KEY: ${{ secrets.VITE_ENCRYPTION_KEY }}
 
 jobs:
   release:
@@ -91,6 +92,7 @@ jobs:
           VITE_ENABLE_DEMO: ${{ secrets.VITE_ENABLE_DEMO }}
           VITE_R2_WORKER_URL: ${{ secrets.VITE_R2_WORKER_URL }}
           VITE_R2_AUTH_TOKEN: ${{ secrets.VITE_R2_AUTH_TOKEN }}
+          VITE_ENCRYPTION_KEY: ${{ secrets.VITE_ENCRYPTION_KEY }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: "Atlas ${{ github.ref_name }}"
@@ -119,6 +121,7 @@ jobs:
           VITE_ENABLE_DEMO: ${{ secrets.VITE_ENABLE_DEMO }}
           VITE_R2_WORKER_URL: ${{ secrets.VITE_R2_WORKER_URL }}
           VITE_R2_AUTH_TOKEN: ${{ secrets.VITE_R2_AUTH_TOKEN }}
+          VITE_ENCRYPTION_KEY: ${{ secrets.VITE_ENCRYPTION_KEY }}
 
       - name: Sign Release APK
         if: matrix.settings.platform == 'ubuntu-latest'
