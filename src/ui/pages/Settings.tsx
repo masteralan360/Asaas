@@ -38,7 +38,7 @@ export function Settings() {
     const { user, signOut, isSupabaseConfigured, updateUser } = useAuth()
     const { syncState, pendingCount, lastSyncTime, sync, isSyncing, isOnline } = useSyncStatus()
     const { theme, setTheme, style, setStyle } = useTheme()
-    const { features, updateSettings, refreshFeatures, workspaceName, isLocked, isLocalMode, isDemoMode, hasCapability, planCapabilities } = useWorkspace()
+    const { features, updateSettings, refreshFeatures, workspaceName, isLocked, isLocalMode, isDemoMode, isHybridMode, hasCapability, planCapabilities } = useWorkspace()
     const { streamUrl, status: kdsStatus, startStream } = useKdsStream(true)
 
     useEffect(() => {
@@ -1036,7 +1036,7 @@ export function Settings() {
             }
 
             // 4. Update Supabase profile
-            if (isSupabaseConfigured && !isDemoMode) {
+            if (isSupabaseConfigured && !isDemoMode && !isLocalMode) {
                 // Update the profiles table
                 const { error: profileError } = await runSupabaseAction('settings.updateProfileImage', () =>
                     supabase
@@ -1062,7 +1062,8 @@ export function Settings() {
                 }
             }
 
-            if (isDemoMode) {
+            // Always update local profile database for offline-first modes
+            if (isLocalMode || isHybridMode || isDemoMode) {
                 await db.profiles.put({
                     id: user.id,
                     workspaceId: user.workspaceId,
@@ -1093,7 +1094,7 @@ export function Settings() {
             await assetManager.deleteAsset(user.profileUrl);
 
             // Update cloud profile (Supabase)
-            if (isSupabaseConfigured && !isDemoMode) {
+            if (isSupabaseConfigured && !isDemoMode && !isLocalMode) {
                 const { error: profileError } = await runSupabaseAction('settings.removeProfileImage', () =>
                     supabase.from('profiles').update({ profile_url: null }).eq('id', user.id)
                 )
@@ -1105,14 +1106,9 @@ export function Settings() {
                 if (authError) throw normalizeSupabaseActionError(authError)
             }
 
-            if (isDemoMode) {
-                await db.profiles.put({
-                    id: user.id,
-                    workspaceId: user.workspaceId,
-                    name: user.name,
-                    role: user.role,
-                    profile_url: null,
-                })
+            // Sync to local profile DB for offline modes
+            if (isLocalMode || isHybridMode || isDemoMode) {
+                await db.profiles.update(user.id, { profile_url: null })
             }
 
             // Update local state

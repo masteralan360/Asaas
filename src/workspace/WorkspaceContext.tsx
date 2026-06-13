@@ -124,7 +124,7 @@ interface WorkspaceContextType {
     hasFeature: (feature: ModuleFeatureKey) => boolean
     hasCapability: (capability: PlanCapabilityKey) => boolean
     refreshFeatures: () => Promise<void>
-    updateSettings: (settings: Partial<Pick<WorkspaceFeatures, 'default_currency' | 'iqd_display_preference' | 'allow_whatsapp' | 'kds_enabled' | 'instant_pos' | 'logo_url' | 'coordination' | 'print_lang' | 'print_qr' | 'receipt_template' | 'a4_template' | 'thermal_printing' | 'visibility' | 'store_slug' | 'store_description' | 'upload_limit_mb'>> & { name?: string }) => Promise<void>
+    updateSettings: (settings: Partial<Pick<WorkspaceFeatures, 'default_currency' | 'iqd_display_preference' | 'allow_whatsapp' | 'kds_enabled' | 'instant_pos' | 'logo_url' | 'coordination' | 'print_lang' | 'print_qr' | 'receipt_template' | 'a4_template' | 'thermal_printing' | 'visibility' | 'store_slug' | 'store_description' | 'upload_limit_mb' | 'data_mode' | 'plan' | 'is_configured'>> & { name?: string }) => Promise<void>
     switchDataMode: (newMode: 'cloud' | 'hybrid') => Promise<{ error: string | null }>
     activeWorkspace: { id: string } | undefined
 }
@@ -493,6 +493,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             updatedAt: timestamp
         })
 
+        // Important: If we are in local/hybrid mode, we MUST keep our local logo_url
+        // as the source of truth, even if fetchFeatures later tries to sync from Supabase.
         if (nextFeatures.data_mode === 'local' || nextFeatures.data_mode === 'hybrid') {
             await hydrateLocalModeCacheFromSqlite(db, workspaceId)
         }
@@ -631,7 +633,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                 default_currency: workspaceRow.default_currency ?? currentFeatures.default_currency,
                 iqd_display_preference: workspaceRow.iqd_display_preference ?? currentFeatures.iqd_display_preference,
                 locked_workspace: workspaceRow.locked_workspace ?? currentFeatures.locked_workspace,
-                logo_url: workspaceRow.logo_url ?? null,
+                logo_url: (workspaceRow.data_mode === 'local' || workspaceRow.data_mode === 'hybrid')
+                    ? (cachedSnapshot?.features?.logo_url ?? currentFeatures.logo_url ?? workspaceRow.logo_url ?? null)
+                    : (workspaceRow.logo_url ?? null),
                 coordination: workspaceRow.coordination ?? null,
                 max_discount_percent: workspaceRow.max_discount_percent ?? currentFeatures.max_discount_percent,
                 allow_whatsapp: workspaceRow.allow_whatsapp ?? currentFeatures.allow_whatsapp,
@@ -941,7 +945,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     }
 
     const updateSettings = async (
-        settings: Partial<Pick<WorkspaceFeatures, 'default_currency' | 'iqd_display_preference' | 'allow_whatsapp' | 'kds_enabled' | 'instant_pos' | 'logo_url' | 'coordination' | 'print_lang' | 'print_qr' | 'receipt_template' | 'a4_template' | 'thermal_printing' | 'visibility' | 'store_slug' | 'store_description' | 'upload_limit_mb'>> & { name?: string }
+        settings: Partial<Pick<WorkspaceFeatures, 'default_currency' | 'iqd_display_preference' | 'allow_whatsapp' | 'kds_enabled' | 'instant_pos' | 'logo_url' | 'coordination' | 'print_lang' | 'print_qr' | 'receipt_template' | 'a4_template' | 'thermal_printing' | 'visibility' | 'store_slug' | 'store_description' | 'upload_limit_mb' | 'data_mode' | 'plan' | 'is_configured'>> & { name?: string }
     ) => {
         const workspaceId = user?.workspaceId
         if (!workspaceId) return
@@ -983,10 +987,13 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         })
 
         const existing = await db.workspaces.get(workspaceId)
-        const usesCloudBusinessData = features.data_mode === 'cloud'
-            || features.data_mode === 'hybrid'
+        const usesCloudBusinessData = newFeatures.data_mode === 'cloud'
+            || newFeatures.data_mode === 'hybrid'
         const supabaseUpdate: Record<string, unknown> = { ...featureSettings }
         delete supabaseUpdate.thermal_printing
+        if (newFeatures.data_mode === 'local' || newFeatures.data_mode === 'demo') {
+            delete supabaseUpdate.logo_url
+        }
         if (name !== undefined) {
             supabaseUpdate.name = name
         }

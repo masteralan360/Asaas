@@ -150,20 +150,34 @@ export function WorkspaceConfiguration() {
     const handleSave = async () => {
         setIsLoading(true)
         try {
+            const updatePayload: any = {
+                data_mode: dataMode,
+                plan: plan,
+                is_configured: true
+            }
+
+            // Only sync logo to Supabase if NOT in local mode
+            if (dataMode !== 'local') {
+                updatePayload.logo_url = logoUrl || null
+            }
+
             const { error } = await runSupabaseAction('workspace.configure', () =>
                 supabase
                     .from('workspaces')
-                    .update({
-                        data_mode: dataMode,
-                        plan: plan,
-                        logo_url: logoUrl || null,
-                        is_configured: true
-                    })
+                    .update(updatePayload)
                     .eq('id', workspaceId),
                 { timeoutMs: 12000, platform: 'all' }
             ) as any
 
             if (error) throw normalizeSupabaseActionError(error)
+
+            // Ensure settings are also updated locally via context (which handles Dexie/SQLite)
+            await updateSettings({
+                data_mode: dataMode,
+                plan: plan,
+                logo_url: logoUrl || null,
+                is_configured: true
+            })
 
             // Refresh workspace features in context
             await refreshFeatures()

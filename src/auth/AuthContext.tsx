@@ -116,25 +116,33 @@ async function clearStoredDemoWorkspacesBestEffort() {
     }
 }
 
-async function hydrateDemoProfile(user: AuthUser) {
-    if (user.workspaceMode !== 'demo' || !user.workspaceId) {
+async function hydrateAssetProfile(user: AuthUser) {
+    const isLocalOrHybrid = user.workspaceMode === 'local' || user.workspaceMode === 'hybrid'
+    const isDemo = user.workspaceMode === 'demo'
+    
+    if (!(isLocalOrHybrid || isDemo) || !user.workspaceId) {
         return
     }
 
     const localProfile = await db.profiles.get(user.id)
     if (localProfile?.workspaceId === user.workspaceId) {
-        user.profileUrl = localProfile.profile_url ?? undefined
+        if (localProfile.profile_url) {
+            user.profileUrl = localProfile.profile_url
+        }
         return
     }
 
-    await db.profiles.put({
-        id: user.id,
-        workspaceId: user.workspaceId,
-        name: user.name,
-        role: user.role,
-        profile_url: user.profileUrl ?? null,
-        created_at: new Date().toISOString()
-    })
+    // For demo/local mode, if there's no profile in the DB yet but we have one in state, seed it
+    if (user.profileUrl) {
+        await db.profiles.put({
+            id: user.id,
+            workspaceId: user.workspaceId,
+            name: user.name,
+            role: user.role,
+            profile_url: user.profileUrl ?? null,
+            created_at: new Date().toISOString()
+        })
+    }
 }
 
 function clearPreviousWorkspaceArtifacts(previousWorkspaceId?: string | null, nextWorkspaceId?: string | null) {
@@ -209,7 +217,7 @@ async function cacheLocalAccountPermissions(workspaceId: string, userId: string)
     )
 }
 
-async function cacheLocalWorkspaceAccounts(workspaceId: string) {
+async function cacheLocalWorkspaceAccounts(workspaceId: string, options?: { isLocalFirst?: boolean }) {
     const { data, error } = await runSupabaseAction(
         'auth.cacheLocalWorkspaceAccounts',
         () => supabase
@@ -235,21 +243,28 @@ async function cacheLocalWorkspaceAccounts(workspaceId: string) {
 
     const remoteProfiles = data ?? []
     const existingProfiles = await db.profiles.where('workspaceId').equals(workspaceId).toArray()
+    const profileMap = new Map(existingProfiles.map(p => [p.id, p]))
     const remoteProfileIds = new Set(remoteProfiles.map((profile) => profile.id))
     const removedProfiles = existingProfiles.filter((profile) => !remoteProfileIds.has(profile.id))
     const now = new Date().toISOString()
 
     await db.transaction('rw', db.profiles, db.users, async () => {
-        await db.profiles.bulkPut(remoteProfiles.map((profile) => ({
-            id: profile.id,
-            workspaceId: profile.workspace_id,
-            name: profile.name || 'User',
-            role: profile.role || 'viewer',
-            profile_url: profile.profile_url,
-            created_at: profile.created_at || undefined
-        })))
+        await db.profiles.bulkPut(remoteProfiles.map((profile) => {
+            const existing = profileMap.get(profile.id)
+            return {
+                id: profile.id,
+                workspaceId: profile.workspace_id,
+                name: profile.name || 'User',
+                role: profile.role || 'viewer',
+                profile_url: (options?.isLocalFirst && existing?.profile_url)
+                    ? existing.profile_url
+                    : profile.profile_url,
+                created_at: profile.created_at || undefined
+            }
+        }))
 
         for (const profile of remoteProfiles) {
+            const existing = profileMap.get(profile.id)
             const existingUser = await db.users.get(profile.id)
             await db.users.put({
                 ...existingUser,
@@ -258,7 +273,9 @@ async function cacheLocalWorkspaceAccounts(workspaceId: string) {
                 email: existingUser?.email || '',
                 name: profile.name || 'User',
                 role: profile.role === 'admin' || profile.role === 'staff' ? profile.role : 'viewer',
-                profileUrl: profile.profile_url || undefined,
+                profileUrl: (options?.isLocalFirst && existing?.profile_url)
+                    ? existing.profile_url
+                    : (profile.profile_url || undefined),
                 createdAt: existingUser?.createdAt || profile.created_at || now,
                 updatedAt: now,
                 syncStatus: 'synced',
@@ -419,7 +436,7 @@ async function enrichUser(parsedUser: AuthUser): Promise<AuthUser> {
                 void runDailyBackupIfNeeded(parsedUser.workspaceId)
                 void runR2BackupIfNeeded(parsedUser.workspaceId)
             }
-            await hydrateDemoProfile(parsedUser)
+            await hydrateAssetProfile(parsedUser)
             return parsedUser
         }
     } catch (error) {
@@ -441,7 +458,7 @@ async function enrichUser(parsedUser: AuthUser): Promise<AuthUser> {
             void runDailyBackupIfNeeded(parsedUser.workspaceId)
             void runR2BackupIfNeeded(parsedUser.workspaceId)
         }
-        await hydrateDemoProfile(parsedUser)
+        await hydrateAssetProfile(parsedUser)
     }
 
     return parsedUser
@@ -813,7 +830,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                     await persistAuthUserLocally(enriched)
                     try {
                         await Promise.all([
-                            cacheLocalWorkspaceAccounts(enriched.workspaceId),
+                            cacheLocalWorkspaceAccounts(enriched.workspaceId, {
+                                isLocalFirst: enriched.workspaceMode === 'local' || enriched.workspaceMode === 'hybrid'
+                            }),
                             cacheLocalAccountPermissions(enriched.workspaceId, enriched.id)
                         ])
                     } catch (preparationError) {
@@ -1142,7 +1161,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 }
 
                 try {
-                    await cacheLocalWorkspaceAccounts(workspaceId)
+                    await cacheLocalWorkspaceAccounts(workspaceId, {
+                        isLocalFirst: enrolledUser.workspaceMode === 'local' || enrolledUser.workspaceMode === 'hybrid'
+                    })
                 } catch (profileError) {
                     console.warn('[Auth] Failed to refresh local workspace accounts:', profileError)
                 }
