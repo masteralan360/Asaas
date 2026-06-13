@@ -16,6 +16,7 @@ const crmTables = new Set([
     'business_partner_merge_candidates',
     'sales_orders',
     'purchase_orders',
+    'order_installments',
     'travel_agency_sales'
 ])
 

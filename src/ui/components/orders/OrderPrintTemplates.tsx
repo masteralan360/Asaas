@@ -1,4 +1,12 @@
-import type { SalesOrder, PurchaseOrder, IQDDisplayPreference } from '@/local-db'
+import {
+    getOrderBalanceAmount,
+    getOrderPaidAmount,
+    getOrderPaymentStatus,
+    type SalesOrder,
+    type PurchaseOrder,
+    type OrderInstallment,
+    type IQDDisplayPreference
+} from '@/local-db'
 import { formatCurrency, formatDate, formatDateTime } from '@/lib/utils'
 import { platformService } from '@/services/platformService'
 import { useTranslation } from 'react-i18next'
@@ -27,6 +35,7 @@ interface OrderDetailsPrintTemplateProps {
     workspaceName?: string | null
     printLang: string
     order: SalesOrder | PurchaseOrder
+    installments?: OrderInstallment[]
     kind: 'sales' | 'purchase'
     iqdPreference?: IQDDisplayPreference
     logoUrl?: string | null
@@ -118,6 +127,16 @@ function resolvePaymentLabel(t: (key: string) => string, method?: string | null)
         case 'bank_transfer': return 'Bank Transfer'
         default: return 'Credit'
     }
+}
+
+function resolvePaymentStatusLabel(
+    t: (key: string, options?: Record<string, unknown>) => string,
+    order: SalesOrder | PurchaseOrder
+) {
+    const status = getOrderPaymentStatus(order)
+    if (status === 'paid') return t('orders.status.paid', { defaultValue: 'Paid' })
+    if (status === 'partial') return t('orders.status.partial', { defaultValue: 'Partially Paid' })
+    return t('orders.status.unpaid', { defaultValue: 'Unpaid' })
 }
 
 export function OrderListPrintTemplate({
@@ -217,8 +236,8 @@ export function OrderListPrintTemplate({
                                 <td className="border border-slate-300 p-2 text-end font-semibold">{formatCurrency(order.total, order.currency, iqdPreference)}</td>
                                 <td className="border border-slate-300 p-2">{formatDate(order.createdAt)}</td>
                                 <td className="border border-slate-300 p-2">
-                                    <span className={order.isPaid ? 'font-semibold' : ''}>
-                                        {order.isPaid ? (t('budget.status.paid') || 'Paid') : (t('budget.status.pending') || 'Pending')}
+                                    <span className={getOrderPaymentStatus(order) !== 'unpaid' ? 'font-semibold' : ''}>
+                                        {resolvePaymentStatusLabel(t, order)}
                                     </span>
                                 </td>
                             </tr>
@@ -254,8 +273,8 @@ export function OrderListPrintTemplate({
                                 <td className="border border-slate-300 p-2 text-end font-semibold">{formatCurrency(order.total, order.currency, iqdPreference)}</td>
                                 <td className="border border-slate-300 p-2">{formatDate(order.createdAt)}</td>
                                 <td className="border border-slate-300 p-2">
-                                    <span className={order.isPaid ? 'font-semibold' : ''}>
-                                        {order.isPaid ? (t('budget.status.paid') || 'Paid') : (t('budget.status.pending') || 'Pending')}
+                                    <span className={getOrderPaymentStatus(order) !== 'unpaid' ? 'font-semibold' : ''}>
+                                        {resolvePaymentStatusLabel(t, order)}
                                     </span>
                                 </td>
                             </tr>
@@ -271,6 +290,7 @@ export function OrderDetailsPrintTemplate({
     workspaceName,
     printLang,
     order,
+    installments = [],
     kind,
     iqdPreference = 'IQD',
     logoUrl,
@@ -343,7 +363,9 @@ export function OrderDetailsPrintTemplate({
                     <p className="font-bold">{t('common.total') || 'Total'}: {formatCurrency(order.total, currency, iqdPreference)}</p>
                     <p>{t('common.status') || 'Status'}: {resolveStatusLabel(t, order.status)}</p>
                     <p>{t('pos.paymentMethod') || 'Payment'}: {resolvePaymentLabel(t, order.paymentMethod)}</p>
-                    <p>{order.isPaid ? (t('budget.status.paid') || 'Paid') : (t('budget.status.pending') || 'Unpaid')}{order.paidAt ? ` • ${formatDate(order.paidAt)}` : ''}</p>
+                    <p>{resolvePaymentStatusLabel(t, order)}{order.paidAt ? ` • ${formatDate(order.paidAt)}` : ''}</p>
+                    <p>{t('orders.details.paidAmount', { defaultValue: 'Paid' })}: {formatCurrency(getOrderPaidAmount(order), order.currency, iqdPreference)}</p>
+                    <p>{t('orders.details.outstanding', { defaultValue: 'Outstanding' })}: {formatCurrency(getOrderBalanceAmount(order), order.currency, iqdPreference)}</p>
                 </div>
             </div>
 
@@ -410,6 +432,58 @@ export function OrderDetailsPrintTemplate({
                     </div>
                 </div>
             </div>
+
+            {installments.length > 0 ? (
+                <>
+                    <h3 className="font-semibold mb-2 text-sm">
+                        {t('orders.details.installmentSchedule', { defaultValue: 'Installment Schedule' })}
+                    </h3>
+                    <table className="w-full border-collapse text-xs mb-5">
+                        <thead>
+                            <tr className="bg-slate-100">
+                                <th className="border border-slate-300 p-2 text-start">
+                                    {t('orders.details.installmentNumber', { defaultValue: 'Installment' })}
+                                </th>
+                                <th className="border border-slate-300 p-2 text-start">
+                                    {t('orders.details.dueDate', { defaultValue: 'Due Date' })}
+                                </th>
+                                <th className="border border-slate-300 p-2 text-end">
+                                    {t('orders.details.plannedAmount', { defaultValue: 'Planned' })}
+                                </th>
+                                <th className="border border-slate-300 p-2 text-end">
+                                    {t('orders.details.paidAmount', { defaultValue: 'Paid' })}
+                                </th>
+                                <th className="border border-slate-300 p-2 text-end">
+                                    {t('orders.details.outstanding', { defaultValue: 'Outstanding' })}
+                                </th>
+                                <th className="border border-slate-300 p-2 text-start">
+                                    {t('common.status', { defaultValue: 'Status' })}
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {installments.map((installment) => (
+                                <tr key={installment.id}>
+                                    <td className="border border-slate-300 p-2 font-medium">#{installment.installmentNo}</td>
+                                    <td className="border border-slate-300 p-2">{formatDate(installment.dueDate)}</td>
+                                    <td className="border border-slate-300 p-2 text-end">
+                                        {formatCurrency(installment.plannedAmount, currency, iqdPreference)}
+                                    </td>
+                                    <td className="border border-slate-300 p-2 text-end">
+                                        {formatCurrency(installment.paidAmount, currency, iqdPreference)}
+                                    </td>
+                                    <td className="border border-slate-300 p-2 text-end font-semibold">
+                                        {formatCurrency(installment.balanceAmount, currency, iqdPreference)}
+                                    </td>
+                                    <td className="border border-slate-300 p-2">
+                                        {t(`orders.installmentStatus.${installment.status}`, { defaultValue: installment.status })}
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </>
+            ) : null}
 
             {noteValue ? (
                 <div className="mt-6 text-xs">

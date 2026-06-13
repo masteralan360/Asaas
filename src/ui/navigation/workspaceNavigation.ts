@@ -260,7 +260,7 @@ export function buildWorkspaceNavigation({
         },
       ]
       : []),
-    ...(hasFeature("loans") || hasFeature("installments") || hasFeature("real_estate")
+    ...(hasFeature("loans") || hasFeature("installments") || hasFeature("crm") || hasFeature("real_estate")
       ? [
         ...(canAccessPermission("loans.access")
           && hasFeature("loans")
@@ -272,7 +272,7 @@ export function buildWorkspaceNavigation({
             },
           ]
           : []),
-        ...((hasFeature("installments") || hasFeature("real_estate"))
+        ...((hasFeature("installments") || hasFeature("crm") || hasFeature("real_estate"))
           && canAccessPermission("installments.access")
           ? [
             {

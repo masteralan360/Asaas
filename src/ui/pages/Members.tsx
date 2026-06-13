@@ -108,7 +108,7 @@ const PERMISSION_MODULE_PLAN_MODULES: Partial<Record<WorkspacePermissionModule, 
 
 export function Members() {
     const { user, session } = useAuth()
-    const { hasCapability, isDemoMode, planCapabilities } = useWorkspace()
+    const { hasCapability, isDemoMode, isLocalMode, planCapabilities } = useWorkspace()
     const { t } = useTranslation()
     const [members, setMembers] = useState<Member[]>([])
     const [permissions, setPermissions] = useState<WorkspacePermission[]>([])
@@ -145,16 +145,30 @@ export function Members() {
 
         setPermissionsLoading(true)
         try {
-            const { data, error } = await runSupabaseAction('members.permissions.fetch', () =>
-                supabase
-                    .from('workspace_permissions')
-                    .select('id, workspace_id, user_uuid, key, module')
-                    .eq('workspace_id', user.workspaceId)
-                    .order('module', { ascending: true })
-            )
+            if (isLocalMode) {
+                const rows = await db.workspace_permissions
+                    .where('workspaceId')
+                    .equals(user.workspaceId)
+                    .toArray()
+                setPermissions(rows.map(r => ({
+                    id: r.id,
+                    workspace_id: r.workspaceId,
+                    user_uuid: r.userUuid,
+                    key: r.key,
+                    module: r.module,
+                })))
+            } else {
+                const { data, error } = await runSupabaseAction('members.permissions.fetch', () =>
+                    supabase
+                        .from('workspace_permissions')
+                        .select('id, workspace_id, user_uuid, key, module')
+                        .eq('workspace_id', user.workspaceId)
+                        .order('module', { ascending: true })
+                )
 
-            if (error) throw normalizeSupabaseActionError(error)
-            setPermissions((data || []) as WorkspacePermission[])
+                if (error) throw normalizeSupabaseActionError(error)
+                setPermissions((data || []) as WorkspacePermission[])
+            }
         } catch (err) {
             console.error('Error fetching member permissions:', err)
             setError(getErrorMessage(err))
@@ -252,32 +266,57 @@ export function Members() {
         setError(null)
 
         try {
-            if (shouldGrant) {
-                const payload = {
-                    workspace_id: user.workspaceId,
-                    user_uuid: member.id,
-                    key: permissionKey,
-                    module: getWorkspacePermissionModule(permissionKey)
-                }
-
-                const { error } = await runSupabaseAction('members.permissions.grant', () =>
-                    supabase
-                        .from('workspace_permissions')
-                        .upsert(payload, { onConflict: 'workspace_id,user_uuid,key' })
-                )
-
-                if (error) throw normalizeSupabaseActionError(error)
-            } else {
-                const { error } = await runSupabaseAction('members.permissions.revoke', () =>
-                    supabase
-                        .from('workspace_permissions')
+            if (isLocalMode) {
+                if (shouldGrant) {
+                    const now = new Date().toISOString()
+                    const existing = await db.workspace_permissions
+                        .where('[workspaceId+userUuid+key]')
+                        .equals([user.workspaceId, member.id, permissionKey])
+                        .first()
+                    if (!existing) {
+                        const { generateId } = await import('@/lib/utils')
+                        await db.workspace_permissions.put({
+                            id: generateId(),
+                            workspaceId: user.workspaceId,
+                            userUuid: member.id,
+                            key: permissionKey,
+                            module: getWorkspacePermissionModule(permissionKey),
+                        })
+                    }
+                } else {
+                    await db.workspace_permissions
+                        .where('[workspaceId+userUuid+key]')
+                        .equals([user.workspaceId, member.id, permissionKey])
                         .delete()
-                        .eq('workspace_id', user.workspaceId)
-                        .eq('user_uuid', member.id)
-                        .eq('key', permissionKey)
-                )
+                }
+            } else {
+                if (shouldGrant) {
+                    const payload = {
+                        workspace_id: user.workspaceId,
+                        user_uuid: member.id,
+                        key: permissionKey,
+                        module: getWorkspacePermissionModule(permissionKey)
+                    }
 
-                if (error) throw normalizeSupabaseActionError(error)
+                    const { error } = await runSupabaseAction('members.permissions.grant', () =>
+                        supabase
+                            .from('workspace_permissions')
+                            .upsert(payload, { onConflict: 'workspace_id,user_uuid,key' })
+                    )
+
+                    if (error) throw normalizeSupabaseActionError(error)
+                } else {
+                    const { error } = await runSupabaseAction('members.permissions.revoke', () =>
+                        supabase
+                            .from('workspace_permissions')
+                            .delete()
+                            .eq('workspace_id', user.workspaceId)
+                            .eq('user_uuid', member.id)
+                            .eq('key', permissionKey)
+                    )
+
+                    if (error) throw normalizeSupabaseActionError(error)
+                }
             }
 
             await fetchPermissions()

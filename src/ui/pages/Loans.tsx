@@ -75,6 +75,7 @@ import { LoanNoDisplay } from '@/ui/components/loans/LoanNoDisplay'
 import { useLoanPaymentModal } from '@/ui/components/loans/LoanPaymentModalProvider'
 import { SimpleLoanListView } from '@/ui/components/loans/SimpleLoanListView'
 import { RealEstateInstallmentsMirror } from '@/ui/components/real-estate/RealEstateInstallmentsMirror'
+import { OrderInstallmentsMirror } from '@/ui/components/orders/OrderInstallmentsMirror'
 import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
 
 type LoanFilter = 'all' | 'active' | 'overdue' | 'completed'
@@ -1402,6 +1403,7 @@ export function Installments() {
     const { hasPermission } = useWorkspacePermissions()
     const workspaceId = user?.workspaceId
     const canUseLoanInstallments = hasFeature('installments')
+    const canUseOrderInstallments = hasFeature('crm') && hasPermission('orders.access')
     const canUseRealEstateInstallments = hasFeature('real_estate') && hasPermission('realEstate.access')
 
     const openPaymentForLoan = (loan: Loan, installment?: LoanInstallment | null) => {
@@ -1424,7 +1426,7 @@ export function Installments() {
         )
     }
 
-    if (!canUseLoanInstallments && !canUseRealEstateInstallments) {
+    if (!canUseLoanInstallments && !canUseOrderInstallments && !canUseRealEstateInstallments) {
         return (
             <Card>
                 <CardContent className="py-10 text-center text-muted-foreground">
@@ -1434,19 +1436,33 @@ export function Installments() {
         )
     }
 
-    if (!canUseRealEstateInstallments) {
+    if (canUseLoanInstallments && !canUseOrderInstallments && !canUseRealEstateInstallments) {
         return <LoanListView workspaceId={workspaceId} />
     }
 
-    if (!canUseLoanInstallments) {
+    if (canUseOrderInstallments && !canUseLoanInstallments && !canUseRealEstateInstallments) {
+        return <OrderInstallmentsMirror workspaceId={workspaceId} />
+    }
+
+    if (canUseRealEstateInstallments && !canUseLoanInstallments && !canUseOrderInstallments) {
         return <RealEstateInstallmentsMirror workspaceId={workspaceId} />
     }
 
     return (
-        <Tabs defaultValue={canUseLoanInstallments ? 'loan-installments' : 'real-estate'} className="space-y-4">
+        <Tabs
+            defaultValue={canUseLoanInstallments
+                ? 'loan-installments'
+                : canUseOrderInstallments
+                    ? 'order-installments'
+                    : 'real-estate'}
+            className="space-y-4"
+        >
             <TabsList>
                 {canUseLoanInstallments ? (
                     <TabsTrigger value="loan-installments">{t('loans.title', { defaultValue: 'Loan Installments' })}</TabsTrigger>
+                ) : null}
+                {canUseOrderInstallments ? (
+                    <TabsTrigger value="order-installments">{t('orders.details.installmentSchedule', { defaultValue: 'Order Installments' })}</TabsTrigger>
                 ) : null}
                 {canUseRealEstateInstallments ? (
                     <TabsTrigger value="real-estate">{t('realEstate.title', { defaultValue: 'Real Estate' })}</TabsTrigger>
@@ -1455,6 +1471,11 @@ export function Installments() {
             {canUseLoanInstallments ? (
                 <TabsContent value="loan-installments">
                     <LoanListView workspaceId={workspaceId} />
+                </TabsContent>
+            ) : null}
+            {canUseOrderInstallments ? (
+                <TabsContent value="order-installments">
+                    <OrderInstallmentsMirror workspaceId={workspaceId} />
                 </TabsContent>
             ) : null}
             {canUseRealEstateInstallments ? (

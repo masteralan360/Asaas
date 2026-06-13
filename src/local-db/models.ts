@@ -357,6 +357,8 @@ export type PurchaseOrderStatus =
   | "received"
   | "completed"
   | "cancelled";
+export type OrderType = "sales" | "purchase";
+export type OrderPaymentStatus = "unpaid" | "partial" | "paid";
 export type OrderPaymentMethod = PaymentMethod | "credit" | "bank_transfer";
 export type WorkspaceVisibility = "private" | "public";
 export type MarketplaceOrderStatus =
@@ -428,8 +430,16 @@ export interface SalesOrder extends BaseEntity {
   expectedDeliveryDate?: string | null;
   actualDeliveryDate?: string | null;
   isPaid: boolean;
+  paymentStatus: OrderPaymentStatus;
+  paidAmount: number;
+  balanceAmount: number;
   paidAt?: string | null;
   paymentMethod?: OrderPaymentMethod;
+  isInstallmentBased: boolean;
+  installmentCount: number;
+  installmentFrequency?: InstallmentFrequency | null;
+  firstDueDate?: string | null;
+  nextDueDate?: string | null;
   reservedAt?: string | null;
   shippingAddress?: string;
   notes?: string;
@@ -457,10 +467,30 @@ export interface PurchaseOrder extends BaseEntity {
   expectedDeliveryDate?: string | null;
   actualDeliveryDate?: string | null;
   isPaid: boolean;
+  paymentStatus: OrderPaymentStatus;
+  paidAmount: number;
+  balanceAmount: number;
   paidAt?: string | null;
   paymentMethod?: OrderPaymentMethod;
+  isInstallmentBased: boolean;
+  installmentCount: number;
+  installmentFrequency?: InstallmentFrequency | null;
+  firstDueDate?: string | null;
+  nextDueDate?: string | null;
   notes?: string;
   isLocked?: boolean;
+}
+
+export interface OrderInstallment extends BaseEntity {
+  orderType: OrderType;
+  orderId: string;
+  installmentNo: number;
+  dueDate: string;
+  plannedAmount: number;
+  paidAmount: number;
+  balanceAmount: number;
+  status: InstallmentStatus;
+  paidAt?: string | null;
 }
 
 export interface MarketplaceOrderItem {
@@ -1195,6 +1225,7 @@ export interface SyncQueueItem {
     | "business_partner_merge_candidates"
     | "sales_orders"
     | "purchase_orders"
+    | "order_installments"
     | "travel_agency_sales"
     | "real_estate_transactions"
     | "real_estate_installments"
@@ -1316,6 +1347,7 @@ export interface OfflineMutation {
     | "business_partner_merge_candidates"
     | "sales_orders"
     | "purchase_orders"
+    | "order_installments"
     | "travel_agency_sales"
     | "real_estate_transactions"
     | "real_estate_installments"
@@ -1341,6 +1373,14 @@ export interface OfflineMutation {
 export interface AppSetting {
   key: string;
   value: string;
+}
+
+export interface WorkspacePermission {
+  id: string;
+  workspaceId: string;
+  userUuid: string;
+  key: string;
+  module: string;
 }
 
 // Type guards

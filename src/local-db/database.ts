@@ -39,6 +39,7 @@ import type {
   CategoryDiscount,
   SalesOrder,
   PurchaseOrder,
+  OrderInstallment,
   TravelAgencySale,
   RealEstateTransaction,
   RealEstateInstallment,
@@ -55,6 +56,7 @@ import type {
   ClinicalPreset,
   Profile,
   LocalAccountCredential,
+  WorkspacePermission,
 } from "./models";
 import { isLocalWorkspaceMode } from "@/workspace/workspaceMode";
 import {
@@ -331,6 +333,7 @@ export class AtlasDatabase extends Dexie {
   payment_transactions!: EntityTable<PaymentTransaction, "id">;
   sales_orders!: EntityTable<SalesOrder, "id">;
   purchase_orders!: EntityTable<PurchaseOrder, "id">;
+  order_installments!: EntityTable<OrderInstallment, "id">;
   travel_agency_sales!: EntityTable<TravelAgencySale, "id">;
   real_estate_transactions!: EntityTable<RealEstateTransaction, "id">;
   real_estate_installments!: EntityTable<RealEstateInstallment, "id">;
@@ -347,6 +350,7 @@ export class AtlasDatabase extends Dexie {
   clinical_presets!: EntityTable<ClinicalPreset, "id">;
   profiles!: EntityTable<Profile, "id">;
   local_account_credentials!: EntityTable<LocalAccountCredential, "id">;
+  workspace_permissions!: EntityTable<WorkspacePermission, "id">;
 
   constructor() {
     super("AtlasDatabase");
@@ -2169,6 +2173,48 @@ export class AtlasDatabase extends Dexie {
         "id, workspaceId, userId, email, [workspaceId+userId]",
     });
 
+    this.version(70)
+      .stores({
+        sales_orders:
+          "id, orderNumber, businessPartnerId, customerId, workspaceId, status, paymentStatus, currency, nextDueDate, createdAt, updatedAt, isDeleted, syncStatus",
+        purchase_orders:
+          "id, orderNumber, businessPartnerId, supplierId, workspaceId, status, paymentStatus, currency, nextDueDate, createdAt, updatedAt, isDeleted, syncStatus",
+        order_installments:
+          "id, orderId, orderType, workspaceId, dueDate, status, syncStatus, updatedAt, isDeleted, [orderId+installmentNo], [workspaceId+dueDate], [workspaceId+status]",
+      })
+      .upgrade(async (tx) => {
+        const normalizeOrder = (order: Record<string, unknown>) => {
+          const total = Math.max(0, Number(order.total || 0));
+          const isPaid = order.isPaid === true;
+          const paidAmount = isPaid ? total : 0;
+          return {
+            ...order,
+            paymentStatus: isPaid ? "paid" : "unpaid",
+            paidAmount,
+            balanceAmount: Math.max(total - paidAmount, 0),
+            isInstallmentBased: false,
+            installmentCount: 0,
+            installmentFrequency: null,
+            firstDueDate: null,
+            nextDueDate: null,
+          };
+        };
+
+        const salesOrders = await tx.table("sales_orders").toArray();
+        const purchaseOrders = await tx.table("purchase_orders").toArray();
+        if (salesOrders.length > 0) {
+          await tx.table("sales_orders").bulkPut(salesOrders.map(normalizeOrder));
+        }
+        if (purchaseOrders.length > 0) {
+          await tx.table("purchase_orders").bulkPut(purchaseOrders.map(normalizeOrder));
+        }
+      });
+
+    this.version(71).stores({
+      workspace_permissions:
+        "id, workspaceId, userUuid, key, module, [workspaceId+userUuid], [workspaceId+userUuid+key]",
+    });
+
     this.registerLocalModeSyncHooks();
   }
 
@@ -2204,6 +2250,7 @@ export class AtlasDatabase extends Dexie {
       "payment_transactions",
       "sales_orders",
       "purchase_orders",
+      "order_installments",
       "travel_agency_sales",
       "real_estate_transactions",
       "real_estate_installments",
@@ -2386,6 +2433,7 @@ export async function clearDatabase(): Promise<void> {
       db.clinical_attachments,
       db.clinical_presets,
       db.payment_transactions,
+      db.order_installments,
       db.syncQueue,
     ],
     async () => {
@@ -2415,6 +2463,7 @@ export async function clearDatabase(): Promise<void> {
       await db.clinical_attachments.clear();
       await db.clinical_presets.clear();
       await db.payment_transactions.clear();
+      await db.order_installments.clear();
       await db.syncQueue.clear();
     },
   );

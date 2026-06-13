@@ -18,6 +18,8 @@ import {
     createSalesOrder,
     deletePurchaseOrder,
     deleteSalesOrder,
+    getOrderBalanceAmount,
+    getOrderPaymentStatus,
     getPrimaryStorageFromList,
     findLatestUnreversedPaymentTransaction,
     lockPurchaseOrder,
@@ -161,6 +163,13 @@ function formatStatusLabel(t: (key: string) => string, status: string) {
     return translated && translated !== `orders.status.${status}` ? translated : status
 }
 
+function formatPaymentStatus(t: (key: string, options?: Record<string, unknown>) => string, order: SalesOrder | PurchaseOrder) {
+    const status = getOrderPaymentStatus(order)
+    if (status === 'paid') return t('orders.status.paid', { defaultValue: 'Paid' })
+    if (status === 'partial') return t('orders.status.partial', { defaultValue: 'Partially Paid' })
+    return t('orders.status.unpaid', { defaultValue: 'Unpaid' })
+}
+
 function getOrderSummary(items: Array<{ productName: string }>) {
     const firstItems = items.slice(0, 2).map((item) => item.productName)
     if (items.length <= 2) return firstItems.join(', ')
@@ -181,7 +190,7 @@ function buildSalesOrderPaymentObligation(order: SalesOrder): PaymentObligation 
         sourceRecordId: order.id,
         sourceSubrecordId: null,
         direction: 'incoming',
-        amount: order.total,
+        amount: getOrderBalanceAmount(order),
         currency: order.currency,
         dueDate: (order.expectedDeliveryDate || order.actualDeliveryDate || order.updatedAt).slice(0, 10),
         counterpartyName: order.customerName,
@@ -206,7 +215,7 @@ function buildPurchaseOrderPaymentObligation(order: PurchaseOrder): PaymentOblig
         sourceRecordId: order.id,
         sourceSubrecordId: null,
         direction: 'outgoing',
-        amount: order.total,
+        amount: getOrderBalanceAmount(order),
         currency: order.currency,
         dueDate: (order.expectedDeliveryDate || order.actualDeliveryDate || order.updatedAt).slice(0, 10),
         counterpartyName: order.supplierName,
@@ -610,7 +619,7 @@ function OrdersListView({ workspaceId }: { workspaceId: string }) {
         setDialogOpen(true)
     }
 
-    async function handleOrderSettlement(input: { paymentMethod: WorkspacePaymentMethod; paidAt: string; note?: string }) {
+    async function handleOrderSettlement(input: { paymentMethod: WorkspacePaymentMethod; paidAt: string; amount?: number; note?: string }) {
         if (!workspaceId || !settlementTarget) {
             return
         }
@@ -620,6 +629,7 @@ function OrdersListView({ workspaceId }: { workspaceId: string }) {
             await recordObligationSettlement(workspaceId, settlementTarget, {
                 paymentMethod: input.paymentMethod,
                 paidAt: input.paidAt,
+                amount: input.amount,
                 note: input.note,
                 createdBy: user?.id || null
             })
@@ -817,8 +827,16 @@ function OrdersListView({ workspaceId }: { workspaceId: string }) {
                 expectedDeliveryDate: salesForm.expectedDeliveryDate || null,
                 actualDeliveryDate: null,
                 isPaid: salesForm.isPaid,
+                paymentStatus: salesForm.isPaid ? 'paid' as const : editingSalesOrder?.paymentStatus || 'unpaid' as const,
+                paidAmount: salesForm.isPaid ? total : editingSalesOrder?.paidAmount || 0,
+                balanceAmount: salesForm.isPaid ? 0 : editingSalesOrder?.balanceAmount ?? total,
                 paidAt: salesForm.isPaid ? new Date().toISOString() : null,
                 paymentMethod: salesForm.isPaid ? (salesForm.paymentMethod as SalesOrder['paymentMethod']) : 'credit',
+                isInstallmentBased: editingSalesOrder?.isInstallmentBased || false,
+                installmentCount: editingSalesOrder?.installmentCount || 0,
+                installmentFrequency: editingSalesOrder?.installmentFrequency || null,
+                firstDueDate: editingSalesOrder?.firstDueDate || null,
+                nextDueDate: editingSalesOrder?.nextDueDate || null,
                 reservedAt: null,
                 shippingAddress: salesForm.shippingAddress || undefined,
                 notes: salesForm.notes || undefined
@@ -880,8 +898,16 @@ function OrdersListView({ workspaceId }: { workspaceId: string }) {
                 expectedDeliveryDate: purchaseForm.expectedDeliveryDate || null,
                 actualDeliveryDate: null,
                 isPaid: purchaseForm.isPaid,
+                paymentStatus: purchaseForm.isPaid ? 'paid' as const : editingPurchaseOrder?.paymentStatus || 'unpaid' as const,
+                paidAmount: purchaseForm.isPaid ? total : editingPurchaseOrder?.paidAmount || 0,
+                balanceAmount: purchaseForm.isPaid ? 0 : editingPurchaseOrder?.balanceAmount ?? total,
                 paidAt: purchaseForm.isPaid ? new Date().toISOString() : null,
                 paymentMethod: purchaseForm.isPaid ? (purchaseForm.paymentMethod as PurchaseOrder['paymentMethod']) : 'credit',
+                isInstallmentBased: editingPurchaseOrder?.isInstallmentBased || false,
+                installmentCount: editingPurchaseOrder?.installmentCount || 0,
+                installmentFrequency: editingPurchaseOrder?.installmentFrequency || null,
+                firstDueDate: editingPurchaseOrder?.firstDueDate || null,
+                nextDueDate: editingPurchaseOrder?.nextDueDate || null,
                 notes: purchaseForm.notes || undefined
             }
 
@@ -978,8 +1004,15 @@ function OrdersListView({ workspaceId }: { workspaceId: string }) {
                                     <TableCell>{formatDate(row.updatedAt)}</TableCell>
                                     <TableCell>
                                         <div className="flex items-center gap-1.5">
-                                            <span className={row.isPaid ? 'font-semibold text-emerald-600' : 'text-amber-600'}>
-                                                {row.isPaid ? (t('budget.status.paid') || 'Paid') : (t('budget.status.pending') || 'Pending')}
+                                            <span className={cn(
+                                                'font-semibold',
+                                                getOrderPaymentStatus(row) === 'paid'
+                                                    ? 'text-emerald-600'
+                                                    : getOrderPaymentStatus(row) === 'partial'
+                                                        ? 'text-sky-600'
+                                                        : 'text-amber-600'
+                                            )}>
+                                                {formatPaymentStatus(t, row)}
                                             </span>
                                             {row.isLocked && <Lock className="h-3.5 w-3.5 text-muted-foreground" />}
                                         </div>
@@ -1107,9 +1140,13 @@ function OrdersListView({ workspaceId }: { workspaceId: string }) {
                                     <div className="text-[10px] text-muted-foreground font-bold uppercase tracking-tight">{t('pos.paymentMethod') || 'Payment'}</div>
                                     <div className={cn(
                                         "text-[11px] font-bold flex items-center justify-center gap-1",
-                                        row.isPaid ? "text-emerald-600" : "text-amber-600"
+                                        getOrderPaymentStatus(row) === 'paid'
+                                            ? "text-emerald-600"
+                                            : getOrderPaymentStatus(row) === 'partial'
+                                                ? "text-sky-600"
+                                                : "text-amber-600"
                                     )}>
-                                        {row.isPaid ? (t('budget.status.paid') || 'Paid') : (t('budget.status.pending') || 'Pending')}
+                                        {formatPaymentStatus(t, row)}
                                         {row.isLocked && <Lock className="h-2.5 w-2.5 text-muted-foreground" />}
                                     </div>
                                 </div>

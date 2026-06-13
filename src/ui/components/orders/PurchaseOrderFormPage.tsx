@@ -5,7 +5,14 @@ import { ArrowLeft, CalendarDays, CreditCard, PackagePlus, Plus, ShoppingCart, T
 import { useAuth } from '@/auth'
 import { useExchangeRate } from '@/context/ExchangeRateContext'
 import { buildOrderExchangeRatesSnapshot, convertCurrencyAmountWithLiveRates, getPrimaryExchangeDetails } from '@/lib/orderCurrency'
-import { formatCurrency, formatLocalDateTimeValue, generateId, parseLocalDateTimeValue } from '@/lib/utils'
+import {
+    formatCurrency,
+    formatLocalDateTimeValue,
+    formatLocalDateValue,
+    generateId,
+    parseLocalDateTimeValue,
+    parseLocalDateValue
+} from '@/lib/utils'
 import {
     createPurchaseOrder,
     getPrimaryStorageFromList,
@@ -17,6 +24,7 @@ import {
     useStorages,
     type BusinessPartner,
     type CurrencyCode,
+    type InstallmentFrequency,
     type PurchaseOrder,
     type PurchaseOrderItem,
     type PurchaseOrderStatus
@@ -116,6 +124,13 @@ export function PurchaseOrderFormPage({
     const [notes, setNotes] = useState(editingOrder?.notes || '')
     const [isPaid, setIsPaid] = useState(editingOrder?.isPaid || false)
     const [paymentMethod, setPaymentMethod] = useState<string>(editingOrder?.paymentMethod || 'cash')
+    const [isInstallmentBased, setIsInstallmentBased] = useState(editingOrder?.isInstallmentBased || false)
+    const [installmentCount, setInstallmentCount] = useState(String(editingOrder?.installmentCount || 3))
+    const [installmentFrequency, setInstallmentFrequency] = useState<InstallmentFrequency>(editingOrder?.installmentFrequency || 'monthly')
+    const [firstDueDate, setFirstDueDate] = useState(editingOrder?.firstDueDate?.slice(0, 10) || '')
+    const [initialPaymentAmount, setInitialPaymentAmount] = useState(
+        editingOrder?.paidAmount ? String(editingOrder.paidAmount) : ''
+    )
     const [items, setItems] = useState<FormItem[]>(() => {
         if (editingOrder) {
             return editingOrder.items.map((item) => ({
@@ -177,9 +192,17 @@ export function PurchaseOrderFormPage({
 
     const selectedStorageName = getStorageDisplayName(destinationStorageId)
 
+    const initialPayment = roundFormAmount(Math.max(0, Number(initialPaymentAmount || 0)), currency)
+    const hasInitialPayment = isInstallmentBased && initialPayment > 0
     const canSubmit = Boolean(selectedSupplier) &&
         items.some((item) => item.productId && Number(item.quantity) > 0) &&
-        (!isPaid || paymentMethod !== 'credit')
+        (!isPaid || paymentMethod !== 'credit') &&
+        (!hasInitialPayment || paymentMethod !== 'credit') &&
+        (!isInstallmentBased || (
+            Number(installmentCount) >= 1
+            && Boolean(firstDueDate)
+            && initialPayment < preview
+        ))
 
     const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault()
@@ -198,6 +221,22 @@ export function PurchaseOrderFormPage({
             toast({
                 title: t('common.error') || 'Error',
                 description: t('orders.form.errors.paymentMethodRequired', { defaultValue: 'Select an actual payment method for paid orders.' }),
+                variant: 'destructive'
+            })
+            return
+        }
+        if (isInstallmentBased && initialPayment >= preview) {
+            toast({
+                title: t('common.error') || 'Error',
+                description: t('orders.form.errors.installmentBalanceRequired', { defaultValue: 'The initial payment must be less than the order total.' }),
+                variant: 'destructive'
+            })
+            return
+        }
+        if (hasInitialPayment && paymentMethod === 'credit') {
+            toast({
+                title: t('common.error') || 'Error',
+                description: t('orders.form.errors.paymentMethodRequired', { defaultValue: 'Select an actual payment method for the initial payment.' }),
                 variant: 'destructive'
             })
             return
@@ -257,6 +296,8 @@ export function PurchaseOrderFormPage({
             const subtotal = roundFormAmount(orderItems.reduce((sum, item) => sum + item.lineTotal, 0), currency)
             const discountNum = roundFormAmount(Number(discount || 0), currency)
             const total = roundFormAmount(subtotal - discountNum, currency)
+            const paidAmount = isPaid ? total : isInstallmentBased ? initialPayment : 0
+            const balanceAmount = roundFormAmount(Math.max(total - paidAmount, 0), currency)
 
             const payload = {
                 businessPartnerId: supplier.id,
@@ -275,9 +316,17 @@ export function PurchaseOrderFormPage({
                 status: 'draft' as PurchaseOrderStatus,
                 expectedDeliveryDate: expectedDeliveryDate || null,
                 actualDeliveryDate: null,
-                isPaid,
-                paidAt: isPaid ? new Date().toISOString() : null,
-                paymentMethod: isPaid ? (paymentMethod as PurchaseOrder['paymentMethod']) : 'credit',
+                isPaid: balanceAmount <= 0,
+                paymentStatus: balanceAmount <= 0 ? 'paid' as const : paidAmount > 0 ? 'partial' as const : 'unpaid' as const,
+                paidAmount,
+                balanceAmount,
+                paidAt: paidAmount > 0 ? new Date().toISOString() : null,
+                paymentMethod: paidAmount > 0 ? (paymentMethod as PurchaseOrder['paymentMethod']) : 'credit' as const,
+                isInstallmentBased,
+                installmentCount: isInstallmentBased ? Math.max(1, Math.trunc(Number(installmentCount) || 1)) : 0,
+                installmentFrequency: isInstallmentBased ? installmentFrequency : null,
+                firstDueDate: isInstallmentBased ? firstDueDate : null,
+                nextDueDate: isInstallmentBased ? firstDueDate : null,
                 notes: notes || undefined
             }
 
@@ -609,6 +658,7 @@ export function PurchaseOrderFormPage({
                                                     <SelectItem value="qicard">{t('directTransactions.paymentMethod.qicard', { defaultValue: 'QiCard' })}</SelectItem>
                                                     <SelectItem value="zaincash">{t('directTransactions.paymentMethod.zaincash', { defaultValue: 'ZainCash' })}</SelectItem>
                                                     <SelectItem value="fastpay">{t('directTransactions.paymentMethod.fastpay', { defaultValue: 'FastPay' })}</SelectItem>
+                                                    <SelectItem value="bank_transfer">{t('directTransactions.paymentMethod.bankTransfer', { defaultValue: 'Bank Transfer' })}</SelectItem>
                                                     <SelectItem value="credit">{t('orders.form.credit', { defaultValue: 'Credit' })}</SelectItem>
                                                 </SelectContent>
                                             </Select>
@@ -618,8 +668,81 @@ export function PurchaseOrderFormPage({
                                                 <div className="text-sm font-medium">{t('orders.form.paidOnSave', { defaultValue: 'Paid on save' })}</div>
                                                 <div className="text-xs text-muted-foreground">{t('orders.form.paidOnSaveDescription', { defaultValue: 'Record the order as already settled.' })}</div>
                                             </div>
-                                            <Switch checked={isPaid} onCheckedChange={setIsPaid} />
+                                            <Switch
+                                                checked={isPaid}
+                                                onCheckedChange={(checked) => {
+                                                    setIsPaid(checked)
+                                                    if (checked) setIsInstallmentBased(false)
+                                                }}
+                                            />
                                         </div>
+                                        <div className="flex items-center justify-between rounded-2xl border bg-muted/20 px-4 py-3">
+                                            <div>
+                                                <div className="text-sm font-medium">{t('orders.form.installments', { defaultValue: 'Pay by installments' })}</div>
+                                                <div className="text-xs text-muted-foreground">{t('orders.form.installmentsDescription', { defaultValue: 'Create a due-date schedule for the remaining balance.' })}</div>
+                                            </div>
+                                            <Switch
+                                                checked={isInstallmentBased}
+                                                onCheckedChange={(checked) => {
+                                                    setIsInstallmentBased(checked)
+                                                    if (checked) setIsPaid(false)
+                                                }}
+                                            />
+                                        </div>
+                                        {isInstallmentBased ? (
+                                            <div className="grid gap-4 rounded-2xl border p-4 sm:grid-cols-2">
+                                                <div className="space-y-2">
+                                                    <Label htmlFor="purchase-installment-count">{t('orders.form.installmentCount', { defaultValue: 'Number of installments' })}</Label>
+                                                    <Input
+                                                        id="purchase-installment-count"
+                                                        type="number"
+                                                        min="1"
+                                                        max="120"
+                                                        value={installmentCount}
+                                                        onChange={(event) => setInstallmentCount(event.target.value)}
+                                                    />
+                                                </div>
+                                                <div className="space-y-2">
+                                                    <Label>{t('orders.form.installmentFrequency', { defaultValue: 'Frequency' })}</Label>
+                                                    <Select value={installmentFrequency} onValueChange={(value) => setInstallmentFrequency(value as InstallmentFrequency)}>
+                                                        <SelectTrigger><SelectValue /></SelectTrigger>
+                                                        <SelectContent>
+                                                            <SelectItem value="weekly">{t('orders.form.weekly', { defaultValue: 'Weekly' })}</SelectItem>
+                                                            <SelectItem value="biweekly">{t('orders.form.biweekly', { defaultValue: 'Every two weeks' })}</SelectItem>
+                                                            <SelectItem value="monthly">{t('orders.form.monthly', { defaultValue: 'Monthly' })}</SelectItem>
+                                                        </SelectContent>
+                                                    </Select>
+                                                </div>
+                                                <div className="space-y-2">
+                                                    <Label htmlFor="purchase-first-due">{t('orders.form.firstDueDate', { defaultValue: 'First due date' })}</Label>
+                                                    <DateTimePicker
+                                                        id="purchase-first-due"
+                                                        mode="date"
+                                                        date={parseLocalDateValue(firstDueDate)}
+                                                        setDate={(value) => setFirstDueDate(formatLocalDateValue(value))}
+                                                        placeholder={t('orders.form.firstDueDate', { defaultValue: 'First due date' })}
+                                                    />
+                                                </div>
+                                                <div className="space-y-2">
+                                                    <Label htmlFor="purchase-initial-payment">{t('orders.form.initialPayment', { defaultValue: 'Initial payment' })}</Label>
+                                                    <Input
+                                                        id="purchase-initial-payment"
+                                                        type="number"
+                                                        min="0"
+                                                        max={preview}
+                                                        step={currency === 'iqd' ? '1' : '0.01'}
+                                                        value={initialPaymentAmount}
+                                                        onChange={(event) => setInitialPaymentAmount(event.target.value)}
+                                                    />
+                                                </div>
+                                                <div className="flex items-center justify-between text-sm sm:col-span-2">
+                                                    <span className="text-muted-foreground">{t('orders.form.installmentBalance', { defaultValue: 'Balance to schedule' })}</span>
+                                                    <span className="font-semibold">
+                                                        {formatCurrency(Math.max(preview - initialPayment, 0), currency, features.iqd_display_preference)}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        ) : null}
                                     </CardContent>
                                 </Card>
 

@@ -1394,7 +1394,7 @@ function App() {
                       <Route path="/installments">
                         <ProtectedRoute
                           allowedRoles={["admin", "staff", "viewer"]}
-                          requiredAnyFeature={["installments", "real_estate"]}
+                          requiredAnyFeature={["installments", "crm", "real_estate"]}
                           requiredPermission="installments.access"
                         >
                           <Layout>

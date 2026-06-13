@@ -24,6 +24,7 @@ import {
   readCachedPermissions,
   writeCachedPermissions,
 } from "./workspacePermissionCache";
+import { db } from "@/local-db";
 
 interface WorkspacePermissionsContextType {
   permissionKeys: WorkspacePermissionKey[];
@@ -67,10 +68,21 @@ export function WorkspacePermissionsProvider({
       return;
     }
 
-    const cached = readCachedPermissions(workspaceId, userId);
-    setPermissionKeys(cached);
-
     if (isLocalMode || !isSupabaseConfigured) {
+      if (isLocalMode) {
+        const rows = await db.workspace_permissions
+          .where("userUuid")
+          .equals(userId)
+          .toArray();
+        const keys = rows
+          .map((r) => r.key)
+          .filter(isSupportedWorkspacePermissionKey);
+        setPermissionKeys(keys);
+        writeCachedPermissions(workspaceId, userId, keys);
+      } else {
+        const cached = readCachedPermissions(workspaceId, userId);
+        setPermissionKeys(cached);
+      }
       setIsLoading(false);
       return;
     }

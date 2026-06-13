@@ -11,6 +11,9 @@ import {
     deletePurchaseOrder,
     deleteSalesOrder,
     findLatestUnreversedPaymentTransaction,
+    getOrderBalanceAmount,
+    getOrderPaidAmount,
+    getOrderPaymentStatus,
     lockPurchaseOrder,
     lockSalesOrder,
     recordObligationSettlement,
@@ -18,9 +21,11 @@ import {
     updatePurchaseOrderStatus,
     updateSalesOrderStatus,
     usePurchaseOrder,
+    useOrderInstallments,
     useSalesOrder,
     useStorages,
     type PaymentObligation,
+    type OrderInstallment,
     type PurchaseOrder,
     type PurchaseOrderItem,
     type PurchaseOrderStatus,
@@ -86,53 +91,78 @@ function readViewMode() {
     return (localStorage.getItem('order_details_view_mode') as 'table' | 'grid') || 'table'
 }
 
-function buildSalesOrderPaymentObligation(order: SalesOrder): PaymentObligation {
+function buildSalesOrderPaymentObligation(order: SalesOrder, installment?: OrderInstallment): PaymentObligation {
     return {
-        id: `sales-order:${order.id}`,
+        id: installment ? `order-installment:${installment.id}` : `sales-order:${order.id}`,
         workspaceId: order.workspaceId,
         sourceModule: 'orders',
         sourceType: 'sales_order',
         sourceRecordId: order.id,
-        sourceSubrecordId: null,
+        sourceSubrecordId: installment?.id || null,
         direction: 'incoming',
-        amount: order.total,
+        amount: installment?.balanceAmount || getOrderBalanceAmount(order),
         currency: order.currency,
-        dueDate: (order.expectedDeliveryDate || order.actualDeliveryDate || order.updatedAt).slice(0, 10),
+        dueDate: installment?.dueDate || (order.expectedDeliveryDate || order.actualDeliveryDate || order.updatedAt).slice(0, 10),
         counterpartyName: order.customerName,
         referenceLabel: order.orderNumber,
         title: order.customerName,
-        subtitle: order.status,
+        subtitle: installment ? `Installment ${installment.installmentNo}` : order.status,
         status: 'open',
         routePath: `/orders/${order.id}`,
         metadata: {
             orderStatus: order.status,
-            sourceChannel: order.sourceChannel || 'manual'
+            sourceChannel: order.sourceChannel || 'manual',
+            installmentId: installment?.id || null,
+            installmentNo: installment?.installmentNo || null
         }
     }
 }
 
-function buildPurchaseOrderPaymentObligation(order: PurchaseOrder): PaymentObligation {
+function buildPurchaseOrderPaymentObligation(order: PurchaseOrder, installment?: OrderInstallment): PaymentObligation {
     return {
-        id: `purchase-order:${order.id}`,
+        id: installment ? `order-installment:${installment.id}` : `purchase-order:${order.id}`,
         workspaceId: order.workspaceId,
         sourceModule: 'orders',
         sourceType: 'purchase_order',
         sourceRecordId: order.id,
-        sourceSubrecordId: null,
+        sourceSubrecordId: installment?.id || null,
         direction: 'outgoing',
-        amount: order.total,
+        amount: installment?.balanceAmount || getOrderBalanceAmount(order),
         currency: order.currency,
-        dueDate: (order.expectedDeliveryDate || order.actualDeliveryDate || order.updatedAt).slice(0, 10),
+        dueDate: installment?.dueDate || (order.expectedDeliveryDate || order.actualDeliveryDate || order.updatedAt).slice(0, 10),
         counterpartyName: order.supplierName,
         referenceLabel: order.orderNumber,
         title: order.supplierName,
-        subtitle: order.status,
+        subtitle: installment ? `Installment ${installment.installmentNo}` : order.status,
         status: 'open',
         routePath: `/orders/${order.id}`,
         metadata: {
-            orderStatus: order.status
+            orderStatus: order.status,
+            installmentId: installment?.id || null,
+            installmentNo: installment?.installmentNo || null
         }
     }
+}
+
+function InstallmentAmount({
+    label,
+    value,
+    valueClassName
+}: {
+    label: string
+    value: string
+    valueClassName?: string
+}) {
+    return (
+        <div className="min-w-0 rounded-xl bg-muted/30 px-2 py-2 text-center">
+            <div className="truncate text-[10px] font-bold uppercase tracking-wide text-muted-foreground" title={label}>
+                {label}
+            </div>
+            <div className={cn('mt-1 whitespace-nowrap text-xs font-semibold sm:text-sm', valueClassName)}>
+                {value}
+            </div>
+        </div>
+    )
 }
 
 export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string; orderId: string }) {
@@ -144,6 +174,7 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
     const storages = useStorages(workspaceId)
     const salesOrder = useSalesOrder(orderId)
     const purchaseOrder = usePurchaseOrder(orderId)
+    const installments = useOrderInstallments(orderId, workspaceId)
     const [viewMode, setViewMode] = useState<'table' | 'grid'>(readViewMode)
     const [deleteOpen, setDeleteOpen] = useState(false)
     const [isDeleting, setIsDeleting] = useState(false)
@@ -211,6 +242,7 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                         workspaceName={workspaceName}
                         printLang={printLang}
                         order={updatedOrder}
+                        installments={installments}
                         kind={kind}
                         iqdPreference={features.iqd_display_preference}
                         logoUrl={features.logo_url}
@@ -228,7 +260,7 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                 })
             },
         }
-    }, [resolved, features, workspaceName, t, i18n, workspaceId])
+    }, [resolved, features, installments, workspaceName, t, i18n, workspaceId])
 
     if (!resolved) {
         return (
@@ -254,7 +286,10 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
     const mainStorageId = isSales ? (order as SalesOrder).sourceStorageId : (order as PurchaseOrder).destinationStorageId
     const totalUnits = order.items.reduce((sum, item) => sum + item.quantity, 0)
     const progress = workflowProgress(resolved.kind, order.status)
-    const outstanding = order.isPaid ? 0 : order.total
+    const paidAmount = getOrderPaidAmount(order)
+    const outstanding = getOrderBalanceAmount(order)
+    const paymentStatus = getOrderPaymentStatus(order)
+    const nextInstallment = installments.find((installment) => installment.balanceAmount > 0)
     const profit = isSales
         ? order.total - (order as SalesOrder).items.reduce((sum, item) => sum + (item.convertedCostPrice * item.quantity), 0)
         : null
@@ -318,7 +353,7 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
         }
     }
 
-    const handleOrderSettlement = async (input: { paymentMethod: WorkspacePaymentMethod; paidAt: string; note?: string }) => {
+    const handleOrderSettlement = async (input: { paymentMethod: WorkspacePaymentMethod; paidAt: string; amount?: number; note?: string }) => {
         if (!settlementTarget) {
             return
         }
@@ -328,6 +363,7 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
             await recordObligationSettlement(workspaceId, settlementTarget, {
                 paymentMethod: input.paymentMethod,
                 paidAt: input.paidAt,
+                amount: input.amount,
                 note: input.note,
                 createdBy: user?.id || null
             })
@@ -396,20 +432,22 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                             {action.label}
                         </Button>
                     ))}
-                    {canManage && !order.isLocked && (
+                    {canManage && outstanding > 0 && !order.isLocked && (
                         <Button
                             variant="outline"
-                            onClick={() => order.isPaid
-                                ? handleOrderUnpay()
-                                : setSettlementTarget(
-                                    isSales
-                                        ? buildSalesOrderPaymentObligation(order as SalesOrder)
-                                        : buildPurchaseOrderPaymentObligation(order as PurchaseOrder)
-                                )
-                            }
+                            onClick={() => setSettlementTarget(
+                                isSales
+                                    ? buildSalesOrderPaymentObligation(order as SalesOrder, nextInstallment)
+                                    : buildPurchaseOrderPaymentObligation(order as PurchaseOrder, nextInstallment)
+                            )}
                         >
                             <CreditCard className="mr-2 h-4 w-4" />
-                            {order.isPaid ? (t('orders.actions.unpay') || 'Mark Unpaid') : (t('orders.actions.pay') || 'Mark Paid')}
+                            {t('orders.actions.recordPayment', { defaultValue: 'Record Payment' })}
+                        </Button>
+                    )}
+                    {canManage && paidAmount > 0 && !order.isLocked && (
+                        <Button variant="outline" onClick={handleOrderUnpay}>
+                            {t('orders.actions.reverseLastPayment', { defaultValue: 'Reverse Last Payment' })}
                         </Button>
                     )}
                     {canManage && order.isPaid && !order.isLocked && (
@@ -466,6 +504,78 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                             )}
                         </CardContent>
                     </Card>
+
+                    {installments.length > 0 ? (
+                        <Card>
+                            <CardHeader>
+                                <CardTitle>{t('orders.details.installmentSchedule', { defaultValue: 'Installment Schedule' })}</CardTitle>
+                            </CardHeader>
+                            <CardContent className="px-3 sm:px-6">
+                                <div className="divide-y overflow-hidden rounded-2xl border">
+                                    {installments.map((installment) => {
+                                        const canPayInstallment = canManage && installment.balanceAmount > 0 && !order.isLocked
+                                        return (
+                                            <div key={installment.id} className="space-y-3 p-3">
+                                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                                    <div className="flex min-w-0 items-center gap-3">
+                                                        <span className="font-bold">#{installment.installmentNo}</span>
+                                                        <span className="text-sm text-muted-foreground">
+                                                            {formatDate(installment.dueDate)}
+                                                        </span>
+                                                    </div>
+                                                    <div className="flex items-center gap-2">
+                                                        <span className={cn(
+                                                            'inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide',
+                                                            installment.status === 'paid'
+                                                                ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+                                                                : installment.status === 'overdue'
+                                                                    ? 'bg-rose-500/10 text-rose-700 dark:text-rose-300'
+                                                                    : installment.status === 'partial'
+                                                                        ? 'bg-sky-500/10 text-sky-700 dark:text-sky-300'
+                                                                        : 'bg-amber-500/10 text-amber-700 dark:text-amber-300'
+                                                        )}>
+                                                            {t(`orders.installmentStatus.${installment.status}`, { defaultValue: installment.status })}
+                                                        </span>
+                                                        {canPayInstallment ? (
+                                                            <Button
+                                                                size="sm"
+                                                                variant="outline"
+                                                                className="h-8 px-3"
+                                                                onClick={() => setSettlementTarget(
+                                                                    isSales
+                                                                        ? buildSalesOrderPaymentObligation(order as SalesOrder, installment)
+                                                                        : buildPurchaseOrderPaymentObligation(order as PurchaseOrder, installment)
+                                                                )}
+                                                            >
+                                                                {t('orders.actions.payInstallment', { defaultValue: 'Pay' })}
+                                                            </Button>
+                                                        ) : null}
+                                                    </div>
+                                                </div>
+
+                                                <div className="grid grid-cols-3 gap-2">
+                                                    <InstallmentAmount
+                                                        label={t('orders.details.plannedAmount', { defaultValue: 'Planned' })}
+                                                        value={formatCurrency(installment.plannedAmount, currency, iqd)}
+                                                    />
+                                                    <InstallmentAmount
+                                                        label={t('orders.details.paidAmount', { defaultValue: 'Paid' })}
+                                                        value={formatCurrency(installment.paidAmount, currency, iqd)}
+                                                        valueClassName="text-emerald-600"
+                                                    />
+                                                    <InstallmentAmount
+                                                        label={t('orders.details.outstanding') || 'Outstanding'}
+                                                        value={formatCurrency(installment.balanceAmount, currency, iqd)}
+                                                        valueClassName="font-bold"
+                                                    />
+                                                </div>
+                                            </div>
+                                        )
+                                    })}
+                                </div>
+                            </CardContent>
+                        </Card>
+                    ) : null}
 
                     <Card>
                         <CardHeader><CardTitle>{t('orders.details.commercials') || 'Commercials'}</CardTitle></CardHeader>
@@ -570,8 +680,19 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                                             {isSales ? (t('orders.details.salesOrder') || 'Sales Order') : (t('orders.details.purchaseOrder') || 'Purchase Order')}
                                         </span>
                                         <OrderStatusBadge status={order.status} label={statusLabel(t, order.status)} />
-                                        <span className={cn('inline-flex items-center rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em]', order.isPaid ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' : 'bg-amber-500/10 text-amber-700 dark:text-amber-300')}>
-                                            {order.isPaid ? (t('orders.status.paid') || 'Paid') : (t('orders.status.pending') || 'Pending')}
+                                        <span className={cn(
+                                            'inline-flex items-center rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em]',
+                                            paymentStatus === 'paid'
+                                                ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+                                                : paymentStatus === 'partial'
+                                                    ? 'bg-sky-500/10 text-sky-700 dark:text-sky-300'
+                                                    : 'bg-amber-500/10 text-amber-700 dark:text-amber-300'
+                                        )}>
+                                            {paymentStatus === 'paid'
+                                                ? (t('orders.status.paid') || 'Paid')
+                                                : paymentStatus === 'partial'
+                                                    ? t('orders.status.partial', { defaultValue: 'Partially Paid' })
+                                                    : t('orders.status.unpaid', { defaultValue: 'Unpaid' })}
                                         </span>
                                         {order.isLocked && (
                                             <span className="inline-flex items-center gap-1 rounded-full bg-slate-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-slate-700 dark:text-slate-300 shadow-sm border border-slate-500/20">
@@ -594,7 +715,16 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                                 <div className="rounded-3xl border border-border/50 bg-background/80 p-5 shadow-sm">
                                     <div className="text-xs font-bold uppercase tracking-[0.18em] text-muted-foreground">{t('common.total') || 'Total'}</div>
                                     <div className="mt-2 text-4xl font-black tracking-tight">{formatCurrency(order.total, currency, iqd)}</div>
-                                    <div className="mt-2 text-sm text-muted-foreground">{order.isPaid ? (t('orders.details.fullySettled') || 'Fully settled') : `${t('orders.details.outstanding') || 'Outstanding'}: ${formatCurrency(outstanding, currency, iqd)}`}</div>
+                                    <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
+                                        <div>
+                                            <div className="text-xs text-muted-foreground">{t('orders.details.paidAmount', { defaultValue: 'Paid' })}</div>
+                                            <div className="font-semibold text-emerald-600">{formatCurrency(paidAmount, currency, iqd)}</div>
+                                        </div>
+                                        <div>
+                                            <div className="text-xs text-muted-foreground">{t('orders.details.outstanding') || 'Outstanding'}</div>
+                                            <div className="font-semibold">{formatCurrency(outstanding, currency, iqd)}</div>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
 
@@ -842,7 +972,7 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                     cashierName: user?.name || 'Unknown',
                     printFormat: 'a4' as const
                 }}
-                pdfBuilder={async ({ format, printLangOverride }: { format: PrintFormat; effectiveId: string; printLangOverride?: string }) => {
+                pdfBuilder={async ({ format, effectiveId, printLangOverride }: { format: PrintFormat; effectiveId: string; printLangOverride?: string }) => {
                     const baseLang = features?.print_lang && features.print_lang !== 'auto' ? features.print_lang : i18n.language
                     const printLang = printLangOverride || baseLang
                     return generateTemplatePdf({
@@ -851,25 +981,29 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                                 workspaceName={workspaceName}
                                 printLang={printLang}
                                 order={order}
+                                installments={installments}
                                 kind={resolved.kind}
                                 iqdPreference={features.iqd_display_preference}
                                 logoUrl={features.logo_url}
+                                qrValue={effectiveId ? `https://asaas-r2-proxy.alanepic360.workers.dev/${workspaceId}/printed-invoices/A4/${effectiveId}.pdf` : undefined}
                             />
                         ),
                         format,
                         printLang,
                     })
                 }}
-                printTemplate={() => {
+                printTemplate={({ effectiveId }) => {
                     const printLang = features?.print_lang && features.print_lang !== 'auto' ? features.print_lang : i18n.language
                     return (
                         <OrderDetailsPrintTemplate
                             workspaceName={workspaceName}
                             printLang={printLang}
                             order={order}
+                            installments={installments}
                             kind={resolved.kind}
                             iqdPreference={features.iqd_display_preference}
                             logoUrl={features.logo_url}
+                            qrValue={effectiveId ? `https://asaas-r2-proxy.alanepic360.workers.dev/${workspaceId}/printed-invoices/A4/${effectiveId}.pdf` : undefined}
                         />
                     )
                 }}

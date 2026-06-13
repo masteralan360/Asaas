@@ -64,6 +64,8 @@ export function SettlementDialog({
     const [linkedCounterparty, setLinkedCounterparty] = useState<{ id: string; name: string } | null>(null)
     const showsCounterpartyPicker = obligation?.sourceType === 'real_estate_commission'
     const showsAmountInput = obligation?.sourceType === 'real_estate_commission'
+        || obligation?.sourceType === 'sales_order'
+        || obligation?.sourceType === 'purchase_order'
     const businessPartners = useBusinessPartners(showsCounterpartyPicker ? obligation?.workspaceId : undefined, { includeRealEstateRoles: true }) || []
 
     const businessPartnerById = useMemo(() => new Map(businessPartners.map((partner) => [partner.id, partner])), [businessPartners])
@@ -204,7 +206,7 @@ export function SettlementDialog({
                                         />
                                         {parsedAmount > obligation.amount ? (
                                             <p className="text-xs text-destructive">
-                                                {t('settlementModal.amountExceedsReceivable', { defaultValue: 'Amount cannot exceed the receivable balance.' })}
+                                                {t('settlementModal.amountExceedsBalance', { defaultValue: 'Amount cannot exceed the remaining balance.' })}
                                             </p>
                                         ) : null}
                                     </div>

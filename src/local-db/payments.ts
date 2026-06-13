@@ -11,6 +11,7 @@ import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
 
 import { db } from './database'
 import { addToOfflineMutations, fetchTableFromSupabase } from './hooks'
+import { getOrderBalanceAmount } from './orderInstallments'
 import type {
     CurrencyCode,
     Employee,
@@ -19,7 +20,7 @@ import type {
     Loan,
     LoanInstallment,
     LoanPaymentMethod,
-    OrderPaymentMethod,
+    OrderInstallment,
     PaymentObligation,
     PaymentTransaction,
     PaymentTransactionDirection,
@@ -357,6 +358,7 @@ async function hydratePaymentSourceTables(workspaceId: string) {
         fetchTableFromSupabase('real_estate_transactions', db.real_estate_transactions, workspaceId, { includeDeleted: true }),
         fetchTableFromSupabase('sales_orders', db.sales_orders, workspaceId, { includeDeleted: true }),
         fetchTableFromSupabase('purchase_orders', db.purchase_orders, workspaceId, { includeDeleted: true }),
+        fetchTableFromSupabase('order_installments', db.order_installments, workspaceId, { includeDeleted: true }),
         fetchTableFromSupabase('expense_series', db.expense_series, workspaceId, { includeDeleted: true }),
         fetchTableFromSupabase('expense_items', db.expense_items, workspaceId, { includeDeleted: true }),
         fetchTableFromSupabase('payroll_statuses', db.payroll_statuses, workspaceId, { includeDeleted: true }),
@@ -396,7 +398,12 @@ async function ensureExpenseItemsThroughCurrentMonth(workspaceId: string) {
 }
 
 function buildSalesOrderObligation(order: SalesOrder, todayKey: string): PaymentObligation | null {
-    if (order.isDeleted || order.isPaid || (order.status !== 'pending' && order.status !== 'completed')) {
+    const balanceAmount = getOrderBalanceAmount(order)
+    if (
+        order.isDeleted
+        || balanceAmount <= 0
+        || (order.status !== 'pending' && order.status !== 'completed')
+    ) {
         return null
     }
 
@@ -409,7 +416,7 @@ function buildSalesOrderObligation(order: SalesOrder, todayKey: string): Payment
         sourceRecordId: order.id,
         sourceSubrecordId: null,
         direction: 'incoming',
-        amount: order.total,
+        amount: balanceAmount,
         currency: order.currency,
         dueDate,
         counterpartyName: order.customerName,
@@ -429,9 +436,10 @@ function buildSalesOrderObligation(order: SalesOrder, todayKey: string): Payment
 }
 
 function buildPurchaseOrderObligation(order: PurchaseOrder, todayKey: string): PaymentObligation | null {
+    const balanceAmount = getOrderBalanceAmount(order)
     if (
         order.isDeleted
-        || order.isPaid
+        || balanceAmount <= 0
         || (order.status !== 'ordered' && order.status !== 'received' && order.status !== 'completed')
     ) {
         return null
@@ -446,7 +454,7 @@ function buildPurchaseOrderObligation(order: PurchaseOrder, todayKey: string): P
         sourceRecordId: order.id,
         sourceSubrecordId: null,
         direction: 'outgoing',
-        amount: order.total,
+        amount: balanceAmount,
         currency: order.currency,
         dueDate,
         counterpartyName: order.supplierName,
@@ -460,6 +468,66 @@ function buildPurchaseOrderObligation(order: PurchaseOrder, todayKey: string): P
             businessPartnerId: order.businessPartnerId || null
         }
     }
+}
+
+function buildOrderInstallmentObligations(
+    order: SalesOrder | PurchaseOrder,
+    installments: OrderInstallment[],
+    todayKey: string
+) {
+    const isSalesOrder = 'customerName' in order
+    const sourceType = isSalesOrder ? 'sales_order' as const : 'purchase_order' as const
+    const direction = isSalesOrder ? 'incoming' as const : 'outgoing' as const
+    const counterpartyName = isSalesOrder ? order.customerName : order.supplierName
+
+    if (
+        order.isDeleted
+        || !order.isInstallmentBased
+        || getOrderBalanceAmount(order) <= 0
+        || (isSalesOrder
+            ? order.status !== 'pending' && order.status !== 'completed'
+            : order.status !== 'ordered' && order.status !== 'received' && order.status !== 'completed')
+    ) {
+        return []
+    }
+
+    return installments
+        .filter((installment) =>
+            !installment.isDeleted
+            && installment.orderId === order.id
+            && installment.orderType === (isSalesOrder ? 'sales' : 'purchase')
+            && installment.balanceAmount > 0
+        )
+        .sort((left, right) => left.installmentNo - right.installmentNo)
+        .map((installment): PaymentObligation => {
+            const dueDate = normalizeDateKey(installment.dueDate)
+            const installmentLabel = `Installment ${String(installment.installmentNo).padStart(2, '0')}`
+            return {
+                id: `order-installment:${installment.id}`,
+                workspaceId: order.workspaceId,
+                sourceModule: 'orders',
+                sourceType,
+                sourceRecordId: order.id,
+                sourceSubrecordId: installment.id,
+                direction,
+                amount: installment.balanceAmount,
+                currency: order.currency,
+                dueDate,
+                counterpartyName,
+                referenceLabel: `${order.orderNumber} / ${installmentLabel}`,
+                title: counterpartyName,
+                subtitle: installmentLabel,
+                status: isDateOverdue(dueDate, todayKey) ? 'overdue' : 'open',
+                routePath: `/orders/${order.id}`,
+                metadata: {
+                    orderStatus: order.status,
+                    orderType: isSalesOrder ? 'sales' : 'purchase',
+                    installmentId: installment.id,
+                    installmentNo: installment.installmentNo,
+                    businessPartnerId: order.businessPartnerId || null
+                }
+            }
+        })
 }
 
 function buildExpenseObligation(item: ExpenseItem, series: ExpenseSeries | undefined, todayKey: string): PaymentObligation | null {
@@ -726,6 +794,7 @@ async function buildPaymentObligations(workspaceId: string, filters: PaymentObli
         paymentTransactions,
         salesOrders,
         purchaseOrders,
+        orderInstallments,
         expenseSeries,
         expenseItems,
         payrollStatuses,
@@ -737,6 +806,7 @@ async function buildPaymentObligations(workspaceId: string, filters: PaymentObli
         db.payment_transactions.where('workspaceId').equals(workspaceId).toArray(),
         db.sales_orders.where('workspaceId').equals(workspaceId).toArray(),
         db.purchase_orders.where('workspaceId').equals(workspaceId).toArray(),
+        db.order_installments.where('workspaceId').equals(workspaceId).toArray(),
         db.expense_series.where('workspaceId').equals(workspaceId).toArray(),
         db.expense_items.where('workspaceId').equals(workspaceId).toArray(),
         db.payroll_statuses.where('workspaceId').equals(workspaceId).toArray(),
@@ -748,17 +818,31 @@ async function buildPaymentObligations(workspaceId: string, filters: PaymentObli
             .filter((item) => !item.isDeleted)
             .map((item) => [item.id, item])
     )
+    const salesOrdersWithInstallments = new Set(
+        orderInstallments
+            .filter((item) => !item.isDeleted && item.orderType === 'sales')
+            .map((item) => item.orderId)
+    )
+    const purchaseOrdersWithInstallments = new Set(
+        orderInstallments
+            .filter((item) => !item.isDeleted && item.orderType === 'purchase')
+            .map((item) => item.orderId)
+    )
 
     const obligations = [
         ...buildStandardLoanInstallmentObligations(loans, installments, todayKey),
         ...buildSimpleLoanObligations(loans, todayKey),
         ...buildRealEstateCommissionObligations(realEstateTransactions, paymentTransactions),
         ...salesOrders
+            .filter((order) => !order.isInstallmentBased || !salesOrdersWithInstallments.has(order.id))
             .map((order) => buildSalesOrderObligation(order, todayKey))
             .filter((item): item is PaymentObligation => !!item),
         ...purchaseOrders
+            .filter((order) => !order.isInstallmentBased || !purchaseOrdersWithInstallments.has(order.id))
             .map((order) => buildPurchaseOrderObligation(order, todayKey))
             .filter((item): item is PaymentObligation => !!item),
+        ...salesOrders.flatMap((order) => buildOrderInstallmentObligations(order, orderInstallments, todayKey)),
+        ...purchaseOrders.flatMap((order) => buildOrderInstallmentObligations(order, orderInstallments, todayKey)),
         ...expenseItems
             .map((item) => buildExpenseObligation(item, expenseSeriesMap.get(item.seriesId), todayKey))
             .filter((item): item is PaymentObligation => !!item),
@@ -1390,67 +1474,38 @@ export async function recordObligationSettlement(
 
         case 'sales_order': {
             assertStandardSettlementPaymentMethod(input.paymentMethod)
-            const { setSalesOrderPaymentStatus } = await import('./orders')
-            const order = await setSalesOrderPaymentStatus(obligation.sourceRecordId, {
-                isPaid: true,
-                paymentMethod: input.paymentMethod as OrderPaymentMethod,
-                paidAt
-            })
-            await replacePaymentTransactionForSource(workspaceId, {
-                sourceType: 'sales_order',
-                sourceRecordId: order.id,
-                sourceSubrecordId: null
-            }, {
-                sourceModule: 'orders',
-                sourceType: 'sales_order',
-                sourceRecordId: order.id,
-                sourceSubrecordId: null,
-                direction: 'incoming',
-                amount: order.total,
-                currency: order.currency,
+            if (settlementAmount > obligation.amount) {
+                throw new Error('Settlement amount cannot exceed the order balance')
+            }
+            const { recordOrderPayment } = await import('./orders')
+            await recordOrderPayment(workspaceId, {
+                orderType: 'sales',
+                orderId: obligation.sourceRecordId,
+                installmentId: obligation.sourceSubrecordId,
+                amount: settlementAmount,
                 paymentMethod: input.paymentMethod,
-                paidAt: order.paidAt || paidAt,
-                counterpartyName: order.customerName,
-                referenceLabel: order.orderNumber,
+                paidAt,
                 note,
-                createdBy,
-                metadata: {
-                    orderStatus: order.status,
-                    sourceChannel: order.sourceChannel || 'manual'
-                }
+                createdBy
             })
             return
         }
 
         case 'purchase_order': {
             assertStandardSettlementPaymentMethod(input.paymentMethod)
-            const { setPurchaseOrderPaymentStatus } = await import('./orders')
-            const order = await setPurchaseOrderPaymentStatus(obligation.sourceRecordId, {
-                isPaid: true,
-                paymentMethod: input.paymentMethod as OrderPaymentMethod,
-                paidAt
-            })
-            await replacePaymentTransactionForSource(workspaceId, {
-                sourceType: 'purchase_order',
-                sourceRecordId: order.id,
-                sourceSubrecordId: null
-            }, {
-                sourceModule: 'orders',
-                sourceType: 'purchase_order',
-                sourceRecordId: order.id,
-                sourceSubrecordId: null,
-                direction: 'outgoing',
-                amount: order.total,
-                currency: order.currency,
+            if (settlementAmount > obligation.amount) {
+                throw new Error('Settlement amount cannot exceed the order balance')
+            }
+            const { recordOrderPayment } = await import('./orders')
+            await recordOrderPayment(workspaceId, {
+                orderType: 'purchase',
+                orderId: obligation.sourceRecordId,
+                installmentId: obligation.sourceSubrecordId,
+                amount: settlementAmount,
                 paymentMethod: input.paymentMethod,
-                paidAt: order.paidAt || paidAt,
-                counterpartyName: order.supplierName,
-                referenceLabel: order.orderNumber,
+                paidAt,
                 note,
-                createdBy,
-                metadata: {
-                    orderStatus: order.status
-                }
+                createdBy
             })
             return
         }
@@ -1623,21 +1678,55 @@ export async function reversePaymentTransaction(
         }
 
         case 'sales_order': {
-            const { setSalesOrderPaymentStatus } = await import('./orders')
-            await setSalesOrderPaymentStatus(transaction.sourceRecordId, {
-                isPaid: false,
-                paidAt: null
+            const reversal = await appendPaymentTransaction(workspaceId, {
+                sourceModule: transaction.sourceModule,
+                sourceType: transaction.sourceType,
+                sourceRecordId: transaction.sourceRecordId,
+                sourceSubrecordId: transaction.sourceSubrecordId ?? null,
+                direction: transaction.direction,
+                amount: -Math.abs(transaction.amount),
+                currency: transaction.currency,
+                paymentMethod: transaction.paymentMethod,
+                paidAt: input.paidAt ? new Date(input.paidAt).toISOString() : new Date().toISOString(),
+                counterpartyName: transaction.counterpartyName || null,
+                referenceLabel: transaction.referenceLabel || null,
+                note,
+                createdBy: input.createdBy || null,
+                reversalOfTransactionId: transaction.id,
+                metadata: {
+                    ...(transaction.metadata && typeof transaction.metadata === 'object' ? transaction.metadata : {}),
+                    reversal: true
+                }
             })
-            break
+            const { rebuildOrderPaymentState } = await import('./orders')
+            await rebuildOrderPaymentState('sales', transaction.sourceRecordId)
+            return reversal
         }
 
         case 'purchase_order': {
-            const { setPurchaseOrderPaymentStatus } = await import('./orders')
-            await setPurchaseOrderPaymentStatus(transaction.sourceRecordId, {
-                isPaid: false,
-                paidAt: null
+            const reversal = await appendPaymentTransaction(workspaceId, {
+                sourceModule: transaction.sourceModule,
+                sourceType: transaction.sourceType,
+                sourceRecordId: transaction.sourceRecordId,
+                sourceSubrecordId: transaction.sourceSubrecordId ?? null,
+                direction: transaction.direction,
+                amount: -Math.abs(transaction.amount),
+                currency: transaction.currency,
+                paymentMethod: transaction.paymentMethod,
+                paidAt: input.paidAt ? new Date(input.paidAt).toISOString() : new Date().toISOString(),
+                counterpartyName: transaction.counterpartyName || null,
+                referenceLabel: transaction.referenceLabel || null,
+                note,
+                createdBy: input.createdBy || null,
+                reversalOfTransactionId: transaction.id,
+                metadata: {
+                    ...(transaction.metadata && typeof transaction.metadata === 'object' ? transaction.metadata : {}),
+                    reversal: true
+                }
             })
-            break
+            const { rebuildOrderPaymentState } = await import('./orders')
+            await rebuildOrderPaymentState('purchase', transaction.sourceRecordId)
+            return reversal
         }
 
         case 'expense_item': {

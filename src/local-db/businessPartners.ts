@@ -13,6 +13,7 @@ import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
 import { db } from './database'
 import { fetchTableFromSupabase } from './hooks'
 import { addToOfflineMutations } from './offlineMutations'
+import { getOrderBalanceAmount } from './orderInstallments'
 import type {
     BusinessPartner,
     BusinessPartnerMergeCandidate,
@@ -592,9 +593,17 @@ export async function recalculateBusinessPartnerSummary(workspaceId: string, par
     )
     const receivableBalance = roundAmount(
         activeSalesOrders
-            .filter((order) => (order.status === 'pending' || order.status === 'completed') && !order.isPaid)
+            .filter((order) =>
+                (order.status === 'pending' || order.status === 'completed')
+                && getOrderBalanceAmount(order) > 0
+            )
             .reduce(
-                (sum, order) => sum + convertCurrencyAmountWithSnapshot(order.total, order.currency, partner.defaultCurrency, order.exchangeRates),
+                (sum, order) => sum + convertCurrencyAmountWithSnapshot(
+                    getOrderBalanceAmount(order),
+                    order.currency,
+                    partner.defaultCurrency,
+                    order.exchangeRates
+                ),
                 0
             )
             + activeLentLoans.reduce((sum, loan) => sum + convertLoanAmountForPartner(loan, partner.defaultCurrency), 0),
@@ -620,9 +629,17 @@ export async function recalculateBusinessPartnerSummary(workspaceId: string, par
     const totalPurchaseValue = roundAmount(purchaseOrderValue + travelSaleValue, partner.defaultCurrency)
     const payableBalance = roundAmount(
         activePurchaseOrders
-            .filter((order) => (order.status === 'ordered' || order.status === 'received' || order.status === 'completed') && !order.isPaid)
+            .filter((order) =>
+                (order.status === 'ordered' || order.status === 'received' || order.status === 'completed')
+                && getOrderBalanceAmount(order) > 0
+            )
             .reduce(
-                (sum, order) => sum + convertCurrencyAmountWithSnapshot(order.total, order.currency, partner.defaultCurrency, order.exchangeRates),
+                (sum, order) => sum + convertCurrencyAmountWithSnapshot(
+                    getOrderBalanceAmount(order),
+                    order.currency,
+                    partner.defaultCurrency,
+                    order.exchangeRates
+                ),
                 0
             )
             + activeTravelSales
