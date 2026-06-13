@@ -72,9 +72,12 @@ import {
     SALES_HISTORY_RECEIPT_TEMPLATE_KEY,
     buildCustomTemplateLayoutPdf,
     createCustomTemplatePreview,
+    getCustomTemplatePrintLanguageWarning,
     getCustomTemplateTarget,
     getStoredCustomTemplateLabel,
+    isCustomTemplatePrintLanguageCompatible,
     readCustomTemplateLayout,
+    resolveCustomTemplatePrintLanguage,
     type StoredCustomTemplateRow
 } from '@/lib/customTemplates'
 import type { CustomTemplateLayout } from '@/lib/pdfPreviewStore'
@@ -576,6 +579,7 @@ export function Sales() {
     })
     const [a4Variant, setA4Variant] = useState<'standard' | 'refund'>('standard')
     const printLang = features?.print_lang && features.print_lang !== 'auto' ? features.print_lang : i18n.language
+    const currentTemplatePrintLanguage = resolveCustomTemplatePrintLanguage(printLang)
     const loanForPrint = useLoanBySaleId(printingSale?.id, user?.workspaceId)
     const loanPrintInstallments = useLoanInstallments(loanForPrint?.id, user?.workspaceId)
     const loanPrintPayments = useLoanPayments(loanForPrint?.id, user?.workspaceId)
@@ -737,6 +741,9 @@ export function Sales() {
     }
 
     const handlePrintSelection = (format: PrintFormat, template?: StoredCustomTemplateRow) => {
+        if (template && !isCustomTemplatePrintLanguageCompatible(template, currentTemplatePrintLanguage)) {
+            return
+        }
         setPrintFormat(format)
         setSelectedCustomReceiptTemplate(format === 'receipt' ? template || null : null)
         if (format === 'a4' && saleToPrintSelection && saleHasAnyReturnActivity(saleToPrintSelection)) {
@@ -764,9 +771,11 @@ export function Sales() {
             template,
             label: getStoredCustomTemplateLabel(template),
             description: t('customTemplates.customReceipt', { defaultValue: 'Custom Receipt' }),
-            primary: template.primary
+            primary: template.primary,
+            disabled: !isCustomTemplatePrintLanguageCompatible(template, currentTemplatePrintLanguage),
+            warning: getCustomTemplatePrintLanguageWarning(template, currentTemplatePrintLanguage, t)
         })),
-        [customReceiptTemplates, t]
+        [currentTemplatePrintLanguage, customReceiptTemplates, t]
     )
 
     const handleConfirmPrint = () => {
@@ -783,8 +792,14 @@ export function Sales() {
         []
     )
     const selectedCustomReceiptLayout = useMemo(
-        () => readCustomTemplateLayout(selectedCustomReceiptTemplate),
-        [selectedCustomReceiptTemplate]
+        () => selectedCustomReceiptTemplate
+            && isCustomTemplatePrintLanguageCompatible(selectedCustomReceiptTemplate, currentTemplatePrintLanguage)
+            ? readCustomTemplateLayout(selectedCustomReceiptTemplate)
+            : null,
+        [currentTemplatePrintLanguage, selectedCustomReceiptTemplate]
+    )
+    const hasCompatibleSelectedCustomReceipt = Boolean(
+        selectedCustomReceiptTemplate && selectedCustomReceiptLayout
     )
     const customReceiptData = useMemo(
         () => printingSale ? mapSaleToUniversal(printingSale, { a4Variant: 'standard' }) : undefined,
@@ -2726,7 +2741,7 @@ export function Sales() {
                     features={features}
                     workspaceName={workspaceName}
                     module="sales"
-                    pdfData={!shouldUseLoanPrint && !selectedCustomReceiptTemplate && printingSale ? mapSaleToUniversal(printingSale, { a4Variant }) : undefined}
+                    pdfData={!shouldUseLoanPrint && !hasCompatibleSelectedCustomReceipt && printingSale ? mapSaleToUniversal(printingSale, { a4Variant }) : undefined}
                     invoiceData={printingSale ? {
                         sequenceId: printingSale.sequenceId,
                         totalAmount: printingSale.total_amount,
@@ -2738,7 +2753,7 @@ export function Sales() {
                     } : undefined}
                     pdfBuilder={shouldUseLoanPrint
                         ? buildLoanPrintPdf
-                        : selectedCustomReceiptTemplate
+                        : hasCompatibleSelectedCustomReceipt
                             ? buildCustomReceiptPdf
                             : undefined}
                     printTemplate={shouldUseLoanPrint
@@ -2746,16 +2761,16 @@ export function Sales() {
                             ? renderLoanReceiptTemplate(effectiveId)
                             : renderLoanPrintTemplate(effectiveId))
                         : undefined}
-                    templatePreview={selectedCustomReceiptTemplate ? customReceiptPreview : undefined}
-                    customTemplate={selectedCustomReceiptTemplate && customReceiptTarget ? {
+                    templatePreview={hasCompatibleSelectedCustomReceipt ? customReceiptPreview : undefined}
+                    customTemplate={hasCompatibleSelectedCustomReceipt && selectedCustomReceiptTemplate && customReceiptTarget ? {
                         moduleTypeKey: customReceiptTarget.moduleTypeKey,
                         nativeTemplateKey: customReceiptTarget.nativeTemplateKey,
                         templateId: selectedCustomReceiptTemplate.id,
                         label: getStoredCustomTemplateLabel(selectedCustomReceiptTemplate)
                     } : undefined}
-                    initialTemplateLayout={selectedCustomReceiptTemplate ? selectedCustomReceiptLayout : undefined}
-                    enableTemplatePreviewSave={Boolean(selectedCustomReceiptTemplate)}
-                    generateTemplateLayoutBlob={selectedCustomReceiptTemplate ? buildEditableCustomReceiptPdf : undefined}
+                    initialTemplateLayout={hasCompatibleSelectedCustomReceipt ? selectedCustomReceiptLayout : undefined}
+                    enableTemplatePreviewSave={hasCompatibleSelectedCustomReceipt}
+                    generateTemplateLayoutBlob={hasCompatibleSelectedCustomReceipt ? buildEditableCustomReceiptPdf : undefined}
                     printSelectionOptions={salesPrintSelectionOptions}
                     printSelectionTemplates={salesCustomPrintOptions}
                     onPrintSelection={handlePrintSelection}

@@ -25,8 +25,10 @@ import {
     SALES_HISTORY_RECEIPT_TEMPLATE_KEY,
     buildCustomTemplateLayoutPdf,
     getCustomTemplateTarget,
+    isCustomTemplatePrintLanguageCompatible,
     readCustomTemplateLayout,
     renderCustomTemplateLayoutElement,
+    resolveCustomTemplatePrintLanguage,
     type StoredCustomTemplateRow
 } from '@/lib/customTemplates'
 
@@ -43,7 +45,7 @@ export function CheckoutSuccessModal({
     saleData,
     features
 }: CheckoutSuccessModalProps) {
-    const { t } = useTranslation()
+    const { t, i18n } = useTranslation()
     const { user } = useAuth()
     const { workspaceName, activeWorkspace, isLocalMode, isHybridMode } = useWorkspace()
     const { toast } = useToast()
@@ -59,6 +61,10 @@ export function CheckoutSuccessModal({
     const printFeatures = useMemo(
         () => disableInvoiceQrInLocalMode(activeWorkspace?.id || user?.workspaceId, features),
         [activeWorkspace?.id, features, user?.workspaceId]
+    )
+    const currentTemplatePrintLanguage = resolveCustomTemplatePrintLanguage(
+        printFeatures.print_lang,
+        i18n.language
     )
 
     const handlePrint = useReactToPrint({
@@ -87,7 +93,13 @@ export function CheckoutSuccessModal({
                         activeOnly: true,
                         primaryOnly: true
                     })
-                    if (!cancelled) setPrimaryReceiptTemplate((templates[0] || null) as StoredCustomTemplateRow | null)
+                    const compatibleTemplate = templates.find((template) =>
+                        isCustomTemplatePrintLanguageCompatible(
+                            template as StoredCustomTemplateRow,
+                            currentTemplatePrintLanguage
+                        )
+                    )
+                    if (!cancelled) setPrimaryReceiptTemplate((compatibleTemplate || null) as StoredCustomTemplateRow | null)
                 } else {
                     const { data, error } = await runSupabaseAction('checkoutSuccess.primaryReceiptTemplate.fetch', () =>
                         supabase
@@ -105,7 +117,14 @@ export function CheckoutSuccessModal({
                             moduleTypeKey: SALES_HISTORY_RECEIPT_TEMPLATE_KEY
                         })
                     }
-                    const primaryTemplate = cloudTemplates.find((template) => template.active && template.primary) || null
+                    const primaryTemplate = cloudTemplates.find((template) =>
+                        template.active
+                        && template.primary
+                        && isCustomTemplatePrintLanguageCompatible(
+                            template as StoredCustomTemplateRow,
+                            currentTemplatePrintLanguage
+                        )
+                    ) || null
                     if (!cancelled) setPrimaryReceiptTemplate(primaryTemplate as StoredCustomTemplateRow | null)
                 }
             } catch (templateError) {
@@ -118,7 +137,13 @@ export function CheckoutSuccessModal({
                                 activeOnly: true,
                                 primaryOnly: true
                             })
-                            setPrimaryReceiptTemplate((mirroredTemplates[0] || null) as StoredCustomTemplateRow | null)
+                            const compatibleTemplate = mirroredTemplates.find((template) =>
+                                isCustomTemplatePrintLanguageCompatible(
+                                    template as StoredCustomTemplateRow,
+                                    currentTemplatePrintLanguage
+                                )
+                            )
+                            setPrimaryReceiptTemplate((compatibleTemplate || null) as StoredCustomTemplateRow | null)
                         } catch {
                             setPrimaryReceiptTemplate(null)
                         }
@@ -134,15 +159,18 @@ export function CheckoutSuccessModal({
         return () => {
             cancelled = true
         }
-    }, [activeWorkspace?.id, isHybridMode, isLocalMode, isOpen, user?.workspaceId])
+    }, [activeWorkspace?.id, currentTemplatePrintLanguage, isHybridMode, isLocalMode, isOpen, user?.workspaceId])
 
     const primaryReceiptTarget = useMemo(
         () => getCustomTemplateTarget(SALES_HISTORY_RECEIPT_TEMPLATE_KEY),
         []
     )
     const primaryReceiptLayout = useMemo(
-        () => readCustomTemplateLayout(primaryReceiptTemplate),
-        [primaryReceiptTemplate]
+        () => primaryReceiptTemplate
+            && isCustomTemplatePrintLanguageCompatible(primaryReceiptTemplate, currentTemplatePrintLanguage)
+            ? readCustomTemplateLayout(primaryReceiptTemplate)
+            : null,
+        [currentTemplatePrintLanguage, primaryReceiptTemplate]
     )
     const buildPrimaryReceiptPdf = useCallback(async () => {
         if (!primaryReceiptTarget || !primaryReceiptLayout || !saleData) {

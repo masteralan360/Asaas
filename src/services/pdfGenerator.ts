@@ -59,6 +59,7 @@ interface TemplatePdfOptions {
 }
 
 const A4_WIDTH_MM = 210
+const A4_HEIGHT_MM = 297
 const RECEIPT_WIDTH_MM = 80
 
 function resolvePrintLanguage(printLang: string | null | undefined) {
@@ -194,14 +195,40 @@ async function renderToCanvas(element: ReturnType<typeof createElement>, widthMm
 
 function canvasToA4Pdf(renderResult: RenderResult, PdfDocument: JsPDFConstructor) {
     const pdf = new PdfDocument({ orientation: 'p', unit: 'mm', format: 'a4' })
+    const pageCount = Math.max(1, Math.ceil((renderResult.heightMm - 1) / A4_HEIGHT_MM))
 
-    // Add background JPEG (Low Res)
-    pdf.addImage(renderResult.background, 'JPEG', 0, 0, renderResult.widthMm, renderResult.heightMm, undefined, 'FAST')
+    for (let pageIndex = 0; pageIndex < pageCount; pageIndex += 1) {
+        if (pageIndex > 0) {
+            pdf.addPage('a4', 'p')
+        }
 
-    // Overlay sharp QR codes (High Res) using lossless PNG for maximum clarity
-    renderResult.qrs.forEach(qr => {
-        pdf.addImage(qr.image as string, 'PNG', qr.x, qr.y, qr.w, qr.h, undefined, 'FAST')
-    })
+        const pageOffset = pageIndex * A4_HEIGHT_MM
+        pdf.addImage(
+            renderResult.background,
+            'JPEG',
+            0,
+            -pageOffset,
+            renderResult.widthMm,
+            renderResult.heightMm,
+            undefined,
+            'FAST'
+        )
+
+        renderResult.qrs
+            .filter((qr) => qr.y + qr.h > pageOffset && qr.y < pageOffset + A4_HEIGHT_MM)
+            .forEach((qr) => {
+                pdf.addImage(
+                    qr.image as string,
+                    'PNG',
+                    qr.x,
+                    qr.y - pageOffset,
+                    qr.w,
+                    qr.h,
+                    undefined,
+                    'FAST'
+                )
+            })
+    }
 
     return pdf.output('blob') as Blob
 }

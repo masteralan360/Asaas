@@ -1,4 +1,4 @@
-import { FileText, Printer, Receipt } from 'lucide-react'
+import { AlertTriangle, FileText, Printer, Receipt } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import type { StoredCustomTemplateRow } from '@/lib/customTemplates'
@@ -24,6 +24,8 @@ export type PrintSelectionTemplateOption = {
     label: string
     description?: string
     primary?: boolean
+    disabled?: boolean
+    warning?: string
 }
 
 interface PrintSelectionModalProps {
@@ -99,14 +101,15 @@ export function PrintSelectionModal({
                         </Button>
                     ))}
 
-                    {visibleTemplateOptions.map(({ format, template, label, description, primary }) => (
+                    {visibleTemplateOptions.map(({ format, template, label, description, primary, disabled, warning }) => (
                         <Button
                             key={template.id}
                             variant="outline"
-                            className={`relative flex h-32 min-w-0 flex-col gap-3 overflow-hidden whitespace-normal px-3 py-3 text-center transition-all hover:border-primary hover:bg-primary/5 ${
+                            className={`relative flex min-h-32 min-w-0 flex-col gap-2 overflow-hidden whitespace-normal px-3 py-3 text-center transition-all hover:border-primary hover:bg-primary/5 disabled:cursor-not-allowed disabled:opacity-70 ${
                                 visibleOptionCount === 1 ? 'sm:col-span-2' : ''
                             }`}
                             onClick={() => onSelect(format, template)}
+                            disabled={disabled}
                         >
                             {primary ? (
                                 <span className="absolute end-2 top-2 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold text-primary">
@@ -125,6 +128,12 @@ export function PrintSelectionModal({
                                         defaultValue: format === 'receipt' ? 'Custom Receipt' : 'Custom A4 Print'
                                     })}
                                 </div>
+                                {warning ? (
+                                    <div className="mt-1 flex items-start justify-center gap-1 rounded-md border border-amber-300/70 bg-amber-500/10 px-2 py-1 text-[10px] leading-3 text-amber-800 dark:text-amber-300">
+                                        <AlertTriangle className="h-3 w-3 shrink-0" />
+                                        <span className="line-clamp-3">{warning}</span>
+                                    </div>
+                                ) : null}
                             </div>
                         </Button>
                     ))}

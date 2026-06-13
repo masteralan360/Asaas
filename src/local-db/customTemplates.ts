@@ -109,6 +109,35 @@ async function persistDemoTemplates(rows: LocalCustomTemplateRow[]) {
   );
 }
 
+async function deleteDemoTemplate(workspaceId: string, templateId: string) {
+  const workspaceTemplates = await listDemoTemplates(workspaceId);
+  const existing = workspaceTemplates.find((row) => row.id === templateId);
+  if (!existing) {
+    throw new Error("Custom template not found.");
+  }
+
+  const remainingModuleRows = workspaceTemplates.filter(
+    (row) =>
+      row.module_type_key === existing.module_type_key && row.id !== templateId,
+  );
+  const activeRemainingRows = remainingModuleRows.filter((row) => row.active);
+  if (activeRemainingRows.length > 0) {
+    const now = new Date().toISOString();
+    await persistDemoTemplates(
+      reconcilePrimaryTemplate(
+        remainingModuleRows,
+        undefined,
+        now,
+        null,
+      ),
+    );
+  }
+
+  await db.app_settings.delete(
+    getDemoTemplateSettingKey(workspaceId, templateId),
+  );
+}
+
 async function saveDemoTemplate(input: SaveLocalCustomTemplateInput) {
   const label = input.label.trim();
   if (!label) {
@@ -561,5 +590,53 @@ export async function updateLocalCustomTemplateStatus(
       primary: changes.primary,
       userId,
     });
+  });
+}
+
+export async function deleteLocalCustomTemplate(
+  workspaceId: string,
+  templateId: string,
+  userId?: string | null,
+) {
+  assertLocalWorkspace(workspaceId);
+  if (isDemoWorkspaceMode(workspaceId)) {
+    await deleteDemoTemplate(workspaceId, templateId);
+    return;
+  }
+
+  await runTemplateWrite(async (connection) => {
+    const workspaceTemplates = await selectWorkspaceTemplates(
+      connection,
+      workspaceId,
+    );
+    const existing = workspaceTemplates.find((row) => row.id === templateId);
+    if (!existing) {
+      throw new Error("Custom template not found.");
+    }
+
+    await connection.execute(
+      `
+        DELETE FROM local_entities
+        WHERE entity_type = $1 AND entity_id = $2 AND workspace_id = $3
+      `,
+      [CUSTOM_TEMPLATE_ENTITY_TYPE, templateId, workspaceId],
+    );
+
+    const remainingModuleRows = workspaceTemplates.filter(
+      (row) =>
+        row.module_type_key === existing.module_type_key
+        && row.id !== templateId,
+    );
+    if (remainingModuleRows.some((row) => row.active)) {
+      const reconciledRows = reconcilePrimaryTemplate(
+        remainingModuleRows,
+        undefined,
+        new Date().toISOString(),
+        userId ?? null,
+      );
+      for (const row of reconciledRows) {
+        await upsertTemplateEntity(connection, row);
+      }
+    }
   });
 }

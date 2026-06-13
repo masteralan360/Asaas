@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { ArrowLeft, CalendarDays, CreditCard, Eye, LayoutGrid, List, Mail, MapPin, Package, Phone, Printer, Receipt, ShoppingCart, Truck, UsersRound, TrendingUp, TrendingDown, Activity } from 'lucide-react'
+import { ArrowLeft, ArrowLeftRight, CalendarDays, CreditCard, Eye, Mail, MapPin, Package, Phone, Printer, Receipt, ShoppingCart, Truck, UsersRound, TrendingUp, TrendingDown, Activity } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Link, useLocation } from 'wouter'
 
-import { isSupabaseConfigured, supabase } from '@/auth'
+import { isSupabaseConfigured, supabase, useAuth } from '@/auth'
 import { useExchangeRate } from '@/context/ExchangeRateContext'
 import { buildConversionRates } from '@/lib/budget'
 import { convertToStoreBase } from '@/lib/currency'
@@ -12,9 +12,12 @@ import {
     PARTNER_DETAILS_TEMPLATE_KEY,
     buildCustomTemplateLayoutPdf,
     createCustomTemplatePreview,
+    getCustomTemplatePrintLanguageWarning,
     getCustomTemplateTarget,
     getStoredCustomTemplateLabel,
+    isCustomTemplatePrintLanguageCompatible,
     readCustomTemplateLayout,
+    resolveCustomTemplatePrintLanguage,
     type StoredCustomTemplateRow
 } from '@/lib/customTemplates'
 import { convertCurrencyAmountWithAvailableSnapshot, convertCurrencyAmountWithSnapshot } from '@/lib/orderCurrency'
@@ -30,6 +33,7 @@ import {
     useCustomerSalesOrders,
     useLoans,
     usePaymentTransactions,
+    useSales,
     useSupplierPurchaseOrders,
     useSupplierTravelAgencySales,
     type BusinessPartnerRole,
@@ -85,6 +89,7 @@ type RelatedTransaction = {
     isOutstanding: boolean
 }
 type TranslationFn = (key: string, options?: Record<string, unknown>) => string
+const LOAN_REPAYMENT_SOURCE_TYPES = new Set(['loan_payment', 'simple_loan', 'loan_installment'])
 
 function roleIncludesCustomer(role: BusinessPartnerRole) {
     return role === 'customer' || role === 'both'
@@ -155,10 +160,6 @@ function statusBadgeClass(status: string) {
 
 function statusLabel(t: TranslationFn, status: string) {
     return t(`orders.status.${status}`, { defaultValue: status })
-}
-
-function readViewMode(kind: PartnerKind) {
-    return (localStorage.getItem(`partner_details_view_mode_${kind}`) as 'table' | 'grid') || 'table'
 }
 
 function getOrderSummary(items: Array<{ productName: string }>) {
@@ -274,7 +275,13 @@ function loanStatusLabel(t: TranslationFn, status: Loan['status']) {
     return status
 }
 
-function normalizeLoan(loan: Loan, currency: SalesOrder['currency'], t: TranslationFn, installments?: LoanInstallment[]): RelatedTransaction {
+function normalizeLoan(
+    loan: Loan,
+    currency: SalesOrder['currency'],
+    t: TranslationFn,
+    installments?: LoanInstallment[],
+    linkedSaleReference?: string
+): RelatedTransaction {
     const direction = getLoanDirection(loan)
     const directionLabel = getLoanDirectionLabel(direction, t)
     const totalInPartnerCurrency = convertCurrencyAmountWithAvailableSnapshot(
@@ -288,6 +295,8 @@ function normalizeLoan(loan: Loan, currency: SalesOrder['currency'], t: Translat
     const installmentSummary = totalInsts > 0
         ? ` • ${paidInsts} ${t('loans.of', { defaultValue: 'of' })} ${totalInsts} ${t('loans.installments', { defaultValue: 'installments' })}`
         : ''
+    const installmentSourceReference = linkedSaleReference
+        || (loan.saleId ? `SALE-${loan.saleId.slice(0, 8).toUpperCase()}` : loan.loanNo)
 
     return {
         id: loan.id,
@@ -299,7 +308,9 @@ function normalizeLoan(loan: Loan, currency: SalesOrder['currency'], t: Translat
         status: loan.status,
         statusLabel: loanStatusLabel(t, loan.status),
         isPaid: loan.balanceAmount <= 0 || loan.status === 'completed',
-        summary: isSimpleLoan(loan) ? `${directionLabel} • ${loan.borrowerName}` : `${loan.borrowerName}${installmentSummary}`,
+        summary: isSimpleLoan(loan)
+            ? `${directionLabel} • ${loan.borrowerName}`
+            : `${installmentSourceReference}${installmentSummary}`,
         total: loan.principalAmount,
         originalAmount: loan.principalAmount,
         paidAmount: loan.totalPaidAmount,
@@ -346,12 +357,6 @@ function normalizePaymentTransaction(
     }
 }
 
-function paymentBadgeClass(isPaid: boolean) {
-    return isPaid
-        ? 'border-emerald-200 bg-emerald-500/10 text-emerald-700'
-        : 'border-amber-200 bg-amber-500/10 text-amber-700'
-}
-
 export function PartnerDetailsView({
     workspaceId,
     partnerId,
@@ -362,6 +367,7 @@ export function PartnerDetailsView({
     kind: PartnerKind
 }) {
     const { t, i18n } = useTranslation()
+    const { user } = useAuth()
     const {
         features,
         workspaceName,
@@ -375,17 +381,13 @@ export function PartnerDetailsView({
     const customerOrders = useCustomerSalesOrders(partnerId, workspaceId)
     const supplierOrders = useSupplierPurchaseOrders(partnerId, workspaceId)
     const supplierTravelSales = useSupplierTravelAgencySales(partnerId, workspaceId)
+    const sales = useSales(workspaceId)
     const loans = useLoans(workspaceId)
     const paymentTransactions = usePaymentTransactions(workspaceId)
     const { dateRange, customDates } = useDateRange()
-    const [viewMode, setViewMode] = useState<'table' | 'grid'>(() => readViewMode(kind))
     const [customPrintTemplates, setCustomPrintTemplates] = useState<StoredCustomTemplateRow[]>([])
     const [selectedPrintTemplate, setSelectedPrintTemplate] = useState<StoredCustomTemplateRow | null>(null)
     const [isPrintPreviewOpen, setIsPrintPreviewOpen] = useState(false)
-
-    useEffect(() => {
-        localStorage.setItem(`partner_details_view_mode_${kind}`, viewMode)
-    }, [kind, viewMode])
 
     useEffect(() => {
         if (!workspaceId || (!isLocalMode && !isSupabaseConfigured)) {
@@ -504,6 +506,15 @@ export function PartnerDetailsView({
         [filterByDate, paymentTransactions]
     )
     const partnerLoanIds = useMemo(() => partnerLoans.map(l => l.id), [partnerLoans])
+    const linkedSaleReferenceById = useMemo(
+        () => new Map(sales.map((sale) => [
+            sale.id,
+            sale.sequenceId
+                ? `SALE-${sale.sequenceId}`
+                : `SALE-${sale.id.slice(0, 8).toUpperCase()}`
+        ])),
+        [sales]
+    )
     const allInstallments = useLiveQuery(
         () => partnerLoanIds.length > 0
             ? db.loan_installments.where('loanId').anyOf(partnerLoanIds).toArray()
@@ -554,6 +565,10 @@ export function PartnerDetailsView({
     const firstActivityLabel = t('businessPartners.firstActivity', { defaultValue: 'First Activity' })
     const detailsColumnLabel = t('common.details', { defaultValue: 'Details' })
     const referenceColumnLabel = t('common.reference', { defaultValue: 'Reference' })
+    const partnerRelationshipName = contactName?.trim() || partner?.name || t('businessPartners.title', { defaultValue: 'Business Partner' })
+    const workspaceRelationshipName = workspaceName?.trim() || t('businessPartners.ourBusiness', { defaultValue: 'Our business' })
+    const relationshipReceivable = Math.max(partner?.receivableBalance || 0, 0)
+    const relationshipPayable = Math.max(partner?.payableBalance || 0, 0)
     const filteredProductOrders = useMemo(
         () => [...dateFilteredCustomerOrders, ...dateFilteredSupplierOrders],
         [dateFilteredCustomerOrders, dateFilteredSupplierOrders]
@@ -564,10 +579,16 @@ export function PartnerDetailsView({
             ...dateFilteredCustomerOrders.map((order) => normalizeSalesOrder(order, defaultCurrency, t)),
             ...dateFilteredSupplierOrders.map((order) => normalizePurchaseOrder(order, defaultCurrency, t)),
             ...dateFilteredTravelSales.map((sale) => normalizeTravelSale(sale, defaultCurrency)),
-            ...dateFilteredLoans.map((loan) => normalizeLoan(loan, defaultCurrency, t)),
+            ...dateFilteredLoans.map((loan) => normalizeLoan(
+                loan,
+                defaultCurrency,
+                t,
+                undefined,
+                loan.saleId ? linkedSaleReferenceById.get(loan.saleId) : undefined
+            )),
             ...dateFilteredPayments.map((tx) => normalizePaymentTransaction(tx, defaultCurrency, conversionRates, t))
         ],
-        [dateFilteredCustomerOrders, defaultCurrency, dateFilteredLoans, dateFilteredSupplierOrders, dateFilteredTravelSales, dateFilteredPayments, conversionRates, t]
+        [dateFilteredCustomerOrders, defaultCurrency, dateFilteredLoans, dateFilteredSupplierOrders, dateFilteredTravelSales, dateFilteredPayments, conversionRates, linkedSaleReferenceById, t]
     )
     const sortedTransactions = useMemo(
         () => [...relatedTransactions].sort((a, b) => new Date(b.sortDate).getTime() - new Date(a.sortDate).getTime()),
@@ -618,12 +639,18 @@ export function PartnerDetailsView({
                 ? direction !== 'borrowed'
                 : direction === 'borrowed'
             if (isProvidedByYou) {
-                rows.push(normalizeLoan(loan, defaultCurrency, t, dateFilteredInstallments.filter((i) => i.loanId === loan.id)))
+                rows.push(normalizeLoan(
+                    loan,
+                    defaultCurrency,
+                    t,
+                    dateFilteredInstallments.filter((i) => i.loanId === loan.id),
+                    loan.saleId ? linkedSaleReferenceById.get(loan.saleId) : undefined
+                ))
             }
         }
         rows.sort((a, b) => new Date(b.sortDate).getTime() - new Date(a.sortDate).getTime())
         return rows
-    }, [dateFilteredCustomerOrders, dateFilteredPayments, dateFilteredLoans, dateFilteredInstallments, defaultCurrency, conversionRates, t])
+    }, [dateFilteredCustomerOrders, dateFilteredPayments, dateFilteredLoans, dateFilteredInstallments, defaultCurrency, conversionRates, linkedSaleReferenceById, t])
     const providedByPartner = useMemo(() => {
         const rows: RelatedTransaction[] = [
             ...dateFilteredSupplierOrders.map((order) => normalizePurchaseOrder(order, defaultCurrency, t)),
@@ -638,12 +665,18 @@ export function PartnerDetailsView({
                 ? direction === 'borrowed'
                 : direction !== 'borrowed'
             if (isProvidedByPartner) {
-                rows.push(normalizeLoan(loan, defaultCurrency, t, dateFilteredInstallments.filter((i) => i.loanId === loan.id)))
+                rows.push(normalizeLoan(
+                    loan,
+                    defaultCurrency,
+                    t,
+                    dateFilteredInstallments.filter((i) => i.loanId === loan.id),
+                    loan.saleId ? linkedSaleReferenceById.get(loan.saleId) : undefined
+                ))
             }
         }
         rows.sort((a, b) => new Date(b.sortDate).getTime() - new Date(a.sortDate).getTime())
         return rows
-    }, [dateFilteredSupplierOrders, dateFilteredTravelSales, dateFilteredPayments, dateFilteredLoans, dateFilteredInstallments, defaultCurrency, conversionRates, t])
+    }, [dateFilteredSupplierOrders, dateFilteredTravelSales, dateFilteredPayments, dateFilteredLoans, dateFilteredInstallments, defaultCurrency, conversionRates, linkedSaleReferenceById, t])
     const directTransactionsVolume = useMemo(
         () => dateFilteredPayments.reduce((sum, tx) => sum + convertToStoreBase(tx.amount, tx.currency, defaultCurrency, conversionRates), 0),
         [dateFilteredPayments, defaultCurrency, conversionRates]
@@ -751,6 +784,80 @@ export function PartnerDetailsView({
             ) ?? 0), 0),
         [dateFilteredLoans, defaultCurrency]
     )
+    const remainingReceivableLoans = useMemo(
+        () => partnerLoans
+            .filter((loan) => (loan.direction ?? 'lent') !== 'borrowed')
+            .reduce((sum, loan) => sum + (convertCurrencyAmountWithAvailableSnapshot(
+                loan.balanceAmount,
+                loan.settlementCurrency,
+                defaultCurrency,
+                loan.exchangeRateSnapshot
+            ) ?? 0), 0),
+        [defaultCurrency, partnerLoans]
+    )
+    const remainingPayableLoans = useMemo(
+        () => partnerLoans
+            .filter((loan) => loan.direction === 'borrowed')
+            .reduce((sum, loan) => sum + (convertCurrencyAmountWithAvailableSnapshot(
+                loan.balanceAmount,
+                loan.settlementCurrency,
+                defaultCurrency,
+                loan.exchangeRateSnapshot
+            ) ?? 0), 0),
+        [defaultCurrency, partnerLoans]
+    )
+    const periodLoanPayments = useMemo(() => {
+        const relatedLoanIds = new Set(partnerLoans.map((loan) => loan.id))
+        let received = 0
+        let made = 0
+
+        for (const transaction of dateFilteredAllPayments) {
+            if (
+                transaction.reversalOfTransactionId
+                || transaction.sourceModule !== 'loans'
+                || !LOAN_REPAYMENT_SOURCE_TYPES.has(transaction.sourceType)
+                || !relatedLoanIds.has(transaction.sourceRecordId)
+            ) {
+                continue
+            }
+
+            const amount = convertToStoreBase(
+                transaction.amount,
+                transaction.currency,
+                defaultCurrency,
+                conversionRates
+            )
+            if (transaction.direction === 'incoming') {
+                received += amount
+            } else {
+                made += amount
+            }
+        }
+
+        return { received, made }
+    }, [conversionRates, dateFilteredAllPayments, defaultCurrency, partnerLoans])
+    const printPeriod = useMemo<PartnerDetailsPrintData['period']>(() => {
+        if (dateRange === 'custom') {
+            return {
+                type: dateRange,
+                start: customDates.start || undefined,
+                end: customDates.end || undefined
+            }
+        }
+
+        if (dateRange === 'today' || dateRange === 'month') {
+            const inclusiveEnd = dateBounds.endDate
+                ? new Date(new Date(dateBounds.endDate).getTime() - 1).toISOString()
+                : undefined
+            return {
+                type: dateRange,
+                start: dateBounds.startDate,
+                end: inclusiveEnd
+            }
+        }
+
+        return { type: 'allTime' }
+    }, [customDates.end, customDates.start, dateBounds.endDate, dateBounds.startDate, dateRange])
     const topProducts = useMemo(() => {
         const rows = new Map<string, { id: string; name: string; quantity: number; amount: number }>()
         for (const order of filteredProductOrders.filter((row) => row.status !== 'cancelled')) {
@@ -778,6 +885,7 @@ export function PartnerDetailsView({
     const printLang = features.print_lang && features.print_lang !== 'auto'
         ? features.print_lang
         : i18n.language
+    const currentTemplatePrintLanguage = resolveCustomTemplatePrintLanguage(printLang)
     const partnerPrintData = useMemo<PartnerDetailsPrintData | null>(() => {
         if (!partner) return null
 
@@ -793,61 +901,100 @@ export function PartnerDetailsView({
                 country: partner.country,
                 defaultCurrency,
                 createdAt: partner.createdAt,
-                notes: partner.notes,
-                creditLimit: partner.creditLimit,
-                receivableBalance: partner.receivableBalance,
-                payableBalance: partner.payableBalance,
-                loanOutstandingBalance: partner.loanOutstandingBalance,
-                netExposure: partner.netExposure
+                notes: partner.notes
             },
-            period: {
-                type: dateRange,
-                start: customDates.start || undefined,
-                end: customDates.end || undefined
-            },
+            period: printPeriod,
             generatedAt: new Date().toISOString(),
+            loanSummary: {
+                remainingReceivable: remainingReceivableLoans,
+                remainingPayable: remainingPayableLoans,
+                paymentsReceived: periodLoanPayments.received,
+                paymentsMade: periodLoanPayments.made
+            },
             metrics: {
-                totalValue,
-                outstandingValue,
-                averageDocumentValue: averageOrderValue,
-                activeItems: filteredActive.length,
-                completedItems: filteredCompleted.length,
-                settledItems: filteredSettled.length,
-                totalUnits,
                 moneyIn: partnerFlows.incoming,
                 moneyOut: partnerFlows.outgoing
             },
-            transactions: filteredTransactions.map((transaction) => ({
+            relationshipSummary: {
+                receivable: Math.max(partner.receivableBalance || 0, 0),
+                payable: Math.max(partner.payableBalance || 0, 0)
+            },
+            providedByYou: providedByYou.map((transaction) => ({
                 id: transaction.id,
                 source: transaction.source,
                 reference: transaction.reference,
                 displayDate: transaction.displayDate,
                 status: transaction.status,
                 statusLabel: transaction.statusLabel,
-                isPaid: transaction.isPaid,
                 summary: transaction.summary,
-                total: transaction.total,
+                originalAmount: transaction.originalAmount,
+                paidAmount: transaction.paidAmount,
+                remainingAmount: transaction.remainingAmount,
                 currency: transaction.currency
             })),
+            providedByPartner: providedByPartner.map((transaction) => ({
+                id: transaction.id,
+                source: transaction.source,
+                reference: transaction.reference,
+                displayDate: transaction.displayDate,
+                status: transaction.status,
+                statusLabel: transaction.statusLabel,
+                summary: transaction.summary,
+                originalAmount: transaction.originalAmount,
+                paidAmount: transaction.paidAmount,
+                remainingAmount: transaction.remainingAmount,
+                currency: transaction.currency
+            })),
+            salesOrders: dateFilteredCustomerOrders.map((order) => {
+                const transaction = normalizeSalesOrder(order, defaultCurrency, t)
+                return {
+                    id: transaction.id,
+                    source: transaction.source,
+                    reference: transaction.reference,
+                    displayDate: transaction.displayDate,
+                    status: transaction.status,
+                    statusLabel: transaction.statusLabel,
+                    summary: transaction.summary,
+                    originalAmount: transaction.originalAmount,
+                    paidAmount: transaction.paidAmount,
+                    remainingAmount: transaction.remainingAmount,
+                    currency: transaction.currency
+                }
+            }),
+            purchaseOrders: dateFilteredSupplierOrders.map((order) => {
+                const transaction = normalizePurchaseOrder(order, defaultCurrency, t)
+                return {
+                    id: transaction.id,
+                    source: transaction.source,
+                    reference: transaction.reference,
+                    displayDate: transaction.displayDate,
+                    status: transaction.status,
+                    statusLabel: transaction.statusLabel,
+                    summary: transaction.summary,
+                    originalAmount: transaction.originalAmount,
+                    paidAmount: transaction.paidAmount,
+                    remainingAmount: transaction.remainingAmount,
+                    currency: transaction.currency
+                }
+            }),
             topProducts
         }
     }, [
-        averageOrderValue,
-        customDates.end,
-        customDates.start,
-        dateRange,
+        dateFilteredCustomerOrders,
+        dateFilteredSupplierOrders,
         defaultCurrency,
-        filteredActive.length,
-        filteredCompleted.length,
-        filteredSettled.length,
-        filteredTransactions,
-        outstandingValue,
         partner,
         partnerFlows.incoming,
         partnerFlows.outgoing,
+        periodLoanPayments.made,
+        periodLoanPayments.received,
+        printPeriod,
+        providedByPartner,
+        providedByYou,
+        remainingPayableLoans,
+        remainingReceivableLoans,
+        t,
         topProducts,
-        totalUnits,
-        totalValue
     ])
     const partnerPrintTarget = useMemo(
         () => getCustomTemplateTarget(PARTNER_DETAILS_TEMPLATE_KEY),
@@ -862,11 +1009,14 @@ export function PartnerDetailsView({
         [customPrintTemplates]
     )
     const selectedPrintLayout = useMemo(
-        () => readCustomTemplateLayout(selectedPrintTemplate),
-        [selectedPrintTemplate]
+        () => selectedPrintTemplate
+            && isCustomTemplatePrintLanguageCompatible(selectedPrintTemplate, currentTemplatePrintLanguage)
+            ? readCustomTemplateLayout(selectedPrintTemplate)
+            : null,
+        [currentTemplatePrintLanguage, selectedPrintTemplate]
     )
     const activePrintLayout = useMemo<CustomTemplateLayout | null>(() => {
-        if (selectedPrintLayout) return selectedPrintLayout
+        if (selectedPrintTemplate) return selectedPrintLayout
         if (!partnerPrintTarget) return null
 
         return {
@@ -881,7 +1031,7 @@ export function PartnerDetailsView({
             images: [],
             updatedAt: new Date().toISOString()
         }
-    }, [partnerPrintTarget, selectedPrintLayout, t])
+    }, [partnerPrintTarget, selectedPrintLayout, selectedPrintTemplate, t])
     const partnerPrintPreview = useMemo(
         () => partnerPrintTarget && partnerPrintData
             ? createCustomTemplatePreview(partnerPrintTarget, {
@@ -894,6 +1044,27 @@ export function PartnerDetailsView({
             : undefined,
         [features, partnerPrintData, partnerPrintTarget, printLang, workspaceId, workspaceName]
     )
+    const partnerPrintInvoiceData = useMemo(() => {
+        if (!partner) return undefined
+
+        return {
+            invoiceid: `PARTNER-${partner.id}`,
+            totalAmount: remainingReceivableLoans + remainingPayableLoans,
+            settlementCurrency: defaultCurrency,
+            origin: 'manual' as const,
+            createdBy: user?.id,
+            createdByName: user?.name || 'Unknown',
+            cashierName: user?.name || 'Unknown',
+            printFormat: 'a4' as const
+        }
+    }, [
+        defaultCurrency,
+        partner,
+        remainingPayableLoans,
+        remainingReceivableLoans,
+        user?.id,
+        user?.name
+    ])
     const buildPartnerPrintPdf = useCallback(async ({ effectiveId }: { format: PrintFormat; effectiveId: string }) => {
         if (!partnerPrintTarget || !partnerPrintData || !activePrintLayout) {
             throw new Error('Partner details print data is not available.')
@@ -953,16 +1124,21 @@ export function PartnerDetailsView({
             description: t('businessPartners.customA4TemplateDescription', {
                 defaultValue: 'Use this saved custom Partner Details layout.'
             }),
-            primary: template.primary
+            primary: template.primary,
+            disabled: !isCustomTemplatePrintLanguageCompatible(template, currentTemplatePrintLanguage),
+            warning: getCustomTemplatePrintLanguageWarning(template, currentTemplatePrintLanguage, t)
         })),
-        [availablePrintTemplates, t]
+        [availablePrintTemplates, currentTemplatePrintLanguage, t]
     )
     const handlePrintSelection = useCallback((
         _format: PrintFormat,
         template?: StoredCustomTemplateRow
     ) => {
+        if (template && !isCustomTemplatePrintLanguageCompatible(template, currentTemplatePrintLanguage)) {
+            return
+        }
         setSelectedPrintTemplate(template || null)
-    }, [])
+    }, [currentTemplatePrintLanguage])
     const handlePrintClick = useCallback(() => {
         setSelectedPrintTemplate(null)
         setIsPrintPreviewOpen(true)
@@ -1166,6 +1342,50 @@ export function PartnerDetailsView({
                                 <h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-muted-foreground">
                                     {t('businessPartners.loans', { defaultValue: 'Loans' })}
                                 </h3>
+                                <div className="mb-4 rounded-3xl border bg-muted/20 p-5 sm:p-6">
+                                    <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-foreground/70">
+                                        <ArrowLeftRight className="h-5 w-5 text-primary" />
+                                        {t('businessPartners.whoOwesWhom', { defaultValue: 'Who owes whom?' })}
+                                    </div>
+                                    <div className={cn(
+                                        'mt-4 grid gap-3',
+                                        relationshipReceivable > 0 && relationshipPayable > 0 && 'sm:grid-cols-2'
+                                    )}>
+                                        {relationshipReceivable > 0 ? (
+                                            <div className="rounded-2xl border border-emerald-200/50 bg-emerald-500/[0.06] p-4">
+                                                <div className="text-base font-semibold leading-relaxed text-emerald-800 dark:text-emerald-300">
+                                                    {t('businessPartners.owesAmountTo', {
+                                                        debtor: partnerRelationshipName,
+                                                        amount: formatCurrency(relationshipReceivable, defaultCurrency, iqdPreference),
+                                                        creditor: workspaceRelationshipName,
+                                                        defaultValue: '{{debtor}} owes {{amount}} to {{creditor}}'
+                                                    })}
+                                                </div>
+                                            </div>
+                                        ) : null}
+                                        {relationshipPayable > 0 ? (
+                                            <div className="rounded-2xl border border-amber-200/50 bg-amber-500/[0.06] p-4">
+                                                <div className="text-base font-semibold leading-relaxed text-amber-800 dark:text-amber-300">
+                                                    {t('businessPartners.owesAmountTo', {
+                                                        debtor: workspaceRelationshipName,
+                                                        amount: formatCurrency(relationshipPayable, defaultCurrency, iqdPreference),
+                                                        creditor: partnerRelationshipName,
+                                                        defaultValue: '{{debtor}} owes {{amount}} to {{creditor}}'
+                                                    })}
+                                                </div>
+                                            </div>
+                                        ) : null}
+                                        {relationshipReceivable <= 0 && relationshipPayable <= 0 ? (
+                                            <div className="rounded-2xl border bg-background/70 p-4 text-base font-semibold leading-relaxed text-muted-foreground">
+                                                {t('businessPartners.noOutstandingDebtBetween', {
+                                                    first: partnerRelationshipName,
+                                                    second: workspaceRelationshipName,
+                                                    defaultValue: '{{first}} and {{second}} do not owe each other anything.'
+                                                })}
+                                            </div>
+                                        ) : null}
+                                    </div>
+                                </div>
                                 <div className="grid gap-4 sm:grid-cols-2">
                                     <div className="rounded-3xl border border-emerald-200/50 bg-emerald-500/[0.04] p-6">
                                         <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-emerald-600 dark:text-emerald-400">
@@ -1544,8 +1764,8 @@ export function PartnerDetailsView({
                         setSelectedPrintTemplate(null)
                     }}
                     title={t('businessPartners.printA4', { defaultValue: 'Print A4' })}
-                    showSaveButton={false}
                     documentId={partner.id}
+                    invoiceData={partnerPrintInvoiceData}
                     pdfBuilder={buildPartnerPrintPdf}
                     templatePreview={partnerPrintPreview}
                     customTemplate={{
@@ -1558,7 +1778,6 @@ export function PartnerDetailsView({
                     }}
                     initialTemplateLayout={activePrintLayout}
                     enableTemplatePreviewSave
-                    templatePrimaryActionLabel={t('businessPartners.printA4', { defaultValue: 'Print A4' })}
                     generateTemplateLayoutBlob={buildEditablePartnerPrintPdf}
                     features={features}
                     workspaceName={workspaceName}

@@ -2,6 +2,7 @@ import type { UniversalInvoice } from '@/types'
 import type { ReactElement } from 'react'
 
 export type PrintFormat = 'a4' | 'receipt'
+export type CustomTemplatePrintLanguage = 'en' | 'ar' | 'ku'
 
 export type TemplatePreviewField = {
     key: string
@@ -74,6 +75,7 @@ export type CustomTemplateLayout = {
     label?: string
     moduleTypeKey: string
     nativeTemplateKey?: string
+    printLanguage?: CustomTemplatePrintLanguage
     page: {
         widthMm: number
         heightMm: number

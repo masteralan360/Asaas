@@ -1,5 +1,10 @@
 import { generateTemplatePdf } from '@/services/pdfGenerator'
-import type { CustomTemplateLayout, TemplatePreview, TemplatePreviewDataKey } from '@/lib/pdfPreviewStore'
+import type {
+    CustomTemplateLayout,
+    CustomTemplatePrintLanguage,
+    TemplatePreview,
+    TemplatePreviewDataKey
+} from '@/lib/pdfPreviewStore'
 import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
 import { platformService } from '@/services/platformService'
 import {
@@ -26,6 +31,10 @@ import {
 
 export const SALES_HISTORY_RECEIPT_TEMPLATE_KEY = 'salesHistory.Receipt'
 export const PARTNER_DETAILS_TEMPLATE_KEY = 'businessPartners.Details'
+export const PARTNER_DETAILS_TEMPLATE_FIELD_KEYS = {
+    showWhoOwesWhom: 'showWhoOwesWhom',
+    showOrders: 'showOrders'
+} as const
 
 export type CustomTemplateTarget = {
     moduleTypeKey: string
@@ -137,6 +146,33 @@ export function getCustomTemplateDisplayName(moduleTypeKey: string) {
     return moduleTypeKey
 }
 
+export function resolveCustomTemplatePrintLanguage(
+    configuredPrintLanguage?: string | null,
+    fallbackLanguage = 'en'
+): CustomTemplatePrintLanguage {
+    const candidate = configuredPrintLanguage && configuredPrintLanguage !== 'auto'
+        ? configuredPrintLanguage
+        : fallbackLanguage
+    const baseLanguage = candidate.toLowerCase().split('-')[0]
+
+    if (baseLanguage === 'ar' || baseLanguage === 'ku') {
+        return baseLanguage
+    }
+
+    return 'en'
+}
+
+export function stampCustomTemplatePrintLanguage(
+    layout: CustomTemplateLayout,
+    configuredPrintLanguage?: string | null,
+    fallbackLanguage = 'en'
+): CustomTemplateLayout {
+    return {
+        ...layout,
+        printLanguage: resolveCustomTemplatePrintLanguage(configuredPrintLanguage, fallbackLanguage)
+    }
+}
+
 export type StoredCustomTemplateRow = {
     id: string
     module_type_key: string
@@ -157,6 +193,9 @@ export function readCustomTemplateLayout(row?: StoredCustomTemplateRow | null): 
         label: row.label?.trim() || (typeof layout.label === 'string' ? layout.label : undefined),
         moduleTypeKey: typeof layout.moduleTypeKey === 'string' ? layout.moduleTypeKey : row.module_type_key,
         nativeTemplateKey: typeof layout.nativeTemplateKey === 'string' ? layout.nativeTemplateKey : undefined,
+        printLanguage: layout.printLanguage === 'ar' || layout.printLanguage === 'ku' || layout.printLanguage === 'en'
+            ? layout.printLanguage
+            : undefined,
         page: {
             widthMm: layout.page?.widthMm || 210,
             heightMm: layout.page?.heightMm || 297
@@ -167,6 +206,45 @@ export function readCustomTemplateLayout(row?: StoredCustomTemplateRow | null): 
         images: layout.images || [],
         updatedAt: typeof layout.updatedAt === 'string' ? layout.updatedAt : row.updated_at || new Date().toISOString()
     }
+}
+
+export function getStoredCustomTemplatePrintLanguage(
+    row?: StoredCustomTemplateRow | null
+): CustomTemplatePrintLanguage | null {
+    return readCustomTemplateLayout(row)?.printLanguage || null
+}
+
+export function isCustomTemplatePrintLanguageCompatible(
+    row: StoredCustomTemplateRow | null | undefined,
+    currentPrintLanguage: string
+) {
+    const storedPrintLanguage = getStoredCustomTemplatePrintLanguage(row)
+    return storedPrintLanguage !== null
+        && storedPrintLanguage === resolveCustomTemplatePrintLanguage(currentPrintLanguage)
+}
+
+export function getCustomTemplatePrintLanguageWarning(
+    row: StoredCustomTemplateRow,
+    currentPrintLanguage: string,
+    t: (key: string, options?: Record<string, unknown>) => string
+) {
+    const storedPrintLanguage = getStoredCustomTemplatePrintLanguage(row)
+    if (!storedPrintLanguage) {
+        return t('customTemplates.languageMissingWarning', {
+            defaultValue: 'No print language is saved in this template. Open and save it again before printing.'
+        })
+    }
+
+    const normalizedCurrentPrintLanguage = resolveCustomTemplatePrintLanguage(currentPrintLanguage)
+    if (storedPrintLanguage === normalizedCurrentPrintLanguage) {
+        return undefined
+    }
+
+    return t('customTemplates.languageMismatchWarning', {
+        defaultValue: 'Saved for {{templateLanguage}}, but workspace printing is {{workspaceLanguage}}. Change the print language or save this template again.',
+        templateLanguage: storedPrintLanguage.toUpperCase(),
+        workspaceLanguage: normalizedCurrentPrintLanguage.toUpperCase()
+    })
 }
 
 export function countCustomTemplateLayoutItems(row: StoredCustomTemplateRow) {
@@ -235,29 +313,27 @@ const SAMPLE_PARTNER_DETAILS_DATA: PartnerDetailsPrintData = {
         country: 'Iraq',
         defaultCurrency: 'usd',
         createdAt: new Date().toISOString(),
-        notes: 'Partner notes appear here.',
-        creditLimit: 50000,
-        receivableBalance: 12500,
-        payableBalance: 4200,
-        loanOutstandingBalance: 2500,
-        netExposure: 10800
+        notes: 'Partner notes appear here.'
     },
     period: {
         type: 'allTime'
     },
     generatedAt: new Date().toISOString(),
+    loanSummary: {
+        remainingReceivable: 2500,
+        remainingPayable: 1200,
+        paymentsReceived: 8000,
+        paymentsMade: 3200
+    },
     metrics: {
-        totalValue: 86500,
-        outstandingValue: 16700,
-        averageDocumentValue: 10812.5,
-        activeItems: 5,
-        completedItems: 3,
-        settledItems: 4,
-        totalUnits: 128,
         moneyIn: 42000,
         moneyOut: 18500
     },
-    transactions: [
+    relationshipSummary: {
+        receivable: 2500,
+        payable: 1200
+    },
+    providedByYou: [
         {
             id: 'sample-sales-order',
             source: 'sales_order',
@@ -265,11 +341,14 @@ const SAMPLE_PARTNER_DETAILS_DATA: PartnerDetailsPrintData = {
             displayDate: new Date().toISOString(),
             status: 'completed',
             statusLabel: 'Completed',
-            isPaid: true,
             summary: 'Sample product order',
-            total: 12000,
+            originalAmount: 12000,
+            paidAmount: 12000,
+            remainingAmount: 0,
             currency: 'usd'
-        },
+        }
+    ],
+    providedByPartner: [
         {
             id: 'sample-loan',
             source: 'loan',
@@ -277,9 +356,40 @@ const SAMPLE_PARTNER_DETAILS_DATA: PartnerDetailsPrintData = {
             displayDate: new Date().toISOString(),
             status: 'active',
             statusLabel: 'Active',
-            isPaid: false,
             summary: 'Installment loan',
-            total: 2500,
+            originalAmount: 5000,
+            paidAmount: 2500,
+            remainingAmount: 2500,
+            currency: 'usd'
+        }
+    ],
+    salesOrders: [
+        {
+            id: 'sample-sales-order',
+            source: 'sales_order',
+            reference: 'SO-00042',
+            displayDate: new Date().toISOString(),
+            status: 'completed',
+            statusLabel: 'Completed',
+            summary: 'Sample product order',
+            originalAmount: 12000,
+            paidAmount: 12000,
+            remainingAmount: 0,
+            currency: 'usd'
+        }
+    ],
+    purchaseOrders: [
+        {
+            id: 'sample-purchase-order',
+            source: 'purchase_order',
+            reference: 'PO-00019',
+            displayDate: new Date().toISOString(),
+            status: 'received',
+            statusLabel: 'Received',
+            summary: 'Sample supply order',
+            originalAmount: 7200,
+            paidAmount: 3000,
+            remainingAmount: 4200,
             currency: 'usd'
         }
     ],
@@ -292,6 +402,21 @@ const SAMPLE_PARTNER_DETAILS_DATA: PartnerDetailsPrintData = {
         }
     ]
 }
+
+const PARTNER_DETAILS_FIELDS = [
+    {
+        key: PARTNER_DETAILS_TEMPLATE_FIELD_KEYS.showWhoOwesWhom,
+        label: 'Show the "Who owes whom" section',
+        value: 'true',
+        type: 'boolean' as const
+    },
+    {
+        key: PARTNER_DETAILS_TEMPLATE_FIELD_KEYS.showOrders,
+        label: 'Show the orders',
+        value: 'false',
+        type: 'boolean' as const
+    }
+]
 
 const SALES_HISTORY_RECEIPT_FIELDS = [
     {
@@ -517,16 +642,18 @@ function createPartnerDetailsPreview(options: CustomTemplatePreviewOptions): Tem
             : 'en'
 
     return {
-        fields: [],
+        fields: PARTNER_DETAILS_FIELDS,
         page: { widthMm: 210, heightMm: 297 },
         fixedPrintLang,
-        createElement: (_data, _effectiveId, printLangOverride) => (
+        createElement: (data, _effectiveId, printLangOverride) => (
             <PartnerDetailsPrintTemplate
                 workspaceName={options.workspaceName}
                 printLang={printLangOverride || fixedPrintLang}
                 data={partnerDetailsData}
                 iqdPreference={options.features?.iqd_display_preference}
                 logoUrl={options.features?.logo_url}
+                showWhoOwesWhom={data[PARTNER_DETAILS_TEMPLATE_FIELD_KEYS.showWhoOwesWhom] !== 'false'}
+                showOrders={data[PARTNER_DETAILS_TEMPLATE_FIELD_KEYS.showOrders] === 'true'}
             />
         ),
         buildPdf: (element, printLangOverride) => generateTemplatePdf({
@@ -596,7 +723,10 @@ function CustomTemplateLayoutOverlay({ layout }: { layout: CustomTemplateLayout 
     const pageHeight = layout.page.heightMm || 297
 
     return (
-        <div className="pointer-events-none absolute inset-0 z-50 overflow-hidden">
+        <div
+            className="pointer-events-none absolute start-0 top-0 z-50 overflow-hidden"
+            style={{ width: '100%', height: `${pageHeight}mm` }}
+        >
             <svg className="absolute inset-0 h-full w-full" viewBox={`0 0 ${pageWidth} ${pageHeight}`}>
                 {layout.annotations.map((annotation, index) => (
                     <path
@@ -673,13 +803,16 @@ export function renderCustomTemplateLayoutElement({
     }
 
     const isReceipt = target.printFormat === 'receipt'
+    const supportsMultiplePages = target.moduleTypeKey === PARTNER_DETAILS_TEMPLATE_KEY
 
     return (
         <div
-            className="relative mx-auto overflow-hidden bg-white text-black"
+            className={`relative mx-auto bg-white text-black ${supportsMultiplePages ? 'overflow-visible' : 'overflow-hidden'}`}
             style={{
                 width: `${layout.page.widthMm || 210}mm`,
                 ...(isReceipt
+                    ? { minHeight: `${layout.page.heightMm || 297}mm` }
+                    : supportsMultiplePages
                     ? { minHeight: `${layout.page.heightMm || 297}mm` }
                     : { height: `${layout.page.heightMm || 297}mm` })
             }}

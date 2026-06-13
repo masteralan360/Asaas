@@ -4,6 +4,7 @@ import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 
 import { db } from '@/local-db/database'
 import {
+  deleteLocalCustomTemplate,
   listLocalCustomTemplates,
   saveLocalCustomTemplate,
 } from '@/local-db/customTemplates'
@@ -209,5 +210,64 @@ describe('demo workspace cleanup', () => {
         .filter((setting) => setting.key.startsWith('demo_custom_template:demo-workspace:'))
         .count(),
     ).toBe(1)
+  })
+
+  it('promotes another active demo template when deleting the primary template', async () => {
+    writeWorkspaceModeSnapshot({
+      workspaceId: 'demo-workspace',
+      dataMode: 'demo',
+    })
+
+    const primaryTemplate = await saveLocalCustomTemplate({
+      workspaceId: 'demo-workspace',
+      moduleTypeKey: 'sales.receipt',
+      label: 'Primary receipt',
+      layoutJson: { title: 'Primary' },
+      userId: 'demo-user',
+    })
+    const replacementTemplate = await saveLocalCustomTemplate({
+      workspaceId: 'demo-workspace',
+      moduleTypeKey: 'sales.receipt',
+      label: 'Replacement receipt',
+      layoutJson: { title: 'Replacement' },
+      userId: 'demo-user',
+    })
+
+    await deleteLocalCustomTemplate(
+      'demo-workspace',
+      primaryTemplate.id,
+      'demo-user',
+    )
+
+    const templates = await listLocalCustomTemplates('demo-workspace')
+    expect(templates).toHaveLength(1)
+    expect(templates[0]).toMatchObject({
+      id: replacementTemplate.id,
+      active: true,
+      primary: true,
+    })
+  })
+
+  it('allows deleting the final demo custom template', async () => {
+    writeWorkspaceModeSnapshot({
+      workspaceId: 'demo-workspace',
+      dataMode: 'demo',
+    })
+
+    const onlyTemplate = await saveLocalCustomTemplate({
+      workspaceId: 'demo-workspace',
+      moduleTypeKey: 'sales.receipt',
+      label: 'Only receipt',
+      layoutJson: { title: 'Only' },
+      userId: 'demo-user',
+    })
+
+    await deleteLocalCustomTemplate(
+      'demo-workspace',
+      onlyTemplate.id,
+      'demo-user',
+    )
+
+    expect(await listLocalCustomTemplates('demo-workspace')).toHaveLength(0)
   })
 })

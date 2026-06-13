@@ -105,4 +105,31 @@ describe('PrintSelectionModal', () => {
         expect(html).toContain('whitespace-normal')
         expect(html).toContain('line-clamp-2')
     })
+
+    it('keeps an incompatible template visible but disabled with a warning', () => {
+        const html = renderToStaticMarkup(
+            <PrintSelectionModal
+                isOpen
+                onClose={() => undefined}
+                onSelect={() => undefined}
+                nativeOptions={[]}
+                templateOptions={[{
+                    format: 'receipt',
+                    template: {
+                        id: 'arabic-template',
+                        module_type_key: 'salesHistory.Receipt',
+                        label: 'Arabic Receipt',
+                        layout_json: { printLanguage: 'ar' }
+                    },
+                    label: 'Arabic Receipt',
+                    disabled: true,
+                    warning: 'Saved for AR, but workspace printing is EN.'
+                }]}
+            />
+        )
+
+        expect(html).toContain('Arabic Receipt')
+        expect(html).toContain('Saved for AR, but workspace printing is EN.')
+        expect(html).toContain('disabled=""')
+    })
 })

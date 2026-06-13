@@ -53,9 +53,12 @@ import { useWorkspace } from '@/workspace'
 import {
     buildCustomTemplateLayoutPdf,
     createCustomTemplatePreview,
+    getCustomTemplatePrintLanguageWarning,
     getCustomTemplateTarget,
     getStoredCustomTemplateLabel,
+    isCustomTemplatePrintLanguageCompatible,
     readCustomTemplateLayout,
+    resolveCustomTemplatePrintLanguage,
     type StoredCustomTemplateRow
 } from '@/lib/customTemplates'
 import type { CustomTemplateLayout } from '@/lib/pdfPreviewStore'
@@ -646,6 +649,7 @@ function RealEstateDetails({
         phone: pickWorkspaceContactPair(workspaceContacts, 'phone')
     }), [workspaceContacts])
     const printLang = features.print_lang && features.print_lang !== 'auto' ? features.print_lang : i18n.language
+    const currentTemplatePrintLanguage = resolveCustomTemplatePrintLanguage(printLang)
     const printT = i18n.getFixedT(printLang)
     const realEstatePrintValues = useMemo(
         () => transaction
@@ -660,11 +664,14 @@ function RealEstateDetails({
         [transactionPrintModuleTypeKey]
     )
     const selectedPrintLayout = useMemo(
-        () => selectedPrintTemplate ? readCustomTemplateLayout(selectedPrintTemplate) : null,
-        [selectedPrintTemplate]
+        () => selectedPrintTemplate
+            && isCustomTemplatePrintLanguageCompatible(selectedPrintTemplate, currentTemplatePrintLanguage)
+            ? readCustomTemplateLayout(selectedPrintTemplate)
+            : null,
+        [currentTemplatePrintLanguage, selectedPrintTemplate]
     )
     const activePrintLayout = useMemo<CustomTemplateLayout | null>(() => {
-        if (selectedPrintLayout) return selectedPrintLayout
+        if (selectedPrintTemplate) return selectedPrintLayout
         if (!selectedPrintTarget) return null
 
         return {
@@ -679,7 +686,7 @@ function RealEstateDetails({
             images: [],
             updatedAt: new Date().toISOString()
         }
-    }, [selectedPrintLayout, selectedPrintTarget, t])
+    }, [selectedPrintLayout, selectedPrintTarget, selectedPrintTemplate, t])
     const selectedRuntimePrintLayout = useMemo(
         () => activePrintLayout ? buildRuntimePrintLayout(activePrintLayout, realEstatePrintValues) : null,
         [activePrintLayout, realEstatePrintValues]
@@ -726,16 +733,21 @@ function RealEstateDetails({
             description: t('realEstate.customA4TemplateDescription', {
                 defaultValue: 'Use this saved custom contract layout.'
             }),
-            primary: template.primary
+            primary: template.primary,
+            disabled: !isCustomTemplatePrintLanguageCompatible(template, currentTemplatePrintLanguage),
+            warning: getCustomTemplatePrintLanguageWarning(template, currentTemplatePrintLanguage, t)
         })),
-        [availablePrintTemplates, t]
+        [availablePrintTemplates, currentTemplatePrintLanguage, t]
     )
     const handlePrintSelection = useCallback((
         _format: PrintFormat,
         template?: StoredCustomTemplateRow
     ) => {
+        if (template && !isCustomTemplatePrintLanguageCompatible(template, currentTemplatePrintLanguage)) {
+            return
+        }
         setSelectedPrintTemplate(template || null)
-    }, [])
+    }, [currentTemplatePrintLanguage])
     const handlePrintClick = useCallback(() => {
         setSelectedPrintTemplate(null)
         setIsPrintPreviewOpen(true)

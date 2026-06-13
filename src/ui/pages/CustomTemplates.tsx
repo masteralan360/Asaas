@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useLocation } from 'wouter'
 import { useTranslation } from 'react-i18next'
-import { ArrowRight, FileText, Loader2, Plus, RefreshCw } from 'lucide-react'
+import { AlertTriangle, ArrowRight, FileText, Loader2, Plus, RefreshCw, Trash2 } from 'lucide-react'
 
 import { isSupabaseConfigured, supabase, useAuth } from '@/auth'
 import { Button } from '@/ui/components/button'
@@ -36,8 +36,12 @@ import {
 import {
     CUSTOM_TEMPLATE_TARGETS,
     createCustomTemplatePreview,
+    getCustomTemplatePrintLanguageWarning,
     getCustomTemplateDisplayName,
-    getCustomTemplateTarget
+    getCustomTemplateTarget,
+    getStoredCustomTemplatePrintLanguage,
+    resolveCustomTemplatePrintLanguage,
+    stampCustomTemplatePrintLanguage
 } from '@/lib/customTemplates'
 import { setInvoicePreviewSource, type CustomTemplateLayout } from '@/lib/pdfPreviewStore'
 import { formatDateTime } from '@/lib/utils'
@@ -45,7 +49,9 @@ import { normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseR
 import { useWorkspace } from '@/workspace'
 import { useWorkspaceContacts } from '@/local-db/hooks'
 import { r2Service } from '@/services/r2Service'
+import { DeleteConfirmationModal } from '@/ui/components/DeleteConfirmationModal'
 import {
+    deleteLocalCustomTemplate,
     listLocalCustomTemplates,
     replaceMirroredCustomTemplates,
     saveLocalCustomTemplate,
@@ -63,6 +69,9 @@ function readStoredLayout(row?: CustomTemplateRow | null): CustomTemplateLayout 
         label: row.label?.trim() || (typeof layout.label === 'string' ? layout.label : undefined),
         moduleTypeKey: typeof layout.moduleTypeKey === 'string' ? layout.moduleTypeKey : row.module_type_key,
         nativeTemplateKey: typeof layout.nativeTemplateKey === 'string' ? layout.nativeTemplateKey : undefined,
+        printLanguage: layout.printLanguage === 'ar' || layout.printLanguage === 'ku' || layout.printLanguage === 'en'
+            ? layout.printLanguage
+            : undefined,
         page: {
             widthMm: layout.page?.widthMm || 210,
             heightMm: layout.page?.heightMm || 297
@@ -121,9 +130,12 @@ export function CustomTemplates() {
     const [error, setError] = useState<string | null>(null)
     const [isAddOpen, setIsAddOpen] = useState(false)
     const [selectedModuleTypeKey, setSelectedModuleTypeKey] = useState(CUSTOM_TEMPLATE_TARGETS[0]?.moduleTypeKey || '')
+    const [deleteTarget, setDeleteTarget] = useState<CustomTemplateRow | null>(null)
+    const [isDeleting, setIsDeleting] = useState(false)
 
     const workspaceId = user?.workspaceId
     const canPersistTemplates = isLocalMode || isSupabaseConfigured
+    const currentPrintLanguage = resolveCustomTemplatePrintLanguage(features.print_lang, i18n.language)
     const workspaceContacts = useWorkspaceContacts(workspaceId)
     const canManageTemplates = user?.role === 'admin'
     const workspaceFooterContacts = useMemo(() => {
@@ -237,10 +249,10 @@ export function CustomTemplates() {
         }
 
         const label = options?.label?.trim() || layout.label?.trim() || getCustomTemplateDisplayName(layout.moduleTypeKey)
-        const layoutWithLabel: CustomTemplateLayout = {
+        const layoutWithLabel = stampCustomTemplatePrintLanguage({
             ...layout,
             label
-        }
+        }, currentPrintLanguage)
 
         if (isLocalMode) {
             await saveLocalCustomTemplate({
@@ -337,7 +349,7 @@ export function CustomTemplates() {
                     defaultValue: 'The custom print layout was saved to Supabase.'
                 })
         })
-    }, [fetchTemplates, isDemoMode, isHybridMode, isLocalMode, loadCloudTemplates, t, templates, toast, user?.id, workspaceId])
+    }, [currentPrintLanguage, fetchTemplates, isDemoMode, isHybridMode, isLocalMode, loadCloudTemplates, t, templates, toast, user?.id, workspaceId])
 
     const openPreview = useCallback((moduleTypeKey: string, template?: CustomTemplateRow) => {
         const target = availableTargets.find((item) => item.moduleTypeKey === moduleTypeKey)
@@ -443,6 +455,140 @@ export function CustomTemplates() {
         }
     }, [canManageTemplates, fetchTemplates, isLocalMode, loadCloudTemplates, t, templates, toast, user?.id, workspaceId])
 
+    const deleteTemplate = useCallback(async () => {
+        if (!deleteTarget || !workspaceId || !canManageTemplates || isDeleting) return
+
+        setIsDeleting(true)
+        try {
+            const deletedLayout = readStoredLayout(deleteTarget)
+            const imagePathsUsedByOtherTemplates = new Set<string>()
+            for (const template of templates) {
+                if (template.id === deleteTarget.id) continue
+                for (const path of collectLayoutImagePaths(readStoredLayout(template))) {
+                    imagePathsUsedByOtherTemplates.add(path)
+                }
+            }
+            const imagePathsToDelete = Array.from(collectLayoutImagePaths(deletedLayout)).filter(
+                (path) => !imagePathsUsedByOtherTemplates.has(path)
+            )
+
+            if (isLocalMode) {
+                await deleteLocalCustomTemplate(workspaceId, deleteTarget.id, user?.id)
+                await fetchTemplates()
+            } else {
+                if (!isSupabaseConfigured) {
+                    throw new Error('Supabase must be configured before custom templates can be deleted.')
+                }
+
+                let replacement: CustomTemplateRow | undefined
+                if (deleteTarget.primary) {
+                    replacement = templates.find((template) =>
+                        template.id !== deleteTarget.id
+                        && template.module_type_key === deleteTarget.module_type_key
+                        && template.active
+                    )
+                    if (replacement) {
+                        const replacementIdForPromotion = replacement.id
+                        const { error: promoteError } = await runSupabaseAction('customTemplates.promoteBeforeDelete', () =>
+                            supabase
+                                .from('custom_templates')
+                                .update({
+                                    primary: true,
+                                    updated_by: user?.id || null
+                                })
+                                .eq('id', replacementIdForPromotion)
+                                .eq('workspace_id', workspaceId)
+                        )
+                        if (promoteError) throw normalizeSupabaseActionError(promoteError)
+                    }
+                }
+
+                const { data: deletedRows, error: deleteError } = await runSupabaseAction('customTemplates.delete', () =>
+                    supabase
+                        .from('custom_templates')
+                        .delete()
+                        .eq('id', deleteTarget.id)
+                        .eq('workspace_id', workspaceId)
+                        .select('id')
+                )
+                if (deleteError) throw normalizeSupabaseActionError(deleteError)
+                if (!deletedRows?.some((row) => row.id === deleteTarget.id)) {
+                    throw new Error('The custom template was not found or you do not have permission to delete it.')
+                }
+
+                const deletedAt = new Date().toISOString()
+                const replacementId = replacement?.id
+                const remainingTemplates = templates
+                    .filter((template) => template.id !== deleteTarget.id)
+                    .map((template) => replacementId && template.id === replacementId
+                        ? {
+                            ...template,
+                            primary: true,
+                            updated_by: user?.id || null,
+                            updated_at: deletedAt
+                        }
+                        : template
+                    )
+                setTemplates(remainingTemplates)
+                if (isHybridMode) {
+                    try {
+                        await replaceMirroredCustomTemplates(workspaceId, remainingTemplates)
+                    } catch (mirrorError) {
+                        console.error('[CustomTemplates] Failed to update the local template mirror after deletion:', mirrorError)
+                    }
+                }
+
+                if (imagePathsToDelete.length > 0 && r2Service.isConfigured()) {
+                    const deleteResults = await Promise.allSettled(
+                        imagePathsToDelete.map(async (path) => {
+                            const r2Key = getR2KeyForStoredMediaPath(path, workspaceId)
+                            if (r2Key) await r2Service.delete(r2Key)
+                        })
+                    )
+                    deleteResults.forEach((result, index) => {
+                        if (result.status === 'rejected') {
+                            console.error(
+                                '[CustomTemplates] Failed to delete template image from R2:',
+                                imagePathsToDelete[index],
+                                result.reason
+                            )
+                        }
+                    })
+                }
+            }
+
+            toast({
+                title: t('customTemplates.deletedTitle', { defaultValue: 'Template deleted' }),
+                description: t('customTemplates.deletedDescription', {
+                    defaultValue: 'The custom print template was deleted successfully.'
+                })
+            })
+            setDeleteTarget(null)
+        } catch (deleteError) {
+            toast({
+                title: t('customTemplates.deleteErrorTitle', { defaultValue: 'Could not delete template' }),
+                description: isLocalMode
+                    ? (deleteError instanceof Error ? deleteError.message : String(deleteError))
+                    : normalizeSupabaseActionError(deleteError).message,
+                variant: 'destructive'
+            })
+        } finally {
+            setIsDeleting(false)
+        }
+    }, [
+        canManageTemplates,
+        deleteTarget,
+        fetchTemplates,
+        isHybridMode,
+        isDeleting,
+        isLocalMode,
+        t,
+        templates,
+        toast,
+        user?.id,
+        workspaceId
+    ])
+
     return (
         <div className="space-y-4">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -533,6 +679,12 @@ export function CustomTemplates() {
                                     const targetAvailable = availableTargets.some((item) => item.moduleTypeKey === template.module_type_key)
                                     const storedLayout = readStoredLayout(template)
                                     const templateLabel = template.label?.trim() || storedLayout?.label || getCustomTemplateDisplayName(template.module_type_key)
+                                    const storedPrintLanguage = getStoredCustomTemplatePrintLanguage(template)
+                                    const printLanguageWarning = getCustomTemplatePrintLanguageWarning(
+                                        template,
+                                        currentPrintLanguage,
+                                        t
+                                    )
                                     return (
                                         <TableRow key={template.id}>
                                             <TableCell>
@@ -543,6 +695,18 @@ export function CustomTemplates() {
                                                         ? ` - ${target.description}`
                                                         : ` - ${t('customTemplates.unknownTarget', { defaultValue: 'Custom print layout' })}`}
                                                 </div>
+                                                <div className="mt-1 text-xs text-muted-foreground">
+                                                    {t('customTemplates.printLanguageLabel', {
+                                                        defaultValue: 'Print language: {{language}}',
+                                                        language: storedPrintLanguage?.toUpperCase() || t('common.unknown', { defaultValue: 'Unknown' })
+                                                    })}
+                                                </div>
+                                                {printLanguageWarning ? (
+                                                    <div className="mt-2 flex max-w-xl items-start gap-1.5 rounded-md border border-amber-300/70 bg-amber-500/10 px-2 py-1.5 text-xs text-amber-800 dark:text-amber-300">
+                                                        <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                                                        <span>{printLanguageWarning}</span>
+                                                    </div>
+                                                ) : null}
                                             </TableCell>
                                             <TableCell className="font-mono text-xs">{template.module_type_key}</TableCell>
                                             <TableCell>{countLayoutItems(template)}</TableCell>
@@ -566,16 +730,33 @@ export function CustomTemplates() {
                                             </TableCell>
                                             <TableCell>{formatDateTime(template.updated_at)}</TableCell>
                                             <TableCell className="text-end">
-                                                <Button
-                                                    variant="outline"
-                                                    size="sm"
-                                                    className="gap-2"
-                                                    onClick={() => openPreview(template.module_type_key, template)}
-                                                    disabled={!canPersistTemplates || !canManageTemplates || !targetAvailable}
-                                                >
-                                                    <FileText className="h-4 w-4" />
-                                                    {t('customTemplates.customize', { defaultValue: 'Customize' })}
-                                                </Button>
+                                                <div className="flex justify-end gap-2">
+                                                    <Button
+                                                        variant="outline"
+                                                        size="sm"
+                                                        className="gap-2"
+                                                        onClick={() => openPreview(template.module_type_key, template)}
+                                                        disabled={!canPersistTemplates || !canManageTemplates || !targetAvailable}
+                                                    >
+                                                        <FileText className="h-4 w-4" />
+                                                        {t('customTemplates.customize', { defaultValue: 'Customize' })}
+                                                    </Button>
+                                                    {canManageTemplates && (
+                                                        <Button
+                                                            variant="outline"
+                                                            size="icon"
+                                                            className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                                            onClick={() => setDeleteTarget(template)}
+                                                            disabled={!canPersistTemplates || isDeleting}
+                                                            aria-label={t('customTemplates.deleteTemplate', {
+                                                                defaultValue: 'Delete {{name}}',
+                                                                name: templateLabel
+                                                            })}
+                                                        >
+                                                            <Trash2 className="h-4 w-4" />
+                                                        </Button>
+                                                    )}
+                                                </div>
                                             </TableCell>
                                         </TableRow>
                                     )
@@ -645,6 +826,20 @@ export function CustomTemplates() {
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
+
+            <DeleteConfirmationModal
+                isOpen={Boolean(deleteTarget)}
+                onClose={() => {
+                    if (!isDeleting) setDeleteTarget(null)
+                }}
+                onConfirm={() => void deleteTemplate()}
+                isLoading={isDeleting}
+                itemName={deleteTarget?.label}
+                title={t('customTemplates.deleteTitle', { defaultValue: 'Delete Custom Template' })}
+                description={t('customTemplates.deleteDescription', {
+                    defaultValue: 'This permanently deletes the custom print template. This action cannot be undone.'
+                })}
+            />
         </div>
     )
 }

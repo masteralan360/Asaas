@@ -12,6 +12,20 @@ export type PartnerDetailsPrintTransactionSource =
     | 'simple_loan'
     | 'direct_transaction'
 
+export type PartnerDetailsPrintTransaction = {
+    id: string
+    source: PartnerDetailsPrintTransactionSource
+    reference: string
+    displayDate: string
+    status: string
+    statusLabel: string
+    summary: string
+    originalAmount: number
+    paidAmount: number
+    remainingAmount: number
+    currency: string
+}
+
 export type PartnerDetailsPrintData = {
     partner: {
         name: string
@@ -25,11 +39,6 @@ export type PartnerDetailsPrintData = {
         defaultCurrency: string
         createdAt: string
         notes?: string
-        creditLimit: number
-        receivableBalance: number
-        payableBalance: number
-        loanOutstandingBalance: number
-        netExposure: number
     }
     period: {
         type: 'today' | 'month' | 'allTime' | 'custom'
@@ -37,29 +46,24 @@ export type PartnerDetailsPrintData = {
         end?: string
     }
     generatedAt: string
+    loanSummary: {
+        remainingReceivable: number
+        remainingPayable: number
+        paymentsReceived: number
+        paymentsMade: number
+    }
     metrics: {
-        totalValue: number
-        outstandingValue: number
-        averageDocumentValue: number
-        activeItems: number
-        completedItems: number
-        settledItems: number
-        totalUnits: number
         moneyIn: number
         moneyOut: number
     }
-    transactions: Array<{
-        id: string
-        source: PartnerDetailsPrintTransactionSource
-        reference: string
-        displayDate: string
-        status: string
-        statusLabel: string
-        isPaid: boolean
-        summary: string
-        total: number
-        currency: string
-    }>
+    relationshipSummary: {
+        receivable: number
+        payable: number
+    }
+    providedByYou: PartnerDetailsPrintTransaction[]
+    providedByPartner: PartnerDetailsPrintTransaction[]
+    salesOrders: PartnerDetailsPrintTransaction[]
+    purchaseOrders: PartnerDetailsPrintTransaction[]
     topProducts: Array<{
         id: string
         name: string
@@ -74,6 +78,8 @@ interface PartnerDetailsPrintTemplateProps {
     data: PartnerDetailsPrintData
     iqdPreference?: IQDDisplayPreference
     logoUrl?: string | null
+    showWhoOwesWhom?: boolean
+    showOrders?: boolean
 }
 
 function isRTL(lang: string) {
@@ -117,7 +123,7 @@ function resolveSourceLabel(
         case 'direct_transaction':
             return t('ledger.type.direct_transaction', { defaultValue: 'Direct Transaction' })
         default:
-            return t('loans.installmentLoan', { defaultValue: 'Installment Loan' })
+            return t('loans.installmentRepayment', { defaultValue: 'Installment Repayment' })
     }
 }
 
@@ -125,16 +131,14 @@ function resolvePeriodLabel(
     period: PartnerDetailsPrintData['period'],
     t: (key: string, options?: Record<string, unknown>) => string
 ) {
-    if (period.type === 'today') {
-        return t('performance.filters.today', { defaultValue: 'Today' })
-    }
-    if (period.type === 'month') {
-        return t('performance.filters.thisMonth', { defaultValue: 'This Month' })
-    }
-    if (period.type === 'custom') {
+    if (period.start || period.end) {
         const start = period.start ? formatDate(period.start) : '-'
         const end = period.end ? formatDate(period.end) : '-'
-        return `${start} - ${end}`
+        return t('businessPartners.fromDateToDate', {
+            defaultValue: 'from {{start}} to {{end}}',
+            start,
+            end
+        })
     }
     return t('performance.filters.allTime', { defaultValue: 'All Time' })
 }
@@ -157,26 +161,147 @@ function MetricBox({ label, value }: { label: string; value: string }) {
     )
 }
 
+function ActivityTable({
+    title,
+    rows,
+    t,
+    iqdPreference
+}: {
+    title: string
+    rows: PartnerDetailsPrintTransaction[]
+    t: (key: string, options?: Record<string, unknown>) => string
+    iqdPreference: IQDDisplayPreference
+}) {
+    return (
+        <div className="mb-4 break-inside-avoid">
+            <h2 className="mb-2 text-sm font-semibold">{title}</h2>
+            <table className="w-full border-collapse text-[9px]">
+                <thead>
+                    <tr className="bg-slate-100">
+                        <th className="border border-slate-300 p-1 text-start">{t('common.date', { defaultValue: 'Date' })}</th>
+                        <th className="border border-slate-300 p-1 text-start">{t('common.type', { defaultValue: 'Type' })}</th>
+                        <th className="border border-slate-300 p-1 text-start">{t('common.reference', { defaultValue: 'Reference' })}</th>
+                        <th className="border border-slate-300 p-1 text-start">{t('common.details', { defaultValue: 'Details' })}</th>
+                        <th className="border border-slate-300 p-1 text-end">{t('common.amount', { defaultValue: 'Amount' })}</th>
+                        <th className="border border-slate-300 p-1 text-end">{t('common.paid', { defaultValue: 'Paid' })}</th>
+                        <th className="border border-slate-300 p-1 text-end">{t('common.remaining', { defaultValue: 'Remaining' })}</th>
+                        <th className="border border-slate-300 p-1 text-start">{t('common.status', { defaultValue: 'Status' })}</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {rows.length === 0 ? (
+                        <tr>
+                            <td className="border border-slate-300 p-3 text-center text-slate-500" colSpan={8}>
+                                {t('businessPartners.noActivity', { defaultValue: 'No related activity yet.' })}
+                            </td>
+                        </tr>
+                    ) : rows.map((transaction) => (
+                        <tr key={transaction.id}>
+                            <td className="border border-slate-300 p-1">{formatDate(transaction.displayDate)}</td>
+                            <td className="border border-slate-300 p-1">{resolveSourceLabel(transaction.source, t)}</td>
+                            <td className="border border-slate-300 p-1 font-semibold">{transaction.reference}</td>
+                            <td className="border border-slate-300 p-1">{transaction.summary || '-'}</td>
+                            <td className="border border-slate-300 p-1 text-end font-semibold">
+                                {formatCurrency(transaction.originalAmount, transaction.currency, iqdPreference)}
+                            </td>
+                            <td className="border border-slate-300 p-1 text-end font-semibold">
+                                {formatCurrency(transaction.paidAmount, transaction.currency, iqdPreference)}
+                            </td>
+                            <td className="border border-slate-300 p-1 text-end font-semibold">
+                                {transaction.remainingAmount <= 0.001
+                                    ? '\u2014'
+                                    : formatCurrency(transaction.remainingAmount, transaction.currency, iqdPreference)}
+                            </td>
+                            <td className="border border-slate-300 p-1">{transaction.statusLabel}</td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+        </div>
+    )
+}
+
+function OrderTable({
+    title,
+    rows,
+    t,
+    iqdPreference
+}: {
+    title: string
+    rows: PartnerDetailsPrintTransaction[]
+    t: (key: string, options?: Record<string, unknown>) => string
+    iqdPreference: IQDDisplayPreference
+}) {
+    return (
+        <div className="mb-6">
+            <h2 className="mb-2 text-sm font-semibold">{title}</h2>
+            <table className="w-full border-collapse text-[9px]">
+                <thead>
+                    <tr className="bg-slate-100">
+                        <th className="border border-slate-300 p-1.5 text-start">{t('common.date', { defaultValue: 'Date' })}</th>
+                        <th className="border border-slate-300 p-1.5 text-start">{t('common.reference', { defaultValue: 'Reference' })}</th>
+                        <th className="border border-slate-300 p-1.5 text-start">{t('common.details', { defaultValue: 'Details' })}</th>
+                        <th className="border border-slate-300 p-1.5 text-end">{t('common.amount', { defaultValue: 'Amount' })}</th>
+                        <th className="border border-slate-300 p-1.5 text-end">{t('common.paid', { defaultValue: 'Paid' })}</th>
+                        <th className="border border-slate-300 p-1.5 text-end">{t('common.remaining', { defaultValue: 'Remaining' })}</th>
+                        <th className="border border-slate-300 p-1.5 text-start">{t('common.status', { defaultValue: 'Status' })}</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {rows.length === 0 ? (
+                        <tr>
+                            <td className="border border-slate-300 p-3 text-center text-slate-500" colSpan={7}>
+                                {t('common.noData', { defaultValue: 'No data' })}
+                            </td>
+                        </tr>
+                    ) : rows.map((order) => (
+                        <tr key={order.id}>
+                            <td className="border border-slate-300 p-1.5">{formatDate(order.displayDate)}</td>
+                            <td className="border border-slate-300 p-1.5 font-semibold">{order.reference}</td>
+                            <td className="border border-slate-300 p-1.5">{order.summary || '-'}</td>
+                            <td className="border border-slate-300 p-1.5 text-end font-semibold">
+                                {formatCurrency(order.originalAmount, order.currency, iqdPreference)}
+                            </td>
+                            <td className="border border-slate-300 p-1.5 text-end font-semibold">
+                                {formatCurrency(order.paidAmount, order.currency, iqdPreference)}
+                            </td>
+                            <td className="border border-slate-300 p-1.5 text-end font-semibold">
+                                {order.remainingAmount <= 0.001
+                                    ? '\u2014'
+                                    : formatCurrency(order.remainingAmount, order.currency, iqdPreference)}
+                            </td>
+                            <td className="border border-slate-300 p-1.5">{order.statusLabel}</td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+        </div>
+    )
+}
+
 export function PartnerDetailsPrintTemplate({
     workspaceName,
     printLang,
     data,
     iqdPreference = 'IQD',
-    logoUrl
+    logoUrl,
+    showWhoOwesWhom = true,
+    showOrders = false
 }: PartnerDetailsPrintTemplateProps) {
     const { i18n } = useTranslation()
     const t = i18n.getFixedT(printLang)
     const logoSrc = resolveLogoSrc(logoUrl)
     const location = [data.partner.city, data.partner.country].filter(Boolean).join(', ')
-    const recentTransactions = data.transactions.slice(0, 10)
-    const hiddenTransactionCount = Math.max(0, data.transactions.length - recentTransactions.length)
     const periodLabel = resolvePeriodLabel(data.period, t)
+    const partnerRelationshipName = data.partner.contactName?.trim() || data.partner.name
+    const workspaceRelationshipName = workspaceName?.trim()
+        || t('businessPartners.ourBusiness', { defaultValue: 'Our business' })
 
     return (
         <div
             dir={isRTL(printLang) ? 'rtl' : 'ltr'}
             className="bg-white text-black"
-            style={{ width: '210mm', minHeight: '297mm', padding: '14mm 12mm' }}
+            style={{ width: '210mm' }}
         >
             <style
                 dangerouslySetInnerHTML={{
@@ -189,6 +314,10 @@ export function PartnerDetailsPrintTemplate({
                 }}
             />
 
+            <section
+                className="bg-white"
+                style={{ minHeight: '297mm', padding: '14mm 12mm', boxSizing: 'border-box' }}
+            >
             <div className="mb-4 border-b border-slate-300 pb-3">
                 <div className="flex items-start justify-between gap-4">
                     <div className="w-1/3">
@@ -243,67 +372,41 @@ export function PartnerDetailsPrintTemplate({
                         {t('businessPartners.financialSummary', { defaultValue: 'Financial Summary' })}
                     </div>
                     <ContactLine
-                        label={t('businessPartners.receivable', { defaultValue: 'Receivable' })}
-                        value={formatCurrency(data.partner.receivableBalance, data.partner.defaultCurrency, iqdPreference)}
+                        label={t('businessPartners.remainingReceivableLoans', { defaultValue: 'Remaining Receivable Loans' })}
+                        value={formatCurrency(data.loanSummary.remainingReceivable, data.partner.defaultCurrency, iqdPreference)}
                     />
                     <ContactLine
-                        label={t('businessPartners.payable', { defaultValue: 'Payable' })}
-                        value={formatCurrency(data.partner.payableBalance, data.partner.defaultCurrency, iqdPreference)}
+                        label={t('businessPartners.remainingPayableLoans', { defaultValue: 'Remaining Payable Loans' })}
+                        value={formatCurrency(data.loanSummary.remainingPayable, data.partner.defaultCurrency, iqdPreference)}
                     />
                     <ContactLine
-                        label={t('businessPartners.loans', { defaultValue: 'Loans' })}
-                        value={formatCurrency(data.partner.loanOutstandingBalance, data.partner.defaultCurrency, iqdPreference)}
+                        label={t('businessPartners.loanPaymentsReceivedInPeriod', {
+                            defaultValue: 'Loan Payment Received By Us in ({{period}})',
+                            period: periodLabel
+                        })}
+                        value={formatCurrency(data.loanSummary.paymentsReceived, data.partner.defaultCurrency, iqdPreference)}
                     />
                     <ContactLine
-                        label={t('businessPartners.netExposure', { defaultValue: 'Net Exposure' })}
-                        value={formatCurrency(data.partner.netExposure, data.partner.defaultCurrency, iqdPreference)}
-                    />
-                    <ContactLine
-                        label={t('businessPartners.creditLimit', { defaultValue: 'Credit Limit' })}
-                        value={formatCurrency(data.partner.creditLimit, data.partner.defaultCurrency, iqdPreference)}
-                    />
-                    <ContactLine
-                        label={t('businessPartners.balance', { defaultValue: 'Balance' })}
-                        value={formatCurrency(
-                            data.metrics.moneyIn - data.metrics.moneyOut,
-                            data.partner.defaultCurrency,
-                            iqdPreference
-                        )}
+                        label={t('businessPartners.loanPaymentsMadeInPeriod', {
+                            defaultValue: 'Loan Payment Made to the Partner in ({{period}})',
+                            period: periodLabel
+                        })}
+                        value={formatCurrency(data.loanSummary.paymentsMade, data.partner.defaultCurrency, iqdPreference)}
                     />
                 </div>
             </div>
 
-            <div className="mb-4 grid grid-cols-4 gap-2">
+            <div className="mb-4 grid grid-cols-3 gap-2">
                 <MetricBox
-                    label={t('businessPartners.totalValue', { defaultValue: 'Total Value' })}
-                    value={formatCurrency(data.metrics.totalValue, data.partner.defaultCurrency, iqdPreference)}
+                    label={t('businessPartners.incomingCash', { defaultValue: 'Incoming Cash' })}
+                    value={formatCurrency(data.metrics.moneyIn, data.partner.defaultCurrency, iqdPreference)}
                 />
                 <MetricBox
-                    label={t('businessPartners.outstanding', { defaultValue: 'Outstanding' })}
-                    value={formatCurrency(data.metrics.outstandingValue, data.partner.defaultCurrency, iqdPreference)}
+                    label={t('businessPartners.outgoingCash', { defaultValue: 'Outgoing Cash' })}
+                    value={formatCurrency(data.metrics.moneyOut, data.partner.defaultCurrency, iqdPreference)}
                 />
                 <MetricBox
-                    label={t('businessPartners.averageDocument', { defaultValue: 'Average Document' })}
-                    value={formatCurrency(data.metrics.averageDocumentValue, data.partner.defaultCurrency, iqdPreference)}
-                />
-                <MetricBox
-                    label={t('businessPartners.activeItems', { defaultValue: 'Active Items' })}
-                    value={String(data.metrics.activeItems)}
-                />
-                <MetricBox
-                    label={t('businessPartners.completedItems', { defaultValue: 'Completed Items' })}
-                    value={String(data.metrics.completedItems)}
-                />
-                <MetricBox
-                    label={t('businessPartners.settledItems', { defaultValue: 'Settled Items' })}
-                    value={String(data.metrics.settledItems)}
-                />
-                <MetricBox
-                    label={t('orders.details.units', { defaultValue: 'Units' })}
-                    value={String(data.metrics.totalUnits)}
-                />
-                <MetricBox
-                    label={t('businessPartners.cashFlow', { defaultValue: 'Cash Flow' })}
+                    label={t('ledger.netFlow', { defaultValue: 'Net Flow' })}
                     value={formatCurrency(
                         data.metrics.moneyIn - data.metrics.moneyOut,
                         data.partner.defaultCurrency,
@@ -312,57 +415,57 @@ export function PartnerDetailsPrintTemplate({
                 />
             </div>
 
-            <div className="mb-4">
-                <h2 className="mb-2 text-sm font-semibold">
-                    {t('businessPartners.activityTimeline', { defaultValue: 'Unified Activity Timeline' })}
-                </h2>
-                <table className="w-full border-collapse text-[10px]">
-                    <thead>
-                        <tr className="bg-slate-100">
-                            <th className="border border-slate-300 p-1.5 text-start">{t('common.type', { defaultValue: 'Type' })}</th>
-                            <th className="border border-slate-300 p-1.5 text-start">{t('common.reference', { defaultValue: 'Reference' })}</th>
-                            <th className="border border-slate-300 p-1.5 text-start">{t('common.date', { defaultValue: 'Date' })}</th>
-                            <th className="border border-slate-300 p-1.5 text-start">{t('common.details', { defaultValue: 'Details' })}</th>
-                            <th className="border border-slate-300 p-1.5 text-start">{t('common.status', { defaultValue: 'Status' })}</th>
-                            <th className="border border-slate-300 p-1.5 text-end">{t('common.total', { defaultValue: 'Total' })}</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {recentTransactions.length === 0 ? (
-                            <tr>
-                                <td className="border border-slate-300 p-3 text-center text-slate-500" colSpan={6}>
-                                    {t('businessPartners.noActivity', { defaultValue: 'No related activity yet.' })}
-                                </td>
-                            </tr>
-                        ) : recentTransactions.map((transaction) => (
-                            <tr key={transaction.id}>
-                                <td className="border border-slate-300 p-1.5">{resolveSourceLabel(transaction.source, t)}</td>
-                                <td className="border border-slate-300 p-1.5 font-semibold">{transaction.reference}</td>
-                                <td className="border border-slate-300 p-1.5">{formatDate(transaction.displayDate)}</td>
-                                <td className="border border-slate-300 p-1.5">{transaction.summary || '-'}</td>
-                                <td className="border border-slate-300 p-1.5">
-                                    {transaction.statusLabel}
-                                    {' / '}
-                                    {transaction.isPaid
-                                        ? t('customers.details.paid', { defaultValue: 'Paid' })
-                                        : t('customers.details.unpaid', { defaultValue: 'Unpaid' })}
-                                </td>
-                                <td className="border border-slate-300 p-1.5 text-end font-semibold">
-                                    {formatCurrency(transaction.total, transaction.currency, iqdPreference)}
-                                </td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-                {hiddenTransactionCount > 0 ? (
-                    <div className="mt-1 text-end text-[9px] text-slate-500">
-                        {t('businessPartners.moreActivities', {
-                            defaultValue: '+{{count}} additional activities',
-                            count: hiddenTransactionCount
-                        })}
+            {showWhoOwesWhom ? (
+                <div className="mb-4 rounded-md border border-slate-300 bg-slate-50 p-3">
+                    <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-600">
+                        {t('businessPartners.whoOwesWhom', { defaultValue: 'Who owes whom?' })}
                     </div>
-                ) : null}
-            </div>
+                    <div className="grid gap-2">
+                        {data.relationshipSummary.receivable > 0 ? (
+                            <div className="rounded border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-900">
+                                {t('businessPartners.owesAmountTo', {
+                                    debtor: partnerRelationshipName,
+                                    amount: formatCurrency(data.relationshipSummary.receivable, data.partner.defaultCurrency, iqdPreference),
+                                    creditor: workspaceRelationshipName,
+                                    defaultValue: '{{debtor}} owes {{amount}} to {{creditor}}'
+                                })}
+                            </div>
+                        ) : null}
+                        {data.relationshipSummary.payable > 0 ? (
+                            <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-900">
+                                {t('businessPartners.owesAmountTo', {
+                                    debtor: workspaceRelationshipName,
+                                    amount: formatCurrency(data.relationshipSummary.payable, data.partner.defaultCurrency, iqdPreference),
+                                    creditor: partnerRelationshipName,
+                                    defaultValue: '{{debtor}} owes {{amount}} to {{creditor}}'
+                                })}
+                            </div>
+                        ) : null}
+                        {data.relationshipSummary.receivable <= 0 && data.relationshipSummary.payable <= 0 ? (
+                            <div className="rounded border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600">
+                                {t('businessPartners.noOutstandingDebtBetween', {
+                                    first: partnerRelationshipName,
+                                    second: workspaceRelationshipName,
+                                    defaultValue: '{{first}} and {{second}} do not owe each other anything.'
+                                })}
+                            </div>
+                        ) : null}
+                    </div>
+                </div>
+            ) : null}
+
+            <ActivityTable
+                title={t('businessPartners.providedByYou', { defaultValue: 'What You Provided' })}
+                rows={data.providedByYou}
+                t={t}
+                iqdPreference={iqdPreference}
+            />
+            <ActivityTable
+                title={t('businessPartners.providedByPartner', { defaultValue: 'What the Partner Provided' })}
+                rows={data.providedByPartner}
+                t={t}
+                iqdPreference={iqdPreference}
+            />
 
             <div className="grid grid-cols-2 gap-4 text-xs">
                 <div>
@@ -406,6 +509,56 @@ export function PartnerDetailsPrintTemplate({
                     </div>
                 </div>
             </div>
+            </section>
+
+            {showOrders ? (
+                <section
+                    className="bg-white"
+                    style={{
+                        minHeight: '297mm',
+                        padding: '14mm 12mm',
+                        boxSizing: 'border-box',
+                        breakBefore: 'page',
+                        pageBreakBefore: 'always'
+                    }}
+                >
+                    <div className="mb-5 border-b border-slate-300 pb-3">
+                        <div className="flex items-start justify-between gap-4">
+                            <div>
+                                <div className="text-lg font-bold">{workspaceRelationshipName}</div>
+                                <div className="mt-1 text-xs font-semibold text-slate-600">
+                                    {t('businessPartners.partnerOrders', { defaultValue: 'Partner Orders' })}
+                                </div>
+                            </div>
+                            <div className="text-end">
+                                <div className="text-sm font-bold">{data.partner.name}</div>
+                                <div className="mt-1 text-[10px] text-slate-500">{periodLabel}</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <OrderTable
+                        title={t('businessPartners.salesOrdersFromWorkspace', {
+                            workspace: workspaceRelationshipName,
+                            partner: partnerRelationshipName,
+                            defaultValue: 'Sales from {{workspace}} to {{partner}}'
+                        })}
+                        rows={data.salesOrders}
+                        t={t}
+                        iqdPreference={iqdPreference}
+                    />
+                    <OrderTable
+                        title={t('businessPartners.purchaseOrdersFromPartner', {
+                            workspace: workspaceRelationshipName,
+                            partner: partnerRelationshipName,
+                            defaultValue: 'Purchases supplied by {{partner}} to {{workspace}}'
+                        })}
+                        rows={data.purchaseOrders}
+                        t={t}
+                        iqdPreference={iqdPreference}
+                    />
+                </section>
+            ) : null}
         </div>
     )
 }

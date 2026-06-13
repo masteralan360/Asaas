@@ -1,4 +1,5 @@
 import { beforeAll, describe, expect, it, vi } from 'vitest'
+import { renderToStaticMarkup } from 'react-dom/server'
 
 vi.mock('@/services/pdfGenerator', () => ({
     generateTemplatePdf: vi.fn()
@@ -48,6 +49,49 @@ beforeAll(async () => {
 }, 30_000)
 
 describe('Partner Details custom print template', () => {
+    it('stores and validates the resolved workspace print language', () => {
+        const layout = customTemplates.stampCustomTemplatePrintLanguage({
+            version: 1,
+            moduleTypeKey: customTemplates.PARTNER_DETAILS_TEMPLATE_KEY,
+            page: { widthMm: 210, heightMm: 297 },
+            fields: {},
+            annotations: [],
+            texts: [],
+            images: [],
+            updatedAt: new Date().toISOString()
+        }, 'auto', 'ar-IQ')
+        const row = {
+            id: 'arabic-partner-template',
+            module_type_key: customTemplates.PARTNER_DETAILS_TEMPLATE_KEY,
+            layout_json: layout
+        }
+
+        expect(layout.printLanguage).toBe('ar')
+        expect(customTemplates.getStoredCustomTemplatePrintLanguage(row)).toBe('ar')
+        expect(customTemplates.isCustomTemplatePrintLanguageCompatible(row, 'ar')).toBe(true)
+        expect(customTemplates.isCustomTemplatePrintLanguageCompatible(row, 'en')).toBe(false)
+    })
+
+    it('treats legacy templates without a saved print language as incompatible', () => {
+        const row = {
+            id: 'legacy-template',
+            module_type_key: customTemplates.PARTNER_DETAILS_TEMPLATE_KEY,
+            layout_json: {
+                version: 1,
+                moduleTypeKey: customTemplates.PARTNER_DETAILS_TEMPLATE_KEY,
+                page: { widthMm: 210, heightMm: 297 },
+                fields: {},
+                annotations: [],
+                texts: [],
+                images: [],
+                updatedAt: new Date().toISOString()
+            }
+        }
+
+        expect(customTemplates.getStoredCustomTemplatePrintLanguage(row)).toBeNull()
+        expect(customTemplates.isCustomTemplatePrintLanguageCompatible(row, 'en')).toBe(false)
+    })
+
     it('registers an A4 CRM template target', () => {
         const target = customTemplates.getCustomTemplateTarget(customTemplates.PARTNER_DETAILS_TEMPLATE_KEY)
 
@@ -63,7 +107,7 @@ describe('Partner Details custom print template', () => {
         })
     })
 
-    it('uses the native Partner Details A4 layout without editable fields', () => {
+    it('uses the native Partner Details A4 layout with section toggles', () => {
         const target = customTemplates.getCustomTemplateTarget(customTemplates.PARTNER_DETAILS_TEMPLATE_KEY)
         expect(target).toBeDefined()
 
@@ -73,7 +117,18 @@ describe('Partner Details custom print template', () => {
         })
         const element = preview.createElement({})
 
-        expect(preview.fields).toEqual([])
+        expect(preview.fields).toEqual([
+            expect.objectContaining({
+                key: customTemplates.PARTNER_DETAILS_TEMPLATE_FIELD_KEYS.showWhoOwesWhom,
+                value: 'true',
+                type: 'boolean'
+            }),
+            expect.objectContaining({
+                key: customTemplates.PARTNER_DETAILS_TEMPLATE_FIELD_KEYS.showOrders,
+                value: 'false',
+                type: 'boolean'
+            })
+        ])
         expect(preview.page).toEqual({
             widthMm: 210,
             heightMm: 297
@@ -82,5 +137,52 @@ describe('Partner Details custom print template', () => {
         expect(element.type).toBe(PartnerDetailsPrintTemplate)
         expect(element.props.workspaceName).toBe('Atlas Test')
         expect(element.props.printLang).toBe('en')
+        expect(element.props.showWhoOwesWhom).toBe(true)
+        expect(element.props.showOrders).toBe(false)
+    })
+
+    it('renders the focused loan summary, cash flow, and two activity tables', () => {
+        const target = customTemplates.getCustomTemplateTarget(customTemplates.PARTNER_DETAILS_TEMPLATE_KEY)
+        expect(target).toBeDefined()
+
+        const preview = customTemplates.createCustomTemplatePreview(target!, {
+            workspaceName: 'Atlas Test',
+            printLang: 'en'
+        })
+        const html = renderToStaticMarkup(preview.createElement({}))
+
+        expect(html).toContain('Remaining Receivable Loans')
+        expect(html).toContain('Remaining Payable Loans')
+        expect(html).toContain('Loan Payment Received By Us')
+        expect(html).toContain('Loan Payment Made to the Partner')
+        expect(html).toContain('Incoming Cash')
+        expect(html).toContain('Outgoing Cash')
+        expect(html).toContain('Net Flow')
+        expect(html).toContain('What You Provided')
+        expect(html).toContain('What the Partner Provided')
+        expect(html).not.toContain('Unified Activity Timeline')
+        expect(html).not.toContain('Average Document')
+    })
+
+    it('renders the optional orders back page when enabled', () => {
+        const target = customTemplates.getCustomTemplateTarget(customTemplates.PARTNER_DETAILS_TEMPLATE_KEY)
+        expect(target).toBeDefined()
+
+        const preview = customTemplates.createCustomTemplatePreview(target!, {
+            workspaceName: 'Atlas Test',
+            printLang: 'en'
+        })
+        const html = renderToStaticMarkup(preview.createElement({
+            [customTemplates.PARTNER_DETAILS_TEMPLATE_FIELD_KEYS.showWhoOwesWhom]: 'false',
+            [customTemplates.PARTNER_DETAILS_TEMPLATE_FIELD_KEYS.showOrders]: 'true'
+        }))
+
+        expect(html).not.toContain('Who owes whom?')
+        expect(html).toContain('Partner Orders')
+        expect(html).toContain('Sales from Atlas Test to Primary Contact')
+        expect(html).toContain('Purchases supplied by Primary Contact to Atlas Test')
+        expect(html).toContain('SO-00042')
+        expect(html).toContain('PO-00019')
+        expect(html).toContain('page-break-before:always')
     })
 })
