@@ -11,7 +11,8 @@ import { formatLocalizedMonthYear } from '@/lib/monthDisplay'
 import { getLoanDetailsPath } from '@/lib/loanPresentation'
 import { getRetriableActionToast, isRetriableWebRequestError, normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
 
-import { adjustInventoryQuantity, commitStockBatchAllocations, db, listLocalCustomTemplates, replaceMirroredCustomTemplates, recordLoanPayment, resolveReturnStorageId, restoreStockBatchAllocations, splitStockBatchAllocationsForReturn, useLoanBySaleId, useLoanInstallments, useLoanPayments, useLoans, useSales, useSalesOrders, useTravelAgencySales, useExchangeTransactions, usePaymentTransactions, toUISale, toUISaleFromOrder, toUISaleFromTravelAgency, toUISaleFromExchangeTransaction, toUISaleFromRealEstateCommissionTransaction, type LocalCustomTemplateRow, type Loan, type SaleReturn as LocalSaleReturn, type SaleReturnItem as LocalSaleReturnItem, type StockBatchAllocation } from '@/local-db'
+import { adjustInventoryQuantity, commitStockBatchAllocations, db, recordLoanPayment, resolveReturnStorageId, restoreStockBatchAllocations, splitStockBatchAllocationsForReturn, useLoanBySaleId, useLoanInstallments, useLoanPayments, useLoans, useSales, useSalesOrders, useTravelAgencySales, useExchangeTransactions, usePaymentTransactions, toUISale, toUISaleFromOrder, toUISaleFromTravelAgency, toUISaleFromExchangeTransaction, toUISaleFromRealEstateCommissionTransaction, type Loan, type SaleReturn as LocalSaleReturn, type SaleReturnItem as LocalSaleReturnItem, type StockBatchAllocation } from '@/local-db'
+import { fetchCachedCustomTemplates } from '@/lib/cachedCustomTemplates'
 import { useWorkspace } from '@/workspace'
 import { isMobile } from '@/lib/platform'
 import { whatsappManager } from '@/lib/whatsappWebviewManager'
@@ -683,48 +684,14 @@ export function Sales() {
         let cancelled = false
         void (async () => {
             try {
-                const templates = isLocalMode
-                    ? await listLocalCustomTemplates(user.workspaceId, {
-                        moduleTypeKey: SALES_HISTORY_RECEIPT_TEMPLATE_KEY,
-                        activeOnly: true
-                    })
-                    : await (async () => {
-                        const { data, error } = await runSupabaseAction('sales.customReceiptTemplates.fetch', () =>
-                            supabase
-                                .from('custom_templates')
-                                .select('id, workspace_id, module_type_key, label, layout_json, active, primary, created_by, updated_by, created_at, updated_at')
-                                .eq('workspace_id', user.workspaceId)
-                                .eq('module_type_key', SALES_HISTORY_RECEIPT_TEMPLATE_KEY)
-                                .order('primary', { ascending: false })
-                                .order('updated_at', { ascending: false })
-                        )
-                        if (error) throw normalizeSupabaseActionError(error)
-                        const cloudTemplates = (data || []) as LocalCustomTemplateRow[]
-                        if (isHybridMode) {
-                            await replaceMirroredCustomTemplates(user.workspaceId, cloudTemplates, {
-                                moduleTypeKey: SALES_HISTORY_RECEIPT_TEMPLATE_KEY
-                            })
-                        }
-                        return cloudTemplates.filter((template) => template.active)
-                    })()
+                const templates = await fetchCachedCustomTemplates(user.workspaceId, {
+                    moduleTypeKey: SALES_HISTORY_RECEIPT_TEMPLATE_KEY,
+                    activeOnly: true
+                })
                 if (!cancelled) setCustomReceiptTemplates(templates as StoredCustomTemplateRow[])
             } catch (templateError) {
                 console.error('[Sales] Failed to load custom receipt templates:', templateError)
-                if (!cancelled) {
-                    if (isHybridMode) {
-                        try {
-                            const mirroredTemplates = await listLocalCustomTemplates(user.workspaceId, {
-                                moduleTypeKey: SALES_HISTORY_RECEIPT_TEMPLATE_KEY,
-                                activeOnly: true
-                            })
-                            setCustomReceiptTemplates(mirroredTemplates as StoredCustomTemplateRow[])
-                        } catch {
-                            setCustomReceiptTemplates([])
-                        }
-                    } else {
-                        setCustomReceiptTemplates([])
-                    }
-                }
+                if (!cancelled) setCustomReceiptTemplates([])
             }
         })()
 

@@ -18,7 +18,8 @@ import { isSupabaseConfigured, useAuth } from '@/auth'
 import { useWorkspace, type WorkspaceFeatures } from '@/workspace'
 import { Textarea } from '@/ui/components/textarea'
 import { supabase } from '@/auth/supabase'
-import { db, listLocalCustomTemplates, replaceMirroredCustomTemplates, type LocalCustomTemplateRow } from '@/local-db'
+import { db } from '@/local-db'
+import { fetchCachedCustomTemplates } from '@/lib/cachedCustomTemplates'
 import { useDebounce } from '@/lib/hooks'
 import { normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
 import {
@@ -47,7 +48,7 @@ export function CheckoutSuccessModal({
 }: CheckoutSuccessModalProps) {
     const { t, i18n } = useTranslation()
     const { user } = useAuth()
-    const { workspaceName, activeWorkspace, isLocalMode, isHybridMode } = useWorkspace()
+    const { workspaceName, activeWorkspace, isLocalMode } = useWorkspace()
     const { toast } = useToast()
 
     const [timeLeft, setTimeLeft] = useState(15)
@@ -87,70 +88,21 @@ export function CheckoutSuccessModal({
         setIsLoadingPrimaryReceiptTemplate(true)
         void (async () => {
             try {
-                if (isLocalMode) {
-                    const templates = await listLocalCustomTemplates(workspaceId, {
-                        moduleTypeKey: SALES_HISTORY_RECEIPT_TEMPLATE_KEY,
-                        activeOnly: true,
-                        primaryOnly: true
-                    })
-                    const compatibleTemplate = templates.find((template) =>
-                        isCustomTemplatePrintLanguageCompatible(
-                            template as StoredCustomTemplateRow,
-                            currentTemplatePrintLanguage
-                        )
+                const templates = await fetchCachedCustomTemplates(workspaceId, {
+                    moduleTypeKey: SALES_HISTORY_RECEIPT_TEMPLATE_KEY,
+                    activeOnly: true,
+                    primaryOnly: true,
+                })
+                const primaryTemplate = templates.find((template) =>
+                    isCustomTemplatePrintLanguageCompatible(
+                        template as StoredCustomTemplateRow,
+                        currentTemplatePrintLanguage,
                     )
-                    if (!cancelled) setPrimaryReceiptTemplate((compatibleTemplate || null) as StoredCustomTemplateRow | null)
-                } else {
-                    const { data, error } = await runSupabaseAction('checkoutSuccess.primaryReceiptTemplate.fetch', () =>
-                        supabase
-                            .from('custom_templates')
-                            .select('id, workspace_id, module_type_key, label, layout_json, active, primary, created_by, updated_by, created_at, updated_at')
-                            .eq('workspace_id', workspaceId)
-                            .eq('module_type_key', SALES_HISTORY_RECEIPT_TEMPLATE_KEY)
-                            .order('primary', { ascending: false })
-                            .order('updated_at', { ascending: false })
-                    )
-                    if (error) throw normalizeSupabaseActionError(error)
-                    const cloudTemplates = (data || []) as LocalCustomTemplateRow[]
-                    if (isHybridMode) {
-                        await replaceMirroredCustomTemplates(workspaceId, cloudTemplates, {
-                            moduleTypeKey: SALES_HISTORY_RECEIPT_TEMPLATE_KEY
-                        })
-                    }
-                    const primaryTemplate = cloudTemplates.find((template) =>
-                        template.active
-                        && template.primary
-                        && isCustomTemplatePrintLanguageCompatible(
-                            template as StoredCustomTemplateRow,
-                            currentTemplatePrintLanguage
-                        )
-                    ) || null
-                    if (!cancelled) setPrimaryReceiptTemplate(primaryTemplate as StoredCustomTemplateRow | null)
-                }
+                ) || null
+                if (!cancelled) setPrimaryReceiptTemplate(primaryTemplate as StoredCustomTemplateRow | null)
             } catch (templateError) {
                 console.error('[CheckoutSuccessModal] Failed to load primary receipt template:', templateError)
-                if (!cancelled) {
-                    if (isHybridMode) {
-                        try {
-                            const mirroredTemplates = await listLocalCustomTemplates(workspaceId, {
-                                moduleTypeKey: SALES_HISTORY_RECEIPT_TEMPLATE_KEY,
-                                activeOnly: true,
-                                primaryOnly: true
-                            })
-                            const compatibleTemplate = mirroredTemplates.find((template) =>
-                                isCustomTemplatePrintLanguageCompatible(
-                                    template as StoredCustomTemplateRow,
-                                    currentTemplatePrintLanguage
-                                )
-                            )
-                            setPrimaryReceiptTemplate((compatibleTemplate || null) as StoredCustomTemplateRow | null)
-                        } catch {
-                            setPrimaryReceiptTemplate(null)
-                        }
-                    } else {
-                        setPrimaryReceiptTemplate(null)
-                    }
-                }
+                if (!cancelled) setPrimaryReceiptTemplate(null)
             } finally {
                 if (!cancelled) setIsLoadingPrimaryReceiptTemplate(false)
             }
@@ -159,7 +111,7 @@ export function CheckoutSuccessModal({
         return () => {
             cancelled = true
         }
-    }, [activeWorkspace?.id, currentTemplatePrintLanguage, isHybridMode, isLocalMode, isOpen, user?.workspaceId])
+    }, [activeWorkspace?.id, currentTemplatePrintLanguage, isLocalMode, isOpen, user?.workspaceId])
 
     const primaryReceiptTarget = useMemo(
         () => getCustomTemplateTarget(SALES_HISTORY_RECEIPT_TEMPLATE_KEY),

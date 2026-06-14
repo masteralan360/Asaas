@@ -21,6 +21,7 @@ export type LocalCustomTemplateRow = {
   layout_json: unknown;
   active: boolean;
   primary: boolean;
+  version: number;
   created_by: string | null;
   updated_by: string | null;
   created_at: string;
@@ -50,6 +51,7 @@ type SaveLocalCustomTemplateInput = {
   layoutJson: unknown;
   active?: boolean;
   primary?: boolean;
+  version?: number;
   userId?: string | null;
 };
 
@@ -170,6 +172,7 @@ async function saveDemoTemplate(input: SaveLocalCustomTemplateInput) {
     layout_json: input.layoutJson,
     active,
     primary: active && (input.primary ?? existing?.primary ?? false),
+    version: input.version ?? existing?.version ?? 1,
     created_by: existing?.created_by ?? input.userId ?? null,
     updated_by: input.userId ?? null,
     created_at: existing?.created_at ?? now,
@@ -445,6 +448,7 @@ async function saveTemplateInWrite(
     layout_json: input.layoutJson,
     active,
     primary: active && (input.primary ?? existing?.primary ?? false),
+    version: input.version ?? existing?.version ?? 1,
     created_by: existing?.created_by ?? input.userId ?? null,
     updated_by: input.userId ?? null,
     created_at: existing?.created_at ?? now,
@@ -486,6 +490,18 @@ export async function listLocalCustomTemplates(
   const connection = await requireConnection();
   const rows = await selectWorkspaceTemplates(connection, workspaceId);
   return rows.filter((row) => matchesOptions(row, options));
+}
+
+export async function upsertLocalCustomTemplateCache(
+  workspaceId: string,
+  rows: LocalCustomTemplateRow[],
+): Promise<void> {
+  assertMirroredWorkspace(workspaceId);
+  await runTemplateWrite(async (connection) => {
+    for (const row of rows) {
+      await upsertTemplateEntity(connection, row);
+    }
+  });
 }
 
 export async function replaceMirroredCustomTemplates(

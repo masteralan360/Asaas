@@ -180,6 +180,7 @@ export type StoredCustomTemplateRow = {
     layout_json: unknown
     active?: boolean
     primary?: boolean
+    version?: number
     updated_at?: string | null
 }
 

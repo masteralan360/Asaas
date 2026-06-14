@@ -4,7 +4,7 @@ import { ArrowLeft, ArrowLeftRight, CalendarDays, Car, CreditCard, Eye, Mail, Ma
 import { useTranslation } from 'react-i18next'
 import { Link, useLocation } from 'wouter'
 
-import { isSupabaseConfigured, supabase, useAuth } from '@/auth'
+import { isSupabaseConfigured, useAuth } from '@/auth'
 import { useExchangeRate } from '@/context/ExchangeRateContext'
 import { buildConversionRates } from '@/lib/budget'
 import { convertToStoreBase } from '@/lib/currency'
@@ -23,12 +23,10 @@ import {
 import { convertCurrencyAmountWithAvailableSnapshot, convertCurrencyAmountWithSnapshot } from '@/lib/orderCurrency'
 import { getLoanDetailsPath, getLoanDirection, getLoanDirectionLabel, isSimpleLoan } from '@/lib/loanPresentation'
 import type { CustomTemplateLayout } from '@/lib/pdfPreviewStore'
-import { normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
+
 import { getTravelSaleCost, getTravelStatusLabel } from '@/lib/travelAgency'
 import { cn, formatCurrency, formatDate, formatDateTime } from '@/lib/utils'
 import {
-    listLocalCustomTemplates,
-    replaceMirroredCustomTemplates,
     useAgent,
     useBusinessPartner,
     useCustomerSalesOrders,
@@ -39,15 +37,12 @@ import {
     useSupplierTravelAgencySales,
     useWorkspaceUsers,
     type BusinessPartnerRole,
-    type LocalCustomTemplateRow,
     type Loan,
     type PurchaseOrder,
     type PaymentTransaction,
     type SalesOrder,
-    type TravelAgencySale,
-    type LoanInstallment,
-    db
 } from '@/local-db'
+import { fetchCachedCustomTemplates } from '@/lib/cachedCustomTemplates'
 import { Button } from '@/ui/components/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/ui/components/card'
 import { PrintPreviewModal } from '@/ui/components/PrintPreviewModal'
@@ -378,8 +373,7 @@ export function PartnerDetailsView({
     const {
         features,
         workspaceName,
-        isLocalMode,
-        isHybridMode
+        isLocalMode
     } = useWorkspace()
     const { exchangeData, eurRates, tryRates } = useExchangeRate()
     const conversionRates = useMemo(() => buildConversionRates(exchangeData, eurRates, tryRates), [exchangeData, eurRates, tryRates])
@@ -408,50 +402,17 @@ export function PartnerDetailsView({
 
         void (async () => {
             try {
-                const templates = isLocalMode
-                    ? await listLocalCustomTemplates(workspaceId, {
-                        moduleTypeKey: PARTNER_DETAILS_TEMPLATE_KEY,
-                        activeOnly: true
-                    })
-                    : await (async () => {
-                        const { data, error } = await runSupabaseAction('businessPartners.customTemplates.fetch', () =>
-                            supabase
-                                .from('custom_templates')
-                                .select('id, workspace_id, module_type_key, label, layout_json, active, primary, created_by, updated_by, created_at, updated_at')
-                                .eq('workspace_id', workspaceId)
-                                .eq('module_type_key', PARTNER_DETAILS_TEMPLATE_KEY)
-                                .order('primary', { ascending: false })
-                                .order('updated_at', { ascending: false })
-                        )
-                        if (error) throw normalizeSupabaseActionError(error)
-                        const cloudTemplates = (data || []) as LocalCustomTemplateRow[]
-                        if (isHybridMode) {
-                            await replaceMirroredCustomTemplates(workspaceId, cloudTemplates, {
-                                moduleTypeKey: PARTNER_DETAILS_TEMPLATE_KEY
-                            })
-                        }
-                        return cloudTemplates.filter((template) => template.active)
-                    })()
-
+                const templates = await fetchCachedCustomTemplates(workspaceId, {
+                    moduleTypeKey: PARTNER_DETAILS_TEMPLATE_KEY,
+                    activeOnly: true
+                })
                 if (!cancelled) {
                     setCustomPrintTemplates(templates as StoredCustomTemplateRow[])
                 }
             } catch (error) {
                 console.error('[PartnerDetails] Failed to load custom print templates:', error)
                 if (!cancelled) {
-                    if (isHybridMode) {
-                        try {
-                            const mirroredTemplates = await listLocalCustomTemplates(workspaceId, {
-                                moduleTypeKey: PARTNER_DETAILS_TEMPLATE_KEY,
-                                activeOnly: true
-                            })
-                            setCustomPrintTemplates(mirroredTemplates as StoredCustomTemplateRow[])
-                        } catch {
-                            setCustomPrintTemplates([])
-                        }
-                    } else {
-                        setCustomPrintTemplates([])
-                    }
+                    setCustomPrintTemplates([])
                 }
             }
         })()
@@ -459,7 +420,7 @@ export function PartnerDetailsView({
         return () => {
             cancelled = true
         }
-    }, [isHybridMode, isLocalMode, workspaceId])
+    }, [isLocalMode, workspaceId])
 
     const dateBounds = useMemo(() => {
         const now = new Date()

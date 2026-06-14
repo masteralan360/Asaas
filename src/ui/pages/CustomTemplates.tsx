@@ -58,6 +58,7 @@ import {
     updateLocalCustomTemplateStatus,
     type LocalCustomTemplateRow as CustomTemplateRow
 } from '@/local-db'
+import { fetchCachedCustomTemplates } from '@/lib/cachedCustomTemplates'
 
 function readStoredLayout(row?: CustomTemplateRow | null): CustomTemplateLayout | null {
     if (!row || !row.layout_json || typeof row.layout_json !== 'object') return null
@@ -183,23 +184,8 @@ export function CustomTemplates() {
         if (!workspaceId) {
             throw new Error('Missing workspace context.')
         }
-
-        const { data, error: fetchError } = await runSupabaseAction('customTemplates.fetch', () =>
-            supabase
-                .from('custom_templates')
-                .select('id, workspace_id, module_type_key, label, layout_json, active, primary, created_by, updated_by, created_at, updated_at')
-                .eq('workspace_id', workspaceId)
-                .order('primary', { ascending: false })
-                .order('updated_at', { ascending: false })
-        )
-        if (fetchError) throw normalizeSupabaseActionError(fetchError)
-
-        const cloudTemplates = (data || []) as CustomTemplateRow[]
-        if (isHybridMode) {
-            await replaceMirroredCustomTemplates(workspaceId, cloudTemplates)
-        }
-        return cloudTemplates
-    }, [isHybridMode, workspaceId])
+        return fetchCachedCustomTemplates(workspaceId)
+    }, [workspaceId])
 
     const fetchTemplates = useCallback(async () => {
         if (!workspaceId || (!isLocalMode && !isSupabaseConfigured)) {
