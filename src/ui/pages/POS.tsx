@@ -35,6 +35,7 @@ import {
     normalizeBarcodeScannerText
 } from '@/lib/barcodeScanner'
 import { ExchangeRateResult } from '@/lib/exchangeRate'
+import { buildCheckoutRatesSnapshot, getPrimaryCheckoutRate } from '@/lib/currencyRates'
 import { verifySale, createVerificationSale } from '@/lib/saleVerification'
 import type { ResolvedActiveDiscount } from '@/lib/discounts'
 import {
@@ -1482,117 +1483,22 @@ export function POS() {
         const saleId = generateId()
 
         // Collect actually used exchange rates for this specific checkout
-        const usedCurrencies = new Set(cart.map(item => findStockProduct(item.product_id, item.storageId)?.currency || 'usd'))
-        const exchangeRatesSnapshot: any[] = []
+        const usedCurrencies = new Set(cart.map(item => findStockProduct(item.product_id, item.storageId)?.currency || 'usd' as CurrencyCode))
 
-        // If it's a mixed checkout (items currency != settlement currency)
-        if (usedCurrencies.has('usd') && settlementCurrency === 'iqd' && exchangeData) {
-            exchangeRatesSnapshot.push({
-                pair: 'USD/IQD',
-                rate: exchangeData.rate,
-                source: exchangeData.source,
-                timestamp: exchangeData.timestamp || new Date().toISOString()
-            })
-        }
-        if (usedCurrencies.has('eur')) {
-            if (settlementCurrency === 'iqd' && eurRates.eur_iqd) {
-                exchangeRatesSnapshot.push({
-                    pair: 'EUR/IQD',
-                    rate: eurRates.eur_iqd.rate,
-                    source: eurRates.eur_iqd.source,
-                    timestamp: eurRates.eur_iqd.timestamp
-                })
-            } else if (settlementCurrency === 'usd' && eurRates.usd_eur) {
-                exchangeRatesSnapshot.push({
-                    pair: 'USD/EUR',
-                    rate: eurRates.usd_eur.rate,
-                    source: eurRates.usd_eur.source,
-                    timestamp: eurRates.usd_eur.timestamp
-                })
-            }
+        const knownRates = {
+          usdIqd: exchangeData ? { rate: exchangeData.rate, source: exchangeData.source, timestamp: exchangeData.timestamp || new Date().toISOString() } : null,
+          eurIqd: eurRates.eur_iqd ? { rate: eurRates.eur_iqd.rate, source: eurRates.eur_iqd.source, timestamp: eurRates.eur_iqd.timestamp } : null,
+          tryIqd: tryRates.try_iqd ? { rate: tryRates.try_iqd.rate, source: tryRates.try_iqd.source, timestamp: tryRates.try_iqd.timestamp } : null,
+          usdEur: eurRates.usd_eur ? { rate: eurRates.usd_eur.rate, source: eurRates.usd_eur.source, timestamp: eurRates.usd_eur.timestamp } : null,
+          usdTry: tryRates.usd_try ? { rate: tryRates.usd_try.rate, source: tryRates.usd_try.source, timestamp: tryRates.usd_try.timestamp } : null,
         }
 
-        if (usedCurrencies.has('try')) {
-            if (settlementCurrency === 'iqd' && tryRates.try_iqd) {
-                exchangeRatesSnapshot.push({
-                    pair: 'TRY/IQD',
-                    rate: tryRates.try_iqd.rate,
-                    source: tryRates.try_iqd.source,
-                    timestamp: tryRates.try_iqd.timestamp
-                })
-            } else if (settlementCurrency === 'usd' && tryRates.usd_try) {
-                exchangeRatesSnapshot.push({
-                    pair: 'USD/TRY',
-                    rate: tryRates.usd_try.rate,
-                    source: tryRates.usd_try.source,
-                    timestamp: tryRates.usd_try.timestamp
-                })
-            }
-        }
+        const exchangeRatesSnapshot = buildCheckoutRatesSnapshot(usedCurrencies, settlementCurrency as CurrencyCode, knownRates)
+        const primary = getPrimaryCheckoutRate(usedCurrencies, settlementCurrency as CurrencyCode, knownRates)
 
-        // Handle TRY settlement with USD/EUR products - need IQD bridge rates
-        if (settlementCurrency === 'try') {
-            // Always add TRY/IQD for cost conversion chaining
-            if (tryRates.try_iqd && !exchangeRatesSnapshot.find(s => s.pair === 'TRY/IQD')) {
-                exchangeRatesSnapshot.push({
-                    pair: 'TRY/IQD',
-                    rate: tryRates.try_iqd.rate,
-                    source: tryRates.try_iqd.source,
-                    timestamp: tryRates.try_iqd.timestamp
-                })
-            }
-            // Add USD/IQD if USD products in cart
-            if (usedCurrencies.has('usd') && exchangeData && !exchangeRatesSnapshot.find(s => s.pair === 'USD/IQD')) {
-                exchangeRatesSnapshot.push({
-                    pair: 'USD/IQD',
-                    rate: exchangeData.rate,
-                    source: exchangeData.source,
-                    timestamp: exchangeData.timestamp || new Date().toISOString()
-                })
-            }
-            // Add EUR/IQD if EUR products in cart
-            if (usedCurrencies.has('eur') && eurRates.eur_iqd && !exchangeRatesSnapshot.find(s => s.pair === 'EUR/IQD')) {
-                exchangeRatesSnapshot.push({
-                    pair: 'EUR/IQD',
-                    rate: eurRates.eur_iqd.rate,
-                    source: eurRates.eur_iqd.source,
-                    timestamp: eurRates.eur_iqd.timestamp
-                })
-            }
-        }
-
-        // Handle IQD items settled in USD/EUR if applicable
-        if (usedCurrencies.has('iqd') && settlementCurrency !== 'iqd' && exchangeData) {
-            // We need USD/IQD for IQD -> USD conversion
-            if (!exchangeRatesSnapshot.find(s => s.pair === 'USD/IQD')) {
-                exchangeRatesSnapshot.push({
-                    pair: 'USD/IQD',
-                    rate: exchangeData.rate,
-                    source: exchangeData.source,
-                    timestamp: exchangeData.timestamp || new Date().toISOString()
-                })
-            }
-            if (settlementCurrency === 'eur' && eurRates.usd_eur) {
-                exchangeRatesSnapshot.push({
-                    pair: 'USD/EUR',
-                    rate: eurRates.usd_eur.rate,
-                    source: eurRates.usd_eur.source,
-                    timestamp: eurRates.usd_eur.timestamp
-                })
-            }
-            if (settlementCurrency === 'try' && tryRates.try_iqd && !exchangeRatesSnapshot.find(s => s.pair === 'TRY/IQD')) {
-                exchangeRatesSnapshot.push({
-                    pair: 'TRY/IQD',
-                    rate: tryRates.try_iqd.rate,
-                    source: tryRates.try_iqd.source,
-                    timestamp: tryRates.try_iqd.timestamp
-                })
-            }
-        }
-
-        const snapshotRate = exchangeData?.rate || 0
-        const snapshotSource = exchangeData?.source || 'none'
-        const snapshotTimestamp = new Date().toISOString()
+        const snapshotRate = primary?.rate || 0
+        const snapshotSource = primary?.source || 'none'
+        const snapshotTimestamp = primary?.timestamp || new Date().toISOString()
         const hasExchangeSnapshot = exchangeRatesSnapshot.length > 0
         const exchangeRatesPayload = hasExchangeSnapshot ? exchangeRatesSnapshot : null
 

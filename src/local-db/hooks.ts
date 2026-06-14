@@ -1764,6 +1764,181 @@ export async function generateLocalSaleSequenceId(workspaceId: string): Promise<
   return maxSequenceId + 1;
 }
 
+export async function syncSalesFromSupabase(
+  workspaceId: string,
+  options?: { startDate?: string; endDate?: string }
+) {
+  if (!shouldUseCloudBusinessData(workspaceId)) return
+
+  let versionQuery = supabase
+    .from('sales')
+    .select('id, version, updated_at')
+    .eq('workspace_id', workspaceId)
+
+  if (options?.startDate) {
+    versionQuery = versionQuery.gte('created_at', options.startDate)
+  }
+  if (options?.endDate) {
+    versionQuery = versionQuery.lte('created_at', options.endDate)
+  }
+
+  const { data: remoteChecks, error: versionError } = await runSupabaseAction(
+    'sales.cachedVersionCheck',
+    () => versionQuery,
+  )
+
+  if (!remoteChecks || versionError) return
+
+  const localSales = await db.sales
+    .where('workspaceId')
+    .equals(workspaceId)
+    .toArray()
+
+  const relevantLocalSales = localSales.filter((sale) => {
+    if (options?.startDate && sale.createdAt < options.startDate) return false
+    if (options?.endDate && sale.createdAt > options.endDate) return false
+    return true
+  })
+
+  type RemoteCheck = { id: string; version: number; updated_at: string }
+  const staleIds: string[] = []
+  const remoteMap = new Map<string, RemoteCheck>(
+    remoteChecks.map((v) => [v.id, v as RemoteCheck]),
+  )
+
+  for (const local of relevantLocalSales) {
+    const remote = remoteMap.get(local.id)
+    if (remote) {
+      if (remote.version !== local.version || remote.updated_at !== local.updated_at) {
+        staleIds.push(local.id)
+      }
+      remoteMap.delete(local.id)
+    }
+  }
+
+  const missingIds = [...remoteMap.keys()]
+  const idsToFetch = [...staleIds, ...missingIds]
+  const remoteIds = new Set(remoteChecks.map((r) => r.id))
+
+  let fullData: any[] | null = null
+  let profilesMap: Record<string, string> = {}
+
+  if (idsToFetch.length > 0) {
+    const CHUNK_SIZE = 100
+    const results: any[] = []
+
+    try {
+      for (let i = 0; i < idsToFetch.length; i += CHUNK_SIZE) {
+        const chunk = idsToFetch.slice(i, i + CHUNK_SIZE)
+        const result = await runSupabaseAction('sales.cachedFullFetch', () =>
+          supabase
+            .from('sales')
+            .select(`
+              *, sale_items(*, product:product_id(name, sku, category, category_id, can_be_returned, return_rules, unit, is_deleted)),
+              sale_returns(*, sale_return_items(*))
+            `)
+            .in('id', chunk),
+        )
+        if (!result.data) return
+        results.push(...(result.data as any[]))
+      }
+    } catch {
+      return
+    }
+
+    fullData = results
+
+    if (fullData) {
+      const cashierIds = Array.from(
+        new Set(fullData.map((s: any) => s.cashier_id).filter(Boolean)),
+      )
+      if (cashierIds.length > 0) {
+        const { data: profiles } = await supabase
+          .from('profiles')
+          .select('id, name, workspace_id')
+          .in('id', cashierIds)
+        if (profiles) {
+          profilesMap = profiles.reduce(
+            (acc: any, p: any) => ({ ...acc, [p.id]: p.name }),
+            {},
+          )
+          await db.profiles.bulkPut(
+            profiles.map((p: any) => ({
+              id: p.id,
+              workspaceId: p.workspace_id,
+              name: p.name,
+              role: '',
+            })),
+          )
+        }
+      }
+    }
+  }
+
+  await db.transaction('rw', [db.sales, db.sale_items, db.sale_returns, db.sale_return_items], async () => {
+    for (const local of relevantLocalSales) {
+      if (!remoteIds.has(local.id) && local.syncStatus === 'synced') {
+        await db.sales.delete(local.id)
+        await db.sale_items.where('saleId').equals(local.id).delete()
+        await db.sale_returns.where('saleId').equals(local.id).delete()
+        await db.sale_return_items.where('saleId').equals(local.id).delete()
+      }
+    }
+
+    if (!fullData) return
+
+    for (const remoteSale of fullData) {
+      const { sale_items: remoteItems, sale_returns: remoteReturns, ...saleData } = remoteSale as any
+      const localSale = toCamelCase(saleData) as unknown as Sale
+      localSale.syncStatus = 'synced'
+      localSale.lastSyncedAt = new Date().toISOString()
+
+      const enrichedItems = (remoteItems || []).map((item: any) => ({
+        ...item,
+        product_name: item.product?.name || 'Unknown Product',
+        product_sku: item.product?.sku || '',
+        product_category: item.product?.category || '',
+        product_unit: item.product?.unit || '',
+      }))
+      ;(localSale as any)._enrichedItems = enrichedItems
+      ;(localSale as any)._cashierName = profilesMap[saleData.cashier_id] || 'Staff'
+
+      await db.sales.put(localSale)
+
+      if (remoteItems) {
+        for (const item of remoteItems) {
+          const { product, ...itemData } = item
+          const localItem = toCamelCase(itemData) as unknown as SaleItem
+          await db.sale_items.put(localItem)
+        }
+      }
+
+      if (remoteReturns) {
+        for (const remoteReturn of remoteReturns) {
+          const { sale_return_items: remoteReturnItems, ...returnData } = remoteReturn
+          await db.sale_returns.put({
+            ...(toCamelCase(returnData) as any),
+            syncStatus: 'synced',
+            lastSyncedAt: new Date().toISOString(),
+            version: 1,
+            isDeleted: false,
+          })
+
+          for (const remoteReturnItem of remoteReturnItems || []) {
+            await db.sale_return_items.put({
+              ...(toCamelCase(remoteReturnItem) as any),
+              syncStatus: 'synced',
+              lastSyncedAt: new Date().toISOString(),
+              version: 1,
+              isDeleted: false,
+            })
+          }
+        }
+      }
+    }
+  })
+}
+
 export function useSales(workspaceId: string | undefined, startDate?: string, endDate?: string) {
     const isOnline = useNetworkStatus()
 
@@ -1790,135 +1965,9 @@ export function useSales(workspaceId: string | undefined, startDate?: string, en
     )
 
     useEffect(() => {
-        async function fetchFromSupabase() {
-            if (isOnline && workspaceId && shouldUseCloudBusinessData(workspaceId)) {
-                let supabaseQuery = supabase
-                    .from('sales')
-                    .select(`
-                        *,
-                            sale_items(
-                                *,
-                                product:product_id(name, sku, category, category_id, can_be_returned, return_rules, unit, is_deleted)
-                            ),
-                            sale_returns(
-                                *,
-                                sale_return_items(*)
-                            )
-                    `)
-                    .eq('workspace_id', workspaceId)
-
-                if (startDate) {
-                    supabaseQuery = supabaseQuery.gte('created_at', startDate)
-                }
-                if (endDate) {
-                    supabaseQuery = supabaseQuery.lte('created_at', endDate)
-                }
-
-                const { data, error } = await supabaseQuery
-
-                if (!data || error || !shouldUseCloudBusinessData(workspaceId)) {
-                    return
-                }
-
-                if (data && !error) {
-                    // Fetch cashier profiles
-                    const cashierIds = Array.from(new Set(data.map((s: any) => s.cashier_id).filter(Boolean)))
-                    let profilesMap: Record<string, string> = {}
-                    if (cashierIds.length > 0) {
-                        const { data: profiles } = await supabase
-                            .from('profiles')
-                            .select('id, name, workspace_id')
-                            .in('id', cashierIds)
-                        if (profiles) {
-                            profilesMap = profiles.reduce((acc: any, p: any) => ({ ...acc, [p.id]: p.name }), {})
-                            await db.profiles.bulkPut(profiles.map((p: any) => ({
-                                id: p.id,
-                                workspaceId: p.workspace_id,
-                                name: p.name,
-                                role: '',
-                            })))
-                        }
-                    }
-
-                    if (!shouldUseCloudBusinessData(workspaceId)) {
-                        return
-                    }
-
-                    await db.transaction('rw', [db.sales, db.sale_items, db.sale_returns, db.sale_return_items], async () => {
-                        const remoteIds = new Set(data.map(d => d.id))
-                        const localItems = await db.sales.where('workspaceId').equals(workspaceId).toArray()
-
-                        for (const local of localItems) {
-                            if (!remoteIds.has(local.id) && local.syncStatus === 'synced') {
-                                await db.sales.delete(local.id)
-                                await db.sale_items.where('saleId').equals(local.id).delete()
-                                await db.sale_returns.where('saleId').equals(local.id).delete()
-                                await db.sale_return_items.where('saleId').equals(local.id).delete()
-                            }
-                        }
-
-                        for (const remoteSale of data) {
-                            const {
-                                sale_items: remoteItems,
-                                sale_returns: remoteReturns,
-                                ...saleData
-                            } = remoteSale as any
-                            const localSale = toCamelCase(saleData) as unknown as Sale
-                            localSale.syncStatus = 'synced'
-                            localSale.lastSyncedAt = new Date().toISOString()
-
-                            // Enrich with cashier name and items for local-first reads
-                            const enrichedItems = (remoteItems || []).map((item: any) => ({
-                                ...item,
-                                product_name: item.product?.name || 'Unknown Product',
-                                product_sku: item.product?.sku || '',
-                                product_category: item.product?.category || '',
-                                product_unit: item.product?.unit || ''
-                            }))
-                                ; (localSale as any)._enrichedItems = enrichedItems
-                                ; (localSale as any)._cashierName = profilesMap[saleData.cashier_id] || 'Staff'
-
-                            await db.sales.put(localSale)
-
-                            if (remoteItems) {
-                                for (const item of remoteItems) {
-                                    const { product, ...itemData } = item
-                                    const localItem = toCamelCase(itemData) as unknown as SaleItem
-                                    await db.sale_items.put(localItem)
-                                }
-                            }
-
-                            if (remoteReturns) {
-                                for (const remoteReturn of remoteReturns) {
-                                    const {
-                                        sale_return_items: remoteReturnItems,
-                                        ...returnData
-                                    } = remoteReturn
-                                    await db.sale_returns.put({
-                                        ...(toCamelCase(returnData) as any),
-                                        syncStatus: 'synced',
-                                        lastSyncedAt: new Date().toISOString(),
-                                        version: 1,
-                                        isDeleted: false
-                                    })
-
-                                    for (const remoteReturnItem of remoteReturnItems || []) {
-                                        await db.sale_return_items.put({
-                                            ...(toCamelCase(remoteReturnItem) as any),
-                                            syncStatus: 'synced',
-                                            lastSyncedAt: new Date().toISOString(),
-                                            version: 1,
-                                            isDeleted: false
-                                        })
-                                    }
-                                }
-                            }
-                        }
-                    })
-                }
-            }
+        if (isOnline && workspaceId && shouldUseCloudBusinessData(workspaceId)) {
+            syncSalesFromSupabase(workspaceId, { startDate, endDate })
         }
-        fetchFromSupabase()
     }, [isOnline, workspaceId, startDate, endDate])
 
     return sales ?? []
