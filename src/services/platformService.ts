@@ -644,6 +644,15 @@ class PlatformService implements PlatformAPI {
         }
         return null;
     }
+
+    uint8ArrayToBase64(uint8: Uint8Array): string {
+        let binary = '';
+        const len = uint8.byteLength;
+        for (let i = 0; i < len; i++) {
+            binary += String.fromCharCode(uint8[i]);
+        }
+        return btoa(binary);
+    }
 }
 
 export const platformService = new PlatformService();

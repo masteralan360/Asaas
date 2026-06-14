@@ -140,12 +140,12 @@ export function InvoicesHistory() {
                 if (exists) {
                     try {
                         const content = await platformService.readFile(localPath)
-                        // Use blob: as a more reliable protocol for WebView2 framing than asset:
-                        const blob = new Blob([content], { type: 'application/pdf' })
-                        url = URL.createObjectURL(blob)
-                        console.log('[InvoicesHistory] Successfully created blob URL from local file')
+                        // Use Data URL (base64) which is often more compatible for framing in WebView2 than blob: or asset:
+                        const base64 = platformService.uint8ArrayToBase64(content)
+                        url = `data:application/pdf;base64,${base64}`
+                        console.log('[InvoicesHistory] Successfully created Data URL from local file')
                     } catch (err) {
-                        console.error('[InvoicesHistory] Failed to read local PDF as blob:', err)
+                        console.error('[InvoicesHistory] Failed to read local PDF as data URL:', err)
                         url = platformService.convertFileSrc(localPath)
                     }
                 }
