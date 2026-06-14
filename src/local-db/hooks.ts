@@ -44,6 +44,7 @@ import type {
     LoanPaymentMethod,
     LoanStatus,
     ExchangeRateSnapshot,
+    SalesExchange,
     PaymentTransaction,
     PaymentTransactionSourceType
 } from './models'
@@ -1924,7 +1925,7 @@ export async function syncSalesFromSupabase(
       }
       if (remoteExchangeRows.length > 0) {
         await db.sales_exchange.bulkPut(
-          remoteExchangeRows.map((row: any) => toCamelCase(row)),
+          remoteExchangeRows.map((row: any) => toCamelCase(row) as unknown as SalesExchange),
         )
       }
     }

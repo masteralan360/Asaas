@@ -14,7 +14,6 @@ export interface KnownRates {
   usdTry?: RateEntry | null
 }
 
-const ALL_CURRENCIES: CurrencyCode[] = ['usd', 'eur', 'iqd', 'try']
 
 function baseRate(currency: CurrencyCode, rates: KnownRates): RateEntry | null {
   if (currency === 'usd') return rates.usdIqd
@@ -117,7 +116,6 @@ export function buildCheckoutRatesSnapshot(
   rates: KnownRates,
 ): ExchangeRateSnapshot[] {
   const snapshot: ExchangeRateSnapshot[] = []
-  const now = new Date().toISOString()
 
   for (const itemCurrency of itemCurrencies) {
     if (itemCurrency === settlementCurrency) continue

@@ -41,6 +41,9 @@ import {
     type PurchaseOrder,
     type PaymentTransaction,
     type SalesOrder,
+    type TravelAgencySale,
+    type LoanInstallment,
+    db,
 } from '@/local-db'
 import { fetchCachedCustomTemplates } from '@/lib/cachedCustomTemplates'
 import { Button } from '@/ui/components/button'
@@ -630,7 +633,7 @@ export function PartnerDetailsView({
                     loan,
                     defaultCurrency,
                     t,
-                    dateFilteredInstallments.filter((i) => i.loanId === loan.id),
+                    dateFilteredInstallments.filter((i: any) => i.loanId === loan.id),
                     loan.saleId ? linkedSaleReferenceById.get(loan.saleId) : undefined
                 ))
             }
@@ -656,7 +659,7 @@ export function PartnerDetailsView({
                     loan,
                     defaultCurrency,
                     t,
-                    dateFilteredInstallments.filter((i) => i.loanId === loan.id),
+                    dateFilteredInstallments.filter((i: any) => i.loanId === loan.id),
                     loan.saleId ? linkedSaleReferenceById.get(loan.saleId) : undefined
                 ))
             }
