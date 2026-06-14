@@ -2267,8 +2267,9 @@ export default function InventoryTransfer() {
                       {selectedProduct
                         ? t(
                           "inventoryTransfer.automation.triggerPreview",
-                          "If stock in {{storage}} drops below {{min}}, move {{qty}} units.",
+                          "If {{product}} in {{storage}} drops below {{min}}, move {{qty}} units.",
                           {
+                            product: selectedProduct.name,
                             storage: getStorageDisplayName(
                               storagesById.get(ruleForm.destinationStorageId),
                             ),

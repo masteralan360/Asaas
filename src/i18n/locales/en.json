@@ -3138,7 +3138,7 @@
       "saveRule": "Save Rule",
       "modalInsightDescription": "Rules watch the destination storage. If it falls under the minimum level, the configured quantity is moved from the source storage automatically.",
       "nextTriggerHint": "Trigger Logic",
-      "triggerPreview": "If stock in {{storage}} drops below {{min}}, move {{qty}} units.",
+      "triggerPreview": "If {{product}} in {{storage}} drops below {{min}}, move {{qty}} units.",
       "triggerPreviewFallback": "Select a product and storages to preview the rule behavior.",
       "ruleCreatedTitle": "Rule created",
       "ruleCreatedDescription": "Automatic reorder rule is now active.",
