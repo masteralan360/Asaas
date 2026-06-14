@@ -94,16 +94,8 @@ export function useFleetLiveLocations(
       });
     };
 
-    const channel = supabase
-      .channel(`fleet-live:${workspaceId}`, {
-        config: {
-          private: true,
-          broadcast: { self: false, ack: false },
-        },
-      })
-      .on("broadcast", { event: "location" }, ({ payload }) => {
-        upsertLocation(payload as FleetLocationPoint);
-      })
+    const databaseChannel = supabase
+      .channel(`fleet-database:${workspaceId}`)
       .on(
         "postgres_changes",
         {
@@ -134,12 +126,34 @@ export function useFleetLiveLocations(
           channelStatus === "CHANNEL_ERROR" ||
           channelStatus === "TIMED_OUT"
         ) {
-          setError("Could not connect to the live fleet channel");
+          setError("Could not connect to live fleet database updates");
+        }
+      });
+
+    const broadcastChannel = supabase
+      .channel(`fleet-live:${workspaceId}`, {
+        config: {
+          private: true,
+          broadcast: { self: false, ack: false },
+        },
+      })
+      .on("broadcast", { event: "location" }, ({ payload }) => {
+        upsertLocation(payload as FleetLocationPoint);
+      })
+      .subscribe((channelStatus) => {
+        if (
+          channelStatus === "CHANNEL_ERROR" ||
+          channelStatus === "TIMED_OUT"
+        ) {
+          console.warn(
+            "[Fleet] Private broadcast unavailable; using database updates.",
+          );
         }
       });
 
     return () => {
-      void supabase.removeChannel(channel);
+      void supabase.removeChannel(databaseChannel);
+      void supabase.removeChannel(broadcastChannel);
     };
   }, [enabled, workspaceId]);
 

@@ -36,10 +36,15 @@ interface FleetLocationSharingContextValue {
 const FleetLocationSharingContext =
   createContext<FleetLocationSharingContextValue | undefined>(undefined);
 
-const LIVE_PERSIST_INTERVAL_MS = 10_000;
+const LIVE_PERSIST_INTERVAL_MS = 5_000;
 const HISTORY_INTERVAL_MS = 60_000;
 const HISTORY_DISTANCE_METERS = 50;
 const BROADCAST_INTERVAL_MS = 5_000;
+const GEOLOCATION_OPTIONS: PositionOptions = {
+  enableHighAccuracy: true,
+  maximumAge: 5_000,
+  timeout: 20_000,
+};
 
 function distanceMeters(
   left: Pick<FleetLocationPoint, "latitude" | "longitude">,
@@ -69,11 +74,53 @@ function geolocationErrorMessage(error: GeolocationPositionError) {
   return "Location tracking timed out. Check GPS and network access.";
 }
 
+function isGeolocationPositionError(
+  error: unknown,
+): error is GeolocationPositionError {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    typeof error.code === "number" &&
+    "message" in error &&
+    typeof error.message === "string"
+  );
+}
+
+function requestCurrentPosition() {
+  return new Promise<GeolocationPosition>((resolve, reject) => {
+    navigator.geolocation.getCurrentPosition(
+      resolve,
+      reject,
+      GEOLOCATION_OPTIONS,
+    );
+  });
+}
+
 function getDeviceLabel() {
   if (typeof navigator === "undefined") {
     return null;
   }
   return navigator.userAgent.slice(0, 250);
+}
+
+function getSupabaseErrorDetails(error: unknown) {
+  if (!error || typeof error !== "object") {
+    return error;
+  }
+
+  const candidate = error as {
+    code?: unknown;
+    message?: unknown;
+    details?: unknown;
+    hint?: unknown;
+  };
+  return {
+    code: candidate.code,
+    message: candidate.message,
+    details: candidate.details,
+    hint: candidate.hint,
+  };
 }
 
 export function FleetLocationSharingProvider({
@@ -181,6 +228,19 @@ export function FleetLocationSharingProvider({
         received_at: new Date().toISOString(),
         is_sharing: true,
       };
+      const historyPayload = {
+        workspace_id: point.workspaceId,
+        agent_id: point.agentId,
+        session_id: point.sessionId,
+        user_id: point.userId,
+        latitude: point.latitude,
+        longitude: point.longitude,
+        accuracy: point.accuracy,
+        heading: point.heading,
+        speed: point.speed,
+        altitude: point.altitude,
+        recorded_at: point.recordedAt,
+      };
 
       if (now - lastPersistAtRef.current >= LIVE_PERSIST_INTERVAL_MS) {
         lastPersistAtRef.current = now;
@@ -208,26 +268,25 @@ export function FleetLocationSharingProvider({
         distanceMeters(previousHistoryPoint, point) >= HISTORY_DISTANCE_METERS;
 
       if (shouldWriteHistory) {
-        lastHistoryAtRef.current = now;
-        lastHistoryPointRef.current = point;
         const { error: historyError } = (await runSupabaseAction(
           "fleet.locationHistory.insert",
-          () =>
-            fleetClient.from("location_history").insert({
-              ...livePayload,
-              is_sharing: undefined,
-            }),
+          () => fleetClient.from("location_history").insert(historyPayload),
         )) as { error?: unknown };
         if (historyError) {
-          throw historyError;
+          console.warn(
+            "[Fleet] Failed to archive location history; live sharing will continue.",
+            getSupabaseErrorDetails(historyError),
+          );
         }
+        lastHistoryAtRef.current = now;
+        lastHistoryPointRef.current = point;
       }
     },
     [],
   );
 
   const handlePosition = useCallback(
-    (position: GeolocationPosition) => {
+    async (position: GeolocationPosition) => {
       const sessionId = sessionIdRef.current;
       if (!user?.workspaceId || !user.id || !linkedAgent || !sessionId) {
         return;
@@ -254,17 +313,15 @@ export function FleetLocationSharingProvider({
       const now = Date.now();
       if (now - lastBroadcastAtRef.current >= BROADCAST_INTERVAL_MS) {
         lastBroadcastAtRef.current = now;
-        void channelRef.current?.send({
-          type: "broadcast",
-          event: "location",
-          payload: point,
-        });
+        void channelRef.current
+          ?.httpSend("location", point)
+          .catch((broadcastError) => {
+            console.warn("[Fleet] Failed to broadcast location:", broadcastError);
+          });
       }
 
       if (isOnline) {
-        void persistLocation(point).catch((persistError) => {
-          console.warn("[Fleet] Failed to persist location:", persistError);
-        });
+        await persistLocation(point);
       }
     },
     [isOnline, linkedAgent, persistLocation, user?.id, user?.workspaceId],
@@ -343,6 +400,8 @@ export function FleetLocationSharingProvider({
     setStatus("starting");
     setError(undefined);
     try {
+      // Trigger the browser or native permission prompt directly from the user action.
+      const initialPosition = await requestCurrentPosition();
       const fleetClient = getFleetSupabaseClient();
       await fleetClient
         .from("location_sessions")
@@ -374,48 +433,34 @@ export function FleetLocationSharingProvider({
       }
       sessionIdRef.current = data.id;
 
-      const channel = supabase.channel(`fleet-live:${user.workspaceId}`, {
+      // Agents only send to this private channel. Receiving remains restricted to
+      // administrators with fleet.viewLiveLocations.
+      channelRef.current = supabase.channel(`fleet-live:${user.workspaceId}`, {
         config: {
           private: true,
           broadcast: { self: false, ack: false },
         },
       });
-      channelRef.current = channel;
-      await new Promise<void>((resolve, reject) => {
-        const timeout = globalThis.setTimeout(
-          () => reject(new Error("Timed out connecting to fleet tracking")),
-          10_000,
-        );
-        channel.subscribe((channelStatus) => {
-          if (channelStatus === "SUBSCRIBED") {
-            globalThis.clearTimeout(timeout);
-            resolve();
-          } else if (
-            channelStatus === "CHANNEL_ERROR" ||
-            channelStatus === "TIMED_OUT"
-          ) {
-            globalThis.clearTimeout(timeout);
-            reject(new Error("Could not authorize the live fleet channel"));
-          }
-        });
-      });
 
+      await handlePosition(initialPosition);
       watchIdRef.current = navigator.geolocation.watchPosition(
-        handlePosition,
+        (position) => {
+          void handlePosition(position).catch((persistError) => {
+            console.warn("[Fleet] Failed to persist location:", persistError);
+          });
+        },
         (positionError) => {
           setError(geolocationErrorMessage(positionError));
           setStatus("error");
           void stopSharing();
         },
-        {
-          enableHighAccuracy: true,
-          maximumAge: 5_000,
-          timeout: 20_000,
-        },
+        GEOLOCATION_OPTIONS,
       );
     } catch (startError) {
       setError(
-        startError instanceof Error
+        isGeolocationPositionError(startError)
+          ? geolocationErrorMessage(startError)
+          : startError instanceof Error
           ? startError.message
           : "Failed to start location sharing",
       );
