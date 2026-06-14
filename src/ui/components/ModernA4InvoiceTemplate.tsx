@@ -397,7 +397,7 @@ export const ModernA4InvoiceTemplate = forwardRef<HTMLDivElement, ModernA4Invoic
                                 <div className="flex flex-wrap gap-2">
                                     {data.exchange_rates.slice(0, 3).map((rate: any, i: number) => (
                                         <div key={i} className={cn("px-2 py-1 bg-slate-50 rounded text-[9px] font-medium text-slate-600 border border-slate-100 tabular-nums", !isRTL && "font-mono")}>
-                                            {rate.pair}: {rate.rate}
+                                            {rate.priceBasisAmount || 100} {rate.pair.split('/')[0]} = {rate.rate} {rate.pair.split('/')[1]}
                                         </div>
                                     ))}
                                 </div>

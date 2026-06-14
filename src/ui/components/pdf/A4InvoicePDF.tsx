@@ -346,8 +346,12 @@ export function A4InvoicePDF({ data, features, translations: t }: A4InvoicePDFPr
                                 <Text style={styles.termsLabel}>{t.exchangeRates}</Text>
                                 {data.exchange_rates.slice(0, 4).map((rate: any, i: number) => (
                                     <View key={i} style={styles.exchangeRateItem}>
-                                        <Text style={styles.exchangeRatePair}>{rate.pair}</Text>
-                                        <Text style={styles.exchangeRateValue}>{rate.rate}</Text>
+                                        <Text style={styles.exchangeRatePair}>
+                                            {rate.priceBasisAmount || 100} {rate.pair.split('/')[0]}
+                                        </Text>
+                                        <Text style={styles.exchangeRateValue}>
+                                            {rate.rate} {rate.pair.split('/')[1]}
+                                        </Text>
                                     </View>
                                 ))}
                             </View>

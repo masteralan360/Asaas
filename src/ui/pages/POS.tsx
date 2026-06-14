@@ -36,6 +36,7 @@ import {
 } from '@/lib/barcodeScanner'
 import { ExchangeRateResult } from '@/lib/exchangeRate'
 import { buildCheckoutRatesSnapshot, getPrimaryCheckoutRate } from '@/lib/currencyRates'
+import { exchangeSnapshotsToPayloads } from '@/lib/salesExchange'
 import { verifySale, createVerificationSale } from '@/lib/saleVerification'
 import type { ResolvedActiveDiscount } from '@/lib/discounts'
 import {
@@ -1501,6 +1502,7 @@ export function POS() {
         const snapshotTimestamp = primary?.timestamp || new Date().toISOString()
         const hasExchangeSnapshot = exchangeRatesSnapshot.length > 0
         const exchangeRatesPayload = hasExchangeSnapshot ? exchangeRatesSnapshot : null
+        const salesExchangePayload = exchangeSnapshotsToPayloads(exchangeRatesPayload)
 
         let batchSalePlans: Awaited<ReturnType<typeof getStockBatchSalePlans>>
         try {
@@ -1586,10 +1588,7 @@ export function POS() {
             items: itemsWithMetadata,
             total_amount: totalAmount,
             settlement_currency: settlementCurrency,
-            exchange_source: hasExchangeSnapshot ? (exchangeRatesSnapshot.length > 1 ? 'mixed' : snapshotSource) : null,
-            exchange_rate: hasExchangeSnapshot ? snapshotRate : null,
-            exchange_rate_timestamp: hasExchangeSnapshot ? snapshotTimestamp : null,
-            exchange_rates: exchangeRatesPayload,
+            sales_exchange: salesExchangePayload,
             origin: 'pos',
             payment_method: (paymentType === 'cash'
                 ? 'cash'
@@ -1759,10 +1758,6 @@ export function POS() {
                         returnedAmount: 0,
                         returnStatus: 'none',
                         settlementCurrency: settlementCurrency,
-                        exchangeSource: checkoutPayload.exchange_source,
-                        exchangeRate: checkoutPayload.exchange_rate,
-                        exchangeRateTimestamp: checkoutPayload.exchange_rate_timestamp,
-                        exchangeRates: checkoutPayload.exchange_rates,
                         origin: 'pos',
                         payment_method: checkoutPayload.payment_method,
                         sequenceId: localSequenceId,
@@ -1777,6 +1772,26 @@ export function POS() {
                         systemReviewStatus: verificationResult.status,
                         systemReviewReason: verificationResult.reason
                     })
+
+                    if (salesExchangePayload.length > 0) {
+                        await db.sales_exchange.bulkAdd(
+                            salesExchangePayload.map((row) => ({
+                                id: generateId(),
+                                saleId,
+                                workspaceId: user.workspaceId,
+                                baseCurrency: row.base_currency,
+                                quoteCurrency: row.quote_currency,
+                                baseAmount: row.base_amount,
+                                quoteAmount: row.quote_amount,
+                                source: row.source,
+                                capturedAt: row.captured_at,
+                                rateSide: row.rate_side,
+                                sourcePriceId: row.source_price_id,
+                                sourcePriceUpdatedAt: row.source_price_updated_at,
+                                createdAt: snapshotTimestamp
+                            }))
+                        )
+                    }
 
                     // 2. Save Sale Items locally (with inventory snapshot)
                     await Promise.all(itemsWithMetadata.map(item =>

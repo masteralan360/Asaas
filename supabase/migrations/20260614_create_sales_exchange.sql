@@ -1,8 +1,181 @@
+DO $block$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'sales_id_workspace_key'
+      AND conrelid = 'public.sales'::regclass
+  ) THEN
+    ALTER TABLE public.sales
+      ADD CONSTRAINT sales_id_workspace_key UNIQUE (id, workspace_id);
+  END IF;
+END;
+$block$;
+
+CREATE TABLE IF NOT EXISTS public.sales_exchange (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  sale_id uuid NOT NULL,
+  workspace_id uuid NOT NULL,
+  base_currency text NOT NULL,
+  quote_currency text NOT NULL,
+  base_amount numeric NOT NULL DEFAULT 100,
+  quote_amount numeric NOT NULL,
+  source text NOT NULL,
+  captured_at timestamp with time zone NOT NULL,
+  rate_side text NOT NULL DEFAULT 'mid',
+  source_price_id uuid NULL,
+  source_price_updated_at timestamp with time zone NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT sales_exchange_sale_fk
+    FOREIGN KEY (sale_id, workspace_id)
+    REFERENCES public.sales (id, workspace_id)
+    ON DELETE CASCADE,
+  CONSTRAINT sales_exchange_currency_check CHECK (
+    base_currency IN ('usd', 'eur', 'iqd', 'try')
+    AND quote_currency IN ('usd', 'eur', 'iqd', 'try')
+    AND base_currency <> quote_currency
+  ),
+  CONSTRAINT sales_exchange_amount_check CHECK (
+    base_amount > 0 AND quote_amount > 0
+  ),
+  CONSTRAINT sales_exchange_side_check CHECK (
+    rate_side IN ('buy', 'sell', 'mid')
+  )
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_sales_exchange_sale_pair_side
+  ON public.sales_exchange (
+    sale_id,
+    base_currency,
+    quote_currency,
+    rate_side
+  );
+
+CREATE INDEX IF NOT EXISTS idx_sales_exchange_workspace_captured
+  ON public.sales_exchange (workspace_id, captured_at DESC);
+
+INSERT INTO public.sales_exchange (
+  sale_id,
+  workspace_id,
+  base_currency,
+  quote_currency,
+  base_amount,
+  quote_amount,
+  source,
+  captured_at,
+  rate_side,
+  source_price_id,
+  source_price_updated_at,
+  created_at
+)
+SELECT
+  sale.id,
+  sale.workspace_id,
+  lower(split_part(snapshot.value->>'pair', '/', 1)),
+  lower(split_part(snapshot.value->>'pair', '/', 2)),
+  COALESCE(NULLIF(snapshot.value->>'priceBasisAmount', '')::numeric, 100),
+  (snapshot.value->>'rate')::numeric,
+  COALESCE(NULLIF(snapshot.value->>'source', ''), 'unknown'),
+  COALESCE(
+    NULLIF(snapshot.value->>'timestamp', '')::timestamptz,
+    sale.created_at,
+    now()
+  ),
+  CASE
+    WHEN snapshot.value->>'side' IN ('buy', 'sell')
+      THEN snapshot.value->>'side'
+    ELSE 'mid'
+  END,
+  CASE
+    WHEN snapshot.value->>'priceRowId'
+      ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+      THEN (snapshot.value->>'priceRowId')::uuid
+    ELSE NULL
+  END,
+  NULLIF(snapshot.value->>'priceUpdatedAt', '')::timestamptz,
+  COALESCE(sale.created_at, now())
+FROM public.sales AS sale
+CROSS JOIN LATERAL jsonb_array_elements(
+  CASE
+    WHEN jsonb_typeof(sale.exchange_rates) = 'array'
+      THEN sale.exchange_rates
+    ELSE '[]'::jsonb
+  END
+) AS snapshot(value)
+WHERE snapshot.value->>'pair' LIKE '%/%'
+  AND lower(split_part(snapshot.value->>'pair', '/', 1))
+    IN ('usd', 'eur', 'iqd', 'try')
+  AND lower(split_part(snapshot.value->>'pair', '/', 2))
+    IN ('usd', 'eur', 'iqd', 'try')
+  AND lower(split_part(snapshot.value->>'pair', '/', 1))
+    <> lower(split_part(snapshot.value->>'pair', '/', 2))
+  AND snapshot.value->>'rate' ~ '^[0-9]+([.][0-9]+)?$'
+  AND (snapshot.value->>'rate')::numeric > 0
+ON CONFLICT (sale_id, base_currency, quote_currency, rate_side) DO NOTHING;
+
+INSERT INTO public.sales_exchange (
+  sale_id,
+  workspace_id,
+  base_currency,
+  quote_currency,
+  base_amount,
+  quote_amount,
+  source,
+  captured_at,
+  created_at
+)
+SELECT
+  sale.id,
+  sale.workspace_id,
+  item_currency.base_currency,
+  lower(sale.settlement_currency),
+  100,
+  sale.exchange_rate,
+  COALESCE(NULLIF(sale.exchange_source, ''), 'legacy'),
+  COALESCE(sale.exchange_rate_timestamp, sale.created_at, now()),
+  COALESCE(sale.created_at, now())
+FROM public.sales AS sale
+CROSS JOIN LATERAL (
+  SELECT lower(item.original_currency) AS base_currency
+  FROM public.sale_items AS item
+  WHERE item.sale_id = sale.id
+    AND lower(item.original_currency) <> lower(sale.settlement_currency)
+    AND lower(item.original_currency) IN ('usd', 'eur', 'iqd', 'try')
+  ORDER BY item.id
+  LIMIT 1
+) AS item_currency
+WHERE sale.exchange_rate > 0
+  AND lower(sale.settlement_currency) IN ('usd', 'eur', 'iqd', 'try')
+  AND NOT EXISTS (
+    SELECT 1
+    FROM public.sales_exchange AS existing
+    WHERE existing.sale_id = sale.id
+  )
+ON CONFLICT (sale_id, base_currency, quote_currency, rate_side) DO NOTHING;
+
+ALTER TABLE public.sales_exchange ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS sales_exchange_select ON public.sales_exchange;
+CREATE POLICY sales_exchange_select
+  ON public.sales_exchange
+  FOR SELECT
+  TO authenticated
+  USING (workspace_id = public.current_workspace_id());
+
+GRANT SELECT ON public.sales_exchange TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.sales_exchange TO service_role;
+
+ALTER TABLE public.sales
+  DROP COLUMN IF EXISTS exchange_source,
+  DROP COLUMN IF EXISTS exchange_rate,
+  DROP COLUMN IF EXISTS exchange_rate_timestamp,
+  DROP COLUMN IF EXISTS exchange_rates;
+
 CREATE OR REPLACE FUNCTION public.complete_sale(payload jsonb)
- RETURNS jsonb
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path = public
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
 AS $function$
 DECLARE
     new_sale_id UUID;
@@ -87,23 +260,39 @@ BEGIN
     LOOP
         v_item_index := v_item_index + 1;
         v_quantity := COALESCE((item->>'quantity')::INTEGER, 0);
-        v_converted_unit_price := COALESCE((item->>'converted_unit_price')::NUMERIC, (item->>'unit_price')::NUMERIC, 0);
+        v_converted_unit_price := COALESCE(
+            (item->>'converted_unit_price')::NUMERIC,
+            (item->>'unit_price')::NUMERIC,
+            0
+        );
         v_items_total := v_items_total + (v_converted_unit_price * v_quantity);
 
         IF v_quantity <= 0 THEN
-            v_flags := array_append(v_flags, format('Item %s: Invalid quantity (%s)', v_item_index, v_quantity));
+            v_flags := array_append(
+                v_flags,
+                format('Item %s: Invalid quantity (%s)', v_item_index, v_quantity)
+            );
         END IF;
 
         IF item->>'negotiated_price' IS NOT NULL THEN
             v_negotiated_price := (item->>'negotiated_price')::NUMERIC;
 
             IF v_negotiated_price < 0 THEN
-                v_flags := array_append(v_flags, format('Item %s: Negative negotiated price', v_item_index));
+                v_flags := array_append(
+                    v_flags,
+                    format('Item %s: Negative negotiated price', v_item_index)
+                );
             ELSE
-                v_original_unit_price := COALESCE((item->>'original_unit_price')::NUMERIC, (item->>'unit_price')::NUMERIC, 0);
+                v_original_unit_price := COALESCE(
+                    (item->>'original_unit_price')::NUMERIC,
+                    (item->>'unit_price')::NUMERIC,
+                    0
+                );
 
                 IF v_original_unit_price > 0 THEN
-                    v_discount_percent := ((v_original_unit_price - v_negotiated_price) / v_original_unit_price) * 100;
+                    v_discount_percent :=
+                        ((v_original_unit_price - v_negotiated_price)
+                        / v_original_unit_price) * 100;
                     IF v_discount_percent > v_max_discount_percent THEN
                         v_flags := array_append(
                             v_flags,
@@ -120,12 +309,18 @@ BEGIN
         END IF;
 
         v_original_currency := COALESCE(item->>'original_currency', 'usd');
-        v_item_settlement_currency := COALESCE(item->>'settlement_currency', COALESCE(payload->>'settlement_currency', 'usd'));
+        v_item_settlement_currency := COALESCE(
+            item->>'settlement_currency',
+            COALESCE(payload->>'settlement_currency', 'usd')
+        );
         IF v_original_currency IS DISTINCT FROM v_item_settlement_currency THEN
             v_has_mixed_currency := true;
         END IF;
 
-        v_inventory_snapshot := COALESCE((item->>'inventory_snapshot')::INTEGER, 0);
+        v_inventory_snapshot := COALESCE(
+            (item->>'inventory_snapshot')::INTEGER,
+            0
+        );
         IF v_quantity > v_inventory_snapshot THEN
             v_flags := array_append(
                 v_flags,
@@ -150,10 +345,11 @@ BEGIN
         );
     END IF;
 
-    IF v_has_mixed_currency THEN
-        IF NOT v_has_exchange_snapshot THEN
-            v_flags := array_append(v_flags, 'Missing exchange rate for multi-currency sale');
-        END IF;
+    IF v_has_mixed_currency AND NOT v_has_exchange_snapshot THEN
+        v_flags := array_append(
+            v_flags,
+            'Missing exchange rate for multi-currency sale'
+        );
     END IF;
 
     IF COALESCE(array_length(v_flags, 1), 0) > 0 THEN
@@ -183,8 +379,16 @@ BEGIN
         auth.uid(),
         total_sale_amount,
         total_sale_amount,
-        lower(COALESCE(payload->>'settlement_currency', payload->>'currency', 'usd')),
-        lower(COALESCE(payload->>'settlement_currency', payload->>'currency', 'usd')),
+        lower(COALESCE(
+            payload->>'settlement_currency',
+            payload->>'currency',
+            'usd'
+        )),
+        lower(COALESCE(
+            payload->>'settlement_currency',
+            payload->>'currency',
+            'usd'
+        )),
         COALESCE(payload->>'origin', 'pos'),
         COALESCE(payload->>'payment_method', 'cash'),
         v_system_verified,
@@ -238,7 +442,10 @@ BEGIN
         END IF;
 
         IF v_storage_id IS NULL THEN
-            SELECT CASE WHEN COUNT(*) = 1 THEN MIN(storage_id::text)::uuid ELSE NULL END
+            SELECT CASE
+                WHEN COUNT(*) = 1 THEN MIN(storage_id::text)::uuid
+                ELSE NULL
+            END
             INTO v_storage_id
             FROM public.inventory
             WHERE workspace_id = p_workspace_id
@@ -276,12 +483,19 @@ BEGIN
                   AND product_id = v_product_id
                   AND storage_id = v_storage_id
                   AND COALESCE(is_deleted, false) = false
-                ORDER BY expiry_date ASC NULLS LAST, manufacturing_date ASC NULLS LAST, created_at ASC, batch_number ASC
+                ORDER BY
+                    expiry_date ASC NULLS LAST,
+                    manufacturing_date ASC NULLS LAST,
+                    created_at ASC,
+                    batch_number ASC
                 FOR UPDATE
             LOOP
                 EXIT WHEN v_batch_remaining <= 0;
 
-                v_allocated_quantity := LEAST(v_batch_remaining, COALESCE(v_batch_record.quantity, 0));
+                v_allocated_quantity := LEAST(
+                    v_batch_remaining,
+                    COALESCE(v_batch_record.quantity, 0)
+                );
                 IF v_allocated_quantity <= 0 THEN
                     CONTINUE;
                 END IF;
@@ -291,7 +505,8 @@ BEGIN
                     quantity = v_batch_record.quantity - v_allocated_quantity,
                     updated_at = NOW(),
                     version = COALESCE(version, 0) + 1,
-                    is_deleted = (v_batch_record.quantity - v_allocated_quantity) <= 0
+                    is_deleted =
+                        (v_batch_record.quantity - v_allocated_quantity) <= 0
                 WHERE id = v_batch_record.id;
 
                 v_batch_allocations := v_batch_allocations || jsonb_build_array(
@@ -308,7 +523,6 @@ BEGIN
                 );
                 v_batch_remaining := v_batch_remaining - v_allocated_quantity;
             END LOOP;
-
         END IF;
 
         INSERT INTO public.sale_items (
@@ -339,17 +553,27 @@ BEGIN
             COALESCE((item->>'cost_price')::NUMERIC, 0),
             COALESCE((item->>'converted_cost_price')::NUMERIC, 0),
             COALESCE(item->>'original_currency', 'usd'),
-            COALESCE((item->>'original_unit_price')::NUMERIC, (item->>'unit_price')::NUMERIC),
-            COALESCE((item->>'converted_unit_price')::NUMERIC, (item->>'unit_price')::NUMERIC),
+            COALESCE(
+                (item->>'original_unit_price')::NUMERIC,
+                (item->>'unit_price')::NUMERIC
+            ),
+            COALESCE(
+                (item->>'converted_unit_price')::NUMERIC,
+                (item->>'unit_price')::NUMERIC
+            ),
             COALESCE(item->>'settlement_currency', 'usd'),
             (item->>'negotiated_price')::NUMERIC,
             COALESCE((item->>'inventory_snapshot')::INTEGER, 0),
             CASE
-                WHEN v_has_active_batches AND jsonb_array_length(v_batch_allocations) > 0 THEN v_batch_allocations
+                WHEN v_has_active_batches
+                    AND jsonb_array_length(v_batch_allocations) > 0
+                    THEN v_batch_allocations
                 ELSE NULL
             END,
             CASE
-                WHEN v_has_active_batches AND jsonb_array_length(v_batch_allocations) > 0 THEN v_batch_allocations
+                WHEN v_has_active_batches
+                    AND jsonb_array_length(v_batch_allocations) > 0
+                    THEN v_batch_allocations
                 ELSE NULL
             END
         );
@@ -367,7 +591,10 @@ BEGIN
           AND quantity >= v_quantity;
 
         IF NOT FOUND THEN
-            RAISE EXCEPTION 'Insufficient inventory for product % in storage %', v_product_id, v_storage_id;
+            RAISE EXCEPTION
+                'Insufficient inventory for product % in storage %',
+                v_product_id,
+                v_storage_id;
         END IF;
     END LOOP;
 

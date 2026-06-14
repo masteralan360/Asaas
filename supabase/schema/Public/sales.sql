@@ -10,10 +10,6 @@ CREATE TABLE public.sales (
   origin text NULL DEFAULT 'pos'::text,
   currency text NOT NULL DEFAULT 'usd'::text,
   settlement_currency text NOT NULL DEFAULT 'usd'::text,
-  exchange_source text NULL,
-  exchange_rate numeric NULL,
-  exchange_rate_timestamp timestamp with time zone NULL,
-  exchange_rates jsonb NULL,
   payment_method text NULL DEFAULT 'cash'::text,
   is_returned boolean NULL DEFAULT false,
   return_reason text NULL,
@@ -27,5 +23,6 @@ CREATE TABLE public.sales (
   updated_at timestamp with time zone NULL DEFAULT timezone('utc'::text, now()),
   CONSTRAINT sales_return_status_check CHECK (return_status = ANY (ARRAY['none'::text, 'partial'::text, 'full'::text])),
   CONSTRAINT sales_returned_amount_check CHECK (returned_amount >= 0),
+  CONSTRAINT sales_id_workspace_key UNIQUE (id, workspace_id),
   PRIMARY KEY (id)
 );

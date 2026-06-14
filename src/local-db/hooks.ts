@@ -62,6 +62,7 @@ import { useNetworkStatus } from '@/hooks/useNetworkStatus'
 import { getActiveBusinessUserId, isOnline } from '@/lib/network'
 import { resolveActiveDiscountMap, type ResolvedActiveDiscount } from '@/lib/discounts'
 import { convertCurrencyAmountWithAvailableSnapshot, getEffectiveExchangeRatesSnapshot } from '@/lib/orderCurrency'
+import { salesExchangeRowsToSnapshots } from '@/lib/salesExchange'
 import { isRetriableWebRequestError, normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
 import { getSupabaseClientForTable } from '@/lib/supabaseSchema'
 import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
@@ -1582,6 +1583,9 @@ async function enrichSalesForUiRows(workspaceId: string, sales: Sale[]) {
     const localItems = saleIds.length > 0
         ? await db.sale_items.where('saleId').anyOf(saleIds).toArray()
         : []
+    const localExchangeRows = saleIds.length > 0
+        ? await db.sales_exchange.where('saleId').anyOf(saleIds).toArray()
+        : []
     const localReturns = saleIds.length > 0
         ? await db.sale_returns.where('saleId').anyOf(saleIds).toArray()
         : []
@@ -1690,6 +1694,13 @@ async function enrichSalesForUiRows(workspaceId: string, sales: Sale[]) {
         itemsBySaleId.set(item.saleId, existing)
     }
 
+    const exchangeBySaleId = new Map<string, typeof localExchangeRows>()
+    for (const exchangeRow of localExchangeRows) {
+        const existing = exchangeBySaleId.get(exchangeRow.saleId) ?? []
+        existing.push(exchangeRow)
+        exchangeBySaleId.set(exchangeRow.saleId, existing)
+    }
+
     const returnItemsByReturnId = new Map<string, Record<string, unknown>[]>()
     for (const item of localReturnItems) {
         const existing = returnItemsByReturnId.get(item.returnId) ?? []
@@ -1747,6 +1758,7 @@ async function enrichSalesForUiRows(workspaceId: string, sales: Sale[]) {
             workspaceId,
             _cashierName: cashierName,
             _enrichedItems: enrichedItems,
+            _salesExchange: exchangeBySaleId.get(sale.id) ?? [],
             _returns: returnsBySaleId.get(sale.id) ?? []
         }
     })
@@ -1809,7 +1821,7 @@ export async function syncSalesFromSupabase(
   for (const local of relevantLocalSales) {
     const remote = remoteMap.get(local.id)
     if (remote) {
-      if (remote.version !== local.version || remote.updated_at !== local.updated_at) {
+      if (remote.version !== local.version || remote.updated_at !== local.updatedAt) {
         staleIds.push(local.id)
       }
       remoteMap.delete(local.id)
@@ -1819,9 +1831,39 @@ export async function syncSalesFromSupabase(
   const missingIds = [...remoteMap.keys()]
   const idsToFetch = [...staleIds, ...missingIds]
   const remoteIds = new Set(remoteChecks.map((r) => r.id))
+  const remoteSaleIds = [...remoteIds]
 
   let fullData: any[] | null = null
   let profilesMap: Record<string, string> = {}
+  let remoteExchangeRows: any[] | null = null
+
+  if (remoteSaleIds.length > 0) {
+    const CHUNK_SIZE = 100
+    const results: any[] = []
+
+    try {
+      for (let i = 0; i < remoteSaleIds.length; i += CHUNK_SIZE) {
+        const chunk = remoteSaleIds.slice(i, i + CHUNK_SIZE)
+        const result = await runSupabaseAction('sales.cachedExchangeFetch', () =>
+          supabase
+            .from('sales_exchange')
+            .select('*')
+            .eq('workspace_id', workspaceId)
+            .in('sale_id', chunk),
+        )
+        if (result.error) {
+          throw result.error
+        }
+        results.push(...((result.data || []) as any[]))
+      }
+      remoteExchangeRows = results
+    } catch {
+      // Keep the local snapshot cache unchanged if the relation fetch fails.
+      remoteExchangeRows = null
+    }
+  } else {
+    remoteExchangeRows = []
+  }
 
   if (idsToFetch.length > 0) {
     const CHUNK_SIZE = 100
@@ -1875,10 +1917,22 @@ export async function syncSalesFromSupabase(
     }
   }
 
-  await db.transaction('rw', [db.sales, db.sale_items, db.sale_returns, db.sale_return_items], async () => {
+  await db.transaction('rw', [db.sales, db.sales_exchange, db.sale_items, db.sale_returns, db.sale_return_items], async () => {
+    if (remoteExchangeRows) {
+      for (const saleId of remoteSaleIds) {
+        await db.sales_exchange.where('saleId').equals(saleId).delete()
+      }
+      if (remoteExchangeRows.length > 0) {
+        await db.sales_exchange.bulkPut(
+          remoteExchangeRows.map((row: any) => toCamelCase(row)),
+        )
+      }
+    }
+
     for (const local of relevantLocalSales) {
       if (!remoteIds.has(local.id) && local.syncStatus === 'synced') {
         await db.sales.delete(local.id)
+        await db.sales_exchange.where('saleId').equals(local.id).delete()
         await db.sale_items.where('saleId').equals(local.id).delete()
         await db.sale_returns.where('saleId').equals(local.id).delete()
         await db.sale_return_items.where('saleId').equals(local.id).delete()
@@ -1991,6 +2045,9 @@ export function toUISale(localSale: any): any {
         }
     }))
 
+    const salesExchange = localSale._salesExchange || []
+    const exchangeRates = salesExchangeRowsToSnapshots(salesExchange)
+
     return {
         id: localSale.id,
         workspace_id: localSale.workspaceId,
@@ -2000,10 +2057,8 @@ export function toUISale(localSale: any): any {
         returned_amount: localSale.returnedAmount,
         return_status: localSale.returnStatus,
         settlement_currency: localSale.settlementCurrency,
-        exchange_source: localSale.exchangeSource,
-        exchange_rate: localSale.exchangeRate,
-        exchange_rate_timestamp: localSale.exchangeRateTimestamp,
-        exchange_rates: localSale.exchangeRates,
+        sales_exchange: salesExchange.map((row: any) => toSnakeCase(row)),
+        exchange_rates: exchangeRates.length > 0 ? exchangeRates : null,
         created_at: localSale.createdAt,
         updated_at: localSale.updatedAt,
         origin: localSale.origin,
@@ -3860,10 +3915,13 @@ async function resolveLoanExchangeRateSnapshot(input: Pick<LoanCreateInput, 'sal
     }
 
     if (input.saleId) {
-        const sale = await db.sales.get(input.saleId)
-        const saleSnapshot = Array.isArray(sale?.exchangeRates)
-            ? getEffectiveExchangeRatesSnapshot(sale.exchangeRates as ExchangeRateSnapshot[])
-            : null
+        const exchangeRows = await db.sales_exchange
+            .where('saleId')
+            .equals(input.saleId)
+            .toArray()
+        const saleSnapshot = getEffectiveExchangeRatesSnapshot(
+            salesExchangeRowsToSnapshots(exchangeRows)
+        )
         if (saleSnapshot && saleSnapshot.length > 0) {
             return saleSnapshot
         }

@@ -7,6 +7,7 @@ import type {
   User,
   SyncQueueItem,
   Sale,
+  SalesExchange,
   SaleItem,
   SaleReturn,
   SaleReturnItem,
@@ -297,6 +298,7 @@ export class AtlasDatabase extends Dexie {
   invoices!: EntityTable<Invoice, "id">;
   users!: EntityTable<User, "id">;
   sales!: EntityTable<Sale, "id">;
+  sales_exchange!: EntityTable<SalesExchange, "id">;
   sale_items!: EntityTable<SaleItem, "id">;
   sale_returns!: EntityTable<SaleReturn, "id">;
   sale_return_items!: EntityTable<SaleReturnItem, "id">;
@@ -2235,6 +2237,149 @@ export class AtlasDatabase extends Dexie {
         "id, workspaceId, vehicleId, agentId, status, assignedAt, endedAt, updatedAt, isDeleted, syncStatus, [workspaceId+status], [workspaceId+vehicleId], [workspaceId+agentId]",
     });
 
+    this.version(74)
+      .stores({
+        sales_exchange:
+          "id, saleId, workspaceId, baseCurrency, quoteCurrency, capturedAt, [saleId+baseCurrency+quoteCurrency+rateSide], [workspaceId+capturedAt]",
+      })
+      .upgrade(async (tx) => {
+        const sales = (await tx.table("sales").toArray()) as Array<
+          Record<string, unknown>
+        >;
+        const exchangeRows: SalesExchange[] = [];
+
+        for (const sale of sales) {
+          const saleId = getStringValue(sale, "id");
+          const workspaceId = getStringValue(sale, "workspaceId");
+          const snapshots = Array.isArray(sale.exchangeRates)
+            ? sale.exchangeRates
+            : [];
+
+          if (saleId && workspaceId) {
+            for (const [index, rawSnapshot] of snapshots.entries()) {
+              const snapshot = rawSnapshot as Record<string, unknown>;
+              const pair = getStringValue(snapshot, "pair")?.split("/") ?? [];
+              const baseCurrency = pair[0]?.toLowerCase();
+              const quoteCurrency = pair[1]?.toLowerCase();
+              const quoteAmount = getNumberValue(snapshot, "rate", 0);
+              const baseAmount = getNumberValue(
+                snapshot,
+                "priceBasisAmount",
+                100,
+              );
+
+              if (
+                !["usd", "eur", "iqd", "try"].includes(baseCurrency || "") ||
+                !["usd", "eur", "iqd", "try"].includes(quoteCurrency || "") ||
+                baseCurrency === quoteCurrency ||
+                baseAmount <= 0 ||
+                quoteAmount <= 0
+              ) {
+                continue;
+              }
+
+              const side = getStringValue(snapshot, "side");
+              const capturedAt =
+                getStringValue(snapshot, "timestamp") ||
+                getStringValue(sale, "createdAt") ||
+                new Date().toISOString();
+
+              exchangeRows.push({
+                id:
+                  typeof crypto !== "undefined" && crypto.randomUUID
+                    ? crypto.randomUUID()
+                    : `${saleId}-exchange-${index}`,
+                saleId,
+                workspaceId,
+                baseCurrency: baseCurrency as SalesExchange["baseCurrency"],
+                quoteCurrency: quoteCurrency as SalesExchange["quoteCurrency"],
+                baseAmount,
+                quoteAmount,
+                source: getStringValue(snapshot, "source") || "unknown",
+                capturedAt,
+                rateSide:
+                  side === "buy" || side === "sell" ? side : ("mid" as const),
+                sourcePriceId:
+                  getNullableStringValue(snapshot, "priceRowId") ?? null,
+                sourcePriceUpdatedAt:
+                  getNullableStringValue(snapshot, "priceUpdatedAt") ?? null,
+                createdAt: getStringValue(sale, "createdAt") || capturedAt,
+              });
+            }
+
+            const legacyRate = getNumberValue(sale, "exchangeRate", 0);
+            if (snapshots.length === 0 && legacyRate > 0) {
+              const settlementCurrency = getStringValue(
+                sale,
+                "settlementCurrency",
+              )?.toLowerCase();
+              const saleItems = (await tx
+                .table("sale_items")
+                .where("saleId")
+                .equals(saleId)
+                .toArray()) as Array<Record<string, unknown>>;
+              const sourceItem = saleItems.find((item) => {
+                const originalCurrency = getStringValue(
+                  item,
+                  "originalCurrency",
+                )?.toLowerCase();
+                return (
+                  originalCurrency &&
+                  originalCurrency !== settlementCurrency &&
+                  ["usd", "eur", "iqd", "try"].includes(originalCurrency)
+                );
+              });
+              const baseCurrency = getStringValue(
+                sourceItem,
+                "originalCurrency",
+              )?.toLowerCase();
+
+              if (
+                baseCurrency &&
+                settlementCurrency &&
+                ["usd", "eur", "iqd", "try"].includes(settlementCurrency)
+              ) {
+                const capturedAt =
+                  getStringValue(sale, "exchangeRateTimestamp") ||
+                  getStringValue(sale, "createdAt") ||
+                  new Date().toISOString();
+                exchangeRows.push({
+                  id:
+                    typeof crypto !== "undefined" && crypto.randomUUID
+                      ? crypto.randomUUID()
+                      : `${saleId}-exchange-legacy`,
+                  saleId,
+                  workspaceId,
+                  baseCurrency: baseCurrency as SalesExchange["baseCurrency"],
+                  quoteCurrency:
+                    settlementCurrency as SalesExchange["quoteCurrency"],
+                  baseAmount: 100,
+                  quoteAmount: legacyRate,
+                  source: getStringValue(sale, "exchangeSource") || "legacy",
+                  capturedAt,
+                  rateSide: "mid",
+                  sourcePriceId: null,
+                  sourcePriceUpdatedAt: null,
+                  createdAt: getStringValue(sale, "createdAt") || capturedAt,
+                });
+              }
+            }
+          }
+
+          delete sale.exchangeSource;
+          delete sale.exchangeRate;
+          delete sale.exchangeRateTimestamp;
+          delete sale.exchangeRates;
+        }
+
+        if (sales.length > 0) {
+          await tx.table("sales").bulkPut(sales);
+        }
+        if (exchangeRows.length > 0) {
+          await tx.table("sales_exchange").bulkPut(exchangeRows);
+        }
+      });
+
     this.registerLocalModeSyncHooks();
   }
 
@@ -2247,6 +2392,7 @@ export class AtlasDatabase extends Dexie {
       "invoices",
       "users",
       "sales",
+      "sales_exchange",
       "sale_returns",
       "sale_return_items",
       "workspaces",

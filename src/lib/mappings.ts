@@ -1,4 +1,5 @@
 import { Sale, SaleItem, UniversalInvoice, UniversalInvoiceItem } from '@/types'
+import { salesExchangeRowsToSnapshots } from '@/lib/salesExchange'
 
 type A4Variant = 'standard' | 'refund'
 
@@ -61,6 +62,9 @@ export function mapSaleToUniversal(sale: Sale, options: MapSaleToUniversalOption
     const baseItems = saleItems.map(getBaseItem)
     const hasReturnActivity = hasAnyReturnActivity(sale)
     const shouldBuildRefundInvoice = options.a4Variant === 'refund' && hasReturnActivity
+    const exchangeRates = sale.exchange_rates?.length
+        ? sale.exchange_rates
+        : salesExchangeRowsToSnapshots(sale.sales_exchange)
 
     const baseInvoice: UniversalInvoice = {
         id: sale.id,
@@ -72,10 +76,10 @@ export function mapSaleToUniversal(sale: Sale, options: MapSaleToUniversalOption
         total_amount: sale.total_amount,
         settlement_currency: sale.settlement_currency || 'usd',
         payment_method: sale.payment_method,
-        exchange_rates: sale.exchange_rates,
-        exchange_rate: sale.exchange_rate,
-        exchange_source: sale.exchange_source,
-        exchange_rate_timestamp: sale.exchange_rate_timestamp,
+        exchange_rates: exchangeRates.length > 0 ? exchangeRates : null,
+        exchange_rate: null,
+        exchange_source: null,
+        exchange_rate_timestamp: null,
         origin: 'pos',
         items: baseItems,
         status: 'paid',

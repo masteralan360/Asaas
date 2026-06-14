@@ -12,6 +12,7 @@ export const LOCAL_MODE_SQLITE_TABLES = [
   "invoices",
   "users",
   "sales",
+  "sales_exchange",
   "sale_items",
   "sale_returns",
   "sale_return_items",

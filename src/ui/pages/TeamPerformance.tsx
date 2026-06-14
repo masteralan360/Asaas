@@ -2,12 +2,14 @@ import { useState, useEffect, useRef, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/auth'
 import { supabase } from '@/auth/supabase'
-import { User } from '@/local-db/models'
+import { CurrencyCode, User } from '@/local-db/models'
 import { db } from '@/local-db/database'
 import { Sale } from '@/types'
 import { formatCurrency, formatDateTime, formatDate } from '@/lib/utils'
 import { cn } from '@/lib/utils'
 import { formatLocalizedMonthYear } from '@/lib/monthDisplay'
+import { convertCurrencyAmountWithSnapshot } from '@/lib/orderCurrency'
+import { salesExchangeRowsToSnapshots } from '@/lib/salesExchange'
 import { useWorkspace } from '@/workspace'
 import { useDateRange } from '@/context/DateRangeContext'
 import { DateRangeFilters } from '@/ui/components/DateRangeFilters'
@@ -143,11 +145,21 @@ export function TeamPerformance() {
                 const localSaleItems = saleIds.length > 0
                     ? await db.sale_items.where('saleId').anyOf(saleIds).toArray()
                     : []
+                const localExchangeRows = saleIds.length > 0
+                    ? await db.sales_exchange.where('saleId').anyOf(saleIds).toArray()
+                    : []
                 const saleItemsBySaleId = localSaleItems.reduce<Record<string, typeof localSaleItems>>((acc, item) => {
                     if (!acc[item.saleId]) {
                         acc[item.saleId] = []
                     }
                     acc[item.saleId].push(item)
+                    return acc
+                }, {})
+                const exchangeBySaleId = localExchangeRows.reduce<Record<string, typeof localExchangeRows>>((acc, row) => {
+                    if (!acc[row.saleId]) {
+                        acc[row.saleId] = []
+                    }
+                    acc[row.saleId].push(row)
                     return acc
                 }, {})
 
@@ -160,7 +172,7 @@ export function TeamPerformance() {
                         total_amount: sale.totalAmount,
                         settlement_currency: sale.settlementCurrency,
                         created_at: sale.createdAt,
-                        exchange_rate: sale.exchangeRate,
+                        exchange_rates: salesExchangeRowsToSnapshots(exchangeBySaleId[sale.id]),
                         is_returned: sale.isReturned,
                         sale_items: (saleItemsBySaleId[sale.id] || []).map((item) => ({
                             ...item,
@@ -202,7 +214,7 @@ export function TeamPerformance() {
             // Fetch sales within range
             let query = supabase
                 .from('sales')
-                .select('*, sale_items(*)')
+                .select('*, sales_exchange(*), sale_items(*)')
                 .eq('workspace_id', user?.workspaceId)
 
             const now = new Date()
@@ -296,22 +308,15 @@ export function TeamPerformance() {
             let revenueInDefault = saleRevenue
 
             if (currency !== defaultCurrency) {
-                if (defaultCurrency === 'iqd' && currency === 'usd' && sale.exchange_rate) {
-                    revenueInDefault = saleRevenue * (sale.exchange_rate / 100)
-                } else if (defaultCurrency === 'usd' && currency === 'iqd' && sale.exchange_rate) {
-                    revenueInDefault = saleRevenue / (sale.exchange_rate / 100)
-                } else {
-                    let revenueInUsd = saleRevenue
-                    if (currency !== 'usd' && sale.exchange_rate) {
-                        revenueInUsd = saleRevenue / (sale.exchange_rate / 100)
-                    }
-
-                    if (defaultCurrency === 'usd') {
-                        revenueInDefault = revenueInUsd
-                    } else if (defaultCurrency === 'iqd' && sale.exchange_rate) {
-                        revenueInDefault = revenueInUsd * (sale.exchange_rate / 100)
-                    }
-                }
+                const exchangeRates = sale.exchange_rates?.length
+                    ? sale.exchange_rates
+                    : salesExchangeRowsToSnapshots(sale.sales_exchange)
+                revenueInDefault = convertCurrencyAmountWithSnapshot(
+                    saleRevenue,
+                    currency as CurrencyCode,
+                    defaultCurrency as CurrencyCode,
+                    exchangeRates
+                )
             }
 
             // Global Daily Trend by Member (Sales Count)

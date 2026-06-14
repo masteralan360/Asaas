@@ -141,7 +141,10 @@ export function convertCurrencyAmountWithSnapshot(
     to: CurrencyCode,
     snapshot?: ExchangeRateSnapshot[] | null
 ) {
-    const ratesByPair = new Map((snapshot ?? []).map((entry) => [entry.pair.toUpperCase(), entry.rate / 100]))
+    const ratesByPair = new Map((snapshot ?? []).map((entry) => [
+        entry.pair.toUpperCase(),
+        entry.rate / (entry.priceBasisAmount || 100)
+    ]))
 
     return convertCurrencyAmountInternal(amount, from, to, (pair) => ratesByPair.get(pair) ?? null)
 }

@@ -243,6 +243,17 @@ describe('fullSync error reporting', () => {
                 id: '65cd27b9-0000-4000-8000-000000000000',
                 total_amount: 1000,
                 settlement_currency: 'iqd',
+                sales_exchange: [{
+                    base_currency: 'usd',
+                    quote_currency: 'iqd',
+                    base_amount: 100,
+                    quote_amount: 145000,
+                    source: 'manual',
+                    captured_at: '2026-06-03T00:00:00.000Z',
+                    rate_side: 'mid',
+                    source_price_id: null,
+                    source_price_updated_at: null
+                }],
                 items: []
             },
             createdAt: '2026-06-03T00:00:00.000Z',
@@ -255,7 +266,15 @@ describe('fullSync error reporting', () => {
         expect(supabaseMock.rpc).toHaveBeenCalledWith('complete_sale', {
             payload: expect.objectContaining({
                 id: '65cd27b9-0000-4000-8000-000000000000',
-                settlement_currency: 'iqd'
+                settlement_currency: 'iqd',
+                sales_exchange: expect.arrayContaining([
+                    expect.objectContaining({
+                        base_currency: 'usd',
+                        quote_currency: 'iqd',
+                        base_amount: 100,
+                        quote_amount: 145000
+                    })
+                ])
             })
         })
         expect(dbMock.sales.update).toHaveBeenCalledWith(

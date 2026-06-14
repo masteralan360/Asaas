@@ -166,7 +166,7 @@ export const SaleReceiptBase = forwardRef<HTMLDivElement, SaleReceiptBaseProps>(
                                             <span className="text-[9px] text-gray-400 uppercase">{rate.source}</span>
                                         </div>
                                         <div className="text-xs font-bold font-mono">
-                                            100 {rate.pair.split('/')[0]} = {formatCurrency(rate.rate, rate.pair.split('/')[1].toLowerCase() as any, features.iqd_display_preference)}
+                                            {rate.priceBasisAmount || 100} {rate.pair.split('/')[0]} = {formatCurrency(rate.rate, rate.pair.split('/')[1].toLowerCase() as any, features.iqd_display_preference)}
                                         </div>
                                         <div className="text-[9px] text-gray-400 mt-1 font-mono opacity-80">
                                             {formatSnapshotTime(rate.timestamp)}

@@ -141,6 +141,7 @@ export function SaleDetailsModal({ sale, isOpen, onClose, onReturnItem, onReturn
         item.settlement_currency &&
         item.original_currency !== item.settlement_currency
     ) ?? false
+    const hasExchangeSnapshot = (sale.exchange_rates?.length || 0) > 0
 
     const isLoanSale = sale.payment_method === 'loan'
     const loanStatus = resolveEffectiveLoanStatus(linkedLoan)
@@ -176,7 +177,7 @@ export function SaleDetailsModal({ sale, isOpen, onClose, onReturnItem, onReturn
                             )}>
                                 {t('sales.details') || 'Sale Details'}
                             </DialogTitle>
-                            {canUseMultiCurrency && hasExchange && (
+                            {canUseMultiCurrency && (hasExchange || hasExchangeSnapshot) && (
                                 <p className="text-xs text-muted-foreground mt-0.5">
                                     {t('sales.multiCurrencyTransaction') || 'Multi-Currency Transaction'}
                                 </p>
@@ -380,7 +381,7 @@ export function SaleDetailsModal({ sale, isOpen, onClose, onReturnItem, onReturn
                     </div>
 
                     {/* ─── Market Rates Snapshot ─── */}
-                    {canUseMultiCurrency && hasExchange && (sale.exchange_rates && sale.exchange_rates.length > 0 ? (
+                    {canUseMultiCurrency && hasExchangeSnapshot && sale.exchange_rates && (
                         <div className={cn(
                             "border border-primary/10 rounded-md p-4 space-y-3 bg-primary/5",
                             style === 'neo-orange' && "snapshot-neo"
@@ -400,9 +401,9 @@ export function SaleDetailsModal({ sale, isOpen, onClose, onReturnItem, onReturn
                                 {sale.exchange_rates.map((rate: any, idx: number) => (
                                     <div key={idx} className="bg-card border border-primary/10 shadow-sm rounded-sm p-3 space-y-1 relative overflow-hidden">
                                         {/* Source Badge */}
-                                        {(rate.source || sale.exchange_source) && (
+                                        {rate.source && (
                                             <div className="absolute top-0 right-0 px-1.5 py-0.5 bg-primary/10 text-primary text-[8px] font-bold uppercase tracking-wider rounded-bl-sm border-l border-b border-primary/5">
-                                                {rate.source || sale.exchange_source}
+                                                {rate.source}
                                             </div>
                                         )}
 
@@ -411,7 +412,7 @@ export function SaleDetailsModal({ sale, isOpen, onClose, onReturnItem, onReturn
                                         </div>
                                         <div className="flex items-baseline gap-2">
                                             <span className="text-base font-black">
-                                                100 {rate.pair.split('/')[0]}
+                                                {rate.priceBasisAmount || 100} {rate.pair.split('/')[0]}
                                             </span>
                                             <span className="text-sm text-muted-foreground font-medium">
                                                 {formatCurrency(rate.rate, rate.pair.split('/')[1].toLowerCase() as any, features.iqd_display_preference)}
@@ -421,35 +422,7 @@ export function SaleDetailsModal({ sale, isOpen, onClose, onReturnItem, onReturn
                                 ))}
                             </div>
                         </div>
-                    ) : (sale.exchange_rate ?? 0) > 0 && (
-                        <div className={cn(
-                            "border border-primary/10 rounded-md p-4 bg-primary/5",
-                            style === 'neo-orange' && "snapshot-neo"
-                        )}>
-                            <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-2">
-                                    <TrendingUp className="w-4 h-4 text-primary" />
-                                    <span className="text-[10px] uppercase font-black tracking-[0.15em] text-primary">
-                                        {t('sales.marketRatesSnapshot') || 'Market Rates Snapshot'}
-                                    </span>
-                                </div>
-                                <span className="text-[10px] text-muted-foreground italic">
-                                    {sale.exchange_rate_timestamp ? formatSnapshotTime(sale.exchange_rate_timestamp) : ''}
-                                </span>
-                            </div>
-                            <div className="mt-3 bg-card border border-primary/10 shadow-sm rounded-sm p-3 inline-flex flex-col gap-1">
-                                <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
-                                    USD/IQD ({sale.exchange_source || 'Unknown'})
-                                </div>
-                                <div className="flex items-baseline gap-2">
-                                    <span className="text-base font-black">100 USD</span>
-                                    <span className="text-sm text-muted-foreground font-medium">
-                                        {formatCurrency(sale.exchange_rate ?? 0, 'iqd', features.iqd_display_preference)}
-                                    </span>
-                                </div>
-                            </div>
-                        </div>
-                    ))}
+                    )}
 
                     {/* ─── Items Table ─── */}
                     <div className="border border-primary/10 rounded-md overflow-hidden bg-card">

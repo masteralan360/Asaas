@@ -244,7 +244,7 @@ export function ReceiptPDF({ data, features, workspaceName, translations: t }: R
                                 <View key={idx} style={styles.exchangeItem}>
                                     <Text style={styles.exchangePair}>{rate.pair}</Text>
                                     <Text style={styles.exchangeRate}>
-                                        100 {rate.pair.split('/')[0]} = {formatCurrencyPdf(rate.rate, rate.pair.split('/')[1].toLowerCase(), features.iqd_display_preference)}
+                                        {rate.priceBasisAmount || 100} {rate.pair.split('/')[0]} = {formatCurrencyPdf(rate.rate, rate.pair.split('/')[1].toLowerCase(), features.iqd_display_preference)}
                                     </Text>
                                 </View>
                             ))}

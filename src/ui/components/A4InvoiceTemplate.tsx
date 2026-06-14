@@ -323,8 +323,12 @@ export const A4InvoiceTemplate = forwardRef<HTMLDivElement, A4InvoiceTemplatePro
                                     <div className="grid grid-cols-2 gap-2 text-xs">
                                         {data.exchange_rates.slice(0, 4).map((rate: any, i: number) => (
                                             <div key={i} className="flex justify-between bg-white px-2 py-1 rounded-full border border-gray-100 shadow-sm">
-                                                <span className="text-[10px] font-bold text-slate-400">{rate.pair}</span>
-                                                <span className="font-mono font-black text-main">{rate.rate}</span>
+                                                <span className="text-[10px] font-bold text-slate-400">
+                                                    {rate.priceBasisAmount || 100} {rate.pair.split('/')[0]}
+                                                </span>
+                                                <span className="font-mono font-black text-main">
+                                                    {rate.rate} {rate.pair.split('/')[1]}
+                                                </span>
                                             </div>
                                         ))}
                                     </div>

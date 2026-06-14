@@ -63,9 +63,8 @@ export interface Sale {
     returned_amount?: number
     return_status?: 'none' | 'partial' | 'full'
     settlement_currency: string
-    exchange_source: string | null
-    exchange_rate: number | null
-    exchange_rate_timestamp: string | null
+    sales_exchange?: SalesExchange[]
+    // Derived compatibility shape for receipt and invoice rendering.
     exchange_rates?: any[] | null
     created_at: string
     origin: 'pos' | 'manual' | 'instant_pos' | 'sales_order' | 'travel_agency' | 'exchange' | 'real_estate'
@@ -91,6 +90,22 @@ export interface Sale {
     _realEstateTransactionId?: string | null
     _counterpartyName?: string | null
     returns?: SaleReturn[]
+}
+
+export interface SalesExchange {
+    id: string
+    sale_id: string
+    workspace_id: string
+    base_currency: 'usd' | 'eur' | 'iqd' | 'try'
+    quote_currency: 'usd' | 'eur' | 'iqd' | 'try'
+    base_amount: number
+    quote_amount: number
+    source: string
+    captured_at: string
+    rate_side: 'buy' | 'sell' | 'mid'
+    source_price_id?: string | null
+    source_price_updated_at?: string | null
+    created_at: string
 }
 
 export interface SaleReturn {

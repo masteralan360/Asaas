@@ -375,19 +375,12 @@ export function formatSaleDetailsForWhatsApp(sale: any, t: (key: string) => stri
     }
 
     // Exchange Rate
-    // If we have specific exchange rate snapshots, use them. Otherwise use the primary one.
     if (sale.exchange_rates && sale.exchange_rates.length > 0) {
         text += `*${t('settings.exchangeRate.title') || 'Exchange Rate'}:*\n`
         sale.exchange_rates.forEach((rate: any) => {
             const formattedRate = formatCurrency(rate.rate, rate.pair.split('/')[1].toLowerCase(), 'IQD')
-            text += `- 100 ${rate.pair.split('/')[0]} = ${formattedRate}\n`
+            text += `- ${rate.priceBasisAmount || 100} ${rate.pair.split('/')[0]} = ${formattedRate}\n`
         })
-    } else if (sale.exchange_rate) {
-        const formattedRate = formatCurrency(sale.exchange_rate, 'iqd', 'IQD')
-        text += `*${t('settings.exchangeRate.title') || 'Exchange Rate'}:* 100 USD = ${formattedRate}\n`
-        if (sale.exchange_source) {
-            text += `  (${sale.exchange_source})\n`
-        }
     }
 
     // Totals
