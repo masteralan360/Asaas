@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Atlas",
-  "version": "0.1.59",
+  "version": "0.1.60",
   "identifier": "com.atlas.app",
   "build": {
     "frontendDist": "../dist",
@@ -33,7 +33,7 @@
           "**"
         ]
       },
-      "csp": "default-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' asset: asset://* http://asset.localhost https://asset.localhost https: data: blob:; media-src 'self' asset: asset://* http://asset.localhost https://asset.localhost; frame-src 'self' blob: asset: asset://* http://asset.localhost https://asset.localhost; object-src 'self' blob: asset: asset://* http://asset.localhost https://asset.localhost; connect-src 'self' https: ws: blob:; font-src 'self' https: data:;"
+      "csp": "default-src 'self' 'unsafe-inline' asset: blob: data:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' asset: asset://* http://asset.localhost https://asset.localhost https: data: blob:; media-src 'self' asset: asset://* http://asset.localhost https://asset.localhost; frame-src 'self' blob: data: asset: asset://* http://asset.localhost https://asset.localhost; object-src 'self' blob: data: asset: asset://* http://asset.localhost https://asset.localhost; connect-src 'self' https: ws: blob:; font-src 'self' https: data:;"
     }
   },
   "bundle": {

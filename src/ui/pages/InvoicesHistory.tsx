@@ -138,7 +138,16 @@ export function InvoicesHistory() {
             if (localPath) {
                 const exists = await platformService.exists(localPath)
                 if (exists) {
-                    url = platformService.convertFileSrc(localPath)
+                    try {
+                        const content = await platformService.readFile(localPath)
+                        // Use blob: as a more reliable protocol for WebView2 framing than asset:
+                        const blob = new Blob([content], { type: 'application/pdf' })
+                        url = URL.createObjectURL(blob)
+                        console.log('[InvoicesHistory] Successfully created blob URL from local file')
+                    } catch (err) {
+                        console.error('[InvoicesHistory] Failed to read local PDF as blob:', err)
+                        url = platformService.convertFileSrc(localPath)
+                    }
                 }
             }
 
