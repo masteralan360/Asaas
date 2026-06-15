@@ -104,6 +104,33 @@ function getDeviceLabel() {
   return navigator.userAgent.slice(0, 250);
 }
 
+function isRunningAsPwa(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    window.matchMedia("(display-mode: standalone)").matches
+  );
+}
+
+function isTouchDevice(): boolean {
+  return (
+    typeof navigator !== "undefined" &&
+    "maxTouchPoints" in navigator &&
+    navigator.maxTouchPoints > 0
+  );
+}
+
+function isWakeLockSupported(): boolean {
+  return (
+    typeof navigator !== "undefined" &&
+    "wakeLock" in navigator &&
+    typeof (navigator.wakeLock as { request?: unknown }).request === "function"
+  );
+}
+
+function shouldPreventScreenTimeout(): boolean {
+  return isRunningAsPwa() && isTouchDevice() && isWakeLockSupported();
+}
+
 function getSupabaseErrorDetails(error: unknown) {
   if (!error || typeof error !== "object") {
     return error;
@@ -146,6 +173,7 @@ export function FleetLocationSharingProvider({
   const lastHistoryAtRef = useRef(0);
   const lastHistoryPointRef = useRef<FleetLocationPoint>();
   const stoppingRef = useRef(false);
+  const wakeLockRef = useRef<WakeLockSentinel | null>(null);
 
   const isSupported =
     typeof navigator !== "undefined" && "geolocation" in navigator;
@@ -363,6 +391,10 @@ export function FleetLocationSharingProvider({
     } catch (stopError) {
       console.warn("[Fleet] Failed to close location session:", stopError);
     } finally {
+      if (wakeLockRef.current) {
+        await wakeLockRef.current.release();
+        wakeLockRef.current = null;
+      }
       if (channelRef.current) {
         await supabase.removeChannel(channelRef.current);
         channelRef.current = undefined;
@@ -456,6 +488,14 @@ export function FleetLocationSharingProvider({
         },
         GEOLOCATION_OPTIONS,
       );
+
+      if (shouldPreventScreenTimeout()) {
+        try {
+          wakeLockRef.current = await navigator.wakeLock.request("screen");
+        } catch (wakeError) {
+          console.warn("[Fleet] Failed to acquire wake lock:", wakeError);
+        }
+      }
     } catch (startError) {
       setError(
         isGeolocationPositionError(startError)
@@ -496,6 +536,34 @@ export function FleetLocationSharingProvider({
       void stopSharing();
     }
   }, [linkedAgent, stopSharing, user]);
+
+  useEffect(() => {
+    if (!shouldPreventScreenTimeout()) {
+      return;
+    }
+
+    const handleVisibilityChange = () => {
+      if (
+        document.visibilityState === "visible" &&
+        status === "sharing" &&
+        !wakeLockRef.current
+      ) {
+        navigator.wakeLock
+          .request("screen")
+          .then((sentinel) => {
+            wakeLockRef.current = sentinel;
+          })
+          .catch((err) => {
+            console.warn("[Fleet] Failed to re-acquire wake lock:", err);
+          });
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [status]);
 
   const value = useMemo(
     () => ({
