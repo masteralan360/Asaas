@@ -946,6 +946,7 @@
   "orders": {
     "title": "داواکارییەکان",
     "subtitle": "کۆی داواکارییەکان",
+    "installmentStatus": "دۆخی قیست",
     "view": {
       "table": "وردەکاری داواکارییەکان",
       "grid": "تۆڕی داواکارییەکان"
@@ -963,7 +964,9 @@
       "receive": "وەرگرتن",
       "complete": "تەواوکردن",
       "cancel": "هەڵوەشاندنەوە",
-      "lock": "قفل"
+      "lock": "قفل",
+      "reverseLastPayment": "پاشگەزکردنەوەی دوا پارەدان",
+      "payInstallment": "پارەدانی قیست"
     },
     "table": {
       "orderNumber": "داواکاری #",
@@ -982,7 +985,9 @@
       "completed": "تەواوبووە",
       "draft": "ڕەشنووس",
       "ordered": "داواکراوە",
-      "received": "وەرگیراوە"
+      "received": "وەرگیراوە",
+      "paid": "پارەدراوە",
+      "unpaid": "پارە نەدراوە"
     },
     "tabs": {
       "sales": "داواکارییەکانی فرۆشتن",
@@ -1075,7 +1080,12 @@
       "created": "دروستکراوە",
       "expectedDelivery": "گەیاندنی پێشبینیکراو",
       "notes": "تێبینییەکان",
+      "installmentSchedule": "ڕێزبەندی قیستەکان",
+      "plannedAmount": "بڕی پلاندانراو",
+      "paidAmount": "بڕی پارەدراو",
       "createdBy": "دروستکراوە لەلایەن",
+      "installmentNumber": "ژمارەی قیست",
+      "dueDate": "بەرواری دروستکردن",
       "activity": {
         "title": "چالاکی",
         "created": "داواکاری دروستکرا",

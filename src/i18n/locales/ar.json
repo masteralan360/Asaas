@@ -962,7 +962,9 @@
       "receive": "استلام",
       "complete": "إكمال",
       "cancel": "إلغاء",
-      "lock": "قفل"
+      "lock": "قفل",
+      "reverseLastPayment": "تراجع عن آخر دفعة",
+      "payInstallment": "دفع القسط"
     },
     "table": {
       "orderNumber": "رقم الطلب",

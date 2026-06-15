@@ -476,7 +476,11 @@ export function OrderDetailsPrintTemplate({
                                         {formatCurrency(installment.balanceAmount, currency, iqdPreference)}
                                     </td>
                                     <td className="border border-slate-300 p-2">
-                                        {t(`orders.installmentStatus.${installment.status}`, { defaultValue: installment.status })}
+                                        {installment.status === 'paid' 
+                                            ? t('budget.status.paid', { defaultValue: 'Paid' })
+                                            : installment.status === 'unpaid'
+                                                ? t('budget.status.pending', { defaultValue: 'Unpaid' })
+                                                : t(`orders.Status.${installment.status}`, { defaultValue: installment.status })}
                                     </td>
                                 </tr>
                             ))}
