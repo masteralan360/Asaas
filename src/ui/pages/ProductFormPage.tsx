@@ -47,7 +47,7 @@ import { assetManager } from '@/lib/assetManager'
 import { normalizeBarcodeDigits, normalizeBarcodeScannerText } from '@/lib/barcodeScanner'
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard'
 import { isTauri } from '@/lib/platform'
-import { cn, formatCurrency, formatNumericInput, parseFormattedNumber, sanitizeNumericInput } from '@/lib/utils'
+import { cn, formatCurrency, formatNumericInput, sanitizeNumericInput } from '@/lib/utils'
 import { getInventoryRowsForProduct } from '@/local-db/inventory'
 import { platformService } from '@/services/platformService'
 import { useWorkspace } from '@/workspace'
@@ -82,7 +82,7 @@ import {
     useToast
 } from '@/ui/components'
 
-const UNITS = ['pcs', 'kg', 'gram', 'liter', 'box', 'pack']
+const UNITS = ['pcs', 'kg', 'gram', 'liter', 'box', 'pack', 'm²', 'Kg']
 type ProductScannerTarget = 'none' | 'sku' | 'barcode'
 
 const PRODUCT_SCANNER_TARGET_KEY = 'products_scanner_target'
@@ -98,8 +98,8 @@ type ProductFormData = {
     name: string
     description: string
     categoryId: string | undefined
-    price: number | ''
-    costPrice: number | ''
+    price: string
+    costPrice: string
     quantity: number | ''
     minStockLevel: number | ''
     unit: string
@@ -195,8 +195,8 @@ function mapProductToFormData(product: Product): ProductFormData {
         name: product.name,
         description: product.description,
         categoryId: product.categoryId || undefined,
-        price: product.price,
-        costPrice: product.costPrice,
+        price: String(product.price),
+        costPrice: String(product.costPrice),
         quantity: product.quantity,
         minStockLevel: product.minStockLevel,
         unit: product.unit,
@@ -285,15 +285,15 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
         try {
             const snapshot = JSON.parse(initialFormSnapshotRef.current)
             const keys = Object.keys(formData) as (keyof ProductFormData)[]
-            
+
             for (const key of keys) {
                 let v1: any = formData[key]
                 let v2: any = snapshot[key]
-                
+
                 // normalize empty representations
                 if (v1 === '' || v1 === undefined) v1 = null
                 if (v2 === '' || v2 === undefined) v2 = null
-                
+
                 // string-based comparison for values that might be coerced
                 if (v1 !== null && v2 !== null) {
                     if (String(v1) !== String(v2)) {
@@ -839,188 +839,188 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                             </p>
                         </CardHeader>
                         <CardContent className="space-y-8 p-6 sm:p-8">
-                        <div className="space-y-4">
-                            <div className="flex items-center gap-2">
-                                <div className="h-4 w-1 rounded-full bg-primary" />
-                                <h2 className="text-sm font-black uppercase tracking-widest text-primary/80">
-                                    {t('products.form.basicInfo')}
-                                </h2>
-                            </div>
-                            <div className="grid gap-6 md:grid-cols-2">
-                                <div className="space-y-2">
-                                    <Label htmlFor="product-sku" className="flex items-center gap-2 font-bold">
-                                        <Barcode className="h-4 w-4 text-primary/60" />
-                                        {t('products.table.sku')}
-                                    </Label>
-                                    <div className="flex gap-2">
+                            <div className="space-y-4">
+                                <div className="flex items-center gap-2">
+                                    <div className="h-4 w-1 rounded-full bg-primary" />
+                                    <h2 className="text-sm font-black uppercase tracking-widest text-primary/80">
+                                        {t('products.form.basicInfo')}
+                                    </h2>
+                                </div>
+                                <div className="grid gap-6 md:grid-cols-2">
+                                    <div className="space-y-2">
+                                        <Label htmlFor="product-sku" className="flex items-center gap-2 font-bold">
+                                            <Barcode className="h-4 w-4 text-primary/60" />
+                                            {t('products.table.sku')}
+                                        </Label>
+                                        <div className="flex gap-2">
+                                            <Input
+                                                ref={skuInputRef}
+                                                id="product-sku"
+                                                value={formData.sku}
+                                                onChange={(event) => setFormData((current) => ({
+                                                    ...current,
+                                                    sku: normalizeBarcodeDigits(event.target.value)
+                                                }))}
+                                                placeholder="PRD-001"
+                                                readOnly={isReadOnly}
+                                                required
+                                                className="h-12 min-w-0 flex-1 rounded-lg border-border/40 bg-muted/10 font-mono"
+                                            />
+                                            {!isReadOnly && (
+                                                <BarcodeScannerToggleButton
+                                                    enabled={activeScannerTarget === 'sku'}
+                                                    onEnabledChange={handleSkuScannerEnabledChange}
+                                                    onScan={handleSkuBarcodeScan}
+                                                    label={t('products.table.sku')}
+                                                    activeLabel={scannerEnabledLabel}
+                                                    inactiveLabel={scannerDisabledLabel}
+                                                    deviceStorageKey={PRODUCT_SKU_HID_DEVICE_KEY}
+                                                    targetInputRef={skuInputRef}
+                                                />
+                                            )}
+                                        </div>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label htmlFor="product-name" className="flex items-center gap-2 font-bold">
+                                            <Type className="h-4 w-4 text-primary/60" />
+                                            {t('products.table.name')}
+                                        </Label>
                                         <Input
-                                            ref={skuInputRef}
-                                            id="product-sku"
-                                            value={formData.sku}
-                                            onChange={(event) => setFormData((current) => ({
-                                                ...current,
-                                                sku: normalizeBarcodeDigits(event.target.value)
-                                            }))}
-                                            placeholder="PRD-001"
+                                            id="product-name"
+                                            value={formData.name}
+                                            onChange={(event) => setFormData((current) => ({ ...current, name: event.target.value }))}
+                                            placeholder={t('products.form.name') || 'Product name'}
                                             readOnly={isReadOnly}
                                             required
-                                            className="h-12 min-w-0 flex-1 rounded-lg border-border/40 bg-muted/10 font-mono"
+                                            className="h-12 rounded-lg border-border/40 bg-muted/10 font-bold"
                                         />
-                                        {!isReadOnly && (
-                                            <BarcodeScannerToggleButton
-                                                enabled={activeScannerTarget === 'sku'}
-                                                onEnabledChange={handleSkuScannerEnabledChange}
-                                                onScan={handleSkuBarcodeScan}
-                                                label={t('products.table.sku')}
-                                                activeLabel={scannerEnabledLabel}
-                                                inactiveLabel={scannerDisabledLabel}
-                                                deviceStorageKey={PRODUCT_SKU_HID_DEVICE_KEY}
-                                                targetInputRef={skuInputRef}
-                                            />
-                                        )}
                                     </div>
                                 </div>
+
                                 <div className="space-y-2">
-                                    <Label htmlFor="product-name" className="flex items-center gap-2 font-bold">
-                                        <Type className="h-4 w-4 text-primary/60" />
-                                        {t('products.table.name')}
+                                    <Label htmlFor="product-description" className="flex items-center gap-2 font-bold">
+                                        <FileText className="h-4 w-4 text-primary/60" />
+                                        {t('products.form.description')}
                                     </Label>
-                                    <Input
-                                        id="product-name"
-                                        value={formData.name}
-                                        onChange={(event) => setFormData((current) => ({ ...current, name: event.target.value }))}
-                                        placeholder={t('products.form.name') || 'Product name'}
+                                    <Textarea
+                                        id="product-description"
+                                        value={formData.description}
+                                        onChange={(event) => setFormData((current) => ({ ...current, description: event.target.value }))}
+                                        placeholder={t('products.form.description') || 'Product description...'}
+                                        rows={3}
                                         readOnly={isReadOnly}
-                                        required
-                                        className="h-12 rounded-lg border-border/40 bg-muted/10 font-bold"
+                                        className="min-h-[100px] rounded-lg border-border/40 bg-muted/10"
                                     />
                                 </div>
                             </div>
 
-                            <div className="space-y-2">
-                                <Label htmlFor="product-description" className="flex items-center gap-2 font-bold">
-                                    <FileText className="h-4 w-4 text-primary/60" />
-                                    {t('products.form.description')}
-                                </Label>
-                                <Textarea
-                                    id="product-description"
-                                    value={formData.description}
-                                    onChange={(event) => setFormData((current) => ({ ...current, description: event.target.value }))}
-                                    placeholder={t('products.form.description') || 'Product description...'}
-                                    rows={3}
-                                    readOnly={isReadOnly}
-                                    className="min-h-[100px] rounded-lg border-border/40 bg-muted/10"
-                                />
-                            </div>
-                        </div>
-
-                        <div className="space-y-4">
-                            <div className="flex items-center gap-2">
-                                <div className="h-4 w-1 rounded-full bg-primary" />
-                                <h2 className="text-sm font-black uppercase tracking-widest text-primary/80">
-                                    {t('products.form.categorization')}
-                                </h2>
-                            </div>
-                            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                                <div className="space-y-2">
-                                    <Label htmlFor="product-category" className="flex items-center gap-2 font-bold">
-                                        <Tag className="h-4 w-4 text-primary/60" />
-                                        {t('products.table.category')}
-                                    </Label>
-                                    <Select
-                                        value={formData.categoryId || 'none'}
-                                        onValueChange={(value) => setFormData((current) => ({ ...current, categoryId: value === 'none' ? undefined : value }))}
-                                        disabled={isReadOnly}
-                                    >
-                                        <SelectTrigger id="product-category" className="h-12 rounded-lg border-border/40 bg-muted/10" allowViewer={true}>
-                                            <SelectValue placeholder={t('categories.noCategory')} />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="none">{t('categories.noCategory')}</SelectItem>
-                                            {categories.map((category) => (
-                                                <SelectItem key={category.id} value={category.id}>
-                                                    {category.name}
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
+                            <div className="space-y-4">
+                                <div className="flex items-center gap-2">
+                                    <div className="h-4 w-1 rounded-full bg-primary" />
+                                    <h2 className="text-sm font-black uppercase tracking-widest text-primary/80">
+                                        {t('products.form.categorization')}
+                                    </h2>
                                 </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="product-unit" className="flex items-center gap-2 font-bold">
-                                        <Ruler className="h-4 w-4 text-primary/60" />
-                                        {t('products.form.unit')}
-                                    </Label>
-                                    <Select
-                                        value={formData.unit}
-                                        onValueChange={(value) => setFormData((current) => ({ ...current, unit: value }))}
-                                        disabled={isReadOnly}
-                                    >
-                                        <SelectTrigger id="product-unit" className="h-12 rounded-lg border-border/40 bg-muted/10" allowViewer={true}>
-                                            <SelectValue />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            {UNITS.map((unit) => (
-                                                <SelectItem key={unit} value={unit}>
-                                                    {t(`products.units.${unit}`, unit)}
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                                {mode !== 'create' ? null : (
+                                <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
                                     <div className="space-y-2">
-                                        <Label htmlFor="product-storage" className="flex items-center gap-2 font-bold">
-                                            <Warehouse className="h-4 w-4 text-primary/60" />
-                                            {t('storages.title') || 'Storage'}
+                                        <Label htmlFor="product-category" className="flex items-center gap-2 font-bold">
+                                            <Tag className="h-4 w-4 text-primary/60" />
+                                            {t('products.table.category')}
                                         </Label>
                                         <Select
-                                            value={formData.storageId}
-                                            onValueChange={(value) => {
-                                                setFormData((current) => ({ ...current, storageId: value }))
-                                                setStorageError(false)
-                                            }}
-                                            disabled={isReadOnly || !canEditStockAllocation}
+                                            value={formData.categoryId || 'none'}
+                                            onValueChange={(value) => setFormData((current) => ({ ...current, categoryId: value === 'none' ? undefined : value }))}
+                                            disabled={isReadOnly}
                                         >
-                                            <SelectTrigger
-                                                ref={storageTriggerRef}
-                                                id="product-storage"
-                                                className={cn('h-12 rounded-lg bg-muted/10', storageError ? 'border-destructive ring-2 ring-destructive/50' : 'border-border/40')}
-                                                allowViewer={true}
-                                            >
-                                                <SelectValue placeholder={t('storages.selectStorage') || 'Select Storage'} />
+                                            <SelectTrigger id="product-category" className="h-12 rounded-lg border-border/40 bg-muted/10" allowViewer={true}>
+                                                <SelectValue placeholder={t('categories.noCategory')} />
                                             </SelectTrigger>
                                             <SelectContent>
-                                                {storages.map((storage) => (
-                                                    <SelectItem key={storage.id} value={storage.id}>
-                                                        <div className="flex items-center gap-2">
-                                                            <div className={cn('h-1.5 w-1.5 rounded-full', storage.isSystem ? 'bg-primary' : 'bg-muted-foreground/30')} />
-                                                            {storage.isSystem ? (t(`storages.${storage.name.toLowerCase()}`) || storage.name) : storage.name}
-                                                        </div>
+                                                <SelectItem value="none">{t('categories.noCategory')}</SelectItem>
+                                                {categories.map((category) => (
+                                                    <SelectItem key={category.id} value={category.id}>
+                                                        {category.name}
                                                     </SelectItem>
                                                 ))}
                                             </SelectContent>
                                         </Select>
                                     </div>
-                                )}
-                            </div>
-                            <div className="grid gap-3 sm:grid-cols-3">
-                                <div className="rounded-2xl border border-border/50 bg-background/80 p-4">
-                                    <div className="text-[11px] font-black uppercase tracking-[0.18em] text-muted-foreground">{t('products.table.category')}</div>
-                                    <div className="mt-1 text-sm font-semibold text-foreground">{selectedCategoryLabel}</div>
-                                </div>
-                                <div className="rounded-2xl border border-border/50 bg-background/80 p-4">
-                                    <div className="text-[11px] font-black uppercase tracking-[0.18em] text-muted-foreground">{t('products.form.unit')}</div>
-                                    <div className="mt-1 text-sm font-semibold text-foreground">{unitLabel}</div>
-                                </div>
-                                <div className="rounded-2xl border border-border/50 bg-background/80 p-4">
-                                    <div className="flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.18em] text-muted-foreground">
-                                        <Warehouse className="h-4 w-4 text-primary/60" />
-                                        {t('storages.title') || 'Storage'}
+                                    <div className="space-y-2">
+                                        <Label htmlFor="product-unit" className="flex items-center gap-2 font-bold">
+                                            <Ruler className="h-4 w-4 text-primary/60" />
+                                            {t('products.form.unit')}
+                                        </Label>
+                                        <Select
+                                            value={formData.unit}
+                                            onValueChange={(value) => setFormData((current) => ({ ...current, unit: value }))}
+                                            disabled={isReadOnly}
+                                        >
+                                            <SelectTrigger id="product-unit" className="h-12 rounded-lg border-border/40 bg-muted/10" allowViewer={true}>
+                                                <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {UNITS.map((unit) => (
+                                                    <SelectItem key={unit} value={unit}>
+                                                        {t(`products.units.${unit}`, unit)}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
                                     </div>
-                                    <div className="mt-1 text-sm font-semibold text-foreground">{selectedStorageLabel}</div>
+                                    {mode !== 'create' ? null : (
+                                        <div className="space-y-2">
+                                            <Label htmlFor="product-storage" className="flex items-center gap-2 font-bold">
+                                                <Warehouse className="h-4 w-4 text-primary/60" />
+                                                {t('storages.title') || 'Storage'}
+                                            </Label>
+                                            <Select
+                                                value={formData.storageId}
+                                                onValueChange={(value) => {
+                                                    setFormData((current) => ({ ...current, storageId: value }))
+                                                    setStorageError(false)
+                                                }}
+                                                disabled={isReadOnly || !canEditStockAllocation}
+                                            >
+                                                <SelectTrigger
+                                                    ref={storageTriggerRef}
+                                                    id="product-storage"
+                                                    className={cn('h-12 rounded-lg bg-muted/10', storageError ? 'border-destructive ring-2 ring-destructive/50' : 'border-border/40')}
+                                                    allowViewer={true}
+                                                >
+                                                    <SelectValue placeholder={t('storages.selectStorage') || 'Select Storage'} />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    {storages.map((storage) => (
+                                                        <SelectItem key={storage.id} value={storage.id}>
+                                                            <div className="flex items-center gap-2">
+                                                                <div className={cn('h-1.5 w-1.5 rounded-full', storage.isSystem ? 'bg-primary' : 'bg-muted-foreground/30')} />
+                                                                {storage.isSystem ? (t(`storages.${storage.name.toLowerCase()}`) || storage.name) : storage.name}
+                                                            </div>
+                                                        </SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="grid gap-3 sm:grid-cols-3">
+                                    <div className="rounded-2xl border border-border/50 bg-background/80 p-4">
+                                        <div className="text-[11px] font-black uppercase tracking-[0.18em] text-muted-foreground">{t('products.table.category')}</div>
+                                        <div className="mt-1 text-sm font-semibold text-foreground">{selectedCategoryLabel}</div>
+                                    </div>
+                                    <div className="rounded-2xl border border-border/50 bg-background/80 p-4">
+                                        <div className="text-[11px] font-black uppercase tracking-[0.18em] text-muted-foreground">{t('products.form.unit')}</div>
+                                        <div className="mt-1 text-sm font-semibold text-foreground">{unitLabel}</div>
+                                    </div>
+                                    <div className="rounded-2xl border border-border/50 bg-background/80 p-4">
+                                        <div className="flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.18em] text-muted-foreground">
+                                            <Warehouse className="h-4 w-4 text-primary/60" />
+                                            {t('storages.title') || 'Storage'}
+                                        </div>
+                                        <div className="mt-1 text-sm font-semibold text-foreground">{selectedStorageLabel}</div>
+                                    </div>
                                 </div>
                             </div>
-                        </div>
                         </CardContent>
                     </Card>
 
@@ -1218,91 +1218,91 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                         </CardHeader>
                         <CardContent className="space-y-6 p-6 sm:p-8">
                             <div className="space-y-4">
-                            <div className="grid gap-6 md:grid-cols-3">
-                                <div className="space-y-2">
-                                    <Label htmlFor="product-price" className="flex items-center gap-2 font-bold">
-                                        <DollarSign className="h-4 w-4 text-primary/60" />
-                                        {t('products.table.price')}
-                                    </Label>
-                                    <div className="relative">
-                                        <Input
-                                            id="product-price"
-                                            type="text"
-                                            inputMode="decimal"
-                                            value={formatNumericInput(formData.price !== '' ? String(formData.price) : '')}
-                                            onChange={(event) => setFormData((current) => {
-                                                const raw = sanitizeNumericInput(event.target.value)
-                                                return {
-                                                    ...current,
-                                                    price: raw === '' ? '' : parseFormattedNumber(raw)
-                                                }
-                                            })}
-                                            placeholder="0.00"
-                                            readOnly={isReadOnly}
-                                            required
-                                            className="h-12 rounded-lg border-border/40 bg-background/50 pr-16 text-lg font-black text-primary"
+                                <div className="grid gap-6 md:grid-cols-3">
+                                    <div className="space-y-2">
+                                        <Label htmlFor="product-price" className="flex items-center gap-2 font-bold">
+                                            <DollarSign className="h-4 w-4 text-primary/60" />
+                                            {t('products.table.price')}
+                                        </Label>
+                                        <div className="relative">
+                                            <Input
+                                                id="product-price"
+                                                type="text"
+                                                inputMode="decimal"
+                                                value={formatNumericInput(formData.price)}
+                                                onChange={(event) => setFormData((current) => {
+                                                    const raw = sanitizeNumericInput(event.target.value, { maxFractionDigits: 4 })
+                                                    return {
+                                                        ...current,
+                                                        price: raw
+                                                    }
+                                                })}
+                                                placeholder="0.000"
+                                                readOnly={isReadOnly}
+                                                required
+                                                className="h-12 rounded-lg border-border/40 bg-background/50 pr-16 text-lg font-black text-primary"
+                                            />
+                                            <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold uppercase tracking-wider text-muted-foreground/60">
+                                                {getCurrencySymbol(formData.currency, features.iqd_display_preference)}
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <CurrencySelector
+                                            label={t('products.form.currency') || 'Currency'}
+                                            value={formData.currency}
+                                            onChange={(value) => setFormData((current) => ({ ...current, currency: value }))}
+                                            iqdDisplayPreference={features.iqd_display_preference}
+                                            disabled={isReadOnly}
                                         />
-                                        <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold uppercase tracking-wider text-muted-foreground/60">
-                                            {getCurrencySymbol(formData.currency, features.iqd_display_preference)}
-                                        </span>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label htmlFor="product-cost-price" className="flex items-center gap-2 font-bold">
+                                            <Wallet className="h-4 w-4 text-primary/60" />
+                                            {t('products.form.cost')}
+                                        </Label>
+                                        <div className="relative">
+                                            <Input
+                                                id="product-cost-price"
+                                                type="text"
+                                                inputMode="decimal"
+                                                value={formatNumericInput(formData.costPrice)}
+                                                onChange={(event) => setFormData((current) => {
+                                                    const raw = sanitizeNumericInput(event.target.value, { maxFractionDigits: 4 })
+                                                    return {
+                                                        ...current,
+                                                        costPrice: raw
+                                                    }
+                                                })}
+                                                placeholder="0.000"
+                                                readOnly={isReadOnly}
+                                                required
+                                                className="h-12 rounded-lg border-border/40 bg-background/50 pr-16 font-bold"
+                                            />
+                                            <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold uppercase tracking-wider text-muted-foreground/60">
+                                                {getCurrencySymbol(formData.currency, features.iqd_display_preference)}
+                                            </span>
+                                        </div>
                                     </div>
                                 </div>
-                                <div className="space-y-2">
-                                    <CurrencySelector
-                                        label={t('products.form.currency') || 'Currency'}
-                                        value={formData.currency}
-                                        onChange={(value) => setFormData((current) => ({ ...current, currency: value }))}
-                                        iqdDisplayPreference={features.iqd_display_preference}
-                                        disabled={isReadOnly}
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="product-cost-price" className="flex items-center gap-2 font-bold">
-                                        <Wallet className="h-4 w-4 text-primary/60" />
-                                        {t('products.form.cost')}
-                                    </Label>
-                                    <div className="relative">
-                                        <Input
-                                            id="product-cost-price"
-                                            type="text"
-                                            inputMode="decimal"
-                                            value={formatNumericInput(formData.costPrice !== '' ? String(formData.costPrice) : '')}
-                                            onChange={(event) => setFormData((current) => {
-                                                const raw = sanitizeNumericInput(event.target.value)
-                                                return {
-                                                    ...current,
-                                                    costPrice: raw === '' ? '' : parseFormattedNumber(raw)
-                                                }
-                                            })}
-                                            placeholder="0.00"
-                                            readOnly={isReadOnly}
-                                            required
-                                            className="h-12 rounded-lg border-border/40 bg-background/50 pr-16 font-bold"
-                                        />
-                                        <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold uppercase tracking-wider text-muted-foreground/60">
-                                            {getCurrencySymbol(formData.currency, features.iqd_display_preference)}
-                                        </span>
-                                    </div>
-                                </div>
-                            </div>
 
-                            <div className="grid gap-3 sm:grid-cols-3">
-                                <div className="rounded-2xl border border-border/50 bg-background/80 p-4">
-                                    <div className="text-[11px] font-black uppercase tracking-[0.18em] text-muted-foreground">{t('products.table.price')}</div>
-                                    <div className="mt-1 text-base font-black text-primary">{pricePreview}</div>
-                                </div>
-                                <div className="rounded-2xl border border-border/50 bg-background/80 p-4">
-                                    <div className="text-[11px] font-black uppercase tracking-[0.18em] text-muted-foreground">{t('products.form.cost')}</div>
-                                    <div className="mt-1 text-base font-black text-foreground">{costPreview}</div>
-                                </div>
-                                <div className="rounded-2xl border border-border/50 bg-background/80 p-4">
-                                    <div className="text-[11px] font-black uppercase tracking-[0.18em] text-muted-foreground">{t('products.form.margin') || 'Margin'}</div>
-                                    <div className={cn('mt-1 text-base font-black', marginValue < 0 ? 'text-destructive' : 'text-emerald-600')}>
-                                        {marginPreview}
+                                <div className="grid gap-3 sm:grid-cols-3">
+                                    <div className="rounded-2xl border border-border/50 bg-background/80 p-4">
+                                        <div className="text-[11px] font-black uppercase tracking-[0.18em] text-muted-foreground">{t('products.table.price')}</div>
+                                        <div className="mt-1 text-base font-black text-primary">{pricePreview}</div>
+                                    </div>
+                                    <div className="rounded-2xl border border-border/50 bg-background/80 p-4">
+                                        <div className="text-[11px] font-black uppercase tracking-[0.18em] text-muted-foreground">{t('products.form.cost')}</div>
+                                        <div className="mt-1 text-base font-black text-foreground">{costPreview}</div>
+                                    </div>
+                                    <div className="rounded-2xl border border-border/50 bg-background/80 p-4">
+                                        <div className="text-[11px] font-black uppercase tracking-[0.18em] text-muted-foreground">{t('products.form.margin') || 'Margin'}</div>
+                                        <div className={cn('mt-1 text-base font-black', marginValue < 0 ? 'text-destructive' : 'text-emerald-600')}>
+                                            {marginPreview}
+                                        </div>
                                     </div>
                                 </div>
                             </div>
-                        </div>
                         </CardContent>
                     </Card>
 
@@ -1317,133 +1317,133 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                         </CardHeader>
                         <CardContent className="space-y-6 p-6 sm:p-8">
                             <div className="space-y-4">
-                            <div className="grid gap-6 md:grid-cols-2">
-                                <div className="space-y-2">
-                                    <Label htmlFor="product-quantity" className="flex items-center gap-2 font-bold">
-                                        <Boxes className="h-4 w-4 text-primary/60" />
-                                        {t('products.form.stock')}
-                                    </Label>
-                                    <div className="relative">
-                                        <Input
-                                            id="product-quantity"
-                                            type="number"
-                                            min="0"
-                                            value={formData.quantity}
-                                            onChange={(event) => setFormData((current) => ({
-                                                ...current,
-                                                quantity: event.target.value === '' ? '' : parseInt(event.target.value, 10)
-                                            }))}
-                                            placeholder="0"
-                                            readOnly={isReadOnly || isEditing}
-                                            required
-                                            className="h-12 rounded-lg border-border/40 bg-muted/10 pr-16 font-black"
-                                        />
-                                        <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold uppercase tracking-wider text-muted-foreground/60">
-                                            {t(`products.units.${formData.unit}`, formData.unit)}
-                                        </span>
+                                <div className="grid gap-6 md:grid-cols-2">
+                                    <div className="space-y-2">
+                                        <Label htmlFor="product-quantity" className="flex items-center gap-2 font-bold">
+                                            <Boxes className="h-4 w-4 text-primary/60" />
+                                            {t('products.form.stock')}
+                                        </Label>
+                                        <div className="relative">
+                                            <Input
+                                                id="product-quantity"
+                                                type="number"
+                                                min="0"
+                                                value={formData.quantity}
+                                                onChange={(event) => setFormData((current) => ({
+                                                    ...current,
+                                                    quantity: event.target.value === '' ? '' : parseInt(event.target.value, 10)
+                                                }))}
+                                                placeholder="0"
+                                                readOnly={isReadOnly || isEditing}
+                                                required
+                                                className="h-12 rounded-lg border-border/40 bg-muted/10 pr-16 font-black"
+                                            />
+                                            <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold uppercase tracking-wider text-muted-foreground/60">
+                                                {t(`products.units.${formData.unit}`, formData.unit)}
+                                            </span>
+                                        </div>
+                                        {isEditing && (
+                                            <div className="rounded-xl border border-sky-500/20 bg-sky-500/10 px-3 py-2 text-xs font-semibold text-sky-700">
+                                                {t('products.form.stockAdjustmentHint') || 'Use Stock Adjustments to change stock quantities for existing products.'}
+                                            </div>
+                                        )}
                                     </div>
-                                    {isEditing && (
-                                        <div className="rounded-xl border border-sky-500/20 bg-sky-500/10 px-3 py-2 text-xs font-semibold text-sky-700">
-                                            {t('products.form.stockAdjustmentHint') || 'Use Stock Adjustments to change stock quantities for existing products.'}
+                                    <div className="space-y-2">
+                                        <Label htmlFor="product-min-stock" className="flex items-center gap-2 font-bold">
+                                            <Info className="h-4 w-4 text-primary/60" />
+                                            {t('products.form.minStock')}
+                                        </Label>
+                                        <div className="relative">
+                                            <Input
+                                                id="product-min-stock"
+                                                type="number"
+                                                min="0"
+                                                value={formData.minStockLevel}
+                                                onChange={(event) => setFormData((current) => ({
+                                                    ...current,
+                                                    minStockLevel: event.target.value === '' ? '' : parseInt(event.target.value, 10)
+                                                }))}
+                                                readOnly={isReadOnly}
+                                                required
+                                                className="h-12 rounded-lg border-border/40 bg-muted/10 pr-16 font-bold"
+                                            />
+                                            <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold uppercase tracking-wider text-muted-foreground/60">
+                                                {t(`products.units.${formData.unit}`, formData.unit)}
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className={cn(
+                                    'rounded-2xl border p-4 text-sm font-medium',
+                                    lowStock
+                                        ? 'border-amber-500/20 bg-amber-500/10 text-amber-700'
+                                        : 'border-emerald-500/20 bg-emerald-500/10 text-emerald-700'
+                                )}>
+                                    {lowStock
+                                        ? t('products.form.lowStockWarning', { defaultValue: 'Stock is at or below the minimum threshold of {{min}} {{unit}}.', min: minStockValue, unit: unitLabel })
+                                        : (t('products.form.goodStockNotice') || 'Current stock is above the minimum threshold.')}
+                                </div>
+
+                                <div className="rounded-2xl border border-border/60 bg-muted/30 p-5">
+                                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                                        <div className="space-y-1 text-start">
+                                            <Label htmlFor="product-can-be-returned" className="flex cursor-pointer items-center gap-2 text-base font-black text-foreground/90">
+                                                <div className={cn(
+                                                    'flex h-8 w-8 items-center justify-center rounded-xl shadow-sm transition-colors',
+                                                    formData.canBeReturned ? 'bg-emerald-500/10 text-emerald-600' : 'bg-muted text-muted-foreground'
+                                                )}>
+                                                    <ChevronRight className={cn('h-4 w-4 transition-transform', formData.canBeReturned && 'rotate-90')} />
+                                                </div>
+                                                {t('products.form.canBeReturned') || 'Can be Returned'}
+                                            </Label>
+                                            <p className="pl-10 text-sm font-medium leading-relaxed text-muted-foreground/80">
+                                                {formData.canBeReturned
+                                                    ? (t('products.form.canBeReturnedDesc') || 'Customers can return this product.')
+                                                    : (t('products.form.cannotBeReturnedDesc') || 'This product is non-returnable.')}
+                                            </p>
+                                        </div>
+                                        <div className="flex items-center">
+                                            <Switch
+                                                id="product-can-be-returned"
+                                                checked={formData.canBeReturned}
+                                                onCheckedChange={(checked) => setFormData((current) => ({ ...current, canBeReturned: checked }))}
+                                                disabled={isReadOnly}
+                                                className="data-[state=checked]:bg-emerald-500"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    {formData.canBeReturned && (
+                                        <div className="mt-5 rounded-2xl border border-border/50 bg-background/80 p-4">
+                                            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                                                <div className="space-y-1">
+                                                    <div className="text-[11px] font-black uppercase tracking-[0.18em] text-muted-foreground">
+                                                        {t('products.form.returnRulesTitle') || 'Return Rules'}
+                                                    </div>
+                                                    <p className="text-sm leading-6 text-muted-foreground">
+                                                        {returnRulesPreview}
+                                                    </p>
+                                                </div>
+                                                {!isReadOnly && (
+                                                    <Button
+                                                        type="button"
+                                                        variant="secondary"
+                                                        size="sm"
+                                                        onClick={() => setReturnRulesModalOpen(true)}
+                                                        className="h-10 gap-2 rounded-xl border border-primary/10 px-5 font-bold"
+                                                    >
+                                                        <Settings className="h-4 w-4" />
+                                                        {formData.returnRules.trim()
+                                                            ? (t('products.form.editRules') || 'Edit rules')
+                                                            : (t('products.form.addRules') || 'Add rules')}
+                                                    </Button>
+                                                )}
+                                            </div>
                                         </div>
                                     )}
                                 </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="product-min-stock" className="flex items-center gap-2 font-bold">
-                                        <Info className="h-4 w-4 text-primary/60" />
-                                        {t('products.form.minStock')}
-                                    </Label>
-                                    <div className="relative">
-                                        <Input
-                                            id="product-min-stock"
-                                            type="number"
-                                            min="0"
-                                            value={formData.minStockLevel}
-                                            onChange={(event) => setFormData((current) => ({
-                                                ...current,
-                                                minStockLevel: event.target.value === '' ? '' : parseInt(event.target.value, 10)
-                                            }))}
-                                            readOnly={isReadOnly}
-                                            required
-                                            className="h-12 rounded-lg border-border/40 bg-muted/10 pr-16 font-bold"
-                                        />
-                                        <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold uppercase tracking-wider text-muted-foreground/60">
-                                            {t(`products.units.${formData.unit}`, formData.unit)}
-                                        </span>
-                                    </div>
-                                </div>
                             </div>
-
-                            <div className={cn(
-                                'rounded-2xl border p-4 text-sm font-medium',
-                                lowStock
-                                    ? 'border-amber-500/20 bg-amber-500/10 text-amber-700'
-                                    : 'border-emerald-500/20 bg-emerald-500/10 text-emerald-700'
-                            )}>
-                                {lowStock
-                                    ? t('products.form.lowStockWarning', { defaultValue: 'Stock is at or below the minimum threshold of {{min}} {{unit}}.', min: minStockValue, unit: unitLabel })
-                                    : (t('products.form.goodStockNotice') || 'Current stock is above the minimum threshold.')}
-                            </div>
-
-                            <div className="rounded-2xl border border-border/60 bg-muted/30 p-5">
-                                <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                                    <div className="space-y-1 text-start">
-                                        <Label htmlFor="product-can-be-returned" className="flex cursor-pointer items-center gap-2 text-base font-black text-foreground/90">
-                                            <div className={cn(
-                                                'flex h-8 w-8 items-center justify-center rounded-xl shadow-sm transition-colors',
-                                                formData.canBeReturned ? 'bg-emerald-500/10 text-emerald-600' : 'bg-muted text-muted-foreground'
-                                            )}>
-                                                <ChevronRight className={cn('h-4 w-4 transition-transform', formData.canBeReturned && 'rotate-90')} />
-                                            </div>
-                                            {t('products.form.canBeReturned') || 'Can be Returned'}
-                                        </Label>
-                                        <p className="pl-10 text-sm font-medium leading-relaxed text-muted-foreground/80">
-                                            {formData.canBeReturned
-                                                ? (t('products.form.canBeReturnedDesc') || 'Customers can return this product.')
-                                                : (t('products.form.cannotBeReturnedDesc') || 'This product is non-returnable.')}
-                                        </p>
-                                    </div>
-                                    <div className="flex items-center">
-                                        <Switch
-                                            id="product-can-be-returned"
-                                            checked={formData.canBeReturned}
-                                            onCheckedChange={(checked) => setFormData((current) => ({ ...current, canBeReturned: checked }))}
-                                            disabled={isReadOnly}
-                                            className="data-[state=checked]:bg-emerald-500"
-                                        />
-                                    </div>
-                                </div>
-
-                                {formData.canBeReturned && (
-                                    <div className="mt-5 rounded-2xl border border-border/50 bg-background/80 p-4">
-                                        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                                            <div className="space-y-1">
-                                                <div className="text-[11px] font-black uppercase tracking-[0.18em] text-muted-foreground">
-                                                    {t('products.form.returnRulesTitle') || 'Return Rules'}
-                                                </div>
-                                                <p className="text-sm leading-6 text-muted-foreground">
-                                                    {returnRulesPreview}
-                                                </p>
-                                            </div>
-                                            {!isReadOnly && (
-                                                <Button
-                                                    type="button"
-                                                    variant="secondary"
-                                                    size="sm"
-                                                    onClick={() => setReturnRulesModalOpen(true)}
-                                                    className="h-10 gap-2 rounded-xl border border-primary/10 px-5 font-bold"
-                                                >
-                                                    <Settings className="h-4 w-4" />
-                                                    {formData.returnRules.trim()
-                                                        ? (t('products.form.editRules') || 'Edit rules')
-                                                        : (t('products.form.addRules') || 'Add rules')}
-                                                </Button>
-                                            )}
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
                         </CardContent>
                     </Card>
 
@@ -1460,120 +1460,120 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                         <CardContent className="space-y-6 p-6 sm:p-8">
                             <div className="space-y-4">
 
-                            <div className="flex flex-col items-start gap-6 md:flex-row">
-                                <div className="relative aspect-square w-full shrink-0 overflow-hidden rounded-xl border-2 border-dashed border-primary/20 bg-muted/30 shadow-inner md:w-44">
-                                    {!formData.imageUrl ? (
-                                        <div className="flex h-full flex-col items-center justify-center gap-3">
-                                            <ImagePlus className="h-8 w-8 text-primary" />
-                                            <span className="text-[10px] font-black uppercase tracking-tighter text-primary/60">
-                                                {t('products.form.noImage') || 'No Preview'}
-                                            </span>
-                                        </div>
-                                    ) : imageError ? (
-                                        <div className="flex h-full flex-col items-center justify-center gap-2 px-2 text-center">
-                                            <Package className="h-10 w-10 text-destructive/30" />
-                                            <span className="text-[11px] font-bold uppercase text-destructive/60">
-                                                {t('products.form.imageError') || 'Image Error'}
-                                            </span>
-                                        </div>
-                                    ) : (
-                                        <>
-                                            <img
-                                                src={getDisplayImageUrl(formData.imageUrl)}
-                                                alt={formData.name || 'Product preview'}
-                                                className="h-full w-full object-cover"
-                                                onError={() => setImageError(true)}
-                                            />
-                                            {!isReadOnly && (
-                                                <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity hover:opacity-100">
-                                                    <Button
-                                                        type="button"
-                                                        variant="ghost"
-                                                        size="icon"
-                                                        aria-label={t('common.delete') || 'Delete'}
-                                                        onClick={handleRemoveImage}
-                                                        className="h-12 w-12 rounded-full bg-destructive/90 text-white hover:bg-destructive"
-                                                    >
-                                                        <Trash2 className="h-6 w-6" />
-                                                    </Button>
-                                                </div>
-                                            )}
-                                        </>
-                                    )}
-                                </div>
-
-                                <div className="w-full flex-1 space-y-4">
-                                    <div className="space-y-2">
-                                        <Label htmlFor="product-image-url" className="flex items-center gap-2 font-bold">
-                                            <Info className="h-4 w-4 text-primary/60" />
-                                            {t('products.form.imageUrl') || 'Image Source'}
-                                        </Label>
-                                        <div className="flex flex-col gap-3 sm:flex-row">
-                                            <Input
-                                                id="product-image-url"
-                                                value={formData.imageUrl}
-                                                onChange={(event) => {
-                                                    setFormData((current) => ({ ...current, imageUrl: event.target.value }))
-                                                    setImageError(false)
-                                                }}
-                                                placeholder={t('products.form.imageUrlPlaceholder') || 'Image URL or local path'}
-                                                readOnly={isReadOnly}
-                                                className="h-12 flex-1 rounded-lg border-border/40 bg-muted/10"
-                                            />
-                                            {!isReadOnly && (
-                                                <div className="flex gap-2">
-                                                    <Button
-                                                        type="button"
-                                                        variant="outline"
-                                                        onClick={handleImageUpload}
-                                                        className="h-12 gap-2 rounded-lg border-primary/20 px-6 font-bold"
-                                                    >
-                                                        <ImagePlus className="h-4 w-4" />
-                                                        {t('products.form.upload') || 'Upload'}
-                                                    </Button>
-                                                    <Button
-                                                        type="button"
-                                                        variant="outline"
-                                                        aria-label={t('products.form.camera') || 'Camera'}
-                                                        onClick={() => cameraInputRef.current?.click()}
-                                                        className="h-12 gap-2 rounded-lg border-primary/20 px-4 font-bold text-primary sm:px-6"
-                                                    >
-                                                        <Camera className="h-4 w-4" />
-                                                        <span className="hidden sm:inline">{t('products.form.camera') || 'Camera'}</span>
-                                                    </Button>
-                                                </div>
-                                            )}
-                                        </div>
+                                <div className="flex flex-col items-start gap-6 md:flex-row">
+                                    <div className="relative aspect-square w-full shrink-0 overflow-hidden rounded-xl border-2 border-dashed border-primary/20 bg-muted/30 shadow-inner md:w-44">
+                                        {!formData.imageUrl ? (
+                                            <div className="flex h-full flex-col items-center justify-center gap-3">
+                                                <ImagePlus className="h-8 w-8 text-primary" />
+                                                <span className="text-[10px] font-black uppercase tracking-tighter text-primary/60">
+                                                    {t('products.form.noImage') || 'No Preview'}
+                                                </span>
+                                            </div>
+                                        ) : imageError ? (
+                                            <div className="flex h-full flex-col items-center justify-center gap-2 px-2 text-center">
+                                                <Package className="h-10 w-10 text-destructive/30" />
+                                                <span className="text-[11px] font-bold uppercase text-destructive/60">
+                                                    {t('products.form.imageError') || 'Image Error'}
+                                                </span>
+                                            </div>
+                                        ) : (
+                                            <>
+                                                <img
+                                                    src={getDisplayImageUrl(formData.imageUrl)}
+                                                    alt={formData.name || 'Product preview'}
+                                                    className="h-full w-full object-cover"
+                                                    onError={() => setImageError(true)}
+                                                />
+                                                {!isReadOnly && (
+                                                    <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity hover:opacity-100">
+                                                        <Button
+                                                            type="button"
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            aria-label={t('common.delete') || 'Delete'}
+                                                            onClick={handleRemoveImage}
+                                                            className="h-12 w-12 rounded-full bg-destructive/90 text-white hover:bg-destructive"
+                                                        >
+                                                            <Trash2 className="h-6 w-6" />
+                                                        </Button>
+                                                    </div>
+                                                )}
+                                            </>
+                                        )}
                                     </div>
 
-                                    <div className="flex items-start gap-3 rounded-xl border border-border/40 bg-muted/30 p-4">
-                                        <Info className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-                                        <p className="text-[11px] font-medium leading-relaxed text-muted-foreground/80">
-                                            {isDesktopShell
-                                                ? (t('products.form.localPathDesc') || 'Image will be stored locally on this device and synced to other devices in your workspace.')
-                                                : (t('products.form.webUploadDesc') || 'Image will be securely uploaded and synced via cloud storage.')}
-                                        </p>
-                                    </div>
+                                    <div className="w-full flex-1 space-y-4">
+                                        <div className="space-y-2">
+                                            <Label htmlFor="product-image-url" className="flex items-center gap-2 font-bold">
+                                                <Info className="h-4 w-4 text-primary/60" />
+                                                {t('products.form.imageUrl') || 'Image Source'}
+                                            </Label>
+                                            <div className="flex flex-col gap-3 sm:flex-row">
+                                                <Input
+                                                    id="product-image-url"
+                                                    value={formData.imageUrl}
+                                                    onChange={(event) => {
+                                                        setFormData((current) => ({ ...current, imageUrl: event.target.value }))
+                                                        setImageError(false)
+                                                    }}
+                                                    placeholder={t('products.form.imageUrlPlaceholder') || 'Image URL or local path'}
+                                                    readOnly={isReadOnly}
+                                                    className="h-12 flex-1 rounded-lg border-border/40 bg-muted/10"
+                                                />
+                                                {!isReadOnly && (
+                                                    <div className="flex gap-2">
+                                                        <Button
+                                                            type="button"
+                                                            variant="outline"
+                                                            onClick={handleImageUpload}
+                                                            className="h-12 gap-2 rounded-lg border-primary/20 px-6 font-bold"
+                                                        >
+                                                            <ImagePlus className="h-4 w-4" />
+                                                            {t('products.form.upload') || 'Upload'}
+                                                        </Button>
+                                                        <Button
+                                                            type="button"
+                                                            variant="outline"
+                                                            aria-label={t('products.form.camera') || 'Camera'}
+                                                            onClick={() => cameraInputRef.current?.click()}
+                                                            className="h-12 gap-2 rounded-lg border-primary/20 px-4 font-bold text-primary sm:px-6"
+                                                        >
+                                                            <Camera className="h-4 w-4" />
+                                                            <span className="hidden sm:inline">{t('products.form.camera') || 'Camera'}</span>
+                                                        </Button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
 
-                                    <input
-                                        ref={cameraInputRef}
-                                        type="file"
-                                        className="hidden"
-                                        accept="image/*"
-                                        capture="environment"
-                                        onChange={handleCameraCapture}
-                                    />
-                                    <input
-                                        ref={imageUploadInputRef}
-                                        type="file"
-                                        className="hidden"
-                                        accept="image/*"
-                                        onChange={handleImageFileInputChange}
-                                    />
+                                        <div className="flex items-start gap-3 rounded-xl border border-border/40 bg-muted/30 p-4">
+                                            <Info className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                                            <p className="text-[11px] font-medium leading-relaxed text-muted-foreground/80">
+                                                {isDesktopShell
+                                                    ? (t('products.form.localPathDesc') || 'Image will be stored locally on this device and synced to other devices in your workspace.')
+                                                    : (t('products.form.webUploadDesc') || 'Image will be securely uploaded and synced via cloud storage.')}
+                                            </p>
+                                        </div>
+
+                                        <input
+                                            ref={cameraInputRef}
+                                            type="file"
+                                            className="hidden"
+                                            accept="image/*"
+                                            capture="environment"
+                                            onChange={handleCameraCapture}
+                                        />
+                                        <input
+                                            ref={imageUploadInputRef}
+                                            type="file"
+                                            className="hidden"
+                                            accept="image/*"
+                                            onChange={handleImageFileInputChange}
+                                        />
+                                    </div>
                                 </div>
                             </div>
-                        </div>
-                    </CardContent>
+                        </CardContent>
 
                     </Card>
                 </div>

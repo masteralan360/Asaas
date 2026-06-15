@@ -95,6 +95,12 @@ function getCommonStorageId(items: Array<{ storageId?: string | null }>, fallbac
     return storageIds.length === 1 ? storageIds[0] : null
 }
 
+const DYNAMIC_UNITS = ['m²', 'Kg']
+
+function isDynamicUnit(unit: string | undefined) {
+    return DYNAMIC_UNITS.includes(unit ?? '')
+}
+
 export function PurchaseOrderFormPage({
     workspaceId,
     onCancel,
@@ -539,7 +545,10 @@ export function PurchaseOrderFormPage({
                                                     </div>
                                                     <div className="space-y-2">
                                                         <Label className="md:hidden">{t('orders.form.table.qty', { defaultValue: 'Qty' })}</Label>
-                                                        <Input type="number" min="1" value={item.quantity} onChange={(event) => updateItem(index, { quantity: event.target.value })} placeholder={t('common.quantity', { defaultValue: 'Quantity' })} />
+                                                        <div className="flex items-center gap-1">
+                                                            <Input type="number" min={isDynamicUnit(product?.unit) ? "0.01" : "1"} step={isDynamicUnit(product?.unit) ? "0.01" : "1"} value={item.quantity} onChange={(event) => updateItem(index, { quantity: event.target.value })} placeholder={t('common.quantity', { defaultValue: 'Quantity' })} />
+                                                            {product?.unit && <span className="text-xs text-muted-foreground shrink-0">{t(`products.units.${product.unit}`, product.unit)}</span>}
+                                                        </div>
                                                     </div>
                                                     <div className="space-y-2">
                                                         <Label className="md:hidden">{t('orders.form.table.price', { defaultValue: 'Unit Price' })}</Label>

@@ -76,6 +76,8 @@ import {
     RefreshCw,
     X,
     Archive,
+    Ruler,
+    Scale,
     ChevronRight,
     ChevronUp,
     ChevronDown,
@@ -98,6 +100,11 @@ import { isOnline } from '@/lib/network'
 import { useWebHaptics } from 'web-haptics/react'
 
 const CART_IMAGE_VISIBILITY_THRESHOLD = 450
+const DYNAMIC_UNITS = ['m²', 'Kg']
+
+function isDynamicUnit(unit: string | undefined) {
+    return DYNAMIC_UNITS.includes(unit ?? '')
+}
 
 function isLoanRegistrationData(value: unknown): value is LoanRegistrationData {
     if (!value || typeof value !== 'object') return false
@@ -325,6 +332,7 @@ export function POS() {
     } | null>(null)
     const [search, setSearch] = useState('')
     const [cart, setCart] = useState<CartItem[]>([])
+    const [dynamicUnitModal, setDynamicUnitModal] = useState<{ type: 'm²' | 'Kg'; itemKey: string } | null>(null)
     const [isSkuModalOpen, setIsSkuModalOpen] = useState(false)
     const [selectedCategory, setSelectedCategory] = useState<string>(() => {
         return localStorage.getItem('pos_selected_category') || 'all'
@@ -1098,6 +1106,23 @@ export function POS() {
             return updatedCart
         })
         hapticTrigger('selection')
+    }
+
+    const setExactQuantity = (itemKey: string, quantity: number) => {
+        if (quantity <= 0) {
+            removeFromCart(itemKey)
+            return
+        }
+        setCart((prev) =>
+            prev.map((item) => {
+                if (getCartItemKey(item) === itemKey) {
+                    const product = findStockProduct(item.product_id, item.storageId)
+                    const maxStock = product?.inventoryQuantity ?? item.max_stock
+                    return { ...item, quantity: Math.min(quantity, maxStock), max_stock: maxStock }
+                }
+                return item
+            })
+        )
     }
 
     const setNegotiatedPrice = (itemKey: string, price: number | undefined) => {
@@ -2058,6 +2083,8 @@ export function POS() {
                                 hasTrulyMissingRates={hasTrulyMissingRates}
                                 hasLoadingRates={hasLoadingRates}
                                 t={t}
+                                setDynamicUnitModal={setDynamicUnitModal}
+                                setExactQuantity={setExactQuantity}
                             />
                         )}
                     </div>
@@ -2401,6 +2428,15 @@ export function POS() {
                                                                     <Pencil className="w-3.5 h-3.5 text-primary" />
                                                                 </button>
                                                             )}
+                                                            {isDynamicUnit(item.unit) && (
+                                                                <button
+                                                                    onClick={() => setDynamicUnitModal({ type: item.unit as 'm²' | 'Kg', itemKey })}
+                                                                    className="transition-opacity p-1 hover:bg-muted rounded bg-muted/30 border border-border/50"
+                                                                    title={item.unit === 'm²' ? (t('pos.adjustM2') || 'Adjust m²') : (t('pos.adjustKg') || 'Adjust Kg')}
+                                                                >
+                                                                    {item.unit === 'm²' ? <Ruler className="w-3.5 h-3.5 text-primary" /> : <Scale className="w-3.5 h-3.5 text-primary" />}
+                                                                </button>
+                                                            )}
                                                         </div>
                                                         {isConverted && !hasNegotiated && (
                                                             <span className={cn(
@@ -2412,35 +2448,64 @@ export function POS() {
                                                         )}
                                                     </div>
                                                     <div className="flex items-center gap-1">
-                                                        <Button
-                                                            variant="outline"
-                                                            size="icon"
-                                                            className="h-6 w-6 rounded-md"
-                                                            onClick={() => updateQuantity(itemKey, -1)}
-                                                        >
-                                                            <Minus className="w-3 h-3" />
-                                                        </Button>
-                                                        <span className="flex flex-col items-center justify-center min-w-[2.5rem] leading-none py-1">
-                                                            <span className="text-sm font-black">{item.quantity}</span>
-                                                            <span className="text-[8px] font-bold opacity-50 uppercase tracking-tighter">{t(`products.units.${item.unit}`)}</span>
-                                                        </span>
-                                                        <Button
-                                                            variant="outline"
-                                                            size="icon"
-                                                            className="h-6 w-6 rounded-md"
-                                                            onClick={() => updateQuantity(itemKey, 1)}
-                                                            disabled={item.quantity >= item.max_stock}
-                                                        >
-                                                            <Plus className="w-3 h-3" />
-                                                        </Button>
-                                                        <Button
-                                                            variant="ghost"
-                                                            size="icon"
-                                                            className="h-7 w-7 rounded-md text-destructive transition-opacity ml-1 bg-destructive/10 border border-destructive/20"
-                                                            onClick={() => removeFromCart(itemKey)}
-                                                        >
-                                                            <Trash2 className="w-3.5 h-3.5" />
-                                                        </Button>
+                                                        {isDynamicUnit(item.unit) ? (
+                                                            <>
+                                                                <div className="flex items-center gap-1 bg-muted/30 rounded-md border border-border/50 px-1.5">
+                                                                    <Input
+                                                                        type="number"
+                                                                        min="0"
+                                                                        step="0.01"
+                                                                        value={item.quantity}
+                                                                        onChange={(e) => {
+                                                                            const val = parseFloat(e.target.value)
+                                                                            if (!isNaN(val) && val >= 0) setExactQuantity(itemKey, val)
+                                                                        }}
+                                                                        className="h-7 w-14 text-xs text-center border-0 bg-transparent p-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                                                    />
+                                                                    <span className="text-[8px] font-bold opacity-50 uppercase tracking-tighter">{t(`products.units.${item.unit}`)}</span>
+                                                                </div>
+                                                                <Button
+                                                                    variant="ghost"
+                                                                    size="icon"
+                                                                    className="h-7 w-7 rounded-md text-destructive transition-opacity ml-1 bg-destructive/10 border border-destructive/20"
+                                                                    onClick={() => removeFromCart(itemKey)}
+                                                                >
+                                                                    <Trash2 className="w-3.5 h-3.5" />
+                                                                </Button>
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                <Button
+                                                                    variant="outline"
+                                                                    size="icon"
+                                                                    className="h-6 w-6 rounded-md"
+                                                                    onClick={() => updateQuantity(itemKey, -1)}
+                                                                >
+                                                                    <Minus className="w-3 h-3" />
+                                                                </Button>
+                                                                <span className="flex flex-col items-center justify-center min-w-[2.5rem] leading-none py-1">
+                                                                    <span className="text-sm font-black">{item.quantity}</span>
+                                                                    <span className="text-[8px] font-bold opacity-50 uppercase tracking-tighter">{t(`products.units.${item.unit}`)}</span>
+                                                                </span>
+                                                                <Button
+                                                                    variant="outline"
+                                                                    size="icon"
+                                                                    className="h-6 w-6 rounded-md"
+                                                                    onClick={() => updateQuantity(itemKey, 1)}
+                                                                    disabled={item.quantity >= item.max_stock}
+                                                                >
+                                                                    <Plus className="w-3 h-3" />
+                                                                </Button>
+                                                                <Button
+                                                                    variant="ghost"
+                                                                    size="icon"
+                                                                    className="h-7 w-7 rounded-md text-destructive transition-opacity ml-1 bg-destructive/10 border border-destructive/20"
+                                                                    onClick={() => removeFromCart(itemKey)}
+                                                                >
+                                                                    <Trash2 className="w-3.5 h-3.5" />
+                                                                </Button>
+                                                            </>
+                                                        )}
                                                     </div>
                                                 </div>
                                             )
@@ -2915,6 +2980,91 @@ export function POS() {
                                         {t('common.save')}
                                     </Button>
                                 </DialogFooter>
+                            </div>
+                        )
+                    })()}
+                </DialogContent>
+            </Dialog>
+
+            {/* Dynamic Unit Slider Modal */}
+            <Dialog open={dynamicUnitModal !== null} onOpenChange={(open) => { if (!open) setDynamicUnitModal(null) }}>
+                <DialogContent className="max-w-sm">
+                    {dynamicUnitModal && (() => {
+                        const item = cart.find((i) => getCartItemKey(i) === dynamicUnitModal.itemKey)
+                        const product = item ? findStockProduct(item.product_id, item.storageId) : undefined
+                        if (!item) return null
+                        const isM2 = dynamicUnitModal.type === 'm²'
+                        const unitLabel = isM2 ? 'm²' : 'Kg'
+                        const effectivePrice = getCartEffectivePrice(item)
+                        const currency = (product?.currency || 'usd') as CurrencyCode
+                        const sliderMax = item.max_stock || 1000
+                        const sliderStep = 0.01
+
+                        return (
+                            <div className="space-y-6 py-4">
+                                <DialogHeader>
+                                    <DialogTitle className="flex items-center gap-2">
+                                        {isM2 ? <Ruler className="w-5 h-5 text-primary" /> : <Scale className="w-5 h-5 text-primary" />}
+                                        {isM2 ? (t('pos.adjustM2') || 'Adjust m²') : (t('pos.adjustKg') || 'Adjust Kg')}
+                                    </DialogTitle>
+                                </DialogHeader>
+
+                                <div className="text-sm font-medium text-center p-3 bg-muted/30 rounded-lg">
+                                    {item.name}
+                                </div>
+
+                                <div className="space-y-4">
+                                    <div className="text-center">
+                                        <span className="text-4xl font-black text-primary">{item.quantity}</span>
+                                        <span className="text-lg font-bold text-muted-foreground ml-1">{unitLabel}</span>
+                                    </div>
+
+                                    <div className="px-1">
+                                        <input
+                                            type="range"
+                                            min="0.01"
+                                            max={sliderMax}
+                                            step={sliderStep}
+                                            value={Math.min(item.quantity, sliderMax)}
+                                            onChange={(e) => {
+                                                const val = parseFloat(e.target.value)
+                                                if (!isNaN(val)) setExactQuantity(dynamicUnitModal.itemKey, val)
+                                            }}
+                                            className="w-full h-2 bg-muted rounded-full appearance-none cursor-pointer accent-primary [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary [&::-webkit-slider-thumb]:shadow-md [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-background"
+                                        />
+                                    </div>
+
+                                    <div className="flex items-center justify-between text-xs text-muted-foreground">
+                                        <span>0.01 {unitLabel}</span>
+                                        <span>{sliderMax} {unitLabel}</span>
+                                    </div>
+
+                                    <div className="text-center p-4 bg-primary/5 rounded-xl border border-primary/10">
+                                        <div className="text-xs text-muted-foreground mb-1">{t('pos.total') || 'Total'}</div>
+                                        <div className="text-2xl font-black text-primary">
+                                            {formatCurrency(effectivePrice * item.quantity, currency, features.iqd_display_preference)}
+                                        </div>
+                                        <div className="text-xs text-muted-foreground mt-1">
+                                            {formatCurrency(effectivePrice, currency, features.iqd_display_preference)} / {unitLabel}
+                                        </div>
+                                    </div>
+
+                                    <div className="flex items-center gap-2 bg-muted/30 rounded-lg p-2">
+                                        <span className="text-xs text-muted-foreground">{t('pos.quantity') || 'Quantity'}:</span>
+                                        <Input
+                                            type="number"
+                                            min="0.01"
+                                            step="0.01"
+                                            value={item.quantity}
+                                            onChange={(e) => {
+                                                const val = parseFloat(e.target.value)
+                                                if (!isNaN(val) && val >= 0) setExactQuantity(dynamicUnitModal.itemKey, val)
+                                            }}
+                                            className="h-8 w-20 text-xs text-center"
+                                        />
+                                        <span className="text-xs font-bold opacity-50 uppercase">{unitLabel}</span>
+                                    </div>
+                                </div>
                             </div>
                         )
                     })()}
@@ -3532,6 +3682,8 @@ interface MobileCartProps {
     hasTrulyMissingRates: boolean
     hasLoadingRates: boolean
     t: any
+    setDynamicUnitModal: (modal: { type: 'm²' | 'Kg'; itemKey: string } | null) => void
+    setExactQuantity: (itemKey: string, quantity: number) => void
 }
 
 function MobileCart({
@@ -3541,7 +3693,8 @@ function MobileCart({
     getDisplayImageUrl, products, convertPrice, openPriceEdit,
     clearNegotiatedPrice, isAdmin,
     discountValue, setDiscountValue, discountType, setDiscountType,
-    hasTrulyMissingRates, hasLoadingRates, t
+    hasTrulyMissingRates, hasLoadingRates, t,
+    setDynamicUnitModal, setExactQuantity
 }: MobileCartProps) {
     const [isExpanded, setIsExpanded] = useState(false)
     const [isDragging, setIsDragging] = useState(false)
@@ -3685,6 +3838,15 @@ function MobileCart({
                                                             <Pencil className="w-3.5 h-3.5" />
                                                         </button>
                                                     )}
+                                                    {isDynamicUnit(item.unit) && (
+                                                        <button
+                                                            onClick={() => setDynamicUnitModal({ type: item.unit as 'm²' | 'Kg', itemKey })}
+                                                            className="p-1.5 rounded-lg bg-primary/10 text-primary border border-primary/20 transition-colors"
+                                                            title={item.unit === 'm²' ? (t('pos.adjustM2') || 'Adjust m²') : (t('pos.adjustKg') || 'Adjust Kg')}
+                                                        >
+                                                            {item.unit === 'm²' ? <Ruler className="w-3.5 h-3.5" /> : <Scale className="w-3.5 h-3.5" />}
+                                                        </button>
+                                                    )}
                                                 </div>
                                             </div>
 
@@ -3724,18 +3886,35 @@ function MobileCart({
                                     </div>
 
                                     <div className="flex justify-end mt-2">
-                                        <div className="flex items-center gap-3 bg-muted/50 rounded-xl p-0.5 border border-border/50 h-fit">
-                                            <button onClick={() => updateQuantity(itemKey, -1)} className="p-1.5 hover:bg-background rounded-lg transition-colors">
-                                                <Minus className="w-3 h-3" />
-                                            </button>
-                                            <span className="flex flex-col items-center justify-center min-w-[2.5rem] leading-none py-1">
-                                                <span className="text-sm font-black">{item.quantity}</span>
-                                                <span className="text-[8px] font-bold opacity-50 uppercase tracking-tighter">{t(`products.units.${item.unit}`)}</span>
-                                            </span>
-                                            <button onClick={() => updateQuantity(itemKey, 1)} className="p-1.5 hover:bg-background rounded-lg transition-colors text-primary">
-                                                <Plus className="w-3 h-3" />
-                                            </button>
-                                        </div>
+                                        {isDynamicUnit(item.unit) ? (
+                                            <div className="flex items-center gap-2 bg-muted/50 rounded-xl p-1.5 border border-border/50">
+                                                <Input
+                                                    type="number"
+                                                    min="0"
+                                                    step="0.01"
+                                                    value={item.quantity}
+                                                    onChange={(e) => {
+                                                        const val = parseFloat(e.target.value)
+                                                        if (!isNaN(val) && val >= 0) setExactQuantity(itemKey, val)
+                                                    }}
+                                                    className="h-8 w-16 text-xs text-center rounded-lg border-border/50 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                                />
+                                                <span className="text-[10px] font-bold opacity-50 uppercase tracking-tighter pr-1">{t(`products.units.${item.unit}`)}</span>
+                                            </div>
+                                        ) : (
+                                            <div className="flex items-center gap-3 bg-muted/50 rounded-xl p-0.5 border border-border/50 h-fit">
+                                                <button onClick={() => updateQuantity(itemKey, -1)} className="p-1.5 hover:bg-background rounded-lg transition-colors">
+                                                    <Minus className="w-3 h-3" />
+                                                </button>
+                                                <span className="flex flex-col items-center justify-center min-w-[2.5rem] leading-none py-1">
+                                                    <span className="text-sm font-black">{item.quantity}</span>
+                                                    <span className="text-[8px] font-bold opacity-50 uppercase tracking-tighter">{t(`products.units.${item.unit}`)}</span>
+                                                </span>
+                                                <button onClick={() => updateQuantity(itemKey, 1)} className="p-1.5 hover:bg-background rounded-lg transition-colors text-primary">
+                                                    <Plus className="w-3 h-3" />
+                                                </button>
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             </div>

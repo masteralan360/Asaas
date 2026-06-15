@@ -98,7 +98,8 @@ export async function setHourDisplayPreference(preference: HourDisplayPreference
 export function formatCurrency(
     amount: number,
     currency: string = 'usd',
-    iqdPreference: 'IQD' | 'د.ع' = 'IQD'
+    iqdPreference: 'IQD' | 'د.ع' = 'IQD',
+    fractionDigits?: number
 ): string {
     const code = currency.toLowerCase()
 
@@ -110,10 +111,15 @@ export function formatCurrency(
         return iqdPreference === 'IQD' ? `${formatted} IQD` : `${formatted} د.ع`
     }
 
+    const maxDigits = fractionDigits ?? 4
+    const minDigits = Math.min(2, maxDigits)
+
     if (code === 'eur') {
         return new Intl.NumberFormat('de-DE', {
             style: 'currency',
             currency: 'EUR',
+            minimumFractionDigits: minDigits,
+            maximumFractionDigits: maxDigits,
         }).format(amount)
     }
 
@@ -121,6 +127,8 @@ export function formatCurrency(
         return new Intl.NumberFormat('tr-TR', {
             style: 'currency',
             currency: 'TRY',
+            minimumFractionDigits: minDigits,
+            maximumFractionDigits: maxDigits,
         }).format(amount)
     }
 
@@ -128,6 +136,8 @@ export function formatCurrency(
     return new Intl.NumberFormat('en-US', {
         style: 'currency',
         currency: 'USD',
+        minimumFractionDigits: minDigits,
+        maximumFractionDigits: maxDigits,
     }).format(amount)
 }
 

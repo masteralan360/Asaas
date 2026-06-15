@@ -74,6 +74,12 @@ function roundFormAmount(value: number, currency: CurrencyCode) {
     return Math.round(value * 100) / 100
 }
 
+const DYNAMIC_UNITS = ['m²', 'Kg']
+
+function isDynamicUnit(unit: string | undefined) {
+    return DYNAMIC_UNITS.includes(unit ?? '')
+}
+
 function getCommonStorageId(items: Array<{ storageId?: string | null }>, fallbackStorageId = '') {
     const storageIds = Array.from(new Set(items.map((item) => item.storageId || fallbackStorageId).filter(Boolean)))
     return storageIds.length === 1 ? storageIds[0] : null
@@ -507,7 +513,10 @@ export function SalesOrderFormPage({
                                                     </div>
                                                     <div className="space-y-2">
                                                         <Label className="md:hidden">{t('orders.form.table.qty', { defaultValue: 'Qty' })}</Label>
-                                                        <Input type="number" min="1" value={item.quantity} onChange={(event) => updateItem(index, { quantity: event.target.value })} placeholder={t('common.quantity', { defaultValue: 'Quantity' })} />
+                                                        <div className="flex items-center gap-1">
+                                                            <Input type="number" min={isDynamicUnit(product?.unit) ? "0.01" : "1"} step={isDynamicUnit(product?.unit) ? "0.01" : "1"} value={item.quantity} onChange={(event) => updateItem(index, { quantity: event.target.value })} placeholder={t('common.quantity', { defaultValue: 'Quantity' })} />
+                                                            {product?.unit && <span className="text-xs text-muted-foreground shrink-0">{t(`products.units.${product.unit}`, product.unit)}</span>}
+                                                        </div>
                                                     </div>
                                                     <div className="space-y-2">
                                                         <Label className="md:hidden">{t('orders.form.table.price', { defaultValue: 'Unit Price' })}</Label>

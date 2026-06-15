@@ -1049,7 +1049,8 @@ async function receiveInventoryForPurchaseOrder(order: PurchaseOrder) {
             throw new Error(`Select a target storage for ${item.productName}`)
         }
 
-        if (!Number.isInteger(receivedQuantity) || receivedQuantity <= 0) {
+        const isDynamic = product.unit === 'm²' || product.unit === 'Kg'
+        if ((!isDynamic && !Number.isInteger(receivedQuantity)) || receivedQuantity <= 0) {
             throw new Error(`Received quantity must be greater than zero for ${item.productName}`)
         }
         if (!Number.isFinite(actualUnitCost) || actualUnitCost < 0) {

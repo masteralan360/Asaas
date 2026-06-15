@@ -781,7 +781,9 @@
       "gram": "gram",
       "liter": "liter",
       "box": "box",
-      "pack": "pack"
+      "pack": "pack",
+      "m²": "m²",
+      "Kg": "Kg"
     },
     "view": {
       "table": "Product Details",
