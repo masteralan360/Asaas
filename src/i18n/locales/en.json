@@ -971,6 +971,10 @@
       "orders": "Orders",
       "totalSpent": "Total Spent"
     },
+    "details": {
+      "paid": "Paid",
+      "settled": "settled"
+    },
     "form": {
       "title": "Customer Details",
       "name": "Full Name",
@@ -994,6 +998,7 @@
   },
   "businessPartners": {
     "title": "Business Partners",
+    "overview": "Overview",
     "subtitle": "Manage shared customer and supplier profiles in one place.",
     "addPartner": "Add Business Partner",
     "editPartner": "Edit Business Partner",
@@ -1032,6 +1037,8 @@
     "financialSummary": "Financial Summary",
     "remainingReceivableLoans": "Remaining Receivable Loans",
     "remainingPayableLoans": "Remaining Payable Loans",
+    "loanPaymentsReceived": "Loan payments received",
+    "loanPaymentsMade": "Loan payments made",
     "loanPaymentsReceivedInPeriod": "Loan Payment Received By Us in ({{period}})",
     "loanPaymentsMadeInPeriod": "Loan Payment Made to the Partner in ({{period}})",
     "fromDateToDate": "from {{start}} to {{end}}",
@@ -1045,9 +1052,25 @@
     "cashFlow": "Cash Flow",
     "notes": "Notes",
     "moreActivities": "+{{count}} additional activities",
+    "theyOweUs": "They Owe Us",
+    "weOweThem": "We Owe Them",
     "form": {
       "role": "Role",
       "contactName": "Contact Name"
+    },
+    "agent": {
+      "zone": "Operational Territory",
+      "type": "Agent Type",
+      "carModel": "Car Model",
+      "plateNumber": "Plate Number",
+      "linkedUser": "Linked User",
+      "status": "Status",
+      "image": "Profile Picture",
+      "statuses": {
+        "active": "Active",
+        "inactive": "Inactive",
+        "blocked": "Blocked"
+      }
     },
     "roles": {
       "both": "Both",
@@ -1059,6 +1082,37 @@
       "updateSuccess": "Business partner updated successfully",
       "deleteSuccess": "Business partner deleted successfully",
       "mergeSuccess": "Business partners merged successfully"
+    }
+  },
+  "agents": {
+    "title": "Agents",
+    "subtitle": "Manage drivers and field agents, territories, vehicles, and linked workspace users.",
+    "createAgent": "Add Agent",
+    "editAgent": "Edit Agent",
+    "searchPlaceholder": "Search agents, zones, vehicles, or users...",
+    "directory": "Agent Directory",
+    "total": "Total Agents",
+    "active": "Active",
+    "drivers": "Drivers",
+    "blocked": "Blocked",
+    "empty": "No agents found.",
+    "agent": "Agent",
+    "vehicle": "Vehicle",
+    "zone": "Zone",
+    "type": "Type",
+    "status": "Status",
+    "actions": "Actions",
+    "viewProfile": "View Profile",
+    "edit": "Edit",
+    "delete": "Delete",
+    "deleteTitle": "Delete Agent",
+    "deleteWarning": "Agents with transaction history cannot be deleted.",
+    "messages": {
+      "createSuccess": "Agent created successfully",
+      "updateSuccess": "Agent updated successfully",
+      "deleteSuccess": "Agent deleted successfully",
+      "saveFailed": "Failed to save agent",
+      "deleteFailed": "Failed to delete agent"
     }
   },
   "uploadFile": {
@@ -1269,6 +1323,9 @@
     "viewSummary": "Ledger View Summary",
     "activeEntries": "active entries",
     "summaryDescription": "Use the page date range with the general filter modal to refine direction, type, module, party, method, amount range, and sorting.",
+    "incoming": "Incoming",
+    "outgoing": "Outgoing",
+    "netFlow": "Net Flow",
     "badges": {
       "postedOnly": "Posted movements only",
       "noManual": "No manual entries",
