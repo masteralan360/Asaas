@@ -2855,6 +2855,8 @@
     "moreActivities": "+{{count}} أنشطة إضافية",
     "theyOweUs": "هم مدينون لنا",
     "weOweThem": "نحن مدينون لهم",
+    "providedByYou": "قدمته أنت",
+    "providedByPartner": "قدمه الشريك",
     "form": {
       "role": "الدور",
       "contactName": "اسم جهة الاتصال"
@@ -2874,7 +2876,7 @@
       }
     },
     "roles": {
-      "both": "كلاهما",
+      "both": "مشتري و بائع",
       "buyer": "المشتري",
       "seller": "البائع"
     },

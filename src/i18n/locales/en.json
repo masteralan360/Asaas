@@ -1054,6 +1054,10 @@
     "moreActivities": "+{{count}} additional activities",
     "theyOweUs": "They Owe Us",
     "weOweThem": "We Owe Them",
+    "providedByYou": "Provided by you",
+    "providedByPartner": "Provided by partner",
+    "moneyIn": "Money In",
+    "moneyOut": "Money Out",
     "form": {
       "role": "Role",
       "contactName": "Contact Name"
