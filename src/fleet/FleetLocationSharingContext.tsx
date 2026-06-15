@@ -104,13 +104,6 @@ function getDeviceLabel() {
   return navigator.userAgent.slice(0, 250);
 }
 
-function isRunningAsPwa(): boolean {
-  return (
-    typeof window !== "undefined" &&
-    window.matchMedia("(display-mode: standalone)").matches
-  );
-}
-
 function isTouchDevice(): boolean {
   return (
     typeof navigator !== "undefined" &&
@@ -128,7 +121,7 @@ function isWakeLockSupported(): boolean {
 }
 
 function shouldPreventScreenTimeout(): boolean {
-  return isRunningAsPwa() && isTouchDevice() && isWakeLockSupported();
+  return isTouchDevice() && isWakeLockSupported();
 }
 
 function getSupabaseErrorDetails(error: unknown) {
