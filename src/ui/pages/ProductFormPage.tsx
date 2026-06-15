@@ -83,6 +83,10 @@ import {
 } from '@/ui/components'
 
 const UNITS = ['pcs', 'kg', 'gram', 'liter', 'box', 'pack', 'm²', 'Kg']
+const DYNAMIC_UNITS = new Set(['m²', 'Kg'])
+function isDynamicUnit(unit: string): boolean {
+    return DYNAMIC_UNITS.has(unit)
+}
 type ProductScannerTarget = 'none' | 'sku' | 'barcode'
 
 const PRODUCT_SCANNER_TARGET_KEY = 'products_scanner_target'
@@ -103,6 +107,7 @@ type ProductFormData = {
     quantity: number | ''
     minStockLevel: number | ''
     unit: string
+    perQuantity: string
     currency: CurrencyCode
     imageUrl: string
     canBeReturned: boolean
@@ -120,6 +125,7 @@ const emptyProductFormData: ProductFormData = {
     quantity: '',
     minStockLevel: 10,
     unit: 'pcs',
+    perQuantity: '1',
     currency: 'usd',
     imageUrl: '',
     canBeReturned: true,
@@ -200,6 +206,7 @@ function mapProductToFormData(product: Product): ProductFormData {
         quantity: product.quantity,
         minStockLevel: product.minStockLevel,
         unit: product.unit,
+        perQuantity: '1',
         currency: product.currency,
         imageUrl: product.imageUrl || '',
         canBeReturned: product.canBeReturned ?? true,
@@ -620,14 +627,19 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                 ? storages.find((storage) => storage.id === formData.storageId)?.name
                 : null
 
+            const { perQuantity: _perQuantity, ...formDataToSave } = formData
             const dataToSave = {
-                ...formData,
+                ...formDataToSave,
                 category: categoryName || null,
                 storageName: storageName || undefined,
                 categoryId: formData.categoryId || null,
                 storageId: formData.storageId || null,
-                price: Number(formData.price) || 0,
-                costPrice: Number(formData.costPrice) || 0,
+                price: isDynamicUnit(formData.unit)
+                    ? (Number(formData.price) || 0) / (Number(formData.perQuantity) || 1)
+                    : Number(formData.price) || 0,
+                costPrice: isDynamicUnit(formData.unit)
+                    ? (Number(formData.costPrice) || 0) / (Number(formData.perQuantity) || 1)
+                    : Number(formData.costPrice) || 0,
                 quantity: Number(formData.quantity) || 0,
                 minStockLevel: Number(formData.minStockLevel) || 0,
                 createdBy: user?.id || null
@@ -693,9 +705,16 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
     const quantityValue = Number(formData.quantity) || 0
     const minStockValue = Number(formData.minStockLevel) || 0
     const lowStock = quantityValue <= minStockValue
-    const pricePreview = formatCurrency(Number(formData.price) || 0, formData.currency, features.iqd_display_preference)
-    const costPreview = formatCurrency(Number(formData.costPrice) || 0, formData.currency, features.iqd_display_preference)
-    const marginValue = (Number(formData.price) || 0) - (Number(formData.costPrice) || 0)
+    const perQty = Number(formData.perQuantity) || 1
+    const effectivePrice = isDynamicUnit(formData.unit)
+        ? (Number(formData.price) || 0) / perQty
+        : Number(formData.price) || 0
+    const effectiveCost = isDynamicUnit(formData.unit)
+        ? (Number(formData.costPrice) || 0) / perQty
+        : Number(formData.costPrice) || 0
+    const pricePreview = formatCurrency(effectivePrice, formData.currency, features.iqd_display_preference)
+    const costPreview = formatCurrency(effectiveCost, formData.currency, features.iqd_display_preference)
+    const marginValue = effectivePrice - effectiveCost
     const marginPreview = formatCurrency(marginValue, formData.currency, features.iqd_display_preference)
     const selectedCategoryLabel = formData.categoryId
         ? categories.find((category) => category.id === formData.categoryId)?.name || (t('categories.noCategory') || 'No category')
@@ -1224,28 +1243,68 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                                             <DollarSign className="h-4 w-4 text-primary/60" />
                                             {t('products.table.price')}
                                         </Label>
-                                        <div className="relative">
-                                            <Input
-                                                id="product-price"
-                                                type="text"
-                                                inputMode="decimal"
-                                                value={formatNumericInput(formData.price)}
-                                                onChange={(event) => setFormData((current) => {
-                                                    const raw = sanitizeNumericInput(event.target.value, { maxFractionDigits: 4 })
-                                                    return {
-                                                        ...current,
-                                                        price: raw
-                                                    }
-                                                })}
-                                                placeholder="0.000"
-                                                readOnly={isReadOnly}
-                                                required
-                                                className="h-12 rounded-lg border-border/40 bg-background/50 pr-16 text-lg font-black text-primary"
-                                            />
-                                            <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold uppercase tracking-wider text-muted-foreground/60">
-                                                {getCurrencySymbol(formData.currency, features.iqd_display_preference)}
-                                            </span>
-                                        </div>
+                                        {isDynamicUnit(formData.unit) ? (
+                                            <div className="flex items-start gap-1.5">
+                                                <div className="relative flex-[2] min-w-0">
+                                                    <Input
+                                                        id="product-price"
+                                                        type="text"
+                                                        inputMode="decimal"
+                                                        value={formatNumericInput(formData.price)}
+                                                        onChange={(event) => setFormData((current) => {
+                                                            const raw = sanitizeNumericInput(event.target.value, { maxFractionDigits: 4 })
+                                                            return { ...current, price: raw }
+                                                        })}
+                                                        placeholder="0"
+                                                        readOnly={isReadOnly}
+                                                        required
+                                                        className="h-12 rounded-lg border-border/40 bg-background/50 pr-3 text-lg font-black text-primary"
+                                                    />
+                                                </div>
+                                                <div className="flex items-center gap-1.5 pt-3 shrink-0">
+                                                    <span className="text-[11px] font-medium text-muted-foreground whitespace-nowrap">{t('products.form.per') || 'per'}</span>
+                                                    <Input
+                                                        id="product-per-quantity"
+                                                        type="text"
+                                                        inputMode="decimal"
+                                                        value={formData.perQuantity}
+                                                        onChange={(event) => {
+                                                            const val = event.target.value
+                                                            if (/^\d*\.?\d*$/.test(val) || val === '') {
+                                                                setFormData((current) => ({ ...current, perQuantity: val }))
+                                                            }
+                                                        }}
+                                                        className="h-9 w-24 rounded-lg border-border/40 text-center text-sm font-medium tabular-nums"
+                                                        placeholder="1"
+                                                        readOnly={isReadOnly}
+                                                    />
+                                                    <span className="text-xs font-bold text-muted-foreground">{unitLabel}</span>
+                                                    <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/40 ml-0.5">
+                                                        {getCurrencySymbol(formData.currency, features.iqd_display_preference)}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <div className="relative">
+                                                <Input
+                                                    id="product-price"
+                                                    type="text"
+                                                    inputMode="decimal"
+                                                    value={formatNumericInput(formData.price)}
+                                                    onChange={(event) => setFormData((current) => {
+                                                        const raw = sanitizeNumericInput(event.target.value, { maxFractionDigits: 4 })
+                                                        return { ...current, price: raw }
+                                                    })}
+                                                    placeholder="0.000"
+                                                    readOnly={isReadOnly}
+                                                    required
+                                                    className="h-12 rounded-lg border-border/40 bg-background/50 pr-16 text-lg font-black text-primary"
+                                                />
+                                                <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold uppercase tracking-wider text-muted-foreground/60">
+                                                    {getCurrencySymbol(formData.currency, features.iqd_display_preference)}
+                                                </span>
+                                            </div>
+                                        )}
                                     </div>
                                     <div className="space-y-2">
                                         <CurrencySelector
@@ -1277,9 +1336,15 @@ function ProductEditor({ mode, productId }: { mode: ProductFormMode; productId?:
                                                 placeholder="0.000"
                                                 readOnly={isReadOnly}
                                                 required
-                                                className="h-12 rounded-lg border-border/40 bg-background/50 pr-16 font-bold"
+                                                className={cn(
+                                                    "h-12 rounded-lg border-border/40 bg-background/50 font-bold",
+                                                    isDynamicUnit(formData.unit) ? "pr-8" : "pr-16"
+                                                )}
                                             />
-                                            <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold uppercase tracking-wider text-muted-foreground/60">
+                                            <span className={cn(
+                                                "pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 font-bold uppercase tracking-wider text-muted-foreground/60",
+                                                isDynamicUnit(formData.unit) ? "text-[10px]" : "text-xs"
+                                            )}>
                                                 {getCurrencySymbol(formData.currency, features.iqd_display_preference)}
                                             </span>
                                         </div>

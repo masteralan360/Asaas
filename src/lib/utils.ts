@@ -103,22 +103,21 @@ export function formatCurrency(
 ): string {
     const code = currency.toLowerCase()
 
+    const maxDigits = fractionDigits ?? 4
+
     if (code === 'iqd') {
         const formatted = new Intl.NumberFormat('en-US', {
-            maximumFractionDigits: 0,
+            maximumFractionDigits: maxDigits,
             minimumFractionDigits: 0
         }).format(amount)
         return iqdPreference === 'IQD' ? `${formatted} IQD` : `${formatted} د.ع`
     }
 
-    const maxDigits = fractionDigits ?? 4
-    const minDigits = Math.min(2, maxDigits)
-
     if (code === 'eur') {
         return new Intl.NumberFormat('de-DE', {
             style: 'currency',
             currency: 'EUR',
-            minimumFractionDigits: minDigits,
+            minimumFractionDigits: Math.min(2, maxDigits),
             maximumFractionDigits: maxDigits,
         }).format(amount)
     }
@@ -127,7 +126,7 @@ export function formatCurrency(
         return new Intl.NumberFormat('tr-TR', {
             style: 'currency',
             currency: 'TRY',
-            minimumFractionDigits: minDigits,
+            minimumFractionDigits: 0,
             maximumFractionDigits: maxDigits,
         }).format(amount)
     }
@@ -136,7 +135,7 @@ export function formatCurrency(
     return new Intl.NumberFormat('en-US', {
         style: 'currency',
         currency: 'USD',
-        minimumFractionDigits: minDigits,
+        minimumFractionDigits: 0,
         maximumFractionDigits: maxDigits,
     }).format(amount)
 }

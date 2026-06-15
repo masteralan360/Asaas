@@ -85,8 +85,7 @@ function createEmptyItem(storageId = ''): FormItem {
     }
 }
 
-function roundFormAmount(value: number, currency: CurrencyCode) {
-    if (currency === 'iqd') return Math.round(value)
+function roundFormAmount(value: number) {
     return Math.round(value * 100) / 100
 }
 
@@ -188,7 +187,7 @@ export function PurchaseOrderFormPage({
     const preview = useMemo(() => {
         const subtotal = items.reduce((sum, item) => sum + ((Number(item.quantity) || 0) * (Number(item.unitPrice) || 0)), 0)
         const total = subtotal - Number(discount || 0)
-        return roundFormAmount(total, currency)
+        return roundFormAmount(total)
     }, [currency, discount, items])
 
     const configuredItemsCount = useMemo(
@@ -198,7 +197,7 @@ export function PurchaseOrderFormPage({
 
     const selectedStorageName = getStorageDisplayName(destinationStorageId)
 
-    const initialPayment = roundFormAmount(Math.max(0, Number(initialPaymentAmount || 0)), currency)
+    const initialPayment = roundFormAmount(Math.max(0, Number(initialPaymentAmount || 0)))
     const hasInitialPayment = isInstallmentBased && initialPayment > 0
     const canSubmit = Boolean(selectedSupplier) &&
         items.some((item) => item.productId && Number(item.quantity) > 0) &&
@@ -280,10 +279,10 @@ export function PurchaseOrderFormPage({
                         productName: product.name,
                         productSku: product.sku,
                         quantity,
-                        lineTotal: roundFormAmount(quantity * unitPrice, currency),
+                        lineTotal: roundFormAmount(quantity * unitPrice),
                         originalCurrency: product.currency,
                         originalUnitPrice: convertCurrencyAmountWithLiveRates(unitPrice, currency, product.currency, liveRates),
-                        convertedUnitPrice: roundFormAmount(unitPrice, currency),
+                        convertedUnitPrice: roundFormAmount(unitPrice),
                         settlementCurrency: currency,
                         batchNumber: item.batchNumber.trim() || null,
                         batchSalePrice,
@@ -299,11 +298,11 @@ export function PurchaseOrderFormPage({
             const snapshot = hasMultiCurrency ? buildOrderExchangeRatesSnapshot(liveRates) : []
             const primaryRate = hasMultiCurrency ? getPrimaryExchangeDetails(currency, features.default_currency, snapshot) : null
             const commonStorageId = getCommonStorageId(orderItems)
-            const subtotal = roundFormAmount(orderItems.reduce((sum, item) => sum + item.lineTotal, 0), currency)
-            const discountNum = roundFormAmount(Number(discount || 0), currency)
-            const total = roundFormAmount(subtotal - discountNum, currency)
+            const subtotal = roundFormAmount(orderItems.reduce((sum, item) => sum + item.lineTotal, 0))
+            const discountNum = roundFormAmount(Number(discount || 0))
+            const total = roundFormAmount(subtotal - discountNum)
             const paidAmount = isPaid ? total : isInstallmentBased ? initialPayment : 0
-            const balanceAmount = roundFormAmount(Math.max(total - paidAmount, 0), currency)
+            const balanceAmount = roundFormAmount(Math.max(total - paidAmount, 0))
 
             const payload = {
                 businessPartnerId: supplier.id,
@@ -495,7 +494,7 @@ export function PurchaseOrderFormPage({
                                     <CardContent className="space-y-3">
                                         {items.map((item, index) => {
                                             const product = products.find((entry) => entry.id === item.productId)
-                                            const lineTotal = roundFormAmount((Number(item.quantity) || 0) * (Number(item.unitPrice) || 0), currency)
+                                            const lineTotal = roundFormAmount((Number(item.quantity) || 0) * (Number(item.unitPrice) || 0))
                                             const createsBatch = product
                                                 ? shouldCreatePurchaseCostBatch(
                                                     convertCurrencyAmountWithLiveRates(

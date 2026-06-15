@@ -333,6 +333,7 @@ export function POS() {
     const [search, setSearch] = useState('')
     const [cart, setCart] = useState<CartItem[]>([])
     const [dynamicUnitModal, setDynamicUnitModal] = useState<{ type: 'm²' | 'Kg'; itemKey: string } | null>(null)
+    const [dynamicInputBuffer, setDynamicInputBuffer] = useState<Record<string, string>>({})
     const [isSkuModalOpen, setIsSkuModalOpen] = useState(false)
     const [selectedCategory, setSelectedCategory] = useState<string>(() => {
         return localStorage.getItem('pos_selected_category') || 'all'
@@ -2450,18 +2451,25 @@ export function POS() {
                                                     <div className="flex items-center gap-1">
                                                         {isDynamicUnit(item.unit) ? (
                                                             <>
-                                                                <div className="flex items-center gap-1 bg-muted/30 rounded-md border border-border/50 px-1.5">
-                                                                    <Input
-                                                                        type="number"
-                                                                        min="0"
-                                                                        step="0.01"
-                                                                        value={item.quantity}
-                                                                        onChange={(e) => {
-                                                                            const val = parseFloat(e.target.value)
-                                                                            if (!isNaN(val) && val >= 0) setExactQuantity(itemKey, val)
-                                                                        }}
-                                                                        className="h-7 w-14 text-xs text-center border-0 bg-transparent p-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                                                                    />
+                                                    <div className="flex items-center gap-1 bg-muted/30 rounded-md border border-border/50 px-1.5">
+                                                                        <Input
+                                                                            type="text"
+                                                                            inputMode="decimal"
+                                                                            value={dynamicInputBuffer[itemKey] ?? String(item.quantity)}
+                                                                            onChange={(e) => {
+                                                                                const raw = e.target.value
+                                                                                setDynamicInputBuffer((prev) => ({ ...prev, [itemKey]: raw }))
+                                                                                const parsed = parseFloat(raw)
+                                                                                if (!isNaN(parsed) && parsed >= 0) {
+                                                                                    setExactQuantity(itemKey, parsed)
+                                                                                }
+                                                                            }}
+                                                                            onBlur={() => setDynamicInputBuffer((prev) => {
+                                                                                const { [itemKey]: _, ...rest } = prev
+                                                                                return rest
+                                                                            })}
+                                                                            className="h-7 w-14 text-xs text-center border-0 bg-transparent p-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                                                        />
                                                                     <span className="text-[8px] font-bold opacity-50 uppercase tracking-tighter">{t(`products.units.${item.unit}`)}</span>
                                                                 </div>
                                                                 <Button
@@ -3052,14 +3060,21 @@ export function POS() {
                                     <div className="flex items-center gap-2 bg-muted/30 rounded-lg p-2">
                                         <span className="text-xs text-muted-foreground">{t('pos.quantity') || 'Quantity'}:</span>
                                         <Input
-                                            type="number"
-                                            min="0.01"
-                                            step="0.01"
-                                            value={item.quantity}
+                                            type="text"
+                                            inputMode="decimal"
+                                            value={dynamicInputBuffer[dynamicUnitModal.itemKey] ?? String(item.quantity)}
                                             onChange={(e) => {
-                                                const val = parseFloat(e.target.value)
-                                                if (!isNaN(val) && val >= 0) setExactQuantity(dynamicUnitModal.itemKey, val)
+                                                const raw = e.target.value
+                                                setDynamicInputBuffer((prev) => ({ ...prev, [dynamicUnitModal.itemKey]: raw }))
+                                                const parsed = parseFloat(raw)
+                                                if (!isNaN(parsed) && parsed >= 0) {
+                                                    setExactQuantity(dynamicUnitModal.itemKey, parsed)
+                                                }
                                             }}
+                                            onBlur={() => setDynamicInputBuffer((prev) => {
+                                                const { [dynamicUnitModal.itemKey]: _, ...rest } = prev
+                                                return rest
+                                            })}
                                             className="h-8 w-20 text-xs text-center"
                                         />
                                         <span className="text-xs font-bold opacity-50 uppercase">{unitLabel}</span>
@@ -3700,6 +3715,7 @@ function MobileCart({
     const [isDragging, setIsDragging] = useState(false)
     const [startY, setStartY] = useState<number | null>(null)
     const [currentY, setCurrentY] = useState(0)
+    const [mobileInputBuffer, setMobileInputBuffer] = useState<Record<string, string>>({})
     const panelRef = useRef<HTMLDivElement>(null)
     const scrollContainerRef = useRef<HTMLDivElement>(null)
     const [canScrollUp, setCanScrollUp] = useState(false)
@@ -3889,14 +3905,21 @@ function MobileCart({
                                         {isDynamicUnit(item.unit) ? (
                                             <div className="flex items-center gap-2 bg-muted/50 rounded-xl p-1.5 border border-border/50">
                                                 <Input
-                                                    type="number"
-                                                    min="0"
-                                                    step="0.01"
-                                                    value={item.quantity}
+                                                    type="text"
+                                                    inputMode="decimal"
+                                                    value={mobileInputBuffer[itemKey] ?? String(item.quantity)}
                                                     onChange={(e) => {
-                                                        const val = parseFloat(e.target.value)
-                                                        if (!isNaN(val) && val >= 0) setExactQuantity(itemKey, val)
+                                                        const raw = e.target.value
+                                                        setMobileInputBuffer((prev) => ({ ...prev, [itemKey]: raw }))
+                                                        const parsed = parseFloat(raw)
+                                                        if (!isNaN(parsed) && parsed >= 0) {
+                                                            setExactQuantity(itemKey, parsed)
+                                                        }
                                                     }}
+                                                    onBlur={() => setMobileInputBuffer((prev) => {
+                                                        const { [itemKey]: _, ...rest } = prev
+                                                        return rest
+                                                    })}
                                                     className="h-8 w-16 text-xs text-center rounded-lg border-border/50 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                                                 />
                                                 <span className="text-[10px] font-bold opacity-50 uppercase tracking-tighter pr-1">{t(`products.units.${item.unit}`)}</span>

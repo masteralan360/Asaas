@@ -69,8 +69,7 @@ function createEmptyItem(storageId = ''): FormItem {
     return { productId: '', storageId, quantity: '1', unitPrice: '' }
 }
 
-function roundFormAmount(value: number, currency: CurrencyCode) {
-    if (currency === 'iqd') return Math.round(value)
+function roundFormAmount(value: number) {
     return Math.round(value * 100) / 100
 }
 
@@ -186,7 +185,7 @@ export function SalesOrderFormPage({
     const preview = useMemo(() => {
         const subtotal = items.reduce((sum, item) => sum + ((Number(item.quantity) || 0) * (Number(item.unitPrice) || 0)), 0)
         const total = subtotal - Number(discount || 0) + Number(tax || 0)
-        return roundFormAmount(total, currency)
+        return roundFormAmount(total)
     }, [currency, discount, items, tax])
 
     const configuredItemsCount = useMemo(
@@ -194,7 +193,7 @@ export function SalesOrderFormPage({
         [items]
     )
 
-    const initialPayment = roundFormAmount(Math.max(0, Number(initialPaymentAmount || 0)), currency)
+    const initialPayment = roundFormAmount(Math.max(0, Number(initialPaymentAmount || 0)))
     const hasInitialPayment = isInstallmentBased && initialPayment > 0
     const canSubmit = Boolean(selectedCustomer) &&
         items.some((item) => item.productId && Number(item.quantity) > 0) &&
@@ -265,10 +264,10 @@ export function SalesOrderFormPage({
                         productName: product.name,
                         productSku: product.sku,
                         quantity,
-                        lineTotal: roundFormAmount(quantity * unitPrice, currency),
+                        lineTotal: roundFormAmount(quantity * unitPrice),
                         originalCurrency: product.currency,
                         originalUnitPrice: convertCurrencyAmountWithLiveRates(unitPrice, currency, product.currency, liveRates),
-                        convertedUnitPrice: roundFormAmount(unitPrice, currency),
+                        convertedUnitPrice: roundFormAmount(unitPrice),
                         settlementCurrency: currency,
                         costPrice: product.costPrice,
                         convertedCostPrice: convertCurrencyAmountWithLiveRates(product.costPrice, product.currency, currency, liveRates)
@@ -282,12 +281,12 @@ export function SalesOrderFormPage({
             const snapshot = hasMultiCurrency ? buildOrderExchangeRatesSnapshot(liveRates) : []
             const primaryRate = hasMultiCurrency ? getPrimaryExchangeDetails(currency, features.default_currency, snapshot) : null
             const commonStorageId = getCommonStorageId(orderItems)
-            const subtotal = roundFormAmount(orderItems.reduce((sum, item) => sum + item.lineTotal, 0), currency)
-            const discountNum = roundFormAmount(Number(discount || 0), currency)
-            const taxNum = roundFormAmount(Number(tax || 0), currency)
-            const total = roundFormAmount(subtotal - discountNum + taxNum, currency)
+            const subtotal = roundFormAmount(orderItems.reduce((sum, item) => sum + item.lineTotal, 0))
+            const discountNum = roundFormAmount(Number(discount || 0))
+            const taxNum = roundFormAmount(Number(tax || 0))
+            const total = roundFormAmount(subtotal - discountNum + taxNum)
             const paidAmount = isPaid ? total : isInstallmentBased ? initialPayment : 0
-            const balanceAmount = roundFormAmount(Math.max(total - paidAmount, 0), currency)
+            const balanceAmount = roundFormAmount(Math.max(total - paidAmount, 0))
 
             const payload = {
                 businessPartnerId: customer.id,
@@ -475,7 +474,7 @@ export function SalesOrderFormPage({
                                     <CardContent className="space-y-3">
                                         {items.map((item, index) => {
                                             const product = products.find((entry) => entry.id === item.productId)
-                                            const lineTotal = roundFormAmount((Number(item.quantity) || 0) * (Number(item.unitPrice) || 0), currency)
+                                            const lineTotal = roundFormAmount((Number(item.quantity) || 0) * (Number(item.unitPrice) || 0))
 
                                             return (
                                                 <div key={`sales-item-${index}`} className="grid gap-3 rounded-2xl border bg-background p-4 md:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)_110px_140px_40px]">

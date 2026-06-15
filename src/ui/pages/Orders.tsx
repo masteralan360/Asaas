@@ -150,11 +150,7 @@ function createEmptyItem(storageId = ''): FormItem {
     }
 }
 
-function roundFormAmount(value: number, currency: CurrencyCode) {
-    if (currency === 'iqd') {
-        return Math.round(value)
-    }
-
+function roundFormAmount(value: number) {
     return Math.round(value * 100) / 100
 }
 
@@ -420,7 +416,7 @@ function OrdersListView({ workspaceId }: { workspaceId: string }) {
     const salesPreview = useMemo(() => {
         const subtotal = salesForm.items.reduce((sum, item) => sum + ((Number(item.quantity) || 0) * (Number(item.unitPrice) || 0)), 0)
         const total = subtotal - Number(salesForm.discount || 0) + Number(salesForm.tax || 0)
-        return roundFormAmount(total, salesForm.currency)
+        return roundFormAmount(total)
     }, [salesForm.currency, salesForm.discount, salesForm.items, salesForm.tax])
     const salesConfiguredItemsCount = useMemo(
         () => salesForm.items.filter((item) => item.productId && Number(item.quantity) > 0).length,
@@ -430,7 +426,7 @@ function OrdersListView({ workspaceId }: { workspaceId: string }) {
     const purchasePreview = useMemo(() => {
         const subtotal = purchaseForm.items.reduce((sum, item) => sum + ((Number(item.quantity) || 0) * (Number(item.unitPrice) || 0)), 0)
         const total = subtotal - Number(purchaseForm.discount || 0)
-        return roundFormAmount(total, purchaseForm.currency)
+        return roundFormAmount(total)
     }, [purchaseForm.currency, purchaseForm.discount, purchaseForm.items])
     const purchaseConfiguredItemsCount = useMemo(
         () => purchaseForm.items.filter((item) => item.productId && Number(item.quantity) > 0).length,
@@ -732,10 +728,10 @@ function OrdersListView({ workspaceId }: { workspaceId: string }) {
                     productName: product.name,
                     productSku: product.sku,
                     quantity,
-                    lineTotal: roundFormAmount(quantity * unitPrice, orderCurrency),
+                    lineTotal: roundFormAmount(quantity * unitPrice),
                     originalCurrency: product.currency,
                     originalUnitPrice: convertCurrencyAmountWithLiveRates(unitPrice, orderCurrency, product.currency, liveRates),
-                    convertedUnitPrice: roundFormAmount(unitPrice, orderCurrency),
+                    convertedUnitPrice: roundFormAmount(unitPrice),
                     settlementCurrency: orderCurrency,
                     costPrice: product.costPrice,
                     convertedCostPrice: convertCurrencyAmountWithLiveRates(product.costPrice, product.currency, orderCurrency, liveRates)
@@ -767,10 +763,10 @@ function OrdersListView({ workspaceId }: { workspaceId: string }) {
                     productName: product.name,
                     productSku: product.sku,
                     quantity,
-                    lineTotal: roundFormAmount(quantity * unitPrice, orderCurrency),
+                    lineTotal: roundFormAmount(quantity * unitPrice),
                     originalCurrency: product.currency,
                     originalUnitPrice: convertCurrencyAmountWithLiveRates(unitPrice, orderCurrency, product.currency, liveRates),
-                    convertedUnitPrice: roundFormAmount(unitPrice, orderCurrency),
+                    convertedUnitPrice: roundFormAmount(unitPrice),
                     settlementCurrency: orderCurrency,
                     batchNumber: item.batchNumber.trim() || null,
                     batchSalePrice,
@@ -802,10 +798,10 @@ function OrdersListView({ workspaceId }: { workspaceId: string }) {
             if (items.length === 0) throw new Error('Add at least one item')
             const sourceStorageId = getCommonStorageId(items)
 
-            const subtotal = roundFormAmount(items.reduce((sum, item) => sum + item.lineTotal, 0), salesForm.currency)
-            const discount = roundFormAmount(Number(salesForm.discount || 0), salesForm.currency)
-            const tax = roundFormAmount(Number(salesForm.tax || 0), salesForm.currency)
-            const total = roundFormAmount(subtotal - discount + tax, salesForm.currency)
+            const subtotal = roundFormAmount(items.reduce((sum, item) => sum + item.lineTotal, 0))
+            const discount = roundFormAmount(Number(salesForm.discount || 0))
+            const tax = roundFormAmount(Number(salesForm.tax || 0))
+            const total = roundFormAmount(subtotal - discount + tax)
             const primaryRate = getPrimaryExchangeDetails(salesForm.currency, features.default_currency, snapshot)
 
             const payload = {
@@ -875,9 +871,9 @@ function OrdersListView({ workspaceId }: { workspaceId: string }) {
             if (items.length === 0) throw new Error('Add at least one item')
             const destinationStorageId = getCommonStorageId(items)
 
-            const subtotal = roundFormAmount(items.reduce((sum, item) => sum + item.lineTotal, 0), purchaseForm.currency)
-            const discount = roundFormAmount(Number(purchaseForm.discount || 0), purchaseForm.currency)
-            const total = roundFormAmount(subtotal - discount, purchaseForm.currency)
+            const subtotal = roundFormAmount(items.reduce((sum, item) => sum + item.lineTotal, 0))
+            const discount = roundFormAmount(Number(purchaseForm.discount || 0))
+            const total = roundFormAmount(subtotal - discount)
             const primaryRate = getPrimaryExchangeDetails(purchaseForm.currency, features.default_currency, snapshot)
 
             const payload = {
@@ -1473,7 +1469,7 @@ function OrdersListView({ workspaceId }: { workspaceId: string }) {
                                         <CardContent className="space-y-3">
                                             {salesForm.items.map((item, index) => {
                                                 const product = products.find((entry) => entry.id === item.productId)
-                                                const lineTotal = roundFormAmount((Number(item.quantity) || 0) * (Number(item.unitPrice) || 0), salesForm.currency)
+                                                const lineTotal = roundFormAmount((Number(item.quantity) || 0) * (Number(item.unitPrice) || 0))
 
                                                 return (
                                                     <div key={`sales-item-${index}`} className="grid gap-3 rounded-2xl border bg-background p-4 md:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)_110px_140px_40px]">
@@ -1721,7 +1717,7 @@ function OrdersListView({ workspaceId }: { workspaceId: string }) {
                                         <CardContent className="space-y-3">
                                             {purchaseForm.items.map((item, index) => {
                                                 const product = products.find((entry) => entry.id === item.productId)
-                                                const lineTotal = roundFormAmount((Number(item.quantity) || 0) * (Number(item.unitPrice) || 0), purchaseForm.currency)
+                                                const lineTotal = roundFormAmount((Number(item.quantity) || 0) * (Number(item.unitPrice) || 0))
                                                 const createsBatch = product
                                                     ? shouldCreatePurchaseCostBatch(
                                                         convertCurrencyAmountWithLiveRates(

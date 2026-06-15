@@ -893,6 +893,7 @@
       "rulesHint": "These rules will be shown to staff during the return process.",
       "pricingDesc": "Set the selling price, cost basis, and active currency for this product.",
       "margin": "Margin",
+      "per": "per",
       "inventoryAndReturnsTitle": "Inventory & Returns",
       "inventoryAndReturnsDesc": "Track stock levels and define whether this product can be returned.",
       "lowStockWarning": "Stock is at or below the minimum threshold of {{min}} {{unit}}.",
