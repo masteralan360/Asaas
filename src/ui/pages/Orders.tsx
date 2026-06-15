@@ -839,7 +839,7 @@ function OrdersListView({ workspaceId }: { workspaceId: string }) {
             }
 
             if (editingSalesOrder) await updateSalesOrder(editingSalesOrder.id, payload)
-            else await createSalesOrder(user.workspaceId, payload)
+            else await createSalesOrder(user.workspaceId, payload, user?.id ?? null)
 
             toast({ title: editingSalesOrder ? (t('common.save') || 'Saved') : (t('common.create') || 'Created') })
             setDialogOpen(false)
@@ -908,7 +908,7 @@ function OrdersListView({ workspaceId }: { workspaceId: string }) {
             }
 
             if (editingPurchaseOrder) await updatePurchaseOrder(editingPurchaseOrder.id, payload)
-            else await createPurchaseOrder(user.workspaceId, payload)
+            else await createPurchaseOrder(user.workspaceId, payload, user?.id ?? null)
 
             toast({ title: editingPurchaseOrder ? (t('common.save') || 'Saved') : (t('common.create') || 'Created') })
             setDialogOpen(false)

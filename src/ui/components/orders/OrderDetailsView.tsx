@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { Link, useLocation } from 'wouter'
 
 import { useAuth } from '@/auth'
+import { useProfileData } from '@/hooks/useProfileData'
 import { cn, formatCurrency, formatDate, formatDateTime, formatSnapshotTime } from '@/lib/utils'
 import { generateTemplatePdf, type PrintFormat } from '@/services/pdfGenerator'
 import type { TemplatePreview } from '@/lib/pdfPreviewStore'
@@ -193,6 +194,9 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
         : purchaseOrder
             ? { kind: 'purchase' as const, order: purchaseOrder }
             : null
+
+    const creatorId = (resolved?.order as any)?.createdBy ?? null
+    const { profile: creatorProfile } = useProfileData(creatorId)
 
     const canManage = user?.role === 'admin' || user?.role === 'staff'
     const canDelete = user?.role === 'admin'
@@ -585,6 +589,15 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                                     <div className="text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">{t('orders.details.created') || 'Created'}</div>
                                     <div className="mt-1 font-medium">{formatDateTime(order.createdAt)}</div>
                                 </div>
+                                {(order as any).createdBy && (
+                                    <div className="rounded-2xl border bg-muted/20 p-3">
+                                        <div className="text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">{t('orders.details.createdBy') || 'Created By'}</div>
+                                        <div className="mt-1 font-medium flex items-center gap-2">
+                                            <UsersRound className="h-3.5 w-3.5 text-muted-foreground" />
+                                            {creatorProfile?.name || (order as any).createdBy}
+                                        </div>
+                                    </div>
+                                )}
                                 <div className="rounded-2xl border bg-muted/20 p-3">
                                     <div className="text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">{t('orders.details.expectedDelivery') || 'Expected Delivery'}</div>
                                     <div className="mt-1 font-medium">{order.expectedDeliveryDate ? formatDateTime(order.expectedDeliveryDate) : 'N/A'}</div>

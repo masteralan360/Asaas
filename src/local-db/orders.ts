@@ -1441,7 +1441,8 @@ export async function recordOrderPayment(
 
 export async function createSalesOrder(
     workspaceId: string,
-    data: Omit<SalesOrder, 'id' | 'workspaceId' | 'createdAt' | 'updatedAt' | 'syncStatus' | 'lastSyncedAt' | 'version' | 'isDeleted' | 'orderNumber'>
+    data: Omit<SalesOrder, 'id' | 'workspaceId' | 'createdAt' | 'updatedAt' | 'syncStatus' | 'lastSyncedAt' | 'version' | 'isDeleted' | 'orderNumber'>,
+    createdBy?: string | null
 ) {
     const now = new Date().toISOString()
     const orderNumber = await generateDocumentNumber('sales_orders', workspaceId)
@@ -1455,7 +1456,8 @@ export async function createSalesOrder(
         orderNumber,
         sourceChannel: data.sourceChannel ?? 'manual',
         marketplaceOrderId: data.marketplaceOrderId ?? null,
-        status
+        status,
+        createdBy: createdBy ?? null
     }) as SalesOrder
     const installments = buildOrderInstallments('sales', order, now)
     order.nextDueDate = installments.find((item) => item.balanceAmount > 0)?.dueDate || null
@@ -1771,7 +1773,8 @@ export async function deleteSalesOrder(id: string) {
 
 export async function createPurchaseOrder(
     workspaceId: string,
-    data: Omit<PurchaseOrder, 'id' | 'workspaceId' | 'createdAt' | 'updatedAt' | 'syncStatus' | 'lastSyncedAt' | 'version' | 'isDeleted' | 'orderNumber'>
+    data: Omit<PurchaseOrder, 'id' | 'workspaceId' | 'createdAt' | 'updatedAt' | 'syncStatus' | 'lastSyncedAt' | 'version' | 'isDeleted' | 'orderNumber'>,
+    createdBy?: string | null
 ) {
     const now = new Date().toISOString()
     const orderNumber = await generateDocumentNumber('purchase_orders', workspaceId)
@@ -1783,7 +1786,8 @@ export async function createPurchaseOrder(
         ...paymentState,
         ...counterparty,
         orderNumber,
-        status
+        status,
+        createdBy: createdBy ?? null
     }) as PurchaseOrder
     const installments = buildOrderInstallments('purchase', order, now)
     order.nextDueDate = installments.find((item) => item.balanceAmount > 0)?.dueDate || null

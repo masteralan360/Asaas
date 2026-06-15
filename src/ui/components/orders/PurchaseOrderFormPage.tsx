@@ -337,7 +337,7 @@ export function PurchaseOrderFormPage({
 
             const savedOrder = editingOrderId
                 ? await updatePurchaseOrder(editingOrderId, payload)
-                : await createPurchaseOrder(workspaceId, payload)
+                : await createPurchaseOrder(workspaceId, payload, user?.id ?? null)
 
             toast({ title: editingOrderId ? (t('common.save') || 'Saved') : (t('common.create') || 'Created') })
             onCreated?.(savedOrder.id)

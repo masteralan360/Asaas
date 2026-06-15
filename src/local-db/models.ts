@@ -551,6 +551,7 @@ export interface SalesOrder extends BaseEntity {
   isLocked?: boolean;
   sourceChannel?: "manual" | "marketplace" | null;
   marketplaceOrderId?: string | null;
+  createdBy?: string | null;
 }
 
 export interface PurchaseOrder extends BaseEntity {
@@ -584,6 +585,7 @@ export interface PurchaseOrder extends BaseEntity {
   nextDueDate?: string | null;
   notes?: string;
   isLocked?: boolean;
+  createdBy?: string | null;
 }
 
 export interface OrderInstallment extends BaseEntity {
