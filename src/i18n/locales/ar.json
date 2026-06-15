@@ -78,6 +78,13 @@
     "record": "تسجيل",
     "am": "صباحاً (AM)",
     "pm": "مساءً (PM)",
+    "type": "نوع",
+    "reference": "مرجع",
+    "details": "تفاصيل",
+    "paid": "المبلغ المدفوع",
+    "remaining": "المبلغ المتبقي",
+    "address": "العنوان",
+    "location": "الموقع",
     "pagination": {
       "previous": "السابق",
       "next": "التالي",
