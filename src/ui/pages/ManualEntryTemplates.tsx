@@ -37,6 +37,9 @@ export function ManualEntryTemplates() {
   const [isFormOpen, setIsFormOpen] = useState(false)
   const [editingTemplate, setEditingTemplate] = useState<ManualEntryTemplate | null>(null)
   const [formName, setFormName] = useState('')
+  const [formHeaderName, setFormHeaderName] = useState('')
+  const [formHeaderPhone1, setFormHeaderPhone1] = useState('')
+  const [formHeaderPhone2, setFormHeaderPhone2] = useState('')
   const [formRows, setFormRows] = useState<ManualEntryTemplateRow[]>([])
   const [isSaving, setIsSaving] = useState(false)
 
@@ -70,6 +73,9 @@ export function ManualEntryTemplates() {
   const openCreateForm = useCallback(() => {
     setEditingTemplate(null)
     setFormName('')
+    setFormHeaderName('')
+    setFormHeaderPhone1('')
+    setFormHeaderPhone2('')
     setFormRows([createEmptyRow(1)])
     setIsFormOpen(true)
   }, [])
@@ -77,6 +83,9 @@ export function ManualEntryTemplates() {
   const openEditForm = useCallback((template: ManualEntryTemplate) => {
     setEditingTemplate(template)
     setFormName(template.name)
+    setFormHeaderName(template.headerName || '')
+    setFormHeaderPhone1(template.headerPhone1 || '')
+    setFormHeaderPhone2(template.headerPhone2 || '')
     setFormRows([...template.rows].sort((a, b) => a.sortOrder - b.sortOrder))
     setIsFormOpen(true)
   }, [])
@@ -144,10 +153,17 @@ export function ManualEntryTemplates() {
         .filter((r) => r.label.trim())
         .map((r, i) => ({ ...r, sortOrder: i + 1 }))
 
+      const headerData = {
+        headerName: formHeaderName.trim(),
+        headerPhone1: formHeaderPhone1.trim(),
+        headerPhone2: formHeaderPhone2.trim(),
+      }
+
       if (editingTemplate) {
         await db.manual_entry_templates.update(editingTemplate.id, {
           name: formName.trim(),
           rows,
+          ...headerData,
           updatedAt: now,
         })
       } else {
@@ -156,6 +172,7 @@ export function ManualEntryTemplates() {
           workspaceId,
           name: formName.trim(),
           rows,
+          ...headerData,
           status: 'active',
           createdBy: user?.id || null,
           createdAt: now,
@@ -174,7 +191,7 @@ export function ManualEntryTemplates() {
     } finally {
       setIsSaving(false)
     }
-  }, [workspaceId, formName, formRows, editingTemplate, user?.id, t, toast, fetchTemplates])
+  }, [workspaceId, formName, formHeaderName, formHeaderPhone1, formHeaderPhone2, formRows, editingTemplate, user?.id, t, toast, fetchTemplates])
 
   const handleDelete = useCallback(async () => {
     if (!deleteTarget) return
@@ -280,6 +297,38 @@ export function ManualEntryTemplates() {
                 onChange={(e) => setFormName(e.target.value)}
                 placeholder={t('manualEntry.templateNamePlaceholder')}
               />
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div>
+                <label className="mb-1 block text-sm font-medium">
+                  {t('manualEntry.headerName')}
+                </label>
+                <Input
+                  value={formHeaderName}
+                  onChange={(e) => setFormHeaderName(e.target.value)}
+                  placeholder={t('manualEntry.headerNamePlaceholder')}
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium">
+                  {t('manualEntry.headerPhone1')}
+                </label>
+                <Input
+                  value={formHeaderPhone1}
+                  onChange={(e) => setFormHeaderPhone1(e.target.value)}
+                  placeholder={t('manualEntry.headerPhonePlaceholder')}
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium">
+                  {t('manualEntry.headerPhone2')}
+                </label>
+                <Input
+                  value={formHeaderPhone2}
+                  onChange={(e) => setFormHeaderPhone2(e.target.value)}
+                  placeholder={t('manualEntry.headerPhonePlaceholder')}
+                />
+              </div>
             </div>
             <div>
               <div className="mb-2 flex items-center justify-between">

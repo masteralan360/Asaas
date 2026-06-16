@@ -30,9 +30,37 @@ function renderTableElement(template: ManualEntryTemplate, data: CellData, dir: 
     .filter((r) => r.label.trim())
     .sort((a, b) => a.sortOrder - b.sortOrder)
 
+  const headerLines = [
+    template.headerName,
+    template.headerPhone1,
+    template.headerPhone2,
+  ].filter(Boolean)
+
   return createElement(
     'div',
     { style: { width: '210mm', background: '#ffffff', padding: '10mm 15mm', direction: 'rtl' } },
+    headerLines.length > 0
+      ? createElement(
+          'div',
+          {
+            style: {
+              marginBottom: 0,
+              padding: '12px',
+              border: '1px solid #d1d5db',
+              borderBottom: 'none',
+              borderTopLeftRadius: '8px',
+              borderTopRightRadius: '8px',
+              background: '#f9fafb',
+              fontFamily: 'Arial, sans-serif',
+              fontSize: '14px',
+              lineHeight: '1.8',
+            },
+          },
+          headerLines.map((line, idx) =>
+            createElement('div', { key: idx, style: { marginBottom: '6px', fontWeight: 500 } }, line),
+          ),
+        )
+      : null,
     createElement(
       'table',
       {
@@ -63,7 +91,7 @@ function renderTableElement(template: ManualEntryTemplate, data: CellData, dir: 
               },
             }, '#'),
           ),
-          ...sortedRows.map((row) =>
+          ...sortedRows.map((row, idx) =>
             createElement(
               'th',
               {
@@ -71,6 +99,7 @@ function renderTableElement(template: ManualEntryTemplate, data: CellData, dir: 
                 style: {
                   border: '1px solid #d1d5db', background: '#f3f4f6', padding: 0,
                   textAlign: 'center', fontWeight: 600, color: '#374151',
+                  width: idx === 0 ? '40%' : undefined,
                 },
               },
               createElement('div', {
@@ -207,6 +236,23 @@ function ManualEntryA4Preview({ template, onBack, onSaveAndPrint }: ManualEntryA
 
       <div ref={contentRef} className="mx-auto bg-white" style={{ width: '210mm' }}>
         <div style={{ padding: '10mm 15mm' }}>
+          <div style={{ direction: 'rtl', marginBottom: 0 }}>
+            {(() => {
+              const lines = [
+                template.headerName,
+                template.headerPhone1,
+                template.headerPhone2,
+              ].filter(Boolean)
+              if (lines.length === 0) return null
+              return (
+                <div className="border border-gray-300 border-b-0 bg-gray-50 rounded-t-lg p-3 mb-0" style={{ fontFamily: 'Arial, sans-serif' }}>
+                  {lines.map((line, idx) => (
+                    <div key={idx} className="text-sm font-medium leading-relaxed mb-1 last:mb-0">{line}</div>
+                  ))}
+                </div>
+              )
+            })()}
+          </div>
           <div style={{ direction: 'rtl' }}>
             <table className="w-full border-collapse border border-gray-300 text-sm">
               <thead>
@@ -214,8 +260,8 @@ function ManualEntryA4Preview({ template, onBack, onSaveAndPrint }: ManualEntryA
                   <th className="border border-gray-300 bg-gray-100 text-center text-xs font-semibold text-gray-700 w-[30px] whitespace-nowrap">
                     <div className="flex min-h-[28px] items-center justify-center px-2.5">#</div>
                   </th>
-                  {sortedRows.map((row) => (
-                    <th key={row.id} className="border border-gray-300 bg-gray-100 text-center text-xs font-semibold text-gray-700">
+                  {sortedRows.map((row, idx) => (
+                    <th key={row.id} className="border border-gray-300 bg-gray-100 text-center text-xs font-semibold text-gray-700" style={idx === 0 ? { width: '40%' } : {}}>
                       <div className="flex min-h-[28px] items-center justify-center px-2.5">{row.label}</div>
                     </th>
                   ))}

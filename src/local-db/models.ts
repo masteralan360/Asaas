@@ -944,6 +944,9 @@ export interface ManualEntryTemplateRow {
 
 export interface ManualEntryTemplate extends BaseEntity {
   name: string;
+  headerName?: string;
+  headerPhone1?: string;
+  headerPhone2?: string;
   rows: ManualEntryTemplateRow[];
   status: ManualEntryTemplateStatus;
   createdBy?: string | null;

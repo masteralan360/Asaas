@@ -3995,5 +3995,42 @@
     "createdTitle": "کورتکەت دروست کرا",
     "createdMessage": "کورتکەتی \"Atlas - {{name}}\" لەسەر مێز دروست کرا.",
     "errorTitle": "هەڵە"
+  },
+  "manualEntry": {
+    "title": "دروستکردنی وەسڵی دەستی",
+    "create": "دروستکردنی وەسڵی دەستی",
+    "edit": "دەستکاریکردنی وەسڵی دەستی",
+    "templateName": "ناوی وەسڵ",
+    "editTemplate": "دەستکاریکردنی وەسڵ",
+    "templateNamePlaceholder": "ناوی وەسڵ بنووسە...",
+    "headerName": "ناوی سەرەوە",
+    "headerNamePlaceholder": "ناوی سەرەوە بنووسە...",
+    "headerPhone1": "ژمارەی تەلەفۆن 1",
+    "headerPhonePlaceholder": "ژمارەی تەلەفۆن بنووسە...",
+    "headerPhone2": "ژمارەی تەلەفۆن 2",
+    "addRow": "زیادکردنی ڕیز",
+    "noRows": "هیچ ڕیزێک نییە",
+    "rowLabelPlaceholder": "سەرناوی ڕیز بنووسە...",
+    "rows": "ڕیزەکان",
+    "searchPlaceholder": "گەڕان لە وەسڵی دەستی...",
+    "table": {
+      "date": "بەروار",
+      "description": "ڕوونکردنەوە",
+      "amount": "بڕی پارە",
+      "actions": "کردارەکان"
+    },
+    "form": {
+      "date": "بەروار",
+      "description": "ڕوونکردنەوە",
+      "amount": "بڕی پارە"
+    },
+    "messages": {
+      "addSuccess": "دەستکاریکردنی دەستی بە سەرکەوتوویی زیادکرا",
+      "updateSuccess": "دەستکاریکردنی دەستی بە سەرکەوتوویی نوێکرایەوە",
+      "deleteSuccess": "دەستکاریکردنی دەستی بە سەرکەوتوویی سڕایەوە",
+      "deleteConfirm": "دڵنیایت دەتەوێت ئەم دەستکاریکردنی دەستییە بسڕیتەوە؟"
+    },
+    "confirmDelete": "سڕینەوەی دەستکاریکردنی دەستی",
+    "deleteWarning": "هەموو زانیارییەکان و مێژووی مامەڵەکانی دەستکاریکردنی دەستی بە یەکجاری دەسڕێنەوە."
   }
 }
