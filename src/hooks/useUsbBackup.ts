@@ -3,7 +3,6 @@ import { isDesktop } from '@/lib/platform'
 import {
   getUsbBackupDestination,
   isUsbBackupEnabled,
-  setUsbBackupDestination,
   clearUsbBackupSettings,
 } from '@/local-db/usbBackupSettings'
 import {

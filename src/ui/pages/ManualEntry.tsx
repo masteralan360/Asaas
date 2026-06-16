@@ -1,6 +1,5 @@
 import { createElement, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import i18n from '@/i18n/config'
 import { ArrowLeft, FileText, Loader2, Printer, Save } from 'lucide-react'
 import { useAuth } from '@/auth'
 import { db } from '@/local-db'
@@ -25,7 +24,7 @@ function generateId() {
     : `entry-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
 }
 
-function renderTableElement(template: ManualEntryTemplate, data: CellData, dir: string) {
+function renderTableElement(template: ManualEntryTemplate, data: CellData) {
   const sortedRows = [...template.rows]
     .filter((r) => r.label.trim())
     .sort((a, b) => a.sortOrder - b.sortOrder)
@@ -164,7 +163,7 @@ interface ManualEntryA4PreviewProps {
 }
 
 function ManualEntryA4Preview({ template, onBack, onSaveAndPrint }: ManualEntryA4PreviewProps) {
-  const { t, i18n } = useTranslation()
+  const { t } = useTranslation()
   const [isSaving, setIsSaving] = useState(false)
   const contentRef = useRef<HTMLDivElement>(null)
 
@@ -210,8 +209,6 @@ function ManualEntryA4Preview({ template, onBack, onSaveAndPrint }: ManualEntryA
       setIsSaving(false)
     }
   }, [cellData, onSaveAndPrint, handlePrint])
-
-  const dir = i18n.dir ? i18n.dir() : 'ltr'
 
   return (
     <div className="mx-auto p-4 sm:p-6">
@@ -363,7 +360,7 @@ export function ManualEntry() {
         updatedAt: now,
       })
 
-      const tableElement = renderTableElement(selectedTemplate, data, i18n.dir?.() || 'ltr')
+      const tableElement = renderTableElement(selectedTemplate, data)
       const pdfBlob = await generateTemplatePdf({ element: tableElement })
 
       const localPath = await saveInvoicePdfToLocalAppData(workspaceId, invoiceId, 'a4', pdfBlob)
@@ -373,7 +370,7 @@ export function ManualEntry() {
         invoiceid: invoiceId,
         workspaceId,
         totalAmount: 0,
-        settlementCurrency: 'IQD',
+        settlementCurrency: 'iqd',
         origin: 'manual',
         status: 'draft',
         localPathA4: localPath ?? undefined,
