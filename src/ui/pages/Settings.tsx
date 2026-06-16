@@ -7,7 +7,7 @@ import { useTranslation } from 'react-i18next'
 import { useWorkspace } from '@/workspace'
 import { Coins } from 'lucide-react'
 import type { IQDDisplayPreference, CurrencyCode } from '@/local-db/models'
-import { Settings as SettingsIcon, Database, Cloud, Trash2, RefreshCw, User, Copy, Check, CreditCard, Globe, Download, AlertCircle, Printer, Contact, Fingerprint, Store, ExternalLink } from 'lucide-react'
+import { Settings as SettingsIcon, Database, Cloud, Trash2, RefreshCw, User, Copy, Check, CreditCard, Globe, Download, AlertCircle, Printer, Contact, Fingerprint, Store, ExternalLink, Usb } from 'lucide-react'
 import { formatDate, formatDateTime, formatTime, cn, generateId, getHourDisplayPreference, setHourDisplayPreference, type HourDisplayPreference } from '@/lib/utils'
 import { useTheme } from '@/ui/components/theme-provider'
 import { Moon, Sun, Monitor, Unlock, Server, MessageSquare, Bell, MonitorPlay, Wifi, Zap } from 'lucide-react'
@@ -31,6 +31,7 @@ import type { PrinterInfo } from 'tauri-plugin-thermal-printer'
 // Notification imports moved to dynamic imports for cross-platform support
 import { registerDeviceTokenIfNeeded } from '@/services/notificationDevice'
 import { useKdsStream } from '@/hooks/useKdsStream'
+import { useUsbBackup } from '@/hooks/useUsbBackup'
 import { ReactQRCode } from '@lglab/react-qr-code'
 import { BranchManager } from '@/ui/components/workspace/BranchManager'
 
@@ -110,6 +111,8 @@ export function Settings() {
     const canUseWhatsapp = hasCapability('whatsappIntegration')
     const canUseMultipleContacts = hasCapability('multipleWorkspaceContacts')
     const canUseBranches = planCapabilities.limits.maxBranches > 0
+
+    const usbBackup = useUsbBackup()
 
     useEffect(() => {
         let cancelled = false
@@ -2732,6 +2735,61 @@ export function Settings() {
                                     </div>
                                 </CardContent>
                             </Card>
+
+                            {/* USB Backup (Desktop + Local/Hybrid mode only) */}
+                            {usbBackup.isDesktopApp && (isLocalMode || isHybridMode) && (
+                              <Card>
+                                <CardHeader>
+                                  <CardTitle className="flex items-center gap-2">
+                                    <Usb className="w-5 h-5" />
+                                    USB Backup
+                                  </CardTitle>
+                                  <CardDescription>
+                                    Backup atlas-local-mode.db to a USB drive automatically whenever data changes.
+                                    This is a one-way export — the USB copy is never read by the app.
+                                  </CardDescription>
+                                </CardHeader>
+                                <CardContent className="space-y-4">
+                                  {usbBackup.isConfigured ? (
+                                    <>
+                                      <div className="flex items-start gap-3 rounded-lg bg-muted/30 p-3">
+                                        <Usb className="mt-0.5 h-5 w-5 shrink-0 text-muted-foreground" />
+                                        <div className="min-w-0 space-y-1">
+                                          <p className="text-sm font-medium">Backup destination</p>
+                                          <p className="truncate font-mono text-xs text-muted-foreground">
+                                            {usbBackup.usbDestination}
+                                          </p>
+                                          {usbBackup.lastBackupTime && (
+                                            <p className="text-xs text-muted-foreground">
+                                              Last backup: {formatDateTime(new Date(usbBackup.lastBackupTime))}
+                                            </p>
+                                          )}
+                                        </div>
+                                      </div>
+                                      <div className="flex flex-wrap gap-2">
+                                        <Button variant="outline" size="sm" onClick={usbBackup.changeDestination}>
+                                          Change Destination
+                                        </Button>
+                                        <Button variant="ghost" size="sm" onClick={usbBackup.disableUsbBackup}>
+                                          Disable USB Backup
+                                        </Button>
+                                      </div>
+                                    </>
+                                  ) : (
+                                    <div className="space-y-3">
+                                      <p className="text-sm text-muted-foreground">
+                                        No USB backup destination configured. Select a folder on your USB drive to
+                                        automatically receive backup copies of the local database.
+                                      </p>
+                                      <Button onClick={usbBackup.pickDestination}>
+                                        <Usb className="mr-2 h-4 w-4" />
+                                        Select USB Backup Destination
+                                      </Button>
+                                    </div>
+                                  )}
+                                </CardContent>
+                              </Card>
+                            )}
                         </>
                     )}
 

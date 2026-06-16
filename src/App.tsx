@@ -27,6 +27,9 @@ import i18n from "@/i18n/config";
 import { useFavicon } from "@/hooks/useFavicon";
 import { whatsappManager } from "@/lib/whatsappWebviewManager";
 import { useKdsStream } from "@/hooks/useKdsStream";
+import { UsbBackupWarningModal } from "@/ui/components/UsbBackupWarningModal";
+import { validateUsbBackupOnStartup, pickUsbBackupDestination, copyDbToUsb } from "@/local-db/usbBackup";
+import { clearUsbBackupSettings } from "@/local-db/usbBackupSettings";
 
 // @ts-ignore
 const isTauri = !!window.__TAURI_INTERNALS__;
@@ -769,6 +772,66 @@ function FirstTimeRedirect() {
   return null;
 }
 
+function UsbBackupStartupValidator() {
+  const [modalOpen, setModalOpen] = useState(false);
+  const [missingDest, setMissingDest] = useState<string | null>(null);
+  const [isRetrying, setIsRetrying] = useState(false);
+
+  useEffect(() => {
+    if (!isDesktop()) return;
+
+    let cancelled = false;
+
+    const check = async () => {
+      const result = await validateUsbBackupOnStartup();
+      if (cancelled) return;
+      if (!result.valid && result.destination) {
+        setMissingDest(result.destination);
+        setModalOpen(true);
+      }
+    };
+
+    check();
+    return () => { cancelled = true; };
+  }, []);
+
+  const handleRetry = async () => {
+    setIsRetrying(true);
+    const result = await validateUsbBackupOnStartup();
+    setIsRetrying(false);
+    if (result.valid) {
+      setModalOpen(false);
+      setMissingDest(null);
+    }
+  };
+
+  const handleChangeDestination = async () => {
+    const path = await pickUsbBackupDestination();
+    if (path) {
+      await copyDbToUsb(path);
+      setModalOpen(false);
+      setMissingDest(null);
+    }
+  };
+
+  const handleDisable = () => {
+    clearUsbBackupSettings();
+    setModalOpen(false);
+    setMissingDest(null);
+  };
+
+  return missingDest ? (
+    <UsbBackupWarningModal
+      open={modalOpen}
+      destination={missingDest}
+      onRetry={handleRetry}
+      onChangeDestination={handleChangeDestination}
+      onDisable={handleDisable}
+      isRetrying={isRetrying}
+    />
+  ) : null;
+}
+
 function App() {
   const { showModal, currentPatch, version, dismissModal } = usePatchNotes();
 
@@ -793,6 +856,7 @@ function App() {
               <WhatsAppPlanGuard />
               <UpdateHandler />
               <WorkspaceWarmup />
+              <UsbBackupStartupValidator />
               <FaviconHandler />
               <AutoSyncOverlay />
               {!isMobile() && <TitleBar />}

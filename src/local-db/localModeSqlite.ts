@@ -2,6 +2,7 @@ import type Dexie from "dexie";
 
 import { isTauri } from "@/lib/platform";
 import { shouldMirrorToSqlite } from "@/workspace/workspaceMode";
+import { runUsbBackupIfNeeded } from "./usbBackup";
 
 const LOCAL_MODE_SQLITE_PATH = "sqlite:atlas-local-mode.db";
 
@@ -286,6 +287,11 @@ export function runLocalModeSqliteWrite<T>(task: () => Promise<T>): Promise<T> {
     () => undefined,
     () => undefined,
   );
+
+  void queued.then(() => {
+    runUsbBackupIfNeeded();
+  });
+
   return queued;
 }
 

@@ -1,4 +1,5 @@
 use std::fs;
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use tauri::Manager;
 use tokio::sync::broadcast;
@@ -106,6 +107,59 @@ fn open_file_path(path: String) -> Result<(), String> {
     Ok(())
 }
 
+/// Check if a file or directory exists at the given path.
+/// Used to validate USB destination on startup.
+#[tauri::command]
+fn check_path_exists(path: String) -> Result<bool, String> {
+    Ok(PathBuf::from(&path).exists())
+}
+
+/// Get the size of a file in bytes.
+/// Used to verify USB copy completion by comparing source vs dest size.
+#[tauri::command]
+fn get_file_size(path: String) -> Result<u64, String> {
+    let meta = fs::metadata(&path).map_err(|e| format!("Failed to read file metadata: {}", e))?;
+    if !meta.is_file() {
+        return Err("Path is not a file".into());
+    }
+    Ok(meta.len())
+}
+
+/// Copy the local database file to a USB destination.
+/// This is strictly one-way: source is always within AppData, dest is the USB path.
+/// The dest path is never read — only written to.
+#[tauri::command]
+fn backup_db_to_usb(app: tauri::AppHandle, db_filename: String, dest_path: String) -> Result<u64, String> {
+    let app_data = app.path().app_data_dir().map_err(|e| format!("Failed to get AppData dir: {}", e))?;
+
+    // Resolve source: AppData / db_filename
+    let source = app_data.join(&db_filename);
+
+    // Validate source is within AppData (prevent path traversal)
+    if !source.starts_with(&app_data) {
+        return Err("Invalid source path: must be within AppData directory".into());
+    }
+
+    // Validate source file exists
+    if !source.exists() {
+        return Err(format!("Source database not found at {:?}", source));
+    }
+    if !source.is_file() {
+        return Err("Source path is not a file".into());
+    }
+
+    // Create destination parent directory if needed
+    let dest = PathBuf::from(&dest_path);
+    if let Some(parent) = dest.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("Failed to create destination directory: {}", e))?;
+    }
+
+    // Copy file — one-way, never read from dest
+    let copied = fs::copy(&source, &dest).map_err(|e| format!("Failed to copy database to USB: {}", e))?;
+
+    Ok(copied)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let (tx, _rx) = broadcast::channel(100);
@@ -163,7 +217,10 @@ pub fn run() {
             start_kds_stream,
             get_kds_stream_url,
             broadcast_kds_update,
-            open_file_path
+            open_file_path,
+            check_path_exists,
+            get_file_size,
+            backup_db_to_usb
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
