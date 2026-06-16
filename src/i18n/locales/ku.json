@@ -3989,5 +3989,11 @@
       "currency_exchange": "نوسینگەی ئاڵوگۆڕی دراو",
       "clinic": "کلینیک"
     }
+  },
+  "shortcut": {
+    "addToDesktop": "زیادکردنی کورتکەت بۆ سەر مێز",
+    "createdTitle": "کورتکەت دروست کرا",
+    "createdMessage": "کورتکەتی \"Atlas - {{name}}\" لەسەر مێز دروست کرا.",
+    "errorTitle": "هەڵە"
   }
 }

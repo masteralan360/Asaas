@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 use tokio::sync::broadcast;
 
 mod kds_server;
@@ -107,6 +107,88 @@ fn open_file_path(path: String) -> Result<(), String> {
     Ok(())
 }
 
+/// Creates a desktop shortcut that opens the app and navigates directly to the given module route.
+#[tauri::command]
+fn create_desktop_shortcut(
+    app: tauri::AppHandle,
+    module_name: String,
+    module_href: String,
+) -> Result<(), String> {
+    let desktop = app.path().desktop_dir().map_err(|e| e.to_string())?;
+    let exe_path = std::env::current_exe().map_err(|e| e.to_string())?;
+
+    let sanitized_name: String = module_name
+        .chars()
+        .filter(|c| c.is_alphanumeric() || c.is_whitespace() || *c == '-' || *c == '_')
+        .collect();
+    let label = sanitized_name.trim();
+
+    #[cfg(target_os = "windows")]
+    {
+        use std::process::Command;
+        let shortcut_path = desktop.join(format!("Atlas - {}.lnk", label));
+        let spath = shortcut_path.to_string_lossy().replace('\'', "''");
+        let exe = exe_path.to_string_lossy().replace('\'', "''");
+        let args = format!("--open-route={}", module_href);
+        let wd = exe_path
+            .parent()
+            .map(|p| p.to_string_lossy().replace('\'', "''"))
+            .unwrap_or_default();
+        let desc = format!("Atlas - {}", module_name).replace('\'', "''");
+
+        let ps = format!(
+            "$s=(New-Object -ComObject WScript.Shell).CreateShortcut('{}');\
+             $s.TargetPath='{}';\
+             $s.Arguments='{}';\
+             $s.WorkingDirectory='{}';\
+             $s.Description='{}';\
+             $s.Save()",
+            spath, exe, args, wd, desc
+        );
+
+        let output = Command::new("powershell")
+            .args(["-NoProfile", "-Command", &ps])
+            .output()
+            .map_err(|e| format!("Failed to create shortcut: {}", e))?;
+
+        if !output.status.success() {
+            let err = String::from_utf8_lossy(&output.stderr);
+            return Err(format!("PowerShell error: {}", err));
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        let command_path = desktop.join(format!("Atlas - {}.command", label));
+        let script = format!(
+            "#!/bin/bash\nopen \"{}\" --args --open-route={}\n",
+            exe_path.to_string_lossy(),
+            module_href
+        );
+        fs::write(&command_path, script).map_err(|e| e.to_string())?;
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&command_path, fs::Permissions::from_mode(0o755))
+            .map_err(|e| e.to_string())?;
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        let desktop_path = desktop.join(format!("Atlas - {}.desktop", label));
+        let desktop_entry = format!(
+            "[Desktop Entry]\n\
+             Type=Application\n\
+             Name=Atlas - {}\n\
+             Exec={} --open-route={}\n\
+             Terminal=false\n\
+             Categories=Office;\n",
+            module_name, exe_path.to_string_lossy(), module_href
+        );
+        fs::write(&desktop_path, desktop_entry).map_err(|e| e.to_string())?;
+    }
+
+    Ok(())
+}
+
 /// Check if a file or directory exists at the given path.
 /// Used to validate USB destination on startup.
 #[tauri::command]
@@ -189,7 +271,6 @@ pub fn run() {
             last_message: Arc::new(Mutex::new(None)),
         })
         .setup(|app| {
-        use tauri::Manager;
         let window = app.get_webview_window("main").unwrap();
 
             #[cfg(desktop)]
@@ -201,6 +282,15 @@ pub fn run() {
                 // Show window after configuration
                 let _ = window.maximize();
                 let _ = window.show();
+
+                // Parse --open-route argument for deep-link navigation
+                let args: Vec<String> = std::env::args().collect();
+                for arg in &args {
+                    if let Some(route) = arg.strip_prefix("--open-route=") {
+                        let _ = window.emit("deep-link", route.to_string());
+                        break;
+                    }
+                }
             }
 
             if cfg!(debug_assertions) {
@@ -220,7 +310,8 @@ pub fn run() {
             open_file_path,
             check_path_exists,
             get_file_size,
-            backup_db_to_usb
+            backup_db_to_usb,
+            create_desktop_shortcut
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

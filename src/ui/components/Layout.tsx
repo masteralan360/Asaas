@@ -63,6 +63,12 @@ import {
     DropdownMenuSeparator,
     DropdownMenuTrigger
 } from './ui/dropdown-menu'
+import {
+    ContextMenu,
+    ContextMenuTrigger,
+    ContextMenuContent,
+    ContextMenuItem,
+} from './ui/context-menu'
 
 import { useTranslation } from 'react-i18next'
 import { useEffect, useRef } from 'react'
@@ -320,6 +326,34 @@ export function Layout({ children }: LayoutProps) {
 
     // @ts-ignore
     const isTauri = typeof window !== 'undefined' && !!window.__TAURI_INTERNALS__
+    const handleAddToDesktop = async (name: string, href: string) => {
+        if (!isDesktop()) return
+        try {
+            const { invoke } = await import('@tauri-apps/api/core')
+            // @ts-ignore
+            await invoke('create_desktop_shortcut', {
+                moduleName: name,
+                moduleHref: href,
+            })
+
+            // @ts-ignore
+            const { message } = await import('@tauri-apps/plugin-dialog')
+            await message(t('shortcut.createdMessage', { name, defaultValue: `Shortcut "Atlas - ${name}" created on desktop.` }), {
+                title: t('shortcut.createdTitle', { defaultValue: 'Shortcut Created' }),
+                kind: 'info',
+            })
+        } catch (err) {
+            console.error('[Layout] Failed to create desktop shortcut:', err)
+            try {
+                // @ts-ignore
+                const { message } = await import('@tauri-apps/plugin-dialog')
+                await message(String(err), {
+                    title: t('shortcut.errorTitle', { defaultValue: 'Error' }),
+                    kind: 'error',
+                })
+            } catch {}
+        }
+    }
 
     // WhatsApp Webview Global Visibility Sync
     useEffect(() => {
@@ -877,7 +911,48 @@ export function Layout({ children }: LayoutProps) {
 
                                             return (
                                                 <div key={item.href} className={cn("space-y-1", item.mobileOnly && "lg:hidden", item.popup && !item.mobileOnly && "hidden lg:block")}>
-                                                    {item.popup ? (
+                                                    {isDesktop() ? (
+                                                        <ContextMenu>
+                                                            <ContextMenuTrigger asChild>
+                                                                {item.popup ? (
+                                                                    <button
+                                                                        onClick={() => {
+                                                                            setMobileSidebarOpen(false)
+                                                                            setCurrencyConverterOpen(true)
+                                                                            triggerHaptic('selection')
+                                                                        }}
+                                                                        className="w-full text-left"
+                                                                    >
+                                                                        {parentContent}
+                                                                    </button>
+                                                                ) : (
+                                                                    <Link
+                                                                        href={item.href}
+                                                                        onClick={() => {
+                                                                            if (isExpandableGroup) {
+                                                                                setExpandedNavGroups((prev) => ({
+                                                                                    ...prev,
+                                                                                    [item.href]: !prev[item.href]
+                                                                                }))
+                                                                            }
+                                                                            if (!isExpandableGroup) {
+                                                                                setMobileSidebarOpen(false)
+                                                                            }
+                                                                            triggerHaptic('selection')
+                                                                        }}
+                                                                        onMouseEnter={() => !isMobile() && prefetchRoute(item.href)}
+                                                                    >
+                                                                        {parentContent}
+                                                                    </Link>
+                                                                )}
+                                                            </ContextMenuTrigger>
+                                                            <ContextMenuContent>
+                                                                <ContextMenuItem onSelect={() => handleAddToDesktop(item.name, item.href)}>
+                                                                    {t('shortcut.addToDesktop', { defaultValue: 'Add to desktop as shortcut' })}
+                                                                </ContextMenuItem>
+                                                            </ContextMenuContent>
+                                                        </ContextMenu>
+                                                    ) : item.popup ? (
                                                         <button
                                                             onClick={() => {
                                                                 setMobileSidebarOpen(false)
@@ -916,50 +991,64 @@ export function Layout({ children }: LayoutProps) {
                                                             (isMini && !mobileSidebarOpen) ? "ps-0" : "ps-10"
                                                         )}>
                                                             {item.children!.map(child => {
-                                                                const isChildSelected = location === child.href || (child.href !== '/' && location.startsWith(child.href))
-                                                                return (
-                                                                    <Link
-                                                                        key={child.href}
-                                                                        href={child.href}
-                                                                        onClick={() => {
-                                                                            setMobileSidebarOpen(false)
-                                                                            triggerHaptic('selection')
-                                                                        }}
-                                                                        onMouseEnter={() => !isMobile() && prefetchRoute(child.href)}
-                                                                        className="relative block"
-                                                                    >
-                                                                        {/* Horizontal hierarchy line */}
-                                                                        {!(isMini && !mobileSidebarOpen) && (
-                                                                            <div className={cn(
-                                                                                "absolute top-1/2 -translate-y-1/2 w-[18px] h-px",
-                                                                                "left-[-18px] rtl:right-[-18px] rtl:left-auto",
-                                                                                isChildSelected ? "bg-primary" : "bg-border/60"
-                                                                            )} />
-                                                                        )}
-                                                                        <span
-                                                                            className={cn(
-                                                                                'flex items-center gap-3 px-3 py-2 rounded-sm text-[13px] font-medium transition-all duration-300 ease-in-out border-s-[3px] border-transparent',
-                                                                                isChildSelected
-                                                                                    ? 'bg-primary/10 text-primary border-primary'
-                                                                                    : 'text-muted-foreground hover:bg-primary/5 hover:text-primary hover:border-primary/30'
-                                                                            )}
-                                                                        >
-                                                                            {child.icon ? (
-                                                                                <child.icon className={cn(
-                                                                                    "w-4 h-4 flex-shrink-0 transition-colors",
-                                                                                    isChildSelected ? "text-primary" : "text-muted-foreground"
-                                                                                )} />
-                                                                            ) : (
-                                                                                <span className={cn(
-                                                                                    "w-1.5 h-1.5 rounded-full transition-colors",
-                                                                                    isChildSelected ? "bg-primary" : "bg-muted-foreground/30"
-                                                                                )} />
-                                                                            )}
-                                                                            <span>{child.name}</span>
-                                                                        </span>
-                                                                    </Link>
-                                                                )
-                                                            })}
+                                                                 const isChildSelected = location === child.href || (child.href !== '/' && location.startsWith(child.href))
+                                                                 const childLink = (
+                                                                     <Link
+                                                                         key={child.href}
+                                                                         href={child.href}
+                                                                         onClick={() => {
+                                                                             setMobileSidebarOpen(false)
+                                                                             triggerHaptic('selection')
+                                                                         }}
+                                                                         onMouseEnter={() => !isMobile() && prefetchRoute(child.href)}
+                                                                         className="relative block"
+                                                                     >
+                                                                         {/* Horizontal hierarchy line */}
+                                                                         {!(isMini && !mobileSidebarOpen) && (
+                                                                             <div className={cn(
+                                                                                 "absolute top-1/2 -translate-y-1/2 w-[18px] h-px",
+                                                                                 "left-[-18px] rtl:right-[-18px] rtl:left-auto",
+                                                                                 isChildSelected ? "bg-primary" : "bg-border/60"
+                                                                             )} />
+                                                                         )}
+                                                                         <span
+                                                                             className={cn(
+                                                                                 'flex items-center gap-3 px-3 py-2 rounded-sm text-[13px] font-medium transition-all duration-300 ease-in-out border-s-[3px] border-transparent',
+                                                                                 isChildSelected
+                                                                                     ? 'bg-primary/10 text-primary border-primary'
+                                                                                     : 'text-muted-foreground hover:bg-primary/5 hover:text-primary hover:border-primary/30'
+                                                                             )}
+                                                                         >
+                                                                             {child.icon ? (
+                                                                                 <child.icon className={cn(
+                                                                                     "w-4 h-4 flex-shrink-0 transition-colors",
+                                                                                     isChildSelected ? "text-primary" : "text-muted-foreground"
+                                                                                 )} />
+                                                                             ) : (
+                                                                                 <span className={cn(
+                                                                                     "w-1.5 h-1.5 rounded-full transition-colors",
+                                                                                     isChildSelected ? "bg-primary" : "bg-muted-foreground/30"
+                                                                                 )} />
+                                                                             )}
+                                                                             <span>{child.name}</span>
+                                                                         </span>
+                                                                     </Link>
+                                                                 )
+                                                                 return isDesktop() ? (
+                                                                     <ContextMenu key={child.href}>
+                                                                         <ContextMenuTrigger asChild>
+                                                                             {childLink}
+                                                                         </ContextMenuTrigger>
+                                                                         <ContextMenuContent>
+                                                                             <ContextMenuItem onSelect={() => handleAddToDesktop(child.name, child.href)}>
+                                                                                 {t('shortcut.addToDesktop', { defaultValue: 'Add to desktop as shortcut' })}
+                                                                             </ContextMenuItem>
+                                                                         </ContextMenuContent>
+                                                                     </ContextMenu>
+                                                                 ) : (
+                                                                     childLink
+                                                                 )
+                                                             })}
                                                         </div>
                                                     )}
                                                 </div>

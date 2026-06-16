@@ -4190,5 +4190,11 @@
       "currency_exchange": "Currency Exchange",
       "clinic": "Clinic"
     }
+  },
+  "shortcut": {
+    "addToDesktop": "Add to desktop as shortcut",
+    "createdTitle": "Shortcut Created",
+    "createdMessage": "Shortcut \"Atlas - {{name}}\" created on desktop.",
+    "errorTitle": "Error"
   }
 }

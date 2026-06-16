@@ -699,6 +699,35 @@ function FaviconHandler() {
   return null;
 }
 
+function DeepLinkHandler() {
+    useEffect(() => {
+        if (!isTauri) return;
+
+        let unlisten: (() => void) | undefined;
+
+        const setup = async () => {
+            try {
+                const { listen } = await import('@tauri-apps/api/event');
+                const unlistenFn = await listen<string>('deep-link', (event) => {
+                    const route = event.payload;
+                    window.location.hash = getPathWithLang(route, i18n.language);
+                });
+                unlisten = unlistenFn;
+            } catch (err) {
+                console.warn('[DeepLink] Failed to listen:', err);
+            }
+        };
+
+        setup();
+
+        return () => {
+            if (unlisten) unlisten();
+        };
+    }, []);
+
+    return null;
+}
+
 function KdsSecurityGuard({ children }: { children: React.ReactNode }) {
   const [location] = useHashLocation();
 
@@ -856,6 +885,7 @@ function App() {
               <WhatsAppPlanGuard />
               <UpdateHandler />
               <WorkspaceWarmup />
+              <DeepLinkHandler />
               <UsbBackupStartupValidator />
               <FaviconHandler />
               <AutoSyncOverlay />

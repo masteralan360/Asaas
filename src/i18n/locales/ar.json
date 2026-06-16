@@ -3995,5 +3995,11 @@
       "currency_exchange": "مكتب الصرافة",
       "clinic": "عيادة"
     }
+  },
+  "shortcut": {
+    "addToDesktop": "إضافة اختصار إلى سطح المكتب",
+    "createdTitle": "تم إنشاء الاختصار",
+    "createdMessage": "تم إنشاء اختصار \"Atlas - {{name}}\" على سطح المكتب.",
+    "errorTitle": "خطأ"
   }
 }
