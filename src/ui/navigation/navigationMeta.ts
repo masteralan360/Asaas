@@ -10,6 +10,7 @@ import {
   Wallet,
   Globe,
   CalendarClock,
+  FileText,
 } from "lucide-react";
 
 export interface LauncherSection {
@@ -32,6 +33,7 @@ export const launcherSectionOrder = [
   "cash-and-control",
   "real-estate",
   "currency-exchange",
+  "manual-entry",
   "clinic-service",
   "agents",
   "partners-and-demand",
@@ -111,6 +113,19 @@ export const launcherSections: Record<NavigationSectionKey, LauncherSection> = {
       text: "text-violet-700 dark:text-violet-300",
       border: "border-violet-500/20 hover:border-violet-400/40",
       glow: "bg-violet-400/18",
+    },
+  },
+  "manual-entry": {
+    title: "Manual Entry",
+    eyebrow: "Manual operations",
+    description: "Create custom manual entries with reusable templates and editable A4 print forms.",
+    icon: FileText,
+    theme: {
+      shell: "from-cyan-500/18 via-sky-500/10 to-transparent",
+      surface: "bg-cyan-500/12 ring-1 ring-cyan-500/20",
+      text: "text-cyan-700 dark:text-cyan-300",
+      border: "border-cyan-500/20 hover:border-cyan-400/40",
+      glow: "bg-cyan-400/18",
     },
   },
   "clinic-service": {
@@ -270,6 +285,16 @@ export const moduleMetaByHref: Record<string, ModuleMeta> = {
     section: "agents",
     description: "Explicitly enable or stop foreground location sharing for a linked agent.",
     badge: "Location",
+  },
+  "/manual-entry": {
+    section: "manual-entry",
+    description: "Create manual entries using reusable templates with editable A4 forms.",
+    badge: "Entry",
+  },
+  "/manual-entry/templates": {
+    section: "manual-entry",
+    description: "Manage custom manual entry templates with addable, sortable rows.",
+    badge: "Templates",
   },
   "/clinical-appointments": {
     section: "clinic-service",

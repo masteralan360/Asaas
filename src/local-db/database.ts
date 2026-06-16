@@ -61,6 +61,8 @@ import type {
   Profile,
   LocalAccountCredential,
   WorkspacePermission,
+  ManualEntryTemplate,
+  ManualEntry,
 } from "./models";
 import { isLocalWorkspaceMode } from "@/workspace/workspaceMode";
 import {
@@ -359,6 +361,8 @@ export class AtlasDatabase extends Dexie {
   profiles!: EntityTable<Profile, "id">;
   local_account_credentials!: EntityTable<LocalAccountCredential, "id">;
   workspace_permissions!: EntityTable<WorkspacePermission, "id">;
+  manual_entry_templates!: EntityTable<ManualEntryTemplate, "id">;
+  manual_entries!: EntityTable<ManualEntry, "id">;
 
   constructor() {
     super("AtlasDatabase");
@@ -2237,6 +2241,13 @@ export class AtlasDatabase extends Dexie {
         "id, workspaceId, vehicleId, agentId, status, assignedAt, endedAt, updatedAt, isDeleted, syncStatus, [workspaceId+status], [workspaceId+vehicleId], [workspaceId+agentId]",
     });
 
+    this.version(75).stores({
+      manual_entry_templates:
+        "id, workspaceId, name, status, updatedAt, isDeleted",
+      manual_entries:
+        "id, workspaceId, templateId, createdAt",
+    });
+
     this.version(74)
       .stores({
         sales_exchange:
@@ -2601,6 +2612,8 @@ export async function clearDatabase(): Promise<void> {
       db.clinical_patients,
       db.clinical_attachments,
       db.clinical_presets,
+      db.manual_entry_templates,
+      db.manual_entries,
       db.fleet_vehicles,
       db.fleet_vehicle_assignments,
       db.payment_transactions,
@@ -2633,6 +2646,8 @@ export async function clearDatabase(): Promise<void> {
       await db.clinical_patients.clear();
       await db.clinical_attachments.clear();
       await db.clinical_presets.clear();
+      await db.manual_entry_templates.clear();
+      await db.manual_entries.clear();
       await db.fleet_vehicles.clear();
       await db.fleet_vehicle_assignments.clear();
       await db.payment_transactions.clear();

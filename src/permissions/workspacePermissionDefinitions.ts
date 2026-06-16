@@ -380,6 +380,26 @@ export const WORKSPACE_PERMISSION_DEFINITIONS = [
     icon: Globe,
     section: "global",
   },
+  {
+    key: "manualEntry.access",
+    module: "manualEntry",
+    labelKey: "members.permissions.manualEntryAccess",
+    defaultLabel: "Manual Entry",
+    descriptionKey: "members.permissions.manualEntryAccessDescription",
+    defaultDescription: "Access manual entry creation and history.",
+    icon: FileText,
+    section: "manual-entry",
+  },
+  {
+    key: "manualEntryTemplates.access",
+    module: "manualEntryTemplates",
+    labelKey: "members.permissions.manualEntryTemplatesAccess",
+    defaultLabel: "Manual Entry Templates",
+    descriptionKey: "members.permissions.manualEntryTemplatesAccessDescription",
+    defaultDescription: "Access manual entry template management.",
+    icon: FileSpreadsheet,
+    section: "manual-entry",
+  },
 ] as const;
 
 export type WorkspacePermissionKey =

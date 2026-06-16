@@ -37,6 +37,7 @@ export type PlanModuleKey =
     | 'expenses'
     | 'payroll'
     | 'whatsapp'
+    | 'manual_entry'
 
 export type WorkspaceFeatureKey =
     | 'pos'
@@ -68,6 +69,7 @@ export type WorkspaceFeatureKey =
     | 'payments'
     | 'ledger'
     | 'direct_transactions'
+    | 'manual_entry'
 
 export type PlanCapabilityKey =
     | 'receiptPrinting'
@@ -232,6 +234,7 @@ export const WORKSPACE_FEATURE_MODULE_MAP: Record<WorkspaceFeatureKey, PlanModul
     real_estate: 'real_estate',
     currency_exchange: 'currency_exchange',
     clinical_appointments: 'clinical_appointments',
+    manual_entry: 'manual_entry',
     loans: 'loans',
     installments: 'installments',
     net_revenue: 'revenue_analytics',

@@ -15,6 +15,8 @@ export { DirectTransactions } from './DirectTransactions'
 export { ModuleLauncher } from './ModuleLauncher'
 export { TravelAgency } from './TravelAgency'
 export { RealEstate } from './RealEstate'
+export { ManualEntry } from './ManualEntry'
+export { ManualEntryTemplates } from './ManualEntryTemplates'
 
 export { InvoicesHistory } from './InvoicesHistory'
 export { Members } from './Members'

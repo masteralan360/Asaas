@@ -97,6 +97,8 @@ const routePrefetchMap: Record<string, () => Promise<unknown>> = {
     '/orders': () => import('@/ui/pages/Orders'),
     '/travel-agency': () => import('@/ui/pages/TravelAgency'),
     '/real-estate': () => import('@/ui/pages/RealEstate'),
+    '/manual-entry': () => import('@/ui/pages/ManualEntry'),
+    '/manual-entry/templates': () => import('@/ui/pages/ManualEntryTemplates'),
 
     '/ledger': () => import('@/ui/pages/Ledger'),
     '/payments': () => import('@/ui/pages/Payments'),

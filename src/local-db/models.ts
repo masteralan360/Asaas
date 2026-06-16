@@ -934,6 +934,32 @@ export interface ClinicalPreset extends BaseEntity {
   createdBy?: string | null;
 }
 
+export type ManualEntryTemplateStatus = 'active' | 'inactive';
+
+export interface ManualEntryTemplateRow {
+  id: string;
+  label: string;
+  sortOrder: number;
+}
+
+export interface ManualEntryTemplate extends BaseEntity {
+  name: string;
+  rows: ManualEntryTemplateRow[];
+  status: ManualEntryTemplateStatus;
+  createdBy?: string | null;
+}
+
+export interface ManualEntry {
+  id: string;
+  workspaceId: string;
+  templateId: string;
+  templateName: string;
+  rows: ManualEntryTemplateRow[];
+  data: Record<string, string[]>;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface ClinicalPatient extends BaseEntity {
   name: string;
   phone?: string | null;

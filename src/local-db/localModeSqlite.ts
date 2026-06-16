@@ -61,6 +61,8 @@ export const LOCAL_MODE_SQLITE_TABLES = [
   "profiles",
   "local_account_credentials",
   "workspace_permissions",
+  "manual_entry_templates",
+  "manual_entries",
 ] as const;
 
 export type LocalModeSqliteTableName =

@@ -259,6 +259,12 @@ const TravelAgencySaleView = lazy(() =>
 const RealEstate = lazy(() =>
   import("@/ui/pages/RealEstate").then((m) => ({ default: m.RealEstate })),
 );
+const ManualEntry = lazy(() =>
+  import("@/ui/pages/ManualEntry").then((m) => ({ default: m.ManualEntry })),
+);
+const ManualEntryTemplates = lazy(() =>
+  import("@/ui/pages/ManualEntryTemplates").then((m) => ({ default: m.ManualEntryTemplates })),
+);
 const CurrencyExchange = lazy(() =>
   import("@/ui/pages/CurrencyExchange").then((m) => ({
     default: m.CurrencyExchange,
@@ -1232,6 +1238,29 @@ function App() {
                         >
                           <Layout>
                             <RealEstate />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+
+                      <Route path="/manual-entry">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="manual_entry"
+                          requiredPermission="manualEntry.access"
+                        >
+                          <Layout>
+                            <ManualEntry />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/manual-entry/templates">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="manual_entry"
+                          requiredPermission="manualEntryTemplates.access"
+                        >
+                          <Layout>
+                            <ManualEntryTemplates />
                           </Layout>
                         </ProtectedRoute>
                       </Route>

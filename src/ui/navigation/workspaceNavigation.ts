@@ -18,6 +18,7 @@ import {
   MessageSquare,
   Monitor,
   Package,
+  Pen,
   Percent,
   Plane,
   Receipt,
@@ -278,6 +279,22 @@ export function buildWorkspaceNavigation({
             })
             return result
           })(),
+        },
+      ]
+      : []),
+    ...(isCoreRole && hasFeature("manual_entry")
+      ? [
+        {
+          name: t("manualEntry.title", { defaultValue: "Manual Entry" }),
+          href: "/manual-entry",
+          icon: Pen,
+          children: [
+            {
+              name: t("manualEntry.templates", { defaultValue: "Manual Entry Templates" }),
+              href: "/manual-entry/templates",
+              icon: FileText,
+            },
+          ],
         },
       ]
       : []),

@@ -1,0 +1,419 @@
+import { createElement, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+import i18n from '@/i18n/config'
+import { ArrowLeft, FileText, Loader2, Printer, Save } from 'lucide-react'
+import { useAuth } from '@/auth'
+import { db } from '@/local-db'
+import type { ManualEntryTemplate } from '@/local-db/models'
+import { Button } from '@/ui/components/button'
+import { Input } from '@/ui/components/input'
+import {
+  Card, CardContent, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
+  useToast,
+} from '@/ui/components'
+import { generateTemplatePdf } from '@/services/pdfGenerator'
+import { saveInvoicePdfToLocalAppData } from '@/services/localInvoiceStorage'
+import { useReactToPrint } from 'react-to-print'
+
+const ROW_COUNT = 20
+
+type CellData = Record<string, string[]>
+
+function generateId() {
+  return typeof crypto !== 'undefined' && crypto.randomUUID
+    ? crypto.randomUUID()
+    : `entry-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
+}
+
+function renderTableElement(template: ManualEntryTemplate, data: CellData, dir: string) {
+  const sortedRows = [...template.rows]
+    .filter((r) => r.label.trim())
+    .sort((a, b) => a.sortOrder - b.sortOrder)
+
+  return createElement(
+    'div',
+    { style: { width: '210mm', background: '#ffffff', padding: '10mm 15mm', direction: 'rtl' } },
+    createElement(
+      'table',
+      {
+        style: {
+          width: '100%', borderCollapse: 'collapse', border: '1px solid #d1d5db',
+          fontFamily: 'Arial, sans-serif', fontSize: '12px',
+        },
+      },
+      createElement(
+        'thead',
+        null,
+        createElement(
+          'tr',
+          null,
+          createElement(
+            'th',
+            {
+              style: {
+                border: '1px solid #d1d5db', background: '#f3f4f6', padding: 0,
+                textAlign: 'center', fontWeight: 600, color: '#374151',
+                width: '30px', whiteSpace: 'nowrap',
+              },
+            },
+            createElement('div', {
+              style: {
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                minHeight: '28px', padding: '0 10px',
+              },
+            }, '#'),
+          ),
+          ...sortedRows.map((row) =>
+            createElement(
+              'th',
+              {
+                key: row.id,
+                style: {
+                  border: '1px solid #d1d5db', background: '#f3f4f6', padding: 0,
+                  textAlign: 'center', fontWeight: 600, color: '#374151',
+                },
+              },
+              createElement('div', {
+                style: {
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  minHeight: '28px', padding: '0 10px',
+                },
+              }, row.label),
+            ),
+          ),
+        ),
+      ),
+      createElement(
+        'tbody',
+        null,
+        ...Array.from({ length: ROW_COUNT }, (_, rowIdx) =>
+          createElement(
+            'tr',
+            { key: rowIdx },
+            createElement(
+              'td',
+              {
+                style: {
+                  border: '1px solid #d1d5db', padding: 0,
+                  textAlign: 'center', color: '#6b7280', fontSize: '12px',
+                },
+              },
+              createElement('div', {
+                style: {
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  minHeight: '28px', padding: '0 10px',
+                },
+              }, String(rowIdx + 1)),
+            ),
+            ...sortedRows.map((row) =>
+              createElement(
+                'td',
+                {
+                  key: row.id,
+                  style: { border: '1px solid #d1d5db', padding: 0, fontSize: '12px' },
+                  dir: 'rtl',
+                },
+                createElement('div', {
+                  style: {
+                    display: 'flex', alignItems: 'center',
+                    minHeight: '28px', padding: '0 10px',
+                  },
+                }, data[row.id]?.[rowIdx] || ''),
+              ),
+            ),
+          ),
+        ),
+      ),
+    ),
+  )
+}
+
+interface ManualEntryA4PreviewProps {
+  template: ManualEntryTemplate
+  onBack: () => void
+  onSaveAndPrint: (data: CellData) => Promise<string | undefined>
+}
+
+function ManualEntryA4Preview({ template, onBack, onSaveAndPrint }: ManualEntryA4PreviewProps) {
+  const { t, i18n } = useTranslation()
+  const [isSaving, setIsSaving] = useState(false)
+  const contentRef = useRef<HTMLDivElement>(null)
+
+  const sortedRows = useMemo(
+    () => [...template.rows]
+      .filter((r) => r.label.trim())
+      .sort((a, b) => a.sortOrder - b.sortOrder),
+    [template.rows],
+  )
+
+  const [cellData, setCellData] = useState<CellData>(() => {
+    const data: CellData = {}
+    for (const row of sortedRows) {
+      data[row.id] = Array.from({ length: ROW_COUNT }, () => '')
+    }
+    return data
+  })
+
+  const updateCell = useCallback((rowId: string, rowIndex: number, value: string) => {
+    setCellData((prev) => {
+      const col = [...(prev[rowId] || [])]
+      col[rowIndex] = value
+      return { ...prev, [rowId]: col }
+    })
+  }, [])
+
+  const handlePrint = useReactToPrint({
+    contentRef,
+    pageStyle: `
+      @page { size: A4; margin: 0; }
+      body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    `,
+  })
+
+  const handleSaveAndPrint = useCallback(async () => {
+    setIsSaving(true)
+    try {
+      const invoiceId = await onSaveAndPrint(cellData)
+      if (invoiceId) {
+        handlePrint()
+      }
+    } finally {
+      setIsSaving(false)
+    }
+  }, [cellData, onSaveAndPrint, handlePrint])
+
+  const dir = i18n.dir ? i18n.dir() : 'ltr'
+
+  return (
+    <div className="mx-auto p-4 sm:p-6">
+      <div className="no-print mb-4 flex items-center justify-between">
+        <Button variant="ghost" onClick={onBack}>
+          <ArrowLeft className="mr-2 h-4 w-4" />
+          {t('common.back') || 'Back'}
+        </Button>
+        <div className="text-lg font-semibold">{template.name}</div>
+        <Button onClick={handleSaveAndPrint} disabled={isSaving}>
+          {isSaving ? (
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          ) : (
+            <>
+              <Save className="mr-2 h-4 w-4" />
+              <Printer className="mr-2 h-4 w-4" />
+            </>
+          )}
+          {t('manualEntry.print.saveAndPrint') || 'Save & Print'}
+        </Button>
+      </div>
+
+      <div ref={contentRef} className="mx-auto bg-white" style={{ width: '210mm' }}>
+        <div style={{ padding: '10mm 15mm' }}>
+          <div style={{ direction: 'rtl' }}>
+            <table className="w-full border-collapse border border-gray-300 text-sm">
+              <thead>
+                <tr>
+                  <th className="border border-gray-300 bg-gray-100 text-center text-xs font-semibold text-gray-700 w-[30px] whitespace-nowrap">
+                    <div className="flex min-h-[28px] items-center justify-center px-2.5">#</div>
+                  </th>
+                  {sortedRows.map((row) => (
+                    <th key={row.id} className="border border-gray-300 bg-gray-100 text-center text-xs font-semibold text-gray-700">
+                      <div className="flex min-h-[28px] items-center justify-center px-2.5">{row.label}</div>
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {Array.from({ length: ROW_COUNT }, (_, rowIdx) => (
+                  <tr key={rowIdx}>
+                    <td className="border border-gray-300 p-0 text-center text-xs text-gray-500 whitespace-nowrap">
+                      <div className="flex min-h-[28px] items-center justify-center px-2.5">
+                        {rowIdx + 1}
+                      </div>
+                    </td>
+                    {sortedRows.map((row) => (
+                      <td key={row.id} className="border border-gray-300 p-0">
+                        <div className="flex min-h-[28px] items-center px-2.5" style={{ direction: 'rtl' }}>
+                          <Input
+                            value={cellData[row.id]?.[rowIdx] || ''}
+                            onChange={(e) => updateCell(row.id, rowIdx, e.target.value)}
+                            className="min-w-0 flex-1 rounded-none border-0 bg-transparent p-0 text-xs shadow-none focus:bg-blue-50 focus:ring-0"
+                          />
+                        </div>
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+export function ManualEntry() {
+  const { t } = useTranslation()
+  const { toast } = useToast()
+  const { user } = useAuth()
+  const workspaceId = user?.workspaceId
+
+  const [templates, setTemplates] = useState<ManualEntryTemplate[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [selectedTemplate, setSelectedTemplate] = useState<ManualEntryTemplate | null>(null)
+  const [isSelectionOpen, setIsSelectionOpen] = useState(false)
+
+  useEffect(() => {
+    if (!workspaceId) return
+    db.manual_entry_templates
+      .where('workspaceId')
+      .equals(workspaceId)
+      .filter((t) => !t.isDeleted && t.status === 'active')
+      .toArray()
+      .then((all) => {
+        setTemplates(all.sort((a, b) => a.createdAt.localeCompare(b.createdAt)))
+      })
+      .catch(console.error)
+      .finally(() => setIsLoading(false))
+  }, [workspaceId])
+
+  const activeTemplates = useMemo(
+    () => templates.filter((t) => !t.isDeleted && t.status === 'active'),
+    [templates],
+  )
+
+  const handleCreateEntry = useCallback(() => {
+    if (activeTemplates.length === 0) return
+    if (activeTemplates.length === 1) {
+      setSelectedTemplate(activeTemplates[0])
+    } else {
+      setIsSelectionOpen(true)
+    }
+  }, [activeTemplates])
+
+  const handleSelectTemplate = useCallback((template: ManualEntryTemplate) => {
+    setIsSelectionOpen(false)
+    setSelectedTemplate(template)
+  }, [])
+
+  const handleSaveAndPrint = useCallback(async (data: CellData): Promise<string | undefined> => {
+    if (!workspaceId || !selectedTemplate) return
+    try {
+      const now = new Date().toISOString()
+      const entryId = generateId()
+      const invoiceId = generateId()
+
+      await db.manual_entries.add({
+        id: entryId,
+        workspaceId,
+        templateId: selectedTemplate.id,
+        templateName: selectedTemplate.name,
+        rows: selectedTemplate.rows.map((r) => ({
+          id: r.id,
+          label: r.label,
+          sortOrder: r.sortOrder,
+        })),
+        data,
+        createdAt: now,
+        updatedAt: now,
+      })
+
+      const tableElement = renderTableElement(selectedTemplate, data, i18n.dir?.() || 'ltr')
+      const pdfBlob = await generateTemplatePdf({ element: tableElement })
+
+      const localPath = await saveInvoicePdfToLocalAppData(workspaceId, invoiceId, 'a4', pdfBlob)
+
+      await db.invoices.add({
+        id: invoiceId,
+        invoiceid: invoiceId,
+        workspaceId,
+        totalAmount: 0,
+        settlementCurrency: 'IQD',
+        origin: 'manual',
+        status: 'draft',
+        localPathA4: localPath ?? undefined,
+        printFormat: 'a4',
+        createdAt: now,
+        updatedAt: now,
+        syncStatus: 'synced',
+        lastSyncedAt: null,
+        version: 1,
+        isDeleted: false,
+      })
+
+      toast({
+        title: (t('print.saveSuccess') as string) || 'Saved',
+        description: (t('print.saveSuccessDesc') as string) || 'Manual entry saved successfully.',
+      })
+
+      return invoiceId
+    } catch (err) {
+      console.error('Failed to save manual entry:', err)
+    }
+  }, [workspaceId, selectedTemplate, t, toast])
+
+  if (selectedTemplate) {
+    return (
+      <ManualEntryA4Preview
+        template={selectedTemplate}
+        onBack={() => setSelectedTemplate(null)}
+        onSaveAndPrint={handleSaveAndPrint}
+      />
+    )
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex h-64 items-center justify-center">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    )
+  }
+
+  return (
+    <div className="container mx-auto p-4 sm:p-6">
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold">{t('manualEntry.title')}</h1>
+        <p className="text-sm text-muted-foreground">{t('manualEntry.description')}</p>
+      </div>
+
+      <Card>
+        <CardContent className="flex flex-col items-center gap-4 py-12">
+          <Button size="lg" onClick={handleCreateEntry} disabled={activeTemplates.length === 0}>
+            <Printer className="mr-2 h-5 w-5" />
+            {t('manualEntry.create')}
+          </Button>
+          {activeTemplates.length === 0 && (
+            <p className="text-sm text-muted-foreground">{t('manualEntry.noTemplates')}</p>
+          )}
+        </CardContent>
+      </Card>
+
+      <Dialog open={isSelectionOpen} onOpenChange={(open) => !open && setIsSelectionOpen(false)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileText className="h-5 w-5 text-primary" />
+              {t('manualEntry.selectTemplate')}
+            </DialogTitle>
+            <DialogDescription>{t('manualEntry.selectTemplateDescription')}</DialogDescription>
+          </DialogHeader>
+          <div className="grid max-h-[55vh] grid-cols-1 gap-3 overflow-y-auto py-2">
+            {activeTemplates.map((template) => (
+              <Button
+                key={template.id}
+                variant="outline"
+                className="flex h-auto flex-col items-start gap-1 p-4 text-left"
+                onClick={() => handleSelectTemplate(template)}
+              >
+                <span className="font-medium">{template.name}</span>
+                <span className="text-xs text-muted-foreground">
+                  {template.rows.length} {(t('manualEntry.rows') as string) || 'rows'}
+                </span>
+              </Button>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}

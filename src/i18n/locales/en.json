@@ -4191,6 +4191,42 @@
       "clinic": "Clinic"
     }
   },
+  "manualEntry": {
+    "title": "Manual Entry",
+    "description": "Create manual entries using reusable templates.",
+    "create": "Create Manual Entry",
+    "noTemplates": "No templates available. Create a template first in Manual Entry Templates.",
+    "selectTemplate": "Select a Template",
+    "selectTemplateDescription": "Choose a template to create a manual entry.",
+    "table": {
+      "row": "Row",
+      "header": "Header"
+    },
+    "print": {
+      "saveAndPrint": "Save & Print"
+    },
+    "templates": "Manual Entry Templates",
+    "createTemplate": "Create new entry template",
+    "editTemplate": "Edit Template",
+    "deleteTemplate": "Delete Template",
+    "templateName": "Template Name",
+    "templateNamePlaceholder": "Enter template name",
+    "rows": "Rows",
+    "addRow": "Add Row",
+    "rowLabel": "Row Label",
+    "rowLabelPlaceholder": "Enter header label",
+    "sortOrder": "Sort Order",
+    "dragToReorder": "Drag to reorder",
+    "saveTemplate": "Save Template",
+    "saving": "Saving...",
+    "confirmDelete": "Delete Template",
+    "confirmDeleteDescription": "Are you sure you want to delete this template? This action cannot be undone.",
+    "templateSaved": "Template saved successfully.",
+    "templateDeleted": "Template deleted successfully.",
+    "noRows": "No rows yet. Add rows to define the entry fields.",
+    "empty": "No templates yet.",
+    "emptyDescription": "Create your first manual entry template to get started."
+  },
   "shortcut": {
     "addToDesktop": "Add to desktop as shortcut",
     "createdTitle": "Shortcut Created",
