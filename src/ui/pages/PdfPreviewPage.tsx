@@ -1342,16 +1342,13 @@ export function PdfPreviewPage() {
                                 {t('print.printAndSave') || 'Print & Save'}
                             </button>
                         )}
-                        <a
-                            href={source.url}
-                            download={`${title || 'invoice'}.pdf`}
-                            target="_blank"
-                            rel="noopener noreferrer"
+                        <button
+                            onClick={() => window.open(source.url, '_blank')}
                             className="inline-flex items-center justify-center rounded-md h-8 px-3 text-xs font-medium transition-colors gap-1.5 bg-secondary text-secondary-foreground hover:bg-secondary/90"
                         >
                             <ExternalLink className="h-3.5 w-3.5" />
                             {t('common.open') || 'Open'}
-                        </a>
+                        </button>
                     </div>
                 </header>
                 <div className="flex-1">
