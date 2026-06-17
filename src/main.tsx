@@ -2,10 +2,22 @@ import { StrictMode, type ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { Analytics } from '@vercel/analytics/react'
 import { registerSW } from 'virtual:pwa-register'
+import { requestPersistentStorage } from '@/local-db/storagePersist'
+import { isOpfsSupported } from '@/local-db/pwaSqlite'
 
 const isMarketplaceHost =
     typeof window !== 'undefined'
     && window.location.hostname === 'marketplace-atlas.vercel.app'
+
+const initPwaLocalMode = async () => {
+    if (import.meta.env.PROD && isOpfsSupported()) {
+        try {
+            await requestPersistentStorage()
+        } catch (error) {
+            console.error('Failed to request persistent storage:', error)
+        }
+    }
+}
 
 const registerAppServiceWorker = () => {
     registerSW({
@@ -154,6 +166,8 @@ const init = async () => {
         await renderMarketplace()
         return
     }
+
+    void initPwaLocalMode()
 
     await renderApp()
 }

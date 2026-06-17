@@ -18,7 +18,7 @@ export default defineConfig(({ mode }) => {
                 disable: isTauriBuild,
                 injectRegister: null,
                 registerType: 'autoUpdate',
-                includeAssets: ['logo.ico', 'logo.png', 'pwa-icon.png'],
+                includeAssets: ['logo.ico', 'logo.png', 'pwa-icon.png', 'sql-wasm.wasm'],
                 manifest: {
                     name: 'Atlas',
                     short_name: 'Atlas',
@@ -47,7 +47,7 @@ export default defineConfig(({ mode }) => {
                 },
                 workbox: {
                     maximumFileSizeToCacheInBytes: 5 * 1024 * 1024, // 5MB limit
-                    globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+                    globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2,wasm}'],
                     cleanupOutdatedCaches: true,
                     clientsClaim: true,
                     skipWaiting: true,
@@ -70,6 +70,36 @@ export default defineConfig(({ mode }) => {
                                 },
                                 precacheFallback: {
                                     fallbackURL: 'index.html'
+                                }
+                            }
+                        },
+                        {
+                            urlPattern: /\.wasm$/,
+                            handler: 'CacheFirst',
+                            options: {
+                                cacheName: 'atlas-wasm',
+                                expiration: {
+                                    maxEntries: 5,
+                                    maxAgeSeconds: 60 * 60 * 24 * 30
+                                },
+                                cacheableResponse: {
+                                    statuses: [200]
+                                }
+                            }
+                        },
+                        {
+                            urlPattern: ({ url }) =>
+                                url.pathname.startsWith('/api-xeiqd')
+                                || url.pathname.startsWith('/api-forexfy'),
+                            handler: 'NetworkFirst',
+                            options: {
+                                cacheName: 'atlas-api-cache',
+                                expiration: {
+                                    maxEntries: 50,
+                                    maxAgeSeconds: 60 * 60
+                                },
+                                cacheableResponse: {
+                                    statuses: [0, 200]
                                 }
                             }
                         }
@@ -148,7 +178,7 @@ export default defineConfig(({ mode }) => {
                             return 'vendor-supabase'
                         }
 
-                        if (isPackage('dexie') || isPackage('dexie-react-hooks')) {
+                        if (isPackage('dexie') || isPackage('dexie-react-hooks') || isPackage('sql.js')) {
                             return 'vendor-db'
                         }
 

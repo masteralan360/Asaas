@@ -12,7 +12,7 @@ import { formatDate, formatDateTime, formatTime, cn, generateId, getHourDisplayP
 import { useTheme } from '@/ui/components/theme-provider'
 import { Moon, Sun, Monitor, Unlock, Server, MessageSquare, Bell, MonitorPlay, Wifi, Zap } from 'lucide-react'
 import { useState, useEffect } from 'react'
-import { isMobile, isDesktop, isTauri } from '@/lib/platform'
+import { isMobile, isDesktop, isTauri, isWeb } from '@/lib/platform'
 import { useExchangeRate } from '@/context/ExchangeRateContext'
 import { getAppSettingSync, setAppSetting } from '@/local-db/settings'
 import { decrypt } from '@/lib/encryption'
@@ -32,6 +32,8 @@ import type { PrinterInfo } from 'tauri-plugin-thermal-printer'
 import { registerDeviceTokenIfNeeded } from '@/services/notificationDevice'
 import { useKdsStream } from '@/hooks/useKdsStream'
 import { useUsbBackup } from '@/hooks/useUsbBackup'
+import { exportPwaStoreFile } from '@/local-db/pwaBackup'
+import { isOpfsSupported } from '@/local-db/pwaSqlite'
 import { ReactQRCode } from '@lglab/react-qr-code'
 import { BranchManager } from '@/ui/components/workspace/BranchManager'
 
@@ -2735,6 +2737,30 @@ export function Settings() {
                                     </div>
                                 </CardContent>
                             </Card>
+
+                            {/* PWA Database Export (Web + OPFS supported) */}
+                            {isWeb() && isOpfsSupported() && (
+                              <Card>
+                                <CardHeader>
+                                  <CardTitle className="flex items-center gap-2">
+                                    <Database className="w-5 h-5" />
+                                    Local Database
+                                  </CardTitle>
+                                  <CardDescription>
+                                    Download the atlas-local-mode.db SQLite file saved on this device.
+                                    This file contains all your local data and can be opened with any SQLite tool.
+                                  </CardDescription>
+                                </CardHeader>
+                                <CardContent>
+                                  <div className="flex flex-wrap gap-2">
+                                    <Button onClick={exportPwaStoreFile} variant="default" size="sm">
+                                      <Download className="mr-2 h-4 w-4" />
+                                      Download Database
+                                    </Button>
+                                  </div>
+                                </CardContent>
+                              </Card>
+                            )}
 
                             {/* USB Backup (Desktop + Local/Hybrid mode only) */}
                             {usbBackup.isDesktopApp && (isLocalMode || isHybridMode) && (

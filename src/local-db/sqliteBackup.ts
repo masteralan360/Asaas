@@ -1,6 +1,8 @@
 import { isTauri } from '@/lib/platform'
 import { shouldMirrorToSqlite } from '@/workspace/workspaceMode'
 import { r2Service } from '@/services/r2Service'
+import { runPwaDailyBackupIfNeeded } from './pwaBackup'
+import { getPwaDbInstance } from './pwaSqlite'
 
 const DB_FILENAME = 'atlas-local-mode.db'
 const BACKUP_DIR = 'db-backup'
@@ -65,9 +67,13 @@ async function pruneOldBackups() {
 }
 
 export async function runDailyBackupIfNeeded(workspaceId?: string | null) {
-    if (!isTauri()) return
     if (!workspaceId || !shouldMirrorToSqlite(workspaceId)) return
     if (isBackupAlreadyDoneToday()) return
+
+    if (!isTauri()) {
+        await runPwaDailyBackupIfNeeded()
+        return
+    }
 
     try {
         const { exists, mkdir, copyFile, BaseDirectory } = await import('@tauri-apps/plugin-fs')
@@ -131,29 +137,50 @@ function markR2BackupDone(): void {
 }
 
 export async function runR2BackupIfNeeded(workspaceId: string | undefined | null): Promise<void> {
-    if (!isTauri()) return
     if (!workspaceId || !shouldMirrorToSqlite(workspaceId)) return
     if (!isR2BackupDue()) return
 
-    try {
-        const { exists, readFile, BaseDirectory } = await import('@tauri-apps/plugin-fs')
+    if (isTauri()) {
+        try {
+            const { exists, readFile, BaseDirectory } = await import('@tauri-apps/plugin-fs')
 
-        const dbExists = await exists(DB_FILENAME, { baseDir: BaseDirectory.AppData })
-        if (!dbExists) {
-            console.log('[R2Backup] No SQLite database file found, skipping backup')
+            const dbExists = await exists(DB_FILENAME, { baseDir: BaseDirectory.AppData })
+            if (!dbExists) {
+                console.log('[R2Backup] No SQLite database file found, skipping backup')
+                return
+            }
+
+            const fileData = await readFile(DB_FILENAME, { baseDir: BaseDirectory.AppData })
+            const blob = new Blob([fileData], { type: 'application/octet-stream' })
+
+            const r2Path = `local-backup/${workspaceId}/${DB_FILENAME}`
+            await r2Service.upload(r2Path, blob, 'application/octet-stream', true)
+
+            console.log('[R2Backup] Database uploaded to R2:', r2Path)
+            markR2BackupDone()
+        } catch (err) {
+            console.warn('[R2Backup] Failed to upload database backup to R2:', err)
+        }
+        return
+    }
+
+    try {
+        const db = getPwaDbInstance()
+        if (!db) {
+            console.log('[R2Backup] No PWA SQLite database loaded, skipping backup')
             return
         }
 
-        const fileData = await readFile(DB_FILENAME, { baseDir: BaseDirectory.AppData })
-        const blob = new Blob([fileData], { type: 'application/octet-stream' })
+        const data = db.export()
+        const blob = new Blob([data], { type: 'application/octet-stream' })
 
         const r2Path = `local-backup/${workspaceId}/${DB_FILENAME}`
         await r2Service.upload(r2Path, blob, 'application/octet-stream', true)
 
-        console.log('[R2Backup] Database uploaded to R2:', r2Path)
+        console.log('[R2Backup] PWA database uploaded to R2:', r2Path)
         markR2BackupDone()
     } catch (err) {
-        console.warn('[R2Backup] Failed to upload database backup to R2:', err)
+        console.warn('[R2Backup] Failed to upload PWA database backup to R2:', err)
     }
 }
 

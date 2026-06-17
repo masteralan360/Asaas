@@ -3,6 +3,7 @@ import type Dexie from "dexie";
 import { isTauri } from "@/lib/platform";
 import { shouldMirrorToSqlite } from "@/workspace/workspaceMode";
 import { runUsbBackupIfNeeded } from "./usbBackup";
+import { createPwaSqliteConnection, isOpfsSupported } from "./pwaSqlite";
 
 const LOCAL_MODE_SQLITE_PATH = "sqlite:atlas-local-mode.db";
 
@@ -90,7 +91,10 @@ let sqliteWriteQueue: Promise<void> = Promise.resolve();
 let mirroringPauseDepth = 0;
 
 function isSupported() {
-  return typeof window !== "undefined" && isTauri();
+  return (
+    typeof window !== "undefined" &&
+    (isTauri() || isOpfsSupported())
+  );
 }
 
 function isMirroredTableName(
@@ -191,12 +195,13 @@ async function ensureConnection() {
 
   if (!sqlitePromise) {
     sqlitePromise = (async () => {
-      const { default: Database } = await import("@tauri-apps/plugin-sql");
-      const connection = await Database.load(LOCAL_MODE_SQLITE_PATH);
+      if (isTauri()) {
+        const { default: Database } = await import("@tauri-apps/plugin-sql");
+        const connection = await Database.load(LOCAL_MODE_SQLITE_PATH);
 
-      await connection.execute("PRAGMA busy_timeout = 5000");
-      await connection.execute("PRAGMA journal_mode = WAL");
-      await connection.execute(`
+        await connection.execute("PRAGMA busy_timeout = 5000");
+        await connection.execute("PRAGMA journal_mode = WAL");
+        await connection.execute(`
                 CREATE TABLE IF NOT EXISTS local_entities (
                     entity_type TEXT NOT NULL,
                     entity_id TEXT NOT NULL,
@@ -206,16 +211,19 @@ async function ensureConnection() {
                     PRIMARY KEY (entity_type, entity_id)
                 )
             `);
-      await connection.execute(`
+        await connection.execute(`
                 CREATE INDEX IF NOT EXISTS idx_local_entities_workspace
                 ON local_entities (workspace_id)
             `);
-      await connection.execute(`
+        await connection.execute(`
                 CREATE INDEX IF NOT EXISTS idx_local_entities_type_workspace
                 ON local_entities (entity_type, workspace_id)
             `);
 
-      return connection as SqliteConnection;
+        return connection as SqliteConnection;
+      }
+
+      return createPwaSqliteConnection();
     })().catch((error) => {
       sqlitePromise = null;
       console.error(
@@ -252,14 +260,16 @@ async function resetSqliteConnection() {
       return;
     }
   } catch {
-    // Fall through and close the named Tauri pool.
+    // Fall through.
   }
 
-  try {
-    const { default: Database } = await import("@tauri-apps/plugin-sql");
-    await Database.get(LOCAL_MODE_SQLITE_PATH).close();
-  } catch {
-    // Reopening on the next attempt is enough.
+  if (isTauri()) {
+    try {
+      const { default: Database } = await import("@tauri-apps/plugin-sql");
+      await Database.get(LOCAL_MODE_SQLITE_PATH).close();
+    } catch {
+      // Reopening on the next attempt is enough.
+    }
   }
 }
 
