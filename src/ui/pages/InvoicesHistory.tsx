@@ -23,7 +23,7 @@ import {
     TabsTrigger,
     TabsContent,
 } from '@/ui/components'
-import { FileText, Search, Eye, Upload, RefreshCw } from 'lucide-react'
+import { FileText, Search, Eye, Upload, RefreshCw, Share2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/auth'
 import { useWorkspace } from '@/workspace'
@@ -181,6 +181,77 @@ export function InvoicesHistory() {
         }
     }
 
+    const handleShare = async (invoice: Invoice, format: 'a4' | 'receipt') => {
+        setIsLoadingPdf(true)
+        setDownloadError(null)
+
+        try {
+            const localPath = getStoredLocalInvoicePdfPath(invoice, format)
+            const pdfBlob = format === 'a4' ? invoice.pdfBlobA4 : invoice.pdfBlobReceipt
+            const r2Path = format === 'a4' ? invoice.r2PathA4 : invoice.r2PathReceipt
+
+            let blob: Blob | null = pdfBlob ?? null
+
+            if (!blob && localPath) {
+                const exists = await platformService.exists(localPath)
+                if (exists) {
+                    try {
+                        const content = await platformService.readFile(localPath)
+                        blob = new Blob([content], { type: 'application/pdf' })
+                    } catch {
+                        // fall through
+                    }
+                }
+            }
+
+            if (!blob && r2Path) {
+                if (!navigator.onLine) {
+                    setDownloadError(t('invoices.offlineError') || 'You must be online to share invoice PDFs.')
+                    return
+                }
+                try {
+                    const response = await fetch(r2Service.getUrl(r2Path))
+                    if (response.ok) {
+                        blob = await response.blob()
+                    }
+                } catch {
+                    // fall through
+                }
+            }
+
+            if (!blob) {
+                setDownloadError(t('invoices.pdfNotAvailable') || 'PDF not available.')
+                return
+            }
+
+            const fileName = `${t('invoices.invoice') || 'Invoice'}_${invoice.sequenceId ? String(invoice.sequenceId).padStart(5, '0') : invoice.invoiceid}.pdf`
+            const file = new File([blob], fileName, { type: 'application/pdf' })
+
+            if (navigator.canShare && navigator.canShare({ files: [file] })) {
+                await navigator.share({
+                    title: fileName,
+                    files: [file],
+                })
+            } else {
+                const url = URL.createObjectURL(blob)
+                const a = document.createElement('a')
+                a.href = url
+                a.download = fileName
+                a.style.display = 'none'
+                document.body.appendChild(a)
+                a.click()
+                document.body.removeChild(a)
+                URL.revokeObjectURL(url)
+            }
+        } catch (error) {
+            if (error instanceof Error && error.name === 'AbortError') return
+            console.error('[InvoicesHistory] Failed to share PDF:', error)
+            setDownloadError(t('invoices.shareError') || 'Failed to share PDF')
+        } finally {
+            setIsLoadingPdf(false)
+        }
+    }
+
     return (
         <Tabs
             value={activeTab}
@@ -323,6 +394,18 @@ export function InvoicesHistory() {
                                                             <span className="font-mono text-xs font-bold">Receipt</span>
                                                         </Button>
                                                     )}
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        allowViewer={true}
+                                                        className="flex items-center gap-2 rounded-xl px-3 transition-all hover:bg-primary/10 hover:text-primary"
+                                                        onClick={() => {
+                                                            const format = (invoice.localPathA4 || invoice.pdfBlobA4 || invoice.r2PathA4) ? 'a4' : 'receipt'
+                                                            void handleShare(invoice, format)
+                                                        }}
+                                                    >
+                                                        <Share2 className="h-4 w-4" />
+                                                    </Button>
                                                 </div>
                                             </TableCell>
                                         </TableRow>
