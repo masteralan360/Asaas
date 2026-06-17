@@ -36,26 +36,26 @@ function renderTableElement(template: ManualEntryTemplate, data: CellData) {
 
   return createElement(
     'div',
-    { style: { width: '210mm', background: '#ffffff', padding: '10mm 15mm', direction: 'rtl' } },
+    { style: { width: '210mm', minHeight: '297mm', background: '#ffffff', padding: '10mm 15mm', direction: 'rtl', display: 'flex', flexDirection: 'column', justifyContent: 'center', boxSizing: 'border-box' } },
     headerLines.length > 0
-      ? createElement(
+      ?         createElement(
           'div',
           {
             style: {
               marginBottom: 0,
-              padding: '12px',
+              padding: '18px',
               border: '1px solid #d1d5db',
               borderBottom: 'none',
               borderTopLeftRadius: '8px',
               borderTopRightRadius: '8px',
               background: '#f9fafb',
               fontFamily: 'Arial, sans-serif',
-              fontSize: '14px',
+              fontSize: '16px',
               lineHeight: '1.8',
             },
           },
           headerLines.map((line, idx) =>
-            createElement('div', { key: idx, style: { marginBottom: '6px', fontWeight: 500 } }, line),
+            createElement('div', { key: idx, style: { marginBottom: '8px', fontWeight: 500 } }, line),
           ),
         )
       : null,
@@ -64,7 +64,7 @@ function renderTableElement(template: ManualEntryTemplate, data: CellData) {
       {
         style: {
           width: '100%', borderCollapse: 'collapse', border: '1px solid #d1d5db',
-          fontFamily: 'Arial, sans-serif', fontSize: '12px',
+          fontFamily: 'Arial, sans-serif', fontSize: '13px',
         },
       },
       createElement(
@@ -79,13 +79,13 @@ function renderTableElement(template: ManualEntryTemplate, data: CellData) {
               style: {
                 border: '1px solid #d1d5db', background: '#f3f4f6', padding: 0,
                 textAlign: 'center', fontWeight: 600, color: '#374151',
-                width: '30px', whiteSpace: 'nowrap',
+                width: '36px', whiteSpace: 'nowrap',
               },
             },
             createElement('div', {
               style: {
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                minHeight: '28px', padding: '0 10px',
+                minHeight: '36px', padding: '0 14px',
               },
             }, '#'),
           ),
@@ -103,7 +103,7 @@ function renderTableElement(template: ManualEntryTemplate, data: CellData) {
               createElement('div', {
                 style: {
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  minHeight: '28px', padding: '0 10px',
+                  minHeight: '36px', padding: '0 14px',
                 },
               }, row.label),
             ),
@@ -122,13 +122,13 @@ function renderTableElement(template: ManualEntryTemplate, data: CellData) {
               {
                 style: {
                   border: '1px solid #d1d5db', padding: 0,
-                  textAlign: 'center', color: '#6b7280', fontSize: '12px',
+                  textAlign: 'center', color: '#6b7280', fontSize: '13px',
                 },
               },
               createElement('div', {
                 style: {
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  minHeight: '28px', padding: '0 10px',
+                  minHeight: '36px', padding: '0 14px',
                 },
               }, String(rowIdx + 1)),
             ),
@@ -137,13 +137,13 @@ function renderTableElement(template: ManualEntryTemplate, data: CellData) {
                 'td',
                 {
                   key: row.id,
-                  style: { border: '1px solid #d1d5db', padding: 0, fontSize: '12px' },
+                  style: { border: '1px solid #d1d5db', padding: 0, fontSize: '13px' },
                   dir: 'rtl',
                 },
                 createElement('div', {
                   style: {
                     display: 'flex', alignItems: 'center',
-                    minHeight: '28px', padding: '0 10px',
+                    minHeight: '36px', padding: '0 14px',
                   },
                 }, data[row.id]?.[rowIdx] || ''),
               ),
@@ -219,7 +219,7 @@ function ManualEntryA4Preview({ template, onBack, onSaveAndPrint }: ManualEntryA
       </div>
 
       <div className="overflow-auto max-w-full">
-      <div className="mx-auto bg-white" style={{ width: '210mm' }}>
+      <div className="mx-auto bg-white" style={{ width: '210mm', minHeight: '297mm', display: 'flex', flexDirection: 'column', justifyContent: 'center', boxSizing: 'border-box' }}>
         <div style={{ padding: '10mm 15mm' }}>
           <div style={{ direction: 'rtl', marginBottom: 0 }}>
             {(() => {
@@ -230,24 +230,24 @@ function ManualEntryA4Preview({ template, onBack, onSaveAndPrint }: ManualEntryA
               ].filter(Boolean)
               if (lines.length === 0) return null
               return (
-                <div className="border border-gray-300 border-b-0 bg-gray-50 rounded-t-lg p-3 mb-0" style={{ fontFamily: 'Arial, sans-serif' }}>
+                <div className="border border-gray-300 border-b-0 bg-gray-50 rounded-t-lg p-4 mb-0" style={{ fontFamily: 'Arial, sans-serif' }}>
                   {lines.map((line, idx) => (
-                    <div key={idx} className="text-sm font-medium leading-relaxed mb-1 last:mb-0">{line}</div>
+                    <div key={idx} className="text-base font-medium leading-relaxed mb-1.5 last:mb-0">{line}</div>
                   ))}
                 </div>
               )
             })()}
           </div>
           <div style={{ direction: 'rtl' }}>
-            <table className="w-full border-collapse border border-gray-300 text-sm">
+            <table className="w-full border-collapse border border-gray-300 text-base">
               <thead>
                 <tr>
-                  <th className="border border-gray-300 bg-gray-100 text-center text-xs font-semibold text-gray-700 w-[30px] whitespace-nowrap">
-                    <div className="flex min-h-[28px] items-center justify-center px-2.5">#</div>
+                  <th className="border border-gray-300 bg-gray-100 text-center text-xs font-semibold text-gray-700 w-[36px] whitespace-nowrap">
+                    <div className="flex min-h-[36px] items-center justify-center px-3.5">#</div>
                   </th>
                   {sortedRows.map((row, idx) => (
                     <th key={row.id} className="border border-gray-300 bg-gray-100 text-center text-xs font-semibold text-gray-700" style={idx === 0 ? { width: '40%' } : {}}>
-                      <div className="flex min-h-[28px] items-center justify-center px-2.5">{row.label}</div>
+                      <div className="flex min-h-[36px] items-center justify-center px-3.5">{row.label}</div>
                     </th>
                   ))}
                 </tr>
@@ -256,13 +256,13 @@ function ManualEntryA4Preview({ template, onBack, onSaveAndPrint }: ManualEntryA
                 {Array.from({ length: ROW_COUNT }, (_, rowIdx) => (
                   <tr key={rowIdx}>
                     <td className="border border-gray-300 p-0 text-center text-xs text-gray-500 whitespace-nowrap">
-                      <div className="flex min-h-[28px] items-center justify-center px-2.5">
+                      <div className="flex min-h-[36px] items-center justify-center px-3.5">
                         {rowIdx + 1}
                       </div>
                     </td>
                     {sortedRows.map((row) => (
                       <td key={row.id} className="border border-gray-300 p-0">
-                        <div className="flex min-h-[28px] items-center px-2.5" style={{ direction: 'rtl' }}>
+                        <div className="flex min-h-[36px] items-center px-3.5" style={{ direction: 'rtl' }}>
                           <Input
                             value={cellData[row.id]?.[rowIdx] || ''}
                             onChange={(e) => updateCell(row.id, rowIdx, e.target.value)}
