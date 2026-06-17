@@ -947,6 +947,9 @@ export interface ManualEntryTemplate extends BaseEntity {
   headerName?: string;
   headerPhone1?: string;
   headerPhone2?: string;
+  detailsLabel1?: string;
+  detailsLabel2?: string;
+  detailsLabel3?: string;
   rows: ManualEntryTemplateRow[];
   status: ManualEntryTemplateStatus;
   createdBy?: string | null;
@@ -959,6 +962,7 @@ export interface ManualEntry {
   templateName: string;
   rows: ManualEntryTemplateRow[];
   data: Record<string, string[]>;
+  detailValues: Record<string, string>;
   createdAt: string;
   updatedAt: string;
 }

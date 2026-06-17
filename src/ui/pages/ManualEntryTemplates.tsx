@@ -40,6 +40,9 @@ export function ManualEntryTemplates() {
   const [formHeaderName, setFormHeaderName] = useState('')
   const [formHeaderPhone1, setFormHeaderPhone1] = useState('')
   const [formHeaderPhone2, setFormHeaderPhone2] = useState('')
+  const [formDetailsLabel1, setFormDetailsLabel1] = useState('')
+  const [formDetailsLabel2, setFormDetailsLabel2] = useState('')
+  const [formDetailsLabel3, setFormDetailsLabel3] = useState('')
   const [formRows, setFormRows] = useState<ManualEntryTemplateRow[]>([])
   const [isSaving, setIsSaving] = useState(false)
 
@@ -76,6 +79,9 @@ export function ManualEntryTemplates() {
     setFormHeaderName('')
     setFormHeaderPhone1('')
     setFormHeaderPhone2('')
+    setFormDetailsLabel1('')
+    setFormDetailsLabel2('')
+    setFormDetailsLabel3('')
     setFormRows([createEmptyRow(1)])
     setIsFormOpen(true)
   }, [])
@@ -86,6 +92,9 @@ export function ManualEntryTemplates() {
     setFormHeaderName(template.headerName || '')
     setFormHeaderPhone1(template.headerPhone1 || '')
     setFormHeaderPhone2(template.headerPhone2 || '')
+    setFormDetailsLabel1(template.detailsLabel1 || '')
+    setFormDetailsLabel2(template.detailsLabel2 || '')
+    setFormDetailsLabel3(template.detailsLabel3 || '')
     setFormRows([...template.rows].sort((a, b) => a.sortOrder - b.sortOrder))
     setIsFormOpen(true)
   }, [])
@@ -157,6 +166,9 @@ export function ManualEntryTemplates() {
         headerName: formHeaderName.trim(),
         headerPhone1: formHeaderPhone1.trim(),
         headerPhone2: formHeaderPhone2.trim(),
+        detailsLabel1: formDetailsLabel1.trim() || undefined,
+        detailsLabel2: formDetailsLabel2.trim() || undefined,
+        detailsLabel3: formDetailsLabel3.trim() || undefined,
       }
 
       if (editingTemplate) {
@@ -191,7 +203,7 @@ export function ManualEntryTemplates() {
     } finally {
       setIsSaving(false)
     }
-  }, [workspaceId, formName, formHeaderName, formHeaderPhone1, formHeaderPhone2, formRows, editingTemplate, user?.id, t, toast, fetchTemplates])
+  }, [workspaceId, formName, formHeaderName, formHeaderPhone1, formHeaderPhone2, formDetailsLabel1, formDetailsLabel2, formDetailsLabel3, formRows, editingTemplate, user?.id, t, toast, fetchTemplates])
 
   const handleDelete = useCallback(async () => {
     if (!deleteTarget) return
@@ -327,6 +339,38 @@ export function ManualEntryTemplates() {
                   value={formHeaderPhone2}
                   onChange={(e) => setFormHeaderPhone2(e.target.value)}
                   placeholder={t('manualEntry.headerPhonePlaceholder')}
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div>
+                <label className="mb-1 block text-sm font-medium">
+                  {t('manualEntry.detailsLabel1')}
+                </label>
+                <Input
+                  value={formDetailsLabel1}
+                  onChange={(e) => setFormDetailsLabel1(e.target.value)}
+                  placeholder={t('manualEntry.detailsLabelPlaceholder')}
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium">
+                  {t('manualEntry.detailsLabel2')}
+                </label>
+                <Input
+                  value={formDetailsLabel2}
+                  onChange={(e) => setFormDetailsLabel2(e.target.value)}
+                  placeholder={t('manualEntry.detailsLabelPlaceholder')}
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium">
+                  {t('manualEntry.detailsLabel3')}
+                </label>
+                <Input
+                  value={formDetailsLabel3}
+                  onChange={(e) => setFormDetailsLabel3(e.target.value)}
+                  placeholder={t('manualEntry.detailsLabelPlaceholder')}
                 />
               </div>
             </div>

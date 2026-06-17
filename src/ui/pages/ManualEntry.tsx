@@ -23,7 +23,7 @@ function generateId() {
     : `entry-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
 }
 
-function renderTableElement(template: ManualEntryTemplate, data: CellData) {
+function renderTableElement(template: ManualEntryTemplate, data: CellData, detailValues?: Record<string, string>) {
   const sortedRows = [...template.rows]
     .filter((r) => r.label.trim())
     .sort((a, b) => a.sortOrder - b.sortOrder)
@@ -33,6 +33,68 @@ function renderTableElement(template: ManualEntryTemplate, data: CellData) {
     template.headerPhone1,
     template.headerPhone2,
   ].filter(Boolean)
+
+  const detailsSection = createElement(
+    'div',
+    {
+      style: {
+        borderLeft: '1px solid #d1d5db',
+        borderRight: '1px solid #d1d5db',
+        fontFamily: 'Arial, sans-serif',
+        fontSize: '13px',
+      },
+    },
+    [
+      createElement(
+        'div',
+        { key: 'row1', style: { display: 'flex', borderBottom: '1px solid #d1d5db' } },
+        [
+          createElement(
+            'div',
+            { key: 'label1', style: { width: '33.33%', background: '#f9fafb', padding: '9px 14px', fontWeight: 600, color: '#374151', borderLeft: '1px solid #d1d5db', boxSizing: 'border-box' } },
+            template.detailsLabel1 || '',
+          ),
+          createElement(
+            'div',
+            { key: 'value1', style: { flex: 1, padding: '9px 14px', boxSizing: 'border-box' } },
+            (detailValues?.detail1) || '',
+          ),
+        ],
+      ),
+      createElement(
+        'div',
+        { key: 'row2', style: { display: 'flex', borderBottom: '1px solid #d1d5db' } },
+        [
+          createElement(
+            'div',
+            { key: 'label2', style: { width: '33.33%', background: '#f9fafb', padding: '9px 14px', fontWeight: 600, color: '#374151', borderLeft: '1px solid #d1d5db', boxSizing: 'border-box' } },
+            template.detailsLabel2 || '',
+          ),
+          createElement(
+            'div',
+            { key: 'value2', style: { flex: 1, padding: '9px 14px', boxSizing: 'border-box' } },
+            (detailValues?.detail2) || '',
+          ),
+        ],
+      ),
+      createElement(
+        'div',
+        { key: 'row3', style: { display: 'flex' } },
+        [
+          createElement(
+            'div',
+            { key: 'label3', style: { width: '33.33%', background: '#f9fafb', padding: '9px 14px', fontWeight: 600, color: '#374151', borderLeft: '1px solid #d1d5db', boxSizing: 'border-box' } },
+            template.detailsLabel3 || '',
+          ),
+          createElement(
+            'div',
+            { key: 'value3', style: { flex: 1, padding: '9px 14px', boxSizing: 'border-box' } },
+            (detailValues?.detail3) || '',
+          ),
+        ],
+      ),
+    ],
+  )
 
   return createElement(
     'div',
@@ -45,7 +107,6 @@ function renderTableElement(template: ManualEntryTemplate, data: CellData) {
               marginBottom: 0,
               padding: '18px',
               border: '1px solid #d1d5db',
-              borderBottom: 'none',
               borderTopLeftRadius: '8px',
               borderTopRightRadius: '8px',
               background: '#f9fafb',
@@ -59,6 +120,7 @@ function renderTableElement(template: ManualEntryTemplate, data: CellData) {
           ),
         )
       : null,
+    detailsSection,
     createElement(
       'table',
       {
@@ -146,7 +208,7 @@ function renderTableElement(template: ManualEntryTemplate, data: CellData) {
 interface ManualEntryA4PreviewProps {
   template: ManualEntryTemplate
   onBack: () => void
-  onSaveAndPrint: (data: CellData) => Promise<string | undefined>
+  onSaveAndPrint: (data: CellData, detailValues?: Record<string, string>) => Promise<string | undefined>
 }
 
 function ManualEntryA4Preview({ template, onBack, onSaveAndPrint }: ManualEntryA4PreviewProps) {
@@ -168,6 +230,12 @@ function ManualEntryA4Preview({ template, onBack, onSaveAndPrint }: ManualEntryA
     return data
   })
 
+  const [detailValues, setDetailValues] = useState<Record<string, string>>({
+    detail1: '',
+    detail2: '',
+    detail3: '',
+  })
+
   const updateCell = useCallback((rowId: string, rowIndex: number, value: string) => {
     setCellData((prev) => {
       const col = [...(prev[rowId] || [])]
@@ -176,14 +244,18 @@ function ManualEntryA4Preview({ template, onBack, onSaveAndPrint }: ManualEntryA
     })
   }, [])
 
+  const updateDetail = useCallback((key: string, value: string) => {
+    setDetailValues((prev) => ({ ...prev, [key]: value }))
+  }, [])
+
   const handleSaveAndPrint = useCallback(async () => {
     setIsSaving(true)
     try {
-      await onSaveAndPrint(cellData)
+      await onSaveAndPrint(cellData, detailValues)
     } finally {
       setIsSaving(false)
     }
-  }, [cellData, onSaveAndPrint])
+  }, [cellData, detailValues, onSaveAndPrint])
 
   return (
     <div className="mx-auto p-4 sm:p-6">
@@ -218,13 +290,54 @@ function ManualEntryA4Preview({ template, onBack, onSaveAndPrint }: ManualEntryA
               ].filter(Boolean)
               if (lines.length === 0) return null
               return (
-                <div className="border border-gray-300 border-b-0 bg-gray-50 rounded-t-lg p-4 mb-0" style={{ fontFamily: 'Arial, sans-serif' }}>
+                <div className="border border-gray-300 bg-gray-50 rounded-t-lg p-4 mb-0" style={{ fontFamily: 'Arial, sans-serif' }}>
                   {lines.map((line, idx) => (
                     <div key={idx} className="text-base font-medium leading-relaxed mb-1.5 last:mb-0">{line}</div>
                   ))}
                 </div>
               )
             })()}
+          </div>
+          <div style={{ direction: 'rtl' }} className="border border-gray-300 border-t-0">
+            <div className="flex border-b border-gray-300">
+              <div className="w-1/3 bg-gray-50 px-3.5 py-[9px] text-xs font-semibold text-gray-700 leading-tight border-l border-gray-300">
+                {template.detailsLabel1 || ''}
+              </div>
+              <div className="flex-1 px-3.5 py-[9px] leading-tight">
+                <input
+                  value={detailValues.detail1}
+                  onChange={(e) => updateDetail('detail1', e.target.value)}
+                  className="w-full rounded-none border-0 bg-transparent p-0 text-xs shadow-none outline-none focus:bg-blue-50"
+                  style={{ direction: 'rtl' }}
+                />
+              </div>
+            </div>
+            <div className="flex border-b border-gray-300">
+              <div className="w-1/3 bg-gray-50 px-3.5 py-[9px] text-xs font-semibold text-gray-700 leading-tight border-l border-gray-300">
+                {template.detailsLabel2 || ''}
+              </div>
+              <div className="flex-1 px-3.5 py-[9px] leading-tight">
+                <input
+                  value={detailValues.detail2}
+                  onChange={(e) => updateDetail('detail2', e.target.value)}
+                  className="w-full rounded-none border-0 bg-transparent p-0 text-xs shadow-none outline-none focus:bg-blue-50"
+                  style={{ direction: 'rtl' }}
+                />
+              </div>
+            </div>
+            <div className="flex">
+              <div className="w-1/3 bg-gray-50 px-3.5 py-[9px] text-xs font-semibold text-gray-700 leading-tight border-l border-gray-300">
+                {template.detailsLabel3 || ''}
+              </div>
+              <div className="flex-1 px-3.5 py-[9px] leading-tight">
+                <input
+                  value={detailValues.detail3}
+                  onChange={(e) => updateDetail('detail3', e.target.value)}
+                  className="w-full rounded-none border-0 bg-transparent p-0 text-xs shadow-none outline-none focus:bg-blue-50"
+                  style={{ direction: 'rtl' }}
+                />
+              </div>
+            </div>
           </div>
           <div style={{ direction: 'rtl' }}>
             <table className="w-full border-collapse border border-gray-300 text-base">
@@ -313,7 +426,7 @@ export function ManualEntry() {
     setSelectedTemplate(template)
   }, [])
 
-  const handleSaveAndPrint = useCallback(async (data: CellData): Promise<string | undefined> => {
+  const handleSaveAndPrint = useCallback(async (data: CellData, detailValues?: Record<string, string>): Promise<string | undefined> => {
     if (!workspaceId || !selectedTemplate) return
     const now = new Date().toISOString()
     const entryId = generateId()
@@ -330,6 +443,7 @@ export function ManualEntry() {
           sortOrder: r.sortOrder,
         })),
         data,
+        detailValues: detailValues ?? { detail1: '', detail2: '', detail3: '' },
         createdAt: now,
         updatedAt: now,
       })
@@ -365,7 +479,7 @@ export function ManualEntry() {
 
     // Generate PDF blob and attach it to the invoice
     try {
-      const tableElement = renderTableElement(selectedTemplate, data)
+      const tableElement = renderTableElement(selectedTemplate, data, detailValues)
       const pdfBlob = await generateTemplatePdf({ element: tableElement })
 
       const localPath = await saveInvoicePdfToLocalAppData(workspaceId, invoiceId, 'a4', pdfBlob)
