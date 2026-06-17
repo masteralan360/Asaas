@@ -231,6 +231,7 @@ function ManualEntryA4Preview({ template, onBack, onSaveAndPrint }: ManualEntryA
         </Button>
       </div>
 
+      <div className="overflow-auto max-w-full">
       <div ref={contentRef} className="mx-auto bg-white" style={{ width: '210mm' }}>
         <div style={{ padding: '10mm 15mm' }}>
           <div style={{ direction: 'rtl', marginBottom: 0 }}>
@@ -289,6 +290,7 @@ function ManualEntryA4Preview({ template, onBack, onSaveAndPrint }: ManualEntryA
             </table>
           </div>
         </div>
+      </div>
       </div>
     </div>
   )
