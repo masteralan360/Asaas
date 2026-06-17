@@ -8,7 +8,7 @@ import { Button } from '@/ui/components/button'
 import { Input } from '@/ui/components/input'
 import {
   Card, CardContent,
-  Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
   useToast,
 } from '@/ui/components'
@@ -293,164 +293,176 @@ export function ManualEntryTemplates() {
       )}
 
       <Dialog open={isFormOpen} onOpenChange={(open) => !open && setIsFormOpen(false)}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
+        <DialogContent
+          className="top-[calc(50%+var(--titlebar-height)/2+var(--safe-area-top)/2)]
+                     flex max-h-[calc(100dvh-var(--titlebar-height)-var(--safe-area-top)-var(--safe-area-bottom)-0.75rem)]
+                     w-[calc(100vw-0.75rem)] max-w-3xl flex-col overflow-hidden
+                     rounded-[1.25rem] border-border/60 p-0
+                     sm:w-full sm:max-h-[min(calc(100dvh-var(--titlebar-height)-var(--safe-area-top)-var(--safe-area-bottom)-2rem),820px)]
+                     sm:rounded-[1.75rem]"
+        >
+          <DialogHeader className="border-b bg-muted/30 px-4 py-4 pr-14 text-start sm:px-6 sm:py-5">
             <DialogTitle>
               {editingTemplate ? t('manualEntry.editTemplate') : t('manualEntry.createTemplate')}
             </DialogTitle>
+            <DialogDescription>
+              {t('manualEntry.templateDescription') || 'Configure the entry template fields and layout.'}
+            </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div>
-              <label className="mb-1 block text-sm font-medium">
-                {t('manualEntry.templateName')}
-              </label>
-              <Input
-                value={formName}
-                onChange={(e) => setFormName(e.target.value)}
-                placeholder={t('manualEntry.templateNamePlaceholder')}
-              />
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="flex min-h-0 flex-1 flex-col overflow-y-auto p-4 sm:p-6">
+            <div className="space-y-4">
               <div>
                 <label className="mb-1 block text-sm font-medium">
-                  {t('manualEntry.headerName')}
+                  {t('manualEntry.templateName')}
                 </label>
                 <Input
-                  value={formHeaderName}
-                  onChange={(e) => setFormHeaderName(e.target.value)}
-                  placeholder={t('manualEntry.headerNamePlaceholder')}
+                  value={formName}
+                  onChange={(e) => setFormName(e.target.value)}
+                  placeholder={t('manualEntry.templateNamePlaceholder')}
                 />
               </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium">
-                  {t('manualEntry.headerPhone1')}
-                </label>
-                <Input
-                  value={formHeaderPhone1}
-                  onChange={(e) => setFormHeaderPhone1(e.target.value)}
-                  placeholder={t('manualEntry.headerPhonePlaceholder')}
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium">
-                  {t('manualEntry.headerPhone2')}
-                </label>
-                <Input
-                  value={formHeaderPhone2}
-                  onChange={(e) => setFormHeaderPhone2(e.target.value)}
-                  placeholder={t('manualEntry.headerPhonePlaceholder')}
-                />
-              </div>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div>
-                <label className="mb-1 block text-sm font-medium">
-                  {t('manualEntry.detailsLabel1')}
-                </label>
-                <Input
-                  value={formDetailsLabel1}
-                  onChange={(e) => setFormDetailsLabel1(e.target.value)}
-                  placeholder={t('manualEntry.detailsLabelPlaceholder')}
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium">
-                  {t('manualEntry.detailsLabel2')}
-                </label>
-                <Input
-                  value={formDetailsLabel2}
-                  onChange={(e) => setFormDetailsLabel2(e.target.value)}
-                  placeholder={t('manualEntry.detailsLabelPlaceholder')}
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium">
-                  {t('manualEntry.detailsLabel3')}
-                </label>
-                <Input
-                  value={formDetailsLabel3}
-                  onChange={(e) => setFormDetailsLabel3(e.target.value)}
-                  placeholder={t('manualEntry.detailsLabelPlaceholder')}
-                />
-              </div>
-            </div>
-            <div>
-              <div className="mb-2 flex items-center justify-between">
-                <label className="text-sm font-medium">{t('manualEntry.rows')}</label>
-                <Button variant="outline" size="sm" onClick={addRow}>
-                  <Plus className="mr-1 h-3 w-3" />
-                  {t('manualEntry.addRow')}
-                </Button>
-              </div>
-              {sortedFormRows.length === 0 ? (
-                <p className="py-4 text-center text-sm text-muted-foreground">
-                  {t('manualEntry.noRows')}
-                </p>
-              ) : (
-                <div className="space-y-2">
-                  {sortedFormRows.map((row, index) => (
-                    <div
-                      key={row.id}
-                      draggable
-                      onDragStart={() => handleDragStart(index)}
-                      onDragOver={(e) => handleDragOver(e, index)}
-                      onDrop={handleDrop}
-                      onDragEnd={() => { dragItemRef.current = null; dragOverRef.current = null }}
-                      className={cn(
-                        'flex items-center gap-2 rounded-lg border bg-card p-2 transition-opacity',
-                        dragOverRef.current === index && 'opacity-60'
-                      )}
-                    >
-                      <div className="flex items-center gap-1">
-                        <div className="flex flex-col gap-0.5">
-                          <button
-                            type="button"
-                            onClick={() => moveRow(index, 'up')}
-                            disabled={index === 0}
-                            className="rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-30"
-                          >
-                            <ArrowUp className="h-3 w-3" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => moveRow(index, 'down')}
-                            disabled={index === sortedFormRows.length - 1}
-                            className="rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-30"
-                          >
-                            <ArrowDown className="h-3 w-3" />
-                          </button>
-                        </div>
-                        <div className="cursor-grab touch-none rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground active:cursor-grabbing">
-                          <GripVertical className="h-4 w-4" />
-                        </div>
-                      </div>
-                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded bg-muted text-xs font-medium">
-                        {row.sortOrder}
-                      </span>
-                      <Input
-                        value={row.label}
-                        onChange={(e) => updateRow(row.id, e.target.value)}
-                        placeholder={t('manualEntry.rowLabelPlaceholder')}
-                        className="flex-1"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => removeRow(row.id)}
-                        className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-destructive"
-                      >
-                        <X className="h-4 w-4" />
-                      </button>
-                    </div>
-                  ))}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div>
+                  <label className="mb-1 block text-sm font-medium">
+                    {t('manualEntry.headerName')}
+                  </label>
+                  <Input
+                    value={formHeaderName}
+                    onChange={(e) => setFormHeaderName(e.target.value)}
+                    placeholder={t('manualEntry.headerNamePlaceholder')}
+                  />
                 </div>
-              )}
+                <div>
+                  <label className="mb-1 block text-sm font-medium">
+                    {t('manualEntry.headerPhone1')}
+                  </label>
+                  <Input
+                    value={formHeaderPhone1}
+                    onChange={(e) => setFormHeaderPhone1(e.target.value)}
+                    placeholder={t('manualEntry.headerPhonePlaceholder')}
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium">
+                    {t('manualEntry.headerPhone2')}
+                  </label>
+                  <Input
+                    value={formHeaderPhone2}
+                    onChange={(e) => setFormHeaderPhone2(e.target.value)}
+                    placeholder={t('manualEntry.headerPhonePlaceholder')}
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div>
+                  <label className="mb-1 block text-sm font-medium">
+                    {t('manualEntry.detailsLabel1')}
+                  </label>
+                  <Input
+                    value={formDetailsLabel1}
+                    onChange={(e) => setFormDetailsLabel1(e.target.value)}
+                    placeholder={t('manualEntry.detailsLabelPlaceholder')}
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium">
+                    {t('manualEntry.detailsLabel2')}
+                  </label>
+                  <Input
+                    value={formDetailsLabel2}
+                    onChange={(e) => setFormDetailsLabel2(e.target.value)}
+                    placeholder={t('manualEntry.detailsLabelPlaceholder')}
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium">
+                    {t('manualEntry.detailsLabel3')}
+                  </label>
+                  <Input
+                    value={formDetailsLabel3}
+                    onChange={(e) => setFormDetailsLabel3(e.target.value)}
+                    placeholder={t('manualEntry.detailsLabelPlaceholder')}
+                  />
+                </div>
+              </div>
+              <div>
+                <div className="mb-2 flex items-center justify-between">
+                  <label className="text-sm font-medium">{t('manualEntry.rows')}</label>
+                  <Button variant="outline" size="sm" onClick={addRow}>
+                    <Plus className="mr-1 h-3 w-3" />
+                    {t('manualEntry.addRow')}
+                  </Button>
+                </div>
+                {sortedFormRows.length === 0 ? (
+                  <p className="py-4 text-center text-sm text-muted-foreground">
+                    {t('manualEntry.noRows')}
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    {sortedFormRows.map((row, index) => (
+                      <div
+                        key={row.id}
+                        draggable
+                        onDragStart={() => handleDragStart(index)}
+                        onDragOver={(e) => handleDragOver(e, index)}
+                        onDrop={handleDrop}
+                        onDragEnd={() => { dragItemRef.current = null; dragOverRef.current = null }}
+                        className={cn(
+                          'flex items-center gap-2 rounded-lg border bg-card p-2 transition-opacity',
+                          dragOverRef.current === index && 'opacity-60'
+                        )}
+                      >
+                        <div className="flex items-center gap-1">
+                          <div className="flex flex-col gap-0.5">
+                            <button
+                              type="button"
+                              onClick={() => moveRow(index, 'up')}
+                              disabled={index === 0}
+                              className="rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-30"
+                            >
+                              <ArrowUp className="h-3 w-3" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => moveRow(index, 'down')}
+                              disabled={index === sortedFormRows.length - 1}
+                              className="rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-30"
+                            >
+                              <ArrowDown className="h-3 w-3" />
+                            </button>
+                          </div>
+                          <div className="cursor-grab touch-none rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground active:cursor-grabbing">
+                            <GripVertical className="h-4 w-4" />
+                          </div>
+                        </div>
+                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded bg-muted text-xs font-medium">
+                          {row.sortOrder}
+                        </span>
+                        <Input
+                          value={row.label}
+                          onChange={(e) => updateRow(row.id, e.target.value)}
+                          placeholder={t('manualEntry.rowLabelPlaceholder')}
+                          className="flex-1"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => removeRow(row.id)}
+                          className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-destructive"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsFormOpen(false)}>
+          <DialogFooter className="border-t bg-muted/20 px-4 py-4 pb-[calc(1rem+var(--safe-area-bottom))] sm:justify-between sm:px-6">
+            <Button variant="outline" className="w-full sm:w-auto" onClick={() => setIsFormOpen(false)}>
               {t('common.cancel')}
             </Button>
-            <Button onClick={handleSave} disabled={isSaving || !formName.trim()}>
+            <Button className="w-full sm:w-auto" onClick={handleSave} disabled={isSaving || !formName.trim()}>
               {isSaving ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               ) : (

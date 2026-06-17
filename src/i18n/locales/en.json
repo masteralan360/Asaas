@@ -4207,6 +4207,7 @@
     },
     "templates": "Manual Entry Templates",
     "createTemplate": "Create new entry template",
+    "templateDescription": "Configure the entry template fields and layout.",
     "editTemplate": "Edit Template",
     "deleteTemplate": "Delete Template",
     "templateName": "Template Name",
