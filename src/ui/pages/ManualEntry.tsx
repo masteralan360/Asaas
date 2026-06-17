@@ -83,10 +83,7 @@ function renderTableElement(template: ManualEntryTemplate, data: CellData) {
               },
             },
             createElement('div', {
-              style: {
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                minHeight: '36px', padding: '0 14px',
-              },
+              style: { padding: '9px 14px', lineHeight: '1.3' },
             }, '#'),
           ),
           ...sortedRows.map((row, idx) =>
@@ -101,10 +98,7 @@ function renderTableElement(template: ManualEntryTemplate, data: CellData) {
                 },
               },
               createElement('div', {
-                style: {
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  minHeight: '36px', padding: '0 14px',
-                },
+                style: { padding: '9px 14px', lineHeight: '1.3' },
               }, row.label),
             ),
           ),
@@ -126,10 +120,7 @@ function renderTableElement(template: ManualEntryTemplate, data: CellData) {
                 },
               },
               createElement('div', {
-                style: {
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  minHeight: '36px', padding: '0 14px',
-                },
+                style: { padding: '9px 14px', lineHeight: '1.3' },
               }, String(rowIdx + 1)),
             ),
             ...sortedRows.map((row) =>
@@ -141,10 +132,7 @@ function renderTableElement(template: ManualEntryTemplate, data: CellData) {
                   dir: 'rtl',
                 },
                 createElement('div', {
-                  style: {
-                    display: 'flex', alignItems: 'center',
-                    minHeight: '36px', padding: '0 14px',
-                  },
+                  style: { padding: '9px 14px', lineHeight: '1.3' },
                 }, data[row.id]?.[rowIdx] || ''),
               ),
             ),
@@ -243,11 +231,11 @@ function ManualEntryA4Preview({ template, onBack, onSaveAndPrint }: ManualEntryA
               <thead>
                 <tr>
                   <th className="border border-gray-300 bg-gray-100 text-center text-xs font-semibold text-gray-700 w-[36px] whitespace-nowrap">
-                    <div className="flex min-h-[36px] items-center justify-center px-3.5">#</div>
+                    <div className="px-3.5 py-[9px] leading-tight">#</div>
                   </th>
                   {sortedRows.map((row, idx) => (
                     <th key={row.id} className="border border-gray-300 bg-gray-100 text-center text-xs font-semibold text-gray-700" style={idx === 0 ? { width: '40%' } : {}}>
-                      <div className="flex min-h-[36px] items-center justify-center px-3.5">{row.label}</div>
+                      <div className="px-3.5 py-[9px] leading-tight">{row.label}</div>
                     </th>
                   ))}
                 </tr>
@@ -256,17 +244,15 @@ function ManualEntryA4Preview({ template, onBack, onSaveAndPrint }: ManualEntryA
                 {Array.from({ length: ROW_COUNT }, (_, rowIdx) => (
                   <tr key={rowIdx}>
                     <td className="border border-gray-300 p-0 text-center text-xs text-gray-500 whitespace-nowrap">
-                      <div className="flex min-h-[36px] items-center justify-center px-3.5">
-                        {rowIdx + 1}
-                      </div>
+                      <div className="px-3.5 py-[9px] leading-tight">{rowIdx + 1}</div>
                     </td>
                     {sortedRows.map((row) => (
                       <td key={row.id} className="border border-gray-300 p-0">
-                        <div className="flex min-h-[36px] items-center px-3.5" style={{ direction: 'rtl' }}>
+                        <div style={{ direction: 'rtl', padding: 0 }}>
                           <Input
                             value={cellData[row.id]?.[rowIdx] || ''}
                             onChange={(e) => updateCell(row.id, rowIdx, e.target.value)}
-                            className="min-w-0 flex-1 rounded-none border-0 bg-transparent p-0 text-xs shadow-none focus:bg-blue-50 focus:ring-0"
+                            className="min-w-0 flex-1 rounded-none border-0 bg-transparent px-3.5 py-[9px] text-xs leading-tight shadow-none focus:bg-blue-50 focus:ring-0"
                           />
                         </div>
                       </td>
