@@ -1,6 +1,6 @@
 import { type FormEvent, useEffect, useState, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ArrowLeft, Printer, Loader2, Edit3, X, ZoomIn, ZoomOut, Maximize, ImagePlus, Trash2, PenTool, Brush, Palette, Eraser, Hand, Type, RotateCw, Scaling, Move, Languages, Check } from 'lucide-react'
+import { ArrowLeft, ExternalLink, Printer, Loader2, Edit3, X, ZoomIn, ZoomOut, Maximize, ImagePlus, Trash2, PenTool, Brush, Palette, Eraser, Hand, Type, RotateCw, Scaling, Move, Languages, Check } from 'lucide-react'
 import {
     getInvoicePreviewSource,
     clearInvoicePreviewSource,
@@ -1331,16 +1331,28 @@ export function PdfPreviewPage() {
                         </button>
                         <h1 className="text-sm font-semibold truncate">{title}</h1>
                     </div>
-                    {source.onSave && (
-                        <button
-                            className="inline-flex items-center justify-center rounded-md h-8 px-3 text-xs font-medium transition-colors gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-                            onClick={handleNativeSave}
-                            disabled={isSaving}
+                    <div className="flex items-center gap-2">
+                        {source.onSave && (
+                            <button
+                                className="inline-flex items-center justify-center rounded-md h-8 px-3 text-xs font-medium transition-colors gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                                onClick={handleNativeSave}
+                                disabled={isSaving}
+                            >
+                                {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Printer className="h-3.5 w-3.5" />}
+                                {t('print.printAndSave') || 'Print & Save'}
+                            </button>
+                        )}
+                        <a
+                            href={source.url}
+                            download={`${title || 'invoice'}.pdf`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center justify-center rounded-md h-8 px-3 text-xs font-medium transition-colors gap-1.5 bg-secondary text-secondary-foreground hover:bg-secondary/90"
                         >
-                            {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Printer className="h-3.5 w-3.5" />}
-                            {t('print.printAndSave') || 'Print & Save'}
-                        </button>
-                    )}
+                            <ExternalLink className="h-3.5 w-3.5" />
+                            {t('common.open') || 'Open'}
+                        </a>
+                    </div>
                 </header>
                 <div className="flex-1">
                     <object data={source.url} type="application/pdf" className="w-full h-full">
