@@ -71,7 +71,7 @@ function debouncedSave(): void {
 async function getSqlJs(): Promise<SqlJsStatic> {
   if (!sqlJsModule) {
     sqlJsModule = await initSqlJs({
-      locateFile: (file: string) => `/sql-wasm.wasm`,
+      locateFile: () => `/sql-wasm.wasm`,
     });
   }
   return sqlJsModule;
@@ -136,7 +136,7 @@ export function createPwaSqliteConnection(): SqliteConnection {
       if (!db) throw new Error("PWA SQLite not initialized");
 
       if (bindValues && bindValues.length > 0) {
-        db.run(query, bindValues);
+        db.run(query, bindValues as any[]);
       } else {
         db.run(query);
       }
@@ -150,7 +150,7 @@ export function createPwaSqliteConnection(): SqliteConnection {
       if (!db) throw new Error("PWA SQLite not initialized");
 
       const result = bindValues && bindValues.length > 0
-        ? db.exec(query, bindValues)
+        ? db.exec(query, bindValues as any[])
         : db.exec(query);
 
       if (!result || result.length === 0) {

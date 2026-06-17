@@ -146,7 +146,7 @@ export async function restorePwaBackup(file: File): Promise<boolean> {
 
     const { default: initSqlJs } = await import("sql.js");
     const SQL = await initSqlJs({
-      locateFile: (f: string) => `/sql-wasm.wasm`,
+      locateFile: () => `/sql-wasm.wasm`,
     });
 
     const testDb = new SQL.Database(data);
