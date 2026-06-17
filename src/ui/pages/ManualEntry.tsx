@@ -329,11 +329,10 @@ export function ManualEntry() {
 
   const handleSaveAndPrint = useCallback(async (data: CellData): Promise<string | undefined> => {
     if (!workspaceId || !selectedTemplate) return
+    const now = new Date().toISOString()
+    const entryId = generateId()
+    const invoiceId = generateId()
     try {
-      const now = new Date().toISOString()
-      const entryId = generateId()
-      const invoiceId = generateId()
-
       await db.manual_entries.add({
         id: entryId,
         workspaceId,
@@ -348,12 +347,14 @@ export function ManualEntry() {
         createdAt: now,
         updatedAt: now,
       })
+    } catch (err) {
+      console.error('Failed to save manual entry:', err)
+      toast({ title: 'Error', description: 'Failed to save entry.', variant: 'destructive' })
+      return
+    }
 
-      const tableElement = renderTableElement(selectedTemplate, data)
-      const pdfBlob = await generateTemplatePdf({ element: tableElement })
-
-      const localPath = await saveInvoicePdfToLocalAppData(workspaceId, invoiceId, 'a4', pdfBlob)
-
+    // Create invoice record first (without PDF blob)
+    try {
       await db.invoices.add({
         id: invoiceId,
         invoiceid: invoiceId,
@@ -362,8 +363,6 @@ export function ManualEntry() {
         settlementCurrency: 'iqd',
         origin: 'manual',
         status: 'draft',
-        localPathA4: localPath ?? undefined,
-        pdfBlobA4: localPath ? undefined : pdfBlob,
         printFormat: 'a4',
         createdAt: now,
         updatedAt: now,
@@ -372,16 +371,33 @@ export function ManualEntry() {
         version: 1,
         isDeleted: false,
       })
-
-      toast({
-        title: (t('print.saveSuccess') as string) || 'Saved',
-        description: (t('print.saveSuccessDesc') as string) || 'Manual entry saved successfully.',
-      })
-
-      return invoiceId
     } catch (err) {
-      console.error('Failed to save manual entry:', err)
+      console.error('Failed to create invoice record:', err)
+      toast({ title: 'Error', description: 'Failed to create invoice record.', variant: 'destructive' })
+      return
     }
+
+    // Generate PDF blob and attach it to the invoice
+    try {
+      const tableElement = renderTableElement(selectedTemplate, data)
+      const pdfBlob = await generateTemplatePdf({ element: tableElement })
+
+      const localPath = await saveInvoicePdfToLocalAppData(workspaceId, invoiceId, 'a4', pdfBlob)
+
+      await db.invoices.update(invoiceId, {
+        localPathA4: localPath ?? undefined,
+        pdfBlobA4: localPath ? undefined : pdfBlob,
+      })
+    } catch (err) {
+      console.error('Failed to generate or save PDF:', err)
+    }
+
+    toast({
+      title: (t('print.saveSuccess') as string) || 'Saved',
+      description: (t('print.saveSuccessDesc') as string) || 'Manual entry saved successfully.',
+    })
+
+    return invoiceId
   }, [workspaceId, selectedTemplate, t, toast])
 
   if (selectedTemplate) {
