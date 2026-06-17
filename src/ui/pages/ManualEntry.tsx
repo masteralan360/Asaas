@@ -359,7 +359,7 @@ export function ManualEntry() {
         invoiceid: invoiceId,
         workspaceId,
         totalAmount: 0,
-        settlementCurrency: 'IQD',
+        settlementCurrency: 'iqd',
         origin: 'manual',
         status: 'draft',
         localPathA4: localPath ?? undefined,
