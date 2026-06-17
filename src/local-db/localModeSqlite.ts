@@ -587,8 +587,10 @@ export async function hydrateLocalModeCacheFromSqlite(
       workspaceId,
     );
     if (storedRowCount === 0) {
-      console.log(`[LocalModeSQLite] SQLite is empty for workspace ${workspaceId}. Clearing local cache.`);
-      await withMirroringPaused(() => clearCacheRowsForWorkspace(cacheDb, workspaceId));
+      console.log(`[LocalModeSQLite] SQLite is empty for workspace ${workspaceId}.`);
+      if (isTauri()) {
+        await withMirroringPaused(() => clearCacheRowsForWorkspace(cacheDb, workspaceId));
+      }
       hydratedWorkspaces.add(workspaceId);
       return;
     }
@@ -605,7 +607,9 @@ export async function hydrateLocalModeCacheFromSqlite(
     );
 
     await withMirroringPaused(async () => {
-      await clearCacheRowsForWorkspace(cacheDb, workspaceId);
+      if (isTauri()) {
+        await clearCacheRowsForWorkspace(cacheDb, workspaceId);
+      }
 
       const groupedRows = new Map<
         LocalModeSqliteTableName,
