@@ -1,5 +1,5 @@
 import { isTauri } from '@/lib/platform'
-import { shouldMirrorToSqlite } from '@/workspace/workspaceMode'
+import { shouldMirrorToSqlite, isStrictLocalWorkspaceMode } from '@/workspace/workspaceMode'
 import { r2Service } from '@/services/r2Service'
 import { runPwaDailyBackupIfNeeded } from './pwaBackup'
 import { getPwaDbInstance } from './pwaSqlite'
@@ -66,8 +66,15 @@ async function pruneOldBackups() {
     }
 }
 
+function isBackupMirrorEnabled(workspaceId?: string | null) {
+    if (isTauri()) {
+        return shouldMirrorToSqlite(workspaceId);
+    }
+    return isStrictLocalWorkspaceMode(workspaceId);
+}
+
 export async function runDailyBackupIfNeeded(workspaceId?: string | null) {
-    if (!workspaceId || !shouldMirrorToSqlite(workspaceId)) return
+    if (!workspaceId || !isBackupMirrorEnabled(workspaceId)) return
     if (isBackupAlreadyDoneToday()) return
 
     if (!isTauri()) {
@@ -137,7 +144,7 @@ function markR2BackupDone(): void {
 }
 
 export async function runR2BackupIfNeeded(workspaceId: string | undefined | null): Promise<void> {
-    if (!workspaceId || !shouldMirrorToSqlite(workspaceId)) return
+    if (!workspaceId || !isBackupMirrorEnabled(workspaceId)) return
     if (!isR2BackupDue()) return
 
     if (isTauri()) {

@@ -1,9 +1,9 @@
 import type Dexie from "dexie";
 
 import { isTauri } from "@/lib/platform";
-import { shouldMirrorToSqlite } from "@/workspace/workspaceMode";
+import { shouldMirrorToSqlite, isStrictLocalWorkspaceMode } from "@/workspace/workspaceMode";
 import { runUsbBackupIfNeeded } from "./usbBackup";
-import { createPwaSqliteConnection, isOpfsSupported } from "./pwaSqlite";
+import { createPwaSqliteConnection, isOpfsSupported, getPwaDbInstance, ensurePwaDatabase, DB_FILENAME as PWA_DB_FILENAME } from "./pwaSqlite";
 
 const LOCAL_MODE_SQLITE_PATH = "sqlite:atlas-local-mode.db";
 
@@ -95,6 +95,13 @@ function isSupported() {
     typeof window !== "undefined" &&
     (isTauri() || isOpfsSupported())
   );
+}
+
+function isSqliteMirrorEnabled(workspaceId?: string | null) {
+  if (isTauri()) {
+    return shouldMirrorToSqlite(workspaceId);
+  }
+  return isStrictLocalWorkspaceMode(workspaceId);
 }
 
 function isMirroredTableName(
@@ -481,9 +488,9 @@ async function persistEntity(
     tableName === "workspaces"
       ? row.data_mode === "local" ||
         row.data_mode === "hybrid" ||
-        (workspaceId ? shouldMirrorToSqlite(workspaceId) : false)
+        (workspaceId ? isSqliteMirrorEnabled(workspaceId) : false)
       : workspaceId
-        ? shouldMirrorToSqlite(workspaceId)
+        ? isSqliteMirrorEnabled(workspaceId)
         : false;
 
   if (!shouldPersist) {
@@ -529,9 +536,9 @@ async function deleteEntity(
     tableName === "workspaces"
       ? row.data_mode === "local" ||
         row.data_mode === "hybrid" ||
-        (workspaceId ? shouldMirrorToSqlite(workspaceId) : false)
+        (workspaceId ? isSqliteMirrorEnabled(workspaceId) : false)
       : workspaceId
-        ? shouldMirrorToSqlite(workspaceId)
+        ? isSqliteMirrorEnabled(workspaceId)
         : false;
 
   if (!shouldDelete) {
@@ -556,7 +563,7 @@ export async function hydrateLocalModeCacheFromSqlite(
   cacheDb: Dexie,
   workspaceId?: string | null,
 ) {
-  if (!workspaceId || !shouldMirrorToSqlite(workspaceId) || !isSupported()) {
+  if (!workspaceId || !isSqliteMirrorEnabled(workspaceId) || !isSupported()) {
     return;
   }
 
@@ -690,4 +697,46 @@ export async function clearWorkspaceSqliteData(workspaceId: string) {
   console.log(
     `[LocalModeSQLite] Cleared all SQLite data for workspace ${workspaceId}`,
   );
+}
+
+export async function downloadDatabaseFile(): Promise<void> {
+  if (isTauri()) {
+    try {
+      const { readFile, writeFile, BaseDirectory } = await import("@tauri-apps/plugin-fs");
+      const { save } = await import("@tauri-apps/plugin-dialog");
+
+      const filePath = await save({
+        defaultPath: "atlas-local-mode.db",
+        filters: [{ name: "SQLite Database", extensions: ["db"] }],
+      });
+
+      if (!filePath) return;
+
+      const fileData = await readFile("atlas-local-mode.db", { baseDir: BaseDirectory.AppData });
+      await writeFile(filePath, fileData);
+    } catch (error) {
+      console.error("[LocalModeSQLite] Failed to download database in Tauri:", error);
+    }
+    return;
+  }
+
+  let db = getPwaDbInstance();
+  if (!db) {
+    const loaded = await ensurePwaDatabase();
+    if (!loaded) return;
+    db = getPwaDbInstance();
+  }
+  if (!db) return;
+
+  const data = db.export();
+  const blob = new Blob([data], { type: "application/x-sqlite3" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = PWA_DB_FILENAME;
+  a.style.display = "none";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }

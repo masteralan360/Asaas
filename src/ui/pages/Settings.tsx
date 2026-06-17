@@ -12,7 +12,7 @@ import { formatDate, formatDateTime, formatTime, cn, generateId, getHourDisplayP
 import { useTheme } from '@/ui/components/theme-provider'
 import { Moon, Sun, Monitor, Unlock, Server, MessageSquare, Bell, MonitorPlay, Wifi, Zap } from 'lucide-react'
 import { useState, useEffect } from 'react'
-import { isMobile, isDesktop, isTauri, isWeb } from '@/lib/platform'
+import { isMobile, isDesktop, isTauri } from '@/lib/platform'
 import { useExchangeRate } from '@/context/ExchangeRateContext'
 import { getAppSettingSync, setAppSetting } from '@/local-db/settings'
 import { decrypt } from '@/lib/encryption'
@@ -32,8 +32,7 @@ import type { PrinterInfo } from 'tauri-plugin-thermal-printer'
 import { registerDeviceTokenIfNeeded } from '@/services/notificationDevice'
 import { useKdsStream } from '@/hooks/useKdsStream'
 import { useUsbBackup } from '@/hooks/useUsbBackup'
-import { exportPwaStoreFile } from '@/local-db/pwaBackup'
-import { isOpfsSupported } from '@/local-db/pwaSqlite'
+import { downloadDatabaseFile } from '@/local-db/localModeSqlite'
 import { ReactQRCode } from '@lglab/react-qr-code'
 import { BranchManager } from '@/ui/components/workspace/BranchManager'
 
@@ -2738,8 +2737,7 @@ export function Settings() {
                                 </CardContent>
                             </Card>
 
-                            {/* PWA Database Export (Web + OPFS supported) */}
-                            {isWeb() && isOpfsSupported() && (
+                            {/* Local Database Export (all platforms) */}
                               <Card>
                                 <CardHeader>
                                   <CardTitle className="flex items-center gap-2">
@@ -2753,14 +2751,13 @@ export function Settings() {
                                 </CardHeader>
                                 <CardContent>
                                   <div className="flex flex-wrap gap-2">
-                                    <Button onClick={exportPwaStoreFile} variant="default" size="sm">
+                                    <Button onClick={downloadDatabaseFile} variant="default" size="sm">
                                       <Download className="mr-2 h-4 w-4" />
                                       Download Database
                                     </Button>
                                   </div>
                                 </CardContent>
                               </Card>
-                            )}
 
                             {/* USB Backup (Desktop + Local/Hybrid mode only) */}
                             {usbBackup.isDesktopApp && (isLocalMode || isHybridMode) && (
