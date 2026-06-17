@@ -1,4 +1,4 @@
-import { createElement, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createElement, useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft, FileText, Loader2, Printer, Save } from 'lucide-react'
 import { useAuth } from '@/auth'
@@ -12,7 +12,6 @@ import {
 } from '@/ui/components'
 import { generateTemplatePdf } from '@/services/pdfGenerator'
 import { saveInvoicePdfToLocalAppData } from '@/services/localInvoiceStorage'
-import { useReactToPrint } from 'react-to-print'
 
 const ROW_COUNT = 20
 
@@ -165,7 +164,6 @@ interface ManualEntryA4PreviewProps {
 function ManualEntryA4Preview({ template, onBack, onSaveAndPrint }: ManualEntryA4PreviewProps) {
   const { t } = useTranslation()
   const [isSaving, setIsSaving] = useState(false)
-  const contentRef = useRef<HTMLDivElement>(null)
 
   const sortedRows = useMemo(
     () => [...template.rows]
@@ -190,25 +188,14 @@ function ManualEntryA4Preview({ template, onBack, onSaveAndPrint }: ManualEntryA
     })
   }, [])
 
-  const handlePrint = useReactToPrint({
-    contentRef,
-    pageStyle: `
-      @page { size: A4; margin: 0; }
-      body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    `,
-  })
-
   const handleSaveAndPrint = useCallback(async () => {
     setIsSaving(true)
     try {
-      const invoiceId = await onSaveAndPrint(cellData)
-      if (invoiceId) {
-        handlePrint()
-      }
+      await onSaveAndPrint(cellData)
     } finally {
       setIsSaving(false)
     }
-  }, [cellData, onSaveAndPrint, handlePrint])
+  }, [cellData, onSaveAndPrint])
 
   return (
     <div className="mx-auto p-4 sm:p-6">
@@ -232,7 +219,7 @@ function ManualEntryA4Preview({ template, onBack, onSaveAndPrint }: ManualEntryA
       </div>
 
       <div className="overflow-auto max-w-full">
-      <div ref={contentRef} className="mx-auto bg-white" style={{ width: '210mm' }}>
+      <div className="mx-auto bg-white" style={{ width: '210mm' }}>
         <div style={{ padding: '10mm 15mm' }}>
           <div style={{ direction: 'rtl', marginBottom: 0 }}>
             {(() => {
