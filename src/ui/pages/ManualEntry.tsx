@@ -34,67 +34,43 @@ function renderTableElement(template: ManualEntryTemplate, data: CellData, detai
     template.headerPhone2,
   ].filter(Boolean)
 
-  const detailsSection = createElement(
-    'div',
-    {
-      style: {
-        borderLeft: '1px solid #d1d5db',
-        borderRight: '1px solid #d1d5db',
-        fontFamily: 'Arial, sans-serif',
-        fontSize: '13px',
-      },
-    },
-    [
-      createElement(
+  const detailRows: { key: string; label: string | undefined; value: string | undefined }[] = [
+    { key: 'detail1', label: template.detailsLabel1, value: detailValues?.detail1 },
+    { key: 'detail2', label: template.detailsLabel2, value: detailValues?.detail2 },
+    { key: 'detail3', label: template.detailsLabel3, value: detailValues?.detail3 },
+  ].filter((r): r is typeof r & { label: string } => !!r.label)
+
+  const detailsSection = detailRows.length > 0
+    ? createElement(
         'div',
-        { key: 'row1', style: { display: 'flex', borderBottom: '1px solid #d1d5db' } },
-        [
+        {
+          style: {
+            borderLeft: '1px solid #d1d5db',
+            borderRight: '1px solid #d1d5db',
+            fontFamily: 'Arial, sans-serif',
+            fontSize: '13px',
+          },
+        },
+        detailRows.map((r, idx) =>
           createElement(
             'div',
-            { key: 'label1', style: { width: '33.33%', background: '#f9fafb', padding: '9px 14px', fontWeight: 600, color: '#374151', borderLeft: '1px solid #d1d5db', boxSizing: 'border-box' } },
-            template.detailsLabel1 || '',
+            { key: r.key, style: { display: 'flex', ...(idx < detailRows.length - 1 ? { borderBottom: '1px solid #d1d5db' } : {}) } },
+            [
+              createElement(
+                'div',
+                { key: 'label', style: { width: '33.33%', background: '#f9fafb', padding: '9px 14px', fontWeight: 600, color: '#374151', borderLeft: '1px solid #d1d5db', boxSizing: 'border-box' } },
+                r.label,
+              ),
+              createElement(
+                'div',
+                { key: 'value', style: { flex: 1, padding: '9px 14px', boxSizing: 'border-box' } },
+                r.value || '',
+              ),
+            ],
           ),
-          createElement(
-            'div',
-            { key: 'value1', style: { flex: 1, padding: '9px 14px', boxSizing: 'border-box' } },
-            (detailValues?.detail1) || '',
-          ),
-        ],
-      ),
-      createElement(
-        'div',
-        { key: 'row2', style: { display: 'flex', borderBottom: '1px solid #d1d5db' } },
-        [
-          createElement(
-            'div',
-            { key: 'label2', style: { width: '33.33%', background: '#f9fafb', padding: '9px 14px', fontWeight: 600, color: '#374151', borderLeft: '1px solid #d1d5db', boxSizing: 'border-box' } },
-            template.detailsLabel2 || '',
-          ),
-          createElement(
-            'div',
-            { key: 'value2', style: { flex: 1, padding: '9px 14px', boxSizing: 'border-box' } },
-            (detailValues?.detail2) || '',
-          ),
-        ],
-      ),
-      createElement(
-        'div',
-        { key: 'row3', style: { display: 'flex' } },
-        [
-          createElement(
-            'div',
-            { key: 'label3', style: { width: '33.33%', background: '#f9fafb', padding: '9px 14px', fontWeight: 600, color: '#374151', borderLeft: '1px solid #d1d5db', boxSizing: 'border-box' } },
-            template.detailsLabel3 || '',
-          ),
-          createElement(
-            'div',
-            { key: 'value3', style: { flex: 1, padding: '9px 14px', boxSizing: 'border-box' } },
-            (detailValues?.detail3) || '',
-          ),
-        ],
-      ),
-    ],
-  )
+        ),
+      )
+    : null
 
   return createElement(
     'div',
@@ -298,47 +274,27 @@ function ManualEntryA4Preview({ template, onBack, onSaveAndPrint }: ManualEntryA
               )
             })()}
           </div>
-          <div style={{ direction: 'rtl' }} className="border border-gray-300 border-t-0">
-            <div className="flex border-b border-gray-300">
-              <div className="w-1/3 bg-gray-50 px-3.5 py-[9px] text-xs font-semibold text-gray-700 leading-tight border-l border-gray-300">
-                {template.detailsLabel1 || ''}
-              </div>
-              <div className="flex-1 px-3.5 py-[9px] leading-tight">
-                <input
-                  value={detailValues.detail1}
-                  onChange={(e) => updateDetail('detail1', e.target.value)}
-                  className="w-full rounded-none border-0 bg-transparent p-0 text-xs shadow-none outline-none focus:bg-blue-50"
-                  style={{ direction: 'rtl' }}
-                />
-              </div>
+          {template.detailsLabel1 || template.detailsLabel2 || template.detailsLabel3 ? (
+            <div style={{ direction: 'rtl' }} className="border border-gray-300 border-t-0">
+            {([['detail1', template.detailsLabel1], ['detail2', template.detailsLabel2], ['detail3', template.detailsLabel3]] as const)
+              .filter(([, label]) => label)
+              .map(([key, label], idx, arr) => (
+                <div key={key} className={`flex ${idx < arr.length - 1 ? 'border-b' : ''} border-gray-300`}>
+                  <div className="w-1/3 bg-gray-50 px-3.5 py-[9px] text-xs font-semibold text-gray-700 leading-tight border-l border-gray-300">
+                    {label}
+                  </div>
+                  <div className="flex-1 px-3.5 py-[9px] leading-tight">
+                    <input
+                      value={detailValues[key]}
+                      onChange={(e) => updateDetail(key, e.target.value)}
+                      className="w-full rounded-none border-0 bg-transparent p-0 text-xs shadow-none outline-none focus:bg-blue-50"
+                      style={{ direction: 'rtl' }}
+                    />
+                  </div>
+                </div>
+              ))}
             </div>
-            <div className="flex border-b border-gray-300">
-              <div className="w-1/3 bg-gray-50 px-3.5 py-[9px] text-xs font-semibold text-gray-700 leading-tight border-l border-gray-300">
-                {template.detailsLabel2 || ''}
-              </div>
-              <div className="flex-1 px-3.5 py-[9px] leading-tight">
-                <input
-                  value={detailValues.detail2}
-                  onChange={(e) => updateDetail('detail2', e.target.value)}
-                  className="w-full rounded-none border-0 bg-transparent p-0 text-xs shadow-none outline-none focus:bg-blue-50"
-                  style={{ direction: 'rtl' }}
-                />
-              </div>
-            </div>
-            <div className="flex">
-              <div className="w-1/3 bg-gray-50 px-3.5 py-[9px] text-xs font-semibold text-gray-700 leading-tight border-l border-gray-300">
-                {template.detailsLabel3 || ''}
-              </div>
-              <div className="flex-1 px-3.5 py-[9px] leading-tight">
-                <input
-                  value={detailValues.detail3}
-                  onChange={(e) => updateDetail('detail3', e.target.value)}
-                  className="w-full rounded-none border-0 bg-transparent p-0 text-xs shadow-none outline-none focus:bg-blue-50"
-                  style={{ direction: 'rtl' }}
-                />
-              </div>
-            </div>
-          </div>
+          ) : null}
           <div style={{ direction: 'rtl' }}>
             <table className="w-full border-collapse border border-gray-300 text-base">
               <thead>
