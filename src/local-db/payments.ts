@@ -41,6 +41,10 @@ export interface PaymentTransactionFilterOptions {
     includeReversals?: boolean
 }
 
+export interface UsePaymentTransactionsOptions {
+    hydrateSourceTables?: boolean
+}
+
 export interface PaymentObligationFilterOptions {
     direction?: PaymentTransactionDirection | 'all'
     sourceModule?: PaymentTransactionSourceModule | 'all'
@@ -859,8 +863,13 @@ async function buildPaymentObligations(workspaceId: string, filters: PaymentObli
     })
 }
 
-export function usePaymentTransactions(workspaceId: string | undefined, filters: PaymentTransactionFilterOptions = {}) {
+export function usePaymentTransactions(
+    workspaceId: string | undefined,
+    filters: PaymentTransactionFilterOptions = {},
+    options: UsePaymentTransactionsOptions = {}
+) {
     const online = useNetworkStatus()
+    const hydrateSourceTables = options.hydrateSourceTables ?? true
     const filterKey = useMemo(
         () => JSON.stringify(filters),
         [filters.direction, filters.includeReversals, filters.search, filters.sourceModule, filters.sourceType]
@@ -903,10 +912,14 @@ export function usePaymentTransactions(workspaceId: string | undefined, filters:
             return
         }
 
-        void hydratePaymentSourceTables(workspaceId).catch((error) => {
+        const hydration = hydrateSourceTables
+            ? hydratePaymentSourceTables(workspaceId)
+            : fetchTableFromSupabase('payment_transactions', db.payment_transactions, workspaceId, { includeDeleted: true })
+
+        void hydration.catch((error) => {
             console.error('[Payments] Failed to hydrate transaction tables', error)
         })
-    }, [online, workspaceId])
+    }, [hydrateSourceTables, online, workspaceId])
 
     return transactions ?? []
 }

@@ -534,7 +534,7 @@ export function Layout({ children }: LayoutProps) {
                     <ResourceSyncOverlay />
                     {features.allowed_currencies.length > 1 && <ManualRateModals />}
                     {features.allowed_currencies.length > 1 && <GlobalExchangeRateReminders />}
-                    {hasFeature('budget') && <GlobalBudgetReminders />}
+                    {user?.role === 'admin' && hasFeature('budget') && <GlobalBudgetReminders />}
                     {hasFeature('loans') && <GlobalLoanReminders />}
                     {hasFeature('ecommerce') && <GlobalMarketplaceOrderReminders />}
                     {/* Mobile sidebar backdrop */}

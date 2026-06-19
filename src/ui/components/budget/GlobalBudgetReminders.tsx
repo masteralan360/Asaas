@@ -115,7 +115,7 @@ export function GlobalBudgetReminders() {
     const employees = useEmployees(workspaceId)
     const payrollStatuses = usePayrollStatuses(workspaceId)
     const dividendStatuses = useDividendStatuses(workspaceId)
-    const rawSales = useSales(workspaceId)
+    const rawSales = useSales(workspaceId, undefined, undefined, { syncRemote: false })
     const sales = useMemo(() => rawSales.map(toUISale), [rawSales])
 
     const expenseSeries = useLiveQuery(
@@ -593,10 +593,6 @@ export function GlobalBudgetReminders() {
         }
     }
 
-    if (!workspaceId || !isAdmin) {
-        return null
-    }
-
     const { registerItems, unregisterItems } = useUnifiedSnooze()
 
     const unifiedSnoozedItems = useMemo<SnoozedItem[]>(() => {
@@ -624,6 +620,10 @@ export function GlobalBudgetReminders() {
             unregisterItems('budget')
         }
     }, [unifiedSnoozedItems, registerItems, unregisterItems])
+
+    if (!workspaceId || !isAdmin) {
+        return null
+    }
 
     return (
         <>

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import Dexie from 'dexie'
 import { useLiveQuery } from 'dexie-react-hooks'
 
 import { db } from './database'
@@ -1220,53 +1221,95 @@ export async function deleteCategoryDiscount(id: string) {
 // ===================
 
 // Helpers for repetitive logic
-export async function fetchTableFromSupabase<T extends { id: string, syncStatus: any, lastSyncedAt: any }>(
+const TABLE_FETCH_PAGE_SIZE = 1000
+const tableFetchesInFlight = new Map<string, Promise<void>>()
+
+async function fetchTableFromSupabaseInternal<T extends { id: string, syncStatus: any, lastSyncedAt: any }>(
     tableName: string,
     table: any,
     workspaceId: string,
     options?: { includeDeleted?: boolean }
-) {
+): Promise<void> {
+    const includeDeleted = options?.includeDeleted ?? false
+    const client = getSupabaseClientForTable(tableName)
+    const remoteRows: any[] = []
+
+    for (let from = 0; ; from += TABLE_FETCH_PAGE_SIZE) {
+        let query = client
+            .from(tableName)
+            .select('*')
+            .eq('workspace_id', workspaceId)
+
+        // Only filter by is_deleted for tables that still have that column.
+        if (tableName !== 'workspace_contacts' && !includeDeleted) {
+            query = query.eq('is_deleted', false)
+        }
+
+        query = query
+            .order('id', { ascending: true })
+            .range(from, from + TABLE_FETCH_PAGE_SIZE - 1)
+
+        const { data, error } = await query
+        if (!data || error || !shouldUseCloudBusinessData(workspaceId)) {
+            return
+        }
+
+        remoteRows.push(...data)
+        if (data.length < TABLE_FETCH_PAGE_SIZE) {
+            break
+        }
+    }
+
+    const syncedAt = new Date().toISOString()
+    const remoteIds = new Set(remoteRows.map((row) => row.id))
+    const remoteItems = remoteRows.map((remoteItem) => {
+        const localItem = toCamelCase(remoteItem as any) as unknown as T
+        localItem.syncStatus = 'synced'
+        localItem.lastSyncedAt = syncedAt
+        return localItem
+    })
+
+    await db.transaction('rw', table, async () => {
+        const localItems = await table.where('workspaceId').equals(workspaceId).toArray()
+        const deletedIds = (localItems as any[])
+            .filter((local) => !remoteIds.has(local.id) && local.syncStatus === 'synced')
+            .map((local) => local.id)
+
+        if (deletedIds.length > 0) {
+            await table.bulkDelete(deletedIds)
+        }
+        if (remoteItems.length > 0) {
+            await table.bulkPut(remoteItems)
+        }
+    })
+}
+
+export function fetchTableFromSupabase<T extends { id: string, syncStatus: any, lastSyncedAt: any }>(
+    tableName: string,
+    table: any,
+    workspaceId: string,
+    options?: { includeDeleted?: boolean }
+): Promise<void> {
     if (!shouldUseCloudBusinessData(workspaceId)) {
-        return
+        return Promise.resolve()
     }
 
     const includeDeleted = options?.includeDeleted ?? false
-    const client = getSupabaseClientForTable(tableName)
-    let query = client
-        .from(tableName)
-        .select('*')
-        .eq('workspace_id', workspaceId)
-
-    // Only filter by is_deleted for tables that still have that column
-    if (tableName !== 'workspace_contacts' && !includeDeleted) {
-        query = query.eq('is_deleted', false)
+    const key = `${tableName}:${workspaceId}:${includeDeleted ? 'all' : 'active'}`
+    const existing = tableFetchesInFlight.get(key)
+    if (existing) {
+        return existing
     }
 
-    const { data, error } = await query
-
-    if (!data || error || !shouldUseCloudBusinessData(workspaceId)) {
-        return
-    }
-
-    if (data && !error) {
-        await db.transaction('rw', table, async () => {
-            const remoteIds = new Set(data.map(d => d.id))
-            const localItems = await table.where('workspaceId').equals(workspaceId).toArray()
-
-            for (const local of (localItems as any[])) {
-                if (!remoteIds.has(local.id) && local.syncStatus === 'synced') {
-                    await table.delete(local.id)
-                }
-            }
-
-            for (const remoteItem of data) {
-                const localItem = toCamelCase(remoteItem as any) as unknown as T
-                localItem.syncStatus = 'synced'
-                localItem.lastSyncedAt = new Date().toISOString()
-                await table.put(localItem)
+    const request = fetchTableFromSupabaseInternal<T>(tableName, table, workspaceId, options)
+        .finally(() => {
+            if (tableFetchesInFlight.get(key) === request) {
+                tableFetchesInFlight.delete(key)
             }
         })
-    }
+
+    tableFetchesInFlight.set(key, request)
+    return request
 }
 
 async function saveEntity<T extends { id: string }>(tableName: string, table: any, entity: T, workspaceId: string) {
@@ -1581,37 +1624,38 @@ async function enrichSalesForUiRows(workspaceId: string, sales: Sale[]) {
     }
 
     const saleIds = sales.map((sale) => sale.id)
-    const localItems = saleIds.length > 0
-        ? await db.sale_items.where('saleId').anyOf(saleIds).toArray()
-        : []
-    const localExchangeRows = saleIds.length > 0
-        ? await db.sales_exchange.where('saleId').anyOf(saleIds).toArray()
-        : []
-    const localReturns = saleIds.length > 0
-        ? await db.sale_returns.where('saleId').anyOf(saleIds).toArray()
-        : []
+    const cashierIds = Array.from(new Set(
+        sales
+            .map((sale) => sale.cashierId)
+            .filter((cashierId): cashierId is string => typeof cashierId === 'string' && cashierId.length > 0)
+    ))
+    const [localItems, localExchangeRows, localReturns, cashierUsers, profileRows] = await Promise.all([
+        db.sale_items.where('saleId').anyOf(saleIds).toArray(),
+        db.sales_exchange.where('saleId').anyOf(saleIds).toArray(),
+        db.sale_returns.where('saleId').anyOf(saleIds).toArray(),
+        cashierIds.length > 0 ? db.users.bulkGet(cashierIds) : Promise.resolve([]),
+        cashierIds.length > 0 ? db.profiles.where('id').anyOf(cashierIds).toArray() : Promise.resolve([]),
+    ])
     const returnIds = localReturns.map((saleReturn) => saleReturn.id)
-    const localReturnItems = returnIds.length > 0
-        ? await db.sale_return_items.where('returnId').anyOf(returnIds).toArray()
-        : []
 
     const productIds = Array.from(new Set(
         localItems
             .map((item) => item.productId)
             .filter((productId): productId is string => typeof productId === 'string' && productId.length > 0)
     ))
-    const products = productIds.length > 0
-        ? await db.products.bulkGet(productIds)
-        : []
+    const [localReturnItems, products] = await Promise.all([
+        returnIds.length > 0 ? db.sale_return_items.where('returnId').anyOf(returnIds).toArray() : Promise.resolve([]),
+        productIds.length > 0 ? db.products.bulkGet(productIds) : Promise.resolve([]),
+    ])
+    const availableProducts = products.filter(Boolean) as Product[]
     const productById = new Map(
-        products
-            .filter((product): product is Product => !!product)
+        availableProducts
             .map((product) => [product.id, product] as const)
     )
 
     const categoryIds = Array.from(new Set(
-        products
-            .map((product) => product?.categoryId)
+        availableProducts
+            .map((product) => product.categoryId)
             .filter((categoryId): categoryId is string => typeof categoryId === 'string' && categoryId.length > 0)
     ))
     const categories = categoryIds.length > 0
@@ -1623,26 +1667,14 @@ async function enrichSalesForUiRows(workspaceId: string, sales: Sale[]) {
             .map((category) => [category.id, category] as const)
     )
 
-    const cashierIds = Array.from(new Set(
-        sales
-            .map((sale) => sale.cashierId)
-            .filter((cashierId): cashierId is string => typeof cashierId === 'string' && cashierId.length > 0)
-    ))
-    const cashierUsers = cashierIds.length > 0
-        ? await db.users.bulkGet(cashierIds)
-        : []
     const cashierNameById = new Map(
-        cashierUsers
-            .filter((user): user is User => !!user)
+        (cashierUsers.filter(Boolean) as User[])
             .map((user) => [user.id, user.name || user.email || 'Staff'] as const)
     )
     // Fallback to profiles table for users not in the users table
-    if (cashierIds.length > 0) {
-        const profileRows = await db.profiles.where('id').anyOf(cashierIds).toArray()
-        for (const p of profileRows) {
-            if (!cashierNameById.has(p.id)) {
-                cashierNameById.set(p.id, p.name || 'Staff')
-            }
+    for (const p of profileRows) {
+        if (!cashierNameById.has(p.id)) {
+            cashierNameById.set(p.id, p.name || 'Staff')
         }
     }
 
@@ -1777,30 +1809,58 @@ export async function generateLocalSaleSequenceId(workspaceId: string): Promise<
   return maxSequenceId + 1;
 }
 
-export async function syncSalesFromSupabase(
-  workspaceId: string,
-  options?: { startDate?: string; endDate?: string }
-) {
-  if (!shouldUseCloudBusinessData(workspaceId)) return
+type SalesSyncOptions = { startDate?: string; endDate?: string }
 
-  let versionQuery = supabase
-    .from('sales')
-    .select('id, version, updated_at')
-    .eq('workspace_id', workspaceId)
+const SALES_VERSION_PAGE_SIZE = 1000
+const SALES_DETAIL_CHUNK_SIZE = 100
+const SALES_FETCH_CONCURRENCY = 4
+const salesSyncsInFlight = new Map<string, Promise<void>>()
 
-  if (options?.startDate) {
-    versionQuery = versionQuery.gte('created_at', options.startDate)
-  }
-  if (options?.endDate) {
-    versionQuery = versionQuery.lte('created_at', options.endDate)
+async function fetchSalesChunks<T>(
+  ids: string[],
+  fetchChunk: (chunk: string[]) => Promise<T[]>,
+): Promise<T[]> {
+  const chunks: string[][] = []
+  for (let index = 0; index < ids.length; index += SALES_DETAIL_CHUNK_SIZE) {
+    chunks.push(ids.slice(index, index + SALES_DETAIL_CHUNK_SIZE))
   }
 
-  const { data: remoteChecks, error: versionError } = await runSupabaseAction(
-    'sales.cachedVersionCheck',
-    () => versionQuery,
-  )
+  const rows: T[] = []
+  for (let index = 0; index < chunks.length; index += SALES_FETCH_CONCURRENCY) {
+    const batch = chunks.slice(index, index + SALES_FETCH_CONCURRENCY)
+    const batchRows = await Promise.all(batch.map(fetchChunk))
+    batchRows.forEach((result) => rows.push(...result))
+  }
+  return rows
+}
 
-  if (!remoteChecks || versionError) return
+async function performSalesSync(workspaceId: string, options?: SalesSyncOptions): Promise<void> {
+  const remoteChecks: Array<{ id: string; version: number; updated_at: string }> = []
+
+  for (let from = 0; ; from += SALES_VERSION_PAGE_SIZE) {
+    let versionQuery = supabase
+      .from('sales')
+      .select('id, version, updated_at')
+      .eq('workspace_id', workspaceId)
+
+    if (options?.startDate) {
+      versionQuery = versionQuery.gte('created_at', options.startDate)
+    }
+    if (options?.endDate) {
+      versionQuery = versionQuery.lte('created_at', options.endDate)
+    }
+
+    const result = await runSupabaseAction(
+      'sales.cachedVersionCheck',
+      () => versionQuery
+        .order('id', { ascending: true })
+        .range(from, from + SALES_VERSION_PAGE_SIZE - 1),
+    )
+
+    if (!result.data || result.error) return
+    remoteChecks.push(...result.data)
+    if (result.data.length < SALES_VERSION_PAGE_SIZE) break
+  }
 
   const localSales = await db.sales
     .where('workspaceId')
@@ -1813,10 +1873,9 @@ export async function syncSalesFromSupabase(
     return true
   })
 
-  type RemoteCheck = { id: string; version: number; updated_at: string }
   const staleIds: string[] = []
-  const remoteMap = new Map<string, RemoteCheck>(
-    remoteChecks.map((v) => [v.id, v as RemoteCheck]),
+  const remoteMap = new Map<string, { id: string; version: number; updated_at: string }>(
+    remoteChecks.map((value) => [value.id, value]),
   )
 
   for (const local of relevantLocalSales) {
@@ -1832,19 +1891,14 @@ export async function syncSalesFromSupabase(
   const missingIds = [...remoteMap.keys()]
   const idsToFetch = [...staleIds, ...missingIds]
   const remoteIds = new Set(remoteChecks.map((r) => r.id))
-  const remoteSaleIds = [...remoteIds]
 
   let fullData: any[] | null = null
   let profilesMap: Record<string, string> = {}
   let remoteExchangeRows: any[] | null = null
 
-  if (remoteSaleIds.length > 0) {
-    const CHUNK_SIZE = 100
-    const results: any[] = []
-
+  if (idsToFetch.length > 0) {
     try {
-      for (let i = 0; i < remoteSaleIds.length; i += CHUNK_SIZE) {
-        const chunk = remoteSaleIds.slice(i, i + CHUNK_SIZE)
+      remoteExchangeRows = await fetchSalesChunks(idsToFetch, async (chunk) => {
         const result = await runSupabaseAction('sales.cachedExchangeFetch', () =>
           supabase
             .from('sales_exchange')
@@ -1855,9 +1909,8 @@ export async function syncSalesFromSupabase(
         if (result.error) {
           throw result.error
         }
-        results.push(...((result.data || []) as any[]))
-      }
-      remoteExchangeRows = results
+        return (result.data || []) as any[]
+      })
     } catch {
       // Keep the local snapshot cache unchanged if the relation fetch fails.
       remoteExchangeRows = null
@@ -1867,12 +1920,8 @@ export async function syncSalesFromSupabase(
   }
 
   if (idsToFetch.length > 0) {
-    const CHUNK_SIZE = 100
-    const results: any[] = []
-
     try {
-      for (let i = 0; i < idsToFetch.length; i += CHUNK_SIZE) {
-        const chunk = idsToFetch.slice(i, i + CHUNK_SIZE)
+      fullData = await fetchSalesChunks(idsToFetch, async (chunk) => {
         const result = await runSupabaseAction('sales.cachedFullFetch', () =>
           supabase
             .from('sales')
@@ -1880,16 +1929,15 @@ export async function syncSalesFromSupabase(
               *, sale_items(*, product:product_id(name, sku, category, category_id, can_be_returned, return_rules, unit, is_deleted)),
               sale_returns(*, sale_return_items(*))
             `)
+            .eq('workspace_id', workspaceId)
             .in('id', chunk),
         )
-        if (!result.data) return
-        results.push(...(result.data as any[]))
-      }
+        if (result.error) throw result.error
+        return (result.data || []) as any[]
+      })
     } catch {
       return
     }
-
-    fullData = results
 
     if (fullData) {
       const cashierIds = Array.from(
@@ -1919,11 +1967,62 @@ export async function syncSalesFromSupabase(
     }
   }
 
+  const syncedAt = new Date().toISOString()
+  const existingSaleById = new Map(relevantLocalSales.map((sale) => [sale.id, sale]))
+  const salesToPut: Sale[] = []
+  const saleItemsToPut: SaleItem[] = []
+  const saleReturnsToPut: any[] = []
+  const saleReturnItemsToPut: any[] = []
+
+  for (const remoteSale of fullData || []) {
+    const { sale_items: remoteItems, sale_returns: remoteReturns, ...saleData } = remoteSale as any
+    const localSale = toCamelCase(saleData) as unknown as Sale
+    localSale.syncStatus = 'synced'
+    localSale.lastSyncedAt = syncedAt
+
+    const enrichedItems = (remoteItems || []).map((item: any) => ({
+      ...item,
+      product_name: item.product?.name || 'Unknown Product',
+      product_sku: item.product?.sku || '',
+      product_category: item.product?.category || '',
+      product_unit: item.product?.unit || '',
+    }))
+    ;(localSale as any)._enrichedItems = enrichedItems
+    ;(localSale as any)._cashierName = profilesMap[saleData.cashier_id]
+      || (existingSaleById.get(localSale.id) as any)?._cashierName
+      || 'Staff'
+    salesToPut.push(localSale)
+
+    for (const item of remoteItems || []) {
+      const { product, ...itemData } = item
+      saleItemsToPut.push(toCamelCase(itemData) as unknown as SaleItem)
+    }
+
+    for (const remoteReturn of remoteReturns || []) {
+      const { sale_return_items: remoteReturnItems, ...returnData } = remoteReturn
+      saleReturnsToPut.push({
+        ...(toCamelCase(returnData) as any),
+        syncStatus: 'synced',
+        lastSyncedAt: syncedAt,
+        version: 1,
+        isDeleted: false,
+      })
+
+      for (const remoteReturnItem of remoteReturnItems || []) {
+        saleReturnItemsToPut.push({
+          ...(toCamelCase(remoteReturnItem) as any),
+          syncStatus: 'synced',
+          lastSyncedAt: syncedAt,
+          version: 1,
+          isDeleted: false,
+        })
+      }
+    }
+  }
+
   await db.transaction('rw', [db.sales, db.sales_exchange, db.sale_items, db.sale_returns, db.sale_return_items], async () => {
     if (remoteExchangeRows) {
-      for (const saleId of remoteSaleIds) {
-        await db.sales_exchange.where('saleId').equals(saleId).delete()
-      }
+      await db.sales_exchange.where('saleId').anyOf(idsToFetch).delete()
       if (remoteExchangeRows.length > 0) {
         await db.sales_exchange.bulkPut(
           remoteExchangeRows.map((row: any) => toCamelCase(row) as unknown as SalesExchange),
@@ -1931,72 +2030,56 @@ export async function syncSalesFromSupabase(
       }
     }
 
-    for (const local of relevantLocalSales) {
-      if (!remoteIds.has(local.id) && local.syncStatus === 'synced') {
-        await db.sales.delete(local.id)
-        await db.sales_exchange.where('saleId').equals(local.id).delete()
-        await db.sale_items.where('saleId').equals(local.id).delete()
-        await db.sale_returns.where('saleId').equals(local.id).delete()
-        await db.sale_return_items.where('saleId').equals(local.id).delete()
-      }
+    const deletedSaleIds = relevantLocalSales
+      .filter((local) => !remoteIds.has(local.id) && local.syncStatus === 'synced')
+      .map((local) => local.id)
+    if (deletedSaleIds.length > 0) {
+      await db.sales.bulkDelete(deletedSaleIds)
+      await db.sales_exchange.where('saleId').anyOf(deletedSaleIds).delete()
+      await db.sale_items.where('saleId').anyOf(deletedSaleIds).delete()
+      await db.sale_returns.where('saleId').anyOf(deletedSaleIds).delete()
+      await db.sale_return_items.where('saleId').anyOf(deletedSaleIds).delete()
     }
 
-    if (!fullData) return
-
-    for (const remoteSale of fullData) {
-      const { sale_items: remoteItems, sale_returns: remoteReturns, ...saleData } = remoteSale as any
-      const localSale = toCamelCase(saleData) as unknown as Sale
-      localSale.syncStatus = 'synced'
-      localSale.lastSyncedAt = new Date().toISOString()
-
-      const enrichedItems = (remoteItems || []).map((item: any) => ({
-        ...item,
-        product_name: item.product?.name || 'Unknown Product',
-        product_sku: item.product?.sku || '',
-        product_category: item.product?.category || '',
-        product_unit: item.product?.unit || '',
-      }))
-      ;(localSale as any)._enrichedItems = enrichedItems
-      ;(localSale as any)._cashierName = profilesMap[saleData.cashier_id] || 'Staff'
-
-      await db.sales.put(localSale)
-
-      if (remoteItems) {
-        for (const item of remoteItems) {
-          const { product, ...itemData } = item
-          const localItem = toCamelCase(itemData) as unknown as SaleItem
-          await db.sale_items.put(localItem)
-        }
-      }
-
-      if (remoteReturns) {
-        for (const remoteReturn of remoteReturns) {
-          const { sale_return_items: remoteReturnItems, ...returnData } = remoteReturn
-          await db.sale_returns.put({
-            ...(toCamelCase(returnData) as any),
-            syncStatus: 'synced',
-            lastSyncedAt: new Date().toISOString(),
-            version: 1,
-            isDeleted: false,
-          })
-
-          for (const remoteReturnItem of remoteReturnItems || []) {
-            await db.sale_return_items.put({
-              ...(toCamelCase(remoteReturnItem) as any),
-              syncStatus: 'synced',
-              lastSyncedAt: new Date().toISOString(),
-              version: 1,
-              isDeleted: false,
-            })
-          }
-        }
-      }
+    const fetchedSaleIds = salesToPut.map((sale) => sale.id)
+    if (fetchedSaleIds.length > 0) {
+      await db.sale_items.where('saleId').anyOf(fetchedSaleIds).delete()
+      await db.sale_returns.where('saleId').anyOf(fetchedSaleIds).delete()
+      await db.sale_return_items.where('saleId').anyOf(fetchedSaleIds).delete()
+      await db.sales.bulkPut(salesToPut)
+      if (saleItemsToPut.length > 0) await db.sale_items.bulkPut(saleItemsToPut)
+      if (saleReturnsToPut.length > 0) await db.sale_returns.bulkPut(saleReturnsToPut)
+      if (saleReturnItemsToPut.length > 0) await db.sale_return_items.bulkPut(saleReturnItemsToPut)
     }
   })
 }
 
-export function useSales(workspaceId: string | undefined, startDate?: string, endDate?: string) {
+export function syncSalesFromSupabase(workspaceId: string, options?: SalesSyncOptions): Promise<void> {
+  if (!shouldUseCloudBusinessData(workspaceId)) return Promise.resolve()
+
+  const key = `${workspaceId}:${options?.startDate || ''}:${options?.endDate || ''}`
+  const existing = salesSyncsInFlight.get(key)
+  if (existing) return existing
+
+  const request = performSalesSync(workspaceId, options).finally(() => {
+    if (salesSyncsInFlight.get(key) === request) {
+      salesSyncsInFlight.delete(key)
+    }
+  })
+  salesSyncsInFlight.set(key, request)
+  return request
+}
+
+type UseSalesOptions = { syncRemote?: boolean }
+
+export function useSales(
+  workspaceId: string | undefined,
+  startDate?: string,
+  endDate?: string,
+  options: UseSalesOptions = {},
+) {
     const isOnline = useNetworkStatus()
+    const syncRemote = options.syncRemote ?? true
 
     const sales = useLiveQuery(
         async () => {
@@ -2004,15 +2087,16 @@ export function useSales(workspaceId: string | undefined, startDate?: string, en
                 return []
             }
 
-            let query = db.sales.where('workspaceId').equals(workspaceId)
-
-            if (startDate && endDate) {
-                query = query.filter(sale => sale.createdAt >= startDate && sale.createdAt <= endDate)
-            } else if (startDate) {
-                query = query.filter(sale => sale.createdAt >= startDate)
-            } else if (endDate) {
-                query = query.filter(sale => sale.createdAt <= endDate)
-            }
+            const query = startDate || endDate
+              ? db.sales
+                  .where('[workspaceId+createdAt]')
+                  .between(
+                    [workspaceId, startDate || Dexie.minKey],
+                    [workspaceId, endDate || Dexie.maxKey],
+                    true,
+                    true,
+                  )
+              : db.sales.where('workspaceId').equals(workspaceId)
 
             const rows = await query.toArray()
             return enrichSalesForUiRows(workspaceId, rows)
@@ -2021,10 +2105,12 @@ export function useSales(workspaceId: string | undefined, startDate?: string, en
     )
 
     useEffect(() => {
-        if (isOnline && workspaceId && shouldUseCloudBusinessData(workspaceId)) {
-            syncSalesFromSupabase(workspaceId, { startDate, endDate })
+        if (syncRemote && isOnline && workspaceId && shouldUseCloudBusinessData(workspaceId)) {
+            void syncSalesFromSupabase(workspaceId, { startDate, endDate }).catch((error) => {
+              console.error('[Sales] Failed to synchronize sales', error)
+            })
         }
-    }, [isOnline, workspaceId, startDate, endDate])
+    }, [syncRemote, isOnline, workspaceId, startDate, endDate])
 
     return sales ?? []
 }

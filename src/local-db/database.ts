@@ -2519,6 +2519,11 @@ export class AtlasDatabase extends Dexie {
         }
       });
 
+    this.version(77).stores({
+      sales:
+        "id, cashierId, workspaceId, settlementCurrency, syncStatus, createdAt, updatedAt, notes, [workspaceId+createdAt]",
+    });
+
     this.registerLocalModeSqliteAuthority();
     this.registerLocalModeSyncHooks();
   }

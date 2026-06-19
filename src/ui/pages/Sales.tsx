@@ -238,7 +238,7 @@ export function Sales() {
         sourceModule: 'real_estate',
         sourceType: 'real_estate_commission',
         includeReversals: false
-    })
+    }, { hydrateSourceTables: false })
 
     const loans = useLoans(user?.workspaceId)
     const allSales = useMemo(() => {
