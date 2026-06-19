@@ -7,7 +7,7 @@ import { parseLangFromHash } from '@/lib/i18nRouting'
 
 const hash = window.location.hash.replace(/^#/, '') || '/'
 const { lang: urlLang } = parseLangFromHash(hash)
-const savedLanguage = urlLang || localStorage.getItem('i18nextLng') || 'en'
+const savedLanguage = localStorage.getItem('i18nextLng') || urlLang || 'en'
 const direction = savedLanguage === 'ar' || savedLanguage === 'ku' ? 'rtl' : 'ltr'
 document.dir = direction
 document.documentElement.lang = savedLanguage
