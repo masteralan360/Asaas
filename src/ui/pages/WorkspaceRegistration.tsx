@@ -24,11 +24,11 @@ export function WorkspaceRegistration() {
         try {
             const { data, error: rpcError } = await invokeWorkspaceAccess<{
                 workspace_id: string
+                source_workspace_id: string
+                current_workspace: string
                 workspace_code: string
                 workspace_name: string
                 data_mode?: string | null
-                branch_source_workspace_id?: string | null
-                branch_workspace_id?: string | null
             }>({
                 label: 'workspace.join',
                 fallbackAccessToken: session?.access_token,
@@ -53,10 +53,9 @@ export function WorkspaceRegistration() {
             if (data) {
                 updateUser({
                     workspaceId: data.workspace_id,
+                    sourceWorkspaceId: data.source_workspace_id,
                     workspaceCode: data.workspace_code,
                     workspaceName: data.workspace_name,
-                    branchSourceWorkspaceId: data.branch_source_workspace_id ?? undefined,
-                    branchWorkspaceId: data.branch_workspace_id ?? undefined,
                     workspaceMode: normalizeWorkspaceDataMode(data.data_mode)
                 })
             }

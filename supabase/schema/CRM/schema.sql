@@ -21,10 +21,25 @@ STABLE
 SECURITY DEFINER
 SET search_path = public
 AS $function$
-    SELECT workspace_id
+    SELECT current_workspace
     FROM public.profiles
     WHERE id = auth.uid();
 $function$;
 
 REVOKE ALL ON FUNCTION public.current_workspace_id() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.current_workspace_id() TO authenticated, service_role;
+
+CREATE OR REPLACE FUNCTION public.source_workspace_id()
+RETURNS uuid
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $function$
+    SELECT workspace_id
+    FROM public.profiles
+    WHERE id = auth.uid();
+$function$;
+
+REVOKE ALL ON FUNCTION public.source_workspace_id() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.source_workspace_id() TO authenticated, service_role;

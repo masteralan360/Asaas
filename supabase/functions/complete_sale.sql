@@ -39,7 +39,7 @@ DECLARE
     v_batch_allocations JSONB := '[]'::jsonb;
     v_plan TEXT;
 BEGIN
-    SELECT workspace_id INTO p_workspace_id
+    SELECT current_workspace INTO p_workspace_id
     FROM public.profiles
     WHERE id = auth.uid();
 

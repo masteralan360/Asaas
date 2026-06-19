@@ -67,6 +67,7 @@ export async function createDemoWorkspace(
   await db.profiles.put({
     id: userId,
     workspaceId,
+    currentWorkspaceId: workspaceId,
     name: 'Demo User',
     role: 'admin',
     profile_url: null,

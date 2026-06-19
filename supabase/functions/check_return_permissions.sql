@@ -9,7 +9,7 @@ BEGIN
         s.workspace_id,
         pr.role
     FROM public.sales s
-    JOIN public.profiles pr ON pr.id = p_user_id AND pr.workspace_id = s.workspace_id
+    JOIN public.profiles pr ON pr.id = p_user_id AND pr.current_workspace = s.workspace_id
     WHERE s.id = p_sale_id;
 END;
 $function$;

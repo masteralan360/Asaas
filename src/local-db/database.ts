@@ -2391,6 +2391,28 @@ export class AtlasDatabase extends Dexie {
         }
       });
 
+    this.version(76)
+      .stores({
+        profiles:
+          "id, workspaceId, currentWorkspaceId, name, role, [workspaceId+name], [currentWorkspaceId+name]",
+      })
+      .upgrade(async (tx) => {
+        const profiles = (await tx.table("profiles").toArray()) as Array<
+          Record<string, unknown>
+        >;
+        if (profiles.length > 0) {
+          await tx.table("profiles").bulkPut(
+            profiles.map((profile) => ({
+              ...profile,
+              currentWorkspaceId:
+                typeof profile.currentWorkspaceId === "string"
+                  ? profile.currentWorkspaceId
+                  : profile.workspaceId,
+            })),
+          );
+        }
+      });
+
     this.registerLocalModeSyncHooks();
   }
 

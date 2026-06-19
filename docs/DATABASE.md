@@ -218,7 +218,7 @@ Location: `supabase/schema.sql`
 
 | Table | Description |
 |-------|-------------|
-| `profiles` | User profiles with workspace association |
+| `profiles` | User profiles with source (`workspace_id`) and active (`current_workspace`) workspace associations |
 | `workspaces` | Workspace configuration and feature flags |
 | `products` | Product catalog |
 | `categories` | Product categories |
@@ -242,7 +242,7 @@ workspaces
 
 ### Row Level Security
 
-All tables have RLS policies ensuring users can only access data within their workspace:
+Workspace-scoped tables use the profile's active workspace. The source workspace remains unchanged while a user visits a linked branch:
 
 ```sql
 -- Example policy
@@ -250,7 +250,7 @@ CREATE POLICY "Users can only view their workspace products"
 ON products FOR SELECT
 USING (
   workspace_id = (
-    SELECT workspace_id FROM profiles WHERE id = auth.uid()
+    SELECT current_workspace FROM profiles WHERE id = auth.uid()
   )
 );
 ```

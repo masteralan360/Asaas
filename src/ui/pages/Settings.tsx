@@ -1070,7 +1070,8 @@ export function Settings() {
             if (isLocalMode || isHybridMode || isDemoMode) {
                 await db.profiles.put({
                     id: user.id,
-                    workspaceId: user.workspaceId,
+                    workspaceId: user.sourceWorkspaceId || user.workspaceId,
+                    currentWorkspaceId: user.workspaceId,
                     name: user.name,
                     role: user.role,
                     profile_url: resizedPath,

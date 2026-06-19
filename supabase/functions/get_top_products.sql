@@ -5,7 +5,7 @@ CREATE OR REPLACE FUNCTION public.get_top_products(p_workspace_id uuid DEFAULT N
 AS $function$
 BEGIN
     IF p_workspace_id IS NULL THEN
-        SELECT workspace_id INTO p_workspace_id FROM public.profiles WHERE id = auth.uid();
+        SELECT current_workspace INTO p_workspace_id FROM public.profiles WHERE id = auth.uid();
     END IF;
 
     RETURN QUERY

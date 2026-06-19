@@ -20,11 +20,12 @@ begin
         valid_ws_id := null;
     end if;
 
-    INSERT INTO public.profiles (id, name, role, workspace_id)
+    INSERT INTO public.profiles (id, name, role, workspace_id, current_workspace)
     VALUES (
         new.id,
         new.raw_user_meta_data->>'name',
         new.raw_user_meta_data->>'role',
+        valid_ws_id,
         valid_ws_id
     );
     RETURN new;

@@ -1898,7 +1898,7 @@ export async function syncSalesFromSupabase(
       if (cashierIds.length > 0) {
         const { data: profiles } = await supabase
           .from('profiles')
-          .select('id, name, workspace_id')
+          .select('id, name, workspace_id, current_workspace')
           .in('id', cashierIds)
         if (profiles) {
           profilesMap = profiles.reduce(
@@ -1909,6 +1909,7 @@ export async function syncSalesFromSupabase(
             profiles.map((p: any) => ({
               id: p.id,
               workspaceId: p.workspace_id,
+              currentWorkspaceId: p.current_workspace || p.workspace_id,
               name: p.name,
               role: '',
             })),

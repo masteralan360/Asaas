@@ -89,6 +89,7 @@ type AdminClient = ReturnType<typeof createAdminClient>
 type CallerProfile = {
     role: string | null
     workspace_id: string | null
+    current_workspace: string | null
 }
 
 type SourceCategoryRow = {
@@ -215,12 +216,6 @@ type WorkspaceMetadataRow = {
     plan?: string | null
 }
 
-type WorkspaceMetadataOptions = {
-    branchSourceWorkspaceId?: string | null
-    branchWorkspaceId?: string | null
-    branchEntryMode?: 'switch' | 'direct' | null
-}
-
 type BranchSourceWorkspace = WorkspaceMetadataRow & {
     instant_pos?: boolean | null
     travel_agency?: boolean | null
@@ -270,60 +265,10 @@ const BRANCH_SOURCE_SELECT_COLUMNS = [
     'store_description'
 ].join(', ')
 
-function buildWorkspaceMetadata(
-    workspace: WorkspaceMetadataRow,
-    existingMetadata: Record<string, unknown> = {},
-    options: WorkspaceMetadataOptions = {}
-) {
-    const nextMetadata = {
-        ...existingMetadata,
-        workspace_id: workspace.id,
-        workspace_code: workspace.code,
-        workspace_name: workspace.name,
-        workspace_plan: normalizeWorkspacePlan(workspace.plan),
-        data_mode: workspace.data_mode ?? 'cloud'
-    }
-
-    delete nextMetadata.branch_source_workspace_id
-    delete nextMetadata.branch_workspace_id
-    delete nextMetadata.branch_entry_mode
-
-    if (options.branchWorkspaceId && options.branchEntryMode) {
-        nextMetadata.branch_workspace_id = options.branchWorkspaceId
-        nextMetadata.branch_entry_mode = options.branchEntryMode
-
-        if (options.branchSourceWorkspaceId) {
-            nextMetadata.branch_source_workspace_id = options.branchSourceWorkspaceId
-        }
-    }
-
-    return nextMetadata
-}
-
-function resolveBranchSwitchOrigin(
-    metadata: Record<string, unknown> | null | undefined,
-    sourceWorkspaceId: string,
-    branchWorkspaceId: string
-) {
-    const branchSourceWorkspaceId = typeof metadata?.branch_source_workspace_id === 'string'
-        ? metadata.branch_source_workspace_id
-        : null
-    const branchWorkspaceIdFromMetadata = typeof metadata?.branch_workspace_id === 'string'
-        ? metadata.branch_workspace_id
-        : null
-    const branchEntryMode = typeof metadata?.branch_entry_mode === 'string'
-        ? metadata.branch_entry_mode
-        : null
-
-    return branchEntryMode === 'switch'
-        && branchSourceWorkspaceId === sourceWorkspaceId
-        && branchWorkspaceIdFromMetadata === branchWorkspaceId
-}
-
 async function getCallerProfile(adminClient: AdminClient, userId: string) {
     const { data, error } = await adminClient
         .from('profiles')
-        .select('role, workspace_id')
+        .select('role, workspace_id, current_workspace')
         .eq('id', userId)
         .maybeSingle()
 
@@ -340,7 +285,7 @@ async function requireCallerWorkspace(adminClient: AdminClient, user: User, requ
         return { response: errorResponse('Profile not found', 404), profile: null }
     }
 
-    if (!profile.workspace_id) {
+    if (!profile.workspace_id || !profile.current_workspace) {
         return { response: errorResponse('Caller is not assigned to a workspace', 400), profile: null }
     }
 
@@ -534,66 +479,6 @@ async function getInventoryTransferTargets(
     ] satisfies InventoryTransferTargetRow[]
 }
 
-async function updateUserWorkspaceMetadata(
-    adminClient: AdminClient,
-    userId: string,
-    workspace: WorkspaceMetadataRow,
-    existingMetadata?: Record<string, unknown>,
-    options?: WorkspaceMetadataOptions
-) {
-    let metadata = existingMetadata ?? {}
-
-    if (!existingMetadata) {
-        const { data, error } = await adminClient.auth.admin.getUserById(userId)
-        if (error || !data.user) {
-            throw error ?? new Error('Failed to load user metadata')
-        }
-        metadata = (data.user.user_metadata ?? {}) as Record<string, unknown>
-    }
-
-    const { error } = await adminClient.auth.admin.updateUserById(userId, {
-        user_metadata: buildWorkspaceMetadata(workspace, metadata, options)
-    })
-
-    if (error) {
-        throw error
-    }
-}
-
-async function clearUserWorkspaceMetadata(
-    adminClient: AdminClient,
-    userId: string,
-    existingMetadata?: Record<string, unknown>
-) {
-    let nextMetadata = { ...(existingMetadata ?? {}) } as Record<string, unknown>
-
-    if (!existingMetadata) {
-        const { data, error } = await adminClient.auth.admin.getUserById(userId)
-        if (error || !data.user) {
-            throw error ?? new Error('Failed to load target user')
-        }
-
-        nextMetadata = { ...(data.user.user_metadata ?? {}) } as Record<string, unknown>
-    }
-
-    delete nextMetadata.workspace_id
-    delete nextMetadata.workspace_code
-    delete nextMetadata.workspace_name
-    delete nextMetadata.workspace_plan
-    delete nextMetadata.data_mode
-    delete nextMetadata.branch_source_workspace_id
-    delete nextMetadata.branch_workspace_id
-    delete nextMetadata.branch_entry_mode
-
-    const { error: authError } = await adminClient.auth.admin.updateUserById(userId, {
-        user_metadata: nextMetadata
-    })
-
-    if (authError) {
-        throw authError
-    }
-}
-
 async function validateCreatePasskey(adminClient: AdminClient, providedPasskey: string) {
     const { data, error } = await adminClient
         .from('keys')
@@ -677,51 +562,24 @@ async function handleJoinWorkspace(
 
     const { error: profileError } = await adminClient
         .from('profiles')
-        .update({ workspace_id: joinedWorkspace.id })
+        .update({
+            workspace_id: joinedWorkspace.id,
+            current_workspace: joinedWorkspace.id
+        })
         .eq('id', user.id)
 
     if (profileError) {
         return errorResponse(profileError.message, 500)
     }
 
-    const { data: joinedBranchRelation, error: joinedBranchError } = await adminClient
-        .from('workspace_branches')
-        .select('source_workspace_id, branch_workspace_id')
-        .eq('branch_workspace_id', joinedWorkspace.id)
-        .maybeSingle()
-
-    if (joinedBranchError) {
-        return errorResponse(joinedBranchError.message, 500)
-    }
-
-    try {
-        await updateUserWorkspaceMetadata(
-            adminClient,
-            user.id,
-            joinedWorkspace as WorkspaceMetadataRow,
-            (user.user_metadata ?? {}) as Record<string, unknown>,
-            joinedBranchRelation
-                ? {
-                    branchWorkspaceId: joinedWorkspace.id,
-                    branchEntryMode: 'direct'
-                }
-                : undefined
-        )
-    } catch (authError) {
-        return errorResponse(
-            authError instanceof Error ? authError.message : 'Failed to update auth metadata',
-            500
-        )
-    }
-
     return jsonResponse({
         workspace_id: joinedWorkspace.id,
+        source_workspace_id: joinedWorkspace.id,
+        current_workspace: joinedWorkspace.id,
         workspace_code: joinedWorkspace.code,
         workspace_name: joinedWorkspace.name,
         workspace_plan: joinedPlan.plan,
-        data_mode: joinedWorkspace.data_mode ?? 'cloud',
-        branch_source_workspace_id: null,
-        branch_workspace_id: joinedBranchRelation ? joinedWorkspace.id : null
+        data_mode: joinedWorkspace.data_mode ?? 'cloud'
     })
 }
 
@@ -740,7 +598,7 @@ async function handleKickMember(
         return callerResult.response!
     }
 
-    const callerWorkspaceId = callerResult.profile.workspace_id
+    const callerWorkspaceId = callerResult.profile.current_workspace
 
     const { data: targetProfile, error: targetProfileError } = await adminClient
         .from('profiles')
@@ -770,20 +628,11 @@ async function handleKickMember(
 
     const { error: profileError } = await adminClient
         .from('profiles')
-        .update({ workspace_id: null })
+        .update({ workspace_id: null, current_workspace: null })
         .eq('id', targetUserId)
 
     if (profileError) {
         return errorResponse(profileError.message, 500)
-    }
-
-    try {
-        await clearUserWorkspaceMetadata(adminClient, targetUserId)
-    } catch (authError) {
-        return errorResponse(
-            authError instanceof Error ? authError.message : 'Failed to update target user metadata',
-            500
-        )
     }
 
     return jsonResponse({ success: true, message: 'Member kicked successfully' })
@@ -804,7 +653,7 @@ async function handleCreateBranch(
         return callerResult.response!
     }
 
-    const sourceWorkspaceId = callerResult.profile.workspace_id!
+    const sourceWorkspaceId = callerResult.profile.current_workspace!
 
     const { data: existingBranchRelation, error: existingBranchError } = await adminClient
         .from('workspace_branches')
@@ -919,58 +768,31 @@ async function handleSwitchBranch(
         return callerResult.response!
     }
 
-    const currentWorkspaceId = callerResult.profile.workspace_id!
+    const sourceWorkspaceId = callerResult.profile.workspace_id!
+    const currentWorkspaceId = callerResult.profile.current_workspace!
 
     if (currentWorkspaceId === targetWorkspaceId) {
         return errorResponse('You are already on this workspace', 400)
     }
 
-    const { data: forwardRelation, error: forwardRelationError } = await adminClient
-        .from('workspace_branches')
-        .select('id, source_workspace_id, branch_workspace_id, name')
-        .eq('source_workspace_id', currentWorkspaceId)
-        .eq('branch_workspace_id', targetWorkspaceId)
-        .maybeSingle()
-
-    if (forwardRelationError) {
-        return errorResponse(forwardRelationError.message, 500)
-    }
-
-    let branchRelation = forwardRelation
-
-    if (!branchRelation) {
-        const { data: reverseRelation, error: reverseRelationError } = await adminClient
-            .from('workspace_branches')
-            .select('id, source_workspace_id, branch_workspace_id, name')
-            .eq('branch_workspace_id', currentWorkspaceId)
-            .eq('source_workspace_id', targetWorkspaceId)
-            .maybeSingle()
-
-        if (reverseRelationError) {
-            return errorResponse(reverseRelationError.message, 500)
+    if (targetWorkspaceId !== sourceWorkspaceId) {
+        if (currentWorkspaceId !== sourceWorkspaceId) {
+            return errorResponse('Return to your source workspace before switching to another branch', 403)
         }
 
-        branchRelation = reverseRelation
-    }
+        const { data: branchRelation, error: branchRelationError } = await adminClient
+            .from('workspace_branches')
+            .select('id')
+            .eq('source_workspace_id', sourceWorkspaceId)
+            .eq('branch_workspace_id', targetWorkspaceId)
+            .maybeSingle()
 
-    if (!branchRelation) {
-        return errorResponse('Branch switch denied: the target workspace is not linked to your current workspace', 403)
-    }
+        if (branchRelationError) {
+            return errorResponse(branchRelationError.message, 500)
+        }
 
-    const isForwardSwitch = branchRelation.source_workspace_id === currentWorkspaceId
-        && branchRelation.branch_workspace_id === targetWorkspaceId
-    const isReverseSwitch = branchRelation.branch_workspace_id === currentWorkspaceId
-        && branchRelation.source_workspace_id === targetWorkspaceId
-
-    if (!isForwardSwitch && !isReverseSwitch) {
-        return errorResponse('Branch switch denied: invalid branch relationship', 403)
-    }
-
-    const userMetadata = (user.user_metadata ?? {}) as Record<string, unknown>
-
-    if (isReverseSwitch) {
-        if (!resolveBranchSwitchOrigin(userMetadata, targetWorkspaceId, currentWorkspaceId)) {
-            return errorResponse('Branch switch denied: this branch session did not originate from the source workspace', 403)
+        if (!branchRelation) {
+            return errorResponse('Branch switch denied: the target workspace is not linked to your source workspace', 403)
         }
     }
 
@@ -981,7 +803,7 @@ async function handleSwitchBranch(
 
     const { error: profileError } = await adminClient
         .from('profiles')
-        .update({ workspace_id: targetWorkspace.id })
+        .update({ current_workspace: targetWorkspace.id })
         .eq('id', user.id)
 
     if (profileError) {
@@ -994,35 +816,14 @@ async function handleSwitchBranch(
         return errorResponse(profileError.message, isMemberLimit ? 403 : 500)
     }
 
-    try {
-        await updateUserWorkspaceMetadata(
-            adminClient,
-            user.id,
-            targetWorkspace,
-            userMetadata,
-            isForwardSwitch
-                ? {
-                    branchSourceWorkspaceId: currentWorkspaceId,
-                    branchWorkspaceId: targetWorkspaceId,
-                    branchEntryMode: 'switch'
-                }
-                : undefined
-        )
-    } catch (authError) {
-        return errorResponse(
-            authError instanceof Error ? authError.message : 'Failed to update auth metadata',
-            500
-        )
-    }
-
     return jsonResponse({
         workspace_id: targetWorkspace.id,
+        source_workspace_id: sourceWorkspaceId,
+        current_workspace: targetWorkspace.id,
         workspace_code: targetWorkspace.code,
         workspace_name: targetWorkspace.name,
         workspace_plan: normalizeWorkspacePlan(targetWorkspace.plan),
-        data_mode: targetWorkspace.data_mode ?? 'cloud',
-        branch_source_workspace_id: isForwardSwitch ? currentWorkspaceId : null,
-        branch_workspace_id: isForwardSwitch ? targetWorkspaceId : null
+        data_mode: targetWorkspace.data_mode ?? 'cloud'
     })
 }
 
@@ -1041,7 +842,7 @@ async function handleDeleteBranch(
         return callerResult.response!
     }
 
-    const sourceWorkspaceId = callerResult.profile.workspace_id!
+    const sourceWorkspaceId = callerResult.profile.current_workspace!
 
     const { data: branchRelation, error: branchRelationError } = await adminClient
         .from('workspace_branches')
@@ -1065,36 +866,27 @@ async function handleDeleteBranch(
 
     const { data: branchProfiles, error: branchProfilesError } = await adminClient
         .from('profiles')
-        .select('id')
-        .eq('workspace_id', targetWorkspaceId)
+        .select('id, workspace_id, current_workspace')
+        .or(`workspace_id.eq.${targetWorkspaceId},current_workspace.eq.${targetWorkspaceId}`)
 
     if (branchProfilesError) {
         return errorResponse(branchProfilesError.message, 500)
     }
 
-    const affectedUserIds = (branchProfiles ?? []).map((row) => String(row.id))
-    const usersReturningToSource: Array<{ id: string; metadata: Record<string, unknown> }> = []
-    const usersLosingWorkspace: Array<{ id: string; metadata: Record<string, unknown> }> = []
-
-    for (const targetUserId of affectedUserIds) {
-        const { data: authUserResult, error: authUserError } = await adminClient.auth.admin.getUserById(targetUserId)
-        if (authUserError || !authUserResult.user) {
-            return errorResponse(authUserError?.message ?? 'Failed to load branch member metadata', 500)
-        }
-
-        const metadata = { ...(authUserResult.user.user_metadata ?? {}) } as Record<string, unknown>
-        if (resolveBranchSwitchOrigin(metadata, sourceWorkspaceId, targetWorkspaceId)) {
-            usersReturningToSource.push({ id: targetUserId, metadata })
-        } else {
-            usersLosingWorkspace.push({ id: targetUserId, metadata })
-        }
-    }
+    const affectedProfiles = branchProfiles ?? []
+    const affectedUserIds = affectedProfiles.map((row) => String(row.id))
+    const usersReturningToSource = affectedProfiles.filter((row) =>
+        row.workspace_id !== targetWorkspaceId
+        && row.current_workspace === targetWorkspaceId
+        && Boolean(row.workspace_id)
+    )
+    const usersLosingWorkspace = affectedProfiles.filter((row) => row.workspace_id === targetWorkspaceId)
 
     if (usersReturningToSource.length > 0) {
         const { error: updateProfilesError } = await adminClient
             .from('profiles')
-            .update({ workspace_id: sourceWorkspaceId })
-            .in('id', usersReturningToSource.map((userRecord) => userRecord.id))
+            .update({ current_workspace: sourceWorkspaceId })
+            .in('id', usersReturningToSource.map((profile) => profile.id))
 
         if (updateProfilesError) {
             return errorResponse(updateProfilesError.message, 500)
@@ -1104,41 +896,11 @@ async function handleDeleteBranch(
     if (usersLosingWorkspace.length > 0) {
         const { error: clearProfilesError } = await adminClient
             .from('profiles')
-            .update({ workspace_id: null })
-            .in('id', usersLosingWorkspace.map((userRecord) => userRecord.id))
+            .update({ workspace_id: null, current_workspace: null })
+            .in('id', usersLosingWorkspace.map((profile) => profile.id))
 
         if (clearProfilesError) {
             return errorResponse(clearProfilesError.message, 500)
-        }
-    }
-
-    let metadataUpdateFailures = 0
-    for (const targetUser of usersReturningToSource) {
-        try {
-            await updateUserWorkspaceMetadata(
-                adminClient,
-                targetUser.id,
-                sourceWorkspace,
-                targetUser.metadata
-            )
-        } catch (metadataError) {
-            console.error('[workspace-access] Failed to update branch member metadata during delete', {
-                targetUserId: targetUser.id,
-                error: metadataError
-            })
-            metadataUpdateFailures += 1
-        }
-    }
-
-    for (const targetUser of usersLosingWorkspace) {
-        try {
-            await clearUserWorkspaceMetadata(adminClient, targetUser.id, targetUser.metadata)
-        } catch (metadataError) {
-            console.error('[workspace-access] Failed to clear branch member metadata during delete', {
-                targetUserId: targetUser.id,
-                error: metadataError
-            })
-            metadataUpdateFailures += 1
         }
     }
 
@@ -1156,8 +918,7 @@ async function handleDeleteBranch(
         branch_workspace_id: targetWorkspaceId,
         moved_users: affectedUserIds.length,
         returned_to_source: usersReturningToSource.length,
-        removed_from_workspace: usersLosingWorkspace.length,
-        metadata_update_failures: metadataUpdateFailures
+        removed_from_workspace: usersLosingWorkspace.length
     })
 }
 
@@ -1170,7 +931,7 @@ async function handleListProductCloneTargets(
         return callerResult.response!
     }
 
-    const currentWorkspaceId = callerResult.profile.workspace_id!
+    const currentWorkspaceId = callerResult.profile.current_workspace!
     const targets = await getProductCloneTargets(adminClient, currentWorkspaceId)
 
     if (targets.length === 0) {
@@ -1364,7 +1125,7 @@ async function handleListInventoryTransferTargets(
         return errorResponse('Unauthorized: Only admins and staff can perform this action', 403)
     }
 
-    const currentWorkspaceId = callerResult.profile.workspace_id!
+    const currentWorkspaceId = callerResult.profile.current_workspace!
     const moduleResult = await requireWorkspaceModule(adminClient, currentWorkspaceId, 'inventory_transfer')
     if (moduleResult.response) {
         return moduleResult.response
@@ -1436,7 +1197,7 @@ async function handleListInventoryTransferSourceProducts(
         return errorResponse('Unauthorized: Only admins and staff can perform this action', 403)
     }
 
-    const currentWorkspaceId = callerResult.profile.workspace_id!
+    const currentWorkspaceId = callerResult.profile.current_workspace!
     const moduleResult = await requireWorkspaceModule(adminClient, currentWorkspaceId, 'inventory_transfer')
     if (moduleResult.response) {
         return moduleResult.response
@@ -1643,7 +1404,7 @@ async function handleTransferInventoryBetweenWorkspaces(
         return errorResponse('Unauthorized: Only admins and staff can perform this action', 403)
     }
 
-    const currentWorkspaceId = callerResult.profile.workspace_id!
+    const currentWorkspaceId = callerResult.profile.current_workspace!
     const moduleResult = await requireWorkspaceModule(adminClient, currentWorkspaceId, 'inventory_transfer')
     if (moduleResult.response) {
         return moduleResult.response
@@ -2712,7 +2473,7 @@ async function handleCloneProductsToBranch(
         return callerResult.response!
     }
 
-    const sourceWorkspaceId = callerResult.profile.workspace_id!
+    const sourceWorkspaceId = callerResult.profile.current_workspace!
     if (sourceWorkspaceId === targetWorkspaceId) {
         return errorResponse('Target workspace must be different from the current workspace', 400)
     }

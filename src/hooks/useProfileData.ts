@@ -11,6 +11,7 @@ export interface ProfileData {
     profile_url?: string
     created_at: string
     workspace_id?: string
+    current_workspace?: string
 }
 
 interface UseProfileDataResult {
@@ -44,7 +45,7 @@ export function useProfileData(userId: string | null): UseProfileDataResult {
                 const { data, error } = await runSupabaseAction('profileCard.fetch', () =>
                     supabase
                         .from('profiles')
-                        .select('id, name, role, created_at, profile_url, workspace_id')
+                        .select('id, name, role, created_at, profile_url, workspace_id, current_workspace')
                         .eq('id', userId)
                         .maybeSingle()
                 )
@@ -63,6 +64,7 @@ export function useProfileData(userId: string | null): UseProfileDataResult {
                 db.profiles.put({
                     id: data.id,
                     workspaceId: data.workspace_id || '',
+                    currentWorkspaceId: data.current_workspace || data.workspace_id || '',
                     name: data.name,
                     role: data.role || '',
                     profile_url: data.profile_url,

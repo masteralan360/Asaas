@@ -204,6 +204,8 @@ export async function hasLocalAccountCredential(
 export async function persistLocalAccountProfile(account: {
   id: string;
   workspaceId: string;
+  sourceWorkspaceId?: string;
+  currentWorkspaceId?: string;
   email: string;
   name: string;
   role: UserRole;
@@ -231,7 +233,8 @@ export async function persistLocalAccountProfile(account: {
     db.users.put(localUser),
     db.profiles.put({
       id: account.id,
-      workspaceId: account.workspaceId,
+      workspaceId: account.sourceWorkspaceId || account.workspaceId,
+      currentWorkspaceId: account.currentWorkspaceId || account.workspaceId,
       name: account.name,
       role: account.role,
       profile_url: account.profileUrl ?? null,

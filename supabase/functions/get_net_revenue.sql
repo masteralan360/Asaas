@@ -5,7 +5,7 @@ CREATE OR REPLACE FUNCTION public.get_net_revenue(p_workspace_id uuid DEFAULT NU
 AS $function$
 BEGIN
     IF p_workspace_id IS NULL THEN
-        SELECT workspace_id INTO p_workspace_id FROM public.profiles WHERE id = auth.uid();
+        SELECT current_workspace INTO p_workspace_id FROM public.profiles WHERE id = auth.uid();
     END IF;
 
     RETURN QUERY

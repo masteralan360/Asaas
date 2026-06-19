@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useLocation } from 'wouter'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/auth'
@@ -37,7 +37,7 @@ export function useWorkspaceBranchSwitcher(options: UseWorkspaceBranchSwitcherOp
     const [isLoadingBranches, setIsLoadingBranches] = useState(false)
     const [switchingWorkspaceId, setSwitchingWorkspaceId] = useState<string | null>(null)
 
-    const showActionError = (error: unknown, fallbackDescription: string) => {
+    const showActionError = useCallback((error: unknown, fallbackDescription: string) => {
         const normalized = normalizeSupabaseActionError(error)
         if (isRetriableWebRequestError(normalized)) {
             const message = getRetriableActionToast(normalized)
@@ -54,10 +54,10 @@ export function useWorkspaceBranchSwitcher(options: UseWorkspaceBranchSwitcherOp
             description: fallbackDescription || normalized.message,
             variant: 'destructive'
         })
-    }
+    }, [t, toast])
 
-    const loadBranches = async () => {
-        if (!user?.workspaceId || branchInfo?.isBranch) {
+    const loadBranches = useCallback(async () => {
+        if (!user?.sourceWorkspaceId || branchInfo?.isBranch) {
             setBranches([])
             setIsLoadingBranches(false)
             return
@@ -71,7 +71,7 @@ export function useWorkspaceBranchSwitcher(options: UseWorkspaceBranchSwitcherOp
                 () => supabase
                     .from('workspace_branches')
                     .select('id, name, created_at, branch_workspace_id')
-                    .eq('source_workspace_id', user.workspaceId)
+                    .eq('source_workspace_id', user.sourceWorkspaceId)
                     .order('created_at', { ascending: true }),
                 { timeoutMs: 12000, platform: 'all' }
             ) as {
@@ -140,11 +140,11 @@ export function useWorkspaceBranchSwitcher(options: UseWorkspaceBranchSwitcherOp
         } finally {
             setIsLoadingBranches(false)
         }
-    }
+    }, [branchInfo?.isBranch, options.showLoadError, showActionError, t, user?.sourceWorkspaceId])
 
     useEffect(() => {
         void loadBranches()
-    }, [user?.workspaceId, branchInfo?.isBranch])
+    }, [loadBranches])
 
     const switchWorkspace = async (targetWorkspaceId: string) => {
         if (!targetWorkspaceId) {
@@ -156,11 +156,11 @@ export function useWorkspaceBranchSwitcher(options: UseWorkspaceBranchSwitcherOp
         try {
             const { data, error } = await invokeWorkspaceAccess<{
                 workspace_id: string
+                source_workspace_id: string
+                current_workspace: string
                 workspace_code: string
                 workspace_name: string
                 data_mode?: string | null
-                branch_source_workspace_id?: string | null
-                branch_workspace_id?: string | null
             }>({
                 label: 'branches.switchWorkspace',
                 fallbackAccessToken: session?.access_token,
@@ -177,10 +177,9 @@ export function useWorkspaceBranchSwitcher(options: UseWorkspaceBranchSwitcherOp
 
             updateUser({
                 workspaceId: data.workspace_id,
+                sourceWorkspaceId: data.source_workspace_id,
                 workspaceCode: data.workspace_code,
                 workspaceName: data.workspace_name,
-                branchSourceWorkspaceId: data.branch_source_workspace_id ?? undefined,
-                branchWorkspaceId: data.branch_workspace_id ?? undefined,
                 workspaceMode: normalizeWorkspaceDataMode(data.data_mode)
             })
 
@@ -206,8 +205,8 @@ export function useWorkspaceBranchSwitcher(options: UseWorkspaceBranchSwitcherOp
     const currentWorkspaceLabel = workspaceName || branchInfo?.branchName || 'Atlas'
     const canReturnToSource = Boolean(
         branchInfo?.sourceWorkspaceId
-        && user?.branchSourceWorkspaceId === branchInfo.sourceWorkspaceId
-        && user?.branchWorkspaceId === user.workspaceId
+        && user?.sourceWorkspaceId === branchInfo.sourceWorkspaceId
+        && user.workspaceId !== user.sourceWorkspaceId
     )
 
     return {

@@ -84,6 +84,7 @@ export interface Product extends BaseEntity {
 export interface Profile {
   id: string;
   workspaceId: string;
+  currentWorkspaceId?: string;
   name: string;
   role: string;
   profile_url?: string | null;

@@ -34,7 +34,7 @@ begin
   select count(s.id) into v_session_count
   from auth.sessions s
   join public.profiles p on s.user_id = p.id
-  where p.workspace_id = v_workspace_id;
+  where p.current_workspace = v_workspace_id;
 
   -- 4. Check completion
   if jsonb_array_length(v_current_synced) >= v_session_count then

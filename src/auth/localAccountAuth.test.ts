@@ -5,6 +5,7 @@ import { db } from "@/local-db/database";
 import {
   enrollLocalAccountCredential,
   listLocalWorkspaceAccounts,
+  persistLocalAccountProfile,
   verifyLocalAccountPassword,
 } from "./localAccountAuth";
 
@@ -89,6 +90,7 @@ describe("local account credentials", () => {
     await db.profiles.put({
       id: "deleted-user",
       workspaceId: "workspace-1",
+      currentWorkspaceId: "workspace-1",
       name: "Deleted User",
       role: "staff",
     });
@@ -109,5 +111,22 @@ describe("local account credentials", () => {
     await expect(listLocalWorkspaceAccounts("workspace-1")).resolves.toEqual(
       [],
     );
+  });
+
+  it("stores source and current workspaces separately for local profiles", async () => {
+    await persistLocalAccountProfile({
+      id: "user-1",
+      workspaceId: "branch-workspace",
+      sourceWorkspaceId: "source-workspace",
+      currentWorkspaceId: "branch-workspace",
+      email: "user@example.com",
+      name: "Branch User",
+      role: "admin",
+    });
+
+    await expect(db.profiles.get("user-1")).resolves.toMatchObject({
+      workspaceId: "source-workspace",
+      currentWorkspaceId: "branch-workspace",
+    });
   });
 });

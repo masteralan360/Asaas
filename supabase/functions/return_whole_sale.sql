@@ -17,7 +17,7 @@ BEGIN
   FROM public.sales s
   JOIN public.profiles p
     ON p.id = auth.uid()
-   AND p.workspace_id = s.workspace_id
+   AND p.current_workspace = s.workspace_id
   WHERE s.id = p_sale_id;
 
   IF v_user_role IS DISTINCT FROM 'admin' THEN

@@ -114,6 +114,26 @@ export async function ensurePwaDatabase(): Promise<SqlJsDatabase | null> {
         `CREATE INDEX IF NOT EXISTS idx_local_entities_type_workspace
          ON local_entities (entity_type, workspace_id)`,
       );
+      const tableInfo = dbInstance.exec("PRAGMA table_info(local_entities)");
+      const nameIndex = tableInfo[0]?.columns.indexOf("name") ?? -1;
+      const hasCurrentWorkspace = nameIndex >= 0 && tableInfo[0].values.some(
+        (row) => row[nameIndex] === "current_workspace",
+      );
+      if (!hasCurrentWorkspace) {
+        dbInstance.run(
+          "ALTER TABLE local_entities ADD COLUMN current_workspace TEXT",
+        );
+      }
+      dbInstance.run(`
+        UPDATE local_entities
+        SET current_workspace = workspace_id
+        WHERE entity_type = 'profiles'
+          AND current_workspace IS NULL
+      `);
+      dbInstance.run(
+        `CREATE INDEX IF NOT EXISTS idx_local_entities_current_workspace
+         ON local_entities (current_workspace)`,
+      );
 
       const initialData = dbInstance.export();
       await saveToOpfs(initialData);

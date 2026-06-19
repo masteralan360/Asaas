@@ -230,7 +230,7 @@ export function Layout({ children }: LayoutProps) {
 
             const { data, error } = await supabase
                 .from('profiles')
-                .select('id, name, role, profile_url, workspace_id')
+                .select('id, name, role, profile_url, workspace_id, current_workspace')
                 .eq('workspace_id', user.workspaceId)
 
             if (!error && data) {
@@ -238,6 +238,7 @@ export function Layout({ children }: LayoutProps) {
                 db.profiles.bulkPut(data.map((p: any) => ({
                     id: p.id,
                     workspaceId: p.workspace_id,
+                    currentWorkspaceId: p.current_workspace || p.workspace_id,
                     name: p.name,
                     role: p.role || '',
                     profile_url: p.profile_url,

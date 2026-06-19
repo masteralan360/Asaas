@@ -50,7 +50,7 @@ BEGIN
 
   v_workspace_id := p_workspace_id;
   IF v_workspace_id IS NULL THEN
-    SELECT p.workspace_id
+    SELECT p.current_workspace
     INTO v_workspace_id
     FROM public.profiles p
     WHERE p.id = p_user_id;

@@ -7,7 +7,7 @@ DECLARE
     result JSONB;
 BEGIN
     IF p_workspace_id IS NULL THEN
-        SELECT workspace_id INTO p_workspace_id FROM public.profiles WHERE id = auth.uid();
+        SELECT current_workspace INTO p_workspace_id FROM public.profiles WHERE id = auth.uid();
     END IF;
 
     SELECT jsonb_build_object(

@@ -15,7 +15,7 @@ import {
 } from '@/workspace/workspaceMode'
 import { normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
 import { db } from '@/local-db/database'
-import { hydrateLocalModeCacheFromSqlite } from '@/local-db/localModeSqlite'
+import { hydrateLocalModeCacheFromSqlite, readLocalProfileWorkspaceState } from '@/local-db/localModeSqlite'
 import { runDailyBackupIfNeeded, runR2BackupIfNeeded } from '@/local-db/sqliteBackup'
 import { clearLocalDemoWorkspaceData, clearStoredDemoWorkspaces } from '@/demo/demoCleanup'
 import { isDemoWorkspace } from '@/demo/demoConfig'
@@ -34,10 +34,9 @@ export interface AuthUser {
     name: string
     role: UserRole
     workspaceId: string
+    sourceWorkspaceId: string
     workspaceCode: string
     workspaceName?: string
-    branchSourceWorkspaceId?: string
-    branchWorkspaceId?: string
     profileUrl?: string
     isConfigured?: boolean
     workspaceMode: WorkspaceDataMode
@@ -78,6 +77,7 @@ const DEMO_USER: AuthUser = {
     name: 'Demo User',
     role: 'admin',
     workspaceId: 'demo-workspace',
+    sourceWorkspaceId: 'demo-workspace',
     workspaceCode: 'DEMO-1234',
     workspaceName: 'Demo Workspace',
     profileUrl: undefined,
@@ -93,18 +93,13 @@ function parseUserFromSupabase(user: User): AuthUser {
         email: user.email ?? '',
         name: user.user_metadata?.name ?? user.email?.split('@')[0] ?? 'User',
         role: (user.user_metadata?.role as UserRole) ?? 'viewer',
-        workspaceId: user.user_metadata?.workspace_id ?? '',
-        workspaceCode: user.user_metadata?.workspace_code ?? '',
-        workspaceName: user.user_metadata?.workspace_name,
-        branchSourceWorkspaceId: typeof user.user_metadata?.branch_source_workspace_id === 'string'
-            ? user.user_metadata.branch_source_workspace_id
-            : undefined,
-        branchWorkspaceId: typeof user.user_metadata?.branch_workspace_id === 'string'
-            ? user.user_metadata.branch_workspace_id
-            : undefined,
+        workspaceId: '',
+        sourceWorkspaceId: '',
+        workspaceCode: '',
+        workspaceName: undefined,
         profileUrl: user.user_metadata?.profile_url,
         isConfigured: user.user_metadata?.is_configured,
-        workspaceMode: normalizeWorkspaceDataMode(user.user_metadata?.data_mode)
+        workspaceMode: 'cloud'
     }
 }
 
@@ -125,24 +120,20 @@ async function hydrateAssetProfile(user: AuthUser) {
     }
 
     const localProfile = await db.profiles.get(user.id)
-    if (localProfile?.workspaceId === user.workspaceId) {
-        if (localProfile.profile_url) {
-            user.profileUrl = localProfile.profile_url
-        }
-        return
+    if (localProfile?.profile_url) {
+        user.profileUrl = localProfile.profile_url
     }
 
-    // For demo/local mode, if there's no profile in the DB yet but we have one in state, seed it
-    if (user.profileUrl) {
-        await db.profiles.put({
-            id: user.id,
-            workspaceId: user.workspaceId,
-            name: user.name,
-            role: user.role,
-            profile_url: user.profileUrl ?? null,
-            created_at: new Date().toISOString()
-        })
-    }
+    await db.profiles.put({
+        ...localProfile,
+        id: user.id,
+        workspaceId: user.sourceWorkspaceId || user.workspaceId,
+        currentWorkspaceId: user.workspaceId,
+        name: user.name,
+        role: user.role,
+        profile_url: user.profileUrl ?? localProfile?.profile_url ?? null,
+        created_at: localProfile?.created_at || new Date().toISOString()
+    })
 }
 
 function clearPreviousWorkspaceArtifacts(previousWorkspaceId?: string | null, nextWorkspaceId?: string | null) {
@@ -188,6 +179,8 @@ async function persistAuthUserLocally(user: AuthUser) {
     await persistLocalAccountProfile({
         id: user.id,
         workspaceId: user.workspaceId,
+        sourceWorkspaceId: user.sourceWorkspaceId,
+        currentWorkspaceId: user.workspaceId,
         email: user.email,
         name: user.name,
         role: user.role,
@@ -222,7 +215,7 @@ async function cacheLocalWorkspaceAccounts(workspaceId: string, options?: { isLo
         'auth.cacheLocalWorkspaceAccounts',
         () => supabase
             .from('profiles')
-            .select('id, name, role, profile_url, workspace_id, created_at')
+            .select('id, name, role, profile_url, workspace_id, current_workspace, created_at')
             .eq('workspace_id', workspaceId),
         { timeoutMs: 8000, platform: 'all' }
     ) as {
@@ -232,6 +225,7 @@ async function cacheLocalWorkspaceAccounts(workspaceId: string, options?: { isLo
             role: string | null
             profile_url: string | null
             workspace_id: string
+            current_workspace: string | null
             created_at: string | null
         }> | null
         error?: unknown
@@ -254,6 +248,7 @@ async function cacheLocalWorkspaceAccounts(workspaceId: string, options?: { isLo
             return {
                 id: profile.id,
                 workspaceId: profile.workspace_id,
+                currentWorkspaceId: profile.current_workspace || profile.workspace_id,
                 name: profile.name || 'User',
                 role: profile.role || 'viewer',
                 profile_url: (options?.isLocalFirst && existing?.profile_url)
@@ -340,10 +335,9 @@ function resetWorkspaceAssignment(user: AuthUser, previousWorkspaceId?: string |
     return {
         ...user,
         workspaceId: '',
+        sourceWorkspaceId: '',
         workspaceCode: '',
         workspaceName: undefined,
-        branchSourceWorkspaceId: undefined,
-        branchWorkspaceId: undefined,
         isConfigured: undefined,
         workspaceMode: 'cloud'
     }
@@ -362,17 +356,20 @@ async function enrichUser(parsedUser: AuthUser): Promise<AuthUser> {
         profile_url?: string | null
         role?: UserRole | null
         workspace_id?: string | null
+        current_workspace?: string | null
     }
 
     const originalWorkspaceId = parsedUser.workspaceId || ''
     let canonicalWorkspaceId = originalWorkspaceId
+    let sourceWorkspaceId = parsedUser.sourceWorkspaceId || ''
+    let profileBootstrapCompleted = false
 
     try {
         const { data: profileRow, error: profileError } = await runSupabaseAction(
             'auth.profileBootstrap',
             () => supabase
                 .from('profiles')
-                .select('profile_url, role, workspace_id')
+                .select('profile_url, role, workspace_id, current_workspace')
                 .eq('id', parsedUser.id)
                 .maybeSingle(),
             { timeoutMs: 8000, platform: 'all' }
@@ -382,6 +379,8 @@ async function enrichUser(parsedUser: AuthUser): Promise<AuthUser> {
             throw profileError
         }
 
+        profileBootstrapCompleted = true
+
         if (profileRow) {
             if (profileRow.profile_url) {
                 parsedUser.profileUrl = profileRow.profile_url
@@ -389,18 +388,29 @@ async function enrichUser(parsedUser: AuthUser): Promise<AuthUser> {
             if (profileRow.role) {
                 parsedUser.role = profileRow.role
             }
-            canonicalWorkspaceId = profileRow.workspace_id ?? ''
+            sourceWorkspaceId = profileRow.workspace_id ?? ''
+            canonicalWorkspaceId = profileRow.current_workspace ?? ''
         }
     } catch (error) {
         console.warn('[Auth] Failed to fetch profile bootstrap:', error)
+    }
+
+    if (!profileBootstrapCompleted && !canonicalWorkspaceId) {
+        try {
+            const localWorkspaceState = await readLocalProfileWorkspaceState(parsedUser.id)
+            if (localWorkspaceState) {
+                sourceWorkspaceId = localWorkspaceState.sourceWorkspaceId
+                canonicalWorkspaceId = localWorkspaceState.currentWorkspaceId
+            }
+        } catch (error) {
+            console.warn('[Auth] Failed to recover workspace state from local SQLite:', error)
+        }
     }
 
     if (originalWorkspaceId !== canonicalWorkspaceId) {
         clearPreviousWorkspaceArtifacts(originalWorkspaceId, canonicalWorkspaceId)
         parsedUser.workspaceCode = ''
         parsedUser.workspaceName = undefined
-        parsedUser.branchSourceWorkspaceId = undefined
-        parsedUser.branchWorkspaceId = undefined
         parsedUser.isConfigured = undefined
         parsedUser.workspaceMode = 'cloud'
     }
@@ -410,6 +420,7 @@ async function enrichUser(parsedUser: AuthUser): Promise<AuthUser> {
     }
 
     parsedUser.workspaceId = canonicalWorkspaceId
+    parsedUser.sourceWorkspaceId = sourceWorkspaceId
 
     try {
         const { data: workspaceRow, error: workspaceError } = await runSupabaseAction(
@@ -475,7 +486,12 @@ function saveRecovery(user: AuthUser) {
 function getRecoveredUser(): (AuthUser & { recoveredAt?: number }) | null {
     try {
         const recovered = localStorage.getItem('atlas_session_recovery')
-        return recovered ? JSON.parse(recovered) : null
+        if (!recovered) return null
+        const parsed = JSON.parse(recovered) as AuthUser & { recoveredAt?: number }
+        if (!parsed.sourceWorkspaceId) {
+            parsed.sourceWorkspaceId = parsed.workspaceId
+        }
+        return parsed
     } catch { return null }
 }
 
@@ -982,6 +998,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             name: 'Demo User',
             role: 'admin',
             workspaceId: result.workspaceId,
+            sourceWorkspaceId: result.workspaceId,
             workspaceCode: result.workspaceCode,
             workspaceName: result.workspaceName,
             profileUrl: undefined,
@@ -1093,6 +1110,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 dataMode: nextUser.workspaceMode
             })
         }
+        void hydrateAssetProfile(nextUser)
     }
 
     const switchLocalAccount = async (userId: string, password: string) => {

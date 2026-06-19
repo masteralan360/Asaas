@@ -204,7 +204,7 @@ export function Members() {
             const { data, error } = await runSupabaseAction('members.fetch', () =>
                 supabase
                     .from('profiles')
-                    .select('id, name, role, created_at, profile_url, workspace_id')
+                    .select('id, name, role, created_at, profile_url, workspace_id, current_workspace')
                     .eq('workspace_id', user.workspaceId)
                     .order('created_at', { ascending: true })
             )
@@ -215,6 +215,7 @@ export function Members() {
                 db.profiles.bulkPut(data.map((p) => ({
                     id: p.id,
                     workspaceId: p.workspace_id,
+                    currentWorkspaceId: p.current_workspace || p.workspace_id,
                     name: p.name,
                     role: p.role || '',
                     profile_url: p.profile_url,

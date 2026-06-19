@@ -79,6 +79,7 @@ interface StoredEntityRow {
   entity_type: string;
   entity_id: string;
   workspace_id: string | null;
+  current_workspace: string | null;
   payload: string;
   updated_at: string | null;
 }
@@ -89,6 +90,27 @@ const hydrationTasks = new Map<string, Promise<void>>();
 let sqlitePromise: Promise<SqliteConnection | null> | null = null;
 let sqliteWriteQueue: Promise<void> = Promise.resolve();
 let mirroringPauseDepth = 0;
+
+async function ensureCurrentWorkspaceColumn(connection: SqliteConnection) {
+  const columns = await connection.select<Array<{ name: string }>>(
+    "PRAGMA table_info(local_entities)",
+  );
+  if (!columns.some((column) => column.name === "current_workspace")) {
+    await connection.execute(
+      "ALTER TABLE local_entities ADD COLUMN current_workspace TEXT",
+    );
+  }
+  await connection.execute(`
+    UPDATE local_entities
+    SET current_workspace = workspace_id
+    WHERE entity_type = 'profiles'
+      AND current_workspace IS NULL
+  `);
+  await connection.execute(`
+    CREATE INDEX IF NOT EXISTS idx_local_entities_current_workspace
+    ON local_entities (current_workspace)
+  `);
+}
 
 function isSupported() {
   return (
@@ -226,6 +248,7 @@ async function ensureConnection() {
                 CREATE INDEX IF NOT EXISTS idx_local_entities_type_workspace
                 ON local_entities (entity_type, workspace_id)
             `);
+        await ensureCurrentWorkspaceColumn(connection as SqliteConnection);
 
         return connection as SqliteConnection;
       }
@@ -462,6 +485,7 @@ async function getStoredWorkspaceRowCount(
             SELECT COUNT(*) AS count
             FROM local_entities
             WHERE workspace_id = $1
+               OR (entity_type = 'profiles' AND current_workspace = $1)
                OR (entity_type = 'workspaces' AND entity_id = $1)
         `,
     [workspaceId],
@@ -484,13 +508,17 @@ async function persistEntity(
   }
 
   const workspaceId = await resolveWorkspaceId(cacheDb, tableName, row);
+  const mirrorWorkspaceId = tableName === "profiles"
+    && typeof row.currentWorkspaceId === "string"
+    ? row.currentWorkspaceId
+    : workspaceId;
   const shouldPersist =
     tableName === "workspaces"
       ? row.data_mode === "local" ||
         row.data_mode === "hybrid" ||
         (workspaceId ? isSqliteMirrorEnabled(workspaceId) : false)
-      : workspaceId
-        ? isSqliteMirrorEnabled(workspaceId)
+      : mirrorWorkspaceId
+        ? isSqliteMirrorEnabled(mirrorWorkspaceId)
         : false;
 
   if (!shouldPersist) {
@@ -503,6 +531,11 @@ async function persistEntity(
   }
 
   const payload = JSON.stringify(await serializeValue(row));
+  const currentWorkspaceId = tableName === "profiles"
+    ? typeof row.currentWorkspaceId === "string"
+      ? row.currentWorkspaceId
+      : workspaceId
+    : null;
   const updatedAt =
     typeof row.updatedAt === "string"
       ? row.updatedAt
@@ -510,14 +543,15 @@ async function persistEntity(
 
   await connection.execute(
     `
-            INSERT INTO local_entities (entity_type, entity_id, workspace_id, payload, updated_at)
-            VALUES ($1, $2, $3, $4, $5)
+            INSERT INTO local_entities (entity_type, entity_id, workspace_id, current_workspace, payload, updated_at)
+            VALUES ($1, $2, $3, $4, $5, $6)
             ON CONFLICT(entity_type, entity_id) DO UPDATE SET
                 workspace_id = excluded.workspace_id,
+                current_workspace = excluded.current_workspace,
                 payload = excluded.payload,
                 updated_at = excluded.updated_at
         `,
-    [tableName, entityId, workspaceId, payload, updatedAt],
+    [tableName, entityId, workspaceId, currentWorkspaceId, payload, updatedAt],
   );
 }
 
@@ -532,13 +566,17 @@ async function deleteEntity(
   }
 
   const workspaceId = await resolveWorkspaceId(cacheDb, tableName, row);
+  const mirrorWorkspaceId = tableName === "profiles"
+    && typeof row.currentWorkspaceId === "string"
+    ? row.currentWorkspaceId
+    : workspaceId;
   const shouldDelete =
     tableName === "workspaces"
       ? row.data_mode === "local" ||
         row.data_mode === "hybrid" ||
         (workspaceId ? isSqliteMirrorEnabled(workspaceId) : false)
-      : workspaceId
-        ? isSqliteMirrorEnabled(workspaceId)
+      : mirrorWorkspaceId
+        ? isSqliteMirrorEnabled(mirrorWorkspaceId)
         : false;
 
   if (!shouldDelete) {
@@ -597,9 +635,10 @@ export async function hydrateLocalModeCacheFromSqlite(
 
     const rows = await connection.select<StoredEntityRow[]>(
       `
-                SELECT entity_type, entity_id, workspace_id, payload, updated_at
+                SELECT entity_type, entity_id, workspace_id, current_workspace, payload, updated_at
                 FROM local_entities
                 WHERE workspace_id = $1
+                   OR (entity_type = 'profiles' AND current_workspace = $1)
                    OR (entity_type = 'workspaces' AND entity_id = $1)
                 ORDER BY entity_type, updated_at
             `,
@@ -622,6 +661,15 @@ export async function hydrateLocalModeCacheFromSqlite(
 
         const payload = JSON.parse(row.payload) as unknown;
         const revived = deserializeValue(payload) as Record<string, unknown>;
+        if (row.entity_type === "profiles") {
+          if (row.workspace_id) {
+            revived.workspaceId = row.workspace_id;
+          }
+          revived.currentWorkspaceId = row.current_workspace
+            || (typeof revived.currentWorkspaceId === "string"
+              ? revived.currentWorkspaceId
+              : row.workspace_id);
+        }
         const existingGroup = groupedRows.get(row.entity_type) ?? [];
         existingGroup.push(revived);
         groupedRows.set(row.entity_type, existingGroup);
@@ -644,6 +692,44 @@ export async function hydrateLocalModeCacheFromSqlite(
 
   hydrationTasks.set(workspaceId, task);
   return task;
+}
+
+export async function readLocalProfileWorkspaceState(userId: string) {
+  if (!userId || !isSupported()) {
+    return null;
+  }
+
+  const connection = await ensureConnection();
+  if (!connection) {
+    return null;
+  }
+
+  const rows = await connection.select<StoredEntityRow[]>(
+    `
+      SELECT entity_type, entity_id, workspace_id, current_workspace, payload, updated_at
+      FROM local_entities
+      WHERE entity_type = 'profiles' AND entity_id = $1
+      LIMIT 1
+    `,
+    [userId],
+  );
+  const row = rows[0];
+  if (!row) {
+    return null;
+  }
+
+  const payload = deserializeValue(JSON.parse(row.payload)) as Record<string, unknown>;
+  const sourceWorkspaceId = row.workspace_id
+    || (typeof payload.workspaceId === "string" ? payload.workspaceId : null);
+  const currentWorkspaceId = row.current_workspace
+    || (typeof payload.currentWorkspaceId === "string" ? payload.currentWorkspaceId : null)
+    || sourceWorkspaceId;
+
+  if (!sourceWorkspaceId || !currentWorkspaceId) {
+    return null;
+  }
+
+  return { sourceWorkspaceId, currentWorkspaceId };
 }
 
 export function queueLocalModeSqliteUpsert(
