@@ -64,6 +64,10 @@ export const LOCAL_MODE_SQLITE_TABLES = [
   "workspace_permissions",
   "manual_entry_templates",
   "manual_entries",
+  "clinical_appointments",
+  "clinical_patients",
+  "clinical_attachments",
+  "clinical_presets",
 ] as const;
 
 export type LocalModeSqliteTableName =
@@ -72,8 +76,25 @@ export type LocalModeSqliteTableName =
 export interface SqliteConnection {
   execute(query: string, bindValues?: unknown[]): Promise<unknown>;
   select<T>(query: string, bindValues?: unknown[]): Promise<T>;
+  transaction?<T>(
+    task: (connection: SqliteConnection) => Promise<T>,
+  ): Promise<T>;
   close?(database?: string): Promise<boolean>;
 }
+
+export type LocalModeSqliteMutation =
+  | {
+      type: "upsert";
+      tableName: LocalModeSqliteTableName;
+      row: Record<string, unknown>;
+      workspaceId?: string | null;
+    }
+  | {
+      type: "delete";
+      tableName: LocalModeSqliteTableName;
+      row: Record<string, unknown>;
+      workspaceId?: string | null;
+    };
 
 interface StoredEntityRow {
   entity_type: string;
@@ -90,6 +111,7 @@ const hydrationTasks = new Map<string, Promise<void>>();
 let sqlitePromise: Promise<SqliteConnection | null> | null = null;
 let sqliteWriteQueue: Promise<void> = Promise.resolve();
 let mirroringPauseDepth = 0;
+let testConnectionOverride: SqliteConnection | undefined;
 
 async function ensureCurrentWorkspaceColumn(connection: SqliteConnection) {
   const columns = await connection.select<Array<{ name: string }>>(
@@ -114,9 +136,21 @@ async function ensureCurrentWorkspaceColumn(connection: SqliteConnection) {
 
 function isSupported() {
   return (
+    testConnectionOverride !== undefined ||
     typeof window !== "undefined" &&
     (isTauri() || isOpfsSupported())
   );
+}
+
+export function setLocalModeSqliteConnectionForTests(
+  connection?: SqliteConnection,
+) {
+  if (import.meta.env.MODE !== "test") {
+    throw new Error("The SQLite test connection can only be set in tests.");
+  }
+  testConnectionOverride = connection;
+  sqlitePromise = connection ? Promise.resolve(connection) : null;
+  sqliteWriteQueue = Promise.resolve();
 }
 
 function isSqliteMirrorEnabled(workspaceId?: string | null) {
@@ -218,6 +252,9 @@ function deserializeValue(value: unknown): unknown {
 }
 
 async function ensureConnection() {
+  if (testConnectionOverride) {
+    return testConnectionOverride;
+  }
   if (!isSupported()) {
     return null;
   }
@@ -330,11 +367,52 @@ export function runLocalModeSqliteWrite<T>(task: () => Promise<T>): Promise<T> {
     () => undefined,
   );
 
-  void queued.then(() => {
-    runUsbBackupIfNeeded();
-  });
+  void queued.then(
+    () => {
+      runUsbBackupIfNeeded();
+    },
+    () => undefined,
+  );
 
   return queued;
+}
+
+async function runConnectionTransaction<T>(
+  connection: SqliteConnection,
+  task: (connection: SqliteConnection) => Promise<T>,
+) {
+  if (connection.transaction) {
+    return connection.transaction(task);
+  }
+
+  await connection.execute("BEGIN IMMEDIATE");
+  try {
+    const result = await task(connection);
+    await connection.execute("COMMIT");
+    return result;
+  } catch (error) {
+    try {
+      await connection.execute("ROLLBACK");
+    } catch (rollbackError) {
+      console.error("[LocalModeSQLite] Rollback failed:", rollbackError);
+    }
+    throw error;
+  }
+}
+
+export function runLocalModeSqliteTransaction<T>(
+  task: (connection: SqliteConnection) => Promise<T>,
+): Promise<T> {
+  return runLocalModeSqliteWrite(async () => {
+    const connection = await ensureConnection();
+    if (!connection) {
+      throw new Error(
+        "Local-mode SQLite is unavailable; the mutation was not committed.",
+      );
+    }
+
+    return runConnectionTransaction(connection, task);
+  });
 }
 
 function enqueueWrite(task: () => Promise<void>) {
@@ -501,13 +579,19 @@ async function persistEntity(
   cacheDb: Dexie,
   tableName: LocalModeSqliteTableName,
   row: Record<string, unknown>,
+  options: {
+    connection?: SqliteConnection;
+    authority?: boolean;
+    workspaceId?: string | null;
+  } = {},
 ) {
   const entityId = getEntityId(tableName, row);
   if (!entityId) {
     return;
   }
 
-  const workspaceId = await resolveWorkspaceId(cacheDb, tableName, row);
+  const workspaceId = options.workspaceId ??
+    await resolveWorkspaceId(cacheDb, tableName, row);
   const mirrorWorkspaceId = tableName === "profiles"
     && typeof row.currentWorkspaceId === "string"
     ? row.currentWorkspaceId
@@ -525,8 +609,13 @@ async function persistEntity(
     return;
   }
 
-  const connection = await ensureConnection();
+  const connection = options.connection ?? await ensureConnection();
   if (!connection) {
+    if (options.authority) {
+      throw new Error(
+        "Local-mode SQLite is unavailable; the mutation was not committed.",
+      );
+    }
     return;
   }
 
@@ -559,13 +648,19 @@ async function deleteEntity(
   cacheDb: Dexie,
   tableName: LocalModeSqliteTableName,
   row: Record<string, unknown>,
+  options: {
+    connection?: SqliteConnection;
+    authority?: boolean;
+    workspaceId?: string | null;
+  } = {},
 ) {
   const entityId = getEntityId(tableName, row);
   if (!entityId) {
     return;
   }
 
-  const workspaceId = await resolveWorkspaceId(cacheDb, tableName, row);
+  const workspaceId = options.workspaceId ??
+    await resolveWorkspaceId(cacheDb, tableName, row);
   const mirrorWorkspaceId = tableName === "profiles"
     && typeof row.currentWorkspaceId === "string"
     ? row.currentWorkspaceId
@@ -583,8 +678,13 @@ async function deleteEntity(
     return;
   }
 
-  const connection = await ensureConnection();
+  const connection = options.connection ?? await ensureConnection();
   if (!connection) {
+    if (options.authority) {
+      throw new Error(
+        "Local-mode SQLite is unavailable; the mutation was not committed.",
+      );
+    }
     return;
   }
 
@@ -595,6 +695,70 @@ async function deleteEntity(
         `,
     [tableName, entityId],
   );
+}
+
+function isAuthoritativeLocalMutation(
+  mutation: LocalModeSqliteMutation,
+) {
+  const { tableName, row } = mutation;
+  if (tableName === "workspaces") {
+    const workspaceId = getEntityId(tableName, row);
+    return row.data_mode === "local" ||
+      (workspaceId ? isStrictLocalWorkspaceMode(workspaceId) : false);
+  }
+
+  const workspaceId = tableName === "profiles" &&
+      typeof row.currentWorkspaceId === "string"
+    ? row.currentWorkspaceId
+    : mutation.workspaceId;
+  return !!workspaceId && isStrictLocalWorkspaceMode(workspaceId);
+}
+
+export async function commitLocalModeSqliteMutations(
+  cacheDb: Dexie,
+  mutations: readonly LocalModeSqliteMutation[],
+) {
+  if (mutations.length === 0 || mirroringPauseDepth > 0) {
+    return;
+  }
+
+  const authoritativeMutations: LocalModeSqliteMutation[] = [];
+  for (const mutation of mutations) {
+    if (isAuthoritativeLocalMutation(mutation)) {
+      authoritativeMutations.push(mutation);
+    }
+  }
+
+  if (authoritativeMutations.length === 0) {
+    return;
+  }
+
+  if (!isSupported()) {
+    if (import.meta.env.MODE === "test") {
+      return;
+    }
+    throw new Error(
+      "Local-mode SQLite is unavailable; the mutation was not committed.",
+    );
+  }
+
+  await runLocalModeSqliteTransaction(async (connection) => {
+    for (const mutation of authoritativeMutations) {
+      if (mutation.type === "upsert") {
+        await persistEntity(cacheDb, mutation.tableName, mutation.row, {
+          connection,
+          authority: true,
+          workspaceId: mutation.workspaceId,
+        });
+      } else {
+        await deleteEntity(cacheDb, mutation.tableName, mutation.row, {
+          connection,
+          authority: true,
+          workspaceId: mutation.workspaceId,
+        });
+      }
+    }
+  });
 }
 
 export async function hydrateLocalModeCacheFromSqlite(
@@ -626,9 +790,9 @@ export async function hydrateLocalModeCacheFromSqlite(
     );
     if (storedRowCount === 0) {
       console.log(`[LocalModeSQLite] SQLite is empty for workspace ${workspaceId}.`);
-      if (isTauri()) {
-        await withMirroringPaused(() => clearCacheRowsForWorkspace(cacheDb, workspaceId));
-      }
+      await withMirroringPaused(() =>
+        clearCacheRowsForWorkspace(cacheDb, workspaceId)
+      );
       hydratedWorkspaces.add(workspaceId);
       return;
     }
@@ -646,9 +810,7 @@ export async function hydrateLocalModeCacheFromSqlite(
     );
 
     await withMirroringPaused(async () => {
-      if (isTauri()) {
-        await clearCacheRowsForWorkspace(cacheDb, workspaceId);
-      }
+      await clearCacheRowsForWorkspace(cacheDb, workspaceId);
 
       const groupedRows = new Map<
         LocalModeSqliteTableName,
@@ -745,7 +907,22 @@ export function queueLocalModeSqliteUpsert(
     return;
   }
 
-  void enqueueWrite(() => persistEntity(cacheDb, tableName, row));
+  void enqueueWrite(async () => {
+    const workspaceId = tableName === "profiles" &&
+        typeof row.currentWorkspaceId === "string"
+      ? row.currentWorkspaceId
+      : await resolveWorkspaceId(cacheDb, tableName, row);
+    const mutation: LocalModeSqliteMutation = {
+      type: "upsert",
+      tableName,
+      row,
+      workspaceId,
+    };
+    if (isAuthoritativeLocalMutation(mutation)) {
+      return;
+    }
+    await persistEntity(cacheDb, tableName, row);
+  });
 }
 
 export function queueLocalModeSqliteDelete(
@@ -761,7 +938,22 @@ export function queueLocalModeSqliteDelete(
     return;
   }
 
-  void enqueueWrite(() => deleteEntity(cacheDb, tableName, row));
+  void enqueueWrite(async () => {
+    const workspaceId = tableName === "profiles" &&
+        typeof row.currentWorkspaceId === "string"
+      ? row.currentWorkspaceId
+      : await resolveWorkspaceId(cacheDb, tableName, row);
+    const mutation: LocalModeSqliteMutation = {
+      type: "delete",
+      tableName,
+      row,
+      workspaceId,
+    };
+    if (isAuthoritativeLocalMutation(mutation)) {
+      return;
+    }
+    await deleteEntity(cacheDb, tableName, row);
+  });
 }
 
 export async function clearWorkspaceSqliteData(workspaceId: string) {

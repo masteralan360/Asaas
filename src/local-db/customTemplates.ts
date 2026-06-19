@@ -1,6 +1,6 @@
 import {
   getLocalModeSqliteConnection,
-  runLocalModeSqliteWrite,
+  runLocalModeSqliteTransaction,
   type SqliteConnection,
 } from "./localModeSqlite";
 import {
@@ -291,8 +291,7 @@ async function migrateLegacyCustomTemplateTable(
 
 async function ensureCustomTemplateEntityStorage() {
   if (!entityStorageReady) {
-    entityStorageReady = runLocalModeSqliteWrite(async () => {
-      const connection = await requireConnection();
+    entityStorageReady = runLocalModeSqliteTransaction(async (connection) => {
       await migrateLegacyCustomTemplateTable(connection);
     }).catch((error) => {
       entityStorageReady = null;
@@ -372,10 +371,7 @@ async function runTemplateWrite<T>(
   operation: (connection: SqliteConnection) => Promise<T>,
 ): Promise<T> {
   await ensureCustomTemplateEntityStorage();
-  return runLocalModeSqliteWrite(async () => {
-    const connection = await requireConnection();
-    return operation(connection);
-  });
+  return runLocalModeSqliteTransaction(operation);
 }
 
 function reconcilePrimaryTemplate(

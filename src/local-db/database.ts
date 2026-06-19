@@ -1,4 +1,11 @@
-import Dexie, { type EntityTable } from "dexie";
+import Dexie, {
+  type DBCore,
+  type DBCoreMutateRequest,
+  type DBCoreMutateResponse,
+  type DBCoreTable,
+  type EntityTable,
+  type Transaction,
+} from "dexie";
 import type {
   Product,
   ProductBarcode,
@@ -65,10 +72,14 @@ import type {
   ManualEntry,
 } from "./models";
 import { isLocalWorkspaceMode } from "@/workspace/workspaceMode";
+import { getActiveBusinessWorkspaceId } from "@/lib/network";
 import {
   LOCAL_MODE_SQLITE_TABLES,
+  commitLocalModeSqliteMutations,
   queueLocalModeSqliteDelete,
   queueLocalModeSqliteUpsert,
+  type LocalModeSqliteMutation,
+  type LocalModeSqliteTableName,
 } from "./localModeSqlite";
 
 const STOCK_ADJUSTMENT_REASONS = [
@@ -83,6 +94,101 @@ const STOCK_ADJUSTMENT_REASONS = [
 ] as const;
 
 const SUPPORTED_CURRENCIES = ["usd", "eur", "iqd", "try"] as const;
+
+interface LocalModeSqliteTransactionContext {
+  mutations: LocalModeSqliteMutation[];
+}
+
+const localModeSqliteTransactions = new WeakMap<
+  object,
+  LocalModeSqliteTransactionContext
+>();
+
+function isMirroredSqliteTable(
+  tableName: string,
+): tableName is LocalModeSqliteTableName {
+  return (LOCAL_MODE_SQLITE_TABLES as readonly string[]).includes(tableName);
+}
+
+function getMutationWorkspaceId(
+  tableName: LocalModeSqliteTableName,
+  row: Record<string, unknown>,
+) {
+  if (tableName === "workspaces") {
+    return typeof row.id === "string" ? row.id : null;
+  }
+  if (tableName === "profiles") {
+    return typeof row.currentWorkspaceId === "string"
+      ? row.currentWorkspaceId
+      : typeof row.workspaceId === "string"
+        ? row.workspaceId
+        : null;
+  }
+  if (typeof row.workspaceId === "string") {
+    return row.workspaceId;
+  }
+  if (tableName === "sale_items") {
+    return getActiveBusinessWorkspaceId();
+  }
+  return null;
+}
+
+function readRowsBeforeMutation(
+  table: DBCoreTable,
+  request: DBCoreMutateRequest,
+): Promise<Record<string, unknown>[]> {
+  if (request.type === "add" || request.type === "put") {
+    return Dexie.Promise.resolve(
+      request.values as Record<string, unknown>[],
+    );
+  }
+  if (request.type === "delete") {
+    return table.getMany({
+      trans: request.trans,
+      keys: request.keys,
+    }).then(
+      (rows) => rows.filter(Boolean) as Record<string, unknown>[],
+    );
+  }
+
+  return table.query({
+    trans: request.trans,
+    values: true,
+    query: {
+      index: table.schema.primaryKey,
+      range: request.range,
+    },
+  }).then(({ result }) => result as Record<string, unknown>[]);
+}
+
+function successfulMutationRows(
+  request: DBCoreMutateRequest,
+  response: DBCoreMutateResponse,
+  rows: readonly Record<string, unknown>[],
+) {
+  if (request.type === "deleteRange") {
+    return response.numFailures === 0 ? rows : [];
+  }
+  return rows.filter(
+    (_row, index) => !Object.prototype.hasOwnProperty.call(response.failures, index),
+  );
+}
+
+function buildSqliteMutations(
+  tableName: LocalModeSqliteTableName,
+  request: DBCoreMutateRequest,
+  rows: readonly Record<string, unknown>[],
+): LocalModeSqliteMutation[] {
+  const type = request.type === "add" || request.type === "put"
+    ? "upsert"
+    : "delete";
+  return rows.map((row) => ({
+    type,
+    tableName,
+    row,
+    workspaceId: getMutationWorkspaceId(tableName, row),
+  }));
+}
 
 function getStringValue(
   record: Record<string, unknown> | undefined,
@@ -364,8 +470,8 @@ export class AtlasDatabase extends Dexie {
   manual_entry_templates!: EntityTable<ManualEntryTemplate, "id">;
   manual_entries!: EntityTable<ManualEntry, "id">;
 
-  constructor() {
-    super("AtlasDatabase");
+  constructor(databaseName = "AtlasDatabase") {
+    super(databaseName);
 
     // Version 38 combines two parallel migration intents: invoice PDF metadata
     // indexes and the budget/expense/payroll/dividend local tables. Keep this
@@ -2413,7 +2519,122 @@ export class AtlasDatabase extends Dexie {
         }
       });
 
+    this.registerLocalModeSqliteAuthority();
     this.registerLocalModeSyncHooks();
+  }
+
+  private registerLocalModeSqliteAuthority() {
+    const database = this;
+
+    this.use({
+      stack: "dbcore",
+      name: "LocalModeSqliteAuthority",
+      level: 1,
+      create(down: DBCore) {
+        return {
+          ...down,
+          table(tableName: string) {
+            const downTable = down.table(tableName);
+            if (!isMirroredSqliteTable(tableName)) {
+              return downTable;
+            }
+
+            return {
+              ...downTable,
+              mutate(request: DBCoreMutateRequest) {
+                return readRowsBeforeMutation(downTable, request).then((rows) =>
+                  downTable.mutate(request).then((response) => {
+                    const successfulRows = successfulMutationRows(
+                      request,
+                      response,
+                      rows,
+                    );
+                    const mutations = buildSqliteMutations(
+                      tableName,
+                      request,
+                      successfulRows,
+                    );
+                    if (mutations.length === 0) {
+                      return response;
+                    }
+
+                    const context = localModeSqliteTransactions.get(
+                      request.trans as object,
+                    );
+                    if (context) {
+                      context.mutations.push(...mutations);
+                      return response;
+                    }
+
+                    return Dexie.waitFor(
+                      commitLocalModeSqliteMutations(database, mutations),
+                    ).then(
+                      () => response,
+                      (error) => {
+                        request.trans.abort();
+                        throw error;
+                      },
+                    );
+                  }),
+                );
+              },
+            };
+          },
+        };
+      },
+    });
+
+    const originalTransaction = this.transaction.bind(this) as (
+      mode: string,
+      ...args: unknown[]
+    ) => Promise<unknown>;
+
+    this.transaction = ((mode: string, ...args: unknown[]) => {
+      const scope = args.pop();
+      if (typeof scope !== "function") {
+        return originalTransaction(mode, ...args, scope);
+      }
+
+      return originalTransaction(
+        mode,
+        ...args,
+        async (transaction: Transaction) => {
+          const isReadWrite = mode === "readwrite" || mode.startsWith("rw");
+          const transactionKey = (
+            transaction as Transaction & { idbtrans?: object }
+          ).idbtrans;
+          if (!isReadWrite || !transactionKey) {
+            return scope(transaction);
+          }
+
+          const existingContext = localModeSqliteTransactions.get(transactionKey);
+          if (existingContext) {
+            return scope(transaction);
+          }
+
+          const context: LocalModeSqliteTransactionContext = { mutations: [] };
+          localModeSqliteTransactions.set(transactionKey, context);
+          try {
+            const result = await scope(transaction);
+            if (context.mutations.length > 0) {
+              await Dexie.waitFor(
+                commitLocalModeSqliteMutations(database, context.mutations),
+              );
+            }
+            return result;
+          } catch (error) {
+            try {
+              transaction.abort();
+            } catch {
+              // The IndexedDB transaction may already be aborting.
+            }
+            throw error;
+          } finally {
+            localModeSqliteTransactions.delete(transactionKey);
+          }
+        },
+      );
+    }) as typeof this.transaction;
   }
 
   private registerLocalModeSyncHooks() {

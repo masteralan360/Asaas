@@ -6,8 +6,8 @@ const DB_FILENAME = "atlas-local-mode.db";
 let sqlJsModule: SqlJsStatic | null = null;
 let dbInstance: SqlJsDatabase | null = null;
 let dbPromise: Promise<SqlJsDatabase | null> | null = null;
-let saveTimeout: ReturnType<typeof setTimeout> | null = null;
-let pendingSave = false;
+let transactionDepth = 0;
+let transactionDirty = false;
 
 export function isOpfsSupported(): boolean {
   return (
@@ -39,33 +39,19 @@ async function loadFromOpfs(): Promise<Uint8Array | null> {
 }
 
 async function saveToOpfs(data: Uint8Array): Promise<void> {
-  try {
-    const root = await getOpfsRoot();
-    if (!root) return;
-    const handle = await root.getFileHandle(DB_FILENAME, { create: true });
-    const writable = await handle.createWritable();
-    await writable.write(data);
-    await writable.close();
-  } catch (error) {
-    console.error("[PwaSQLite] OPFS write failed:", error);
+  const root = await getOpfsRoot();
+  if (!root) {
+    throw new Error("OPFS is unavailable; SQLite could not be persisted.");
   }
+  const handle = await root.getFileHandle(DB_FILENAME, { create: true });
+  const writable = await handle.createWritable();
+  await writable.write(data);
+  await writable.close();
 }
 
-function debouncedSave(): void {
-  if (saveTimeout) clearTimeout(saveTimeout);
-  if (pendingSave) return;
-  pendingSave = true;
-  saveTimeout = setTimeout(async () => {
-    pendingSave = false;
-    if (dbInstance) {
-      try {
-        const data = dbInstance.export();
-        await saveToOpfs(data);
-      } catch (error) {
-        console.error("[PwaSQLite] Export/save failed:", error);
-      }
-    }
-  }, 200);
+async function saveCurrentDatabase(): Promise<void> {
+  if (!dbInstance) return;
+  await saveToOpfs(dbInstance.export());
 }
 
 async function getSqlJs(): Promise<SqlJsStatic> {
@@ -150,18 +136,32 @@ export async function ensurePwaDatabase(): Promise<SqlJsDatabase | null> {
 }
 
 export function createPwaSqliteConnection(): SqliteConnection {
-  return {
+  const connection: SqliteConnection = {
     async execute(query: string, bindValues?: unknown[]): Promise<unknown> {
       const db = await ensurePwaDatabase();
       if (!db) throw new Error("PWA SQLite not initialized");
+      const snapshot = transactionDepth === 0 ? db.export() : null;
 
-      if (bindValues && bindValues.length > 0) {
-        db.run(query, bindValues as any[]);
-      } else {
-        db.run(query);
+      try {
+        if (bindValues && bindValues.length > 0) {
+          db.run(query, bindValues as any[]);
+        } else {
+          db.run(query);
+        }
+
+        if (transactionDepth > 0) {
+          transactionDirty = true;
+        } else {
+          await saveCurrentDatabase();
+        }
+      } catch (error) {
+        if (snapshot) {
+          db.close();
+          const SQL = await getSqlJs();
+          dbInstance = new SQL.Database(snapshot);
+        }
+        throw error;
       }
-
-      debouncedSave();
       return { rowsAffected: 0 };
     },
 
@@ -192,15 +192,58 @@ export function createPwaSqliteConnection(): SqliteConnection {
       return rows as unknown as T;
     },
 
+    async transaction<T>(
+      task: (transactionConnection: SqliteConnection) => Promise<T>,
+    ): Promise<T> {
+      const db = await ensurePwaDatabase();
+      if (!db) throw new Error("PWA SQLite not initialized");
+
+      if (transactionDepth > 0) {
+        return task(connection);
+      }
+
+      const snapshot = db.export();
+      db.run("BEGIN IMMEDIATE");
+      transactionDepth = 1;
+      transactionDirty = false;
+      try {
+        const result = await task(connection);
+        db.run("COMMIT");
+        transactionDepth = 0;
+        if (transactionDirty) {
+          await saveCurrentDatabase();
+        }
+        transactionDirty = false;
+        return result;
+      } catch (error) {
+        try {
+          if (transactionDepth > 0) {
+            db.run("ROLLBACK");
+          }
+        } catch {
+          // A failed OPFS flush happens after COMMIT, so there is no active
+          // transaction left to roll back. Restore the pre-transaction image.
+        } finally {
+          transactionDepth = 0;
+          transactionDirty = false;
+          db.close();
+          const SQL = await getSqlJs();
+          dbInstance = new SQL.Database(snapshot);
+        }
+        throw error;
+      }
+    },
+
     async close(): Promise<boolean> {
       try {
-        if (saveTimeout) clearTimeout(saveTimeout);
         if (dbInstance) {
           const data = dbInstance.export();
           await saveToOpfs(data);
           dbInstance.close();
           dbInstance = null;
           dbPromise = null;
+          transactionDepth = 0;
+          transactionDirty = false;
         }
         return true;
       } catch {
@@ -208,6 +251,8 @@ export function createPwaSqliteConnection(): SqliteConnection {
       }
     },
   };
+
+  return connection;
 }
 
 export async function downloadPwaDatabase(): Promise<void> {
