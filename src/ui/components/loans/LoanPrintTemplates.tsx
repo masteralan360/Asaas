@@ -47,6 +47,7 @@ interface LoanListPrintTemplateProps {
     titleOverride?: string
     subtitleOverride?: string
     notesOverride?: string
+    hideNextDue?: boolean
 }
 
 interface LoanReceiptPrintTemplateProps {
@@ -69,6 +70,7 @@ interface LoanDetailsPrintTemplateProps {
     iqdPreference?: IQDDisplayPreference
     logoUrl?: string | null
     qrValue?: string | null
+    hideNextDue?: boolean
 }
 
 function isLoanOverdue(loan: Loan): boolean {
@@ -175,7 +177,8 @@ export function LoanListPrintTemplate({
     qrValue,
     titleOverride,
     subtitleOverride,
-    notesOverride
+    notesOverride,
+    hideNextDue
 }: LoanListPrintTemplateProps) {
     const { i18n } = useTranslation()
     const t = i18n.getFixedT(printLang)
@@ -257,14 +260,14 @@ export function LoanListPrintTemplate({
                         <th className="border border-slate-300 p-2 text-end">{t('loans.principal') || 'Principal'}</th>
                         <th className="border border-slate-300 p-2 text-end">{t('loans.paid') || 'Paid'}</th>
                         <th className="border border-slate-300 p-2 text-end">{t('loans.balance') || 'Balance'}</th>
-                        <th className="border border-slate-300 p-2 text-start">{t('loans.nextDue') || 'Next Due'}</th>
+                        {!hideNextDue && <th className="border border-slate-300 p-2 text-start">{t('loans.nextDue') || 'Next Due'}</th>}
                         <th className="border border-slate-300 p-2 text-start">{t('loans.status') || 'Status'}</th>
                     </tr>
                 </thead>
                 <tbody>
                     {loans.length === 0 ? (
                         <tr>
-                            <td className="border border-slate-300 p-3 text-center text-slate-500" colSpan={7}>
+                            <td className="border border-slate-300 p-3 text-center text-slate-500" colSpan={hideNextDue ? 6 : 7}>
                                 {t('common.noData') || 'No data'}
                             </td>
                         </tr>
@@ -288,7 +291,7 @@ export function LoanListPrintTemplate({
                             <td className="border border-slate-300 p-2 text-end">{formatCurrency(loan.principalAmount, loan.settlementCurrency, iqdPreference)}</td>
                             <td className="border border-slate-300 p-2 text-end">{formatCurrency(loan.totalPaidAmount, loan.settlementCurrency, iqdPreference)}</td>
                             <td className="border border-slate-300 p-2 text-end font-semibold">{formatCurrency(loan.balanceAmount, loan.settlementCurrency, iqdPreference)}</td>
-                            <td className="border border-slate-300 p-2">{loan.nextDueDate ? formatDate(loan.nextDueDate) : '-'}</td>
+                            {!hideNextDue && <td className="border border-slate-300 p-2">{loan.nextDueDate ? formatDate(loan.nextDueDate) : '-'}</td>}
                             <td className="border border-slate-300 p-2">{resolveStatusLabel(loan, t)}</td>
                         </tr>
                     ))}
@@ -315,7 +318,8 @@ export function LoanDetailsPrintTemplate({
     payments,
     iqdPreference = 'IQD',
     logoUrl,
-    qrValue
+    qrValue,
+    hideNextDue
 }: LoanDetailsPrintTemplateProps) {
     const { i18n } = useTranslation()
     const t = i18n.getFixedT(printLang)
@@ -376,7 +380,7 @@ export function LoanDetailsPrintTemplate({
                     <p>{t('loans.principal') || 'Principal'}: {formatCurrency(loan.principalAmount, loan.settlementCurrency, iqdPreference)}</p>
                     <p>{t('loans.paid') || 'Paid'}: {formatCurrency(loan.totalPaidAmount, loan.settlementCurrency, iqdPreference)}</p>
                     <p>{t('loans.balance') || 'Balance'}: {formatCurrency(loan.balanceAmount, loan.settlementCurrency, iqdPreference)}</p>
-                    <p>{t('loans.nextDue') || 'Next Due'}: {loan.nextDueDate ? formatDate(loan.nextDueDate) : '-'}</p>
+                    {!hideNextDue && <p>{t('loans.nextDue') || 'Next Due'}: {loan.nextDueDate ? formatDate(loan.nextDueDate) : '-'}</p>}
                     <p>{t('loans.status') || 'Status'}: {resolveStatusLabel(loan, t)}</p>
                 </div>
             </div>

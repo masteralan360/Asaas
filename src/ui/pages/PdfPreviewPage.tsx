@@ -470,6 +470,9 @@ export function PdfPreviewPage() {
     }, [pendingTemplateLayout, isSaving, saveTemplatePreview, templateSaveLabel])
 
     const handleFieldChange = useCallback((key: string, value: string) => {
+        if (key === 'hideNextDue') {
+            localStorage.setItem('atlas_print_hide_next_due', value)
+        }
         setFieldValues(prev => prev ? { ...prev, [key]: value } : null)
     }, [])
 

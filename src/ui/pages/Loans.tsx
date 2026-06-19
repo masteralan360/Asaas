@@ -235,6 +235,7 @@ function LoanListView({
             metrics={metrics}
             logoUrl={features.logo_url}
             qrValue={effectiveId ? buildQrValue(effectiveId) : undefined}
+            hideNextDue={localStorage.getItem('atlas_print_hide_next_due') === 'true'}
         />
     ), [buildQrValue, currency, features.logo_url, filter, filtered, iqdPreference, metrics, printLang, workspaceName])
 
@@ -250,7 +251,8 @@ function LoanListView({
         fields: [
             { key: 'title', label: t('common.title') || 'Title', value: getStandardLoanModuleTitle(t), type: 'text' },
             { key: 'subtitle', label: t('common.subtitle') || 'Subtitle', value: `${t(`loans.filters.${filter}`) || filter} • ${formatDateTime(new Date().toISOString())}`, type: 'text' },
-            { key: 'notes', label: t('loans.noteLabel') || 'Notes', value: '', type: 'text' }
+            { key: 'notes', label: t('loans.noteLabel') || 'Notes', value: '', type: 'text' },
+            { key: 'hideNextDue', label: t('loans.hideNextDue', { defaultValue: 'Hide Next Due' }), value: localStorage.getItem('atlas_print_hide_next_due') || 'false', type: 'boolean' }
         ],
         createElement: (data: Record<string, string>, effectiveId?: string, printLangOverride?: string) => (
             <LoanListPrintTemplate
@@ -266,6 +268,7 @@ function LoanListView({
                 titleOverride={data.title}
                 subtitleOverride={data.subtitle}
                 notesOverride={data.notes}
+                hideNextDue={data.hideNextDue === 'true'}
             />
         ),
         buildPdf: async (element: ReactElement, printLangOverride?: string) => generateTemplatePdf({
@@ -289,6 +292,7 @@ function LoanListView({
                 iqdPreference={features.iqd_display_preference}
                 logoUrl={features.logo_url}
                 qrValue={effectiveId ? buildQrValue(effectiveId) : undefined}
+                hideNextDue={localStorage.getItem('atlas_print_hide_next_due') === 'true'}
             />
         )
     }, [buildQrValue, features.iqd_display_preference, features.logo_url, loanPrintInstallments, loanPrintPayments, loanToPrint, printLang, workspaceName])
@@ -308,6 +312,7 @@ function LoanListView({
             fields: [
                 { key: 'borrowerName', label: t('loans.borrowerName') || 'Borrower Name', value: loanToPrint.borrowerName || '', type: 'text' },
                 { key: 'principalAmount', label: t('loans.principal') || 'Principal', value: String(loanToPrint.principalAmount ?? ''), type: 'number' },
+                { key: 'hideNextDue', label: t('loans.hideNextDue', { defaultValue: 'Hide Next Due' }), value: localStorage.getItem('atlas_print_hide_next_due') || 'false', type: 'boolean' }
             ],
             createElement: (data: Record<string, string>, effectiveId?: string, printLangOverride?: string) => (
                 <LoanDetailsPrintTemplate
@@ -319,6 +324,7 @@ function LoanListView({
                     iqdPreference={features.iqd_display_preference}
                     logoUrl={features.logo_url}
                     qrValue={effectiveId ? buildQrValue(effectiveId) : undefined}
+                    hideNextDue={data.hideNextDue === 'true'}
                 />
             ),
             buildPdf: async (element: ReactElement, printLangOverride?: string) => generateTemplatePdf({
@@ -891,6 +897,7 @@ function LoanDetailsView({
                 iqdPreference={features.iqd_display_preference}
                 logoUrl={features.logo_url}
                 qrValue={effectiveId ? buildQrValue(effectiveId) : undefined}
+                hideNextDue={localStorage.getItem('atlas_print_hide_next_due') === 'true'}
             />
         )
     }, [buildQrValue, features.iqd_display_preference, features.logo_url, installments, loan, payments, printLang, workspaceName])
@@ -948,6 +955,7 @@ function LoanDetailsView({
             fields: [
                 { key: 'borrowerName', label: t('loans.borrowerName') || 'Borrower Name', value: loan.borrowerName || '', type: 'text' },
                 { key: 'principalAmount', label: t('loans.principal') || 'Principal', value: String(loan.principalAmount ?? ''), type: 'number' },
+                { key: 'hideNextDue', label: t('loans.hideNextDue', { defaultValue: 'Hide Next Due' }), value: localStorage.getItem('atlas_print_hide_next_due') || 'false', type: 'boolean' }
             ],
             createElement: (data: Record<string, string>, effectiveId?: string, printLangOverride?: string) => (
                 <LoanDetailsPrintTemplate
@@ -959,6 +967,7 @@ function LoanDetailsView({
                     iqdPreference={features.iqd_display_preference}
                     logoUrl={features.logo_url}
                     qrValue={effectiveId ? buildQrValue(effectiveId) : undefined}
+                    hideNextDue={data.hideNextDue === 'true'}
                 />
             ),
             buildPdf: async (element: ReactElement, printLangOverride?: string) => generateTemplatePdf({
