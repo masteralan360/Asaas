@@ -40,6 +40,8 @@ interface OrderDetailsPrintTemplateProps {
     iqdPreference?: IQDDisplayPreference
     logoUrl?: string | null
     qrValue?: string | null
+    hideUnit?: boolean
+    hideDiscount?: boolean
 }
 
 function isRTL(lang: string): boolean {
@@ -294,7 +296,9 @@ export function OrderDetailsPrintTemplate({
     kind,
     iqdPreference = 'IQD',
     logoUrl,
-    qrValue
+    qrValue,
+    hideUnit,
+    hideDiscount
 }: OrderDetailsPrintTemplateProps) {
     const { i18n } = useTranslation()
     const t = i18n.getFixedT(printLang)
@@ -356,7 +360,7 @@ export function OrderDetailsPrintTemplate({
                 <div className="border border-slate-300 rounded-md p-3">
                     <h2 className="font-semibold mb-2">{t('orders.details.commercials') || 'Order Summary'}</h2>
                     <p>{t('orders.details.subtotal') || 'Subtotal'}: {formatCurrency(order.subtotal, currency, iqdPreference)}</p>
-                    <p>{t('orders.details.discount') || 'Discount'}: {formatCurrency(order.discount, currency, iqdPreference)}</p>
+                    {!hideDiscount && <p>{t('orders.details.discount') || 'Discount'}: {formatCurrency(order.discount, currency, iqdPreference)}</p>}
                     {isSales && salesOrder ? (
                         <p>{t('orders.details.tax') || 'Tax'}: {formatCurrency(salesOrder.tax, currency, iqdPreference)}</p>
                     ) : null}
@@ -402,7 +406,9 @@ export function OrderDetailsPrintTemplate({
                         <tr key={item.id}>
                             <td className="border border-slate-300 p-2 font-medium">{item.productName}</td>
                             <td className="border border-slate-300 p-2 text-slate-600">{item.productSku || '-'}</td>
-                            <td className="border border-slate-300 p-2 text-end">{item.quantity}</td>
+                            <td className="border border-slate-300 p-2 text-end">
+                                {item.quantity}{(!hideUnit && (item as any).unit) ? ` ${(item as any).unit}` : ''}
+                            </td>
                             <td className="border border-slate-300 p-2 text-end">{formatCurrency(item.convertedUnitPrice, currency, iqdPreference)}</td>
                             <td className="border border-slate-300 p-2 text-end font-semibold">{formatCurrency(item.lineTotal, currency, iqdPreference)}</td>
                         </tr>
@@ -416,10 +422,12 @@ export function OrderDetailsPrintTemplate({
                         <span className="text-slate-600">{t('orders.details.subtotal') || 'Subtotal'}</span>
                         <span className="font-semibold">{formatCurrency(order.subtotal, currency, iqdPreference)}</span>
                     </div>
-                    <div className="flex justify-between">
-                        <span className="text-slate-600">{t('orders.details.discount') || 'Discount'}</span>
-                        <span className="font-semibold">{formatCurrency(order.discount, currency, iqdPreference)}</span>
-                    </div>
+                    {!hideDiscount && (
+                        <div className="flex justify-between">
+                            <span className="text-slate-600">{t('orders.details.discount') || 'Discount'}</span>
+                            <span className="font-semibold">{formatCurrency(order.discount, currency, iqdPreference)}</span>
+                        </div>
+                    )}
                     {isSales && salesOrder ? (
                         <div className="flex justify-between">
                             <span className="text-slate-600">{t('orders.details.tax') || 'Tax'}</span>

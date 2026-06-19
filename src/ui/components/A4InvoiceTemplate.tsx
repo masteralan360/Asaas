@@ -26,10 +26,12 @@ interface A4InvoiceTemplateProps {
     workspaceFooterContacts?: WorkspaceFooterContacts
     onDataChange?: (data: UniversalInvoice) => void
     drawingMode?: string
+    hideUnit?: boolean
+    hideDiscount?: boolean
 }
 
 export const A4InvoiceTemplate = forwardRef<HTMLDivElement, A4InvoiceTemplateProps>(
-    ({ data, features, workspaceId: propWorkspaceId, workspaceName, workspaceFooterContacts, onDataChange, drawingMode }, ref) => {
+    ({ data, features, workspaceId: propWorkspaceId, workspaceName, workspaceFooterContacts, onDataChange, drawingMode, hideUnit, hideDiscount }, ref) => {
         const { i18n } = useTranslation()
         const printLang = features?.print_lang && features.print_lang !== 'auto' ? features.print_lang : i18n.language
         const t = i18n.getFixedT(printLang)
@@ -263,7 +265,7 @@ export const A4InvoiceTemplate = forwardRef<HTMLDivElement, A4InvoiceTemplatePro
                                 <th className="border-b-2 border-main pb-3 px-2 text-start font-bold text-main">{t('invoice.productName')}</th>
                                 <th className="border-b-2 border-main pb-3 px-2 text-center font-bold text-main w-[80px]">{t('invoice.qty')}</th>
                                 <th className="border-b-2 border-main pb-3 px-2 text-end font-bold text-main w-[120px]">{t('invoice.price')}</th>
-                                <th className="border-b-2 border-main pb-3 px-2 text-center font-bold text-main w-[100px]">{t('invoice.discount')}</th>
+                                {!hideDiscount && <th className="border-b-2 border-main pb-3 px-2 text-center font-bold text-main w-[100px]">{t('invoice.discount')}</th>}
                                 <th className="border-b-2 border-main pb-3 px-2 text-end font-bold text-main w-[130px]">{t('invoice.total')}</th>
                             </tr>
                         </thead>
@@ -277,13 +279,15 @@ export const A4InvoiceTemplate = forwardRef<HTMLDivElement, A4InvoiceTemplatePro
                                 return (
                                     <tr key={idx} className="text-neutral-700">
                                         <td className="border-b py-2 px-2 font-bold text-start">{item.product_name}</td>
-                                        <td className="border-b py-2 px-2 text-center font-bold">{item.quantity}</td>
+                                        <td className="border-b py-2 px-2 text-center font-bold">{item.quantity}{(!hideUnit && item.unit) ? ` ${t(`products.units.${item.unit}`, item.unit)}` : ''}</td>
                                         <td className="border-b py-2 px-2 text-end">
                                             {formatCurrency(priceToShow, settlementCurrency, features.iqd_display_preference)}
                                         </td>
-                                        <td className="border-b py-2 px-2 text-center text-neutral-400">
-                                            {discountAmount > 0 ? formatCurrency(discountAmount, settlementCurrency, features.iqd_display_preference) : '-'}
-                                        </td>
+                                        {!hideDiscount && (
+                                            <td className="border-b py-2 px-2 text-center text-neutral-400">
+                                                {discountAmount > 0 ? formatCurrency(discountAmount, settlementCurrency, features.iqd_display_preference) : '-'}
+                                            </td>
+                                        )}
                                         <td className="border-b py-2 px-2 text-end font-bold text-black">
                                             {formatCurrency(total, settlementCurrency, features.iqd_display_preference)}
                                         </td>

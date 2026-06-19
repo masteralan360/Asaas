@@ -161,6 +161,7 @@ export interface UniversalInvoiceItem {
     product_id: string
     product_name: string
     product_sku?: string
+    unit?: string
     quantity: number
     unit_price: number
     total_price: number

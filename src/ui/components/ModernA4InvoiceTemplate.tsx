@@ -26,10 +26,12 @@ interface ModernA4InvoiceTemplateProps {
     workspaceFooterContacts?: WorkspaceFooterContacts
     onDataChange?: (data: UniversalInvoice) => void
     drawingMode?: string
+    hideUnit?: boolean
+    hideDiscount?: boolean
 }
 
 export const ModernA4InvoiceTemplate = forwardRef<HTMLDivElement, ModernA4InvoiceTemplateProps>(
-    ({ data, features, workspaceId: propWorkspaceId, workspaceName, workspaceFooterContacts, onDataChange, drawingMode }, ref) => {
+    ({ data, features, workspaceId: propWorkspaceId, workspaceName, workspaceFooterContacts, onDataChange, drawingMode, hideUnit, hideDiscount }, ref) => {
         const { i18n } = useTranslation()
         const printLang = features?.print_lang && features.print_lang !== 'auto' ? features.print_lang : i18n.language
         const t = i18n.getFixedT(printLang)
@@ -309,7 +311,7 @@ export const ModernA4InvoiceTemplate = forwardRef<HTMLDivElement, ModernA4Invoic
                                     <th className="px-2 w-1/3 border-r border-slate-200">{tr('invoice.productName', 'Product Name')}</th>
                                     <th className="px-2 w-12 text-center border-r border-slate-200">{tr('invoice.qty', 'Qty')}</th>
                                     <th className="px-2 w-24 text-end border-r border-slate-200">{tr('invoice.price', 'Price')}</th>
-                                    <th className="px-2 w-16 text-center border-r border-slate-200">{tr('invoice.discount', 'Discount')}</th>
+                                    {!hideDiscount && <th className="px-2 w-16 text-center border-r border-slate-200">{tr('invoice.discount', 'Discount')}</th>}
                                     <th className="px-2 w-28 text-end">{tr('invoice.total', 'Total')}</th>
                                 </tr>
                             </thead>
@@ -333,14 +335,16 @@ export const ModernA4InvoiceTemplate = forwardRef<HTMLDivElement, ModernA4Invoic
                                                 {item.product_name}
                                             </td>
                                             <td className="px-2 text-center text-slate-500 border-r border-slate-100 font-bold">
-                                                {quantity}
+                                                {quantity}{(!hideUnit && item.unit) ? ` ${t(`products.units.${item.unit}`, item.unit)}` : ''}
                                             </td>
                                             <td className="px-2 text-end font-medium text-slate-700 border-r border-slate-100 tabular-nums">
                                                 {formatCurrency(priceToShow, settlementCurrency, iqdDisplayPreference)}
                                             </td>
-                                            <td className="px-2 text-center text-green-600 font-medium border-r border-slate-100">
-                                                {discountAmount > 0 ? formatCurrency(discountAmount, settlementCurrency, iqdDisplayPreference) : '-'}
-                                            </td>
+                                            {!hideDiscount && (
+                                                <td className="px-2 text-center text-green-600 font-medium border-r border-slate-100">
+                                                    {discountAmount > 0 ? formatCurrency(discountAmount, settlementCurrency, iqdDisplayPreference) : '-'}
+                                                </td>
+                                            )}
                                             <td className="px-2 text-end font-bold text-slate-900 tabular-nums">
                                                 {formatCurrency(total, settlementCurrency, iqdDisplayPreference)}
                                             </td>
@@ -353,7 +357,7 @@ export const ModernA4InvoiceTemplate = forwardRef<HTMLDivElement, ModernA4Invoic
                                         <td className="px-2 border-r border-slate-50">&nbsp;</td>
                                         <td className="px-2 border-r border-slate-50">&nbsp;</td>
                                         <td className="px-2 border-r border-slate-50">&nbsp;</td>
-                                        <td className="px-2 border-r border-slate-50">&nbsp;</td>
+                                        {!hideDiscount && <td className="px-2 border-r border-slate-50">&nbsp;</td>}
                                         <td className="px-2">&nbsp;</td>
                                     </tr>
                                 ))}
@@ -811,13 +815,9 @@ export const ModernA4InvoiceTemplate = forwardRef<HTMLDivElement, ModernA4Invoic
                         </div>
                     </div>
                 )}
-
-                {/* BOTTOM ACCENT */}
-                <div className="absolute bottom-0 left-0 w-full h-1.5 bg-primary"></div>
             </div>
         )
     }
 )
 
 ModernA4InvoiceTemplate.displayName = 'ModernA4InvoiceTemplate'
-

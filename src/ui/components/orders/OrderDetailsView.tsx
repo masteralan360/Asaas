@@ -232,6 +232,8 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
             fields: [
                 { key: 'counterpartyName', label: counterpartyLabel, value: counterpartyName || '', type: 'text' },
                 { key: 'notes', label: t('common.notes') || 'Notes', value: (order as any).notes || '', type: 'text' },
+                { key: 'hideUnit', label: t('orders.form.hideUnit', { defaultValue: 'Hide Unit' }), value: localStorage.getItem('atlas_print_hide_unit') || 'false', type: 'boolean' },
+                { key: 'hideDiscount', label: t('orders.form.hideDiscount', { defaultValue: 'Hide Discount' }), value: localStorage.getItem('atlas_print_hide_discount') || 'false', type: 'boolean' },
             ],
             createElement: (data: Record<string, string>, effectiveId?: string, printLangOverride?: string) => {
                 const updatedOrder = {
@@ -251,6 +253,8 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                         iqdPreference={features.iqd_display_preference}
                         logoUrl={features.logo_url}
                         qrValue={effectiveId ? `https://asaas-r2-proxy.alanepic360.workers.dev/${workspaceId}/printed-invoices/A4/${effectiveId}.pdf` : undefined}
+                        hideUnit={data.hideUnit === 'true'}
+                        hideDiscount={data.hideDiscount === 'true'}
                     />
                 )
             },

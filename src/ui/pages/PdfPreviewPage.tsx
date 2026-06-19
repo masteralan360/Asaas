@@ -104,6 +104,8 @@ function EditableInvoicePreview({
     printFormat,
     onDataChange,
     drawingMode,
+    hideUnit,
+    hideDiscount,
 }: {
     data: UniversalInvoice
     features: any
@@ -113,6 +115,8 @@ function EditableInvoicePreview({
     printFormat: 'a4' | 'receipt'
     onDataChange?: (data: UniversalInvoice) => void
     drawingMode?: string
+    hideUnit?: boolean
+    hideDiscount?: boolean
 }) {
     const { i18n } = useTranslation()
     const printLang = features?.print_lang && features.print_lang !== 'auto' ? features.print_lang : i18n.language
@@ -171,6 +175,8 @@ function EditableInvoicePreview({
                     workspaceFooterContacts={workspaceFooterContacts}
                     onDataChange={onDataChange}
                     drawingMode={drawingMode}
+                    hideUnit={hideUnit}
+                    hideDiscount={hideDiscount}
                 />
             </div>
         )
@@ -186,6 +192,8 @@ function EditableInvoicePreview({
                 workspaceFooterContacts={workspaceFooterContacts}
                 onDataChange={onDataChange}
                 drawingMode={drawingMode}
+                hideUnit={hideUnit}
+                hideDiscount={hideDiscount}
             />
         </div>
     )
@@ -290,14 +298,26 @@ export function PdfPreviewPage() {
     const templatePageWidth = templatePage.widthMm
     const templatePageHeight = templatePage.heightMm
     const canEditTemplateFields = Boolean(source?.allowTemplateFieldEditing || isAdmin)
-    const [fieldValues, setFieldValues] = useState<Record<string, string> | null>(
+    const [fieldValues, setFieldValues] = useState<Record<string, string>>(
         () => {
-            if (!templatePreview) return null
-            return {
-                ...Object.fromEntries(templatePreview.fields.map(f => [f.key, f.value])),
-                ...(source?.templateFieldValues || {}),
-                ...(initialTemplateLayout?.fields || {})
+            const initial: Record<string, string> = {
+                hideUnit: localStorage.getItem('atlas_print_hide_unit') || 'false',
+                hideDiscount: localStorage.getItem('atlas_print_hide_discount') || 'false',
+                hideNextDue: localStorage.getItem('atlas_print_hide_next_due') || 'false',
+                hideDueDate: localStorage.getItem('atlas_print_hide_due_date') || 'false',
             }
+            if (templatePreview) {
+                templatePreview.fields.forEach(f => {
+                    initial[f.key] = f.value
+                })
+                if (source?.templateFieldValues) {
+                    Object.assign(initial, source.templateFieldValues)
+                }
+                if (initialTemplateLayout?.fields) {
+                    Object.assign(initial, initialTemplateLayout.fields)
+                }
+            }
+            return initial
         }
     )
     const [editPanelOpen, setEditPanelOpen] = useState(false)
@@ -474,8 +494,12 @@ export function PdfPreviewPage() {
             localStorage.setItem('atlas_print_hide_next_due', value)
         } else if (key === 'hideDueDate') {
             localStorage.setItem('atlas_print_hide_due_date', value)
+        } else if (key === 'hideUnit') {
+            localStorage.setItem('atlas_print_hide_unit', value)
+        } else if (key === 'hideDiscount') {
+            localStorage.setItem('atlas_print_hide_discount', value)
         }
-        setFieldValues(prev => prev ? { ...prev, [key]: value } : null)
+        setFieldValues(prev => ({ ...prev, [key]: value }))
     }, [])
 
     const handleAddTemplateImage = useCallback(async () => {
@@ -1649,6 +1673,8 @@ export function PdfPreviewPage() {
                                 printFormat={source.printFormat}
                                 onDataChange={isAdmin ? setEditableData : undefined}
                                 drawingMode={drawingMode}
+                                hideUnit={fieldValues.hideUnit === 'true'}
+                                hideDiscount={fieldValues.hideDiscount === 'true'}
                             />
                         )}
                     </div>
@@ -1686,6 +1712,56 @@ export function PdfPreviewPage() {
                                     className="text-sm w-full block border border-transparent hover:border-blue-400 min-h-[60px]"
                                     inputClassName="w-full min-h-[60px]"
                                 />
+                            </div>
+
+                            <div className="pt-2 border-t">
+                                <div className="flex items-center justify-between gap-3">
+                                    <span className="text-[11px] font-medium text-muted-foreground">
+                                        {t('orders.form.hideUnit', { defaultValue: 'Hide Unit' })}
+                                    </span>
+                                    <button
+                                        type="button"
+                                        role="switch"
+                                        aria-checked={fieldValues.hideUnit === 'true'}
+                                        onClick={() => handleFieldChange('hideUnit', fieldValues.hideUnit === 'true' ? 'false' : 'true')}
+                                        className={cn(
+                                            'relative h-5 w-9 shrink-0 rounded-full transition-colors',
+                                            fieldValues.hideUnit === 'true' ? 'bg-primary' : 'bg-muted'
+                                        )}
+                                    >
+                                        <span
+                                            className={cn(
+                                                'absolute left-0 top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform',
+                                                fieldValues.hideUnit === 'true' ? 'translate-x-[18px]' : 'translate-x-0.5'
+                                            )}
+                                        />
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div className="pt-2 border-t">
+                                <div className="flex items-center justify-between gap-3">
+                                    <span className="text-[11px] font-medium text-muted-foreground">
+                                        {t('orders.form.hideDiscount', { defaultValue: 'Hide Discount' })}
+                                    </span>
+                                    <button
+                                        type="button"
+                                        role="switch"
+                                        aria-checked={fieldValues.hideDiscount === 'true'}
+                                        onClick={() => handleFieldChange('hideDiscount', fieldValues.hideDiscount === 'true' ? 'false' : 'true')}
+                                        className={cn(
+                                            'relative h-5 w-9 shrink-0 rounded-full transition-colors',
+                                            fieldValues.hideDiscount === 'true' ? 'bg-primary' : 'bg-muted'
+                                        )}
+                                    >
+                                        <span
+                                            className={cn(
+                                                'absolute left-0 top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform',
+                                                fieldValues.hideDiscount === 'true' ? 'translate-x-[18px]' : 'translate-x-0.5'
+                                            )}
+                                        />
+                                    </button>
+                                </div>
                             </div>
 
                             <div className="pt-2">
