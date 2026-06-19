@@ -165,6 +165,8 @@
     "uploadFiles": "رفع الملفات",
     "tools": "الأدوات",
     "actions": "الإجراءات",
+    "saleOrders": "طلب البيع",
+    "purchaseOrders": "طلب الشراء",
     "sections": {
       "sell-and-serve": {
         "title": "البيع والخدمة",

@@ -166,6 +166,8 @@
     "uploadFiles": "بارکردنی فایلەکان",
     "tools": "ئامرازەکان",
     "actions": "کردارەکان",
+    "saleOrders": "داواکاری فڕۆشتن",
+    "purchaseOrders": "داواکاری کڕین",
     "sections": {
       "sell-and-serve": {
         "title": "فرۆشتن و خزمەتگوزاری",
