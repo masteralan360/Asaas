@@ -472,6 +472,8 @@ export function PdfPreviewPage() {
     const handleFieldChange = useCallback((key: string, value: string) => {
         if (key === 'hideNextDue') {
             localStorage.setItem('atlas_print_hide_next_due', value)
+        } else if (key === 'hideDueDate') {
+            localStorage.setItem('atlas_print_hide_due_date', value)
         }
         setFieldValues(prev => prev ? { ...prev, [key]: value } : null)
     }, [])

@@ -59,6 +59,7 @@ interface LoanReceiptPrintTemplateProps {
     iqdPreference?: IQDDisplayPreference
     logoUrl?: string | null
     qrValue?: string | null
+    hideDueDate?: boolean
 }
 
 interface LoanDetailsPrintTemplateProps {
@@ -71,6 +72,7 @@ interface LoanDetailsPrintTemplateProps {
     logoUrl?: string | null
     qrValue?: string | null
     hideNextDue?: boolean
+    hideDueDate?: boolean
 }
 
 function isLoanOverdue(loan: Loan): boolean {
@@ -319,7 +321,8 @@ export function LoanDetailsPrintTemplate({
     iqdPreference = 'IQD',
     logoUrl,
     qrValue,
-    hideNextDue
+    hideNextDue,
+    hideDueDate
 }: LoanDetailsPrintTemplateProps) {
     const { i18n } = useTranslation()
     const t = i18n.getFixedT(printLang)
@@ -390,7 +393,7 @@ export function LoanDetailsPrintTemplate({
                 <thead>
                     <tr className="bg-slate-100">
                         <th className="border border-slate-300 p-2 text-start">{loanScheduleIndexLabel}</th>
-                        <th className="border border-slate-300 p-2 text-start">{t('loans.dueDate') || 'Due Date'}</th>
+                        {!hideDueDate && <th className="border border-slate-300 p-2 text-start">{t('loans.dueDate') || 'Due Date'}</th>}
                         <th className="border border-slate-300 p-2 text-start">{loanScheduleAmountLabel}</th>
                         <th className="border border-slate-300 p-2 text-start">{t('loans.paid') || 'Paid'}</th>
                         <th className="border border-slate-300 p-2 text-start">{t('loans.balance') || 'Balance'}</th>
@@ -400,14 +403,14 @@ export function LoanDetailsPrintTemplate({
                 <tbody>
                     {installments.length === 0 ? (
                         <tr>
-                            <td className="border border-slate-300 p-3 text-center text-slate-500" colSpan={6}>
+                            <td className="border border-slate-300 p-3 text-center text-slate-500" colSpan={hideDueDate ? 5 : 6}>
                                 {t('common.noData') || 'No data'}
                             </td>
                         </tr>
                     ) : installments.map((item) => (
                         <tr key={item.id}>
                             <td className="border border-slate-300 p-2">{getLoanScheduleItemLabel(loan, item.installmentNo, t)}</td>
-                            <td className="border border-slate-300 p-2">{formatDate(item.dueDate)}</td>
+                            {!hideDueDate && <td className="border border-slate-300 p-2">{formatDate(item.dueDate)}</td>}
                             <td className="border border-slate-300 p-2 text-start">{formatCurrency(item.plannedAmount, loan.settlementCurrency, iqdPreference)}</td>
                             <td className="border border-slate-300 p-2 text-start">{formatCurrency(item.paidAmount, loan.settlementCurrency, iqdPreference)}</td>
                             <td className="border border-slate-300 p-2 text-start">{formatCurrency(item.balanceAmount, loan.settlementCurrency, iqdPreference)}</td>
@@ -473,7 +476,8 @@ export function LoanReceiptPrintTemplate({
     payments,
     iqdPreference = 'IQD',
     logoUrl,
-    qrValue
+    qrValue,
+    hideDueDate
 }: LoanReceiptPrintTemplateProps) {
     const { i18n } = useTranslation()
     const t = i18n.getFixedT(printLang)
@@ -581,7 +585,7 @@ export function LoanReceiptPrintTemplate({
                     <thead>
                         <tr className="text-gray-400 border-b border-gray-200">
                             <th className="py-1 text-start">{loanScheduleIndexLabel}</th>
-                            <th className="py-1 text-start">{t('loans.dueDate') || 'Due'}</th>
+                            {!hideDueDate && <th className="py-1 text-start">{t('loans.dueDate') || 'Due'}</th>}
                             <th className="py-1 text-start">{loanScheduleAmountLabel}</th>
                             <th className="py-1 text-start">{t('loans.paid') || 'Paid'}</th>
                         </tr>
@@ -589,14 +593,14 @@ export function LoanReceiptPrintTemplate({
                     <tbody className="divide-y divide-gray-100">
                         {installments.length === 0 ? (
                             <tr>
-                                <td className="py-2 text-center text-gray-400" colSpan={4}>
+                                <td className="py-2 text-center text-gray-400" colSpan={hideDueDate ? 3 : 4}>
                                     {t('common.noData') || 'No data'}
                                 </td>
                             </tr>
                         ) : installments.map(item => (
                             <tr key={item.id}>
                                 <td className="py-1">{getLoanScheduleItemLabel(loan, item.installmentNo, t)}</td>
-                                <td className="py-1">{formatDate(item.dueDate)}</td>
+                                {!hideDueDate && <td className="py-1">{formatDate(item.dueDate)}</td>}
                                 <td className="py-1">{formatCurrency(item.plannedAmount, loan.settlementCurrency, iqdPreference)}</td>
                                 <td className="py-1">{formatCurrency(item.paidAmount, loan.settlementCurrency, iqdPreference)}</td>
                             </tr>
