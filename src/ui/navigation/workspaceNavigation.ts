@@ -186,6 +186,18 @@ export function buildWorkspaceNavigation({
               name: t("nav.orders", { defaultValue: "Orders" }),
               href: "/orders",
               icon: ShoppingCart,
+              children: [
+                {
+                  name: t("nav.saleOrders", { defaultValue: "Sale Orders" }),
+                  href: "/orders/sales",
+                  icon: ShoppingCart,
+                },
+                {
+                  name: t("nav.purchaseOrders", { defaultValue: "Purchase Orders" }),
+                  href: "/orders/purchase",
+                  icon: Truck,
+                },
+              ],
             },
           ]
           : []),

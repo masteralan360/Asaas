@@ -1131,6 +1131,28 @@ function App() {
                           </Layout>
                         </ProtectedRoute>
                       </Route>
+                      <Route path="/orders/sales">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="crm"
+                          requiredPermission="orders.access"
+                        >
+                          <Layout>
+                            <Orders />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/orders/purchase">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="crm"
+                          requiredPermission="orders.access"
+                        >
+                          <Layout>
+                            <Orders />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
                       <Route path="/orders/:orderId">
                         <ProtectedRoute
                           allowedRoles={["admin", "staff", "viewer"]}

@@ -226,7 +226,7 @@ function buildPurchaseOrderPaymentObligation(order: PurchaseOrder): PaymentOblig
     }
 }
 
-function OrdersListView({ workspaceId }: { workspaceId: string }) {
+function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: string; initialTab?: OrderTab }) {
     const { t, i18n } = useTranslation()
     const { user } = useAuth()
     const { features, workspaceName } = useWorkspace()
@@ -243,11 +243,15 @@ function OrdersListView({ workspaceId }: { workspaceId: string }) {
     const purchaseOrders = usePurchaseOrders(workspaceId)
     const defaultStorageId = getPrimaryStorageFromList(storages)?.id || ''
 
-    const [activeTab, setActiveTab] = useState<OrderTab>('sales')
+    const [activeTab, setActiveTab] = useState<OrderTab>(initialTab)
     const [viewMode, setViewMode] = useState<'table' | 'grid'>(() => (localStorage.getItem('orders_view_mode') as 'table' | 'grid') || 'table')
     const [search, setSearch] = useState('')
     const [statusFilter, setStatusFilter] = useState<'all' | 'draft' | 'ordered' | 'received' | 'completed'>('all')
     const [paymentFilter, setPaymentFilter] = useState<'all' | 'paid' | 'unpaid'>('all')
+
+    useEffect(() => {
+        setActiveTab(initialTab)
+    }, [initialTab])
 
     useEffect(() => {
         localStorage.setItem('orders_view_mode', viewMode)
@@ -1271,7 +1275,7 @@ function OrdersListView({ workspaceId }: { workspaceId: string }) {
 
             <Card>
                 <CardHeader className="gap-4 lg:flex-row lg:items-center lg:justify-between">
-                    <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as OrderTab)} className="w-full">
+                    <Tabs value={activeTab} onValueChange={(value) => { setActiveTab(value as OrderTab); navigate(value === 'sales' ? '/orders/sales' : '/orders/purchase') }} className="w-full">
                         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                             <div className="flex flex-col sm:flex-row gap-4 w-full lg:w-auto">
                                 <TabsList className="w-full sm:w-auto">
@@ -2049,6 +2053,8 @@ export function Orders() {
     const [, navigate] = useLocation()
     const [salesNewMatch] = useRoute('/orders/new/sales')
     const [purchaseNewMatch] = useRoute('/orders/new/purchase')
+    const [salesTabMatch] = useRoute('/orders/sales')
+    const [purchaseTabMatch] = useRoute('/orders/purchase')
     const [detailMatch, params] = useRoute('/orders/:orderId')
     const workspaceId = user?.workspaceId
 
@@ -2076,9 +2082,10 @@ export function Orders() {
         )
     }
 
-    if (detailMatch && params?.orderId) {
+    if (detailMatch && params?.orderId && params.orderId !== 'sales' && params.orderId !== 'purchase') {
         return <OrderDetailsView workspaceId={workspaceId} orderId={params.orderId} />
     }
 
-    return <OrdersListView workspaceId={workspaceId} />
+    const initialTab: OrderTab = salesTabMatch ? 'sales' : purchaseTabMatch ? 'purchase' : 'sales'
+    return <OrdersListView workspaceId={workspaceId} initialTab={initialTab} />
 }
