@@ -626,8 +626,8 @@ export function PdfPreviewPage() {
         return (
             <div className="flex h-screen w-screen flex-col bg-gray-50 overflow-hidden"
                 style={{ marginTop: 'var(--titlebar-height)', height: 'calc(100vh - var(--titlebar-height))' }}>
-                <header className="flex items-center justify-between border-b px-4 py-2 shrink-0 bg-card z-20">
-                    <div className="flex items-center gap-3 min-w-0">
+                <header className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b px-2 py-1.5 shrink-0 bg-card z-20 md:grid md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] md:px-4 md:py-2">
+                    <div className="order-1 flex min-w-0 flex-1 items-center gap-2 md:order-none md:justify-self-start md:gap-3">
                         <button
                             className="inline-flex items-center justify-center rounded-md h-8 w-8 hover:bg-accent transition-colors shrink-0"
                             onClick={handleBack}
@@ -637,7 +637,7 @@ export function PdfPreviewPage() {
                         <h1 className="text-sm font-semibold truncate">{title}</h1>
                     </div>
 
-                    <div className="flex items-center gap-1 bg-secondary/50 rounded-md p-0.5 border border-border">
+                    <div className="order-3 flex w-full min-w-0 items-center gap-1 overflow-x-auto overscroll-x-contain touch-pan-x bg-secondary/50 rounded-md p-0.5 border border-border [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0 md:order-none md:w-auto md:justify-self-center md:overflow-visible">
                         {isAdmin && (
                             <>
                                 {!fixedTemplatePrintLang && (
@@ -651,20 +651,22 @@ export function PdfPreviewPage() {
                                 )}
                                 <button
                                     onClick={handleAddTemplateImage}
-                                    className="h-7 px-2 inline-flex items-center gap-1.5 rounded hover:bg-accent text-primary text-[11px] font-bold"
+                                    className="h-7 w-7 inline-flex items-center justify-center rounded hover:bg-accent text-primary md:w-auto md:gap-1.5 md:px-2 md:text-[11px] md:font-bold"
                                     title="Add Picture"
+                                    aria-label="Add Picture"
                                 >
                                     <ImagePlus className="h-3.5 w-3.5" />
-                                    <span>Add Photo</span>
+                                    <span className="hidden md:inline">Add Photo</span>
                                 </button>
                                 <div className="w-px h-4 bg-border mx-0.5" />
                                 <button
                                     onClick={handleAddTemplateText}
-                                    className="h-7 px-2 inline-flex items-center gap-1.5 rounded hover:bg-accent text-primary text-[11px] font-bold"
+                                    className="h-7 w-7 inline-flex items-center justify-center rounded hover:bg-accent text-primary md:w-auto md:gap-1.5 md:px-2 md:text-[11px] md:font-bold"
                                     title="Add Text Field"
+                                    aria-label="Add Text Field"
                                 >
                                     <Type className="h-3.5 w-3.5" />
-                                    <span>Add Text</span>
+                                    <span className="hidden md:inline">Add Text</span>
                                 </button>
                                 <div className="w-px h-4 bg-border mx-0.5" />
                             </>
@@ -836,26 +838,34 @@ export function PdfPreviewPage() {
                         </div>
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="order-2 flex shrink-0 items-center gap-1 md:order-none md:justify-self-end md:gap-2">
                         {templatePreview.fields.length > 0 && canEditTemplateFields && (
                             <button
-                                className="inline-flex items-center justify-center rounded-md h-8 px-3 text-xs font-medium transition-colors gap-1.5 bg-secondary text-secondary-foreground hover:bg-secondary/80"
+                                className="inline-flex items-center justify-center rounded-md h-8 w-8 px-0 text-xs font-medium transition-colors gap-1.5 bg-secondary text-secondary-foreground hover:bg-secondary/80 md:w-auto md:px-3"
                                 onClick={() => setEditPanelOpen(o => !o)}
+                                aria-label={editPanelOpen ? (t('common.close') || 'Close') : (t('common.fields') || 'Editable Fields')}
                             >
                                 <Edit3 className="h-3.5 w-3.5" />
-                                {editPanelOpen ? (t('common.close') || 'Close') : (t('common.fields') || 'Editable Fields')}
+                                <span className="hidden md:inline">
+                                    {editPanelOpen ? (t('common.close') || 'Close') : (t('common.fields') || 'Editable Fields')}
+                                </span>
                             </button>
                         )}
                         {hasTemplatePrimaryAction && (
                             <button
-                                className="inline-flex items-center justify-center rounded-md h-8 px-3 text-xs font-medium transition-colors gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                                className="inline-flex items-center justify-center rounded-md h-8 w-8 px-0 text-xs font-medium transition-colors gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 md:w-auto md:px-3"
                                 onClick={handleTemplatePreviewSave}
                                 disabled={isSaving}
-                            >
-                                {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : source.onSaveTemplateLayout ? <Check className="h-3.5 w-3.5" /> : <Printer className="h-3.5 w-3.5" />}
-                                {source.onSaveTemplateLayout
+                                aria-label={source.onSaveTemplateLayout
                                     ? t('customTemplates.saveLayout', { defaultValue: 'Save Layout' })
                                     : source.templatePrimaryActionLabel || (source.onSave ? (t('print.printAndSave') || 'Print & Save') : (t('common.print') || 'Print'))}
+                            >
+                                {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : source.onSaveTemplateLayout ? <Check className="h-3.5 w-3.5" /> : <Printer className="h-3.5 w-3.5" />}
+                                <span className="hidden md:inline">
+                                    {source.onSaveTemplateLayout
+                                        ? t('customTemplates.saveLayout', { defaultValue: 'Save Layout' })
+                                        : source.templatePrimaryActionLabel || (source.onSave ? (t('print.printAndSave') || 'Print & Save') : (t('common.print') || 'Print'))}
+                                </span>
                             </button>
                         )}
                     </div>
@@ -1350,8 +1360,8 @@ export function PdfPreviewPage() {
         return (
             <div className="flex h-screen w-screen flex-col bg-background overflow-hidden"
                 style={{ marginTop: 'var(--titlebar-height)', height: 'calc(100vh - var(--titlebar-height))' }}>
-                <header className="flex items-center justify-between border-b px-4 py-2 shrink-0 bg-card z-10">
-                    <div className="flex items-center gap-3 min-w-0">
+                <header className="flex items-center gap-2 border-b px-2 py-1.5 shrink-0 bg-card z-10 md:justify-between md:px-4 md:py-2">
+                    <div className="flex min-w-0 flex-1 items-center gap-2 md:gap-3">
                         <button
                             className="inline-flex items-center justify-center rounded-md h-8 w-8 hover:bg-accent transition-colors shrink-0"
                             onClick={handleBack}
@@ -1360,23 +1370,25 @@ export function PdfPreviewPage() {
                         </button>
                         <h1 className="text-sm font-semibold truncate">{title}</h1>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex shrink-0 items-center gap-1 md:gap-2">
                         {source.onSave && (
                             <button
-                                className="inline-flex items-center justify-center rounded-md h-8 px-3 text-xs font-medium transition-colors gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                                className="inline-flex items-center justify-center rounded-md h-8 w-8 px-0 text-xs font-medium transition-colors gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 md:w-auto md:px-3"
                                 onClick={handleNativeSave}
                                 disabled={isSaving}
+                                aria-label={t('print.printAndSave') || 'Print & Save'}
                             >
                                 {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Printer className="h-3.5 w-3.5" />}
-                                {t('print.printAndSave') || 'Print & Save'}
+                                <span className="hidden md:inline">{t('print.printAndSave') || 'Print & Save'}</span>
                             </button>
                         )}
                         <button
                             onClick={() => window.open(source.url, '_blank')}
-                            className="inline-flex items-center justify-center rounded-md h-8 px-3 text-xs font-medium transition-colors gap-1.5 bg-secondary text-secondary-foreground hover:bg-secondary/90"
+                            className="inline-flex items-center justify-center rounded-md h-8 w-8 px-0 text-xs font-medium transition-colors gap-1.5 bg-secondary text-secondary-foreground hover:bg-secondary/90 md:w-auto md:px-3"
+                            aria-label={t('common.open') || 'Open'}
                         >
                             <ExternalLink className="h-3.5 w-3.5" />
-                            {t('common.open') || 'Open'}
+                            <span className="hidden md:inline">{t('common.open') || 'Open'}</span>
                         </button>
                     </div>
                 </header>
@@ -1392,8 +1404,8 @@ export function PdfPreviewPage() {
     return (
         <div className="flex h-screen w-screen flex-col bg-gray-50 overflow-hidden"
             style={{ marginTop: 'var(--titlebar-height)', height: 'calc(100vh - var(--titlebar-height))' }}>
-            <header className="flex items-center justify-between border-b px-4 py-2 shrink-0 bg-card z-10">
-                <div className="flex items-center gap-3 min-w-0">
+            <header className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b px-2 py-1.5 shrink-0 bg-card z-10 md:grid md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] md:px-4 md:py-2">
+                <div className="order-1 flex min-w-0 flex-1 items-center gap-2 md:order-none md:justify-self-start md:gap-3">
                     <button
                         className="inline-flex items-center justify-center rounded-md h-8 w-8 hover:bg-accent transition-colors shrink-0"
                         onClick={handleBack}
@@ -1403,7 +1415,7 @@ export function PdfPreviewPage() {
                     <h1 className="text-sm font-semibold truncate">{title}</h1>
                 </div>
 
-                <div className="flex items-center gap-1 bg-secondary/50 rounded-md p-0.5 border border-border">
+                <div className="order-3 flex w-full min-w-0 items-center gap-1 overflow-x-auto overscroll-x-contain touch-pan-x bg-secondary/50 rounded-md p-0.5 border border-border [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0 md:order-none md:w-auto md:justify-self-center md:overflow-visible">
                     {isAdmin && (
                         <>
                             <UiAccessGate>
@@ -1415,20 +1427,22 @@ export function PdfPreviewPage() {
                             </UiAccessGate>
                             <button
                                 onClick={handleAddImage}
-                                className="h-7 px-2 inline-flex items-center gap-1.5 rounded hover:bg-accent text-primary text-[11px] font-bold"
+                                className="h-7 w-7 inline-flex items-center justify-center rounded hover:bg-accent text-primary md:w-auto md:gap-1.5 md:px-2 md:text-[11px] md:font-bold"
                                 title="Add Picture"
+                                aria-label="Add Picture"
                             >
                                 <ImagePlus className="h-3.5 w-3.5" />
-                                <span>Add Photo</span>
+                                <span className="hidden md:inline">Add Photo</span>
                             </button>
                             <div className="w-px h-4 bg-border mx-0.5" />
                             <button
                                 onClick={handleAddText}
-                                className="h-7 px-2 inline-flex items-center gap-1.5 rounded hover:bg-accent text-primary text-[11px] font-bold"
+                                className="h-7 w-7 inline-flex items-center justify-center rounded hover:bg-accent text-primary md:w-auto md:gap-1.5 md:px-2 md:text-[11px] md:font-bold"
                                 title="Add Text Field"
+                                aria-label="Add Text Field"
                             >
                                 <Type className="h-3.5 w-3.5" />
-                                <span>Add Text</span>
+                                <span className="hidden md:inline">Add Text</span>
                             </button>
                             <div className="w-px h-4 bg-border mx-0.5" />
                         </>
@@ -1601,23 +1615,27 @@ export function PdfPreviewPage() {
                     </div>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="order-2 flex shrink-0 items-center gap-1 md:order-none md:justify-self-end md:gap-2">
                     {editableData && isAdmin && (
                         <button
-                            className="inline-flex items-center justify-center rounded-md h-8 px-3 text-xs font-medium transition-colors gap-1.5 bg-secondary text-secondary-foreground hover:bg-secondary/80"
+                            className="inline-flex items-center justify-center rounded-md h-8 w-8 px-0 text-xs font-medium transition-colors gap-1.5 bg-secondary text-secondary-foreground hover:bg-secondary/80 md:w-auto md:px-3"
                             onClick={() => setEditPanelOpen(o => !o)}
+                            aria-label={editPanelOpen ? (t('common.close') || 'Close') : (t('common.edit') || 'Edit')}
                         >
                             <Edit3 className="h-3.5 w-3.5" />
-                            {editPanelOpen ? (t('common.close') || 'Close') : (t('common.edit') || 'Edit')}
+                            <span className="hidden md:inline">
+                                {editPanelOpen ? (t('common.close') || 'Close') : (t('common.edit') || 'Edit')}
+                            </span>
                         </button>
                     )}
                     <button
-                        className="inline-flex items-center justify-center rounded-md h-8 px-3 text-xs font-medium transition-colors gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                        className="inline-flex items-center justify-center rounded-md h-8 w-8 px-0 text-xs font-medium transition-colors gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 md:w-auto md:px-3"
                         onClick={handleSave}
                         disabled={isSaving}
+                        aria-label={t('print.printAndSave') || 'Print & Save'}
                     >
                         {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Printer className="h-3.5 w-3.5" />}
-                        {t('print.printAndSave') || 'Print & Save'}
+                        <span className="hidden md:inline">{t('print.printAndSave') || 'Print & Save'}</span>
                     </button>
                 </div>
             </header>
