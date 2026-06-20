@@ -26,6 +26,8 @@ const appointment: ClinicalAppointment = {
   consultationFee: 100,
   estimatedPrice: 100,
   currency: 'usd',
+  paidAmount: 0,
+  paymentStatus: 'unpaid',
   status: 'completed',
   confirmationMethod: 'phone',
   priority: 'normal',
@@ -81,7 +83,7 @@ describe('clinical appointment payments', () => {
     const transactions = [payment('payment-1', 40, '2026-06-20T10:30:00.000Z')]
     const summary = getClinicalAppointmentPaymentSummary(appointment, transactions)
 
-    expect(summary).toMatchObject({ paidAmount: 40, balanceAmount: 60, isPaid: false, canCollect: true })
+    expect(summary).toMatchObject({ paidAmount: 40, balanceAmount: 60, paymentStatus: 'partial', isPaid: false, canCollect: true })
     expect(buildClinicalAppointmentPaymentObligation(appointment, transactions)?.amount).toBe(60)
     expect(toUISaleFromPaidClinicalAppointment(appointment, transactions)).toBeNull()
   })
@@ -121,6 +123,7 @@ describe('clinical appointment payments', () => {
     expect(getClinicalAppointmentPaymentSummary(appointment, transactions)).toMatchObject({
       paidAmount: 40,
       balanceAmount: 60,
+      paymentStatus: 'partial',
       isPaid: false,
     })
     expect(toUISaleFromPaidClinicalAppointment(appointment, transactions)).toBeNull()
@@ -132,5 +135,30 @@ describe('clinical appointment payments', () => {
       expect(summary.canCollect).toBe(false)
       expect(buildClinicalAppointmentPaymentObligation({ ...appointment, status }, [])).toBeNull()
     }
+  })
+
+  it('reports no payment required when the service fee is zero', () => {
+    const summary = getClinicalAppointmentPaymentSummary({ ...appointment, consultationFee: 0 }, [])
+
+    expect(summary).toMatchObject({ paymentStatus: 'no_fee', paidAmount: 0, balanceAmount: 0, canCollect: false })
+  })
+
+  it('records overpayment separately and mirrors the full collected amount', () => {
+    const transactions = [payment('payment-1', 125, '2026-06-20T10:30:00.000Z')]
+    const summary = getClinicalAppointmentPaymentSummary(appointment, transactions)
+    const sale = toUISaleFromPaidClinicalAppointment(appointment, transactions)
+
+    expect(summary).toMatchObject({
+      paidAmount: 125,
+      balanceAmount: 0,
+      overpaymentAmount: 25,
+      paymentStatus: 'paid',
+    })
+    expect(sale?.total_amount).toBe(125)
+    expect(sale?.items).toHaveLength(2)
+    expect(sale?.items?.[1]).toMatchObject({
+      product_name: 'Appointment Overpayment',
+      total_price: 25,
+    })
   })
 })

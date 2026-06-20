@@ -4059,6 +4059,7 @@
     "appointmentType": "Appointment Type",
     "reasonForVisit": "Reason for Visit",
     "consultationFee": "Consultation Fee",
+    "finalPayment": "Final Payment",
     "estimatedPrice": "Estimated Price",
     "confirmationMethod": "Method",
     "internalNotes": "Internal Notes",
@@ -4067,6 +4068,15 @@
     "patient": "Patient",
     "type": "Type",
     "actions": "Actions",
+    "currency": "Currency",
+    "paymentStatus": "Payment Status",
+    "currencyLockedAfterPayment": "Currency and service fee are locked after payment collection.",
+    "paymentStatuses": {
+      "no_fee": "No Fee",
+      "unpaid": "Unpaid",
+      "partial": "Partially Paid",
+      "paid": "Paid"
+    },
     "collectPayment": "Collect Payment",
     "paid": "Paid",
     "paymentCollected": "Payment recorded",

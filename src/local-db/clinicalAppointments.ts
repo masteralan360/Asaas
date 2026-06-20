@@ -8,6 +8,7 @@ import { generateId, toSnakeCase } from '@/lib/utils'
 import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
 import { db } from './database'
 import { addToOfflineMutations, fetchTableFromSupabase } from './hooks'
+import { getClinicalAppointmentPaymentSummary } from './clinicalAppointmentPayments'
 import type {
   ClinicalAppointment,
   ClinicalAppointmentStatus,
@@ -239,12 +240,15 @@ export function useClinicalAppointmentsByPatient(patientId: string | undefined) 
 }
 
 export async function createClinicalAppointment(
-  appointment: Omit<ClinicalAppointment, keyof BaseEntity | 'syncStatus' | 'lastSyncedAt' | 'version' | 'isDeleted'>,
+  appointment: Omit<ClinicalAppointment, keyof BaseEntity | 'syncStatus' | 'lastSyncedAt' | 'version' | 'isDeleted' | 'paidAmount' | 'paymentStatus'>
+    & Partial<Pick<ClinicalAppointment, 'paidAmount' | 'paymentStatus'>>,
   workspaceId: string,
 ) {
   const timestamp = new Date().toISOString()
   const entity: ClinicalAppointment = {
     ...appointment,
+    paidAmount: appointment.paidAmount || 0,
+    paymentStatus: appointment.paymentStatus || (appointment.consultationFee > 0 ? 'unpaid' : 'no_fee'),
     id: generateId(),
     workspaceId,
     createdAt: timestamp,
@@ -267,7 +271,7 @@ export async function updateClinicalAppointment(
   const existing = await db.clinical_appointments.get(id)
   if (!existing) return null
 
-  const updated: ClinicalAppointment = {
+  const candidate: ClinicalAppointment = {
     ...existing,
     ...updates,
     id,
@@ -275,6 +279,16 @@ export async function updateClinicalAppointment(
     updatedAt: timestamp,
     version: existing.version + 1,
     syncStatus: 'pending',
+  }
+  const paymentTransactions = await db.payment_transactions
+    .where('[workspaceId+sourceType+sourceRecordId]')
+    .equals([workspaceId, 'clinical_appointment', id])
+    .toArray()
+  const paymentSummary = getClinicalAppointmentPaymentSummary(candidate, paymentTransactions)
+  const updated: ClinicalAppointment = {
+    ...candidate,
+    paidAmount: paymentSummary.paidAmount,
+    paymentStatus: paymentSummary.paymentStatus,
   }
   await upsertClinicalEntity(APPOINTMENTS_TABLE, updated, workspaceId, timestamp)
   return updated

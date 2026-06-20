@@ -3858,6 +3858,7 @@
     "appointmentType": "جۆری دانیشتن",
     "reasonForVisit": "هۆکاری سەردان",
     "consultationFee": "کرێی ڕاوێژکاری",
+    "finalPayment": "پارەدانی کۆتایی",
     "estimatedPrice": "نرخی خەمڵێنراو",
     "confirmationMethod": "شێوازی پشتڕاستکردنەوە",
     "internalNotes": "تێبینییە ناوخۆییەکان",
@@ -3866,6 +3867,15 @@
     "patient": "نەخۆش",
     "type": "جۆر",
     "actions": "کردارەکان",
+    "currency": "دراو",
+    "paymentStatus": "دۆخی پارەدان",
+    "currencyLockedAfterPayment": "دراو و کرێی خزمەتگوزاری دوای وەرگرتنی پارە داخراون.",
+    "paymentStatuses": {
+      "no_fee": "بێ کرێ",
+      "unpaid": "پارە نەدراوە",
+      "partial": "بەشێک پارەدراوە",
+      "paid": "پارەدراوە"
+    },
     "collectPayment": "پارە وەربگرە",
     "paid": "پارەدراوە",
     "paymentCollected": "پارەدان تۆمار کرا",

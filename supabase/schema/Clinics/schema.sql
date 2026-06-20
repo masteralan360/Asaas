@@ -33,6 +33,8 @@ CREATE TABLE clinics.clinical_appointments (
   consultation_fee numeric NOT NULL DEFAULT 0,
   estimated_price numeric NOT NULL DEFAULT 0,
   currency text NOT NULL DEFAULT 'usd',
+  paid_amount numeric NOT NULL DEFAULT 0,
+  payment_status text NOT NULL DEFAULT 'unpaid',
   status text NOT NULL DEFAULT 'draft',
   confirmation_status text NOT NULL DEFAULT 'not_contacted',
   confirmation_method text NULL,
@@ -61,6 +63,8 @@ CREATE TABLE clinics.clinical_appointments (
   CONSTRAINT clinical_appointments_fee_check CHECK (consultation_fee >= 0),
   CONSTRAINT clinical_appointments_estimated_price_check CHECK (estimated_price >= 0),
   CONSTRAINT clinical_appointments_currency_check CHECK (currency IN ('usd', 'iqd', 'eur', 'try')),
+  CONSTRAINT clinical_appointments_paid_amount_check CHECK (paid_amount >= 0),
+  CONSTRAINT clinical_appointments_payment_status_check CHECK (payment_status IN ('no_fee', 'unpaid', 'partial', 'paid')),
   CONSTRAINT clinical_appointments_time_check CHECK (length(trim(start_time)) > 0),
   PRIMARY KEY (id)
 );

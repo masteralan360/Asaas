@@ -812,7 +812,8 @@ async function buildPaymentObligations(workspaceId: string, filters: PaymentObli
         expenseItems,
         payrollStatuses,
         employees,
-        clinicalAppointments
+        clinicalAppointments,
+        workspace
     ] = await Promise.all([
         db.loans.where('workspaceId').equals(workspaceId).toArray(),
         db.loan_installments.where('workspaceId').equals(workspaceId).toArray(),
@@ -825,7 +826,8 @@ async function buildPaymentObligations(workspaceId: string, filters: PaymentObli
         db.expense_items.where('workspaceId').equals(workspaceId).toArray(),
         db.payroll_statuses.where('workspaceId').equals(workspaceId).toArray(),
         db.employees.where('workspaceId').equals(workspaceId).toArray(),
-        db.clinical_appointments.where('workspaceId').equals(workspaceId).toArray()
+        db.clinical_appointments.where('workspaceId').equals(workspaceId).toArray(),
+        db.workspaces.get(workspaceId)
     ])
 
     const expenseSeriesMap = new Map(
@@ -849,7 +851,11 @@ async function buildPaymentObligations(workspaceId: string, filters: PaymentObli
         ...buildSimpleLoanObligations(loans, todayKey),
         ...buildRealEstateCommissionObligations(realEstateTransactions, paymentTransactions),
         ...clinicalAppointments
-            .map((appointment) => buildClinicalAppointmentPaymentObligation(appointment, paymentTransactions))
+            .map((appointment) => buildClinicalAppointmentPaymentObligation(
+                appointment,
+                paymentTransactions,
+                workspace?.default_currency || 'usd'
+            ))
             .filter((item): item is PaymentObligation => !!item),
         ...salesOrders
             .filter((order) => !order.isInstallmentBased || !salesOrdersWithInstallments.has(order.id))
@@ -1531,18 +1537,18 @@ export async function recordObligationSettlement(
                 sourceRecordId: appointment.id,
             })
             const currentSummary = getClinicalAppointmentPaymentSummary(appointment, sourceTransactions)
-            if (!currentSummary.canCollect || settlementAmount > currentSummary.balanceAmount) {
-                throw new Error('Collection amount cannot exceed the appointment balance')
+            if (!currentSummary.canCollect) {
+                throw new Error('This appointment has no collectible balance')
             }
 
-            await appendPaymentTransaction(workspaceId, {
+            const paymentTransaction = await appendPaymentTransaction(workspaceId, {
                 sourceModule: 'clinical_appointments',
                 sourceType: 'clinical_appointment',
                 sourceRecordId: appointment.id,
                 sourceSubrecordId: null,
                 direction: 'incoming',
                 amount: settlementAmount,
-                currency: appointment.currency || obligation.currency,
+                currency: obligation.currency,
                 paymentMethod: input.paymentMethod,
                 paidAt,
                 counterpartyName: appointment.patientName,
@@ -1556,6 +1562,13 @@ export async function recordObligationSettlement(
                     serviceFee: currentSummary.serviceFee,
                 },
             })
+            const { updateClinicalAppointment } = await import('./clinicalAppointments')
+            await updateClinicalAppointment(appointment.id, {
+                paymentStatus: getClinicalAppointmentPaymentSummary(
+                    { ...appointment, currency: obligation.currency },
+                    [...sourceTransactions, paymentTransaction]
+                ).paymentStatus
+            }, workspaceId)
             return
         }
 
@@ -1797,8 +1810,8 @@ export async function reversePaymentTransaction(
             return reversal
         }
 
-        case 'clinical_appointment':
-            return appendPaymentTransaction(workspaceId, {
+        case 'clinical_appointment': {
+            const reversal = await appendPaymentTransaction(workspaceId, {
                 sourceModule: 'clinical_appointments',
                 sourceType: 'clinical_appointment',
                 sourceRecordId: transaction.sourceRecordId,
@@ -1818,6 +1831,10 @@ export async function reversePaymentTransaction(
                     reversal: true,
                 },
             })
+            const { updateClinicalAppointment } = await import('./clinicalAppointments')
+            await updateClinicalAppointment(transaction.sourceRecordId, {}, workspaceId)
+            return reversal
+        }
 
         case 'expense_item': {
             const item = await db.expense_items.get(transaction.sourceRecordId)

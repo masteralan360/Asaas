@@ -11,12 +11,13 @@ import {
   recordObligationSettlement,
   usePaymentTransactions,
   type PaymentObligation,
+  type CurrencyCode,
   type WorkspacePaymentMethod,
 } from '@/local-db'
 import type { ClinicalAppointment, ClinicalAppointmentStatus, ClinicalAppointmentType, ClinicalAppointmentPriority, ClinicalConfirmationMethod } from '@/local-db/clinicalAppointments'
 import { useClinicalPresetsByCategory, useClinicalRegistryType } from '@/local-db/clinicalPresets'
 import { Button, Input, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Textarea, Label, Card, CardContent, CardHeader, CardTitle, DateTimePicker, SettlementDialog, useToast, DeleteConfirmationModal } from '@/ui/components'
-import { Plus, Search, Upload, Trash2, FileText, ArrowLeft, CalendarClock, Edit, Check, ChevronDown, LayoutGrid, List, HandCoins, CircleCheck } from 'lucide-react'
+import { Plus, Search, Upload, Trash2, FileText, ArrowLeft, CalendarClock, Edit, Check, ChevronDown, LayoutGrid, List, HandCoins } from 'lucide-react'
 import { generateId, formatCurrency, formatNumberWithCommas, formatTime } from '@/lib/utils'
 import { DateRangeFilters } from '@/ui/components/DateRangeFilters'
 import { useDateRange } from '@/context/DateRangeContext'
@@ -51,6 +52,28 @@ const STATUS_GROUPS = [
   ['draft', 'booked', 'arrived', 'in_progress', 'completed'],
   ['cancelled', 'no_show'],
 ]
+
+const PAYMENT_STATUS_CLASSES = {
+  no_fee: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200',
+  unpaid: 'bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-300',
+  partial: 'bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300',
+  paid: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300',
+} as const
+
+type ClinicalPaymentStatus = keyof typeof PAYMENT_STATUS_CLASSES
+
+function PaymentStatusBadge({ status }: { status: ClinicalPaymentStatus }) {
+  const { t } = useTranslation()
+  return (
+    <span className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${PAYMENT_STATUS_CLASSES[status]}`}>
+      {t(`clinicalAppointments.paymentStatuses.${status}`, {
+        defaultValue: status === 'no_fee'
+          ? 'No Fee'
+          : status.charAt(0).toUpperCase() + status.slice(1),
+      })}
+    </span>
+  )
+}
 
 function StatusCell({ status, appointmentId, onStatusChange, disabled }: {
   status: string
@@ -239,7 +262,7 @@ function AppointmentList({ workspaceId, navigate }: { workspaceId: string; navig
       setIsDeleting(false)
       setDeleteConfirmId(null)
     }
-  }, [deleteConfirmId, workspaceId, toast])
+  }, [deleteConfirmId, workspaceId, toast, t])
 
   const filtered = useMemo(() => {
     if (!appointments) return []
@@ -281,7 +304,7 @@ function AppointmentList({ workspaceId, navigate }: { workspaceId: string; navig
   }, [appointments, searchQuery, filter, dateRange, customDates])
 
   const handleCollectPayment = (appointment: ClinicalAppointment) => {
-    const obligation = buildClinicalAppointmentPaymentObligation(appointment, paymentTransactions)
+    const obligation = buildClinicalAppointmentPaymentObligation(appointment, paymentTransactions, features.default_currency)
     if (obligation) {
       setPaymentObligation(obligation)
     }
@@ -320,13 +343,9 @@ function AppointmentList({ workspaceId, navigate }: { workspaceId: string; navig
 
   const renderPaymentAction = (appointment: ClinicalAppointment) => {
     const summary = getClinicalAppointmentPaymentSummary(appointment, paymentTransactions)
-    if (summary.isPaid) {
-      return (
-        <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
-          <CircleCheck className="h-3.5 w-3.5" />
-          {t('clinicalAppointments.paid', { defaultValue: 'Paid' })}
-        </span>
-      )
+    if (appointment.paymentStatus === 'paid'
+      || (appointment.paymentStatus === 'partial' && summary.activeTransactions.length === 0)) {
+      return null
     }
     if (!summary.canCollect) return null
 
@@ -336,6 +355,20 @@ function AppointmentList({ workspaceId, navigate }: { workspaceId: string; navig
         {t('clinicalAppointments.collectPayment', { defaultValue: 'Collect Payment' })}
       </Button>
     )
+  }
+
+  const renderPaymentStatus = (appointment: ClinicalAppointment) => (
+    <PaymentStatusBadge status={
+      appointment.paymentStatus
+      || getClinicalAppointmentPaymentSummary(appointment, paymentTransactions).paymentStatus
+    } />
+  )
+
+  const getDisplayedPaidAmount = (appointment: ClinicalAppointment) => {
+    const summary = getClinicalAppointmentPaymentSummary(appointment, paymentTransactions)
+    return summary.activeTransactions.length > 0
+      ? summary.paidAmount
+      : appointment.paidAmount ?? summary.paidAmount
   }
 
   return (
@@ -447,6 +480,18 @@ function AppointmentList({ workspaceId, navigate }: { workspaceId: string; navig
                 <span className="text-muted-foreground">{t('clinicalAppointments.consultationFee', { defaultValue: 'Service Fee' })}</span>
                 <span className="font-semibold">{formatCurrency(appt.consultationFee, appt.currency || features.default_currency, features.iqd_display_preference)}</span>
               </div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-muted-foreground">{t('clinicalAppointments.finalPayment', { defaultValue: 'Final Payment' })}</span>
+                <span className="font-semibold">{formatCurrency(getDisplayedPaidAmount(appt), appt.currency || features.default_currency, features.iqd_display_preference)}</span>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-muted-foreground">{t('clinicalAppointments.currency', { defaultValue: 'Currency' })}</span>
+                <span className="font-semibold uppercase">{appt.currency || features.default_currency}</span>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-muted-foreground">{t('clinicalAppointments.paymentStatus', { defaultValue: 'Payment Status' })}</span>
+                {renderPaymentStatus(appt)}
+              </div>
               <div className="flex items-center justify-end gap-2">
                 {renderPaymentAction(appt)}
                 <Button variant="ghost" size="sm" onClick={() => navigate(`/clinical-appointments/${appt.id}/edit`)}>
@@ -499,6 +544,18 @@ function AppointmentList({ workspaceId, navigate }: { workspaceId: string; navig
                     <span className="text-muted-foreground">{t('clinicalAppointments.consultationFee', { defaultValue: 'Service Fee' })}</span>
                     <span className="font-semibold">{formatCurrency(appt.consultationFee, appt.currency || features.default_currency, features.iqd_display_preference)}</span>
                   </div>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">{t('clinicalAppointments.finalPayment', { defaultValue: 'Final Payment' })}</span>
+                    <span className="font-semibold">{formatCurrency(getDisplayedPaidAmount(appt), appt.currency || features.default_currency, features.iqd_display_preference)}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">{t('clinicalAppointments.currency', { defaultValue: 'Currency' })}</span>
+                    <span className="font-semibold uppercase">{appt.currency || features.default_currency}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">{t('clinicalAppointments.paymentStatus', { defaultValue: 'Payment Status' })}</span>
+                    {renderPaymentStatus(appt)}
+                  </div>
                   <div className="flex items-center justify-end gap-2">
                     {renderPaymentAction(appt)}
                     <Button variant="ghost" size="sm" onClick={() => navigate(`/clinical-appointments/${appt.id}/edit`)}>
@@ -524,13 +581,16 @@ function AppointmentList({ workspaceId, navigate }: { workspaceId: string; navig
                 <TableHead>{t('clinicalAppointments.status', { defaultValue: 'Status' })}</TableHead>
                 <TableHead>{t('clinicalAppointments.priority', { defaultValue: 'Priority' })}</TableHead>
                 <TableHead>{t('clinicalAppointments.consultationFee', { defaultValue: 'Service Fee' })}</TableHead>
+                <TableHead>{t('clinicalAppointments.finalPayment', { defaultValue: 'Final Payment' })}</TableHead>
+                <TableHead>{t('clinicalAppointments.currency', { defaultValue: 'Currency' })}</TableHead>
+                <TableHead>{t('clinicalAppointments.paymentStatus', { defaultValue: 'Payment Status' })}</TableHead>
                 <TableHead>{t('clinicalAppointments.actions', { defaultValue: 'Actions' })}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filtered.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center text-muted-foreground py-12">
+                  <TableCell colSpan={10} className="text-center text-muted-foreground py-12">
                     {t('clinicalAppointments.noAppointments', { defaultValue: 'No appointments found' })}
                   </TableCell>
                 </TableRow>
@@ -555,7 +615,12 @@ function AppointmentList({ workspaceId, navigate }: { workspaceId: string; navig
                     <TableCell className="whitespace-nowrap font-medium">
                       {formatCurrency(appt.consultationFee, appt.currency || features.default_currency, features.iqd_display_preference)}
                     </TableCell>
-                  <TableCell>
+                    <TableCell className="whitespace-nowrap font-medium">
+                      {formatCurrency(getDisplayedPaidAmount(appt), appt.currency || features.default_currency, features.iqd_display_preference)}
+                    </TableCell>
+                    <TableCell className="font-semibold uppercase">{appt.currency || features.default_currency}</TableCell>
+                    <TableCell>{renderPaymentStatus(appt)}</TableCell>
+                    <TableCell>
                       <div className="flex items-center gap-2">
                         {renderPaymentAction(appt)}
                         <Button variant="ghost" size="icon" onClick={() => navigate(`/clinical-appointments/${appt.id}/edit`)}>
@@ -597,6 +662,11 @@ function CreateAppointmentForm({ workspaceId, appointment, onCancel, onSaved }: 
   const { user } = useAuth()
   const { features } = useWorkspace()
   const registryType = useClinicalRegistryType(workspaceId)
+  const appointmentPaymentTransactions = usePaymentTransactions(workspaceId, {
+    sourceModule: 'clinical_appointments',
+    sourceType: 'clinical_appointment',
+    includeReversals: true,
+  }, { hydrateSourceTables: false })
   const isEditing = !!appointment
 
   const [patientSearch, setPatientSearch] = useState('')
@@ -643,17 +713,49 @@ function CreateAppointmentForm({ workspaceId, appointment, onCancel, onSaved }: 
   const reasonForVisitPresets = useClinicalPresetsByCategory(workspaceId, 'reason_for_visit')
   const appointmentTypePresets = useClinicalPresetsByCategory(workspaceId, 'appointment_type')
   const [consultationFee, setConsultationFee] = useState(appointment?.consultationFee ?? 0)
+  const [currency, setCurrency] = useState<CurrencyCode>(appointment?.currency ?? features.default_currency)
   useEffect(() => {
     if (!appointmentTypePresets || appointment) return
     const preset = appointmentTypePresets.find((p) => p.name === appointmentType)
     if (preset?.consultationFee) setConsultationFee(preset.consultationFee)
-  }, [appointmentTypePresets])
+  }, [appointmentTypePresets, appointment, appointmentType])
   const [estimatedPrice, setEstimatedPrice] = useState(appointment?.estimatedPrice ?? 0)
   const [status, setStatus] = useState<ClinicalAppointmentStatus>(appointment?.status ?? 'draft')
   const [confirmationMethod, setConfirmationMethod] = useState<ClinicalConfirmationMethod>(appointment?.confirmationMethod ?? 'phone')
   const [priority, setPriority] = useState<ClinicalAppointmentPriority>(appointment?.priority ?? 'normal')
   const [internalNotes, setInternalNotes] = useState(appointment?.internalNotes ?? '')
   const [attachments, setAttachments] = useState<File[]>([])
+
+  const currencyOptions = useMemo(
+    () => Array.from(new Set([
+      appointment?.currency,
+      features.default_currency,
+      ...(features.allowed_currencies || []),
+    ].filter(Boolean))) as CurrencyCode[],
+    [appointment?.currency, features.allowed_currencies, features.default_currency],
+  )
+  const appointmentPaymentSummary = useMemo(
+    () => appointment
+      ? getClinicalAppointmentPaymentSummary(
+          { ...appointment, consultationFee, currency },
+          appointmentPaymentTransactions,
+        )
+      : null,
+    [appointment, appointmentPaymentTransactions, consultationFee, currency],
+  )
+  const formPaymentStatus: ClinicalPaymentStatus = appointmentPaymentSummary?.activeTransactions.length
+    ? appointmentPaymentSummary.paymentStatus
+    : appointment?.paymentStatus
+      || appointmentPaymentSummary?.paymentStatus
+      || (consultationFee > 0 ? 'unpaid' : 'no_fee')
+  const formPaidAmount = appointmentPaymentSummary?.activeTransactions.length
+    ? appointmentPaymentSummary.paidAmount
+    : appointment?.paidAmount
+      ?? appointmentPaymentSummary?.paidAmount
+      ?? 0
+  const hasActivePayments = (appointmentPaymentSummary?.activeTransactions.length || 0) > 0
+    || appointment?.paymentStatus === 'partial'
+    || appointment?.paymentStatus === 'paid'
 
   const [saving, setSaving] = useState(false)
 
@@ -720,7 +822,7 @@ function CreateAppointmentForm({ workspaceId, appointment, onCancel, onSaved }: 
             reasonForVisit: reasonForVisit.trim() || null,
             consultationFee,
             estimatedPrice,
-            currency: appointment.currency || features.default_currency,
+            currency,
             status,
             confirmationMethod,
             priority,
@@ -741,7 +843,7 @@ function CreateAppointmentForm({ workspaceId, appointment, onCancel, onSaved }: 
             reasonForVisit: reasonForVisit.trim() || null,
             consultationFee,
             estimatedPrice,
-            currency: features.default_currency,
+            currency,
             status,
             confirmationMethod,
             priority,
@@ -803,7 +905,7 @@ function CreateAppointmentForm({ workspaceId, appointment, onCancel, onSaved }: 
     } finally {
       setSaving(false)
     }
-  }, [isEditing, appointment, workspaceId, patientName, patientPhone, selectedPatientId, isNewPatient, appointmentDate, startTime, appointmentType, reasonForVisit, consultationFee, estimatedPrice, status, confirmationMethod, priority, internalNotes, attachments, user, onSaved, features.default_currency])
+  }, [isEditing, appointment, workspaceId, patientName, patientPhone, selectedPatientId, isNewPatient, appointmentDate, startTime, appointmentType, reasonForVisit, consultationFee, estimatedPrice, currency, status, confirmationMethod, priority, internalNotes, attachments, user, onSaved])
 
   return (
     <div className="flex h-full flex-col overflow-hidden bg-background">
@@ -998,12 +1100,18 @@ function CreateAppointmentForm({ workspaceId, appointment, onCancel, onSaved }: 
                 <CardTitle>{t('clinicalAppointments.pricingSection', { defaultValue: 'Pricing' })}</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
                   <div className="grid gap-2">
                     <Label>{t('clinicalAppointments.consultationFee', { defaultValue: 'Consultation Fee' })}</Label>
                     <div className="relative">
-                      <Input className="pr-12" value={consultationFee ? formatNumberWithCommas(consultationFee) : ''} onChange={(e) => setConsultationFee(Number(e.target.value.replace(/,/g, '')))} />
-                      <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold uppercase tracking-wider text-muted-foreground/60">{features.iqd_display_preference}</span>
+                      <Input disabled={hasActivePayments} className="pr-12" value={consultationFee ? formatNumberWithCommas(consultationFee) : ''} onChange={(e) => setConsultationFee(Number(e.target.value.replace(/,/g, '')))} />
+                      <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold uppercase tracking-wider text-muted-foreground/60">{currency}</span>
+                    </div>
+                  </div>
+                  <div className="grid content-start gap-2">
+                    <Label>{t('clinicalAppointments.finalPayment', { defaultValue: 'Final Payment' })}</Label>
+                    <div className="flex h-10 items-center rounded-md border bg-muted/30 px-3 font-semibold">
+                      {formatCurrency(formPaidAmount, currency, features.iqd_display_preference)}
                     </div>
                   </div>
                   {registryType !== 'beauty' && (
@@ -1011,10 +1119,32 @@ function CreateAppointmentForm({ workspaceId, appointment, onCancel, onSaved }: 
                     <Label>{t('clinicalAppointments.estimatedPrice', { defaultValue: 'Estimated Price' })}</Label>
                     <div className="relative">
                       <Input className="pr-12" value={estimatedPrice ? formatNumberWithCommas(estimatedPrice) : ''} onChange={(e) => setEstimatedPrice(Number(e.target.value.replace(/,/g, '')))} />
-                      <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold uppercase tracking-wider text-muted-foreground/60">{features.iqd_display_preference}</span>
+                      <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold uppercase tracking-wider text-muted-foreground/60">{currency}</span>
                     </div>
                   </div>
                   )}
+                  <div className="grid gap-2">
+                    <Label>{t('clinicalAppointments.currency', { defaultValue: 'Currency' })}</Label>
+                    <Select value={currency} onValueChange={(value: CurrencyCode) => setCurrency(value)} disabled={hasActivePayments}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {currencyOptions.map((option) => (
+                          <SelectItem key={option} value={option}>{option.toUpperCase()}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {hasActivePayments && (
+                      <p className="text-xs text-muted-foreground">
+                        {t('clinicalAppointments.currencyLockedAfterPayment', { defaultValue: 'Currency and service fee are locked after payment collection.' })}
+                      </p>
+                    )}
+                  </div>
+                  <div className="grid content-start gap-2">
+                    <Label>{t('clinicalAppointments.paymentStatus', { defaultValue: 'Payment Status' })}</Label>
+                    <div className="flex h-10 items-center">
+                      <PaymentStatusBadge status={formPaymentStatus} />
+                    </div>
+                  </div>
                 </div>
               </CardContent>
             </Card>

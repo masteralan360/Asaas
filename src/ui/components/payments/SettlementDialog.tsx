@@ -123,13 +123,14 @@ export function SettlementDialog({
         : t('settlementModal.payable', { defaultValue: 'Payable' })
 
     const requiresLinkedCounterparty = showsCounterpartyPicker
+    const allowsOverpayment = obligation?.sourceType === 'clinical_appointment'
     const parsedAmount = parseFormattedNumber(amount || '0')
     const hasEditedAmount = !!obligation
         && showsAmountInput
         && amount.trim() !== ''
         && parsedAmount !== obligation.amount
     const hasValidAmount = !showsAmountInput
-        || (!!obligation && parsedAmount > 0 && parsedAmount <= obligation.amount)
+        || (!!obligation && parsedAmount > 0 && (allowsOverpayment || parsedAmount <= obligation.amount))
     const canSubmit = !!obligation
         && !!selectedPaidAt
         && hasValidAmount
@@ -205,7 +206,7 @@ export function SettlementDialog({
                                             onChange={(event) => setAmount(sanitizeNumericInput(event.target.value, { allowDecimal: obligation.currency !== 'iqd' }))}
                                             disabled={isSubmitting}
                                         />
-                                        {parsedAmount > obligation.amount ? (
+                                        {parsedAmount > obligation.amount && !allowsOverpayment ? (
                                             <p className="text-xs text-destructive">
                                                 {t('settlementModal.amountExceedsBalance', { defaultValue: 'Amount cannot exceed the remaining balance.' })}
                                             </p>

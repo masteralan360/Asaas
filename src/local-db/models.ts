@@ -913,6 +913,8 @@ export type ClinicalConfirmationMethod =
 
 export type ClinicalAppointmentPriority = 'normal' | 'urgent' | 'emergency';
 
+export type ClinicalAppointmentPaymentStatus = 'no_fee' | 'unpaid' | 'partial' | 'paid';
+
 export type ClinicalAppointmentType =
   | 'consultation'
   | 'follow_up'
@@ -992,6 +994,8 @@ export interface ClinicalAppointment extends BaseEntity {
   consultationFee: number;
   estimatedPrice: number;
   currency: CurrencyCode;
+  paidAmount: number;
+  paymentStatus: ClinicalAppointmentPaymentStatus;
   status: ClinicalAppointmentStatus;
   confirmationMethod?: ClinicalConfirmationMethod | null;
   priority: ClinicalAppointmentPriority;

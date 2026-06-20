@@ -3854,6 +3854,7 @@
     "appointmentType": "نوع الموعد",
     "reasonForVisit": "سبب الزيارة",
     "consultationFee": "رسوم الاستشارة",
+    "finalPayment": "الدفعة النهائية",
     "estimatedPrice": "السعر التقديري",
     "confirmationMethod": "طريقة التأكيد",
     "internalNotes": "ملاحظات داخلية",
@@ -3862,6 +3863,15 @@
     "patient": "المريض",
     "type": "النوع",
     "actions": "الإجراءات",
+    "currency": "العملة",
+    "paymentStatus": "حالة الدفع",
+    "currencyLockedAfterPayment": "يتم قفل العملة ورسوم الخدمة بعد تحصيل الدفعة.",
+    "paymentStatuses": {
+      "no_fee": "بدون رسوم",
+      "unpaid": "غير مدفوع",
+      "partial": "مدفوع جزئياً",
+      "paid": "مدفوع"
+    },
     "collectPayment": "تحصيل الدفعة",
     "paid": "مدفوع",
     "paymentCollected": "تم تسجيل الدفعة",
