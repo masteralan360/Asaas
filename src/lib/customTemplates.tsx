@@ -781,7 +781,12 @@ function createOrderDetailsPreview(options: CustomTemplatePreviewOptions): Templ
             { key: ORDER_DETAILS_MOVABLE_COMPONENT_KEYS.created, label: 'Created' },
             { key: ORDER_DETAILS_MOVABLE_COMPONENT_KEYS.expectedDelivery, label: 'Expected Delivery' },
             { key: ORDER_DETAILS_MOVABLE_COMPONENT_KEYS.orderItems, label: 'Order Items and Table' },
-            { key: ORDER_DETAILS_MOVABLE_COMPONENT_KEYS.totals, label: 'Subtotal, Discount, Tax and Total' }
+            { key: ORDER_DETAILS_MOVABLE_COMPONENT_KEYS.totals, label: 'Subtotal, Discount, Tax and Total' },
+            { key: ORDER_DETAILS_MOVABLE_COMPONENT_KEYS.logo, label: 'Logo' },
+            { key: ORDER_DETAILS_MOVABLE_COMPONENT_KEYS.qrCode, label: 'QR Code' },
+            { key: ORDER_DETAILS_MOVABLE_COMPONENT_KEYS.workspaceName, label: 'Workspace Name' },
+            { key: ORDER_DETAILS_MOVABLE_COMPONENT_KEYS.title, label: 'Title' },
+            { key: ORDER_DETAILS_MOVABLE_COMPONENT_KEYS.subtitle, label: 'Subtitle' }
         ],
         page: { widthMm: 210, heightMm: 297 },
         fixedPrintLang,

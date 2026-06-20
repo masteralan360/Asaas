@@ -56,7 +56,12 @@ export const ORDER_DETAILS_MOVABLE_COMPONENT_KEYS = {
     created: 'created',
     expectedDelivery: 'expectedDelivery',
     orderItems: 'orderItems',
-    totals: 'totals'
+    totals: 'totals',
+    workspaceName: 'workspaceName',
+    title: 'title',
+    subtitle: 'subtitle',
+    qrCode: 'qrCode',
+    logo: 'logo'
 } as const
 
 type OrderDetailsMovableComponentKey = typeof ORDER_DETAILS_MOVABLE_COMPONENT_KEYS[keyof typeof ORDER_DETAILS_MOVABLE_COMPONENT_KEYS]
@@ -176,6 +181,9 @@ interface OrderPrintHeaderProps {
     subtitle?: ReactNode
     logoUrl?: string | null
     qrValue?: string | null
+    componentPositions?: Record<string, CustomTemplateComponentPosition>
+    editableComponents?: boolean
+    onComponentPositionChange?: (key: string, position: CustomTemplateComponentPosition) => void
 }
 
 function OrderPrintHeader({
@@ -183,46 +191,90 @@ function OrderPrintHeader({
     title,
     subtitle,
     logoUrl,
-    qrValue
+    qrValue,
+    componentPositions,
+    editableComponents,
+    onComponentPositionChange
 }: OrderPrintHeaderProps) {
+    const { t } = useTranslation()
     const logoSrc = resolveLogoSrc(logoUrl)
 
     return (
         <div className="border-b border-slate-300 pb-3 mb-4">
             <div className="flex items-start justify-between gap-3">
                 <div className="w-1/3 flex flex-col items-start">
-                    <div className="flex items-start w-full max-w-[180px]">
-                        {logoSrc ? (
-                            <img
-                                src={logoSrc}
-                                alt="Workspace Logo"
-                                className="max-h-16 max-w-full object-contain object-left"
-                            />
-                        ) : (
-                            <div className="h-10 flex items-center bg-gray-100 border border-gray-200 justify-center w-40 text-gray-400 font-bold tracking-wider uppercase">
-                                LOGO
-                            </div>
-                        )}
-                    </div>
+                    <MovableOrderPrintBlock
+                        componentKey={ORDER_DETAILS_MOVABLE_COMPONENT_KEYS.logo}
+                        label={t('customTemplates.movable.logo', { defaultValue: 'Logo' })}
+                        position={componentPositions?.[ORDER_DETAILS_MOVABLE_COMPONENT_KEYS.logo]}
+                        editable={editableComponents}
+                        onPositionChange={onComponentPositionChange}
+                    >
+                        <div className="flex items-start w-full max-w-[180px]">
+                            {logoSrc ? (
+                                <img
+                                    src={logoSrc}
+                                    alt="Workspace Logo"
+                                    className="max-h-16 max-w-full object-contain object-left"
+                                />
+                            ) : (
+                                <div className="h-10 flex items-center bg-gray-100 border border-gray-200 justify-center w-40 text-gray-400 font-bold tracking-wider uppercase">
+                                    LOGO
+                                </div>
+                            )}
+                        </div>
+                    </MovableOrderPrintBlock>
                 </div>
 
                 <div className="w-1/3 flex justify-center pt-1">
                     {qrValue ? (
-                        <div className="p-1.5 bg-white border border-slate-200 rounded" data-qr-sharp="true">
-                            <ReactQRCode
-                                value={qrValue}
-                                size={64}
-                                level="M"
-                            />
-                        </div>
+                        <MovableOrderPrintBlock
+                            componentKey={ORDER_DETAILS_MOVABLE_COMPONENT_KEYS.qrCode}
+                            label={t('customTemplates.movable.qrCode', { defaultValue: 'QR Code' })}
+                            position={componentPositions?.[ORDER_DETAILS_MOVABLE_COMPONENT_KEYS.qrCode]}
+                            editable={editableComponents}
+                            onPositionChange={onComponentPositionChange}
+                        >
+                            <div className="p-1.5 bg-white border border-slate-200 rounded" data-qr-sharp="true">
+                                <ReactQRCode
+                                    value={qrValue}
+                                    size={64}
+                                    level="M"
+                                />
+                            </div>
+                        </MovableOrderPrintBlock>
                     ) : null}
                 </div>
 
                 <div className="w-1/3 flex flex-col items-center text-center">
-                    <h1 className="text-xl font-bold">{workspaceName || 'Atlas'}</h1>
-                    <p className="text-sm font-semibold">{title}</p>
+                    <MovableOrderPrintBlock
+                        componentKey={ORDER_DETAILS_MOVABLE_COMPONENT_KEYS.workspaceName}
+                        label={t('customTemplates.movable.workspaceName', { defaultValue: 'Workspace Name' })}
+                        position={componentPositions?.[ORDER_DETAILS_MOVABLE_COMPONENT_KEYS.workspaceName]}
+                        editable={editableComponents}
+                        onPositionChange={onComponentPositionChange}
+                    >
+                        <h1 className="text-xl font-bold">{workspaceName || 'Atlas'}</h1>
+                    </MovableOrderPrintBlock>
+                    <MovableOrderPrintBlock
+                        componentKey={ORDER_DETAILS_MOVABLE_COMPONENT_KEYS.title}
+                        label={t('customTemplates.movable.title', { defaultValue: 'Title' })}
+                        position={componentPositions?.[ORDER_DETAILS_MOVABLE_COMPONENT_KEYS.title]}
+                        editable={editableComponents}
+                        onPositionChange={onComponentPositionChange}
+                    >
+                        <p className="text-sm font-semibold">{title}</p>
+                    </MovableOrderPrintBlock>
                     {subtitle ? (
-                        <p className="text-[11px] text-slate-600">{subtitle}</p>
+                        <MovableOrderPrintBlock
+                            componentKey={ORDER_DETAILS_MOVABLE_COMPONENT_KEYS.subtitle}
+                            label={t('customTemplates.movable.subtitle', { defaultValue: 'Subtitle' })}
+                            position={componentPositions?.[ORDER_DETAILS_MOVABLE_COMPONENT_KEYS.subtitle]}
+                            editable={editableComponents}
+                            onPositionChange={onComponentPositionChange}
+                        >
+                            <p className="text-[11px] text-slate-600">{subtitle}</p>
+                        </MovableOrderPrintBlock>
                     ) : null}
                 </div>
             </div>
@@ -468,6 +520,9 @@ export function OrderDetailsPrintTemplate({
                 }
                 logoUrl={logoUrl}
                 qrValue={qrValue}
+                componentPositions={componentPositions}
+                editableComponents={editableComponents}
+                onComponentPositionChange={onComponentPositionChange}
             />
 
             <div className="grid grid-cols-2 gap-4 mb-4 text-xs text-center">
