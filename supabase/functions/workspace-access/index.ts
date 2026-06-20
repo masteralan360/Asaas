@@ -2,6 +2,7 @@ import type { User } from 'jsr:@supabase/supabase-js@2'
 import { createAdminClient, getAuthenticatedUser } from '../_shared/supabase.ts'
 import { corsHeaders, errorResponse, jsonResponse, readJson } from '../_shared/http.ts'
 import { getPlanCapabilities, normalizeWorkspacePlan, planHasModule, type PlanModuleKey } from '../../../src/plans/workspacePlans.ts'
+import { buildDestinationProductMatchIndex } from './destinationProductMatching.ts'
 
 type CreateWorkspaceRequest = {
     action: 'create'
@@ -1530,7 +1531,6 @@ async function handleTransferInventoryBetweenWorkspaces(
             .from('products')
             .select('*')
             .eq('workspace_id', destinationWorkspaceId)
-            .eq('is_deleted', false)
             .in('sku', sourceProducts.map((product) => product.sku))
 
         if (destinationProductsError) {
@@ -1540,22 +1540,10 @@ async function handleTransferInventoryBetweenWorkspaces(
         const destinationProductRowsList = (destinationProductRows ?? []) as SourceProductRow[]
         previousDestinationProducts = destinationProductRowsList.map((product) => ({ ...product }))
 
-        const destinationProductBySku = new Map<string, SourceProductRow>()
-        const duplicateDestinationSkus = new Set<string>()
-
-        for (const product of destinationProductRowsList) {
-            const normalizedSku = normalizeSkuKey(product.sku)
-            if (!normalizedSku) {
-                continue
-            }
-
-            if (destinationProductBySku.has(normalizedSku)) {
-                duplicateDestinationSkus.add(normalizedSku)
-                continue
-            }
-
-            destinationProductBySku.set(normalizedSku, product)
-        }
+        const {
+            productBySku: destinationProductBySku,
+            duplicateActiveSkus: duplicateDestinationSkus
+        } = buildDestinationProductMatchIndex(destinationProductRowsList)
 
         if (duplicateDestinationSkus.size > 0) {
             return errorResponse('Destination workspace has duplicate SKUs for one or more selected products', 400)
@@ -1808,8 +1796,12 @@ async function handleTransferInventoryBetweenWorkspaces(
                 )
             }
 
-            destinationProductIdBySourceProductId.set(product.id, destinationProduct.id)
-            destinationProductsById.set(destinationProduct.id, destinationProduct)
+            const activeDestinationProduct = destinationProduct.is_deleted === true
+                ? { ...destinationProduct, is_deleted: false }
+                : destinationProduct
+
+            destinationProductIdBySourceProductId.set(product.id, activeDestinationProduct.id)
+            destinationProductsById.set(activeDestinationProduct.id, activeDestinationProduct)
         }
     }
 
