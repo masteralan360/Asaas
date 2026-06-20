@@ -14,10 +14,12 @@ import {
   type WorkspacePaymentMethod,
 } from '@/local-db'
 import type { ClinicalAppointment, ClinicalAppointmentStatus, ClinicalAppointmentType, ClinicalAppointmentPriority, ClinicalConfirmationMethod } from '@/local-db/clinicalAppointments'
-import { useClinicalPresetsByCategory } from '@/local-db/clinicalPresets'
+import { useClinicalPresetsByCategory, useClinicalRegistryType } from '@/local-db/clinicalPresets'
 import { Button, Input, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Textarea, Label, Card, CardContent, CardHeader, CardTitle, DateTimePicker, SettlementDialog, useToast, DeleteConfirmationModal } from '@/ui/components'
 import { Plus, Search, Upload, Trash2, FileText, ArrowLeft, CalendarClock, Edit, Check, ChevronDown, LayoutGrid, List, HandCoins, CircleCheck } from 'lucide-react'
 import { generateId, formatCurrency, formatNumberWithCommas, formatTime } from '@/lib/utils'
+import { DateRangeFilters } from '@/ui/components/DateRangeFilters'
+import { useDateRange } from '@/context/DateRangeContext'
 import { r2Service } from '@/services/r2Service'
 import { platformService } from '@/services/platformService'
 import { useLocation, useRoute } from 'wouter'
@@ -211,6 +213,7 @@ function AppointmentList({ workspaceId, navigate }: { workspaceId: string; navig
   const [isDeleting, setIsDeleting] = useState(false)
   const [paymentObligation, setPaymentObligation] = useState<PaymentObligation | null>(null)
   const [isCollectingPayment, setIsCollectingPayment] = useState(false)
+  const { dateRange, customDates } = useDateRange()
 
   const handleStatusChange = useCallback(async (id: string, newStatus: string) => {
     setUpdatingId(id)
@@ -249,6 +252,20 @@ function AppointmentList({ workspaceId, navigate }: { workspaceId: string; navig
         a.appointmentType.toLowerCase().includes(q)
       )
     }
+    const now = new Date()
+    if (dateRange === 'today') {
+      const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+      result = result.filter((a) => a.appointmentDate === todayStr)
+    } else if (dateRange === 'month') {
+      const startOfMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
+      result = result.filter((a) => a.appointmentDate >= startOfMonth)
+    } else if (dateRange === 'custom' && (customDates.start || customDates.end)) {
+      result = result.filter((a) => {
+        if (customDates.start && a.appointmentDate < customDates.start) return false
+        if (customDates.end && a.appointmentDate > customDates.end) return false
+        return true
+      })
+    }
     if (filter === 'today') {
       const d = new Date()
       const todayStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
@@ -261,7 +278,7 @@ function AppointmentList({ workspaceId, navigate }: { workspaceId: string; navig
       result = result.filter((a) => a.status === filter)
     }
     return result
-  }, [appointments, searchQuery, filter])
+  }, [appointments, searchQuery, filter, dateRange, customDates])
 
   const handleCollectPayment = (appointment: ClinicalAppointment) => {
     const obligation = buildClinicalAppointmentPaymentObligation(appointment, paymentTransactions)
@@ -349,6 +366,8 @@ function AppointmentList({ workspaceId, navigate }: { workspaceId: string; navig
           />
         </div>
       </div>
+
+      <DateRangeFilters />
 
       <div className="flex items-center gap-2 flex-wrap">
         {[
@@ -577,6 +596,7 @@ function CreateAppointmentForm({ workspaceId, appointment, onCancel, onSaved }: 
   const { t } = useTranslation()
   const { user } = useAuth()
   const { features } = useWorkspace()
+  const registryType = useClinicalRegistryType(workspaceId)
   const isEditing = !!appointment
 
   const [patientSearch, setPatientSearch] = useState('')
@@ -986,6 +1006,7 @@ function CreateAppointmentForm({ workspaceId, appointment, onCancel, onSaved }: 
                       <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold uppercase tracking-wider text-muted-foreground/60">{features.iqd_display_preference}</span>
                     </div>
                   </div>
+                  {registryType !== 'beauty' && (
                   <div className="grid gap-2">
                     <Label>{t('clinicalAppointments.estimatedPrice', { defaultValue: 'Estimated Price' })}</Label>
                     <div className="relative">
@@ -993,6 +1014,7 @@ function CreateAppointmentForm({ workspaceId, appointment, onCancel, onSaved }: 
                       <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold uppercase tracking-wider text-muted-foreground/60">{features.iqd_display_preference}</span>
                     </div>
                   </div>
+                  )}
                 </div>
               </CardContent>
             </Card>
