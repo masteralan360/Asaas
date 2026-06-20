@@ -8,7 +8,7 @@ import { createClinicalAppointment, createClinicalPatient, searchClinicalPatient
 import type { ClinicalAppointment, ClinicalAppointmentStatus, ClinicalAppointmentType, ClinicalAppointmentPriority, ClinicalConfirmationMethod } from '@/local-db/clinicalAppointments'
 import { useClinicalPresetsByCategory } from '@/local-db/clinicalPresets'
 import { Button, Input, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Textarea, Label, Card, CardContent, CardHeader, CardTitle, DateTimePicker } from '@/ui/components'
-import { Plus, Search, Upload, Trash2, FileText, ArrowLeft, CalendarClock, Edit, Check, ChevronDown } from 'lucide-react'
+import { Plus, Search, Upload, Trash2, FileText, ArrowLeft, CalendarClock, Edit, Check, ChevronDown, LayoutGrid, List } from 'lucide-react'
 import { generateId, formatNumberWithCommas, formatTime } from '@/lib/utils'
 import { r2Service } from '@/services/r2Service'
 import { platformService } from '@/services/platformService'
@@ -81,7 +81,15 @@ function StatusCell({ status, appointmentId, onStatusChange, disabled }: {
   const handleToggle = () => {
     if (!open && ref.current) {
       const rect = ref.current.getBoundingClientRect()
-      setPos({ top: rect.bottom + 4, left: rect.left })
+      const menuWidth = 220
+      const estimatedMenuHeight = 320
+      const padding = 8
+      const maxLeft = window.innerWidth - menuWidth - padding
+      const left = Math.max(padding, Math.min(rect.left, maxLeft))
+      const topDown = rect.bottom + 4
+      const topUp = rect.top - estimatedMenuHeight - 4
+      const top = topDown + estimatedMenuHeight > window.innerHeight ? topUp : topDown
+      setPos({ top, left })
     }
     setOpen(!open)
   }
@@ -178,6 +186,10 @@ function AppointmentList({ workspaceId, navigate }: { workspaceId: string; navig
   const appointments = useClinicalAppointments(workspaceId)
   const [searchQuery, setSearchQuery] = useState('')
   const [filter, setFilter] = useState('all')
+  const [viewMode, setViewMode] = useState<'table' | 'grid'>(() => {
+    return (localStorage.getItem('clinical_appointments_view_mode') as 'table' | 'grid') || 'table'
+  })
+  useEffect(() => { localStorage.setItem('clinical_appointments_view_mode', viewMode) }, [viewMode])
   const [updatingId, setUpdatingId] = useState<string | null>(null)
 
   const handleStatusChange = useCallback(async (id: string, newStatus: string) => {
@@ -228,8 +240,8 @@ function AppointmentList({ workspaceId, navigate }: { workspaceId: string; navig
           </p>
         </div>
         <Button onClick={() => navigate('/clinical-appointments/new')}>
-          <Plus className="w-4 h-4 mr-2" />
-          {t('clinicalAppointments.createButton', { defaultValue: 'Create Appointment' })}
+          <Plus className="w-4 h-4 sm:mr-2" />
+          <span className="hidden sm:inline">{t('clinicalAppointments.createButton', { defaultValue: 'Create Appointment' })}</span>
         </Button>
       </div>
 
@@ -269,53 +281,160 @@ function AppointmentList({ workspaceId, navigate }: { workspaceId: string; navig
         ))}
       </div>
 
-      <div className="border rounded-lg">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>{t('clinicalAppointments.patient', { defaultValue: 'Patient' })}</TableHead>
-              <TableHead>{t('clinicalAppointments.dateTime', { defaultValue: 'Date & Time' })}</TableHead>
-              <TableHead>{t('clinicalAppointments.type', { defaultValue: 'Type' })}</TableHead>
-              <TableHead>{t('clinicalAppointments.status', { defaultValue: 'Status' })}</TableHead>
-              <TableHead>{t('clinicalAppointments.priority', { defaultValue: 'Priority' })}</TableHead>
-              <TableHead>{t('clinicalAppointments.actions', { defaultValue: 'Actions' })}</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
+      <div className="hidden md:flex items-center gap-2">
+        <div className="flex items-center bg-muted/30 p-1 rounded-lg border border-border/40">
+          <Button
+            size="sm"
+            variant={viewMode === 'table' ? 'default' : 'ghost'}
+            onClick={() => setViewMode('table')}
+          >
+            <List className="w-3.5 h-3.5" />
+          </Button>
+          <Button
+            size="sm"
+            variant={viewMode === 'grid' ? 'default' : 'ghost'}
+            onClick={() => setViewMode('grid')}
+          >
+            <LayoutGrid className="w-3.5 h-3.5" />
+          </Button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 md:hidden">
+        {filtered.length === 0 ? (
+          <div className="text-center text-muted-foreground py-12">
+            {t('clinicalAppointments.noAppointments', { defaultValue: 'No appointments found' })}
+          </div>
+        ) : (
+          filtered.map((appt) => (
+            <div key={appt.id} className="p-4 border shadow-sm space-y-3 transition-all active:scale-[0.98] bg-background rounded-2xl border-border">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0 flex-1">
+                  <p className="font-semibold truncate">{appt.patientName}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {appt.appointmentDate}{' '}
+                    <span>{formatTime(`${appt.appointmentDate}T${appt.startTime}`)}</span>
+                  </p>
+                </div>
+                <StatusCell
+                  status={appt.status}
+                  appointmentId={appt.id}
+                  onStatusChange={handleStatusChange}
+                  disabled={updatingId === appt.id}
+                />
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="capitalize text-muted-foreground">
+                  {t('clinicalAppointments.types.' + appt.appointmentType, {defaultValue: appt.appointmentType.replace(/_/g, ' ')})}
+                </span>
+                <span className="capitalize text-xs font-medium text-muted-foreground">
+                  {t('clinicalAppointments.priorities.' + appt.priority, {defaultValue: appt.priority})}
+                </span>
+              </div>
+              <div className="flex justify-end">
+                <Button variant="ghost" size="sm" onClick={() => navigate(`/clinical-appointments/${appt.id}/edit`)}>
+                  <Edit className="w-3.5 h-3.5 mr-1.5" />
+                  {t('clinicalAppointments.actions', { defaultValue: 'Edit' })}
+                </Button>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+
+      <div className="hidden md:block">
+        {viewMode === 'grid' ? (
+          <div className="grid gap-4 grid-cols-1 md:grid-cols-2 xl:grid-cols-3">
             {filtered.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={6} className="text-center text-muted-foreground py-12">
-                  {t('clinicalAppointments.noAppointments', { defaultValue: 'No appointments found' })}
-                </TableCell>
-              </TableRow>
+              <div className="col-span-full text-center text-muted-foreground py-12">
+                {t('clinicalAppointments.noAppointments', { defaultValue: 'No appointments found' })}
+              </div>
             ) : (
               filtered.map((appt) => (
-                <TableRow key={appt.id}>
-                  <TableCell className="font-medium">{appt.patientName}</TableCell>
-                  <TableCell className="whitespace-nowrap">
-                    {appt.appointmentDate}{' '}
-                    <span className="text-muted-foreground">{formatTime(`${appt.appointmentDate}T${appt.startTime}`)}</span>
-                  </TableCell>
-                  <TableCell className="capitalize">{t('clinicalAppointments.types.' + appt.appointmentType, {defaultValue: appt.appointmentType.replace(/_/g, ' ')})}</TableCell>
-                  <TableCell>
+                <div key={appt.id} className="p-4 border shadow-sm space-y-3 transition-all active:scale-[0.98] bg-background rounded-2xl border-border">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="font-semibold truncate">{appt.patientName}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {appt.appointmentDate}{' '}
+                        <span>{formatTime(`${appt.appointmentDate}T${appt.startTime}`)}</span>
+                      </p>
+                    </div>
                     <StatusCell
                       status={appt.status}
                       appointmentId={appt.id}
                       onStatusChange={handleStatusChange}
                       disabled={updatingId === appt.id}
                     />
-                  </TableCell>
-                  <TableCell className="capitalize">{t('clinicalAppointments.priorities.' + appt.priority, {defaultValue: appt.priority})}</TableCell>
-                  <TableCell>
-                    <Button variant="ghost" size="icon" onClick={() => navigate(`/clinical-appointments/${appt.id}/edit`)}>
-                      <Edit className="h-4 w-4" />
+                  </div>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="capitalize text-muted-foreground">
+                      {t('clinicalAppointments.types.' + appt.appointmentType, {defaultValue: appt.appointmentType.replace(/_/g, ' ')})}
+                    </span>
+                    <span className="capitalize text-xs font-medium text-muted-foreground">
+                      {t('clinicalAppointments.priorities.' + appt.priority, {defaultValue: appt.priority})}
+                    </span>
+                  </div>
+                  <div className="flex justify-end">
+                    <Button variant="ghost" size="sm" onClick={() => navigate(`/clinical-appointments/${appt.id}/edit`)}>
+                      <Edit className="w-3.5 h-3.5 mr-1.5" />
+                      {t('clinicalAppointments.actions', { defaultValue: 'Edit' })}
                     </Button>
-                  </TableCell>
-                </TableRow>
+                  </div>
+                </div>
               ))
             )}
-          </TableBody>
-        </Table>
+          </div>
+        ) : (
+        <div className="border rounded-lg">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>{t('clinicalAppointments.patient', { defaultValue: 'Patient' })}</TableHead>
+                <TableHead>{t('clinicalAppointments.dateTime', { defaultValue: 'Date & Time' })}</TableHead>
+                <TableHead>{t('clinicalAppointments.type', { defaultValue: 'Type' })}</TableHead>
+                <TableHead>{t('clinicalAppointments.status', { defaultValue: 'Status' })}</TableHead>
+                <TableHead>{t('clinicalAppointments.priority', { defaultValue: 'Priority' })}</TableHead>
+                <TableHead>{t('clinicalAppointments.actions', { defaultValue: 'Actions' })}</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filtered.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={6} className="text-center text-muted-foreground py-12">
+                    {t('clinicalAppointments.noAppointments', { defaultValue: 'No appointments found' })}
+                  </TableCell>
+                </TableRow>
+              ) : (
+                filtered.map((appt) => (
+                  <TableRow key={appt.id}>
+                    <TableCell className="font-medium">{appt.patientName}</TableCell>
+                    <TableCell className="whitespace-nowrap">
+                      {appt.appointmentDate}{' '}
+                      <span className="text-muted-foreground">{formatTime(`${appt.appointmentDate}T${appt.startTime}`)}</span>
+                    </TableCell>
+                    <TableCell className="capitalize">{t('clinicalAppointments.types.' + appt.appointmentType, {defaultValue: appt.appointmentType.replace(/_/g, ' ')})}</TableCell>
+                    <TableCell>
+                      <StatusCell
+                        status={appt.status}
+                        appointmentId={appt.id}
+                        onStatusChange={handleStatusChange}
+                        disabled={updatingId === appt.id}
+                      />
+                    </TableCell>
+                    <TableCell className="capitalize">{t('clinicalAppointments.priorities.' + appt.priority, {defaultValue: appt.priority})}</TableCell>
+                    <TableCell>
+                      <Button variant="ghost" size="icon" onClick={() => navigate(`/clinical-appointments/${appt.id}/edit`)}>
+                        <Edit className="w-4 h-4" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </div>
+        )}
       </div>
     </div>
   )
