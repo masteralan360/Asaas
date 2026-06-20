@@ -24,6 +24,7 @@ import { isMobile, isDesktop } from "./lib/platform";
 import { isDemoEnabled } from "@/demo";
 import { getPathWithLang } from "@/lib/i18nRouting";
 import i18n from "@/i18n/config";
+import { ClinicalRegistryLocaleSync } from "@/i18n/ClinicalRegistryLocaleSync";
 import { useFavicon } from "@/hooks/useFavicon";
 import { whatsappManager } from "@/lib/whatsappWebviewManager";
 import { useKdsStream } from "@/hooks/useKdsStream";
@@ -882,6 +883,7 @@ function App() {
     <AuthProvider>
       <DeviceTokenBootstrap />
       <WorkspaceProvider>
+        <ClinicalRegistryLocaleSync />
         <WorkspacePermissionsProvider>
           <FleetLocationSharingProvider>
             <UiAccessProvider>

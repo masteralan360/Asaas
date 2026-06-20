@@ -1,4 +1,5 @@
-import { useState, useMemo, useCallback, useEffect } from 'react'
+import { useState, useMemo, useCallback, useEffect, useRef, Fragment } from 'react'
+import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useAuth } from '@/auth'
@@ -6,8 +7,8 @@ import { db } from '@/local-db/database'
 import { createClinicalAppointment, createClinicalPatient, searchClinicalPatients, useClinicalAppointments, useClinicalAppointment, updateClinicalAppointment, calculateAge } from '@/local-db/clinicalAppointments'
 import type { ClinicalAppointment, ClinicalAppointmentStatus, ClinicalAppointmentType, ClinicalAppointmentPriority, ClinicalConfirmationMethod } from '@/local-db/clinicalAppointments'
 import { useClinicalPresetsByCategory } from '@/local-db/clinicalPresets'
-import { Button, Input, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Textarea, Label, Badge, Card, CardContent, CardHeader, CardTitle, DateTimePicker } from '@/ui/components'
-import { Plus, Search, Upload, Trash2, FileText, ArrowLeft, CalendarClock, Edit } from 'lucide-react'
+import { Button, Input, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Textarea, Label, Card, CardContent, CardHeader, CardTitle, DateTimePicker } from '@/ui/components'
+import { Plus, Search, Upload, Trash2, FileText, ArrowLeft, CalendarClock, Edit, Check, ChevronDown } from 'lucide-react'
 import { generateId, formatNumberWithCommas, formatTime } from '@/lib/utils'
 import { r2Service } from '@/services/r2Service'
 import { platformService } from '@/services/platformService'
@@ -26,15 +27,114 @@ function fileToDataUrl(file: File): Promise<string> {
   })
 }
 
-const STATUS_VARIANTS: Record<string, string> = {
-  draft: 'secondary',
-  scheduled: 'default',
-  confirmed: 'default',
-  arrived: 'outline',
-  in_progress: 'warning',
-  completed: 'success',
-  cancelled: 'destructive',
-  no_show: 'destructive',
+const STATUS_COLORS: Record<string, { badge: string; dot: string }> = {
+  draft: { badge: 'bg-slate-100 text-slate-700', dot: 'bg-slate-400' },
+  booked: { badge: 'bg-blue-100 text-blue-700', dot: 'bg-blue-500' },
+  arrived: { badge: 'bg-indigo-100 text-indigo-700', dot: 'bg-indigo-500' },
+  in_progress: { badge: 'bg-amber-100 text-amber-800', dot: 'bg-amber-500' },
+  completed: { badge: 'bg-emerald-100 text-emerald-700', dot: 'bg-green-500' },
+  cancelled: { badge: 'bg-red-100 text-red-700', dot: 'bg-red-500' },
+  no_show: { badge: 'bg-rose-100 text-rose-700', dot: 'bg-rose-500' },
+}
+
+const STATUS_GROUPS = [
+  ['draft', 'booked', 'arrived', 'in_progress', 'completed'],
+  ['cancelled', 'no_show'],
+]
+
+function StatusCell({ status, appointmentId, onStatusChange, disabled }: {
+  status: string
+  appointmentId: string
+  onStatusChange: (id: string, newStatus: string) => void
+  disabled: boolean
+}) {
+  const { t } = useTranslation()
+  const [open, setOpen] = useState(false)
+  const [pos, setPos] = useState({ top: 0, left: 0 })
+  const ref = useRef<HTMLDivElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const handler = (e: MouseEvent) => {
+      if (
+        ref.current && !ref.current.contains(e.target as Node) &&
+        menuRef.current && !menuRef.current.contains(e.target as Node)
+      ) setOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [open])
+
+  useEffect(() => {
+    if (!open) return
+    const onScroll = () => setOpen(false)
+    window.addEventListener('scroll', onScroll, true)
+    return () => window.removeEventListener('scroll', onScroll, true)
+  }, [open])
+
+  const currentColors = STATUS_COLORS[status] ?? STATUS_COLORS.draft
+  const currentLabel = t('clinicalAppointments.statuses.' + status, {
+    defaultValue: status.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+  })
+
+  const handleToggle = () => {
+    if (!open && ref.current) {
+      const rect = ref.current.getBoundingClientRect()
+      setPos({ top: rect.bottom + 4, left: rect.left })
+    }
+    setOpen(!open)
+  }
+
+  const menu = (
+    <div
+      ref={menuRef}
+      style={{ position: 'fixed', top: pos.top, left: pos.left, zIndex: 100 }}
+      className="min-w-[220px] bg-white border border-slate-200 rounded-xl shadow-lg py-1.5"
+    >
+      {STATUS_GROUPS.map((group, gi) => (
+        <Fragment key={gi}>
+          {gi > 0 && <div className="mx-2 my-1 border-t border-slate-100" />}
+          {group.map((s) => {
+            const c = STATUS_COLORS[s] ?? STATUS_COLORS.draft
+            const label = t('clinicalAppointments.statuses.' + s, {
+              defaultValue: s.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+            })
+            const desc = t('clinicalAppointments.statusDescriptions.' + s, { defaultValue: '' })
+            const selected = s === status
+            return (
+              <button
+                key={s}
+                type="button"
+                onClick={() => { onStatusChange(appointmentId, s); setOpen(false) }}
+                className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left hover:bg-slate-50 transition-colors"
+              >
+                <span className={`w-2 h-2 rounded-full flex-shrink-0 ${c.dot}`} />
+                <span className="font-medium text-slate-900">{label}</span>
+                <span className="text-xs text-slate-400 flex-1 truncate">{desc}</span>
+                {selected && <Check size={14} className="text-slate-500 flex-shrink-0 ml-auto" />}
+              </button>
+            )
+          })}
+        </Fragment>
+      ))}
+    </div>
+  )
+
+  return (
+    <div className="inline-block" ref={ref}>
+      <button
+        type="button"
+        onClick={handleToggle}
+        disabled={disabled}
+        className={`inline-flex items-center gap-1 h-7 px-2.5 rounded-full text-xs font-semibold border-0 cursor-pointer whitespace-nowrap transition-opacity disabled:opacity-50 ${currentColors.badge}`}
+      >
+        {currentLabel}
+        <ChevronDown size={12} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && createPortal(menu, document.body)}
+    </div>
+  )
 }
 
 export function ClinicalAppointments() {
@@ -77,6 +177,7 @@ function AppointmentList({ workspaceId, navigate }: { workspaceId: string; navig
   const { t } = useTranslation()
   const appointments = useClinicalAppointments(workspaceId)
   const [searchQuery, setSearchQuery] = useState('')
+  const [filter, setFilter] = useState('all')
   const [updatingId, setUpdatingId] = useState<string | null>(null)
 
   const handleStatusChange = useCallback(async (id: string, newStatus: string) => {
@@ -92,14 +193,28 @@ function AppointmentList({ workspaceId, navigate }: { workspaceId: string; navig
 
   const filtered = useMemo(() => {
     if (!appointments) return []
-    if (!searchQuery.trim()) return appointments
-    const q = searchQuery.toLowerCase()
-    return appointments.filter((a) =>
-      a.patientName.toLowerCase().includes(q) ||
-      (a.patientPhone && a.patientPhone.includes(q)) ||
-      a.appointmentType.toLowerCase().includes(q)
-    )
-  }, [appointments, searchQuery])
+    let result = appointments
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase()
+      result = result.filter((a) =>
+        a.patientName.toLowerCase().includes(q) ||
+        (a.patientPhone && a.patientPhone.includes(q)) ||
+        a.appointmentType.toLowerCase().includes(q)
+      )
+    }
+    if (filter === 'today') {
+      const d = new Date()
+      const todayStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+      result = result.filter((a) => a.appointmentDate === todayStr)
+    } else if (filter === 'upcoming') {
+      const d = new Date()
+      const todayStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+      result = result.filter((a) => a.appointmentDate > todayStr && !['completed', 'cancelled', 'no_show'].includes(a.status))
+    } else if (filter !== 'all') {
+      result = result.filter((a) => a.status === filter)
+    }
+    return result
+  }, [appointments, searchQuery, filter])
 
   return (
     <div className="p-6 space-y-6">
@@ -130,13 +245,36 @@ function AppointmentList({ workspaceId, navigate }: { workspaceId: string; navig
         </div>
       </div>
 
+      <div className="flex items-center gap-2 flex-wrap">
+        {[
+          { value: 'all', label: t('clinicalAppointments.filters.all', { defaultValue: 'All' }) },
+          { value: 'draft', label: t('clinicalAppointments.statuses.draft', { defaultValue: 'Draft' }) },
+          { value: 'booked', label: t('clinicalAppointments.statuses.booked', { defaultValue: 'Booked' }) },
+          { value: 'today', label: t('clinicalAppointments.filters.today', { defaultValue: 'Today' }) },
+          { value: 'upcoming', label: t('clinicalAppointments.filters.upcoming', { defaultValue: 'Upcoming' }) },
+          { value: 'completed', label: t('clinicalAppointments.statuses.completed', { defaultValue: 'Completed' }) },
+        ].map((chip) => (
+          <button
+            key={chip.value}
+            type="button"
+            onClick={() => setFilter(chip.value)}
+            className={`px-3 py-1.5 text-sm font-medium rounded-full border transition-colors ${
+              filter === chip.value
+                ? 'bg-primary text-primary-foreground border-primary'
+                : 'bg-background text-muted-foreground border-border hover:bg-accent hover:text-accent-foreground'
+            }`}
+          >
+            {chip.label}
+          </button>
+        ))}
+      </div>
+
       <div className="border rounded-lg">
         <Table>
           <TableHeader>
             <TableRow>
               <TableHead>{t('clinicalAppointments.patient', { defaultValue: 'Patient' })}</TableHead>
-              <TableHead>{t('clinicalAppointments.date', { defaultValue: 'Date' })}</TableHead>
-              <TableHead>{t('clinicalAppointments.time', { defaultValue: 'Time' })}</TableHead>
+              <TableHead>{t('clinicalAppointments.dateTime', { defaultValue: 'Date & Time' })}</TableHead>
               <TableHead>{t('clinicalAppointments.type', { defaultValue: 'Type' })}</TableHead>
               <TableHead>{t('clinicalAppointments.status', { defaultValue: 'Status' })}</TableHead>
               <TableHead>{t('clinicalAppointments.priority', { defaultValue: 'Priority' })}</TableHead>
@@ -146,7 +284,7 @@ function AppointmentList({ workspaceId, navigate }: { workspaceId: string; navig
           <TableBody>
             {filtered.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} className="text-center text-muted-foreground py-12">
+                <TableCell colSpan={6} className="text-center text-muted-foreground py-12">
                   {t('clinicalAppointments.noAppointments', { defaultValue: 'No appointments found' })}
                 </TableCell>
               </TableRow>
@@ -154,32 +292,18 @@ function AppointmentList({ workspaceId, navigate }: { workspaceId: string; navig
               filtered.map((appt) => (
                 <TableRow key={appt.id}>
                   <TableCell className="font-medium">{appt.patientName}</TableCell>
-                  <TableCell>{appt.appointmentDate}</TableCell>
-                  <TableCell>{formatTime(`${appt.appointmentDate}T${appt.startTime}`)}</TableCell>
+                  <TableCell className="whitespace-nowrap">
+                    {appt.appointmentDate}{' '}
+                    <span className="text-muted-foreground">{formatTime(`${appt.appointmentDate}T${appt.startTime}`)}</span>
+                  </TableCell>
                   <TableCell className="capitalize">{t('clinicalAppointments.types.' + appt.appointmentType, {defaultValue: appt.appointmentType.replace(/_/g, ' ')})}</TableCell>
                   <TableCell>
-                    <Select
-                      value={appt.status}
-                      onValueChange={(v) => handleStatusChange(appt.id, v)}
+                    <StatusCell
+                      status={appt.status}
+                      appointmentId={appt.id}
+                      onStatusChange={handleStatusChange}
                       disabled={updatingId === appt.id}
-                    >
-                      <SelectTrigger
-                        className="h-7 w-[140px] border-0 p-0 shadow-none focus:ring-0"
-                      >
-                        <Badge variant={(STATUS_VARIANTS[appt.status] as any) ?? 'secondary'} className="pointer-events-none">
-                          {t('clinicalAppointments.statuses.' + appt.status, {defaultValue: appt.status.replace(/_/g, ' ')})}
-                        </Badge>
-                      </SelectTrigger>
-                      <SelectContent>
-                        {['draft', 'scheduled', 'confirmed', 'arrived', 'in_progress', 'completed', 'cancelled', 'no_show'].map((s) => (
-                          <SelectItem key={s} value={s}>
-                            <Badge variant={(STATUS_VARIANTS[s] as any) ?? 'secondary'} className="pointer-events-none">
-                              {t('clinicalAppointments.statuses.' + s, {defaultValue: s.replace(/_/g, ' ')})}
-                            </Badge>
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    />
                   </TableCell>
                   <TableCell className="capitalize">{t('clinicalAppointments.priorities.' + appt.priority, {defaultValue: appt.priority})}</TableCell>
                   <TableCell>
@@ -631,7 +755,7 @@ function CreateAppointmentForm({ workspaceId, appointment, onCancel, onSaved }: 
                       <Select value={status} onValueChange={(v: ClinicalAppointmentStatus) => setStatus(v)}>
                         <SelectTrigger><SelectValue /></SelectTrigger>
                         <SelectContent>
-                          {['draft', 'scheduled', 'confirmed', 'arrived', 'in_progress', 'completed', 'cancelled', 'no_show'].map((s) => (
+                          {['draft', 'booked', 'arrived', 'in_progress', 'completed', 'cancelled', 'no_show'].map((s) => (
                             <SelectItem key={s} value={s}>{t('clinicalAppointments.statuses.' + s, {defaultValue: s.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())})}</SelectItem>
                           ))}
                         </SelectContent>

@@ -6,8 +6,7 @@ import { useRoute, useLocation } from 'wouter'
 
 const STATUS_VARIANTS: Record<string, string> = {
   draft: 'secondary',
-  scheduled: 'default',
-  confirmed: 'default',
+  booked: 'default',
   arrived: 'outline',
   in_progress: 'warning',
   completed: 'success',

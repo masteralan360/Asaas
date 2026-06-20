@@ -3853,8 +3853,7 @@
     "actions": "الإجراءات",
     "statuses": {
       "draft": "مسودة",
-      "scheduled": "مجدول",
-      "confirmed": "مؤكد",
+      "booked": "مجدول",
       "arrived": "وصل",
       "in_progress": "قيد التنفيذ",
       "completed": "مكتمل",

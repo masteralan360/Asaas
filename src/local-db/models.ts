@@ -897,8 +897,7 @@ export interface ExchangeSafeMovement extends BaseEntity {
 
 export type ClinicalAppointmentStatus =
   | 'draft'
-  | 'scheduled'
-  | 'confirmed'
+  | 'booked'
   | 'arrived'
   | 'in_progress'
   | 'completed'

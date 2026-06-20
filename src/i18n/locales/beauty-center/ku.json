@@ -1,0 +1,180 @@
+{
+  "clinicalAppointments": {
+    "title": "نۆرەکانی ناوەندی جوانکاری",
+    "subtitle": "خشتەبەندی، بەڕێوەبردن و شوێنکەوتنی نۆرەکانی کڕیار لەگەڵ تۆماری خزمەتگوزاری و نوێکردنەوەی بارودۆخ.",
+    "createTitle": "دروستکردنی نۆرە",
+    "createDescription": "تۆمارکردنی نۆرەی کڕیار بە وردەکاری خشتەبەندی، زانیاری خزمەتگوزاری و شوێنکەوتنی بارودۆخ.",
+    "patients": "کڕیارەکان",
+    "patientsSubtitle": "بینین و بەڕێوەبردنی تۆمارەکانی کڕیار",
+    "searchPlaceholder": "گەڕان لە نۆرەکان...",
+    "searchPatient": "گەڕان بەدوای کڕیارەکان...",
+    "noAppointments": "هیچ نۆرەیەک نەدۆزرایەوە",
+    "noPatients": "هیچ کڕیارێک نەدۆزرایەوە",
+    "patientNotFound": "کڕیار نەدۆزرایەوە",
+    "backToPatients": "گەڕانەوە بۆ کڕیارەکان",
+    "appointmentHistory": "مێژووی نۆرەکان",
+    "registeredOn": "تۆمارکراو لە",
+    "newPatient": "کڕیاری نوێ",
+    "existingPatient": "کڕیاری هەبوو",
+    "patientName": "ناوی کڕیار",
+    "phone": "تەلەفۆن",
+    "email": "ئیمەیڵ",
+    "birthYear": "ساڵی لەدایکبوون",
+    "age": "تەمەن",
+    "notes": "تێبینییەکان",
+    "createdAt": "دروستکراو لە",
+    "createButton": "دروستکردنی نۆرە",
+    "editTitle": "دەستکاری نۆرە",
+    "editDescription": "نوێکردنەوەی وردەکاری نۆرەکە.",
+    "patientSection": "کڕیار",
+    "createNewPatient": "دروستکردنی کڕیاری نوێ",
+    "savePatient": "پاشەکەوتکردنی کڕیار",
+    "appointmentSection": "نۆرە",
+    "dateTime": "بەروار و کات",
+    "statusSection": "بارودۆخ",
+    "notesSection": "تێبینییەکان",
+    "attachments": "پێوەکراوەکان",
+    "uploadFiles": "بارکردنی پەڕگەکان",
+    "saveChanges": "پاشەکەوتکردنی گۆڕانکارییەکان",
+    "createAppointment": "دروستکردنی نۆرە",
+    "reasonForVisitPlaceholder": "بۆ نموونە: ڕێکخستنی قژ",
+    "appointmentType": "جۆری نۆرە",
+    "reasonForVisit": "خزمەتگوزاری داواکراو",
+    "consultationFee": "کرێی خزمەتگوزاری",
+    "estimatedPrice": "نرخی خەمڵێنراو",
+    "confirmationMethod": "شێوازی پشتڕاستکردنەوە",
+    "internalNotes": "تێبینییە ناوخۆییەکان",
+    "date": "بەروار",
+    "time": "کات",
+    "patient": "کڕیار",
+    "type": "جۆر",
+    "actions": "کردارەکان",
+    "statuses": {
+      "draft": "ڕەشنووس",
+      "scheduled": "حجز کراوە",
+      "arrived": "گەیشتووە",
+      "in_progress": "لە جێبەجێکردندایە",
+      "completed": "تەواوکراو",
+      "cancelled": "پووچەڵکراوە",
+      "no_show": "ئامادەنەبوو"
+    },
+    "statusDescriptions": {
+      "draft": "ئامادە نییە بۆ حجز",
+      "scheduled": "نۆرەکە حجز کراوە",
+      "arrived": "کڕیار گەیشتووە",
+      "in_progress": "خزمەتگوزاری دەستی پێکرد",
+      "completed": "خزمەتگوزاری تەواو بوو",
+      "cancelled": "نۆرەکە پووچەڵکراوە",
+      "no_show": "کڕیار ئامادە نەبوو"
+    },
+    "confirmationMethods": {
+      "phone": "تەلەفۆن",
+      "sms": "نامە",
+      "whatsapp": "واتساپ",
+      "email": "ئیمەیڵ",
+      "other": "تری"
+    },
+    "types": {
+      "consultation": "ڕاوێژکاری جوانکاری",
+      "follow_up": "بەدواداچوون",
+      "emergency": "نۆرەی پەلە",
+      "checkup": "هەڵسەنگاندن",
+      "procedure": "خزمەتگوزاری",
+      "treatment": "چارەسەری جوانکاری"
+    },
+    "priorities": {
+      "normal": "ئاسایی",
+      "urgent": "گرنگ",
+      "emergency": "دەستبەجێ"
+    },
+    "patientTypes": {
+      "new": "کڕیاری نوێ",
+      "existing": "کڕیاری هەبوو"
+    },
+    "table": {
+      "date": "بەروار",
+      "time": "کات",
+      "patient": "کڕیار",
+      "type": "جۆر",
+      "status": "بارودۆخ",
+      "priority": "پلەبەندی",
+      "confirmation": "پشتڕاستکردنەوە",
+      "fee": "کرێ",
+      "actions": "کردارەکان"
+    },
+    "form": {
+      "patient": {
+        "label": "کڕیار",
+        "searchPlaceholder": "گەڕان بە ناو یان تەلەفۆن...",
+        "createNew": "دروستکردنی کڕیاری نوێ",
+        "nameLabel": "ناوی کڕیار",
+        "namePlaceholder": "ناوی کڕیار بنووسە",
+        "birthYearLabel": "ساڵی لەدایکبوون",
+        "ageLabel": "تەمەن",
+        "phoneLabel": "ژمارەی تەلەفۆن",
+        "phonePlaceholder": "ژمارەی تەلەفۆن بنووسە",
+        "emailLabel": "ئیمەیڵ",
+        "emailPlaceholder": "ناونیشانی ئیمەیڵ بنووسە",
+        "type": "جۆری کڕیار",
+        "notesLabel": "تێبینییەکان",
+        "notesPlaceholder": "تێبینییەکانی تر دەربارەی کڕیار"
+      },
+      "appointment": {
+        "dateLabel": "بەرواری نۆرە",
+        "startTimeLabel": "کاتی دەستپێکردن",
+        "typeLabel": "جۆری نۆرە",
+        "typePlaceholder": "جۆر هەڵبژێرە",
+        "reasonLabel": "خزمەتگوزاری داواکراو",
+        "reasonPlaceholder": "بە کورتی خزمەتگوزاری داواکراو بنووسە"
+      },
+      "service": {
+        "label": "خزمەتگوزاری جوانکاری",
+        "placeholder": "وردەکاری خزمەتگوزاری جوانکاری بنووسە",
+        "consultationFee": "کرێی خزمەتگوزاری",
+        "estimatedPrice": "نرخی خەمڵێنراو"
+      },
+      "status": {
+        "statusLabel": "بارودۆخ",
+        "confirmationMethodLabel": "شێوازی پشتڕاستکردنەوە",
+        "priorityLabel": "پلەبەندی"
+      },
+      "notes": {
+        "internalNotesLabel": "تێبینییە ناوخۆییەکان",
+        "internalNotesPlaceholder": "تێبینی تایبەت بە ستاف دەربارەی ئەم نۆرەیە"
+      },
+      "attachments": {
+        "label": "پێوەکراوەکان",
+        "upload": "بارکردنی پەڕگەکان",
+        "noFiles": "هیچ پەڕگەیەک پێوەنەکراوە"
+      }
+    },
+    "pricingSection": "نرخدانان",
+    "messages": {
+      "created": "نۆرەکە بە سەرکەوتوویی دروستکرا",
+      "createFailed": "دروستکردنی نۆرەکە سەرکەوتوو نەبوو",
+      "updated": "نۆرەکە بە سەرکەوتوویی نوێکرایەوە",
+      "updateFailed": "نوێکردنەوەی نۆرەکە سەرکەوتوو نەبوو",
+      "deleted": "نۆرەکە بە سەرکەوتوویی سڕایەوە",
+      "deleteFailed": "سڕینەوەی نۆرەکە سەرکەوتوو نەبوو",
+      "patientCreated": "کڕیارەکە بە سەرکەوتوویی دروستکرا",
+      "patientCreateFailed": "دروستکردنی کڕیارەکە سەرکەوتوو نەبوو",
+      "patientUpdated": "کڕیارەکە بە سەرکەوتوویی نوێکرایەوە",
+      "patientUpdateFailed": "نوێکردنەوەی کڕیارەکە سەرکەوتوو نەبوو"
+    }
+  },
+  "clinicalPresets": {
+    "title": "پێشەکییەکانی خزمەتگوزاری",
+    "subtitle": "ڕێکخستنی پێشەکییە دووبارە بەکارهاتووەکان بۆ نۆرەکانی ناوەندی جوانکاری.",
+    "reasonForVisit": "خزمەتگوزارییە داواکراوەکان",
+    "appointmentType": "جۆرەکانی نۆرە",
+    "add": "زیادکردن",
+    "type": "جۆر",
+    "name": "ناو",
+    "namePlaceholder": "ناو بنووسە...",
+    "consultationFee": "کرێی خزمەتگوزاری",
+    "actions": "کردارەکان",
+    "sort": "ڕێکخستن",
+    "empty": "هیچ پێشەکییەک ڕێکنەخراوە.",
+    "deleteConfirm": "ئایا دڵنیایی لە سڕینەوەی ئەم پێشەکییە؟"
+  }
+}

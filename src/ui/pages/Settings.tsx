@@ -7,7 +7,7 @@ import { useTranslation } from 'react-i18next'
 import { useWorkspace } from '@/workspace'
 import { Coins } from 'lucide-react'
 import type { IQDDisplayPreference, CurrencyCode } from '@/local-db/models'
-import { Settings as SettingsIcon, Database, Cloud, Trash2, RefreshCw, User, Copy, Check, CreditCard, Globe, Download, AlertCircle, Printer, Contact, Fingerprint, Store, ExternalLink, Usb } from 'lucide-react'
+import { Settings as SettingsIcon, Database, Cloud, Trash2, RefreshCw, User, Copy, Check, CreditCard, Globe, Download, AlertCircle, Printer, Contact, Fingerprint, Store, ExternalLink, Usb, CalendarClock } from 'lucide-react'
 import { formatDate, formatDateTime, formatTime, cn, generateId, getHourDisplayPreference, setHourDisplayPreference, type HourDisplayPreference } from '@/lib/utils'
 import { useTheme } from '@/ui/components/theme-provider'
 import { Moon, Sun, Monitor, Unlock, Server, MessageSquare, Bell, MonitorPlay, Wifi, Zap } from 'lucide-react'
@@ -35,12 +35,13 @@ import { useUsbBackup } from '@/hooks/useUsbBackup'
 import { downloadDatabaseFile } from '@/local-db/localModeSqlite'
 import { ReactQRCode } from '@lglab/react-qr-code'
 import { BranchManager } from '@/ui/components/workspace/BranchManager'
+import { canManageClinicalRegistryType, setClinicalRegistryType, useClinicalRegistryType } from '@/i18n/clinicalRegistry'
 
 export function Settings() {
     const { user, signOut, isSupabaseConfigured, updateUser } = useAuth()
     const { syncState, pendingCount, lastSyncTime, sync, isSyncing, isOnline } = useSyncStatus()
     const { theme, setTheme, style, setStyle } = useTheme()
-    const { features, updateSettings, refreshFeatures, workspaceName, isLocked, isLocalMode, isDemoMode, isHybridMode, hasCapability, planCapabilities } = useWorkspace()
+    const { features, updateSettings, refreshFeatures, workspaceName, isLocked, isLocalMode, isDemoMode, isHybridMode, hasFeature, hasCapability, planCapabilities } = useWorkspace()
     const { streamUrl, status: kdsStatus, startStream } = useKdsStream(true)
 
     useEffect(() => {
@@ -66,6 +67,11 @@ export function Settings() {
     const [monthDisplayPreference, setMonthDisplayPreferenceState] = useState<MonthDisplayPreference>(getMonthDisplayPreference())
     const [hasFxAccountingData, setHasFxAccountingData] = useState(false)
     const isKdsSaving = false
+    const clinicalRegistryType = useClinicalRegistryType(user?.workspaceId)
+    const canManageClinicalRegistry = canManageClinicalRegistryType(
+        user?.role,
+        hasFeature('clinical_appointments'),
+    )
 
     // Biometric State
     const [biometricEnabled, setBiometricEnabled] = useState(localStorage.getItem('biometric_enabled') === 'true')
@@ -2155,6 +2161,56 @@ export function Settings() {
 
                 <TabsContent value="workspace" className="space-y-6 mt-0">
 
+                    {canManageClinicalRegistry && user?.workspaceId && (
+                        <Card>
+                            <CardHeader>
+                                <CardTitle className="flex items-center gap-2">
+                                    <CalendarClock className="w-5 h-5" />
+                                    {t('settings.clinicalRegistry.title', { defaultValue: 'Appointment Registry Type' })}
+                                </CardTitle>
+                                <CardDescription>
+                                    {t('settings.clinicalRegistry.description', {
+                                        defaultValue: 'Choose whether this appointment registry uses medical patient clinic or Beauty Center terminology.',
+                                    })}
+                                </CardDescription>
+                            </CardHeader>
+                            <CardContent>
+                                <div className="flex items-center justify-between gap-6 rounded-lg border border-border bg-muted/50 p-4">
+                                    <div className="space-y-1">
+                                        <Label htmlFor="clinical-registry-type">
+                                            {clinicalRegistryType === 'beauty'
+                                                ? t('settings.clinicalRegistry.beauty', { defaultValue: 'Beauty Center' })
+                                                : t('settings.clinicalRegistry.medical', { defaultValue: 'Medical Patient Clinic' })}
+                                        </Label>
+                                        <p className="text-xs text-muted-foreground">
+                                            {t('settings.clinicalRegistry.localOnly', {
+                                                defaultValue: 'Changes terminology on this device only. It does not change or migrate appointment data.',
+                                            })}
+                                        </p>
+                                    </div>
+                                    <div className="flex shrink-0 items-center gap-3">
+                                        <span className="hidden text-xs font-medium text-muted-foreground sm:inline">
+                                            {t('settings.clinicalRegistry.medical', { defaultValue: 'Medical Patient Clinic' })}
+                                        </span>
+                                        <Switch
+                                            id="clinical-registry-type"
+                                            checked={clinicalRegistryType === 'beauty'}
+                                            onCheckedChange={(checked) => setClinicalRegistryType(
+                                                user.workspaceId,
+                                                checked ? 'beauty' : 'medical',
+                                            )}
+                                            aria-label={t('settings.clinicalRegistry.toggleLabel', {
+                                                defaultValue: 'Use Beauty Center terminology',
+                                            })}
+                                        />
+                                        <span className="hidden text-xs font-medium text-muted-foreground sm:inline">
+                                            {t('settings.clinicalRegistry.beauty', { defaultValue: 'Beauty Center' })}
+                                        </span>
+                                    </div>
+                                </div>
+                            </CardContent>
+                        </Card>
+                    )}
 
                     {/* Printing Settings */}
                     <Card>

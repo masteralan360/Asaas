@@ -1,0 +1,180 @@
+{
+  "clinicalAppointments": {
+    "title": "Beauty Center Appointments",
+    "subtitle": "Schedule, manage, and track client appointments with service records and status updates.",
+    "createTitle": "Create Appointment",
+    "createDescription": "Record a new client appointment with scheduling details, service information, and status tracking.",
+    "patients": "Clients",
+    "patientsSubtitle": "View and manage client records",
+    "searchPlaceholder": "Search appointments...",
+    "searchPatient": "Search clients...",
+    "noAppointments": "No appointments found",
+    "noPatients": "No clients found",
+    "patientNotFound": "Client not found",
+    "backToPatients": "Back to Clients",
+    "appointmentHistory": "Appointment History",
+    "registeredOn": "Registered on",
+    "newPatient": "New Client",
+    "existingPatient": "Existing Client",
+    "patientName": "Client Name",
+    "phone": "Phone",
+    "email": "Email",
+    "birthYear": "Birth Year",
+    "age": "Age",
+    "notes": "Notes",
+    "createdAt": "Created",
+    "createButton": "Create Appointment",
+    "editTitle": "Edit Appointment",
+    "editDescription": "Update the appointment details.",
+    "patientSection": "Client",
+    "createNewPatient": "Create new client",
+    "savePatient": "Save Client",
+    "appointmentSection": "Appointment",
+    "dateTime": "Date & Time",
+    "statusSection": "Status",
+    "notesSection": "Notes",
+    "attachments": "Attachments",
+    "uploadFiles": "Upload Files",
+    "saveChanges": "Save Changes",
+    "createAppointment": "Create Appointment",
+    "reasonForVisitPlaceholder": "e.g. Hair styling",
+    "appointmentType": "Appointment Type",
+    "reasonForVisit": "Requested Service",
+    "consultationFee": "Service Fee",
+    "estimatedPrice": "Estimated Price",
+    "confirmationMethod": "Method",
+    "internalNotes": "Internal Notes",
+    "date": "Date",
+    "time": "Time",
+    "patient": "Client",
+    "type": "Type",
+    "actions": "Actions",
+    "statuses": {
+      "draft": "Draft",
+      "booked": "Booked",
+      "arrived": "Arrived",
+      "in_progress": "In Progress",
+      "completed": "Completed",
+      "cancelled": "Cancelled",
+      "no_show": "No Show"
+    },
+    "statusDescriptions": {
+      "draft": "Not ready to schedule",
+      "booked": "Appointment is booked",
+      "arrived": "Client has arrived",
+      "in_progress": "Service started",
+      "completed": "Service finished",
+      "cancelled": "Appointment cancelled",
+      "no_show": "Client did not attend"
+    },
+    "confirmationMethods": {
+      "phone": "Phone",
+      "sms": "SMS",
+      "whatsapp": "WhatsApp",
+      "email": "Email",
+      "other": "Other"
+    },
+    "types": {
+      "consultation": "Beauty Consultation",
+      "follow_up": "Follow Up",
+      "emergency": "Urgent Appointment",
+      "checkup": "Assessment",
+      "procedure": "Service",
+      "treatment": "Beauty Treatment"
+    },
+    "priorities": {
+      "normal": "Normal",
+      "urgent": "High Priority",
+      "emergency": "Immediate"
+    },
+    "patientTypes": {
+      "new": "New Client",
+      "existing": "Existing Client"
+    },
+    "table": {
+      "date": "Date",
+      "time": "Time",
+      "patient": "Client",
+      "type": "Type",
+      "status": "Status",
+      "priority": "Priority",
+      "confirmation": "Confirmation",
+      "fee": "Fee",
+      "actions": "Actions"
+    },
+    "form": {
+      "patient": {
+        "label": "Client",
+        "searchPlaceholder": "Search by name or phone...",
+        "createNew": "Create New Client",
+        "nameLabel": "Client Name",
+        "namePlaceholder": "Enter client name",
+        "birthYearLabel": "Birth Year",
+        "ageLabel": "Age",
+        "phoneLabel": "Phone Number",
+        "phonePlaceholder": "Enter phone number",
+        "emailLabel": "Email",
+        "emailPlaceholder": "Enter email address",
+        "type": "Client Type",
+        "notesLabel": "Notes",
+        "notesPlaceholder": "Additional notes about the client"
+      },
+      "appointment": {
+        "dateLabel": "Appointment Date",
+        "startTimeLabel": "Start Time",
+        "typeLabel": "Appointment Type",
+        "typePlaceholder": "Select type",
+        "reasonLabel": "Requested Service",
+        "reasonPlaceholder": "Briefly describe the requested service"
+      },
+      "service": {
+        "label": "Beauty Service",
+        "placeholder": "Enter beauty service details",
+        "consultationFee": "Service Fee",
+        "estimatedPrice": "Estimated Price"
+      },
+      "status": {
+        "statusLabel": "Status",
+        "confirmationMethodLabel": "Confirmation Method",
+        "priorityLabel": "Priority"
+      },
+      "notes": {
+        "internalNotesLabel": "Internal Notes",
+        "internalNotesPlaceholder": "Staff-only notes about this appointment"
+      },
+      "attachments": {
+        "label": "Attachments",
+        "upload": "Upload Files",
+        "noFiles": "No files attached"
+      }
+    },
+    "pricingSection": "Pricing",
+    "messages": {
+      "created": "Appointment created successfully",
+      "createFailed": "Failed to create appointment",
+      "updated": "Appointment updated successfully",
+      "updateFailed": "Failed to update appointment",
+      "deleted": "Appointment deleted successfully",
+      "deleteFailed": "Failed to delete appointment",
+      "patientCreated": "Client created successfully",
+      "patientCreateFailed": "Failed to create client",
+      "patientUpdated": "Client updated successfully",
+      "patientUpdateFailed": "Failed to update client"
+    }
+  },
+  "clinicalPresets": {
+    "title": "Service Presets",
+    "subtitle": "Configure reusable Beauty Center appointment presets.",
+    "reasonForVisit": "Requested Services",
+    "appointmentType": "Appointment Types",
+    "add": "Add",
+    "type": "Type",
+    "name": "Name",
+    "namePlaceholder": "Enter name...",
+    "consultationFee": "Service Fee",
+    "actions": "Actions",
+    "sort": "Sort",
+    "empty": "No presets configured.",
+    "deleteConfirm": "Are you sure you want to delete this preset?"
+  }
+}

@@ -1981,6 +1981,14 @@
       "email": "Email Address",
       "role": "Account Role",
       "optimized_note": "Optimized for all devices. Syncs automatically."
+    },
+    "clinicalRegistry": {
+      "title": "Appointment Registry Type",
+      "description": "Choose whether this appointment registry uses medical patient clinic or Beauty Center terminology.",
+      "medical": "Medical Patient Clinic",
+      "beauty": "Beauty Center",
+      "localOnly": "Changes terminology on this device only. It does not change or migrate appointment data.",
+      "toggleLabel": "Use Beauty Center terminology"
     }
   },
   "sync": {
@@ -4048,13 +4056,21 @@
     "actions": "Actions",
     "statuses": {
       "draft": "Draft",
-      "scheduled": "Scheduled",
-      "confirmed": "Confirmed",
+      "booked": "Booked",
       "arrived": "Arrived",
       "in_progress": "In Progress",
       "completed": "Completed",
       "cancelled": "Cancelled",
       "no_show": "No Show"
+    },
+    "statusDescriptions": {
+      "draft": "Not ready to schedule",
+      "booked": "Appointment is booked",
+      "arrived": "Patient has arrived",
+      "in_progress": "Service started",
+      "completed": "Service finished",
+      "cancelled": "Appointment cancelled",
+      "no_show": "Patient did not attend"
     },
     "confirmationMethods": {
       "phone": "Phone",
