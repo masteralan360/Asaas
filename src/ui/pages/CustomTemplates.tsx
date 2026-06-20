@@ -78,6 +78,7 @@ function readStoredLayout(row?: CustomTemplateRow | null): CustomTemplateLayout 
             heightMm: layout.page?.heightMm || 297
         },
         fields: layout.fields || {},
+        componentPositions: layout.componentPositions || {},
         annotations: layout.annotations || [],
         texts: layout.texts || [],
         images: layout.images || [],

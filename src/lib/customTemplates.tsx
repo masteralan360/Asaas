@@ -33,7 +33,10 @@ import {
     PartnerDetailsPrintTemplate,
     type PartnerDetailsPrintData
 } from '@/ui/components/crm/PartnerDetailsPrintTemplate'
-import { OrderDetailsPrintTemplate } from '@/ui/components/orders/OrderPrintTemplates'
+import {
+    ORDER_DETAILS_MOVABLE_COMPONENT_KEYS,
+    OrderDetailsPrintTemplate
+} from '@/ui/components/orders/OrderPrintTemplates'
 
 export const SALES_HISTORY_RECEIPT_TEMPLATE_KEY = 'salesHistory.Receipt'
 export const PARTNER_DETAILS_TEMPLATE_KEY = 'businessPartners.Details'
@@ -224,6 +227,7 @@ export function readCustomTemplateLayout(row?: StoredCustomTemplateRow | null): 
             heightMm: layout.page?.heightMm || 297
         },
         fields: layout.fields || {},
+        componentPositions: layout.componentPositions || {},
         annotations: layout.annotations || [],
         texts: layout.texts || [],
         images: layout.images || [],
@@ -768,9 +772,20 @@ function createOrderDetailsPreview(options: CustomTemplatePreviewOptions): Templ
 
     return {
         fields: ORDER_DETAILS_FIELDS,
+        movableComponents: [
+            {
+                key: ORDER_DETAILS_MOVABLE_COMPONENT_KEYS.customer,
+                label: kind === 'sales' ? 'Customer' : 'Supplier'
+            },
+            { key: ORDER_DETAILS_MOVABLE_COMPONENT_KEYS.commercials, label: 'Commercials' },
+            { key: ORDER_DETAILS_MOVABLE_COMPONENT_KEYS.created, label: 'Created' },
+            { key: ORDER_DETAILS_MOVABLE_COMPONENT_KEYS.expectedDelivery, label: 'Expected Delivery' },
+            { key: ORDER_DETAILS_MOVABLE_COMPONENT_KEYS.orderItems, label: 'Order Items and Table' },
+            { key: ORDER_DETAILS_MOVABLE_COMPONENT_KEYS.totals, label: 'Subtotal, Discount, Tax and Total' }
+        ],
         page: { widthMm: 210, heightMm: 297 },
         fixedPrintLang,
-        createElement: (data, effectiveId, printLangOverride) => (
+        createElement: (data, effectiveId, printLangOverride, renderOptions) => (
             <OrderDetailsPrintTemplate
                 workspaceName={options.workspaceName}
                 printLang={printLangOverride || fixedPrintLang}
@@ -782,6 +797,9 @@ function createOrderDetailsPreview(options: CustomTemplatePreviewOptions): Templ
                 qrValue={buildQrValue(options.workspaceId, effectiveId, options.features)}
                 hideUnit={data[ORDER_DETAILS_TEMPLATE_FIELD_KEYS.hideUnit] === 'true'}
                 hideDiscount={data[ORDER_DETAILS_TEMPLATE_FIELD_KEYS.hideDiscount] === 'true'}
+                componentPositions={renderOptions?.componentPositions}
+                editableComponents={renderOptions?.editableComponents}
+                onComponentPositionChange={renderOptions?.onComponentPositionChange}
             />
         ),
         buildPdf: (element, printLangOverride) => generateTemplatePdf({
@@ -951,7 +969,8 @@ export function renderCustomTemplateLayoutElement({
             }}
         >
             {preview.createElement(fieldValues, effectiveId, preview.fixedPrintLang, {
-                tokenFieldTemplates: layout.fieldTokenTemplates
+                tokenFieldTemplates: layout.fieldTokenTemplates,
+                componentPositions: layout.componentPositions
             })}
             <CustomTemplateLayoutOverlay layout={layout} />
         </div>

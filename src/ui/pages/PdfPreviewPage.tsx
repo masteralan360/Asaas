@@ -5,6 +5,7 @@ import {
     getInvoicePreviewSource,
     clearInvoicePreviewSource,
     type CustomTemplateAnnotation,
+    type CustomTemplateComponentPosition,
     type CustomTemplateImage,
     type CustomTemplateLayout,
     type CustomTemplateText
@@ -325,6 +326,22 @@ export function PdfPreviewPage() {
     const [templateAnnotations, setTemplateAnnotations] = useState<CustomTemplateAnnotation[]>(() => initialTemplateLayout?.annotations || [])
     const [templateTexts, setTemplateTexts] = useState<CustomTemplateText[]>(() => initialTemplateLayout?.texts || [])
     const [templateImages, setTemplateImages] = useState<CustomTemplateImage[]>(() => initialTemplateLayout?.images || [])
+    const [templateComponentPositions, setTemplateComponentPositions] = useState<Record<string, CustomTemplateComponentPosition>>(() => ({
+        ...Object.fromEntries((templatePreview?.movableComponents || []).map((component) => [
+            component.key,
+            component.defaultPosition || { x: 0, y: 0 }
+        ])),
+        ...(initialTemplateLayout?.componentPositions || {})
+    }))
+    const handleTemplateComponentPositionChange = useCallback((
+        key: string,
+        position: CustomTemplateComponentPosition
+    ) => {
+        setTemplateComponentPositions((current) => ({
+            ...current,
+            [key]: position
+        }))
+    }, [])
 
     const showNativePdf = source?.url && !source?.data
     const hasTemplatePrimaryAction = Boolean(
@@ -397,12 +414,13 @@ export function PdfPreviewPage() {
             },
             fields: fieldValues,
             fieldTokenTemplates: initialTemplateLayout?.fieldTokenTemplates,
+            componentPositions: templateComponentPositions,
             annotations: templateAnnotations,
             texts: templateTexts,
             images: templateImages,
             updatedAt: new Date().toISOString()
         }
-    }, [source, templatePreview, fieldValues, initialTemplateLayout?.label, templateAnnotations, templateTexts, templateImages, templatePageHeight, templatePageWidth])
+    }, [source, templatePreview, fieldValues, initialTemplateLayout?.label, templateAnnotations, templateComponentPositions, templateTexts, templateImages, templatePageHeight, templatePageWidth])
 
     const saveTemplatePreview = useCallback(async (layout?: CustomTemplateLayout, label?: string) => {
         if (!source || !templatePreview || !fieldValues || isSaving) return
@@ -1214,8 +1232,11 @@ export function PdfPreviewPage() {
                                     fixedTemplatePrintLang || (tempPrintLang !== 'auto' ? tempPrintLang : undefined),
                                     {
                                         editableFields: canEditTemplateFields && drawingMode === 'none',
+                                        editableComponents: canEditTemplateFields && drawingMode === 'none',
                                         dataKeys: templatePreview.dataKeys,
-                                        onFieldChange: handleFieldChange
+                                        componentPositions: templateComponentPositions,
+                                        onFieldChange: handleFieldChange,
+                                        onComponentPositionChange: handleTemplateComponentPositionChange
                                     }
                                 )}
                             </div>

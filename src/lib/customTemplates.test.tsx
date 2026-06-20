@@ -213,9 +213,19 @@ describe('Order Details custom print template', () => {
             workspaceName: 'Atlas Test',
             printLang: 'ku'
         })
+        const componentPositions = {
+            customer: { x: 12, y: -4 },
+            orderItems: { x: 0, y: 20 },
+            totals: { x: -8, y: 12 }
+        }
+        const onComponentPositionChange = vi.fn()
         const element = preview.createElement({
             [customTemplates.ORDER_DETAILS_TEMPLATE_FIELD_KEYS.hideUnit]: 'true',
             [customTemplates.ORDER_DETAILS_TEMPLATE_FIELD_KEYS.hideDiscount]: 'true'
+        }, undefined, undefined, {
+            editableComponents: true,
+            componentPositions,
+            onComponentPositionChange
         })
 
         expect(preview.fields).toEqual([
@@ -230,6 +240,14 @@ describe('Order Details custom print template', () => {
                 type: 'boolean'
             })
         ])
+        expect(preview.movableComponents?.map((component) => component.key)).toEqual([
+            'customer',
+            'commercials',
+            'created',
+            'expectedDelivery',
+            'orderItems',
+            'totals'
+        ])
         expect(preview.fixedPrintLang).toBe('ku')
         expect(element.type).toBe(OrderDetailsPrintTemplate)
         expect(element.props.workspaceName).toBe('Atlas Test')
@@ -238,5 +256,73 @@ describe('Order Details custom print template', () => {
         expect(element.props.kind).toBe('sales')
         expect(element.props.hideUnit).toBe(true)
         expect(element.props.hideDiscount).toBe(true)
+        expect(element.props.componentPositions).toBe(componentPositions)
+        expect(element.props.editableComponents).toBe(true)
+        expect(element.props.onComponentPositionChange).toBe(onComponentPositionChange)
+
+        const html = renderToStaticMarkup(element)
+        expect(html.match(/data-order-print-component=/g)).toHaveLength(6)
+        expect(html).toContain('data-order-print-component="customer"')
+        expect(html).toContain('translate(12mm, -4mm)')
+        expect(html).toContain('aria-label="Move ')
+        expect(html).toContain('data-order-print-component="orderItems"')
+        expect(html).toContain('data-order-print-component="totals"')
+    })
+
+    it('preserves movable component positions when reading a saved layout', () => {
+        const componentPositions = {
+            customer: { x: 10, y: 5 },
+            commercials: { x: -6, y: 8 }
+        }
+        const layout = customTemplates.readCustomTemplateLayout({
+            id: 'movable-order-template',
+            module_type_key: customTemplates.ORDER_DETAILS_TEMPLATE_KEY,
+            layout_json: {
+                version: 1,
+                moduleTypeKey: customTemplates.ORDER_DETAILS_TEMPLATE_KEY,
+                page: { widthMm: 210, heightMm: 297 },
+                fields: {},
+                componentPositions,
+                annotations: [],
+                texts: [],
+                images: [],
+                updatedAt: new Date().toISOString()
+            }
+        })
+
+        expect(layout?.componentPositions).toEqual(componentPositions)
+    })
+
+    it('applies saved component positions to the printable custom layout without editor controls', () => {
+        const target = customTemplates.getCustomTemplateTarget(customTemplates.ORDER_DETAILS_TEMPLATE_KEY)
+        expect(target).toBeDefined()
+
+        const html = renderToStaticMarkup(customTemplates.renderCustomTemplateLayoutElement({
+            target: target!,
+            layout: {
+                version: 1,
+                moduleTypeKey: customTemplates.ORDER_DETAILS_TEMPLATE_KEY,
+                page: { widthMm: 210, heightMm: 297 },
+                fields: {},
+                componentPositions: {
+                    orderItems: { x: 7, y: 15 },
+                    totals: { x: -4, y: 9 }
+                },
+                annotations: [],
+                texts: [],
+                images: [],
+                updatedAt: new Date().toISOString()
+            },
+            values: {},
+            options: {
+                workspaceName: 'Atlas Test',
+                printLang: 'en'
+            }
+        }))
+
+        expect(html).toContain('data-order-print-component="orderItems"')
+        expect(html).toContain('translate(7mm, 15mm)')
+        expect(html).toContain('translate(-4mm, 9mm)')
+        expect(html).not.toContain('order-template-move-handle absolute')
     })
 })

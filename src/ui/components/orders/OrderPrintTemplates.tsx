@@ -11,6 +11,9 @@ import { formatCurrency, formatDate, formatDateTime } from '@/lib/utils'
 import { platformService } from '@/services/platformService'
 import { useTranslation } from 'react-i18next'
 import { ReactQRCode } from '@lglab/react-qr-code'
+import { Move } from 'lucide-react'
+import type { KeyboardEvent, PointerEvent, ReactNode } from 'react'
+import type { CustomTemplateComponentPosition } from '@/lib/pdfPreviewStore'
 
 type OrderTab = 'sales' | 'purchase'
 
@@ -42,6 +45,119 @@ interface OrderDetailsPrintTemplateProps {
     qrValue?: string | null
     hideUnit?: boolean
     hideDiscount?: boolean
+    componentPositions?: Record<string, CustomTemplateComponentPosition>
+    editableComponents?: boolean
+    onComponentPositionChange?: (key: string, position: CustomTemplateComponentPosition) => void
+}
+
+export const ORDER_DETAILS_MOVABLE_COMPONENT_KEYS = {
+    customer: 'customer',
+    commercials: 'commercials',
+    created: 'created',
+    expectedDelivery: 'expectedDelivery',
+    orderItems: 'orderItems',
+    totals: 'totals'
+} as const
+
+type OrderDetailsMovableComponentKey = typeof ORDER_DETAILS_MOVABLE_COMPONENT_KEYS[keyof typeof ORDER_DETAILS_MOVABLE_COMPONENT_KEYS]
+
+function MovableOrderPrintBlock({
+    componentKey,
+    label,
+    position,
+    editable,
+    onPositionChange,
+    children
+}: {
+    componentKey: OrderDetailsMovableComponentKey
+    label: string
+    position?: CustomTemplateComponentPosition
+    editable?: boolean
+    onPositionChange?: (key: string, position: CustomTemplateComponentPosition) => void
+    children: ReactNode
+}) {
+    const resolvedPosition = position || { x: 0, y: 0 }
+
+    const updatePosition = (nextPosition: CustomTemplateComponentPosition) => {
+        onPositionChange?.(componentKey, nextPosition)
+    }
+
+    const handlePointerDown = (event: PointerEvent<HTMLButtonElement>) => {
+        if (!editable || !onPositionChange) return
+
+        event.preventDefault()
+        event.stopPropagation()
+        const page = event.currentTarget.closest<HTMLElement>('[data-order-print-page]')
+        if (!page) return
+
+        const pageRect = page.getBoundingClientRect()
+        const mmPerPixel = 210 / pageRect.width
+        const startX = event.clientX
+        const startY = event.clientY
+        const initialPosition = resolvedPosition
+        const roundMillimeters = (value: number) => Math.round(value * 100) / 100
+
+        const handlePointerMove = (moveEvent: globalThis.PointerEvent) => {
+            updatePosition({
+                x: roundMillimeters(initialPosition.x + ((moveEvent.clientX - startX) * mmPerPixel)),
+                y: roundMillimeters(initialPosition.y + ((moveEvent.clientY - startY) * mmPerPixel))
+            })
+        }
+        const handlePointerUp = () => {
+            window.removeEventListener('pointermove', handlePointerMove)
+            window.removeEventListener('pointerup', handlePointerUp)
+            window.removeEventListener('pointercancel', handlePointerUp)
+        }
+
+        window.addEventListener('pointermove', handlePointerMove)
+        window.addEventListener('pointerup', handlePointerUp)
+        window.addEventListener('pointercancel', handlePointerUp)
+    }
+
+    const handleKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
+        if (!editable || !onPositionChange) return
+        const step = event.shiftKey ? 5 : 1
+        const delta = {
+            ArrowLeft: { x: -step, y: 0 },
+            ArrowRight: { x: step, y: 0 },
+            ArrowUp: { x: 0, y: -step },
+            ArrowDown: { x: 0, y: step }
+        }[event.key]
+        if (!delta) return
+
+        event.preventDefault()
+        updatePosition({
+            x: resolvedPosition.x + delta.x,
+            y: resolvedPosition.y + delta.y
+        })
+    }
+
+    return (
+        <div
+            className={editable ? 'group/order-block relative outline outline-1 outline-dashed outline-transparent hover:outline-primary/60' : undefined}
+            style={{
+                transform: `translate(${resolvedPosition.x}mm, ${resolvedPosition.y}mm)`,
+                position: 'relative',
+                zIndex: resolvedPosition.x !== 0 || resolvedPosition.y !== 0 ? 20 : undefined
+            }}
+            data-order-print-component={componentKey}
+        >
+            {children}
+            {editable ? (
+                <button
+                    type="button"
+                    className="order-template-move-handle absolute -top-3 end-1 z-50 inline-flex h-6 touch-none items-center gap-1 rounded border border-primary/30 bg-white px-1.5 text-[9px] font-semibold text-primary opacity-70 shadow-sm hover:opacity-100 focus:opacity-100"
+                    onPointerDown={handlePointerDown}
+                    onKeyDown={handleKeyDown}
+                    aria-label={`Move ${label}`}
+                    title={`Move ${label}. Use arrow keys for 1mm steps; hold Shift for 5mm.`}
+                >
+                    <Move className="h-3 w-3" />
+                    <span>{label}</span>
+                </button>
+            ) : null}
+        </div>
+    )
 }
 
 function isRTL(lang: string): boolean {
@@ -57,7 +173,7 @@ function resolveLogoSrc(logoUrl?: string | null) {
 interface OrderPrintHeaderProps {
     workspaceName?: string | null
     title: string
-    subtitle?: React.ReactNode
+    subtitle?: ReactNode
     logoUrl?: string | null
     qrValue?: string | null
 }
@@ -298,7 +414,10 @@ export function OrderDetailsPrintTemplate({
     logoUrl,
     qrValue,
     hideUnit,
-    hideDiscount
+    hideDiscount,
+    componentPositions,
+    editableComponents,
+    onComponentPositionChange
 }: OrderDetailsPrintTemplateProps) {
     const { i18n } = useTranslation()
     const t = i18n.getFixedT(printLang)
@@ -323,6 +442,7 @@ export function OrderDetailsPrintTemplate({
             dir={isRTL(printLang) ? 'rtl' : 'ltr'}
             className="bg-white text-black"
             style={{ width: '210mm', minHeight: '297mm', padding: '14mm 12mm' }}
+            data-order-print-page
         >
             <style
                 dangerouslySetInnerHTML={{
@@ -330,6 +450,7 @@ export function OrderDetailsPrintTemplate({
 @media print {
     @page { margin: 0; size: A4; }
     body { -webkit-print-color-adjust: exact; margin: 0; padding: 0; }
+    .order-template-move-handle { display: none !important; }
 }
 `
                 }}
@@ -350,14 +471,29 @@ export function OrderDetailsPrintTemplate({
             />
 
             <div className="grid grid-cols-2 gap-4 mb-4 text-xs text-center">
-                <div className="border border-slate-300 rounded-md p-3">
+                <MovableOrderPrintBlock
+                    componentKey={ORDER_DETAILS_MOVABLE_COMPONENT_KEYS.customer}
+                    label={counterpartyLabel}
+                    position={componentPositions?.[ORDER_DETAILS_MOVABLE_COMPONENT_KEYS.customer]}
+                    editable={editableComponents}
+                    onPositionChange={onComponentPositionChange}
+                >
+                <div className="h-full border border-slate-300 rounded-md p-3">
                     <h2 className="font-semibold mb-2">{counterpartyLabel}</h2>
                     <p className="font-bold text-sm">{counterpartyName}</p>
                     {isSales && salesOrder?.shippingAddress ? (
                         <p className="text-slate-600 mt-1">{salesOrder.shippingAddress}</p>
                     ) : null}
                 </div>
-                <div className="border border-slate-300 rounded-md p-3">
+                </MovableOrderPrintBlock>
+                <MovableOrderPrintBlock
+                    componentKey={ORDER_DETAILS_MOVABLE_COMPONENT_KEYS.commercials}
+                    label={t('orders.details.commercials') || 'Commercials'}
+                    position={componentPositions?.[ORDER_DETAILS_MOVABLE_COMPONENT_KEYS.commercials]}
+                    editable={editableComponents}
+                    onPositionChange={onComponentPositionChange}
+                >
+                <div className="h-full border border-slate-300 rounded-md p-3">
                     <h2 className="font-semibold mb-2">{t('orders.details.commercials') || 'Order Summary'}</h2>
                     <p>{t('orders.details.subtotal') || 'Subtotal'}: {formatCurrency(order.subtotal, currency, iqdPreference)}</p>
                     {!hideDiscount && <p>{t('orders.details.discount') || 'Discount'}: {formatCurrency(order.discount, currency, iqdPreference)}</p>}
@@ -371,19 +507,43 @@ export function OrderDetailsPrintTemplate({
                     <p>{t('orders.details.paidAmount', { defaultValue: 'Paid' })}: {formatCurrency(getOrderPaidAmount(order), order.currency, iqdPreference)}</p>
                     <p>{t('orders.details.outstanding', { defaultValue: 'Outstanding' })}: {formatCurrency(getOrderBalanceAmount(order), order.currency, iqdPreference)}</p>
                 </div>
+                </MovableOrderPrintBlock>
             </div>
 
             <div className="grid grid-cols-2 gap-3 mb-4 text-xs">
-                <div className="border border-slate-300 rounded-md p-2">
+                <MovableOrderPrintBlock
+                    componentKey={ORDER_DETAILS_MOVABLE_COMPONENT_KEYS.created}
+                    label={t('orders.details.created') || 'Created'}
+                    position={componentPositions?.[ORDER_DETAILS_MOVABLE_COMPONENT_KEYS.created]}
+                    editable={editableComponents}
+                    onPositionChange={onComponentPositionChange}
+                >
+                <div className="h-full border border-slate-300 rounded-md p-2">
                     <p className="text-slate-500 text-center">{t('orders.details.created') || 'Created'}</p>
                     <p className="font-bold text-center">{formatDateTime(order.createdAt)}</p>
                 </div>
-                <div className="border border-slate-300 rounded-md p-2">
+                </MovableOrderPrintBlock>
+                <MovableOrderPrintBlock
+                    componentKey={ORDER_DETAILS_MOVABLE_COMPONENT_KEYS.expectedDelivery}
+                    label={t('orders.details.expectedDelivery') || 'Expected Delivery'}
+                    position={componentPositions?.[ORDER_DETAILS_MOVABLE_COMPONENT_KEYS.expectedDelivery]}
+                    editable={editableComponents}
+                    onPositionChange={onComponentPositionChange}
+                >
+                <div className="h-full border border-slate-300 rounded-md p-2">
                     <p className="text-slate-500 text-center">{t('orders.details.expectedDelivery') || 'Expected Delivery'}</p>
                     <p className="font-bold text-center">{order.expectedDeliveryDate ? formatDateTime(order.expectedDeliveryDate) : 'N/A'}</p>
                 </div>
+                </MovableOrderPrintBlock>
             </div>
 
+            <MovableOrderPrintBlock
+                componentKey={ORDER_DETAILS_MOVABLE_COMPONENT_KEYS.orderItems}
+                label={t('orders.details.orderItems') || 'Order Items'}
+                position={componentPositions?.[ORDER_DETAILS_MOVABLE_COMPONENT_KEYS.orderItems]}
+                editable={editableComponents}
+                onPositionChange={onComponentPositionChange}
+            >
             <h3 className="font-semibold mb-2 text-sm">{t('orders.details.orderItems') || 'Order Items'}</h3>
             <table className="w-full border-collapse text-xs mb-5">
                 <thead>
@@ -415,7 +575,15 @@ export function OrderDetailsPrintTemplate({
                     ))}
                 </tbody>
             </table>
+            </MovableOrderPrintBlock>
 
+            <MovableOrderPrintBlock
+                componentKey={ORDER_DETAILS_MOVABLE_COMPONENT_KEYS.totals}
+                label={t('common.total') || 'Totals'}
+                position={componentPositions?.[ORDER_DETAILS_MOVABLE_COMPONENT_KEYS.totals]}
+                editable={editableComponents}
+                onPositionChange={onComponentPositionChange}
+            >
             <div className="flex justify-end mb-5">
                 <div className="w-60 text-xs space-y-1">
                     <div className="flex justify-between">
@@ -440,6 +608,7 @@ export function OrderDetailsPrintTemplate({
                     </div>
                 </div>
             </div>
+            </MovableOrderPrintBlock>
 
             {installments.length > 0 ? (
                 <>

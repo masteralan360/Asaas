@@ -22,14 +22,24 @@ export type TemplatePreviewDataKey = {
 
 export type TemplatePreviewRenderOptions = {
     editableFields?: boolean
+    editableComponents?: boolean
     dataKeys?: TemplatePreviewDataKey[]
     tokenFieldTemplates?: Record<string, string>
+    componentPositions?: Record<string, CustomTemplateComponentPosition>
     onFieldChange?: (key: string, value: string) => void
+    onComponentPositionChange?: (key: string, position: CustomTemplateComponentPosition) => void
+}
+
+export type TemplatePreviewMovableComponent = {
+    key: string
+    label: string
+    defaultPosition?: CustomTemplateComponentPosition
 }
 
 export type TemplatePreview = {
     fields: TemplatePreviewField[]
     dataKeys?: TemplatePreviewDataKey[]
+    movableComponents?: TemplatePreviewMovableComponent[]
     page?: {
         widthMm: number
         heightMm: number
@@ -70,6 +80,11 @@ export type CustomTemplateImage = {
     rotation?: number
 }
 
+export type CustomTemplateComponentPosition = {
+    x: number
+    y: number
+}
+
 export type CustomTemplateLayout = {
     version: 1
     label?: string
@@ -82,6 +97,7 @@ export type CustomTemplateLayout = {
     }
     fields: Record<string, string>
     fieldTokenTemplates?: Record<string, string>
+    componentPositions?: Record<string, CustomTemplateComponentPosition>
     annotations: CustomTemplateAnnotation[]
     texts: CustomTemplateText[]
     images: CustomTemplateImage[]
