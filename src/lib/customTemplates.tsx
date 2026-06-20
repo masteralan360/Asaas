@@ -17,7 +17,12 @@ import {
     RealEstateBuyPrintTemplate,
     type WorkspaceFooterContacts
 } from '@/ui/components/real-estate/RealEstateBuyPrintTemplate'
-import type { RealEstateTransactionType } from '@/local-db'
+import type {
+    OrderInstallment,
+    PurchaseOrder,
+    RealEstateTransactionType,
+    SalesOrder
+} from '@/local-db'
 import type { WorkspaceFeatures } from '@/workspace'
 import type { UniversalInvoice } from '@/types'
 import {
@@ -28,12 +33,18 @@ import {
     PartnerDetailsPrintTemplate,
     type PartnerDetailsPrintData
 } from '@/ui/components/crm/PartnerDetailsPrintTemplate'
+import { OrderDetailsPrintTemplate } from '@/ui/components/orders/OrderPrintTemplates'
 
 export const SALES_HISTORY_RECEIPT_TEMPLATE_KEY = 'salesHistory.Receipt'
 export const PARTNER_DETAILS_TEMPLATE_KEY = 'businessPartners.Details'
+export const ORDER_DETAILS_TEMPLATE_KEY = 'orders.Details'
 export const PARTNER_DETAILS_TEMPLATE_FIELD_KEYS = {
     showWhoOwesWhom: 'showWhoOwesWhom',
     showOrders: 'showOrders'
+} as const
+export const ORDER_DETAILS_TEMPLATE_FIELD_KEYS = {
+    hideUnit: 'hideUnit',
+    hideDiscount: 'hideDiscount'
 } as const
 
 export type CustomTemplateTarget = {
@@ -122,6 +133,17 @@ export const CUSTOM_TEMPLATE_TARGETS: CustomTemplateTarget[] = [
         typeLabel: 'Partner Details',
         description: 'Business partner details A4 print layout.',
         nativeTemplateKey: PARTNER_DETAILS_TEMPLATE_KEY,
+        nativeTemplateAvailable: true,
+        printFormat: 'a4',
+        page: { widthMm: 210, heightMm: 297 }
+    },
+    {
+        moduleTypeKey: ORDER_DETAILS_TEMPLATE_KEY,
+        workspaceModuleKey: 'crm',
+        moduleLabel: 'Orders',
+        typeLabel: 'Order Print',
+        description: 'Sales and purchase order details A4 print layout.',
+        nativeTemplateKey: ORDER_DETAILS_TEMPLATE_KEY,
         nativeTemplateAvailable: true,
         printFormat: 'a4',
         page: { widthMm: 210, heightMm: 297 }
@@ -266,6 +288,9 @@ export type CustomTemplatePreviewOptions = {
     workspaceFooterContacts?: WorkspaceFooterContacts
     receiptData?: UniversalInvoice
     partnerDetailsData?: PartnerDetailsPrintData
+    order?: SalesOrder | PurchaseOrder
+    orderKind?: 'sales' | 'purchase'
+    orderInstallments?: OrderInstallment[]
     printLang?: string
 }
 
@@ -404,6 +429,55 @@ const SAMPLE_PARTNER_DETAILS_DATA: PartnerDetailsPrintData = {
     ]
 }
 
+const SAMPLE_ORDER_DATA: SalesOrder = {
+    id: 'sample-sales-order',
+    workspaceId: 'sample-workspace',
+    orderNumber: 'SO-00042',
+    customerId: 'sample-customer',
+    customerName: 'Sample Customer',
+    items: [
+        {
+            id: 'sample-order-item',
+            productId: 'sample-product',
+            productName: 'Sample Product',
+            productSku: 'SKU-0001',
+            quantity: 2,
+            lineTotal: 200,
+            originalCurrency: 'usd',
+            originalUnitPrice: 100,
+            convertedUnitPrice: 100,
+            settlementCurrency: 'usd',
+            costPrice: 70,
+            convertedCostPrice: 70
+        }
+    ],
+    subtotal: 200,
+    discount: 10,
+    tax: 9.5,
+    total: 199.5,
+    currency: 'usd',
+    exchangeRate: null,
+    exchangeRateSource: null,
+    exchangeRateTimestamp: null,
+    status: 'pending',
+    expectedDeliveryDate: new Date().toISOString(),
+    isPaid: false,
+    paymentStatus: 'partial',
+    paidAmount: 50,
+    balanceAmount: 149.5,
+    paymentMethod: 'cash',
+    isInstallmentBased: false,
+    installmentCount: 0,
+    shippingAddress: 'Business District, Erbil',
+    notes: 'Order notes appear here.',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    syncStatus: 'synced',
+    lastSyncedAt: null,
+    version: 1,
+    isDeleted: false
+}
+
 const PARTNER_DETAILS_FIELDS = [
     {
         key: PARTNER_DETAILS_TEMPLATE_FIELD_KEYS.showWhoOwesWhom,
@@ -414,6 +488,21 @@ const PARTNER_DETAILS_FIELDS = [
     {
         key: PARTNER_DETAILS_TEMPLATE_FIELD_KEYS.showOrders,
         label: 'Show the orders',
+        value: 'false',
+        type: 'boolean' as const
+    }
+]
+
+const ORDER_DETAILS_FIELDS = [
+    {
+        key: ORDER_DETAILS_TEMPLATE_FIELD_KEYS.hideUnit,
+        label: 'Hide item units',
+        value: 'false',
+        type: 'boolean' as const
+    },
+    {
+        key: ORDER_DETAILS_TEMPLATE_FIELD_KEYS.hideDiscount,
+        label: 'Hide discounts',
         value: 'false',
         type: 'boolean' as const
     }
@@ -665,6 +754,44 @@ function createPartnerDetailsPreview(options: CustomTemplatePreviewOptions): Tem
     }
 }
 
+function createOrderDetailsPreview(options: CustomTemplatePreviewOptions): TemplatePreview {
+    const order = options.order || SAMPLE_ORDER_DATA
+    const kind = options.orderKind || 'sales'
+    const configuredPrintLang = options.features?.print_lang
+    const printLang = options.printLang
+        || (configuredPrintLang && configuredPrintLang !== 'auto' ? configuredPrintLang : 'en')
+    const fixedPrintLang: TemplatePreview['fixedPrintLang'] = printLang.startsWith('ar')
+        ? 'ar'
+        : printLang.startsWith('ku')
+            ? 'ku'
+            : 'en'
+
+    return {
+        fields: ORDER_DETAILS_FIELDS,
+        page: { widthMm: 210, heightMm: 297 },
+        fixedPrintLang,
+        createElement: (data, effectiveId, printLangOverride) => (
+            <OrderDetailsPrintTemplate
+                workspaceName={options.workspaceName}
+                printLang={printLangOverride || fixedPrintLang}
+                order={order}
+                installments={options.orderInstallments || []}
+                kind={kind}
+                iqdPreference={options.features?.iqd_display_preference}
+                logoUrl={options.features?.logo_url}
+                qrValue={buildQrValue(options.workspaceId, effectiveId, options.features)}
+                hideUnit={data[ORDER_DETAILS_TEMPLATE_FIELD_KEYS.hideUnit] === 'true'}
+                hideDiscount={data[ORDER_DETAILS_TEMPLATE_FIELD_KEYS.hideDiscount] === 'true'}
+            />
+        ),
+        buildPdf: (element, printLangOverride) => generateTemplatePdf({
+            element,
+            format: 'a4',
+            printLang: printLangOverride || fixedPrintLang
+        })
+    }
+}
+
 export function createCustomTemplatePreview(
     target: CustomTemplateTarget,
     options: CustomTemplatePreviewOptions = {}
@@ -675,6 +802,10 @@ export function createCustomTemplatePreview(
 
     if (target.moduleTypeKey === PARTNER_DETAILS_TEMPLATE_KEY) {
         return createPartnerDetailsPreview(options)
+    }
+
+    if (target.moduleTypeKey === ORDER_DETAILS_TEMPLATE_KEY) {
+        return createOrderDetailsPreview(options)
     }
 
     if (REAL_ESTATE_CONTRACT_MODULE_TYPE_KEYS.has(target.moduleTypeKey)) {
@@ -805,6 +936,7 @@ export function renderCustomTemplateLayoutElement({
 
     const isReceipt = target.printFormat === 'receipt'
     const supportsMultiplePages = target.moduleTypeKey === PARTNER_DETAILS_TEMPLATE_KEY
+        || target.moduleTypeKey === ORDER_DETAILS_TEMPLATE_KEY
 
     return (
         <div

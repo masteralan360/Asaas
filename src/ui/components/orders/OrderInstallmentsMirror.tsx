@@ -39,6 +39,7 @@ import { useWorkspace } from '@/workspace'
 import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
 
 import { OrderDetailsPrintTemplate } from './OrderPrintTemplates'
+import { useOrderCustomPrint } from './useOrderCustomPrint'
 
 type OrderInstallmentRow =
     | { kind: 'sales'; order: SalesOrder; installment: OrderInstallment }
@@ -106,7 +107,7 @@ function buildPaymentObligation(group: OrderInstallmentGroup, installment: Order
 export function OrderInstallmentsMirror({ workspaceId }: { workspaceId: string }) {
     const { t, i18n } = useTranslation()
     const { user } = useAuth()
-    const { features, workspaceName } = useWorkspace()
+    const { features, workspaceName, isLocalMode } = useWorkspace()
     const { toast } = useToast()
     const salesOrders = useSalesOrders(workspaceId)
     const purchaseOrders = usePurchaseOrders(workspaceId)
@@ -294,6 +295,18 @@ export function OrderInstallmentsMirror({ workspaceId }: { workspaceId: string }
         t,
         workspaceName
     ])
+    const customOrderPrint = useOrderCustomPrint({
+        workspaceId,
+        workspaceName,
+        features,
+        isLocalMode,
+        isOpen: printTarget !== null,
+        printLanguage: i18n.language,
+        order: printTarget?.order,
+        orderKind: printTarget?.kind,
+        installments: printInstallments,
+        t
+    })
 
     const handleSettlement = async (input: {
         paymentMethod: WorkspacePaymentMethod
@@ -418,7 +431,14 @@ export function OrderInstallmentsMirror({ workspaceId }: { workspaceId: string }
                                                             <Eye className="h-4 w-4" />
                                                         </Link>
                                                     </Button>
-                                                    <Button variant="ghost" size="icon" onClick={() => setPrintTarget(row)}>
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        onClick={() => {
+                                                            customOrderPrint.resetSelection()
+                                                            setPrintTarget(row)
+                                                        }}
+                                                    >
                                                         <Printer className="h-4 w-4" />
                                                     </Button>
                                                     {row.nextInstallment && user?.role !== 'viewer' && !row.order.isLocked ? (
@@ -453,9 +473,17 @@ export function OrderInstallmentsMirror({ workspaceId }: { workspaceId: string }
 
             <PrintPreviewModal
                 isOpen={printTarget !== null}
-                onClose={() => setPrintTarget(null)}
-                onConfirm={() => setPrintTarget(null)}
-                title={printTarget?.order.orderNumber || t('orders.details.installmentSchedule', { defaultValue: 'Order Installments' })}
+                onClose={() => {
+                    setPrintTarget(null)
+                    customOrderPrint.resetSelection()
+                }}
+                onConfirm={() => {
+                    setPrintTarget(null)
+                    customOrderPrint.resetSelection()
+                }}
+                title={customOrderPrint.selectedTemplateLabel
+                    ? customOrderPrint.selectedTemplateLabel
+                    : printTarget?.order.orderNumber || t('orders.details.installmentSchedule', { defaultValue: 'Order Installments' })}
                 module="orders"
                 features={features}
                 workspaceName={workspaceName}
@@ -468,21 +496,30 @@ export function OrderInstallmentsMirror({ workspaceId }: { workspaceId: string }
                     cashierName: user?.name || 'Unknown',
                     printFormat: 'a4' as const
                 } : undefined}
-                pdfBuilder={async ({ format, effectiveId, printLangOverride }: {
-                    format: PrintFormat
-                    effectiveId: string
-                    printLangOverride?: string
-                }) => {
-                    const template = renderOrderTemplate(effectiveId, printLangOverride)
-                    if (!template) throw new Error('Order data not ready')
-                    return generateTemplatePdf({
-                        element: template,
-                        format,
-                        printLang: printLangOverride || printLang
-                    })
-                }}
+                pdfBuilder={customOrderPrint.isCustomSelected
+                    ? customOrderPrint.buildPdf
+                    : async ({ format, effectiveId, printLangOverride }: {
+                        format: PrintFormat
+                        effectiveId: string
+                        printLangOverride?: string
+                    }) => {
+                        const template = renderOrderTemplate(effectiveId, printLangOverride)
+                        if (!template) throw new Error('Order data not ready')
+                        return generateTemplatePdf({
+                            element: template,
+                            format,
+                            printLang: printLangOverride || printLang
+                        })
+                    }}
                 printTemplate={({ effectiveId }) => renderOrderTemplate(effectiveId)}
-                templatePreview={orderInstallmentPreview}
+                templatePreview={customOrderPrint.isCustomSelected ? customOrderPrint.preview : orderInstallmentPreview}
+                customTemplate={customOrderPrint.customTemplate}
+                initialTemplateLayout={customOrderPrint.initialLayout}
+                enableTemplatePreviewSave={customOrderPrint.isCustomSelected}
+                generateTemplateLayoutBlob={customOrderPrint.isCustomSelected ? customOrderPrint.buildEditablePdf : undefined}
+                printSelectionOptions={customOrderPrint.nativeOptions}
+                printSelectionTemplates={customOrderPrint.templateOptions}
+                onPrintSelection={customOrderPrint.handleSelection}
             />
         </div>
     )

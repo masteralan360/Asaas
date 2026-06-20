@@ -61,6 +61,7 @@ import {
 
 import { OrderDetailsPrintTemplate } from './OrderPrintTemplates'
 import { OrderStatusBadge } from './OrderStatusBadge'
+import { useOrderCustomPrint } from './useOrderCustomPrint'
 
 function statusLabel(t: (key: string) => string, status: string) {
     const translated = t(`orders.status.${status}`)
@@ -169,7 +170,7 @@ function InstallmentAmount({
 export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string; orderId: string }) {
     const { t, i18n } = useTranslation()
     const { user } = useAuth()
-    const { features, workspaceName } = useWorkspace()
+    const { features, workspaceName, isLocalMode } = useWorkspace()
     const [, navigate] = useLocation()
     const { toast } = useToast()
     const storages = useStorages(workspaceId)
@@ -189,11 +190,12 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
         localStorage.setItem('order_details_view_mode', viewMode)
     }, [viewMode])
 
-    const resolved = salesOrder
+    const resolved = useMemo(() => salesOrder
         ? { kind: 'sales' as const, order: salesOrder }
         : purchaseOrder
             ? { kind: 'purchase' as const, order: purchaseOrder }
-            : null
+            : null,
+    [purchaseOrder, salesOrder])
 
     const creatorId = (resolved?.order as any)?.createdBy ?? null
     const { profile: creatorProfile } = useProfileData(creatorId)
@@ -269,6 +271,19 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
             },
         }
     }, [resolved, features, installments, workspaceName, t, i18n, workspaceId])
+
+    const customOrderPrint = useOrderCustomPrint({
+        workspaceId,
+        workspaceName,
+        features,
+        isLocalMode,
+        isOpen: showPrintPreview,
+        printLanguage: i18n.language,
+        order: resolved?.order,
+        orderKind: resolved?.kind,
+        installments,
+        t
+    })
 
     if (!resolved) {
         return (
@@ -474,7 +489,14 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                             {t('common.delete') || 'Delete'}
                         </Button>
                     )}
-                    <Button variant="outline" onClick={() => setShowPrintPreview(true)} className="gap-2 print:hidden bg-background">
+                    <Button
+                        variant="outline"
+                        onClick={() => {
+                            customOrderPrint.resetSelection()
+                            setShowPrintPreview(true)
+                        }}
+                        className="gap-2 print:hidden bg-background"
+                    >
                         <Printer className="h-4 w-4" />
                         {t('common.print') || 'Print'}
                     </Button>
@@ -975,9 +997,19 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
 
             <PrintPreviewModal
                 isOpen={showPrintPreview}
-                onClose={() => setShowPrintPreview(false)}
-                onConfirm={() => setShowPrintPreview(false)}
-                title={isSales ? (t('orders.tabs.sales') || 'Sales Order') : (t('orders.tabs.purchase') || 'Purchase Order')}
+                onClose={() => {
+                    setShowPrintPreview(false)
+                    customOrderPrint.resetSelection()
+                }}
+                onConfirm={() => {
+                    setShowPrintPreview(false)
+                    customOrderPrint.resetSelection()
+                }}
+                title={customOrderPrint.selectedTemplateLabel
+                    ? customOrderPrint.selectedTemplateLabel
+                    : isSales
+                        ? (t('orders.tabs.sales') || 'Sales Order')
+                        : (t('orders.tabs.purchase') || 'Purchase Order')}
                 module="orders"
                 features={features}
                 workspaceName={workspaceName}
@@ -989,26 +1021,28 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                     cashierName: user?.name || 'Unknown',
                     printFormat: 'a4' as const
                 }}
-                pdfBuilder={async ({ format, effectiveId, printLangOverride }: { format: PrintFormat; effectiveId: string; printLangOverride?: string }) => {
-                    const baseLang = features?.print_lang && features.print_lang !== 'auto' ? features.print_lang : i18n.language
-                    const printLang = printLangOverride || baseLang
-                    return generateTemplatePdf({
-                        element: (
-                            <OrderDetailsPrintTemplate
-                                workspaceName={workspaceName}
-                                printLang={printLang}
-                                order={order}
-                                installments={installments}
-                                kind={resolved.kind}
-                                iqdPreference={features.iqd_display_preference}
-                                logoUrl={features.logo_url}
-                                qrValue={effectiveId ? `https://asaas-r2-proxy.alanepic360.workers.dev/${workspaceId}/printed-invoices/A4/${effectiveId}.pdf` : undefined}
-                            />
-                        ),
-                        format,
-                        printLang,
-                    })
-                }}
+                pdfBuilder={customOrderPrint.isCustomSelected
+                    ? customOrderPrint.buildPdf
+                    : async ({ format, effectiveId, printLangOverride }: { format: PrintFormat; effectiveId: string; printLangOverride?: string }) => {
+                        const baseLang = features?.print_lang && features.print_lang !== 'auto' ? features.print_lang : i18n.language
+                        const printLang = printLangOverride || baseLang
+                        return generateTemplatePdf({
+                            element: (
+                                <OrderDetailsPrintTemplate
+                                    workspaceName={workspaceName}
+                                    printLang={printLang}
+                                    order={order}
+                                    installments={installments}
+                                    kind={resolved.kind}
+                                    iqdPreference={features.iqd_display_preference}
+                                    logoUrl={features.logo_url}
+                                    qrValue={effectiveId ? `https://asaas-r2-proxy.alanepic360.workers.dev/${workspaceId}/printed-invoices/A4/${effectiveId}.pdf` : undefined}
+                                />
+                            ),
+                            format,
+                            printLang,
+                        })
+                    }}
                 printTemplate={({ effectiveId }) => {
                     const printLang = features?.print_lang && features.print_lang !== 'auto' ? features.print_lang : i18n.language
                     return (
@@ -1024,7 +1058,14 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                         />
                     )
                 }}
-                templatePreview={orderDetailsPreview}
+                templatePreview={customOrderPrint.isCustomSelected ? customOrderPrint.preview : orderDetailsPreview}
+                customTemplate={customOrderPrint.customTemplate}
+                initialTemplateLayout={customOrderPrint.initialLayout}
+                enableTemplatePreviewSave={customOrderPrint.isCustomSelected}
+                generateTemplateLayoutBlob={customOrderPrint.isCustomSelected ? customOrderPrint.buildEditablePdf : undefined}
+                printSelectionOptions={customOrderPrint.nativeOptions}
+                printSelectionTemplates={customOrderPrint.templateOptions}
+                onPrintSelection={customOrderPrint.handleSelection}
             />
         </div>
     )

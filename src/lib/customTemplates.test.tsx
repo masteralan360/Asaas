@@ -24,6 +24,7 @@ vi.mock('@/ui/components/SaleReceipt', () => ({
 
 let customTemplates: typeof import('@/lib/customTemplates')
 let PartnerDetailsPrintTemplate: typeof import('@/ui/components/crm/PartnerDetailsPrintTemplate')['PartnerDetailsPrintTemplate']
+let OrderDetailsPrintTemplate: typeof import('@/ui/components/orders/OrderPrintTemplates')['OrderDetailsPrintTemplate']
 
 beforeAll(async () => {
     vi.stubGlobal('window', {
@@ -46,6 +47,7 @@ beforeAll(async () => {
 
     customTemplates = await import('@/lib/customTemplates')
     ;({ PartnerDetailsPrintTemplate } = await import('@/ui/components/crm/PartnerDetailsPrintTemplate'))
+    ;({ OrderDetailsPrintTemplate } = await import('@/ui/components/orders/OrderPrintTemplates'))
 }, 30_000)
 
 describe('Partner Details custom print template', () => {
@@ -184,5 +186,57 @@ describe('Partner Details custom print template', () => {
         expect(html).toContain('SO-00042')
         expect(html).toContain('PO-00019')
         expect(html).toContain('page-break-before:always')
+    })
+})
+
+describe('Order Details custom print template', () => {
+    it('registers an A4 CRM order target', () => {
+        const target = customTemplates.getCustomTemplateTarget(customTemplates.ORDER_DETAILS_TEMPLATE_KEY)
+
+        expect(target).toMatchObject({
+            moduleTypeKey: customTemplates.ORDER_DETAILS_TEMPLATE_KEY,
+            workspaceModuleKey: 'crm',
+            nativeTemplateAvailable: true,
+            printFormat: 'a4',
+            page: {
+                widthMm: 210,
+                heightMm: 297
+            }
+        })
+    })
+
+    it('uses the native order A4 layout with print visibility toggles', () => {
+        const target = customTemplates.getCustomTemplateTarget(customTemplates.ORDER_DETAILS_TEMPLATE_KEY)
+        expect(target).toBeDefined()
+
+        const preview = customTemplates.createCustomTemplatePreview(target!, {
+            workspaceName: 'Atlas Test',
+            printLang: 'ku'
+        })
+        const element = preview.createElement({
+            [customTemplates.ORDER_DETAILS_TEMPLATE_FIELD_KEYS.hideUnit]: 'true',
+            [customTemplates.ORDER_DETAILS_TEMPLATE_FIELD_KEYS.hideDiscount]: 'true'
+        })
+
+        expect(preview.fields).toEqual([
+            expect.objectContaining({
+                key: customTemplates.ORDER_DETAILS_TEMPLATE_FIELD_KEYS.hideUnit,
+                value: 'false',
+                type: 'boolean'
+            }),
+            expect.objectContaining({
+                key: customTemplates.ORDER_DETAILS_TEMPLATE_FIELD_KEYS.hideDiscount,
+                value: 'false',
+                type: 'boolean'
+            })
+        ])
+        expect(preview.fixedPrintLang).toBe('ku')
+        expect(element.type).toBe(OrderDetailsPrintTemplate)
+        expect(element.props.workspaceName).toBe('Atlas Test')
+        expect(element.props.printLang).toBe('ku')
+        expect(element.props.order.orderNumber).toBe('SO-00042')
+        expect(element.props.kind).toBe('sales')
+        expect(element.props.hideUnit).toBe(true)
+        expect(element.props.hideDiscount).toBe(true)
     })
 })
