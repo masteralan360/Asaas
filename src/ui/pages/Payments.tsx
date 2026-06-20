@@ -46,7 +46,7 @@ import { useWorkspace } from '@/workspace'
 import { useWorkspacePermissions } from '@/permissions'
 
 type DirectionFilter = 'all' | 'incoming' | 'outgoing'
-type SourceFilter = 'all' | 'loans' | 'orders' | 'budget' | 'real_estate' | 'payments'
+type SourceFilter = 'all' | 'loans' | 'orders' | 'budget' | 'real_estate' | 'clinical_appointments' | 'payments'
 type OpenStatusFilter = 'all' | 'open' | 'overdue'
 
 function sourceTypeLabel(value: PaymentObligation['sourceType'] | PaymentTransaction['sourceType'], t: any) {
@@ -65,6 +65,8 @@ function sourceTypeLabel(value: PaymentObligation['sourceType'] | PaymentTransac
             return t('payments.sourceType.realEstateInstallment', { defaultValue: 'Real Estate Installment' })
         case 'real_estate_commission':
             return t('payments.sourceType.realEstateCommission', { defaultValue: 'Real Estate Commission' })
+        case 'clinical_appointment':
+            return t('payments.sourceType.clinicalAppointment', { defaultValue: 'Appointment Service' })
         case 'sales_order':
             return t('payments.sourceType.salesOrder', { defaultValue: 'Sales Order' })
         case 'purchase_order':
@@ -142,7 +144,7 @@ export function Payments() {
     const { hasPermission } = useWorkspacePermissions()
     const [, setLocation] = useLocation()
     const workspaceId = user?.workspaceId
-    const hasPaymentsSurface = features.loans || features.crm || features.budget || features.hr || features.real_estate
+    const hasPaymentsSurface = features.loans || features.crm || features.budget || features.hr || features.real_estate || features.clinical_appointments
 
     const [activeTab, setActiveTab] = useState<'open-items' | 'transactions'>('open-items')
     const [search, setSearch] = useState('')
@@ -277,7 +279,7 @@ export function Payments() {
                 <div className="space-y-3">
                     <h1 className="text-3xl font-bold tracking-tight">{t('payments.title', { defaultValue: 'Payments' })}</h1>
                     <p className="text-sm text-muted-foreground">
-                        {t('payments.subtitle', { defaultValue: 'Unified open obligations and central transaction history across loans, orders, payroll, expenses, and Real Estate commissions.' })}
+                        {t('payments.subtitle', { defaultValue: 'Unified open obligations and central transaction history across loans, orders, appointments, payroll, expenses, and Real Estate commissions.' })}
                     </p>
                     {hasPermission('directTransaction.access') && (
                         <Button type="button" variant="outline" onClick={() => setLocation('/direct-transactions')} className="w-fit">
@@ -346,6 +348,7 @@ export function Payments() {
                                 <SelectItem value="orders">{t('payments.filters.orders', { defaultValue: 'Orders' })}</SelectItem>
                                 <SelectItem value="budget">{t('payments.filters.accountingHr', { defaultValue: 'Accounting / HR' })}</SelectItem>
                                 <SelectItem value="real_estate">{t('payments.filters.realEstate', { defaultValue: 'Real Estate' })}</SelectItem>
+                                <SelectItem value="clinical_appointments">{t('payments.filters.appointments', { defaultValue: 'Appointments' })}</SelectItem>
                                 <SelectItem value="payments">{t('payments.filters.directManual', { defaultValue: 'Direct / Manual' })}</SelectItem>
                             </SelectContent>
                         </Select>

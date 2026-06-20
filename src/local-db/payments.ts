@@ -32,6 +32,10 @@ import type {
     SalesOrder,
     WorkspacePaymentMethod
 } from './models'
+import {
+    buildClinicalAppointmentPaymentObligation,
+    getClinicalAppointmentPaymentSummary
+} from './clinicalAppointmentPayments'
 
 export interface PaymentTransactionFilterOptions {
     direction?: PaymentTransactionDirection | 'all'
@@ -182,6 +186,10 @@ function getMetadataString(metadata: Record<string, unknown> | null | undefined,
 }
 
 function getTransactionRoutePath(transaction: Pick<PaymentTransaction, 'sourceModule' | 'sourceType' | 'sourceRecordId' | 'metadata'>) {
+    if (transaction.sourceModule === 'clinical_appointments') {
+        return `/clinical-appointments/${transaction.sourceRecordId}/edit`
+    }
+
     if (transaction.sourceModule === 'orders') {
         return `/orders/${transaction.sourceRecordId}`
     }
@@ -357,6 +365,7 @@ async function hydratePaymentSourceTables(workspaceId: string) {
 
     await Promise.all([
         fetchTableFromSupabase('payment_transactions', db.payment_transactions, workspaceId, { includeDeleted: true }),
+        fetchTableFromSupabase('clinical_appointments', db.clinical_appointments, workspaceId, { includeDeleted: true }),
         fetchTableFromSupabase('loans', db.loans, workspaceId, { includeDeleted: true }),
         fetchTableFromSupabase('loan_installments', db.loan_installments, workspaceId, { includeDeleted: true }),
         fetchTableFromSupabase('real_estate_transactions', db.real_estate_transactions, workspaceId, { includeDeleted: true }),
@@ -802,7 +811,8 @@ async function buildPaymentObligations(workspaceId: string, filters: PaymentObli
         expenseSeries,
         expenseItems,
         payrollStatuses,
-        employees
+        employees,
+        clinicalAppointments
     ] = await Promise.all([
         db.loans.where('workspaceId').equals(workspaceId).toArray(),
         db.loan_installments.where('workspaceId').equals(workspaceId).toArray(),
@@ -814,7 +824,8 @@ async function buildPaymentObligations(workspaceId: string, filters: PaymentObli
         db.expense_series.where('workspaceId').equals(workspaceId).toArray(),
         db.expense_items.where('workspaceId').equals(workspaceId).toArray(),
         db.payroll_statuses.where('workspaceId').equals(workspaceId).toArray(),
-        db.employees.where('workspaceId').equals(workspaceId).toArray()
+        db.employees.where('workspaceId').equals(workspaceId).toArray(),
+        db.clinical_appointments.where('workspaceId').equals(workspaceId).toArray()
     ])
 
     const expenseSeriesMap = new Map(
@@ -837,6 +848,9 @@ async function buildPaymentObligations(workspaceId: string, filters: PaymentObli
         ...buildStandardLoanInstallmentObligations(loans, installments, todayKey),
         ...buildSimpleLoanObligations(loans, todayKey),
         ...buildRealEstateCommissionObligations(realEstateTransactions, paymentTransactions),
+        ...clinicalAppointments
+            .map((appointment) => buildClinicalAppointmentPaymentObligation(appointment, paymentTransactions))
+            .filter((item): item is PaymentObligation => !!item),
         ...salesOrders
             .filter((order) => !order.isInstallmentBased || !salesOrdersWithInstallments.has(order.id))
             .map((order) => buildSalesOrderObligation(order, todayKey))
@@ -1041,6 +1055,7 @@ export function isReversiblePaymentSourceType(sourceType: PaymentTransactionSour
         || sourceType === 'simple_loan'
         || sourceType === 'loan_installment'
         || sourceType === 'real_estate_commission'
+        || sourceType === 'clinical_appointment'
         || sourceType === 'sales_order'
         || sourceType === 'purchase_order'
         || sourceType === 'expense_item'
@@ -1504,6 +1519,46 @@ export async function recordObligationSettlement(
             return
         }
 
+        case 'clinical_appointment': {
+            assertStandardSettlementPaymentMethod(input.paymentMethod)
+            const appointment = await db.clinical_appointments.get(obligation.sourceRecordId)
+            if (!appointment || appointment.isDeleted || appointment.workspaceId !== workspaceId) {
+                throw new Error('Appointment not found')
+            }
+
+            const sourceTransactions = await listPaymentTransactionsForSource(workspaceId, {
+                sourceType: 'clinical_appointment',
+                sourceRecordId: appointment.id,
+            })
+            const currentSummary = getClinicalAppointmentPaymentSummary(appointment, sourceTransactions)
+            if (!currentSummary.canCollect || settlementAmount > currentSummary.balanceAmount) {
+                throw new Error('Collection amount cannot exceed the appointment balance')
+            }
+
+            await appendPaymentTransaction(workspaceId, {
+                sourceModule: 'clinical_appointments',
+                sourceType: 'clinical_appointment',
+                sourceRecordId: appointment.id,
+                sourceSubrecordId: null,
+                direction: 'incoming',
+                amount: settlementAmount,
+                currency: appointment.currency || obligation.currency,
+                paymentMethod: input.paymentMethod,
+                paidAt,
+                counterpartyName: appointment.patientName,
+                referenceLabel: obligation.referenceLabel,
+                note,
+                createdBy,
+                metadata: {
+                    appointmentId: appointment.id,
+                    appointmentType: appointment.appointmentType,
+                    requestedService: appointment.reasonForVisit || appointment.serviceProcedure || null,
+                    serviceFee: currentSummary.serviceFee,
+                },
+            })
+            return
+        }
+
         case 'purchase_order': {
             assertStandardSettlementPaymentMethod(input.paymentMethod)
             if (settlementAmount > obligation.amount) {
@@ -1741,6 +1796,28 @@ export async function reversePaymentTransaction(
             await rebuildOrderPaymentState('purchase', transaction.sourceRecordId)
             return reversal
         }
+
+        case 'clinical_appointment':
+            return appendPaymentTransaction(workspaceId, {
+                sourceModule: 'clinical_appointments',
+                sourceType: 'clinical_appointment',
+                sourceRecordId: transaction.sourceRecordId,
+                sourceSubrecordId: null,
+                direction: 'incoming',
+                amount: -Math.abs(transaction.amount),
+                currency: transaction.currency,
+                paymentMethod: transaction.paymentMethod,
+                paidAt: input.paidAt ? new Date(input.paidAt).toISOString() : new Date().toISOString(),
+                counterpartyName: transaction.counterpartyName || null,
+                referenceLabel: transaction.referenceLabel || null,
+                note,
+                createdBy: input.createdBy || null,
+                reversalOfTransactionId: transaction.id,
+                metadata: {
+                    ...(transaction.metadata && typeof transaction.metadata === 'object' ? transaction.metadata : {}),
+                    reversal: true,
+                },
+            })
 
         case 'expense_item': {
             const item = await db.expense_items.get(transaction.sourceRecordId)

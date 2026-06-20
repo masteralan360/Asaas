@@ -11,7 +11,7 @@ import { formatLocalizedMonthYear } from '@/lib/monthDisplay'
 import { getLoanDetailsPath } from '@/lib/loanPresentation'
 import { getRetriableActionToast, isRetriableWebRequestError, normalizeSupabaseActionError, runSupabaseAction } from '@/lib/supabaseRequest'
 
-import { adjustInventoryQuantity, commitStockBatchAllocations, db, recordLoanPayment, resolveReturnStorageId, restoreStockBatchAllocations, splitStockBatchAllocationsForReturn, useLoanBySaleId, useLoanInstallments, useLoanPayments, useLoans, useSales, useSalesOrders, useTravelAgencySales, useExchangeTransactions, usePaymentTransactions, toUISale, toUISaleFromOrder, toUISaleFromTravelAgency, toUISaleFromExchangeTransaction, toUISaleFromRealEstateCommissionTransaction, type Loan, type SaleReturn as LocalSaleReturn, type SaleReturnItem as LocalSaleReturnItem, type StockBatchAllocation } from '@/local-db'
+import { adjustInventoryQuantity, commitStockBatchAllocations, db, recordLoanPayment, resolveReturnStorageId, restoreStockBatchAllocations, splitStockBatchAllocationsForReturn, useLoanBySaleId, useLoanInstallments, useLoanPayments, useLoans, useSales, useSalesOrders, useTravelAgencySales, useExchangeTransactions, usePaymentTransactions, useClinicalAppointments, toUISale, toUISaleFromOrder, toUISaleFromTravelAgency, toUISaleFromExchangeTransaction, toUISaleFromRealEstateCommissionTransaction, toUISaleFromPaidClinicalAppointment, type Loan, type SaleReturn as LocalSaleReturn, type SaleReturnItem as LocalSaleReturnItem, type StockBatchAllocation } from '@/local-db'
 import { fetchCachedCustomTemplates } from '@/lib/cachedCustomTemplates'
 import { useWorkspace } from '@/workspace'
 import { isMobile } from '@/lib/platform'
@@ -153,6 +153,9 @@ function getExternalSaleDetailsPath(sale: Sale) {
     if (sale.origin === 'real_estate') {
         return `/real-estate/${sale._realEstateTransactionId || sale.id}`
     }
+    if (sale.origin === 'clinical_appointment') {
+        return `/clinical-appointments/${sale._clinicalAppointmentId || sale.id}/edit`
+    }
     return null
 }
 
@@ -239,6 +242,13 @@ export function Sales() {
         sourceType: 'real_estate_commission',
         includeReversals: false
     }, { hydrateSourceTables: false })
+    const clinicalAppointments = useClinicalAppointments(user?.workspaceId)
+    const clinicalAppointmentTransactions = usePaymentTransactions(user?.workspaceId, {
+        direction: 'incoming',
+        sourceModule: 'clinical_appointments',
+        sourceType: 'clinical_appointment',
+        includeReversals: true
+    }, { hydrateSourceTables: false })
 
     const loans = useLoans(user?.workspaceId)
     const allSales = useMemo(() => {
@@ -255,10 +265,13 @@ export function Sales() {
         const realEstateCommissionSales = (realEstateCommissionTransactions || [])
             .filter(transaction => transaction.amount > 0)
             .map(toUISaleFromRealEstateCommissionTransaction)
-        return [...sales, ...orders, ...travelSales, ...exchangeSales, ...realEstateCommissionSales]
-    }, [rawSales, rawOrders, rawTravelSales, rawExchangeTransactions, realEstateCommissionTransactions])
+        const clinicalSales = (clinicalAppointments || [])
+            .map(appointment => toUISaleFromPaidClinicalAppointment(appointment, clinicalAppointmentTransactions))
+            .filter((sale): sale is NonNullable<typeof sale> => !!sale)
+        return [...sales, ...orders, ...travelSales, ...exchangeSales, ...realEstateCommissionSales, ...clinicalSales]
+    }, [rawSales, rawOrders, rawTravelSales, rawExchangeTransactions, realEstateCommissionTransactions, clinicalAppointments, clinicalAppointmentTransactions])
 
-    const isLoading = rawSales === undefined || rawOrders === undefined || rawTravelSales === undefined || rawExchangeTransactions === undefined || realEstateCommissionTransactions === undefined
+    const isLoading = rawSales === undefined || rawOrders === undefined || rawTravelSales === undefined || rawExchangeTransactions === undefined || realEstateCommissionTransactions === undefined || clinicalAppointments === undefined
     const [isDateLoading, setIsDateLoading] = useState(false)
     const prevDateBoundsRef = useRef(dateBounds)
 

@@ -49,6 +49,10 @@
     "patient": "کڕیار",
     "type": "جۆر",
     "actions": "کردارەکان",
+    "collectPayment": "پارە وەربگرە",
+    "paid": "پارەدراوە",
+    "paymentCollected": "پارەدان تۆمار کرا",
+    "paymentFailed": "تۆمارکردنی پارەدان سەرکەوتوو نەبوو",
     "statuses": {
       "draft": "ڕەشنووس",
       "scheduled": "حجز کراوە",

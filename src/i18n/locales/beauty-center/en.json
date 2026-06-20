@@ -49,6 +49,10 @@
     "patient": "Client",
     "type": "Type",
     "actions": "Actions",
+    "collectPayment": "Collect Payment",
+    "paid": "Paid",
+    "paymentCollected": "Payment recorded",
+    "paymentFailed": "Failed to record payment",
     "statuses": {
       "draft": "Draft",
       "booked": "Booked",

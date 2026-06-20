@@ -4,12 +4,20 @@ import { useTranslation } from 'react-i18next'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useAuth } from '@/auth'
 import { db } from '@/local-db/database'
-import { createClinicalAppointment, createClinicalPatient, searchClinicalPatients, useClinicalAppointments, useClinicalAppointment, updateClinicalAppointment, calculateAge } from '@/local-db/clinicalAppointments'
+import { createClinicalAppointment, createClinicalPatient, searchClinicalPatients, useClinicalAppointments, useClinicalAppointment, updateClinicalAppointment, deleteClinicalAppointment, calculateAge } from '@/local-db/clinicalAppointments'
+import {
+  buildClinicalAppointmentPaymentObligation,
+  getClinicalAppointmentPaymentSummary,
+  recordObligationSettlement,
+  usePaymentTransactions,
+  type PaymentObligation,
+  type WorkspacePaymentMethod,
+} from '@/local-db'
 import type { ClinicalAppointment, ClinicalAppointmentStatus, ClinicalAppointmentType, ClinicalAppointmentPriority, ClinicalConfirmationMethod } from '@/local-db/clinicalAppointments'
 import { useClinicalPresetsByCategory } from '@/local-db/clinicalPresets'
-import { Button, Input, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Textarea, Label, Card, CardContent, CardHeader, CardTitle, DateTimePicker } from '@/ui/components'
-import { Plus, Search, Upload, Trash2, FileText, ArrowLeft, CalendarClock, Edit, Check, ChevronDown, LayoutGrid, List } from 'lucide-react'
-import { generateId, formatNumberWithCommas, formatTime } from '@/lib/utils'
+import { Button, Input, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Textarea, Label, Card, CardContent, CardHeader, CardTitle, DateTimePicker, SettlementDialog, useToast, DeleteConfirmationModal } from '@/ui/components'
+import { Plus, Search, Upload, Trash2, FileText, ArrowLeft, CalendarClock, Edit, Check, ChevronDown, LayoutGrid, List, HandCoins, CircleCheck } from 'lucide-react'
+import { generateId, formatCurrency, formatNumberWithCommas, formatTime } from '@/lib/utils'
 import { r2Service } from '@/services/r2Service'
 import { platformService } from '@/services/platformService'
 import { useLocation, useRoute } from 'wouter'
@@ -183,7 +191,15 @@ export function ClinicalAppointments() {
 
 function AppointmentList({ workspaceId, navigate }: { workspaceId: string; navigate: (path: string) => void }) {
   const { t } = useTranslation()
+  const { user } = useAuth()
+  const { features } = useWorkspace()
+  const { toast } = useToast()
   const appointments = useClinicalAppointments(workspaceId)
+  const paymentTransactions = usePaymentTransactions(workspaceId, {
+    sourceModule: 'clinical_appointments',
+    sourceType: 'clinical_appointment',
+    includeReversals: true,
+  }, { hydrateSourceTables: false })
   const [searchQuery, setSearchQuery] = useState('')
   const [filter, setFilter] = useState('all')
   const [viewMode, setViewMode] = useState<'table' | 'grid'>(() => {
@@ -191,6 +207,10 @@ function AppointmentList({ workspaceId, navigate }: { workspaceId: string; navig
   })
   useEffect(() => { localStorage.setItem('clinical_appointments_view_mode', viewMode) }, [viewMode])
   const [updatingId, setUpdatingId] = useState<string | null>(null)
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
+  const [paymentObligation, setPaymentObligation] = useState<PaymentObligation | null>(null)
+  const [isCollectingPayment, setIsCollectingPayment] = useState(false)
 
   const handleStatusChange = useCallback(async (id: string, newStatus: string) => {
     setUpdatingId(id)
@@ -202,6 +222,21 @@ function AppointmentList({ workspaceId, navigate }: { workspaceId: string; navig
       setUpdatingId(null)
     }
   }, [workspaceId])
+
+  const handleDelete = useCallback(async () => {
+    if (!deleteConfirmId) return
+    setIsDeleting(true)
+    try {
+      await deleteClinicalAppointment(deleteConfirmId, workspaceId)
+      toast({ title: t('clinicalAppointments.messages.deleted', { defaultValue: 'Appointment deleted' }) })
+    } catch (e) {
+      console.error('[ClinicalAppointments] Failed to delete appointment:', e)
+      toast({ variant: 'destructive', title: t('clinicalAppointments.messages.deleteFailed', { defaultValue: 'Failed to delete appointment' }) })
+    } finally {
+      setIsDeleting(false)
+      setDeleteConfirmId(null)
+    }
+  }, [deleteConfirmId, workspaceId, toast])
 
   const filtered = useMemo(() => {
     if (!appointments) return []
@@ -227,6 +262,64 @@ function AppointmentList({ workspaceId, navigate }: { workspaceId: string; navig
     }
     return result
   }, [appointments, searchQuery, filter])
+
+  const handleCollectPayment = (appointment: ClinicalAppointment) => {
+    const obligation = buildClinicalAppointmentPaymentObligation(appointment, paymentTransactions)
+    if (obligation) {
+      setPaymentObligation(obligation)
+    }
+  }
+
+  const handlePaymentSubmit = async (input: {
+    paymentMethod: WorkspacePaymentMethod
+    paidAt: string
+    amount?: number
+    note?: string
+  }) => {
+    if (!paymentObligation) return
+
+    setIsCollectingPayment(true)
+    try {
+      await recordObligationSettlement(workspaceId, paymentObligation, {
+        ...input,
+        createdBy: user?.id || null,
+      })
+      toast({
+        title: t('clinicalAppointments.paymentCollected', { defaultValue: 'Payment collected successfully' }),
+      })
+      setPaymentObligation(null)
+    } catch (error) {
+      toast({
+        title: t('common.error', { defaultValue: 'Error' }),
+        description: error instanceof Error
+          ? error.message
+          : t('clinicalAppointments.paymentFailed', { defaultValue: 'Failed to collect payment' }),
+        variant: 'destructive',
+      })
+    } finally {
+      setIsCollectingPayment(false)
+    }
+  }
+
+  const renderPaymentAction = (appointment: ClinicalAppointment) => {
+    const summary = getClinicalAppointmentPaymentSummary(appointment, paymentTransactions)
+    if (summary.isPaid) {
+      return (
+        <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+          <CircleCheck className="h-3.5 w-3.5" />
+          {t('clinicalAppointments.paid', { defaultValue: 'Paid' })}
+        </span>
+      )
+    }
+    if (!summary.canCollect) return null
+
+    return (
+      <Button type="button" variant="outline" size="sm" onClick={() => handleCollectPayment(appointment)}>
+        <HandCoins className="mr-1.5 h-3.5 w-3.5" />
+        {t('clinicalAppointments.collectPayment', { defaultValue: 'Collect Payment' })}
+      </Button>
+    )
+  }
 
   return (
     <div className="p-6 space-y-6">
@@ -331,10 +424,18 @@ function AppointmentList({ workspaceId, navigate }: { workspaceId: string; navig
                   {t('clinicalAppointments.priorities.' + appt.priority, {defaultValue: appt.priority})}
                 </span>
               </div>
-              <div className="flex justify-end">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-muted-foreground">{t('clinicalAppointments.consultationFee', { defaultValue: 'Service Fee' })}</span>
+                <span className="font-semibold">{formatCurrency(appt.consultationFee, appt.currency || features.default_currency, features.iqd_display_preference)}</span>
+              </div>
+              <div className="flex items-center justify-end gap-2">
+                {renderPaymentAction(appt)}
                 <Button variant="ghost" size="sm" onClick={() => navigate(`/clinical-appointments/${appt.id}/edit`)}>
                   <Edit className="w-3.5 h-3.5 mr-1.5" />
                   {t('clinicalAppointments.actions', { defaultValue: 'Edit' })}
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => setDeleteConfirmId(appt.id)}>
+                  <Trash2 className="w-3.5 h-3.5" />
                 </Button>
               </div>
             </div>
@@ -375,10 +476,18 @@ function AppointmentList({ workspaceId, navigate }: { workspaceId: string; navig
                       {t('clinicalAppointments.priorities.' + appt.priority, {defaultValue: appt.priority})}
                     </span>
                   </div>
-                  <div className="flex justify-end">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">{t('clinicalAppointments.consultationFee', { defaultValue: 'Service Fee' })}</span>
+                    <span className="font-semibold">{formatCurrency(appt.consultationFee, appt.currency || features.default_currency, features.iqd_display_preference)}</span>
+                  </div>
+                  <div className="flex items-center justify-end gap-2">
+                    {renderPaymentAction(appt)}
                     <Button variant="ghost" size="sm" onClick={() => navigate(`/clinical-appointments/${appt.id}/edit`)}>
                       <Edit className="w-3.5 h-3.5 mr-1.5" />
                       {t('clinicalAppointments.actions', { defaultValue: 'Edit' })}
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => setDeleteConfirmId(appt.id)}>
+                      <Trash2 className="w-3.5 h-3.5" />
                     </Button>
                   </div>
                 </div>
@@ -395,13 +504,14 @@ function AppointmentList({ workspaceId, navigate }: { workspaceId: string; navig
                 <TableHead>{t('clinicalAppointments.type', { defaultValue: 'Type' })}</TableHead>
                 <TableHead>{t('clinicalAppointments.status', { defaultValue: 'Status' })}</TableHead>
                 <TableHead>{t('clinicalAppointments.priority', { defaultValue: 'Priority' })}</TableHead>
+                <TableHead>{t('clinicalAppointments.consultationFee', { defaultValue: 'Service Fee' })}</TableHead>
                 <TableHead>{t('clinicalAppointments.actions', { defaultValue: 'Actions' })}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filtered.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center text-muted-foreground py-12">
+                  <TableCell colSpan={7} className="text-center text-muted-foreground py-12">
                     {t('clinicalAppointments.noAppointments', { defaultValue: 'No appointments found' })}
                   </TableCell>
                 </TableRow>
@@ -423,10 +533,19 @@ function AppointmentList({ workspaceId, navigate }: { workspaceId: string; navig
                       />
                     </TableCell>
                     <TableCell className="capitalize">{t('clinicalAppointments.priorities.' + appt.priority, {defaultValue: appt.priority})}</TableCell>
-                    <TableCell>
-                      <Button variant="ghost" size="icon" onClick={() => navigate(`/clinical-appointments/${appt.id}/edit`)}>
-                        <Edit className="w-4 h-4" />
-                      </Button>
+                    <TableCell className="whitespace-nowrap font-medium">
+                      {formatCurrency(appt.consultationFee, appt.currency || features.default_currency, features.iqd_display_preference)}
+                    </TableCell>
+                  <TableCell>
+                      <div className="flex items-center gap-2">
+                        {renderPaymentAction(appt)}
+                        <Button variant="ghost" size="icon" onClick={() => navigate(`/clinical-appointments/${appt.id}/edit`)}>
+                          <Edit className="w-4 h-4" />
+                        </Button>
+                        <Button variant="ghost" size="icon" onClick={() => setDeleteConfirmId(appt.id)}>
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))
@@ -436,6 +555,20 @@ function AppointmentList({ workspaceId, navigate }: { workspaceId: string; navig
         </div>
         )}
       </div>
+      <SettlementDialog
+        open={!!paymentObligation}
+        onOpenChange={(open) => { if (!open && !isCollectingPayment) setPaymentObligation(null) }}
+        obligation={paymentObligation}
+        isSubmitting={isCollectingPayment}
+        onSubmit={handlePaymentSubmit}
+      />
+      <DeleteConfirmationModal
+        isOpen={!!deleteConfirmId}
+        onClose={() => setDeleteConfirmId(null)}
+        onConfirm={handleDelete}
+        isLoading={isDeleting}
+        itemName={deleteConfirmId ? appointments?.find(a => a.id === deleteConfirmId)?.patientName || '' : ''}
+      />
     </div>
   )
 }
@@ -567,6 +700,7 @@ function CreateAppointmentForm({ workspaceId, appointment, onCancel, onSaved }: 
             reasonForVisit: reasonForVisit.trim() || null,
             consultationFee,
             estimatedPrice,
+            currency: appointment.currency || features.default_currency,
             status,
             confirmationMethod,
             priority,
@@ -587,6 +721,7 @@ function CreateAppointmentForm({ workspaceId, appointment, onCancel, onSaved }: 
             reasonForVisit: reasonForVisit.trim() || null,
             consultationFee,
             estimatedPrice,
+            currency: features.default_currency,
             status,
             confirmationMethod,
             priority,
@@ -648,7 +783,7 @@ function CreateAppointmentForm({ workspaceId, appointment, onCancel, onSaved }: 
     } finally {
       setSaving(false)
     }
-  }, [isEditing, appointment, workspaceId, patientName, patientPhone, selectedPatientId, isNewPatient, appointmentDate, startTime, appointmentType, reasonForVisit, consultationFee, estimatedPrice, status, confirmationMethod, priority, internalNotes, attachments, user, onSaved])
+  }, [isEditing, appointment, workspaceId, patientName, patientPhone, selectedPatientId, isNewPatient, appointmentDate, startTime, appointmentType, reasonForVisit, consultationFee, estimatedPrice, status, confirmationMethod, priority, internalNotes, attachments, user, onSaved, features.default_currency])
 
   return (
     <div className="flex h-full flex-col overflow-hidden bg-background">

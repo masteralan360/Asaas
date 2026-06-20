@@ -35,7 +35,8 @@ import { useUsbBackup } from '@/hooks/useUsbBackup'
 import { downloadDatabaseFile } from '@/local-db/localModeSqlite'
 import { ReactQRCode } from '@lglab/react-qr-code'
 import { BranchManager } from '@/ui/components/workspace/BranchManager'
-import { canManageClinicalRegistryType, setClinicalRegistryType, useClinicalRegistryType } from '@/i18n/clinicalRegistry'
+import { canManageClinicalRegistryType } from '@/i18n/clinicalRegistry'
+import { setClinicalRegistryType, useClinicalRegistryType } from '@/local-db/clinicalPresets'
 
 export function Settings() {
     const { user, signOut, isSupabaseConfigured, updateUser } = useAuth()
@@ -66,6 +67,7 @@ export function Settings() {
     const [hourDisplayPreference, setHourDisplayPreferenceState] = useState<HourDisplayPreference>(getHourDisplayPreference())
     const [monthDisplayPreference, setMonthDisplayPreferenceState] = useState<MonthDisplayPreference>(getMonthDisplayPreference())
     const [hasFxAccountingData, setHasFxAccountingData] = useState(false)
+    const [isClinicalRegistrySaving, setIsClinicalRegistrySaving] = useState(false)
     const isKdsSaving = false
     const clinicalRegistryType = useClinicalRegistryType(user?.workspaceId)
     const canManageClinicalRegistry = canManageClinicalRegistryType(
@@ -163,6 +165,31 @@ export function Settings() {
             description: fallbackDescription || normalized.message,
             variant: 'destructive'
         })
+    }
+
+    const handleClinicalRegistryTypeChange = async (useBeautyCenterTerms: boolean) => {
+        if (!user?.workspaceId || isClinicalRegistrySaving) return
+
+        setIsClinicalRegistrySaving(true)
+        try {
+            await setClinicalRegistryType(
+                user.workspaceId,
+                useBeautyCenterTerms ? 'beauty' : 'medical',
+                user.id,
+            )
+            toast({
+                title: t('common.success') || 'Success',
+                description: t('settings.clinicalRegistry.saveSuccess', {
+                    defaultValue: 'Appointment registry type updated for this workspace.',
+                }),
+            })
+        } catch (error) {
+            showActionError(error, t('settings.clinicalRegistry.saveError', {
+                defaultValue: 'Failed to update the appointment registry type.',
+            }))
+        } finally {
+            setIsClinicalRegistrySaving(false)
+        }
     }
 
     const loadSelectedThermalPrinter = async () => {
@@ -2183,8 +2210,8 @@ export function Settings() {
                                                 : t('settings.clinicalRegistry.medical', { defaultValue: 'Medical Patient Clinic' })}
                                         </Label>
                                         <p className="text-xs text-muted-foreground">
-                                            {t('settings.clinicalRegistry.localOnly', {
-                                                defaultValue: 'Changes terminology on this device only. It does not change or migrate appointment data.',
+                                            {t('settings.clinicalRegistry.workspaceWide', {
+                                                defaultValue: 'Applies to this workspace on every device. It does not change or migrate appointment data.',
                                             })}
                                         </p>
                                     </div>
@@ -2195,10 +2222,8 @@ export function Settings() {
                                         <Switch
                                             id="clinical-registry-type"
                                             checked={clinicalRegistryType === 'beauty'}
-                                            onCheckedChange={(checked) => setClinicalRegistryType(
-                                                user.workspaceId,
-                                                checked ? 'beauty' : 'medical',
-                                            )}
+                                            onCheckedChange={handleClinicalRegistryTypeChange}
+                                            disabled={isClinicalRegistrySaving}
                                             aria-label={t('settings.clinicalRegistry.toggleLabel', {
                                                 defaultValue: 'Use Beauty Center terminology',
                                             })}

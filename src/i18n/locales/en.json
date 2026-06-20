@@ -1252,9 +1252,9 @@
   },
   "payments": {
     "title": "Payments",
-    "subtitle": "Unified open obligations and central transaction history across loans, orders, payroll, and expenses.",
+    "subtitle": "Unified open obligations and central transaction history across appointments, loans, orders, payroll, and expenses.",
     "notAvailable": "Payments is not available in this workspace",
-    "enableModules": "Enable Loans, CRM, Accounting, or HR to use the central payments surface.",
+    "enableModules": "Enable Appointments, Loans, CRM, Accounting, or HR to use the central payments surface.",
     "directTransactions": "Direct Transactions",
     "searchPlaceholder": "Search payments",
     "collect": "Collect",
@@ -1278,6 +1278,7 @@
       "allSources": "All Sources",
       "loans": "Loans",
       "orders": "Orders",
+      "appointments": "Appointments",
       "accountingHr": "Accounting / HR",
       "directManual": "Direct / Manual",
       "allStatuses": "All Open Statuses",
@@ -1310,7 +1311,8 @@
       "purchaseOrder": "Purchase Order",
       "expense": "Expense",
       "payroll": "Payroll",
-      "directTransaction": "Direct Transaction"
+      "directTransaction": "Direct Transaction",
+      "clinicalAppointment": "Appointment"
     },
     "status": {
       "reversal": "Reversal",
@@ -1987,8 +1989,10 @@
       "description": "Choose whether this appointment registry uses medical patient clinic or Beauty Center terminology.",
       "medical": "Medical Patient Clinic",
       "beauty": "Beauty Center",
-      "localOnly": "Changes terminology on this device only. It does not change or migrate appointment data.",
-      "toggleLabel": "Use Beauty Center terminology"
+      "workspaceWide": "Applies to this workspace on every device. It does not change or migrate appointment data.",
+      "toggleLabel": "Use Beauty Center terminology",
+      "saveSuccess": "Appointment registry type updated for this workspace.",
+      "saveError": "Failed to update the appointment registry type."
     }
   },
   "sync": {
@@ -4054,6 +4058,10 @@
     "patient": "Patient",
     "type": "Type",
     "actions": "Actions",
+    "collectPayment": "Collect Payment",
+    "paid": "Paid",
+    "paymentCollected": "Payment recorded",
+    "paymentFailed": "Failed to record payment",
     "statuses": {
       "draft": "Draft",
       "booked": "Booked",

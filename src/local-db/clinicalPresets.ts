@@ -9,7 +9,13 @@ import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
 import { runSupabaseAction } from '@/lib/supabaseRequest'
 import { fetchTableFromSupabase } from './hooks'
 import { addToOfflineMutations } from './offlineMutations'
-import type { ClinicalPreset, BaseEntity } from './models'
+import type { ClinicalPreset, BaseEntity, ClinicalRegistryType } from './models'
+import {
+  CLINICAL_REGISTRY_PRESET_CATEGORY,
+  DEFAULT_CLINICAL_REGISTRY_TYPE,
+  getClinicalRegistryPresetId,
+  normalizeClinicalRegistryType,
+} from './clinicalRegistryPreset'
 
 const PRESETS_TABLE = 'clinical_presets'
 
@@ -132,9 +138,26 @@ export function useClinicalPresets(workspaceId: string | undefined) {
     if (!workspaceId) return []
     return db.clinical_presets
       .where('workspaceId').equals(workspaceId)
-      .filter((p) => !p.isDeleted)
+      .filter((p) => !p.isDeleted && p.category !== CLINICAL_REGISTRY_PRESET_CATEGORY)
       .sortBy('sortOrder')
   }, [workspaceId])
+}
+
+export function useClinicalRegistryType(workspaceId: string | undefined): ClinicalRegistryType {
+  useGenericClinicalPresetsTableFetch(workspaceId)
+  const registryType = useLiveQuery(async () => {
+    if (!workspaceId) return DEFAULT_CLINICAL_REGISTRY_TYPE
+
+    const preset = await db.clinical_presets
+      .where('[workspaceId+category]')
+      .equals([workspaceId, CLINICAL_REGISTRY_PRESET_CATEGORY])
+      .filter((item) => !item.isDeleted && item.isActive)
+      .first()
+
+    return normalizeClinicalRegistryType(preset?.name)
+  }, [workspaceId])
+
+  return registryType ?? DEFAULT_CLINICAL_REGISTRY_TYPE
 }
 
 export function useClinicalPreset(id: string | undefined) {
@@ -171,6 +194,39 @@ export async function createClinicalPreset(
     syncStatus: 'pending',
     lastSyncedAt: null,
   }
+  await upsertClinicalPresetEntity(entity, workspaceId, timestamp)
+  return entity
+}
+
+export async function setClinicalRegistryType(
+  workspaceId: string,
+  registryType: ClinicalRegistryType,
+  createdBy?: string | null,
+) {
+  const timestamp = new Date().toISOString()
+  const existing = await db.clinical_presets
+    .where('[workspaceId+category]')
+    .equals([workspaceId, CLINICAL_REGISTRY_PRESET_CATEGORY])
+    .filter((item) => !item.isDeleted)
+    .first()
+
+  const entity: ClinicalPreset = {
+    id: existing?.id ?? getClinicalRegistryPresetId(workspaceId),
+    workspaceId,
+    category: CLINICAL_REGISTRY_PRESET_CATEGORY,
+    name: registryType,
+    consultationFee: 0,
+    sortOrder: 0,
+    isActive: true,
+    createdBy: existing?.createdBy ?? createdBy ?? null,
+    createdAt: existing?.createdAt ?? timestamp,
+    updatedAt: timestamp,
+    version: (existing?.version ?? 0) + 1,
+    isDeleted: false,
+    syncStatus: 'pending',
+    lastSyncedAt: existing?.lastSyncedAt ?? null,
+  }
+
   await upsertClinicalPresetEntity(entity, workspaceId, timestamp)
   return entity
 }

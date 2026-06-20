@@ -923,7 +923,9 @@ export type ClinicalAppointmentType =
 
 export type ClinicalPatientType = 'new' | 'existing';
 
-export type ClinicalPresetCategory = 'reason_for_visit' | 'appointment_type';
+export type ClinicalPresetCategory = 'reason_for_visit' | 'appointment_type' | 'registry_type';
+
+export type ClinicalRegistryType = 'medical' | 'beauty';
 
 export interface ClinicalPreset extends BaseEntity {
   category: ClinicalPresetCategory;
@@ -989,6 +991,7 @@ export interface ClinicalAppointment extends BaseEntity {
   serviceProcedure?: string | null;
   consultationFee: number;
   estimatedPrice: number;
+  currency: CurrencyCode;
   status: ClinicalAppointmentStatus;
   confirmationMethod?: ClinicalConfirmationMethod | null;
   priority: ClinicalAppointmentPriority;
@@ -1124,6 +1127,7 @@ export interface Invoice extends BaseEntity {
     | "real_estate"
     | "sales_order"
     | "travel_agency"
+    | "clinical_appointment"
     | "upload";
   /** @deprecated Use cashierName for the name string. createdBy might map to system UUID. */
   createdBy?: string;
@@ -1269,6 +1273,7 @@ export type PaymentTransactionSourceModule =
   | "orders"
   | "budget"
   | "real_estate"
+  | "clinical_appointments"
   | "currency_exchange"
   | "payments";
 export type PaymentTransactionSourceType =
@@ -1279,6 +1284,7 @@ export type PaymentTransactionSourceType =
   | "real_estate_payment"
   | "real_estate_installment"
   | "real_estate_commission"
+  | "clinical_appointment"
   | "sales_order"
   | "purchase_order"
   | "expense_item"

@@ -66,6 +66,7 @@ export function SettlementDialog({
     const showsAmountInput = obligation?.sourceType === 'real_estate_commission'
         || obligation?.sourceType === 'sales_order'
         || obligation?.sourceType === 'purchase_order'
+        || obligation?.sourceType === 'clinical_appointment'
     const businessPartners = useBusinessPartners(showsCounterpartyPicker ? obligation?.workspaceId : undefined, { includeRealEstateRoles: true }) || []
 
     const businessPartnerById = useMemo(() => new Map(businessPartners.map((partner) => [partner.id, partner])), [businessPartners])

@@ -32,6 +32,7 @@ CREATE TABLE clinics.clinical_appointments (
   service_procedure text NULL,
   consultation_fee numeric NOT NULL DEFAULT 0,
   estimated_price numeric NOT NULL DEFAULT 0,
+  currency text NOT NULL DEFAULT 'usd',
   status text NOT NULL DEFAULT 'draft',
   confirmation_status text NOT NULL DEFAULT 'not_contacted',
   confirmation_method text NULL,
@@ -46,7 +47,7 @@ CREATE TABLE clinics.clinical_appointments (
     appointment_type IN ('consultation', 'follow_up', 'emergency', 'checkup', 'procedure', 'treatment')
   ),
   CONSTRAINT clinical_appointments_status_check CHECK (
-    status IN ('draft', 'scheduled', 'confirmed', 'arrived', 'in_progress', 'completed', 'cancelled', 'no_show')
+    status IN ('draft', 'booked', 'arrived', 'in_progress', 'completed', 'cancelled', 'no_show')
   ),
   CONSTRAINT clinical_appointments_confirmation_status_check CHECK (
     confirmation_status IN ('not_contacted', 'pending_confirmation', 'confirmed', 'declined', 'unable_to_reach')
@@ -59,6 +60,7 @@ CREATE TABLE clinics.clinical_appointments (
   ),
   CONSTRAINT clinical_appointments_fee_check CHECK (consultation_fee >= 0),
   CONSTRAINT clinical_appointments_estimated_price_check CHECK (estimated_price >= 0),
+  CONSTRAINT clinical_appointments_currency_check CHECK (currency IN ('usd', 'iqd', 'eur', 'try')),
   CONSTRAINT clinical_appointments_time_check CHECK (length(trim(start_time)) > 0),
   PRIMARY KEY (id)
 );

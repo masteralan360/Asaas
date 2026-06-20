@@ -73,7 +73,7 @@ import { useWorkspace } from '@/workspace'
 import { useTheme } from '@/ui/components/theme-provider'
 
 type LedgerDirection = 'incoming' | 'outgoing'
-type LedgerSourceModule = 'pos' | 'instant_pos' | 'orders' | 'expenses' | 'payroll' | 'loans' | 'real_estate' | 'manual' | 'exchange'
+type LedgerSourceModule = 'pos' | 'instant_pos' | 'orders' | 'expenses' | 'payroll' | 'loans' | 'real_estate' | 'clinical_appointments' | 'manual' | 'exchange'
 type LedgerRelationRole = 'origin' | 'repayment' | 'settlement'
 type LedgerEntryType =
     | 'pos_sale'
@@ -91,6 +91,7 @@ type LedgerEntryType =
     | 'installment_received'
     | 'installment_paid'
     | 'real_estate_commission'
+    | 'clinical_appointment_payment'
     | 'direct_inflow'
     | 'direct_outflow'
     | 'exchange_profit'
@@ -301,6 +302,8 @@ function ledgerTypeLabel(type: LedgerEntryType, t: any) {
             return t('ledger.type.installmentPaid', { defaultValue: 'Installment Paid' })
         case 'real_estate_commission':
             return t('ledger.type.realEstateCommission', { defaultValue: 'Real Estate Commission' })
+        case 'clinical_appointment_payment':
+            return t('ledger.type.clinicalAppointmentPayment', { defaultValue: 'Appointment Payment' })
         case 'direct_inflow':
             return t('ledger.type.directInflow', { defaultValue: 'Direct Inflow' })
         case 'direct_outflow':
@@ -328,6 +331,8 @@ function sourceModuleLabel(module: LedgerSourceModule, t: any) {
             return t('ledger.sourceModule.loans', { defaultValue: 'Loans' })
         case 'real_estate':
             return t('ledger.sourceModule.realEstate', { defaultValue: 'Real Estate' })
+        case 'clinical_appointments':
+            return t('ledger.sourceModule.clinicalAppointments', { defaultValue: 'Appointments' })
         case 'manual':
             return t('ledger.sourceModule.manual', { defaultValue: 'Manual' })
         case 'exchange':
@@ -698,6 +703,8 @@ function buildTransactionReference(transaction: PaymentTransaction) {
             return buildReferenceId('PAY', transaction.sourceRecordId)
         case 'real_estate_commission':
             return buildReferenceId('RE', transaction.sourceRecordId)
+        case 'clinical_appointment':
+            return buildReferenceId('APT', transaction.sourceRecordId)
         default:
             return buildReferenceId('LOAN', transaction.sourceRecordId)
     }
@@ -733,6 +740,15 @@ function buildTransactionDescription(transaction: PaymentTransaction, t: any) {
         const location = typeof transaction.metadata?.propertyLocation === 'string' ? transaction.metadata.propertyLocation : null
         if (location) {
             details.push(location)
+        }
+    }
+
+    if (transaction.sourceType === 'clinical_appointment') {
+        const requestedService = typeof transaction.metadata?.requestedService === 'string'
+            ? transaction.metadata.requestedService.trim()
+            : null
+        if (requestedService) {
+            details.push(requestedService)
         }
     }
 
@@ -819,6 +835,14 @@ function buildLedgerRelationDescriptor(
                 relationIsCompleted: false
             }
         }
+
+        case 'clinical_appointment':
+            return {
+                relationKey: `clinical-appointment:${transaction.sourceRecordId}`,
+                relationRole: 'settlement',
+                relationTitle: 'Appointment payment',
+                relationDescription: `Original source: Appointment ${reference}.`
+            }
 
         case 'sales_order': {
             const isReceivable = Boolean(transaction.metadata?.receivable)
@@ -1048,6 +1072,25 @@ function buildPaymentLedgerEntry(
                 ...relation
             }
         }
+        case 'clinical_appointment':
+            return {
+                id: `payment:${transaction.id}`,
+                transactionId: transaction.id,
+                date: transaction.paidAt,
+                type: 'clinical_appointment_payment',
+                direction: 'incoming',
+                amount: transaction.amount,
+                currency: transaction.currency,
+                sourceModule: 'clinical_appointments',
+                referenceId: buildTransactionReference(transaction),
+                partner: transaction.counterpartyName || null,
+                businessPartnerId: context.businessPartnerByName.get(transaction.counterpartyName?.trim().toLowerCase() ?? '') ?? null,
+                paymentMethod: transaction.paymentMethod || 'unknown',
+                notes: transaction.note?.trim() || null,
+                description: buildTransactionDescription(transaction, t),
+                routePath: getPaymentTransactionRoutePath(transaction),
+                ...relation
+            }
         case 'loan_installment': {
             const installmentLoan = context.loanById.get(transaction.sourceRecordId)
             return {
@@ -1127,6 +1170,7 @@ export function Ledger() {
         || features.hr
         || features.loans
         || features.real_estate
+        || features.clinical_appointments
 
     const dateBounds = useMemo<{ startDate?: string; endDate?: string }>(() => {
         const now = new Date()
@@ -1239,7 +1283,7 @@ export function Ledger() {
         ]
 
         return rows.sort((left, right) => right.date.localeCompare(left.date) || right.transactionId.localeCompare(left.transactionId))
-    }, [loanById, loanOriginationIds, paymentTransactions, realEstateTransactionById, saleById, sales, salesOrderById, purchaseOrderById, businessPartnerByName, rawExchangeTransactions])
+    }, [loanById, loanOriginationIds, paymentTransactions, realEstateTransactionById, saleById, sales, salesOrderById, purchaseOrderById, businessPartnerByName, rawExchangeTransactions, t])
 
     const typeOptions = useMemo(
         () => Array.from(new Set(allEntries.map((entry) => entry.type))).sort((left, right) => ledgerTypeLabel(left, t).localeCompare(ledgerTypeLabel(right, t))),
@@ -2567,6 +2611,8 @@ export function Ledger() {
                                                     <SelectItem value="expenses">{sourceModuleLabel('expenses', t)}</SelectItem>
                                                     <SelectItem value="payroll">{sourceModuleLabel('payroll', t)}</SelectItem>
                                                     <SelectItem value="loans">{sourceModuleLabel('loans', t)}</SelectItem>
+                                                    <SelectItem value="real_estate">{sourceModuleLabel('real_estate', t)}</SelectItem>
+                                                    <SelectItem value="clinical_appointments">{sourceModuleLabel('clinical_appointments', t)}</SelectItem>
                                                 </SelectContent>
                                             </Select>
                                         </div>

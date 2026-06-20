@@ -1,6 +1,6 @@
 import { useLayoutEffect } from 'react'
 import { useAuth } from '@/auth'
-import { useClinicalRegistryType } from '@/i18n/clinicalRegistry'
+import { useClinicalRegistryType } from '@/local-db/clinicalPresets'
 import { applyClinicalRegistryLocale } from '@/i18n/clinicalRegistryLocales'
 
 export function ClinicalRegistryLocaleSync() {
