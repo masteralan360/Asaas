@@ -703,6 +703,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
                     .from('workspace_branches')
                     .select('id, name, source_workspace_id')
                     .eq('branch_workspace_id', workspaceId)
+                    .is('archived_at', null)
                     .maybeSingle(),
                 { timeoutMs: 8000, platform: 'all' }
             ) as {

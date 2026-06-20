@@ -162,7 +162,7 @@ async function listWorkspaces(adminClient: ReturnType<typeof createAdminClient>)
 
     const { data: branchRows, error: branchError } = await adminClient
         .from('workspace_branches')
-        .select('source_workspace_id, branch_workspace_id, name')
+        .select('source_workspace_id, branch_workspace_id, name, archived_at')
 
     if (branchError) {
         return errorResponse(branchError.message, 500)
@@ -184,7 +184,8 @@ async function listWorkspaces(adminClient: ReturnType<typeof createAdminClient>)
             source_workspace_name: branch?.source_workspace_id
                 ? workspaceNamesById.get(String(branch.source_workspace_id)) ?? null
                 : null,
-            branch_name: branch?.name ?? null
+            branch_name: branch?.name ?? null,
+            branch_archived_at: branch?.archived_at ?? null
         }
     }))
 }

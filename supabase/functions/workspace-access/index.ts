@@ -35,6 +35,16 @@ type DeleteBranchRequest = {
     targetWorkspaceId?: string
 }
 
+type ArchiveBranchRequest = {
+    action: 'archive-branch'
+    targetWorkspaceId?: string
+}
+
+type RestoreBranchRequest = {
+    action: 'restore-branch'
+    targetWorkspaceId?: string
+}
+
 type ListProductCloneTargetsRequest = {
     action: 'list-product-clone-targets'
 }
@@ -79,6 +89,8 @@ type WorkspaceAccessRequest =
     | CreateBranchRequest
     | SwitchBranchRequest
     | DeleteBranchRequest
+    | ArchiveBranchRequest
+    | RestoreBranchRequest
     | ListProductCloneTargetsRequest
     | CloneProductsToBranchRequest
     | ListInventoryTransferTargetsRequest
@@ -324,6 +336,7 @@ async function countWorkspaceBranches(adminClient: AdminClient, sourceWorkspaceI
         .from('workspace_branches')
         .select('id', { count: 'exact', head: true })
         .eq('source_workspace_id', sourceWorkspaceId)
+        .is('archived_at', null)
 
     if (error) {
         throw error
@@ -377,6 +390,7 @@ async function getProductCloneTargets(
         .from('workspace_branches')
         .select('source_workspace_id, branch_workspace_id, name')
         .eq('branch_workspace_id', currentWorkspaceId)
+        .is('archived_at', null)
         .maybeSingle()
 
     if (currentBranchRelationError) {
@@ -390,6 +404,7 @@ async function getProductCloneTargets(
         .from('workspace_branches')
         .select('source_workspace_id, branch_workspace_id, name')
         .eq('source_workspace_id', sourceWorkspaceId)
+        .is('archived_at', null)
         .order('created_at', { ascending: true })
 
     if (branchRelationsError) {
@@ -660,6 +675,7 @@ async function handleCreateBranch(
         .from('workspace_branches')
         .select('id')
         .eq('branch_workspace_id', sourceWorkspaceId)
+        .is('archived_at', null)
         .maybeSingle()
 
     if (existingBranchError) {
@@ -786,6 +802,7 @@ async function handleSwitchBranch(
             .select('id')
             .eq('source_workspace_id', sourceWorkspaceId)
             .eq('branch_workspace_id', targetWorkspaceId)
+            .is('archived_at', null)
             .maybeSingle()
 
         if (branchRelationError) {
@@ -828,10 +845,10 @@ async function handleSwitchBranch(
     })
 }
 
-async function handleDeleteBranch(
+async function handleArchiveBranch(
     adminClient: AdminClient,
     user: User,
-    body: DeleteBranchRequest
+    body: DeleteBranchRequest | ArchiveBranchRequest
 ) {
     const targetWorkspaceId = body.targetWorkspaceId?.trim() ?? ''
     if (!targetWorkspaceId) {
@@ -850,6 +867,7 @@ async function handleDeleteBranch(
         .select('id, source_workspace_id, branch_workspace_id, name')
         .eq('source_workspace_id', sourceWorkspaceId)
         .eq('branch_workspace_id', targetWorkspaceId)
+        .is('archived_at', null)
         .maybeSingle()
 
     if (branchRelationError) {
@@ -865,61 +883,73 @@ async function handleDeleteBranch(
         return errorResponse('Source workspace not found', 404)
     }
 
-    const { data: branchProfiles, error: branchProfilesError } = await adminClient
-        .from('profiles')
-        .select('id, workspace_id, current_workspace')
-        .or(`workspace_id.eq.${targetWorkspaceId},current_workspace.eq.${targetWorkspaceId}`)
+    const { data: archiveResult, error: archiveError } = await adminClient.rpc('archive_branch', {
+        p_source_workspace_id: sourceWorkspaceId,
+        p_branch_workspace_id: targetWorkspaceId,
+        p_archived_by: user.id,
+        p_archive_reason: 'Archived from workspace settings'
+    })
 
-    if (branchProfilesError) {
-        return errorResponse(branchProfilesError.message, 500)
+    if (archiveError) {
+        return errorResponse(archiveError.message, 500)
     }
 
-    const affectedProfiles = branchProfiles ?? []
-    const affectedUserIds = affectedProfiles.map((row) => String(row.id))
-    const usersReturningToSource = affectedProfiles.filter((row) =>
-        row.workspace_id !== targetWorkspaceId
-        && row.current_workspace === targetWorkspaceId
-        && Boolean(row.workspace_id)
-    )
-    const usersLosingWorkspace = affectedProfiles.filter((row) => row.workspace_id === targetWorkspaceId)
+    return jsonResponse(archiveResult ?? {
+        success: true,
+        branch_workspace_id: targetWorkspaceId
+    })
+}
 
-    if (usersReturningToSource.length > 0) {
-        const { error: updateProfilesError } = await adminClient
-            .from('profiles')
-            .update({ current_workspace: sourceWorkspaceId })
-            .in('id', usersReturningToSource.map((profile) => profile.id))
-
-        if (updateProfilesError) {
-            return errorResponse(updateProfilesError.message, 500)
-        }
+async function handleRestoreBranch(
+    adminClient: AdminClient,
+    user: User,
+    body: RestoreBranchRequest
+) {
+    const targetWorkspaceId = body.targetWorkspaceId?.trim() ?? ''
+    if (!targetWorkspaceId) {
+        return errorResponse('Target workspace is required')
     }
 
-    if (usersLosingWorkspace.length > 0) {
-        const { error: clearProfilesError } = await adminClient
-            .from('profiles')
-            .update({ workspace_id: null, current_workspace: null })
-            .in('id', usersLosingWorkspace.map((profile) => profile.id))
-
-        if (clearProfilesError) {
-            return errorResponse(clearProfilesError.message, 500)
-        }
+    const callerResult = await requireCallerWorkspace(adminClient, user, true)
+    if (callerResult.response || !callerResult.profile) {
+        return callerResult.response!
     }
 
-    const { error: deleteError } = await adminClient.rpc('delete_branch_cascade', {
+    const sourceWorkspaceId = callerResult.profile.current_workspace!
+
+    const { data: branchRelation, error: branchRelationError } = await adminClient
+        .from('workspace_branches')
+        .select('id')
+        .eq('source_workspace_id', sourceWorkspaceId)
+        .eq('branch_workspace_id', targetWorkspaceId)
+        .not('archived_at', 'is', null)
+        .maybeSingle()
+
+    if (branchRelationError) {
+        return errorResponse(branchRelationError.message, 500)
+    }
+
+    if (!branchRelation) {
+        return errorResponse('Archived branch not found for the current workspace', 404)
+    }
+
+    const sourceWorkspace = await getWorkspaceById(adminClient, sourceWorkspaceId)
+    if (!sourceWorkspace) {
+        return errorResponse('Source workspace not found', 404)
+    }
+
+    const { data: restoreResult, error: restoreError } = await adminClient.rpc('restore_branch', {
         p_source_workspace_id: sourceWorkspaceId,
         p_branch_workspace_id: targetWorkspaceId
     })
 
-    if (deleteError) {
-        return errorResponse(deleteError.message, 500)
+    if (restoreError) {
+        return errorResponse(restoreError.message, restoreError.code === '42501' ? 403 : 500)
     }
 
-    return jsonResponse({
+    return jsonResponse(restoreResult ?? {
         success: true,
-        branch_workspace_id: targetWorkspaceId,
-        moved_users: affectedUserIds.length,
-        returned_to_source: usersReturningToSource.length,
-        removed_from_workspace: usersLosingWorkspace.length
+        branch_workspace_id: targetWorkspaceId
     })
 }
 
@@ -2790,8 +2820,12 @@ Deno.serve(async (req) => {
             return await handleSwitchBranch(adminClient, user, body)
         }
 
-        if (body.action === 'delete-branch') {
-            return await handleDeleteBranch(adminClient, user, body)
+        if (body.action === 'delete-branch' || body.action === 'archive-branch') {
+            return await handleArchiveBranch(adminClient, user, body)
+        }
+
+        if (body.action === 'restore-branch') {
+            return await handleRestoreBranch(adminClient, user, body)
         }
 
         if (body.action === 'list-product-clone-targets') {

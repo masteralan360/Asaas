@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ArrowLeft, GitBranch, Loader2, Plus, Trash2 } from 'lucide-react'
+import { Archive, ArrowLeft, GitBranch, Loader2, Plus, RotateCcw } from 'lucide-react'
 import { useAuth } from '@/auth'
 import { useWorkspaceBranchSwitcher, type BranchListItem } from '@/hooks/useWorkspaceBranchSwitcher'
 import {
@@ -35,6 +35,7 @@ export function BranchManager() {
     const {
         branchInfo,
         branches,
+        archivedBranches,
         canReturnToSource,
         currentWorkspaceLabel,
         isLoadingBranches: isLoading,
@@ -44,8 +45,9 @@ export function BranchManager() {
     } = useWorkspaceBranchSwitcher({ showLoadError: true })
     const [createName, setCreateName] = useState('')
     const [isCreating, setIsCreating] = useState(false)
-    const [branchToDelete, setBranchToDelete] = useState<BranchListItem | null>(null)
-    const [isDeleting, setIsDeleting] = useState(false)
+    const [branchToArchive, setBranchToArchive] = useState<BranchListItem | null>(null)
+    const [isArchiving, setIsArchiving] = useState(false)
+    const [restoringWorkspaceId, setRestoringWorkspaceId] = useState<string | null>(null)
 
     const showActionError = (error: unknown, fallbackDescription: string) => {
         const normalized = normalizeSupabaseActionError(error)
@@ -110,21 +112,21 @@ export function BranchManager() {
         }
     }
 
-    const handleDeleteBranch = async () => {
-        if (!branchToDelete) {
+    const handleArchiveBranch = async () => {
+        if (!branchToArchive) {
             return
         }
 
-        setIsDeleting(true)
+        setIsArchiving(true)
 
         try {
             const { error } = await invokeWorkspaceAccess({
-                label: 'branches.delete',
+                label: 'branches.archive',
                 fallbackAccessToken: session?.access_token,
                 timeoutMs: 20000,
                 body: {
-                    action: 'delete-branch',
-                    targetWorkspaceId: branchToDelete.branchWorkspaceId
+                    action: 'archive-branch',
+                    targetWorkspaceId: branchToArchive.branchWorkspaceId
                 }
             })
 
@@ -133,19 +135,53 @@ export function BranchManager() {
             }
 
             toast({
-                title: t('branches.delete', { defaultValue: 'Delete Branch' }),
-                description: branchToDelete.workspaceName || branchToDelete.name
+                title: t('branches.archive', { defaultValue: 'Archive Branch' }),
+                description: branchToArchive.workspaceName || branchToArchive.name
             })
-            setBranchToDelete(null)
+            setBranchToArchive(null)
             await loadBranches()
         } catch (error) {
-            console.error('[BranchManager] Failed to delete branch:', error)
+            console.error('[BranchManager] Failed to archive branch:', error)
             showActionError(
                 error,
-                t('branches.deleteError', { defaultValue: 'Failed to delete branch.' })
+                t('branches.archiveError', { defaultValue: 'Failed to archive branch.' })
             )
         } finally {
-            setIsDeleting(false)
+            setIsArchiving(false)
+        }
+    }
+
+    const handleRestoreBranch = async (branch: BranchListItem) => {
+        setRestoringWorkspaceId(branch.branchWorkspaceId)
+
+        try {
+            const { error } = await invokeWorkspaceAccess({
+                label: 'branches.restore',
+                fallbackAccessToken: session?.access_token,
+                timeoutMs: 20000,
+                body: {
+                    action: 'restore-branch',
+                    targetWorkspaceId: branch.branchWorkspaceId
+                }
+            })
+
+            if (error) {
+                throw error
+            }
+
+            toast({
+                title: t('branches.restore', { defaultValue: 'Restore Branch' }),
+                description: branch.workspaceName || branch.name
+            })
+            await loadBranches()
+        } catch (error) {
+            console.error('[BranchManager] Failed to restore branch:', error)
+            showActionError(
+                error,
+                t('branches.restoreError', { defaultValue: 'Failed to restore branch.' })
+            )
+        } finally {
+            setRestoringWorkspaceId(null)
         }
     }
 
@@ -242,7 +278,7 @@ export function BranchManager() {
                         </div>
                     ) : branches.length === 0 ? (
                         <div className="rounded-2xl border border-dashed border-border p-6 text-sm text-muted-foreground">
-                            {t('branches.noBranches', { defaultValue: 'No branches yet' })}
+                            {t('branches.noActiveBranches', { defaultValue: 'No active branches' })}
                         </div>
                     ) : (
                         branches.map((branch) => {
@@ -278,7 +314,7 @@ export function BranchManager() {
                                                 type="button"
                                                 variant="outline"
                                                 onClick={() => switchWorkspace(branch.branchWorkspaceId)}
-                                                disabled={isSwitching || isDeleting}
+                                                disabled={isSwitching || isArchiving || Boolean(restoringWorkspaceId)}
                                                 className="gap-2"
                                             >
                                                 {isSwitching ? (
@@ -290,13 +326,13 @@ export function BranchManager() {
                                             </Button>
                                             <Button
                                                 type="button"
-                                                variant="destructive"
-                                                onClick={() => setBranchToDelete(branch)}
-                                                disabled={isSwitching || isDeleting}
+                                                variant="outline"
+                                                onClick={() => setBranchToArchive(branch)}
+                                                disabled={isSwitching || isArchiving || Boolean(restoringWorkspaceId)}
                                                 className="gap-2"
                                             >
-                                                <Trash2 className="h-4 w-4" />
-                                                {t('branches.delete', { defaultValue: 'Delete Branch' })}
+                                                <Archive className="h-4 w-4" />
+                                                {t('branches.archive', { defaultValue: 'Archive Branch' })}
                                             </Button>
                                         </div>
                                     </div>
@@ -305,43 +341,93 @@ export function BranchManager() {
                         })
                     )}
                 </div>
+
+                {archivedBranches.length > 0 && (
+                    <div className="space-y-3 border-t border-border/60 pt-6">
+                        <div>
+                            <h3 className="font-semibold text-foreground">
+                                {t('branches.archived', { defaultValue: 'Archived Branches' })}
+                            </h3>
+                            <p className="text-sm text-muted-foreground">
+                                {t('branches.archivedHint', {
+                                    defaultValue: 'Archived branches are unavailable, but all of their data is retained.'
+                                })}
+                            </p>
+                        </div>
+
+                        {archivedBranches.map((branch) => {
+                            const isRestoring = restoringWorkspaceId === branch.branchWorkspaceId
+                            return (
+                                <div
+                                    key={branch.id}
+                                    className="flex flex-col gap-4 rounded-2xl border border-border/60 bg-muted/20 p-4 md:flex-row md:items-center md:justify-between"
+                                >
+                                    <div className="space-y-1">
+                                        <p className="font-semibold text-foreground">
+                                            {branch.workspaceName || branch.name}
+                                        </p>
+                                        {branch.archivedAt && (
+                                            <p className="text-xs text-muted-foreground">
+                                                {t('branches.archivedOn', { defaultValue: 'Archived' })}: {formatDate(branch.archivedAt)}
+                                            </p>
+                                        )}
+                                    </div>
+
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        onClick={() => handleRestoreBranch(branch)}
+                                        disabled={Boolean(restoringWorkspaceId) || isArchiving}
+                                        className="gap-2"
+                                    >
+                                        {isRestoring ? (
+                                            <Loader2 className="h-4 w-4 animate-spin" />
+                                        ) : (
+                                            <RotateCcw className="h-4 w-4" />
+                                        )}
+                                        {t('branches.restore', { defaultValue: 'Restore Branch' })}
+                                    </Button>
+                                </div>
+                            )
+                        })}
+                    </div>
+                )}
             </CardContent>
 
-            <Dialog open={!!branchToDelete} onOpenChange={(open) => !open && setBranchToDelete(null)}>
+            <Dialog open={!!branchToArchive} onOpenChange={(open) => !open && setBranchToArchive(null)}>
                 <DialogContent>
                     <DialogHeader>
-                        <DialogTitle>{t('branches.delete', { defaultValue: 'Delete Branch' })}</DialogTitle>
+                        <DialogTitle>{t('branches.archive', { defaultValue: 'Archive Branch' })}</DialogTitle>
                         <DialogDescription>
-                            {t('branches.deleteConfirm', {
-                                defaultValue: 'Are you sure? This will permanently delete all data in this branch.'
+                            {t('branches.archiveConfirm', {
+                                defaultValue: 'This branch will become unavailable. Its sales and all other data will be retained and can be restored later.'
                             })}
                         </DialogDescription>
                     </DialogHeader>
-                    <div className="rounded-xl border border-destructive/20 bg-destructive/10 p-3 text-sm text-muted-foreground">
-                        {branchToDelete?.workspaceName || branchToDelete?.name}
+                    <div className="rounded-xl border border-border bg-muted/30 p-3 text-sm text-muted-foreground">
+                        {branchToArchive?.workspaceName || branchToArchive?.name}
                     </div>
                     <DialogFooter>
                         <Button
                             type="button"
                             variant="outline"
-                            onClick={() => setBranchToDelete(null)}
-                            disabled={isDeleting}
+                            onClick={() => setBranchToArchive(null)}
+                            disabled={isArchiving}
                         >
                             {t('common.cancel', { defaultValue: 'Cancel' })}
                         </Button>
                         <Button
                             type="button"
-                            variant="destructive"
-                            onClick={handleDeleteBranch}
-                            disabled={isDeleting}
+                            onClick={handleArchiveBranch}
+                            disabled={isArchiving}
                             className="gap-2"
                         >
-                            {isDeleting ? (
+                            {isArchiving ? (
                                 <Loader2 className="h-4 w-4 animate-spin" />
                             ) : (
-                                <Trash2 className="h-4 w-4" />
+                                <Archive className="h-4 w-4" />
                             )}
-                            {t('branches.delete', { defaultValue: 'Delete Branch' })}
+                            {t('branches.archive', { defaultValue: 'Archive Branch' })}
                         </Button>
                     </DialogFooter>
                 </DialogContent>

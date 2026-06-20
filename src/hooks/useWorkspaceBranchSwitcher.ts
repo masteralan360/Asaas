@@ -19,6 +19,7 @@ export type BranchListItem = {
     branchWorkspaceId: string
     name: string
     createdAt: string
+    archivedAt?: string
     workspaceName?: string
     workspaceCode?: string
 }
@@ -34,6 +35,7 @@ export function useWorkspaceBranchSwitcher(options: UseWorkspaceBranchSwitcherOp
     const { user, session, refreshUser, updateUser } = useAuth()
     const { workspaceName, branchInfo } = useWorkspace()
     const [branches, setBranches] = useState<BranchListItem[]>([])
+    const [archivedBranches, setArchivedBranches] = useState<BranchListItem[]>([])
     const [isLoadingBranches, setIsLoadingBranches] = useState(false)
     const [switchingWorkspaceId, setSwitchingWorkspaceId] = useState<string | null>(null)
 
@@ -59,6 +61,7 @@ export function useWorkspaceBranchSwitcher(options: UseWorkspaceBranchSwitcherOp
     const loadBranches = useCallback(async () => {
         if (!user?.sourceWorkspaceId || branchInfo?.isBranch) {
             setBranches([])
+            setArchivedBranches([])
             setIsLoadingBranches(false)
             return
         }
@@ -70,7 +73,7 @@ export function useWorkspaceBranchSwitcher(options: UseWorkspaceBranchSwitcherOp
                 'branches.fetchMappings',
                 () => supabase
                     .from('workspace_branches')
-                    .select('id, name, created_at, branch_workspace_id')
+                    .select('id, name, created_at, archived_at, branch_workspace_id')
                     .eq('source_workspace_id', user.sourceWorkspaceId)
                     .order('created_at', { ascending: true }),
                 { timeoutMs: 12000, platform: 'all' }
@@ -79,6 +82,7 @@ export function useWorkspaceBranchSwitcher(options: UseWorkspaceBranchSwitcherOp
                     id: string
                     name: string
                     created_at: string
+                    archived_at?: string | null
                     branch_workspace_id: string
                 }> | null
                 error?: unknown
@@ -117,20 +121,25 @@ export function useWorkspaceBranchSwitcher(options: UseWorkspaceBranchSwitcherOp
                 }
             }
 
-            setBranches(rows.map((row) => {
+            const mappedBranches = rows.map((row): BranchListItem => {
                 const workspace = workspaceMap.get(row.branch_workspace_id)
                 return {
                     id: String(row.id),
                     branchWorkspaceId: String(row.branch_workspace_id),
                     name: row.name,
                     createdAt: row.created_at,
+                    archivedAt: row.archived_at ?? undefined,
                     workspaceName: workspace?.name ?? row.name,
                     workspaceCode: workspace?.code
                 }
-            }))
+            })
+
+            setBranches(mappedBranches.filter((branch) => !branch.archivedAt))
+            setArchivedBranches(mappedBranches.filter((branch) => Boolean(branch.archivedAt)))
         } catch (error) {
             console.error('[useWorkspaceBranchSwitcher] Failed to fetch branches:', error)
             setBranches([])
+            setArchivedBranches([])
             if (options.showLoadError) {
                 showActionError(
                     error,
@@ -212,6 +221,7 @@ export function useWorkspaceBranchSwitcher(options: UseWorkspaceBranchSwitcherOp
     return {
         branchInfo,
         branches,
+        archivedBranches,
         canReturnToSource,
         currentWorkspaceLabel,
         isLoadingBranches,
