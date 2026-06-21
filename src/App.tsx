@@ -51,37 +51,37 @@ import { DashboardSkeleton } from "@/ui/components/skeletons/DashboardSkeleton";
 const Dashboard = isTauri
   ? DashboardEager
   : lazy(() =>
-    import("@/ui/pages/Dashboard").then((m) => ({ default: m.Dashboard })),
-  );
+      import("@/ui/pages/Dashboard").then((m) => ({ default: m.Dashboard })),
+    );
 const POS = isTauri
   ? POSEager
   : lazy(() => import("@/ui/pages/POS").then((m) => ({ default: m.POS })));
 const Products = isTauri
   ? ProductsEager
   : lazy(() =>
-    import("@/ui/pages/Products").then((m) => ({ default: m.Products })),
-  );
+      import("@/ui/pages/Products").then((m) => ({ default: m.Products })),
+    );
 const ProductCreatePage = isTauri
   ? ProductCreatePageEager
   : lazy(() =>
-    import("@/ui/pages/ProductFormPage").then((m) => ({
-      default: m.ProductCreatePage,
-    })),
-  );
+      import("@/ui/pages/ProductFormPage").then((m) => ({
+        default: m.ProductCreatePage,
+      })),
+    );
 const ProductEditPage = isTauri
   ? ProductEditPageEager
   : lazy(() =>
-    import("@/ui/pages/ProductFormPage").then((m) => ({
-      default: m.ProductEditPage,
-    })),
-  );
+      import("@/ui/pages/ProductFormPage").then((m) => ({
+        default: m.ProductEditPage,
+      })),
+    );
 const ProductClonePage = isTauri
   ? ProductClonePageEager
   : lazy(() =>
-    import("@/ui/pages/ProductFormPage").then((m) => ({
-      default: m.ProductClonePage,
-    })),
-  );
+      import("@/ui/pages/ProductFormPage").then((m) => ({
+        default: m.ProductClonePage,
+      })),
+    );
 const Sales = isTauri
   ? SalesEager
   : lazy(() => import("@/ui/pages/Sales").then((m) => ({ default: m.Sales })));
@@ -114,12 +114,12 @@ const Revenue = lazy(() =>
 );
 const Budget = lazy(() =>
   import("@/ui/pages/Budget").then((m) => ({ default: m.Budget })),
-);/*
+);
 const MonthlyComparison = lazy(() =>
   import("@/ui/pages/MonthlyComparison").then((m) => ({
     default: m.MonthlyComparison,
   })),
-);*/
+);
 const TeamPerformance = lazy(() =>
   import("@/ui/pages/TeamPerformance").then((m) => ({
     default: m.TeamPerformance,
@@ -707,32 +707,32 @@ function FaviconHandler() {
 }
 
 function DeepLinkHandler() {
-  useEffect(() => {
-    if (!isTauri) return;
+    useEffect(() => {
+        if (!isTauri) return;
 
-    let unlisten: (() => void) | undefined;
+        let unlisten: (() => void) | undefined;
 
-    const setup = async () => {
-      try {
-        const { listen } = await import('@tauri-apps/api/event');
-        const unlistenFn = await listen<string>('deep-link', (event) => {
-          const route = event.payload;
-          window.location.hash = getPathWithLang(route, i18n.language);
-        });
-        unlisten = unlistenFn;
-      } catch (err) {
-        console.warn('[DeepLink] Failed to listen:', err);
-      }
-    };
+        const setup = async () => {
+            try {
+                const { listen } = await import('@tauri-apps/api/event');
+                const unlistenFn = await listen<string>('deep-link', (event) => {
+                    const route = event.payload;
+                    window.location.hash = getPathWithLang(route, i18n.language);
+                });
+                unlisten = unlistenFn;
+            } catch (err) {
+                console.warn('[DeepLink] Failed to listen:', err);
+            }
+        };
 
-    setup();
+        setup();
 
-    return () => {
-      if (unlisten) unlisten();
-    };
-  }, []);
+        return () => {
+            if (unlisten) unlisten();
+        };
+    }, []);
 
-  return null;
+    return null;
 }
 
 function KdsSecurityGuard({ children }: { children: React.ReactNode }) {
@@ -887,587 +887,587 @@ function App() {
         <WorkspacePermissionsProvider>
           <FleetLocationSharingProvider>
             <UiAccessProvider>
-              <DateRangeProvider>
-                <KdsStreamAutostart />
-                <FirstTimeRedirect />
-                <WhatsAppPlanGuard />
-                <UpdateHandler />
-                <WorkspaceWarmup />
-                <DeepLinkHandler />
-                <UsbBackupStartupValidator />
-                <FaviconHandler />
-                <AutoSyncOverlay />
-                {!isMobile() && <TitleBar />}
-                {isTauri &&
-                  isBackendConfigurationRequired &&
-                  !isSupabaseConfigured ? (
-                  <Suspense fallback={<LoadingState />}>
-                    <ConnectionConfiguration />
-                  </Suspense>
-                ) : (
-                  <ExchangeRateProvider>
-                    <KdsSecurityGuard>
-                      <Suspense fallback={<LoadingState />}>
-                        <Router hook={useHashLocation}>
-                          <Switch>
-                            {/* Guest Routes */}
-                            <Route path="/login">
-                              <GuestRoute>
-                                <Login />
-                              </GuestRoute>
-                            </Route>
-                            <Route path="/register">
-                              <GuestRoute>
-                                <Register />
-                              </GuestRoute>
-                            </Route>
-                            {isDemoEnabled() && (
-                              <Route path="/demo-setup">
-                                <DemoConfigPage />
-                              </Route>
-                            )}
+            <DateRangeProvider>
+              <KdsStreamAutostart />
+              <FirstTimeRedirect />
+              <WhatsAppPlanGuard />
+              <UpdateHandler />
+              <WorkspaceWarmup />
+              <DeepLinkHandler />
+              <UsbBackupStartupValidator />
+              <FaviconHandler />
+              <AutoSyncOverlay />
+              {!isMobile() && <TitleBar />}
+              {isTauri &&
+              isBackendConfigurationRequired &&
+              !isSupabaseConfigured ? (
+                <Suspense fallback={<LoadingState />}>
+                  <ConnectionConfiguration />
+                </Suspense>
+              ) : (
+                <ExchangeRateProvider>
+                  <KdsSecurityGuard>
+                    <Suspense fallback={<LoadingState />}>
+                      <Router hook={useHashLocation}>
+                        <Switch>
+                      {/* Guest Routes */}
+                      <Route path="/login">
+                        <GuestRoute>
+                          <Login />
+                        </GuestRoute>
+                      </Route>
+                      <Route path="/register">
+                        <GuestRoute>
+                          <Register />
+                        </GuestRoute>
+                      </Route>
+                      {isDemoEnabled() && (
+                        <Route path="/demo-setup">
+                          <DemoConfigPage />
+                        </Route>
+                      )}
 
-                            {/* Locked Workspace Route - no layout, standalone page */}
-                            <Route path="/locked-workspace">
-                              <LockedWorkspace />
-                            </Route>
+                      {/* Locked Workspace Route - no layout, standalone page */}
+                      <Route path="/locked-workspace">
+                        <LockedWorkspace />
+                      </Route>
 
-                            {/* Connection Configuration Route */}
-                            {isBackendConfigurationRequired && (
-                              <Route path="/connection-configuration">
-                                <ConnectionConfiguration />
-                              </Route>
-                            )}
+                      {/* Connection Configuration Route */}
+                      {isBackendConfigurationRequired && (
+                        <Route path="/connection-configuration">
+                          <ConnectionConfiguration />
+                        </Route>
+                      )}
 
-                            {/* Protected Routes */}
-                            <Route path="/">
-                              <ProtectedRoute>
-                                <Layout>
-                                  <Suspense fallback={<DashboardSkeleton />}>
-                                    <Dashboard />
-                                  </Suspense>
-                                </Layout>
-                              </ProtectedRoute>
-                            </Route>
-                            <Route path="/pos">
-                              <ProtectedRoute
-                                allowedRoles={["admin", "staff", "viewer"]}
-                                requiredFeature="pos"
-                                requiredPermission="pos.access"
-                              >
-                                <Layout>
-                                  <POS />
-                                </Layout>
-                              </ProtectedRoute>
-                            </Route>
-                            <Route path="/instant-pos">
-                              <ProtectedRoute
-                                allowedRoles={["admin", "staff", "viewer"]}
-                                requiredFeature="instant_pos"
-                                requiredPermission="instantPos.access"
-                              >
-                                <Layout>
-                                  <InstantPOS />
-                                </Layout>
-                              </ProtectedRoute>
-                            </Route>
-                            <Route path="/kds">
-                              <ProtectedRoute
-                                allowedRoles={["admin", "staff", "viewer"]}
-                                requiredCapability="kds"
-                              >
-                                <Layout>
-                                  <KDSDashboard />
-                                </Layout>
-                              </ProtectedRoute>
-                            </Route>
-                            <Route path="/kds/local">
-                              <div className="h-screen w-screen bg-background text-foreground overflow-hidden">
-                                <KDSDashboard />
-                              </div>
-                            </Route>
-                            <Route path="/sales">
-                              <ProtectedRoute requiredFeature="sales_history" requiredPermission="salesHistory.access">
-                                <Layout>
-                                  <Sales />
-                                </Layout>
-                              </ProtectedRoute>
-                            </Route>
-                            <Route path="/business-partners">
-                              <ProtectedRoute
-                                allowedRoles={["admin", "staff", "viewer"]}
-                                requiredFeature="crm"
-                                requiredPermission="businessPartners.access"
-                              >
-                                <Layout>
-                                  <BusinessPartners />
-                                </Layout>
-                              </ProtectedRoute>
-                            </Route>
-                            <Route path="/business-partners/:partnerId">
-                              <ProtectedRoute
-                                allowedRoles={["admin", "staff", "viewer"]}
-                                requiredFeature="crm"
-                                requiredPermission="businessPartners.access"
-                              >
-                                <Layout>
-                                  <BusinessPartnerDetails />
-                                </Layout>
-                              </ProtectedRoute>
-                            </Route>
-                            <Route path="/agents">
-                              <ProtectedRoute
-                                allowedRoles={["admin", "staff", "viewer"]}
-                                requiredFeature="agents"
-                                requiredPermission="agents.access"
-                              >
-                                <Layout>
-                                  <Agents />
-                                </Layout>
-                              </ProtectedRoute>
-                            </Route>
-                            <Route path="/agents/fleet">
-                              <ProtectedRoute
-                                allowedRoles={["admin", "staff", "viewer"]}
-                                requiredFeature="agents"
-                                requiredPermission="fleet.access"
-                              >
-                                <Layout>
-                                  <FleetManagement />
-                                </Layout>
-                              </ProtectedRoute>
-                            </Route>
-                            <Route path="/agents/location-sharing">
-                              <ProtectedRoute
-                                allowedRoles={["admin", "staff", "viewer"]}
-                                requiredFeature="agents"
-                                requiredPermission="fleet.shareLocation"
-                              >
-                                <Layout>
-                                  <AgentLocationSharing />
-                                </Layout>
-                              </ProtectedRoute>
-                            </Route>
-                            <Route path="/agents/:agentId">
-                              <ProtectedRoute
-                                allowedRoles={["admin", "staff", "viewer"]}
-                                requiredFeature="agents"
-                                requiredPermission="agents.access"
-                              >
-                                <Layout>
-                                  <AgentDetails />
-                                </Layout>
-                              </ProtectedRoute>
-                            </Route>
-                            <Route path="/customers">
-                              <ProtectedRoute
-                                allowedRoles={["admin", "staff", "viewer"]}
-                                requiredFeature="crm"
-                                requiredPermission="customers.access"
-                              >
-                                <Layout>
-                                  <Customers />
-                                </Layout>
-                              </ProtectedRoute>
-                            </Route>
-                            <Route path="/customers/:customerId">
-                              <ProtectedRoute
-                                allowedRoles={["admin", "staff", "viewer"]}
-                                requiredFeature="crm"
-                                requiredPermission="customers.access"
-                              >
-                                <Layout>
-                                  <CustomerDetails />
-                                </Layout>
-                              </ProtectedRoute>
-                            </Route>
-                            <Route path="/suppliers">
-                              <ProtectedRoute
-                                allowedRoles={["admin", "staff", "viewer"]}
-                                requiredFeature="crm"
-                                requiredPermission="suppliers.access"
-                              >
-                                <Layout>
-                                  <Suppliers />
-                                </Layout>
-                              </ProtectedRoute>
-                            </Route>
-                            <Route path="/suppliers/:supplierId">
-                              <ProtectedRoute
-                                allowedRoles={["admin", "staff", "viewer"]}
-                                requiredFeature="crm"
-                                requiredPermission="suppliers.access"
-                              >
-                                <Layout>
-                                  <SupplierDetails />
-                                </Layout>
-                              </ProtectedRoute>
-                            </Route>
-                            <Route path="/orders/new/sales">
-                              <ProtectedRoute
-                                allowedRoles={["admin", "staff", "viewer"]}
-                                requiredFeature="crm"
-                                requiredPermission="orders.access"
-                              >
-                                <Layout>
-                                  <Orders />
-                                </Layout>
-                              </ProtectedRoute>
-                            </Route>
-                            <Route path="/orders/new/purchase">
-                              <ProtectedRoute
-                                allowedRoles={["admin", "staff", "viewer"]}
-                                requiredFeature="crm"
-                                requiredPermission="orders.access"
-                              >
-                                <Layout>
-                                  <Orders />
-                                </Layout>
-                              </ProtectedRoute>
-                            </Route>
-                            <Route path="/orders">
-                              <ProtectedRoute
-                                allowedRoles={["admin", "staff", "viewer"]}
-                                requiredFeature="crm"
-                                requiredPermission="orders.access"
-                              >
-                                <Layout>
-                                  <Orders />
-                                </Layout>
-                              </ProtectedRoute>
-                            </Route>
-                            <Route path="/orders/sales">
-                              <ProtectedRoute
-                                allowedRoles={["admin", "staff", "viewer"]}
-                                requiredFeature="crm"
-                                requiredPermission="orders.access"
-                              >
-                                <Layout>
-                                  <Orders />
-                                </Layout>
-                              </ProtectedRoute>
-                            </Route>
-                            <Route path="/orders/purchase">
-                              <ProtectedRoute
-                                allowedRoles={["admin", "staff", "viewer"]}
-                                requiredFeature="crm"
-                                requiredPermission="orders.access"
-                              >
-                                <Layout>
-                                  <Orders />
-                                </Layout>
-                              </ProtectedRoute>
-                            </Route>
-                            <Route path="/orders/:orderId">
-                              <ProtectedRoute
-                                allowedRoles={["admin", "staff", "viewer"]}
-                                requiredFeature="crm"
-                                requiredPermission="orders.access"
-                              >
-                                <Layout>
-                                  <Orders />
-                                </Layout>
-                              </ProtectedRoute>
-                            </Route>
-                            <Route path="/ecommerce">
-                              <ProtectedRoute
-                                allowedRoles={["admin", "staff"]}
-                                requiredFeature="ecommerce"
-                                requiredPermission="ecommerce.access"
-                              >
-                                <Layout>
-                                  <Ecommerce />
-                                </Layout>
-                              </ProtectedRoute>
-                            </Route>
-                            <Route path="/ecommerce/:orderId">
-                              <ProtectedRoute
-                                allowedRoles={["admin", "staff"]}
-                                requiredFeature="ecommerce"
-                                requiredPermission="ecommerce.access"
-                              >
-                                <Layout>
-                                  <Ecommerce />
-                                </Layout>
-                              </ProtectedRoute>
-                            </Route>
-                            <Route path="/travel-agency">
-                              <ProtectedRoute
-                                allowedRoles={["admin", "staff", "viewer"]}
-                                requiredFeature="travel_agency"
-                                requiredPermission="travelAgency.access"
-                              >
-                                <Layout>
-                                  <TravelAgency />
-                                </Layout>
-                              </ProtectedRoute>
-                            </Route>
-                            <Route path="/travel-agency/new">
-                              <ProtectedRoute
-                                allowedRoles={["admin", "staff", "viewer"]}
-                                requiredFeature="travel_agency"
-                                requiredPermission="travelAgency.access"
-                              >
-                                <Layout>
-                                  <TravelAgencySaleCreate />
-                                </Layout>
-                              </ProtectedRoute>
-                            </Route>
-                            <Route path="/travel-agency/:saleId/view">
-                              <ProtectedRoute
-                                allowedRoles={["admin", "staff", "viewer"]}
-                                requiredFeature="travel_agency"
-                                requiredPermission="travelAgency.access"
-                              >
-                                <Layout>
-                                  <TravelAgencySaleView />
-                                </Layout>
-                              </ProtectedRoute>
-                            </Route>
-                            <Route path="/travel-agency/:saleId">
-                              <ProtectedRoute
-                                allowedRoles={["admin", "staff", "viewer"]}
-                                requiredFeature="travel_agency"
-                                requiredPermission="travelAgency.access"
-                              >
-                                <Layout>
-                                  <TravelAgencySaleEdit />
-                                </Layout>
-                              </ProtectedRoute>
-                            </Route>
-                            <Route path="/real-estate">
-                              <ProtectedRoute
-                                allowedRoles={["admin", "staff", "viewer"]}
-                                requiredFeature="real_estate"
-                                requiredPermission="realEstate.access"
-                              >
-                                <Layout>
-                                  <RealEstate />
-                                </Layout>
-                              </ProtectedRoute>
-                            </Route>
-                            <Route path="/real-estate/new">
-                              <ProtectedRoute
-                                allowedRoles={["admin", "staff", "viewer"]}
-                                requiredFeature="real_estate"
-                                requiredPermission="realEstate.access"
-                              >
-                                <Layout>
-                                  <RealEstate />
-                                </Layout>
-                              </ProtectedRoute>
-                            </Route>
-                            <Route path="/real-estate/:transactionId">
-                              <ProtectedRoute
-                                allowedRoles={["admin", "staff", "viewer"]}
-                                requiredFeature="real_estate"
-                                requiredPermission="realEstate.access"
-                              >
-                                <Layout>
-                                  <RealEstate />
-                                </Layout>
-                              </ProtectedRoute>
-                            </Route>
+                      {/* Protected Routes */}
+                      <Route path="/">
+                        <ProtectedRoute>
+                          <Layout>
+                            <Suspense fallback={<DashboardSkeleton />}>
+                              <Dashboard />
+                            </Suspense>
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/pos">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="pos"
+                          requiredPermission="pos.access"
+                        >
+                          <Layout>
+                            <POS />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/instant-pos">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="instant_pos"
+                          requiredPermission="instantPos.access"
+                        >
+                          <Layout>
+                            <InstantPOS />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/kds">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredCapability="kds"
+                        >
+                          <Layout>
+                            <KDSDashboard />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/kds/local">
+                        <div className="h-screen w-screen bg-background text-foreground overflow-hidden">
+                          <KDSDashboard />
+                        </div>
+                      </Route>
+                      <Route path="/sales">
+                        <ProtectedRoute requiredFeature="sales_history" requiredPermission="salesHistory.access">
+                          <Layout>
+                            <Sales />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/business-partners">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="crm"
+                          requiredPermission="businessPartners.access"
+                        >
+                          <Layout>
+                            <BusinessPartners />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/business-partners/:partnerId">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="crm"
+                          requiredPermission="businessPartners.access"
+                        >
+                          <Layout>
+                            <BusinessPartnerDetails />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/agents">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="agents"
+                          requiredPermission="agents.access"
+                        >
+                          <Layout>
+                            <Agents />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/agents/fleet">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="agents"
+                          requiredPermission="fleet.access"
+                        >
+                          <Layout>
+                            <FleetManagement />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/agents/location-sharing">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="agents"
+                          requiredPermission="fleet.shareLocation"
+                        >
+                          <Layout>
+                            <AgentLocationSharing />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/agents/:agentId">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="agents"
+                          requiredPermission="agents.access"
+                        >
+                          <Layout>
+                            <AgentDetails />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/customers">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="crm"
+                          requiredPermission="customers.access"
+                        >
+                          <Layout>
+                            <Customers />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/customers/:customerId">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="crm"
+                          requiredPermission="customers.access"
+                        >
+                          <Layout>
+                            <CustomerDetails />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/suppliers">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="crm"
+                          requiredPermission="suppliers.access"
+                        >
+                          <Layout>
+                            <Suppliers />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/suppliers/:supplierId">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="crm"
+                          requiredPermission="suppliers.access"
+                        >
+                          <Layout>
+                            <SupplierDetails />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/orders/new/sales">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="crm"
+                          requiredPermission="orders.access"
+                        >
+                          <Layout>
+                            <Orders />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/orders/new/purchase">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="crm"
+                          requiredPermission="orders.access"
+                        >
+                          <Layout>
+                            <Orders />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/orders">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="crm"
+                          requiredPermission="orders.access"
+                        >
+                          <Layout>
+                            <Orders />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/orders/sales">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="crm"
+                          requiredPermission="orders.access"
+                        >
+                          <Layout>
+                            <Orders />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/orders/purchase">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="crm"
+                          requiredPermission="orders.access"
+                        >
+                          <Layout>
+                            <Orders />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/orders/:orderId">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="crm"
+                          requiredPermission="orders.access"
+                        >
+                          <Layout>
+                            <Orders />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/ecommerce">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff"]}
+                          requiredFeature="ecommerce"
+                          requiredPermission="ecommerce.access"
+                        >
+                          <Layout>
+                            <Ecommerce />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/ecommerce/:orderId">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff"]}
+                          requiredFeature="ecommerce"
+                          requiredPermission="ecommerce.access"
+                        >
+                          <Layout>
+                            <Ecommerce />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/travel-agency">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="travel_agency"
+                          requiredPermission="travelAgency.access"
+                        >
+                          <Layout>
+                            <TravelAgency />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/travel-agency/new">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="travel_agency"
+                          requiredPermission="travelAgency.access"
+                        >
+                          <Layout>
+                            <TravelAgencySaleCreate />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/travel-agency/:saleId/view">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="travel_agency"
+                          requiredPermission="travelAgency.access"
+                        >
+                          <Layout>
+                            <TravelAgencySaleView />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/travel-agency/:saleId">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="travel_agency"
+                          requiredPermission="travelAgency.access"
+                        >
+                          <Layout>
+                            <TravelAgencySaleEdit />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/real-estate">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="real_estate"
+                          requiredPermission="realEstate.access"
+                        >
+                          <Layout>
+                            <RealEstate />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/real-estate/new">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="real_estate"
+                          requiredPermission="realEstate.access"
+                        >
+                          <Layout>
+                            <RealEstate />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/real-estate/:transactionId">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="real_estate"
+                          requiredPermission="realEstate.access"
+                        >
+                          <Layout>
+                            <RealEstate />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
 
-                            <Route path="/manual-entry">
-                              <ProtectedRoute
-                                allowedRoles={["admin", "staff", "viewer"]}
-                                requiredFeature="manual_entry"
-                                requiredPermission="manualEntry.access"
-                              >
-                                <Layout>
-                                  <ManualEntry />
-                                </Layout>
-                              </ProtectedRoute>
-                            </Route>
-                            <Route path="/manual-entry/templates">
-                              <ProtectedRoute
-                                allowedRoles={["admin", "staff", "viewer"]}
-                                requiredFeature="manual_entry"
-                                requiredPermission="manualEntryTemplates.access"
-                              >
-                                <Layout>
-                                  <ManualEntryTemplates />
-                                </Layout>
-                              </ProtectedRoute>
-                            </Route>
+                      <Route path="/manual-entry">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="manual_entry"
+                          requiredPermission="manualEntry.access"
+                        >
+                          <Layout>
+                            <ManualEntry />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/manual-entry/templates">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="manual_entry"
+                          requiredPermission="manualEntryTemplates.access"
+                        >
+                          <Layout>
+                            <ManualEntryTemplates />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
 
-                            <Route path="/currency-exchange">
-                              <ProtectedRoute
-                                allowedRoles={["admin", "staff", "viewer"]}
-                                requiredFeature="currency_exchange"
-                                requiredPermission="currencyExchange.access"
-                              >
-                                <Layout>
-                                  <CurrencyExchange />
-                                </Layout>
-                              </ProtectedRoute>
-                            </Route>
-                            <Route path="/currency-exchange/new">
-                              <ProtectedRoute
-                                allowedRoles={["admin", "staff", "viewer"]}
-                                requiredFeature="currency_exchange"
-                                requiredPermission="currencyExchange.access"
-                              >
-                                <Layout>
-                                  <CurrencyExchange />
-                                </Layout>
-                              </ProtectedRoute>
-                            </Route>
-                            <Route path="/currency-exchange/rules">
-                              <ProtectedRoute
-                                allowedRoles={["admin", "staff", "viewer"]}
-                                requiredFeature="currency_exchange"
-                                requiredPermission="currencyExchangeFeeRules.access"
-                              >
-                                <Layout>
-                                  <CurrencyExchange />
-                                </Layout>
-                              </ProtectedRoute>
-                            </Route>
-                            <Route path="/currency-exchange/safes">
-                              <ProtectedRoute
-                                allowedRoles={["admin", "staff", "viewer"]}
-                                requiredFeature="currency_exchange"
-                                requiredPermission="currencyExchange.access"
-                              >
-                                <Layout>
-                                  <CurrencyExchange />
-                                </Layout>
-                              </ProtectedRoute>
-                            </Route>
+                      <Route path="/currency-exchange">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="currency_exchange"
+                          requiredPermission="currencyExchange.access"
+                        >
+                          <Layout>
+                            <CurrencyExchange />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/currency-exchange/new">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="currency_exchange"
+                          requiredPermission="currencyExchange.access"
+                        >
+                          <Layout>
+                            <CurrencyExchange />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/currency-exchange/rules">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="currency_exchange"
+                          requiredPermission="currencyExchangeFeeRules.access"
+                        >
+                          <Layout>
+                            <CurrencyExchange />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/currency-exchange/safes">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="currency_exchange"
+                          requiredPermission="currencyExchange.access"
+                        >
+                          <Layout>
+                            <CurrencyExchange />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
 
-                            <Route path="/clinical-appointments/new">
-                              <ProtectedRoute
-                                allowedRoles={["admin", "staff", "viewer"]}
-                                requiredFeature="clinical_appointments"
-                                requiredPermission="clinicalAppointments.access"
-                              >
-                                <Layout>
-                                  <ClinicalAppointments />
-                                </Layout>
-                              </ProtectedRoute>
-                            </Route>
-                            <Route path="/clinical-appointments/:id/edit">
-                              <ProtectedRoute
-                                allowedRoles={["admin", "staff", "viewer"]}
-                                requiredFeature="clinical_appointments"
-                                requiredPermission="clinicalAppointments.access"
-                              >
-                                <Layout>
-                                  <ClinicalAppointments />
-                                </Layout>
-                              </ProtectedRoute>
-                            </Route>
-                            <Route path="/clinical-appointments">
-                              <ProtectedRoute
-                                allowedRoles={["admin", "staff", "viewer"]}
-                                requiredFeature="clinical_appointments"
-                                requiredPermission="clinicalAppointments.access"
-                              >
-                                <Layout>
-                                  <ClinicalAppointments />
-                                </Layout>
-                              </ProtectedRoute>
-                            </Route>
-                            <Route path="/clinical-appointments/patients">
-                              <ProtectedRoute
-                                allowedRoles={["admin", "staff", "viewer"]}
-                                requiredFeature="clinical_appointments"
-                                requiredPermission="clinicalPatients.access"
-                              >
-                                <Layout>
-                                  <ClinicalPatients />
-                                </Layout>
-                              </ProtectedRoute>
-                            </Route>
-                            <Route path="/clinical-appointments/patients/:patientId">
-                              <ProtectedRoute
-                                allowedRoles={["admin", "staff", "viewer"]}
-                                requiredFeature="clinical_appointments"
-                                requiredPermission="clinicalPatients.access"
-                              >
-                                <Layout>
-                                  <ClinicalPatientDetails />
-                                </Layout>
-                              </ProtectedRoute>
-                            </Route>
+                      <Route path="/clinical-appointments/new">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="clinical_appointments"
+                          requiredPermission="clinicalAppointments.access"
+                        >
+                          <Layout>
+                            <ClinicalAppointments />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/clinical-appointments/:id/edit">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="clinical_appointments"
+                          requiredPermission="clinicalAppointments.access"
+                        >
+                          <Layout>
+                            <ClinicalAppointments />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/clinical-appointments">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="clinical_appointments"
+                          requiredPermission="clinicalAppointments.access"
+                        >
+                          <Layout>
+                            <ClinicalAppointments />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/clinical-appointments/patients">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="clinical_appointments"
+                          requiredPermission="clinicalPatients.access"
+                        >
+                          <Layout>
+                            <ClinicalPatients />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/clinical-appointments/patients/:patientId">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="clinical_appointments"
+                          requiredPermission="clinicalPatients.access"
+                        >
+                          <Layout>
+                            <ClinicalPatientDetails />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
 
-                            <Route path="/clinical-presets">
-                              <ProtectedRoute
-                                allowedRoles={["admin", "staff", "viewer"]}
-                                requiredFeature="clinical_appointments"
-                                requiredPermission="clinicalAppointments.access"
-                              >
-                                <Layout>
-                                  <ClinicalPresets />
-                                </Layout>
-                              </ProtectedRoute>
-                            </Route>
+                      <Route path="/clinical-presets">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="clinical_appointments"
+                          requiredPermission="clinicalAppointments.access"
+                        >
+                          <Layout>
+                            <ClinicalPresets />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
 
-                            <Route path="/ledger">
-                              <ProtectedRoute
-                                allowedRoles={["admin", "staff", "viewer"]}
-                                requiredFeature="ledger"
-                                requiredPermission="ledger.access"
-                              >
-                                <Layout>
-                                  <Ledger />
-                                </Layout>
-                              </ProtectedRoute>
-                            </Route>
-                            <Route path="/payments">
-                              <ProtectedRoute
-                                allowedRoles={["admin", "staff", "viewer"]}
-                                requiredFeature="payments"
-                                requiredPermission="payment.access"
-                              >
-                                <Layout>
-                                  <Payments />
-                                </Layout>
-                              </ProtectedRoute>
-                            </Route>
-                            <Route path="/direct-transactions">
-                              <ProtectedRoute
-                                allowedRoles={["admin", "staff", "viewer"]}
-                                requiredFeature="direct_transactions"
-                                requiredPermission="directTransaction.access"
-                              >
-                                <Layout>
-                                  <DirectTransactions />
-                                </Layout>
-                              </ProtectedRoute>
-                            </Route>
-                            <Route path="/modules">
-                              <ProtectedRoute>
-                                <Layout>
-                                  <ModuleLauncher />
-                                </Layout>
-                              </ProtectedRoute>
-                            </Route>
-                            <Route path="/revenue">
-                              <ProtectedRoute
-                                allowedRoles={["admin", "staff", "viewer"]}
-                                requiredFeature="net_revenue"
-                                requiredPermission="revenueAnalytics.access"
-                              >
-                                <Layout>
-                                  <Revenue />
-                                </Layout>
-                              </ProtectedRoute>
-                            </Route>
-                            <Route path="/budget">
-                              <ProtectedRoute
-                                allowedRoles={["admin", "staff", "viewer"]}
-                                requiredFeature="budget"
-                                requiredPermission="budget.access"
-                              >
-                                <Layout>
-                                  <Budget />
-                                </Layout>
-                              </ProtectedRoute>
-                            </Route>
-                            {/* <Route path="/monthly-comparison">
+                      <Route path="/ledger">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="ledger"
+                          requiredPermission="ledger.access"
+                        >
+                          <Layout>
+                            <Ledger />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/payments">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="payments"
+                          requiredPermission="payment.access"
+                        >
+                          <Layout>
+                            <Payments />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/direct-transactions">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="direct_transactions"
+                          requiredPermission="directTransaction.access"
+                        >
+                          <Layout>
+                            <DirectTransactions />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/modules">
+                        <ProtectedRoute>
+                          <Layout>
+                            <ModuleLauncher />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/revenue">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="net_revenue"
+                          requiredPermission="revenueAnalytics.access"
+                        >
+                          <Layout>
+                            <Revenue />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/budget">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="budget"
+                          requiredPermission="budget.access"
+                        >
+                          <Layout>
+                            <Budget />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      {/* <Route path="/monthly-comparison">
                         <ProtectedRoute
                           allowedRoles={["admin", "staff", "viewer"]}
                           requiredFeature="monthly_comparison"
@@ -1477,261 +1477,261 @@ function App() {
                           </Layout>
                         </ProtectedRoute>
                       </Route> */}
-                            <Route path="/performance">
-                              <ProtectedRoute
-                                allowedRoles={["admin", "staff", "viewer"]}
-                                requiredFeature="team_performance"
-                                requiredPermission="teamPerformance.access"
-                              >
-                                <Layout>
-                                  <TeamPerformance />
-                                </Layout>
-                              </ProtectedRoute>
-                            </Route>
-                            <Route path="/whatsapp">
-                              <ProtectedRoute
-                                allowedRoles={["admin", "staff", "viewer"]}
-                                requiredFeature="allow_whatsapp"
-                              >
-                                <Layout>
-                                  <WhatsApp />
-                                </Layout>
-                              </ProtectedRoute>
-                            </Route>
-                            <Route path="/products/new">
-                              <ProtectedRoute requiredFeature="products" requiredPermission="products.access">
-                                <Layout>
-                                  <ProductCreatePage />
-                                </Layout>
-                              </ProtectedRoute>
-                            </Route>
-                            <Route path="/products/:productId/clone">
-                              <ProtectedRoute requiredFeature="products" requiredPermission="products.access">
-                                <Layout>
-                                  <ProductClonePage />
-                                </Layout>
-                              </ProtectedRoute>
-                            </Route>
-                            <Route path="/products/:productId">
-                              <ProtectedRoute requiredFeature="products" requiredPermission="products.access">
-                                <Layout>
-                                  <ProductEditPage />
-                                </Layout>
-                              </ProtectedRoute>
-                            </Route>
-                            <Route path="/products">
-                              <ProtectedRoute requiredFeature="products" requiredPermission="products.access">
-                                <Layout>
-                                  <Products />
-                                </Layout>
-                              </ProtectedRoute>
-                            </Route>
-                            <Route path="/discounts">
-                              <ProtectedRoute
-                                allowedRoles={["admin", "staff"]}
-                                requiredFeature="discounts"
-                                requiredPermission="discounts.access"
-                              >
-                                <Layout>
-                                  <Discounts />
-                                </Layout>
-                              </ProtectedRoute>
-                            </Route>
-                            <Route path="/storages">
-                              <ProtectedRoute requiredFeature="storages" requiredPermission="storages.access">
-                                <Layout>
-                                  <Storages />
-                                </Layout>
-                              </ProtectedRoute>
-                            </Route>
-                            <Route path="/inventory-transfer">
-                              <ProtectedRoute requiredFeature="inventory_transfer" requiredPermission="inventoryTransfer.access">
-                                <Layout>
-                                  <InventoryTransfer />
-                                </Layout>
-                              </ProtectedRoute>
-                            </Route>
-                            <Route path="/inventory-transactions">
-                              <ProtectedRoute requiredFeature="inventory_transactions" requiredPermission="inventoryTransactions.access">
-                                <Layout>
-                                  <InventoryTransactions />
-                                </Layout>
-                              </ProtectedRoute>
-                            </Route>
-                            <Route path="/stock-adjustments">
-                              <ProtectedRoute requiredFeature="stock_adjustments" requiredPermission="stockAdjustments.access">
-                                <Layout>
-                                  <StockAdjustments />
-                                </Layout>
-                              </ProtectedRoute>
-                            </Route>
-                            <Route path="/hr">
-                              <ProtectedRoute
-                                allowedRoles={["admin", "staff", "viewer"]}
-                                requiredFeature="hr"
-                                requiredPermission="hr.access"
-                              >
-                                <Layout>
-                                  <HR />
-                                </Layout>
-                              </ProtectedRoute>
-                            </Route>
-                            <Route path="/loans">
-                              <ProtectedRoute
-                                allowedRoles={["admin", "staff", "viewer"]}
-                                requiredFeature="loans"
-                                requiredPermission="loans.access"
-                              >
-                                <Layout>
-                                  <Loans />
-                                </Layout>
-                              </ProtectedRoute>
-                            </Route>
-                            <Route path="/loans/:loanId">
-                              <ProtectedRoute
-                                allowedRoles={["admin", "staff", "viewer"]}
-                                requiredFeature="loans"
-                                requiredPermission="loans.access"
-                              >
-                                <Layout>
-                                  <Loans />
-                                </Layout>
-                              </ProtectedRoute>
-                            </Route>
-                            <Route path="/installments">
-                              <ProtectedRoute
-                                allowedRoles={["admin", "staff", "viewer"]}
-                                requiredAnyFeature={["installments", "crm", "real_estate"]}
-                                requiredPermission="installments.access"
-                              >
-                                <Layout>
-                                  <Installments />
-                                </Layout>
-                              </ProtectedRoute>
-                            </Route>
-                            <Route path="/installments/:loanId">
-                              <ProtectedRoute
-                                allowedRoles={["admin", "staff", "viewer"]}
-                                requiredFeature="installments"
-                                requiredPermission="installments.access"
-                              >
-                                <Layout>
-                                  <Installments />
-                                </Layout>
-                              </ProtectedRoute>
-                            </Route>
-                            <Route path="/invoices-history/upload-files">
-                              <ProtectedRoute requiredFeature="invoices_history" requiredPermission="invoiceHistory.access">
-                                <Layout>
-                                  <InvoicesHistory />
-                                </Layout>
-                              </ProtectedRoute>
-                            </Route>
-                            <Route path="/invoices-history">
-                              <ProtectedRoute requiredFeature="invoices_history" requiredPermission="invoiceHistory.access">
-                                <Layout>
-                                  <InvoicesHistory />
-                                </Layout>
-                              </ProtectedRoute>
-                            </Route>
-                            <Route path="/pdf-preview">
-                              <ProtectedRoute>
-                                <Suspense fallback={null}>
-                                  <PdfPreviewPage />
-                                </Suspense>
-                              </ProtectedRoute>
-                            </Route>
-                            <Route path="/currency-converter">
-                              <ProtectedRoute
-                                allowedRoles={["admin", "staff", "viewer"]}
-                                requiredCapability="multiCurrency"
-                              >
-                                <Layout>
-                                  <CurrencyConverter />
-                                </Layout>
-                              </ProtectedRoute>
-                            </Route>
-                            <Route path="/notebook">
-                              <ProtectedRoute>
-                                <Layout>
-                                  <Notebook />
-                                </Layout>
-                              </ProtectedRoute>
-                            </Route>
-                            <Route path="/members">
-                              <ProtectedRoute
-                                allowedRoles={["admin", "staff", "viewer"]}
-                                requiredFeature="members"
-                              >
-                                <Layout>
-                                  <Members />
-                                </Layout>
-                              </ProtectedRoute>
-                            </Route>
-                            <Route path="/custom-templates">
-                              <ProtectedRoute allowedRoles={["admin"]}>
-                                <Layout>
-                                  <CustomTemplates />
-                                </Layout>
-                              </ProtectedRoute>
-                            </Route>
-                            <Route path="/workspace-registration">
-                              <ProtectedRoute allowKicked={true}>
-                                <WorkspaceRegistration />
-                              </ProtectedRoute>
-                            </Route>
-                            <Route path="/settings">
-                              <ProtectedRoute
-                                allowedRoles={["admin", "staff", "viewer"]}
-                              >
-                                <Layout>
-                                  <Settings />
-                                </Layout>
-                              </ProtectedRoute>
-                            </Route>
-                            <Route path="/workspace-configuration">
-                              <ProtectedRoute allowedRoles={["admin"]}>
-                                <WorkspaceConfiguration />
-                              </ProtectedRoute>
-                            </Route>
+                      <Route path="/performance">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="team_performance"
+                          requiredPermission="teamPerformance.access"
+                        >
+                          <Layout>
+                            <TeamPerformance />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/whatsapp">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="allow_whatsapp"
+                        >
+                          <Layout>
+                            <WhatsApp />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/products/new">
+                        <ProtectedRoute requiredFeature="products" requiredPermission="products.access">
+                          <Layout>
+                            <ProductCreatePage />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/products/:productId/clone">
+                        <ProtectedRoute requiredFeature="products" requiredPermission="products.access">
+                          <Layout>
+                            <ProductClonePage />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/products/:productId">
+                        <ProtectedRoute requiredFeature="products" requiredPermission="products.access">
+                          <Layout>
+                            <ProductEditPage />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/products">
+                        <ProtectedRoute requiredFeature="products" requiredPermission="products.access">
+                          <Layout>
+                            <Products />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/discounts">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff"]}
+                          requiredFeature="discounts"
+                          requiredPermission="discounts.access"
+                        >
+                          <Layout>
+                            <Discounts />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/storages">
+                        <ProtectedRoute requiredFeature="storages" requiredPermission="storages.access">
+                          <Layout>
+                            <Storages />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/inventory-transfer">
+                        <ProtectedRoute requiredFeature="inventory_transfer" requiredPermission="inventoryTransfer.access">
+                          <Layout>
+                            <InventoryTransfer />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/inventory-transactions">
+                        <ProtectedRoute requiredFeature="inventory_transactions" requiredPermission="inventoryTransactions.access">
+                          <Layout>
+                            <InventoryTransactions />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/stock-adjustments">
+                        <ProtectedRoute requiredFeature="stock_adjustments" requiredPermission="stockAdjustments.access">
+                          <Layout>
+                            <StockAdjustments />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/hr">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="hr"
+                          requiredPermission="hr.access"
+                        >
+                          <Layout>
+                            <HR />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/loans">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="loans"
+                          requiredPermission="loans.access"
+                        >
+                          <Layout>
+                            <Loans />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/loans/:loanId">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="loans"
+                          requiredPermission="loans.access"
+                        >
+                          <Layout>
+                            <Loans />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/installments">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredAnyFeature={["installments", "crm", "real_estate"]}
+                          requiredPermission="installments.access"
+                        >
+                          <Layout>
+                            <Installments />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/installments/:loanId">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="installments"
+                          requiredPermission="installments.access"
+                        >
+                          <Layout>
+                            <Installments />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/invoices-history/upload-files">
+                        <ProtectedRoute requiredFeature="invoices_history" requiredPermission="invoiceHistory.access">
+                          <Layout>
+                            <InvoicesHistory />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/invoices-history">
+                        <ProtectedRoute requiredFeature="invoices_history" requiredPermission="invoiceHistory.access">
+                          <Layout>
+                            <InvoicesHistory />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/pdf-preview">
+                        <ProtectedRoute>
+                          <Suspense fallback={null}>
+                            <PdfPreviewPage />
+                          </Suspense>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/currency-converter">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredCapability="multiCurrency"
+                        >
+                          <Layout>
+                            <CurrencyConverter />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/notebook">
+                        <ProtectedRoute>
+                          <Layout>
+                            <Notebook />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/members">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="members"
+                        >
+                          <Layout>
+                            <Members />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/custom-templates">
+                        <ProtectedRoute allowedRoles={["admin"]}>
+                          <Layout>
+                            <CustomTemplates />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/workspace-registration">
+                        <ProtectedRoute allowKicked={true}>
+                          <WorkspaceRegistration />
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/settings">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff", "viewer"]}
+                        >
+                          <Layout>
+                            <Settings />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/workspace-configuration">
+                        <ProtectedRoute allowedRoles={["admin"]}>
+                          <WorkspaceConfiguration />
+                        </ProtectedRoute>
+                      </Route>
 
-                            {/* 404 */}
-                            <Route>
-                              <div className="min-h-screen flex items-center justify-center bg-background">
-                                <div className="text-center">
-                                  <h1 className="text-6xl font-bold gradient-text mb-4">
-                                    404
-                                  </h1>
-                                  <p className="text-muted-foreground mb-4">
-                                    Page not found
-                                  </p>
-                                  <Link
-                                    href="/"
-                                    className="text-primary hover:underline"
-                                  >
-                                    Go home
-                                  </Link>
-                                </div>
-                              </div>
-                            </Route>
-                          </Switch>
-                        </Router>
-                      </Suspense>
-                    </KdsSecurityGuard>
-                  </ExchangeRateProvider>
-                )}
-                <Toaster />
-                {isTauri && currentPatch && (
-                  <PatchNoteModal
-                    isOpen={showModal}
-                    onClose={dismissModal}
-                    version={version}
-                    date={currentPatch.date}
-                    highlights={currentPatch.highlights}
-                    teamMessages={currentPatch.teamMessages}
-                  />
-                )}
-              </DateRangeProvider>
+                      {/* 404 */}
+                      <Route>
+                        <div className="min-h-screen flex items-center justify-center bg-background">
+                          <div className="text-center">
+                            <h1 className="text-6xl font-bold gradient-text mb-4">
+                              404
+                            </h1>
+                            <p className="text-muted-foreground mb-4">
+                              Page not found
+                            </p>
+                            <Link
+                              href="/"
+                              className="text-primary hover:underline"
+                            >
+                              Go home
+                            </Link>
+                          </div>
+                        </div>
+                      </Route>
+                    </Switch>
+                  </Router>
+                </Suspense>
+              </KdsSecurityGuard>
+            </ExchangeRateProvider>
+              )}
+              <Toaster />
+              {isTauri && currentPatch && (
+                <PatchNoteModal
+                  isOpen={showModal}
+                  onClose={dismissModal}
+                  version={version}
+                  date={currentPatch.date}
+                  highlights={currentPatch.highlights}
+                  teamMessages={currentPatch.teamMessages}
+                />
+              )}
+            </DateRangeProvider>
             </UiAccessProvider>
           </FleetLocationSharingProvider>
         </WorkspacePermissionsProvider>
