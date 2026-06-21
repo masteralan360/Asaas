@@ -6,7 +6,7 @@ import { useTranslation } from 'react-i18next'
 import { ReactQRCode } from '@lglab/react-qr-code'
 import { Mail, MapPin, Phone, X, RotateCw, Scaling, Move } from 'lucide-react'
 import { EditableField } from '@/ui/components/EditableField'
-import { MovableOrderPrintBlock } from '@/ui/components/orders/OrderPrintTemplates'
+import { MovableOrderPrintBlock } from '@/ui/components/MovableComponentPrint'
 import type { CustomTemplateComponentPosition } from '@/lib/pdfPreviewStore'
 
 export const MODERN_A4_MOVABLE_COMPONENT_KEYS = {
