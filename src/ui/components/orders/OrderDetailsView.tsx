@@ -7,7 +7,7 @@ import { useAuth } from '@/auth'
 import { useProfileData } from '@/hooks/useProfileData'
 import { cn, formatCurrency, formatDate, formatDateTime, formatSnapshotTime } from '@/lib/utils'
 import { generateTemplatePdf, type PrintFormat } from '@/services/pdfGenerator'
-import type { TemplatePreview } from '@/lib/pdfPreviewStore'
+import type { TemplatePreview, TemplatePreviewRenderOptions } from '@/lib/pdfPreviewStore'
 import {
     deletePurchaseOrder,
     deleteSalesOrder,
@@ -25,6 +25,7 @@ import {
     useOrderInstallments,
     useSalesOrder,
     useStorages,
+    useWorkspaceContacts,
     type PaymentObligation,
     type OrderInstallment,
     type PurchaseOrder,
@@ -177,6 +178,33 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
     const salesOrder = useSalesOrder(orderId)
     const purchaseOrder = usePurchaseOrder(orderId)
     const installments = useOrderInstallments(orderId, workspaceId)
+    const workspaceContacts = useWorkspaceContacts(workspaceId)
+    const workspaceFooterContacts = useMemo(() => {
+        const pickContactPair = (type: 'address' | 'email' | 'phone') => {
+            const contactsOfType = workspaceContacts.filter((contact) =>
+                contact.type === type
+                && typeof contact.value === 'string'
+                && contact.value.trim().length > 0
+            )
+            if (contactsOfType.length === 0) return {}
+            const primaryContact = contactsOfType.find((contact) => contact.isPrimary) || contactsOfType[0]
+            const primary = primaryContact.value.trim()
+            const nonPrimaryContact = contactsOfType.find((contact) =>
+                contact.id !== primaryContact.id
+                && (!contact.isPrimary || contact.value.trim() !== primary)
+            )
+            const nonPrimary = nonPrimaryContact?.value.trim()
+            return {
+                ...(primary ? { primary } : {}),
+                ...(nonPrimary ? { nonPrimary } : {})
+            }
+        }
+        return {
+            address: pickContactPair('address'),
+            email: pickContactPair('email'),
+            phone: pickContactPair('phone')
+        }
+    }, [workspaceContacts])
     const [viewMode, setViewMode] = useState<'table' | 'grid'>(readViewMode)
     const [deleteOpen, setDeleteOpen] = useState(false)
     const [isDeleting, setIsDeleting] = useState(false)
@@ -237,7 +265,7 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                 { key: 'hideUnit', label: t('orders.form.hideUnit', { defaultValue: 'Hide Unit' }), value: localStorage.getItem('atlas_print_hide_unit') || 'false', type: 'boolean' },
                 { key: 'hideDiscount', label: t('orders.form.hideDiscount', { defaultValue: 'Hide Discount' }), value: localStorage.getItem('atlas_print_hide_discount') || 'false', type: 'boolean' },
             ],
-            createElement: (data: Record<string, string>, effectiveId?: string, printLangOverride?: string) => {
+            createElement: (data: Record<string, string>, effectiveId?: string, printLangOverride?: string, renderOptions?: TemplatePreviewRenderOptions) => {
                 const updatedOrder = {
                     ...order,
                     ...(kind === 'sales' ? { customerName: data.counterpartyName } : { supplierName: data.counterpartyName }),
@@ -257,6 +285,7 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                         qrValue={effectiveId ? `https://asaas-r2-proxy.alanepic360.workers.dev/${workspaceId}/printed-invoices/A4/${effectiveId}.pdf` : undefined}
                         hideUnit={data.hideUnit === 'true'}
                         hideDiscount={data.hideDiscount === 'true'}
+                        workspaceFooterContacts={renderOptions?.workspaceFooterContacts || workspaceFooterContacts}
                     />
                 )
             },
@@ -270,7 +299,7 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                 })
             },
         }
-    }, [resolved, features, installments, workspaceName, t, i18n, workspaceId])
+    }, [resolved, features, installments, workspaceName, t, i18n, workspaceId, workspaceFooterContacts])
 
     const customOrderPrint = useOrderCustomPrint({
         workspaceId,
@@ -1037,6 +1066,7 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                                     iqdPreference={features.iqd_display_preference}
                                     logoUrl={features.logo_url}
                                     qrValue={effectiveId ? `https://asaas-r2-proxy.alanepic360.workers.dev/${workspaceId}/printed-invoices/A4/${effectiveId}.pdf` : undefined}
+                                    workspaceFooterContacts={workspaceFooterContacts}
                                 />
                             ),
                             format,
@@ -1055,6 +1085,7 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                             iqdPreference={features.iqd_display_preference}
                             logoUrl={features.logo_url}
                             qrValue={effectiveId ? `https://asaas-r2-proxy.alanepic360.workers.dev/${workspaceId}/printed-invoices/A4/${effectiveId}.pdf` : undefined}
+                            workspaceFooterContacts={workspaceFooterContacts}
                         />
                     )
                 }}

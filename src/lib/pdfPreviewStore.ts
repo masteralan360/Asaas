@@ -28,6 +28,7 @@ export type TemplatePreviewRenderOptions = {
     componentPositions?: Record<string, CustomTemplateComponentPosition>
     onFieldChange?: (key: string, value: string) => void
     onComponentPositionChange?: (key: string, position: CustomTemplateComponentPosition) => void
+    workspaceFooterContacts?: Record<string, { primary?: string; nonPrimary?: string }>
 }
 
 export type TemplatePreviewMovableComponent = {

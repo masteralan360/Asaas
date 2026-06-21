@@ -300,6 +300,7 @@ export function PdfPreviewPage() {
     const templatePageWidth = templatePage.widthMm
     const templatePageHeight = templatePage.heightMm
     const canEditTemplateFields = Boolean(source?.allowTemplateFieldEditing || isAdmin)
+    const sourceWorkspaceFooterContacts = source?.workspaceFooterContacts
     const [fieldValues, setFieldValues] = useState<Record<string, string>>(
         () => {
             const initial: Record<string, string> = {
@@ -1237,7 +1238,8 @@ export function PdfPreviewPage() {
                                         dataKeys: templatePreview.dataKeys,
                                         componentPositions: templateComponentPositions,
                                         onFieldChange: handleFieldChange,
-                                        onComponentPositionChange: handleTemplateComponentPositionChange
+                                        onComponentPositionChange: handleTemplateComponentPositionChange,
+                                        workspaceFooterContacts: sourceWorkspaceFooterContacts
                                     }
                                 )}
                             </div>

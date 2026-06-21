@@ -11,7 +11,7 @@ import { formatCurrency, formatDate, formatDateTime } from '@/lib/utils'
 import { platformService } from '@/services/platformService'
 import { useTranslation } from 'react-i18next'
 import { ReactQRCode } from '@lglab/react-qr-code'
-import { Move } from 'lucide-react'
+import { Move, MapPin, Phone } from 'lucide-react'
 import type { KeyboardEvent, PointerEvent, ReactNode } from 'react'
 import type { CustomTemplateComponentPosition } from '@/lib/pdfPreviewStore'
 
@@ -34,6 +34,17 @@ interface OrderListPrintTemplateProps {
     qrValue?: string | null
 }
 
+interface WorkspaceContactPair {
+    primary?: string
+    nonPrimary?: string
+}
+
+interface WorkspaceFooterContacts {
+    address?: WorkspaceContactPair
+    email?: WorkspaceContactPair
+    phone?: WorkspaceContactPair
+}
+
 interface OrderDetailsPrintTemplateProps {
     workspaceName?: string | null
     printLang: string
@@ -48,6 +59,7 @@ interface OrderDetailsPrintTemplateProps {
     componentPositions?: Record<string, CustomTemplateComponentPosition>
     editableComponents?: boolean
     onComponentPositionChange?: (key: string, position: CustomTemplateComponentPosition) => void
+    workspaceFooterContacts?: WorkspaceFooterContacts
 }
 
 export const ORDER_DETAILS_MOVABLE_COMPONENT_KEYS = {
@@ -61,7 +73,8 @@ export const ORDER_DETAILS_MOVABLE_COMPONENT_KEYS = {
     title: 'title',
     subtitle: 'subtitle',
     qrCode: 'qrCode',
-    logo: 'logo'
+    logo: 'logo',
+    contacts: 'contacts'
 } as const
 
 type OrderDetailsMovableComponentKey = typeof ORDER_DETAILS_MOVABLE_COMPONENT_KEYS[keyof typeof ORDER_DETAILS_MOVABLE_COMPONENT_KEYS]
@@ -469,7 +482,8 @@ export function OrderDetailsPrintTemplate({
     hideDiscount,
     componentPositions,
     editableComponents,
-    onComponentPositionChange
+    onComponentPositionChange,
+    workspaceFooterContacts
 }: OrderDetailsPrintTemplateProps) {
     const { i18n } = useTranslation()
     const t = i18n.getFixedT(printLang)
@@ -729,6 +743,50 @@ export function OrderDetailsPrintTemplate({
                     </div>
                 </div>
             ) : null}
+
+            <MovableOrderPrintBlock
+                componentKey={ORDER_DETAILS_MOVABLE_COMPONENT_KEYS.contacts}
+                label={t('orders.print.contacts', { defaultValue: 'Contacts' })}
+                position={componentPositions?.[ORDER_DETAILS_MOVABLE_COMPONENT_KEYS.contacts]}
+                editable={editableComponents}
+                onPositionChange={onComponentPositionChange}
+            >
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-500">
+                    {[
+                        {
+                            key: 'address',
+                            primary: workspaceFooterContacts?.address?.primary?.trim() || '',
+                            nonPrimary: workspaceFooterContacts?.address?.nonPrimary?.trim() || '',
+                            icon: MapPin,
+                        },
+                        {
+                            key: 'phone',
+                            primary: workspaceFooterContacts?.phone?.primary?.trim() || '',
+                            nonPrimary: workspaceFooterContacts?.phone?.nonPrimary?.trim() || '',
+                            icon: Phone,
+                        },
+                    ].map((group) => {
+                        const entries: Array<{ value: string }> = []
+                        if (group.primary) entries.push({ value: group.primary })
+                        if (group.nonPrimary) entries.push({ value: group.nonPrimary })
+                        return { ...group, entries }
+                    }).filter((group) => group.entries.length > 0)
+                    .map((group, groupIndex, arr) => (
+                        <div key={group.key} className="inline-flex items-center gap-1">
+                            <group.icon className="w-3.5 h-3.5 shrink-0" />
+                            {group.entries.map((entry, entryIndex) => (
+                                <span key={entryIndex}>
+                                    {entryIndex > 0 && <span className="mx-0.5 select-none">●</span>}
+                                    <span>{entry.value}</span>
+                                </span>
+                            ))}
+                            {groupIndex < arr.length - 1 && (
+                                <span className="mx-1 text-slate-300 select-none">│</span>
+                            )}
+                        </div>
+                    ))}
+                </div>
+            </MovableOrderPrintBlock>
         </div>
     )
 }

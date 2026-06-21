@@ -786,7 +786,8 @@ function createOrderDetailsPreview(options: CustomTemplatePreviewOptions): Templ
             { key: ORDER_DETAILS_MOVABLE_COMPONENT_KEYS.qrCode, label: 'QR Code' },
             { key: ORDER_DETAILS_MOVABLE_COMPONENT_KEYS.workspaceName, label: 'Workspace Name' },
             { key: ORDER_DETAILS_MOVABLE_COMPONENT_KEYS.title, label: 'Title' },
-            { key: ORDER_DETAILS_MOVABLE_COMPONENT_KEYS.subtitle, label: 'Subtitle' }
+            { key: ORDER_DETAILS_MOVABLE_COMPONENT_KEYS.subtitle, label: 'Subtitle' },
+            { key: ORDER_DETAILS_MOVABLE_COMPONENT_KEYS.contacts, label: 'Contacts' }
         ],
         page: { widthMm: 210, heightMm: 297 },
         fixedPrintLang,
@@ -805,6 +806,7 @@ function createOrderDetailsPreview(options: CustomTemplatePreviewOptions): Templ
                 componentPositions={renderOptions?.componentPositions}
                 editableComponents={renderOptions?.editableComponents}
                 onComponentPositionChange={renderOptions?.onComponentPositionChange}
+                workspaceFooterContacts={renderOptions?.workspaceFooterContacts || options.workspaceFooterContacts}
             />
         ),
         buildPdf: (element, printLangOverride) => generateTemplatePdf({

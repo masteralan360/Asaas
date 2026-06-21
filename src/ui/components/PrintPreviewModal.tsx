@@ -581,6 +581,7 @@ export function PrintPreviewModal({
                         allowTemplateFieldEditing,
                         templatePrimaryActionLabel,
                         generateTemplateLayoutBlob,
+                        workspaceFooterContacts,
                     })
                 } else {
                     const blobs = await buildPdfBlobs(printFormat)
