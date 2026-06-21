@@ -1261,7 +1261,7 @@ function LoanDetailsView({
                                                         {getLoanScheduleItemLabel(loan, item.installmentNo, t)}
                                                     </span>
                                                     <span className="text-sm font-bold text-foreground">
-                                                        {formatDate(item.dueDate)}
+                                                        {item.dueDate ? formatDate(item.dueDate) : '-'}
                                                     </span>
                                                 </div>
                                                 <span className={cn('inline-flex px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider', statusClass(item.status === 'unpaid' ? 'active' : item.status))}>
@@ -1321,7 +1321,7 @@ function LoanDetailsView({
                                         ) : installments.map((item: LoanInstallment) => (
                                             <TableRow key={item.id}>
                                                 <TableCell>{getLoanScheduleItemLabel(loan, item.installmentNo, t)}</TableCell>
-                                                <TableCell>{formatDate(item.dueDate)}</TableCell>
+                                                <TableCell>{item.dueDate ? formatDate(item.dueDate) : '-'}</TableCell>
                                                 <TableCell className="text-end">{formatCurrency(item.plannedAmount, loan.settlementCurrency, features.iqd_display_preference)}</TableCell>
                                                 <TableCell className="text-end text-emerald-500">{formatCurrency(item.paidAmount, loan.settlementCurrency, features.iqd_display_preference)}</TableCell>
                                                 <TableCell className="text-end font-semibold">{formatCurrency(item.balanceAmount, loan.settlementCurrency, features.iqd_display_preference)}</TableCell>

@@ -3619,10 +3619,14 @@ export async function deleteWorkspaceContact(id: string): Promise<void> {
 // LOANS HOOKS
 // ===================
 
-function normalizeDueDate(value: string): string {
+function normalizeDueDate(value?: string | null): string | null {
+    if (!value) {
+        return null
+    }
+
     const d = new Date(value)
     if (Number.isNaN(d.getTime())) {
-        return new Date().toISOString().slice(0, 10)
+        return null
     }
     return d.toISOString().slice(0, 10)
 }
@@ -3701,7 +3705,11 @@ function generateLoanNo(id: string, now = new Date(), loanCategory: LoanCategory
     return `${prefix}-${yyyy}${mm}${dd}-${id.replace(/-/g, '').slice(0, 6).toUpperCase()}`
 }
 
-function addInstallmentDate(baseDate: string, frequency: InstallmentFrequency, index: number): string {
+function addInstallmentDate(baseDate: string | null, frequency: InstallmentFrequency, index: number): string | null {
+    if (!baseDate) {
+        return null
+    }
+
     const d = new Date(`${baseDate}T00:00:00`)
     if (frequency === 'weekly') {
         d.setDate(d.getDate() + (index * 7))
@@ -3713,10 +3721,10 @@ function addInstallmentDate(baseDate: string, frequency: InstallmentFrequency, i
     return d.toISOString().slice(0, 10)
 }
 
-function computeInstallmentStatus(dueDate: string, balanceAmount: number): InstallmentStatus {
+function computeInstallmentStatus(dueDate: string | null, balanceAmount: number): InstallmentStatus {
     if (balanceAmount <= 0) return 'paid'
     const today = new Date().toISOString().slice(0, 10)
-    return dueDate < today ? 'overdue' : 'unpaid'
+    return dueDate && dueDate < today ? 'overdue' : 'unpaid'
 }
 
 function computeLoanStatus(nextDueDate: string | null | undefined, balanceAmount: number): LoanStatus {
@@ -3865,7 +3873,7 @@ function rebuildLoanStateFromPayments(
             continue
         }
 
-        installment.status = installment.dueDate < today ? 'overdue' : 'unpaid'
+        installment.status = installment.dueDate && installment.dueDate < today ? 'overdue' : 'unpaid'
     }
 
     const totalPaidAmount = roundLoanAmount(
@@ -3877,7 +3885,7 @@ function rebuildLoanStateFromPayments(
         loan.settlementCurrency
     )
     const nextDueDate = updatedInstallments.find((installment) => installment.balanceAmount > 0)?.dueDate || null
-    const oldestOverdueDueDate = updatedInstallments.find((installment) => installment.balanceAmount > 0 && installment.dueDate < today)?.dueDate || null
+    const oldestOverdueDueDate = updatedInstallments.find((installment) => installment.balanceAmount > 0 && !!installment.dueDate && installment.dueDate < today)?.dueDate || null
     const keepReminderSnooze = !!oldestOverdueDueDate && oldestOverdueDueDate === loan.overdueReminderSnoozedForDueDate
     const baseLoanNo = loan.loanNo.replace(/-\d+$/, '')
     const rebuiltLoanNo = payments.length > 0 ? `${baseLoanNo}-${payments.length}` : baseLoanNo
@@ -3912,12 +3920,12 @@ function createInstallmentPlan(
     settlementCurrency: CurrencyCode,
     installmentCount: number,
     installmentFrequency: InstallmentFrequency,
-    firstDueDate: string
-): Array<{ installmentNo: number; dueDate: string; plannedAmount: number }> {
+    firstDueDate: string | null
+): Array<{ installmentNo: number; dueDate: string | null; plannedAmount: number }> {
     const safeCount = Math.max(1, Math.trunc(installmentCount))
     const safePrincipal = roundLoanAmount(Math.max(0, principalAmount), settlementCurrency)
     const baseAmount = roundLoanAmount(safePrincipal / safeCount, settlementCurrency)
-    const plan: Array<{ installmentNo: number; dueDate: string; plannedAmount: number }> = []
+    const plan: Array<{ installmentNo: number; dueDate: string | null; plannedAmount: number }> = []
     let accumulated = 0
 
     for (let i = 0; i < safeCount; i++) {
@@ -3981,7 +3989,7 @@ interface LoanCreateInput {
     exchangeRateSnapshot?: ExchangeRateSnapshot[] | null
     installmentCount: number
     installmentFrequency: InstallmentFrequency
-    firstDueDate: string
+    firstDueDate?: string | null
     notes?: string
     createdBy?: string
 }
@@ -4808,7 +4816,7 @@ export async function recordLoanPayment(workspaceId: string, input: LoanPaymentI
             installment.status = 'paid'
             continue
         }
-        if (installment.dueDate < today && installment.status !== 'partial') {
+        if (installment.dueDate && installment.dueDate < today && installment.status !== 'partial') {
             installment.status = 'overdue'
         } else if (installment.status !== 'partial') {
             installment.status = 'unpaid'
@@ -4841,7 +4849,7 @@ export async function recordLoanPayment(workspaceId: string, input: LoanPaymentI
     if (updatedInstallments.some(item => item.status === 'overdue')) {
         updatedLoan.status = updatedLoan.balanceAmount <= 0 ? 'completed' : 'overdue'
     }
-    const oldestOverdueDueDate = updatedInstallments.find(item => item.balanceAmount > 0 && item.dueDate < today)?.dueDate || null
+    const oldestOverdueDueDate = updatedInstallments.find(item => item.balanceAmount > 0 && !!item.dueDate && item.dueDate < today)?.dueDate || null
     if (!oldestOverdueDueDate || oldestOverdueDueDate !== loan.overdueReminderSnoozedForDueDate) {
         updatedLoan.overdueReminderSnoozedAt = null
         updatedLoan.overdueReminderSnoozedForDueDate = null

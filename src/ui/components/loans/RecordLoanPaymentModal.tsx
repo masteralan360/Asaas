@@ -169,7 +169,7 @@ export function RecordLoanPaymentModal({
                                     </div>
                                     {selectedInstallment && (
                                         <div className="mt-1 text-xs text-muted-foreground">
-                                            #{String(selectedInstallment.installmentNo).padStart(2, '0')} - {t('loans.dueDate') || 'Due Date'}: {formatDate(selectedInstallment.dueDate)}
+                                            #{String(selectedInstallment.installmentNo).padStart(2, '0')} - {t('loans.dueDate') || 'Due Date'}: {selectedInstallment.dueDate ? formatDate(selectedInstallment.dueDate) : '-'}
                                         </div>
                                     )}
                                 </div>

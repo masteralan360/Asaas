@@ -20,7 +20,7 @@ CREATE TABLE public.loans (
   exchange_rate_snapshot jsonb NULL,
   installment_count integer NOT NULL,
   installment_frequency text NOT NULL,
-  first_due_date date NOT NULL,
+  first_due_date date NULL,
   next_due_date date NULL,
   status text NOT NULL,
   notes text NULL,

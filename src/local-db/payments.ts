@@ -167,8 +167,9 @@ function normalizeDateKey(value?: string | null) {
     return value.slice(0, 10)
 }
 
-function isDateOverdue(dateValue: string, todayKey: string) {
-    return normalizeDateKey(dateValue) < todayKey
+function isDateOverdue(dateValue: string | null | undefined, todayKey: string) {
+    const dateKey = normalizeDateKey(dateValue)
+    return !!dateKey && dateKey < todayKey
 }
 
 function matchesSearch(values: Array<string | null | undefined>, search: string) {
@@ -677,7 +678,7 @@ function buildSimpleLoanObligations(
             return []
         }
 
-        const dueDate = normalizeDateKey(loan.nextDueDate || loan.firstDueDate || loan.createdAt)
+        const dueDate = normalizeDateKey(loan.nextDueDate || loan.firstDueDate)
         const direction: PaymentTransactionDirection = (loan.direction || 'lent') === 'borrowed' ? 'outgoing' : 'incoming'
 
         return [{
@@ -878,7 +879,11 @@ async function buildPaymentObligations(workspaceId: string, filters: PaymentObli
             return left.status === 'overdue' ? -1 : 1
         }
 
-        return left.dueDate.localeCompare(right.dueDate)
+        const dueDateCompare = !left.dueDate || !right.dueDate
+            ? (!left.dueDate && !right.dueDate ? 0 : left.dueDate ? -1 : 1)
+            : left.dueDate.localeCompare(right.dueDate)
+
+        return dueDateCompare
             || left.referenceLabel?.localeCompare(right.referenceLabel || '') || 0
     })
 }

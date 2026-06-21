@@ -410,7 +410,7 @@ export function Payments() {
                                                 <div>{item.counterpartyName || item.title}</div>
                                                 {item.subtitle ? <div className="text-xs text-muted-foreground">{item.subtitle}</div> : null}
                                             </TableCell>
-                                            <TableCell>{formatDate(item.dueDate)}</TableCell>
+                                            <TableCell>{item.dueDate ? formatDate(item.dueDate) : '-'}</TableCell>
                                             <TableCell>
                                                 <span className={cn(
                                                     'inline-flex rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide',

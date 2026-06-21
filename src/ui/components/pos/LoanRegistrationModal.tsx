@@ -36,7 +36,7 @@ export interface LoanRegistrationData {
     borrowerNationalId: string
     installmentCount: number
     installmentFrequency: InstallmentFrequency
-    firstDueDate: string
+    firstDueDate: string | null
     notes?: string
 }
 
@@ -70,7 +70,7 @@ export function LoanRegistrationModal({
         borrowerNationalId: '',
         installmentCount: 1,
         installmentFrequency: 'monthly',
-        firstDueDate: formatLocalDateValue(new Date()),
+        firstDueDate: null,
         notes: ''
     })
     const [isPartyPickerOpen, setIsPartyPickerOpen] = useState(false)
@@ -87,7 +87,7 @@ export function LoanRegistrationModal({
             borrowerNationalId: '',
             installmentCount: 1,
             installmentFrequency: 'monthly',
-            firstDueDate: formatLocalDateValue(new Date()),
+            firstDueDate: null,
             notes: ''
         })
         setIsPartyPickerOpen(false)
@@ -97,8 +97,7 @@ export function LoanRegistrationModal({
         form.borrowerPhone.trim() &&
         form.borrowerAddress.trim() &&
         form.borrowerNationalId.trim() &&
-        form.installmentCount > 0 &&
-        form.firstDueDate
+        form.installmentCount > 0
 
     const submit = () => {
         if (!isValid) return
@@ -253,12 +252,12 @@ export function LoanRegistrationModal({
                                     </Select>
                                 </div>
                                 <div className="grid gap-2">
-                                    <Label>{t('loans.firstDueDate') || 'First Due Date'} <span className="text-destructive">*</span></Label>
+                                    <Label>{t('loans.firstDueDate') || 'First Due Date'}</Label>
                                     <DateTimePicker
                                         id="registration-loan-first-due-date"
                                         mode="date"
                                         date={parseLocalDateValue(form.firstDueDate)}
-                                        setDate={(value) => setForm(prev => ({ ...prev, firstDueDate: value ? formatLocalDateValue(value) : '' }))}
+                                        setDate={(value) => setForm(prev => ({ ...prev, firstDueDate: value ? formatLocalDateValue(value) : null }))}
                                         placeholder={t('loans.firstDueDate') || 'First Due Date'}
                                     />
                                 </div>

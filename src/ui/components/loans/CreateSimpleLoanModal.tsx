@@ -65,7 +65,7 @@ export function CreateSimpleLoanModal({
     const [selectedParty, setSelectedParty] = useState<LoanPartySelection | null>(null)
     const [isPartyPickerOpen, setIsPartyPickerOpen] = useState(false)
     const [principalAmount, setPrincipalAmount] = useState('')
-    const [dueDate, setDueDate] = useState(formatLocalDateValue(new Date()))
+    const [dueDate, setDueDate] = useState<string | null>(null)
     const [notes, setNotes] = useState('')
     const [savePartnerData, setSavePartnerData] = usePendingSavePartnerPrompt()
 
@@ -82,7 +82,7 @@ export function CreateSimpleLoanModal({
         setSelectedParty(null)
         setIsPartyPickerOpen(false)
         setPrincipalAmount('')
-        setDueDate(formatLocalDateValue(new Date()))
+        setDueDate(null)
         setNotes('')
     }, [isOpen, settlementCurrency])
 
@@ -92,7 +92,7 @@ export function CreateSimpleLoanModal({
         }))
     }, [selectedCurrency])
 
-    const canSubmit = borrowerName.trim() && parseFormattedNumber(principalAmount || '0') > 0 && dueDate
+    const canSubmit = borrowerName.trim() && parseFormattedNumber(principalAmount || '0') > 0
 
     const counterpartyNameLabel = useMemo(
         () => getLoanCounterpartyNameLabel({ loanCategory: 'simple', direction }, t),
@@ -291,12 +291,12 @@ export function CreateSimpleLoanModal({
                                     />
                                 </div>
                                 <div className="grid gap-2">
-                                    <Label>{t('loans.dueDate', { defaultValue: 'Due Date' })} <span className="text-destructive">*</span></Label>
+                                    <Label>{t('loans.dueDate', { defaultValue: 'Due Date' })}</Label>
                                     <DateTimePicker
                                         id="simple-loan-due-date"
                                         mode="date"
                                         date={parseLocalDateValue(dueDate)}
-                                        setDate={(value) => setDueDate(value ? formatLocalDateValue(value) : '')}
+                                        setDate={(value) => setDueDate(value ? formatLocalDateValue(value) : null)}
                                         placeholder={t('loans.dueDate', { defaultValue: 'Due Date' })}
                                     />
                                 </div>

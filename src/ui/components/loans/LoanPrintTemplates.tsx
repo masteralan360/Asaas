@@ -410,7 +410,7 @@ export function LoanDetailsPrintTemplate({
                     ) : installments.map((item) => (
                         <tr key={item.id}>
                             <td className="border border-slate-300 p-2">{getLoanScheduleItemLabel(loan, item.installmentNo, t)}</td>
-                            {!hideDueDate && <td className="border border-slate-300 p-2">{formatDate(item.dueDate)}</td>}
+                            {!hideDueDate && <td className="border border-slate-300 p-2">{item.dueDate ? formatDate(item.dueDate) : '-'}</td>}
                             <td className="border border-slate-300 p-2 text-start">{formatCurrency(item.plannedAmount, loan.settlementCurrency, iqdPreference)}</td>
                             <td className="border border-slate-300 p-2 text-start">{formatCurrency(item.paidAmount, loan.settlementCurrency, iqdPreference)}</td>
                             <td className="border border-slate-300 p-2 text-start">{formatCurrency(item.balanceAmount, loan.settlementCurrency, iqdPreference)}</td>
@@ -600,7 +600,7 @@ export function LoanReceiptPrintTemplate({
                         ) : installments.map(item => (
                             <tr key={item.id}>
                                 <td className="py-1">{getLoanScheduleItemLabel(loan, item.installmentNo, t)}</td>
-                                {!hideDueDate && <td className="py-1">{formatDate(item.dueDate)}</td>}
+                                {!hideDueDate && <td className="py-1">{item.dueDate ? formatDate(item.dueDate) : '-'}</td>}
                                 <td className="py-1">{formatCurrency(item.plannedAmount, loan.settlementCurrency, iqdPreference)}</td>
                                 <td className="py-1">{formatCurrency(item.paidAmount, loan.settlementCurrency, iqdPreference)}</td>
                             </tr>

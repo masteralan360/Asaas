@@ -1243,7 +1243,7 @@ export interface Loan extends BaseEntity {
   exchangeRateSnapshot?: ExchangeRateSnapshot[] | null;
   installmentCount: number;
   installmentFrequency: InstallmentFrequency;
-  firstDueDate: string;
+  firstDueDate: string | null;
   nextDueDate?: string | null;
   overdueReminderSnoozedAt?: string | null;
   overdueReminderSnoozedForDueDate?: string | null;
@@ -1255,7 +1255,7 @@ export interface Loan extends BaseEntity {
 export interface LoanInstallment extends BaseEntity {
   loanId: string;
   installmentNo: number;
-  dueDate: string;
+  dueDate: string | null;
   plannedAmount: number;
   paidAmount: number;
   balanceAmount: number;

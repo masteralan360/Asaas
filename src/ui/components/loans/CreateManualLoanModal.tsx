@@ -63,7 +63,7 @@ export function CreateManualLoanModal({
     const [principalAmount, setPrincipalAmount] = useState('')
     const [installmentCount, setInstallmentCount] = useState(1)
     const [installmentFrequency, setInstallmentFrequency] = useState<InstallmentFrequency>('monthly')
-    const [firstDueDate, setFirstDueDate] = useState(formatLocalDateValue(new Date()))
+    const [firstDueDate, setFirstDueDate] = useState<string | null>(null)
     const [notes, setNotes] = useState('')
     const [savePartnerData, setSavePartnerData] = usePendingSavePartnerPrompt()
 
@@ -80,7 +80,7 @@ export function CreateManualLoanModal({
         setPrincipalAmount('')
         setInstallmentCount(1)
         setInstallmentFrequency('monthly')
-        setFirstDueDate(formatLocalDateValue(new Date()))
+        setFirstDueDate(null)
         setNotes('')
     }, [isOpen, settlementCurrency])
 
@@ -95,8 +95,7 @@ export function CreateManualLoanModal({
         borrowerAddress.trim() &&
         borrowerNationalId.trim() &&
         parseFormattedNumber(principalAmount || '0') > 0 &&
-        installmentCount > 0 &&
-        firstDueDate
+        installmentCount > 0
     const exchangeRateSnapshot = useMemo(() => {
         const snapshot = buildOrderExchangeRatesSnapshot({
             exchangeData,
@@ -297,12 +296,12 @@ export function CreateManualLoanModal({
                                     </Select>
                                 </div>
                                 <div className="grid gap-2 xl:col-span-3">
-                                    <Label>{t('loans.firstDueDate') || 'First Due Date'} <span className="text-destructive">*</span></Label>
+                                    <Label>{t('loans.firstDueDate') || 'First Due Date'}</Label>
                                     <DateTimePicker
                                         id="manual-loan-first-due-date"
                                         mode="date"
                                         date={parseLocalDateValue(firstDueDate)}
-                                        setDate={(value) => setFirstDueDate(value ? formatLocalDateValue(value) : '')}
+                                        setDate={(value) => setFirstDueDate(value ? formatLocalDateValue(value) : null)}
                                         placeholder={t('loans.firstDueDate') || 'First Due Date'}
                                     />
                                 </div>

@@ -168,7 +168,7 @@ export function SettlementDialog({
                     <DialogTitle>{actionLabel}</DialogTitle>
                     <DialogDescription>
                         {obligation 
-                            ? `${obligation.referenceLabel || obligation.title} • ${formatDate(obligation.dueDate)}` 
+                            ? `${obligation.referenceLabel || obligation.title} • ${obligation.dueDate ? formatDate(obligation.dueDate) : '-'}`
                             : t('settlementModal.postSettlement', { defaultValue: 'Post this settlement to the central ledger.' })}
                     </DialogDescription>
                 </DialogHeader>

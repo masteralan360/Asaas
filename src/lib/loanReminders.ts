@@ -33,9 +33,11 @@ export function buildOverdueLoanReminderItems(
             continue
         }
 
-        if (installment.dueDate >= today) {
+        if (!installment.dueDate || installment.dueDate >= today) {
             continue
         }
+
+        const dueDate = installment.dueDate
 
         const loan = activeLoanById.get(installment.loanId)
         if (!loan) {
@@ -50,7 +52,7 @@ export function buildOverdueLoanReminderItems(
                 borrowerName: loan.borrowerName,
                 installmentId: installment.id,
                 installmentNo: installment.installmentNo,
-                dueDate: installment.dueDate,
+                dueDate,
                 overdueAmount: installment.balanceAmount,
                 overdueInstallmentCount: 1,
                 balanceAmount: loan.balanceAmount,
@@ -60,10 +62,10 @@ export function buildOverdueLoanReminderItems(
         }
 
         const shouldReplaceOldestInstallment =
-            installment.dueDate < existing.dueDate ||
-            (installment.dueDate === existing.dueDate && installment.installmentNo < existing.installmentNo)
+            dueDate < existing.dueDate ||
+            (dueDate === existing.dueDate && installment.installmentNo < existing.installmentNo)
         if (shouldReplaceOldestInstallment) {
-            existing.dueDate = installment.dueDate
+            existing.dueDate = dueDate
             existing.installmentId = installment.id
             existing.installmentNo = installment.installmentNo
         }

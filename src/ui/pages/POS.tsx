@@ -123,7 +123,7 @@ function isLoanRegistrationData(value: unknown): value is LoanRegistrationData {
         (payload.installmentFrequency === 'weekly' ||
             payload.installmentFrequency === 'biweekly' ||
             payload.installmentFrequency === 'monthly') &&
-        typeof payload.firstDueDate === 'string'
+        (payload.firstDueDate === null || typeof payload.firstDueDate === 'string')
     )
 }
 
