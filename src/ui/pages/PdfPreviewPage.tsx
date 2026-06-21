@@ -32,7 +32,7 @@ import { DeleteConfirmationModal } from '@/ui/components/DeleteConfirmationModal
 import { cn } from '@/lib/utils'
 import type { UniversalInvoice } from '@/types'
 import { useAuth } from '@/auth/AuthContext'
-import { UiAccessGate } from '@/context/UiAccessContext'
+import { UiAccessGate, useUiAccess } from '@/context/UiAccessContext'
 
 const LanguageSelector = ({ value, onChange }: { value: string, onChange: (val: string) => void }) => {
     const [isOpen, setIsOpen] = useState(false);
@@ -204,6 +204,7 @@ export function PdfPreviewPage() {
     const { t } = useTranslation()
     const { hasRole } = useAuth()
     const isAdmin = hasRole(['admin'])
+    const { isAccessKeyHeld } = useUiAccess()
     const [isSaving, setIsSaving] = useState(false)
     const [tempPrintLang, setTempPrintLang] = useState<string>('auto')
 
@@ -1232,7 +1233,7 @@ export function PdfPreviewPage() {
                                     fixedTemplatePrintLang || (tempPrintLang !== 'auto' ? tempPrintLang : undefined),
                                     {
                                         editableFields: canEditTemplateFields && drawingMode === 'none',
-                                        editableComponents: canEditTemplateFields && drawingMode === 'none',
+                                        editableComponents: canEditTemplateFields && drawingMode === 'none' && (Boolean(source?.onSaveTemplateLayout) || isAccessKeyHeld),
                                         dataKeys: templatePreview.dataKeys,
                                         componentPositions: templateComponentPositions,
                                         onFieldChange: handleFieldChange,
