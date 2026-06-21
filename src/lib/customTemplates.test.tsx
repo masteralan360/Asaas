@@ -252,7 +252,8 @@ describe('Order Details custom print template', () => {
             'workspaceName',
             'title',
             'subtitle',
-            'contacts'
+            'contacts',
+            'notes'
         ])
         expect(preview.fixedPrintLang).toBe('ku')
         expect(element.type).toBe(OrderDetailsPrintTemplate)
@@ -267,7 +268,7 @@ describe('Order Details custom print template', () => {
         expect(element.props.onComponentPositionChange).toBe(onComponentPositionChange)
 
         const html = renderToStaticMarkup(element)
-        expect(html.match(/data-order-print-component=/g)).toHaveLength(11)
+        expect(html.match(/data-order-print-component=/g)).toHaveLength(12)
         expect(html).toContain('data-order-print-component="customer"')
         expect(html).toContain('translate(12mm, -4mm)')
         expect(html).toContain('aria-label="Move ')

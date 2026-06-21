@@ -787,7 +787,8 @@ function createOrderDetailsPreview(options: CustomTemplatePreviewOptions): Templ
             { key: ORDER_DETAILS_MOVABLE_COMPONENT_KEYS.workspaceName, label: 'Workspace Name' },
             { key: ORDER_DETAILS_MOVABLE_COMPONENT_KEYS.title, label: 'Title' },
             { key: ORDER_DETAILS_MOVABLE_COMPONENT_KEYS.subtitle, label: 'Subtitle' },
-            { key: ORDER_DETAILS_MOVABLE_COMPONENT_KEYS.contacts, label: 'Contacts' }
+            { key: ORDER_DETAILS_MOVABLE_COMPONENT_KEYS.contacts, label: 'Contacts' },
+            { key: ORDER_DETAILS_MOVABLE_COMPONENT_KEYS.notes, label: 'Notes' }
         ],
         page: { widthMm: 210, heightMm: 297 },
         fixedPrintLang,

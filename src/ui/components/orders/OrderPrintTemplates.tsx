@@ -74,7 +74,8 @@ export const ORDER_DETAILS_MOVABLE_COMPONENT_KEYS = {
     subtitle: 'subtitle',
     qrCode: 'qrCode',
     logo: 'logo',
-    contacts: 'contacts'
+    contacts: 'contacts',
+    notes: 'notes'
 } as const
 
 type OrderDetailsMovableComponentKey = typeof ORDER_DETAILS_MOVABLE_COMPONENT_KEYS[keyof typeof ORDER_DETAILS_MOVABLE_COMPONENT_KEYS]
@@ -735,14 +736,22 @@ export function OrderDetailsPrintTemplate({
                 </>
             ) : null}
 
-            {noteValue ? (
-                <div className="mt-6 text-xs">
-                    <div className="font-semibold text-slate-600">{t('orders.details.notes') || 'Notes'}:</div>
-                    <div className="mt-2 whitespace-pre-wrap break-words text-[11px] text-slate-800">
-                        {noteValue}
+            <MovableOrderPrintBlock
+                componentKey={ORDER_DETAILS_MOVABLE_COMPONENT_KEYS.notes}
+                label={t('orders.details.notes') || 'Notes'}
+                position={componentPositions?.[ORDER_DETAILS_MOVABLE_COMPONENT_KEYS.notes]}
+                editable={editableComponents}
+                onPositionChange={onComponentPositionChange}
+            >
+                {noteValue ? (
+                    <div className="mt-6 text-xs">
+                        <div className="font-semibold text-slate-600">{t('orders.details.notes') || 'Notes'}:</div>
+                        <div className="mt-2 whitespace-pre-wrap break-words text-[11px] text-slate-800">
+                            {noteValue}
+                        </div>
                     </div>
-                </div>
-            ) : null}
+                ) : null}
+            </MovableOrderPrintBlock>
 
             <MovableOrderPrintBlock
                 componentKey={ORDER_DETAILS_MOVABLE_COMPONENT_KEYS.contacts}
