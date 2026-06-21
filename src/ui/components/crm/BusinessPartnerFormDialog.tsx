@@ -45,7 +45,8 @@ type BusinessPartnerFormState = {
     country: string
     defaultCurrency: CurrencyCode
     notes: string
-    creditLimit: string
+    receivableCreditLimit: string
+    payableCreditLimit: string
     role: BusinessPartnerRole
     agentImageUrl: string
     agentZone: string
@@ -69,7 +70,8 @@ function createEmptyState(defaultCurrency: CurrencyCode, role: BusinessPartnerRo
         country: '',
         defaultCurrency,
         notes: '',
-        creditLimit: '',
+        receivableCreditLimit: '',
+        payableCreditLimit: '',
         role,
         agentImageUrl: '',
         agentZone: '',
@@ -92,7 +94,12 @@ function mapPartnerToState(partner: BusinessPartner, agent?: Agent): BusinessPar
         country: partner.country || '',
         defaultCurrency: partner.defaultCurrency,
         notes: partner.notes || '',
-        creditLimit: partner.creditLimit ? String(partner.creditLimit) : '',
+        receivableCreditLimit: partner.receivableCreditLimit === null || partner.receivableCreditLimit === undefined
+            ? ''
+            : String(partner.receivableCreditLimit),
+        payableCreditLimit: partner.payableCreditLimit === null || partner.payableCreditLimit === undefined
+            ? ''
+            : String(partner.payableCreditLimit),
         role: partner.role,
         agentImageUrl: agent?.imageUrl || '',
         agentZone: agent?.zone || '',
@@ -115,6 +122,8 @@ export interface BusinessPartnerFormPayload {
     defaultCurrency: CurrencyCode
     notes?: string
     creditLimit: number
+    receivableCreditLimit: number | null
+    payableCreditLimit: number | null
     role: BusinessPartnerRole
     agent?: AgentFacetInput
 }
@@ -236,6 +245,12 @@ export function BusinessPartnerFormDialog({
         event.preventDefault()
         const effectiveRole = lockedRole ?? formState.role
         const isAgent = isAgentBusinessPartnerRole(effectiveRole)
+        const receivableCreditLimit = formState.receivableCreditLimit.trim() === ''
+            ? null
+            : Number(formState.receivableCreditLimit)
+        const payableCreditLimit = formState.payableCreditLimit.trim() === ''
+            ? null
+            : Number(formState.payableCreditLimit)
         await onSubmit({
             name: formState.name.trim(),
             contactName: formState.contactName.trim() || undefined,
@@ -246,7 +261,9 @@ export function BusinessPartnerFormDialog({
             country: formState.country.trim() || undefined,
             defaultCurrency: formState.defaultCurrency,
             notes: formState.notes.trim() || undefined,
-            creditLimit: Number(formState.creditLimit || 0),
+            creditLimit: receivableCreditLimit ?? payableCreditLimit ?? 0,
+            receivableCreditLimit,
+            payableCreditLimit,
             role: effectiveRole,
             agent: isAgent ? {
                 imageUrl: formState.agentImageUrl.trim() || null,
@@ -512,17 +529,30 @@ export function BusinessPartnerFormDialog({
                                     onChange={(event) => setFormState((current) => ({ ...current, address: event.target.value }))}
                                 />
                             </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="business-partner-credit-limit">{t('customers.form.creditLimit') || 'Credit Limit'}</Label>
+                            {formState.role === 'customer' || formState.role === 'both' ? <div className="space-y-2">
+                                <Label htmlFor="business-partner-receivable-limit">{t('businessPartners.receivableCreditLimit', { defaultValue: 'Receivable credit limit' })}</Label>
                                 <Input
-                                    id="business-partner-credit-limit"
+                                    id="business-partner-receivable-limit"
                                     type="number"
                                     min="0"
                                     step="0.01"
-                                    value={formState.creditLimit}
-                                    onChange={(event) => setFormState((current) => ({ ...current, creditLimit: event.target.value }))}
+                                    placeholder={t('businessPartners.unlimited', { defaultValue: 'Blank means unlimited' })}
+                                    value={formState.receivableCreditLimit}
+                                    onChange={(event) => setFormState((current) => ({ ...current, receivableCreditLimit: event.target.value }))}
                                 />
-                            </div>
+                            </div> : null}
+                            {formState.role === 'supplier' || formState.role === 'both' ? <div className="space-y-2">
+                                <Label htmlFor="business-partner-payable-limit">{t('businessPartners.payableCreditLimit', { defaultValue: 'Payable credit limit' })}</Label>
+                                <Input
+                                    id="business-partner-payable-limit"
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    placeholder={t('businessPartners.unlimited', { defaultValue: 'Blank means unlimited' })}
+                                    value={formState.payableCreditLimit}
+                                    onChange={(event) => setFormState((current) => ({ ...current, payableCreditLimit: event.target.value }))}
+                                />
+                            </div> : null}
                             <div className="space-y-2 md:col-span-2">
                                 <Label htmlFor="business-partner-notes">{t('customers.form.notes') || 'Notes'}</Label>
                                 <Textarea

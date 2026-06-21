@@ -411,7 +411,10 @@ export interface BusinessPartner extends BaseEntity {
   defaultCurrency: CurrencyCode;
   notes?: string;
   role: BusinessPartnerRole;
+  /** @deprecated Compatibility field for rows created before directional limits. */
   creditLimit: number;
+  receivableCreditLimit: number | null;
+  payableCreditLimit: number | null;
   customerFacetId?: string | null;
   supplierFacetId?: string | null;
   agentFacetId?: string | null;
@@ -449,7 +452,11 @@ export type PurchaseOrderStatus =
   | "cancelled";
 export type OrderType = "sales" | "purchase";
 export type OrderPaymentStatus = "unpaid" | "partial" | "paid";
-export type OrderPaymentMethod = PaymentMethod | "credit" | "bank_transfer";
+export type OrderPaymentMethod =
+  | PaymentMethod
+  | "bank_transfer"
+  | "loan"
+  | "installments";
 export type WorkspaceVisibility = "private" | "public";
 export type MarketplaceOrderStatus =
   | "pending"
@@ -541,6 +548,8 @@ export interface SalesOrder extends BaseEntity {
   balanceAmount: number;
   paidAt?: string | null;
   paymentMethod?: OrderPaymentMethod;
+  initialPaymentAmount: number;
+  linkedLoanId?: string | null;
   isInstallmentBased: boolean;
   installmentCount: number;
   installmentFrequency?: InstallmentFrequency | null;
@@ -579,6 +588,8 @@ export interface PurchaseOrder extends BaseEntity {
   balanceAmount: number;
   paidAt?: string | null;
   paymentMethod?: OrderPaymentMethod;
+  initialPaymentAmount: number;
+  linkedLoanId?: string | null;
   isInstallmentBased: boolean;
   installmentCount: number;
   installmentFrequency?: InstallmentFrequency | null;
@@ -1215,9 +1226,10 @@ export interface SaleReturnItem extends BaseEntity {
   restoredBatchAllocations?: StockBatchAllocation[] | null;
 }
 
-export type LoanSource = "pos" | "manual";
+export type LoanSource = "pos" | "manual" | "order";
 export type LoanCategory = "standard" | "simple";
 export type LoanDirection = "lent" | "borrowed";
+export type LoanOrderType = "sales" | "purchase";
 export type LoanStatus = "active" | "overdue" | "completed";
 export type InstallmentStatus = "unpaid" | "partial" | "paid" | "overdue";
 export type InstallmentFrequency = "weekly" | "biweekly" | "monthly";
@@ -1225,6 +1237,8 @@ export type LoanLinkedPartyType = "business_partner";
 
 export interface Loan extends BaseEntity {
   saleId?: string | null;
+  orderId?: string | null;
+  orderType?: LoanOrderType | null;
   loanNo: string;
   source: LoanSource;
   loanCategory?: LoanCategory;

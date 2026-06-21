@@ -306,7 +306,8 @@ export function SimpleLoanListView({
         cashierName: user?.name || 'Unknown',
         printFormat: 'a4' as const
     }), [features.default_currency, metrics.totalBorrowed, metrics.totalLent, user?.name])
-    const canDeleteLoanRecord = (loan: Loan) => isLoanDeletionAllowed(loan, false, loanPaymentHistoryIdSet.has(loan.id))
+    const canDeleteLoanRecord = (loan: Loan) => loan.source !== 'order'
+        && isLoanDeletionAllowed(loan, false, loanPaymentHistoryIdSet.has(loan.id))
 
     const confirmDeleteLoan = async () => {
         if (!loanToDelete) {

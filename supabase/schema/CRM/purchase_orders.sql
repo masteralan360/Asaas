@@ -22,6 +22,8 @@ CREATE TABLE crm.purchase_orders (
   balance_amount numeric NOT NULL DEFAULT 0,
   paid_at timestamp with time zone NULL,
   payment_method text NULL,
+  initial_payment_amount numeric NOT NULL DEFAULT 0,
+  linked_loan_id uuid NULL,
   is_installment_based boolean NOT NULL DEFAULT false,
   installment_count integer NOT NULL DEFAULT 0,
   installment_frequency text NULL,
@@ -37,6 +39,10 @@ CREATE TABLE crm.purchase_orders (
   is_deleted boolean NULL DEFAULT false,
   PRIMARY KEY (id)
 );
+
+ALTER TABLE crm.purchase_orders
+  ADD CONSTRAINT purchase_orders_payment_method_check
+  CHECK (payment_method IS NULL OR payment_method IN ('cash', 'fib', 'qicard', 'zaincash', 'fastpay', 'bank_transfer', 'loan', 'installments'));
 
 CREATE INDEX IF NOT EXISTS idx_crm_purchase_orders_workspace
   ON crm.purchase_orders (workspace_id);

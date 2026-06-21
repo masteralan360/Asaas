@@ -70,8 +70,12 @@ export type BusinessPartnerCreateInput = Omit<
     | 'loanOutstandingBalance'
     | 'netExposure'
     | 'mergedIntoBusinessPartnerId'
+    | 'receivableCreditLimit'
+    | 'payableCreditLimit'
 > & {
     agent?: AgentFacetInput
+    receivableCreditLimit?: number | null
+    payableCreditLimit?: number | null
 }
 export type BusinessPartnerUpdateInput = Partial<BusinessPartner> & {
     agent?: Partial<AgentFacetInput>
@@ -379,7 +383,7 @@ function partnerToCustomer(partner: BusinessPartner): Customer {
         totalOrders: partner.totalSalesOrders,
         totalSpent: partner.totalSalesValue,
         outstandingBalance: partner.receivableBalance,
-        creditLimit: partner.creditLimit,
+        creditLimit: partner.receivableCreditLimit ?? partner.creditLimit ?? 0,
         isEcommerce: partner.isEcommerce ?? false,
         createdAt: partner.createdAt,
         updatedAt: partner.updatedAt,
@@ -406,7 +410,7 @@ function partnerToSupplier(partner: BusinessPartner): Supplier {
         notes: partner.notes,
         totalPurchases: partner.totalPurchaseOrders,
         totalSpent: partner.totalPurchaseValue,
-        creditLimit: partner.creditLimit,
+        creditLimit: partner.payableCreditLimit ?? partner.creditLimit ?? 0,
         isEcommerce: partner.isEcommerce ?? false,
         createdAt: partner.createdAt,
         updatedAt: partner.updatedAt,
@@ -481,7 +485,7 @@ async function mirrorPartnerToFacets(partner: BusinessPartner) {
                 country: partner.country,
                 defaultCurrency: partner.defaultCurrency,
                 notes: partner.notes,
-                creditLimit: partner.creditLimit,
+                creditLimit: partner.receivableCreditLimit ?? partner.creditLimit ?? 0,
                 isEcommerce: partner.isEcommerce ?? customer.isEcommerce ?? false,
                 updatedAt: partner.updatedAt,
                 version: Math.max(customer.version + 1, partner.version),
@@ -506,7 +510,7 @@ async function mirrorPartnerToFacets(partner: BusinessPartner) {
                 country: partner.country,
                 defaultCurrency: partner.defaultCurrency,
                 notes: partner.notes,
-                creditLimit: partner.creditLimit,
+                creditLimit: partner.payableCreditLimit ?? partner.creditLimit ?? 0,
                 isEcommerce: partner.isEcommerce ?? supplier.isEcommerce ?? false,
                 updatedAt: partner.updatedAt,
                 version: Math.max(supplier.version + 1, partner.version),
@@ -765,6 +769,7 @@ export async function recalculateBusinessPartnerSummary(workspaceId: string, par
             .filter((order) =>
                 (order.status === 'pending' || order.status === 'completed')
                 && getOrderBalanceAmount(order) > 0
+                && !order.linkedLoanId
             )
             .reduce(
                 (sum, order) => sum + convertCurrencyAmountWithSnapshot(
@@ -801,6 +806,7 @@ export async function recalculateBusinessPartnerSummary(workspaceId: string, par
             .filter((order) =>
                 (order.status === 'ordered' || order.status === 'received' || order.status === 'completed')
                 && getOrderBalanceAmount(order) > 0
+                && !order.linkedLoanId
             )
             .reduce(
                 (sum, order) => sum + convertCurrencyAmountWithSnapshot(
@@ -922,7 +928,9 @@ async function createFacetFromPartner(partner: BusinessPartner, facetType: Partn
         country: partner.country,
         defaultCurrency: partner.defaultCurrency,
         notes: partner.notes,
-        creditLimit: partner.creditLimit,
+        creditLimit: facetType === 'customer'
+            ? partner.receivableCreditLimit ?? partner.creditLimit ?? 0
+            : partner.payableCreditLimit ?? partner.creditLimit ?? 0,
         isEcommerce: partner.isEcommerce ?? false
     })
 
@@ -1216,8 +1224,17 @@ export async function createBusinessPartner(
         : undefined
     await assertAgentLinkedUserAvailable(workspaceId, normalizedAgentInput?.linkedUserId)
 
+    const legacyLimit = partnerData.creditLimit && partnerData.creditLimit > 0
+        ? partnerData.creditLimit
+        : null
     const partner = buildBaseEntity(workspaceId, {
         ...partnerData,
+        receivableCreditLimit: partnerData.receivableCreditLimit !== undefined
+            ? partnerData.receivableCreditLimit
+            : roleIncludesCustomer(partnerData.role) ? legacyLimit : null,
+        payableCreditLimit: partnerData.payableCreditLimit !== undefined
+            ? partnerData.payableCreditLimit
+            : roleIncludesSupplier(partnerData.role) ? legacyLimit : null,
         isEcommerce: partnerData.isEcommerce ?? false,
         customerFacetId: null,
         supplierFacetId: null,
@@ -1288,6 +1305,14 @@ export async function updateBusinessPartner(id: string, data: BusinessPartnerUpd
 
     const { agent: agentInput, ...partnerChanges } = data
     const nextRole = (partnerChanges.role || existing.role) as BusinessPartnerRole
+    if (partnerChanges.creditLimit !== undefined) {
+        if (partnerChanges.receivableCreditLimit === undefined && roleIncludesCustomer(nextRole)) {
+            partnerChanges.receivableCreditLimit = partnerChanges.creditLimit
+        }
+        if (partnerChanges.payableCreditLimit === undefined && roleIncludesSupplier(nextRole)) {
+            partnerChanges.payableCreditLimit = partnerChanges.creditLimit
+        }
+    }
     assertBusinessPartnerRoleAllowed(nextRole, options)
     await assertRoleRemovalAllowed(existing, nextRole)
     const existingAgent = existing.agentFacetId
@@ -1307,6 +1332,12 @@ export async function updateBusinessPartner(id: string, data: BusinessPartnerUpd
         ...existing,
         ...partnerChanges,
         role: nextRole,
+        receivableCreditLimit: partnerChanges.receivableCreditLimit !== undefined
+            ? partnerChanges.receivableCreditLimit
+            : existing.receivableCreditLimit ?? (roleIncludesCustomer(nextRole) && existing.creditLimit ? existing.creditLimit : null),
+        payableCreditLimit: partnerChanges.payableCreditLimit !== undefined
+            ? partnerChanges.payableCreditLimit
+            : existing.payableCreditLimit ?? (roleIncludesSupplier(nextRole) && existing.creditLimit ? existing.creditLimit : null),
         updatedAt: now,
         version: existing.version + 1,
         ...getSyncMetadata(existing.workspaceId, now)
@@ -1467,6 +1498,8 @@ export async function mergeBusinessPartners(primaryPartnerId: string, secondaryP
         notes: primary.notes || secondary.notes,
         role: mergedRole,
         creditLimit: Math.max(primary.creditLimit || 0, secondary.creditLimit || 0),
+        receivableCreditLimit: Math.max(primary.receivableCreditLimit || 0, secondary.receivableCreditLimit || 0) || null,
+        payableCreditLimit: Math.max(primary.payableCreditLimit || 0, secondary.payableCreditLimit || 0) || null,
         customerFacetId: primary.customerFacetId || secondary.customerFacetId || null,
         supplierFacetId: primary.supplierFacetId || secondary.supplierFacetId || null,
         agentFacetId: primary.agentFacetId || secondary.agentFacetId || null,
@@ -1643,7 +1676,8 @@ export async function createCustomer(
         defaultCurrency: data.defaultCurrency,
         notes: data.notes,
         role: 'customer',
-        creditLimit: data.creditLimit
+        creditLimit: data.creditLimit,
+        receivableCreditLimit: data.creditLimit
     })
 
     return partnerToCustomer(partner)
@@ -1664,7 +1698,8 @@ export async function createSupplier(
         defaultCurrency: data.defaultCurrency,
         notes: data.notes,
         role: 'supplier',
-        creditLimit: data.creditLimit
+        creditLimit: data.creditLimit,
+        payableCreditLimit: data.creditLimit
     })
 
     return partnerToSupplier(partner)
@@ -1680,7 +1715,8 @@ export async function updateCustomer(id: string, data: Partial<Customer>) {
         country: data.country,
         defaultCurrency: data.defaultCurrency,
         notes: data.notes,
-        creditLimit: data.creditLimit
+        creditLimit: data.creditLimit,
+        receivableCreditLimit: data.creditLimit
     })
 
     return partnerToCustomer(partner)
@@ -1697,7 +1733,8 @@ export async function updateSupplier(id: string, data: Partial<Supplier>) {
         country: data.country,
         defaultCurrency: data.defaultCurrency,
         notes: data.notes,
-        creditLimit: data.creditLimit
+        creditLimit: data.creditLimit,
+        payableCreditLimit: data.creditLimit
     })
 
     return partnerToSupplier(partner)

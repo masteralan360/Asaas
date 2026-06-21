@@ -22,6 +22,8 @@ import {
     updatePurchaseOrderStatus,
     updateSalesOrderStatus,
     usePurchaseOrder,
+    useLoan,
+    useLoanInstallments,
     useOrderInstallments,
     useSalesOrder,
     useStorages,
@@ -78,7 +80,9 @@ function paymentLabel(t: (key: string) => string, method?: string | null) {
         case 'fastpay': return t('pos.fastpay') || 'FastPay'
         case 'loan': return t('pos.loan') || 'Loan'
         case 'bank_transfer': return 'Bank Transfer'
-        default: return 'Credit'
+        case 'loan': return t('nav.loans') || 'Loans'
+        case 'installments': return t('nav.installments') || 'Installments'
+        default: return method || '-'
     }
 }
 
@@ -177,7 +181,18 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
     const storages = useStorages(workspaceId)
     const salesOrder = useSalesOrder(orderId)
     const purchaseOrder = usePurchaseOrder(orderId)
-    const installments = useOrderInstallments(orderId, workspaceId)
+    const linkedLoanId = salesOrder?.linkedLoanId || purchaseOrder?.linkedLoanId || undefined
+    const linkedLoan = useLoan(linkedLoanId)
+    const loanInstallments = useLoanInstallments(linkedLoanId, workspaceId)
+    const legacyInstallments = useOrderInstallments(orderId, workspaceId)
+    const installments = linkedLoanId
+        ? loanInstallments.map((item) => ({
+            ...item,
+            orderType: linkedLoan?.orderType || 'sales',
+            orderId,
+            dueDate: item.dueDate || ''
+        } as OrderInstallment))
+        : legacyInstallments
     const workspaceContacts = useWorkspaceContacts(workspaceId)
     const workspaceFooterContacts = useMemo(() => {
         const pickContactPair = (type: 'address' | 'email' | 'phone') => {
@@ -341,6 +356,10 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
     const paidAmount = getOrderPaidAmount(order)
     const outstanding = getOrderBalanceAmount(order)
     const paymentStatus = getOrderPaymentStatus(order)
+    const isFinanced = order.paymentMethod === 'loan' || order.paymentMethod === 'installments' || !!order.linkedLoanId
+    const linkedLoanRoute = linkedLoan
+        ? linkedLoan.loanCategory === 'simple' ? `/loans/${linkedLoan.id}` : `/installments/${linkedLoan.id}`
+        : null
     const nextInstallment = installments.find((installment) => installment.balanceAmount > 0)
     const profit = isSales
         ? order.total - (order as SalesOrder).items.reduce((sum, item) => sum + (item.convertedCostPrice * item.quantity), 0)
@@ -484,7 +503,15 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                             {action.label}
                         </Button>
                     ))}
-                    {canManage && outstanding > 0 && !order.isLocked && (
+                    {canManage && isFinanced && linkedLoanRoute ? (
+                        <Button variant="outline" onClick={() => navigate(linkedLoanRoute)}>
+                            <CreditCard className="mr-2 h-4 w-4" />
+                            {order.paymentMethod === 'installments'
+                                ? t('orders.actions.openInstallments', { defaultValue: 'Open Installments' })
+                                : t('orders.actions.openLoan', { defaultValue: 'Open Loan' })}
+                        </Button>
+                    ) : null}
+                    {canManage && !isFinanced && outstanding > 0 && !order.isLocked && (
                         <Button
                             variant="outline"
                             onClick={() => setSettlementTarget(
@@ -497,7 +524,7 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                             {t('orders.actions.recordPayment', { defaultValue: 'Record Payment' })}
                         </Button>
                     )}
-                    {canManage && paidAmount > 0 && !order.isLocked && (
+                    {canManage && !isFinanced && paidAmount > 0 && !order.isLocked && (
                         <Button variant="outline" onClick={handleOrderUnpay}>
                             {t('orders.actions.reverseLastPayment', { defaultValue: 'Reverse Last Payment' })}
                         </Button>
@@ -600,11 +627,13 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                                                                 size="sm"
                                                                 variant="outline"
                                                                 className="h-8 px-3"
-                                                                onClick={() => setSettlementTarget(
-                                                                    isSales
-                                                                        ? buildSalesOrderPaymentObligation(order as SalesOrder, installment)
-                                                                        : buildPurchaseOrderPaymentObligation(order as PurchaseOrder, installment)
-                                                                )}
+                                                                onClick={() => linkedLoanRoute
+                                                                    ? navigate(linkedLoanRoute)
+                                                                    : setSettlementTarget(
+                                                                        isSales
+                                                                            ? buildSalesOrderPaymentObligation(order as SalesOrder, installment)
+                                                                            : buildPurchaseOrderPaymentObligation(order as PurchaseOrder, installment)
+                                                                    )}
                                                             >
                                                                 {t('orders.actions.payInstallment', { defaultValue: 'Pay' })}
                                                             </Button>

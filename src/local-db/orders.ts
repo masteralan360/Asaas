@@ -10,10 +10,10 @@ import { getSupabaseClientForTable } from '@/lib/supabaseSchema'
 import { runSupabaseAction } from '@/lib/supabaseRequest'
 import { generateId } from '@/lib/utils'
 import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
+import { supabase } from '@/auth/supabase'
 
 import { db } from './database'
 import {
-    createOrderInstallmentPlan,
     getOrderBalanceAmount,
     getOrderPaidAmount,
     rebuildOrderInstallmentsFromPayments,
@@ -47,6 +47,7 @@ import type {
     CurrencyCode,
     InstallmentFrequency,
     Inventory,
+    Loan,
     OrderInstallment,
     OrderPaymentMethod,
     OrderPaymentStatus,
@@ -60,6 +61,10 @@ import type {
     Supplier,
     TravelAgencySale
 } from './models'
+
+export function isOrderFinancingMethod(method?: OrderPaymentMethod | null): method is 'loan' | 'installments' {
+    return method === 'loan' || method === 'installments'
+}
 
 type SimpleEntityTableName = 'customers' | 'suppliers'
 type OrderTableName = 'sales_orders' | 'purchase_orders'
@@ -366,12 +371,6 @@ export async function recalculateAllSupplierSummaries(workspaceId: string) {
     await Promise.all(suppliers.map((supplier) => recalculateSupplierSummary(workspaceId, supplier.id)))
 }
 
-function orderCountsTowardReceivable(
-    order: Pick<SalesOrder, 'status' | 'total' | 'currency' | 'isPaid' | 'paidAmount' | 'balanceAmount' | 'paymentStatus'>
-) {
-    return (order.status === 'pending' || order.status === 'completed') && getOrderBalanceAmount(order) > 0
-}
-
 async function resolveCustomerBusinessPartner(customerId?: string | null, businessPartnerId?: string | null) {
     const directPartnerId = typeof businessPartnerId === 'string' && businessPartnerId.trim().length > 0
         ? businessPartnerId.trim()
@@ -578,61 +577,6 @@ export function useSupplierPurchaseOrders(supplierId: string | undefined, worksp
 }
 
 
-async function assertSalesCreditLimit(order: SalesOrder, excludeOrderId?: string) {
-    if (!orderCountsTowardReceivable(order)) {
-        return
-    }
-
-    const partner = await resolveCustomerBusinessPartner(order.customerId, order.businessPartnerId)
-    if (!partner) {
-        throw new Error('Customer not found')
-    }
-
-    if (!partner.creditLimit || partner.creditLimit <= 0) {
-        return
-    }
-
-    const refreshedPartner = await recalculateBusinessPartnerSummary(order.workspaceId, partner.id)
-    const activePartner = refreshedPartner || partner
-    let currentExposure = activePartner.netExposure
-
-    if (excludeOrderId) {
-        const existingOrder = await db.sales_orders.get(excludeOrderId)
-        if (
-            existingOrder
-            && !existingOrder.isDeleted
-            && orderCountsTowardReceivable(existingOrder)
-            && (
-                existingOrder.businessPartnerId === activePartner.id
-                || Boolean(activePartner.customerFacetId && existingOrder.customerId === activePartner.customerFacetId)
-            )
-        ) {
-            currentExposure = roundAmount(
-                currentExposure - convertCurrencyAmountWithSnapshot(
-                    getOrderBalanceAmount(existingOrder),
-                    existingOrder.currency,
-                    activePartner.defaultCurrency,
-                    existingOrder.exchangeRates
-                ),
-                activePartner.defaultCurrency
-            )
-        }
-    }
-
-    const nextExposure = roundAmount(
-        currentExposure + convertCurrencyAmountWithSnapshot(
-            getOrderBalanceAmount(order),
-            order.currency,
-            activePartner.defaultCurrency,
-            order.exchangeRates
-        ),
-        activePartner.defaultCurrency
-    )
-    if (nextExposure > 0 && nextExposure > activePartner.creditLimit) {
-        throw new Error('credit_limit_exceeded')
-    }
-}
-
 function buildInventoryReservationKey(productId: string, storageId: string) {
     return `${productId}:${storageId}`
 }
@@ -834,6 +778,7 @@ type OrderPaymentInput = {
     currency: CurrencyCode
     isPaid?: boolean
     paidAmount?: number
+    initialPaymentAmount?: number
     paymentMethod?: OrderPaymentMethod
     paidAt?: string | null
     isInstallmentBased?: boolean
@@ -844,11 +789,11 @@ type OrderPaymentInput = {
 
 function normalizeOrderPaymentState(input: OrderPaymentInput, now: string) {
     const total = roundOrderAmount(Math.max(0, Number(input.total || 0)), input.currency)
-    const requestedPaidAmount = input.paidAmount !== undefined
-        ? Number(input.paidAmount || 0)
-        : input.isPaid
-            ? total
-            : 0
+    const paymentMethod = input.paymentMethod || 'cash'
+    const isFinanced = isOrderFinancingMethod(paymentMethod)
+    const requestedPaidAmount = isFinanced
+        ? Number(input.initialPaymentAmount ?? input.paidAmount ?? 0)
+        : input.isPaid ? total : 0
     const paidAmount = roundOrderAmount(Math.max(0, requestedPaidAmount), input.currency)
 
     if (paidAmount > total) {
@@ -861,10 +806,16 @@ function normalizeOrderPaymentState(input: OrderPaymentInput, now: string) {
         : paidAmount > 0
             ? 'partial'
             : 'unpaid'
-    const isInstallmentBased = Boolean(input.isInstallmentBased && balanceAmount > 0)
-    const installmentCount = isInstallmentBased ? Math.max(1, Math.trunc(input.installmentCount || 1)) : 0
-    const installmentFrequency = isInstallmentBased ? (input.installmentFrequency || 'monthly') : null
-    const firstDueDate = isInstallmentBased ? input.firstDueDate?.slice(0, 10) || null : null
+    if (isFinanced && balanceAmount <= 0) {
+        throw new Error('A financed order must have a remaining balance')
+    }
+
+    const isInstallmentBased = paymentMethod === 'installments' && balanceAmount > 0
+    const firstDueDate = isFinanced ? input.firstDueDate?.slice(0, 10) || null : null
+    const installmentCount = isInstallmentBased
+        ? Math.max(1, Math.trunc(input.installmentCount || 1))
+        : paymentMethod === 'loan' && firstDueDate ? 1 : 0
+    const installmentFrequency = isFinanced ? (input.installmentFrequency || 'monthly') : null
 
     if (isInstallmentBased && !firstDueDate) {
         throw new Error('Select the first installment due date')
@@ -876,84 +827,15 @@ function normalizeOrderPaymentState(input: OrderPaymentInput, now: string) {
         paidAmount,
         balanceAmount,
         paidAt: paymentStatus === 'paid' ? (input.paidAt || now) : null,
-        paymentMethod: (paidAmount > 0 ? (input.paymentMethod || 'cash') : 'credit') as OrderPaymentMethod,
+        paymentMethod: paymentMethod as OrderPaymentMethod,
+        initialPaymentAmount: isFinanced ? paidAmount : 0,
+        linkedLoanId: null,
         isInstallmentBased,
         installmentCount,
         installmentFrequency,
         firstDueDate,
         nextDueDate: firstDueDate
     }
-}
-
-function buildOrderInstallments(
-    orderType: OrderType,
-    order: SalesOrder | PurchaseOrder,
-    now: string
-): OrderInstallment[] {
-    if (!order.isInstallmentBased || order.balanceAmount <= 0 || !order.firstDueDate) {
-        return []
-    }
-
-    return createOrderInstallmentPlan(
-        order.balanceAmount,
-        order.currency,
-        order.installmentCount,
-        order.installmentFrequency || 'monthly',
-        order.firstDueDate
-    ).map((entry) => ({
-        id: generateId(),
-        workspaceId: order.workspaceId,
-        orderType,
-        orderId: order.id,
-        installmentNo: entry.installmentNo,
-        dueDate: entry.dueDate,
-        plannedAmount: entry.plannedAmount,
-        paidAmount: 0,
-        balanceAmount: entry.plannedAmount,
-        status: entry.dueDate < now.slice(0, 10) ? 'overdue' : 'unpaid',
-        paidAt: null,
-        createdAt: now,
-        updatedAt: now,
-        version: 1,
-        isDeleted: false,
-        ...getSyncMetadata(order.workspaceId, now)
-    }))
-}
-
-async function replaceOrderInstallments(
-    orderType: OrderType,
-    order: SalesOrder | PurchaseOrder,
-    now: string
-) {
-    const existing = await db.order_installments
-        .where('orderId')
-        .equals(order.id)
-        .and((item) => !item.isDeleted)
-        .toArray()
-    const replacements = buildOrderInstallments(orderType, order, now)
-    const deleted = existing.map((item) => ({
-        ...item,
-        isDeleted: true,
-        updatedAt: now,
-        version: item.version + 1,
-        ...getSyncMetadata(order.workspaceId, now)
-    }))
-
-    await db.transaction('rw', [db.order_installments], async () => {
-        if (deleted.length > 0) await db.order_installments.bulkPut(deleted)
-        if (replacements.length > 0) await db.order_installments.bulkPut(replacements)
-    })
-
-    await Promise.all([
-        ...deleted.map((item) => syncSoftDelete('order_installments', item.id, order.workspaceId)),
-        syncUpsertEntities(
-            'order_installments',
-            replacements as unknown as Array<Record<string, unknown> & { id: string; version: number }>,
-            order.workspaceId
-        )
-    ])
-
-    return replacements
 }
 
 function getActiveOrderPayments(rows: PaymentTransaction[]) {
@@ -983,6 +865,66 @@ async function listActiveOrderPayments(workspaceId: string, sourceType: 'sales_o
         .equals([workspaceId, sourceType, orderId])
         .toArray()
     return getActiveOrderPayments(rows)
+}
+
+export async function mirrorLinkedOrderPaymentState(loan: Loan) {
+    if (loan.source !== 'order' || !loan.orderId || !loan.orderType) {
+        return
+    }
+
+    const orderTable = loan.orderType === 'sales' ? db.sales_orders : db.purchase_orders
+    const tableName: OrderTableName = loan.orderType === 'sales' ? 'sales_orders' : 'purchase_orders'
+    const order = await orderTable.get(loan.orderId) as SalesOrder | PurchaseOrder | undefined
+    if (!order || order.isDeleted) {
+        return
+    }
+
+    const initialPaymentAmount = roundOrderAmount(
+        Math.max(0, order.initialPaymentAmount ?? Math.max(order.total - loan.principalAmount, 0)),
+        order.currency
+    )
+    const paidAmount = roundOrderAmount(
+        Math.min(order.total, initialPaymentAmount + loan.totalPaidAmount),
+        order.currency
+    )
+    const balanceAmount = roundOrderAmount(Math.max(loan.balanceAmount, 0), order.currency)
+    const paymentStatus: OrderPaymentStatus = balanceAmount <= 0
+        ? 'paid'
+        : paidAmount > 0 ? 'partial' : 'unpaid'
+    const latestLoanPayment = paymentStatus === 'paid'
+        ? (await db.loan_payments.where('loanId').equals(loan.id).and((item) => !item.isDeleted).toArray())
+            .sort((left, right) => right.paidAt.localeCompare(left.paidAt))[0]
+        : undefined
+    const now = new Date().toISOString()
+    const updated = {
+        ...order,
+        linkedLoanId: loan.id,
+        initialPaymentAmount,
+        isPaid: paymentStatus === 'paid',
+        paymentStatus,
+        paidAmount,
+        balanceAmount,
+        paidAt: paymentStatus === 'paid' ? latestLoanPayment?.paidAt || now : null,
+        nextDueDate: loan.nextDueDate || null,
+        updatedAt: now,
+        version: order.version + 1,
+        ...getSyncMetadata(order.workspaceId, now)
+    } as SalesOrder | PurchaseOrder
+
+    await orderTable.put(updated as SalesOrder & PurchaseOrder)
+    await syncUpsertEntities(
+        tableName,
+        [updated as unknown as Record<string, unknown> & { id: string; version: number }],
+        order.workspaceId
+    )
+
+    if (loan.orderType === 'sales') {
+        const salesOrder = updated as SalesOrder
+        await recalculateCustomerAndPartnerSummaries(order.workspaceId, salesOrder.customerId, salesOrder.businessPartnerId)
+    } else {
+        const purchaseOrder = updated as PurchaseOrder
+        await recalculateSupplierAndPartnerSummaries(order.workspaceId, purchaseOrder.supplierId, purchaseOrder.businessPartnerId)
+    }
 }
 
 async function softDeleteOrderInstallments(orderId: string, workspaceId: string) {
@@ -1326,7 +1268,7 @@ export async function rebuildOrderPaymentState(orderType: OrderType, orderId: st
         paidAmount,
         balanceAmount,
         paidAt: paymentStatus === 'paid' ? latestPayment?.paidAt || now : null,
-        paymentMethod: (latestPayment?.paymentMethod as OrderPaymentMethod | undefined) || 'credit',
+        paymentMethod: (latestPayment?.paymentMethod as OrderPaymentMethod | undefined) || order.paymentMethod || 'cash',
         nextDueDate,
         updatedAt: now,
         version: order.version + 1,
@@ -1379,7 +1321,7 @@ export async function recordOrderPayment(
         orderId: string
         installmentId?: string | null
         amount: number
-        paymentMethod: Exclude<OrderPaymentMethod, 'credit'>
+        paymentMethod: Exclude<OrderPaymentMethod, 'loan' | 'installments'>
         paidAt: string
         note?: string | null
         createdBy?: string | null
@@ -1390,6 +1332,9 @@ export async function recordOrderPayment(
     const order = await orderTable.get(input.orderId) as SalesOrder | PurchaseOrder | undefined
     if (!order || order.isDeleted || order.workspaceId !== workspaceId) {
         throw new Error('Order not found')
+    }
+    if (isOrderFinancingMethod(order.paymentMethod) || order.linkedLoanId) {
+        throw new Error('financed_order_payments_managed_in_loan_module')
     }
     if (order.isLocked) {
         throw new Error('locked_order_immutable')
@@ -1459,20 +1404,19 @@ export async function createSalesOrder(
         status,
         createdBy: createdBy ?? null
     }) as SalesOrder
-    const installments = buildOrderInstallments('sales', order, now)
-    order.nextDueDate = installments.find((item) => item.balanceAmount > 0)?.dueDate || null
+    order.nextDueDate = isOrderFinancingMethod(order.paymentMethod) ? order.firstDueDate || null : null
 
     if (status === 'pending' || status === 'completed') {
-        await assertSalesCreditLimit(order)
+        if (isOrderFinancingMethod(order.paymentMethod)) {
+            throw new Error('Financed orders must be activated from draft')
+        }
+        if (!order.isPaid) {
+            throw new Error('non_financed_order_must_be_paid')
+        }
         await assertSalesStockAvailable(order)
     }
 
-    await db.transaction('rw', [db.sales_orders, db.order_installments], async () => {
-        await db.sales_orders.put(order)
-        if (installments.length > 0) {
-            await db.order_installments.bulkPut(installments)
-        }
-    })
+    await db.sales_orders.put(order)
 
     let updatedProducts: ProductLike[] = []
     if (status === 'completed') {
@@ -1492,18 +1436,13 @@ export async function createSalesOrder(
     }
 
     await syncUpsertEntities('sales_orders', [order as unknown as Record<string, unknown> & { id: string; version: number }], workspaceId)
-    await syncUpsertEntities(
-        'order_installments',
-        installments as unknown as Array<Record<string, unknown> & { id: string; version: number }>,
-        workspaceId
-    )
     if (updatedProducts.length > 0) {
         await syncUpsertEntities('products', updatedProducts as unknown as Array<Record<string, unknown> & { id: string; version: number }>, workspaceId)
     }
     await recalculateCustomerAndPartnerSummaries(workspaceId, order.customerId, order.businessPartnerId)
     const createdOrder = (await db.sales_orders.get(order.id)) as SalesOrder
 
-    if (createdOrder.paidAmount > 0) {
+    if (createdOrder.paidAmount > 0 && !isOrderFinancingMethod(createdOrder.paymentMethod)) {
         const { appendPaymentTransaction } = await import('./payments')
         await appendPaymentTransaction(workspaceId, {
             sourceModule: 'orders',
@@ -1521,7 +1460,7 @@ export async function createSalesOrder(
             metadata: {
                 orderStatus: createdOrder.status,
                 sourceChannel: createdOrder.sourceChannel || 'manual',
-                isDownPayment: createdOrder.isInstallmentBased
+                isDownPayment: false
             }
         })
     }
@@ -1557,6 +1496,7 @@ export async function updateSalesOrder(id: string, data: Partial<SalesOrder>) {
         total: data.total ?? existing.total,
         currency: data.currency ?? existing.currency,
         paidAmount: activePayments.length > 0 ? activePaidAmount : data.paidAmount ?? getOrderPaidAmount(existing),
+        initialPaymentAmount: data.initialPaymentAmount ?? existing.initialPaymentAmount ?? 0,
         paymentMethod: (activePayments.at(-1)?.paymentMethod as OrderPaymentMethod | undefined)
             || data.paymentMethod
             || existing.paymentMethod,
@@ -1571,14 +1511,13 @@ export async function updateSalesOrder(id: string, data: Partial<SalesOrder>) {
         ...data,
         ...paymentState,
         ...counterparty,
+        linkedLoanId: existing.linkedLoanId || null,
         updatedAt: now,
         version: existing.version + 1,
         ...getSyncMetadata(existing.workspaceId, now)
     }
 
-    await db.sales_orders.put(updated)
-    const installments = await replaceOrderInstallments('sales', updated, now)
-    updated.nextDueDate = installments.find((item) => item.balanceAmount > 0)?.dueDate || null
+    updated.nextDueDate = isOrderFinancingMethod(updated.paymentMethod) ? updated.firstDueDate || null : null
     await db.sales_orders.put(updated)
     await syncUpsertEntities('sales_orders', [updated as unknown as Record<string, unknown> & { id: string; version: number }], existing.workspaceId)
 
@@ -1598,6 +1537,83 @@ export async function updateSalesOrder(id: string, data: Partial<SalesOrder>) {
     return updated
 }
 
+async function activateOrderFinancing(orderType: OrderType, order: SalesOrder | PurchaseOrder) {
+    if (!isOrderFinancingMethod(order.paymentMethod)) {
+        if (!order.isPaid) {
+            throw new Error('non_financed_order_must_be_paid')
+        }
+        return null
+    }
+    if (order.linkedLoanId) {
+        return order.linkedLoanId
+    }
+    if (order.balanceAmount <= 0) {
+        throw new Error('A financed order must have a remaining balance')
+    }
+
+    if (shouldUseCloudBusinessData(order.workspaceId)) {
+        if (!isOnline(order.workspaceId)) {
+            throw new Error('financed_order_activation_requires_online')
+        }
+
+        await syncUpsertEntities(
+            orderType === 'sales' ? 'sales_orders' : 'purchase_orders',
+            [order as unknown as Record<string, unknown> & { id: string; version: number }],
+            order.workspaceId
+        )
+        const targetStatus = orderType === 'sales' ? 'pending' : 'ordered'
+        const { data, error } = await runMutation('orders.activateFinancing', () =>
+            supabase.rpc('activate_financed_order', {
+                p_order_type: orderType,
+                p_order_id: order.id,
+                p_target_status: targetStatus
+            })
+        )
+        if (error) throw error
+        const loanId = typeof data?.loan_id === 'string' ? data.loan_id : null
+        if (!loanId) {
+            throw new Error('Linked loan was not created')
+        }
+        await Promise.all([
+            fetchTableFromSupabase('loans', db.loans, order.workspaceId),
+            fetchTableFromSupabase('loan_installments', db.loan_installments, order.workspaceId)
+        ])
+        return loanId
+    }
+
+    const partner = orderType === 'sales'
+        ? await resolveCustomerBusinessPartner((order as SalesOrder).customerId, order.businessPartnerId)
+        : await resolveSupplierBusinessPartner((order as PurchaseOrder).supplierId, order.businessPartnerId)
+    if (!partner) {
+        throw new Error('Business partner not found')
+    }
+    const { createLoanFromOrder } = await import('./hooks')
+    const result = await createLoanFromOrder(order.workspaceId, {
+        orderId: order.id,
+        orderType,
+        loanCategory: order.paymentMethod === 'loan' ? 'simple' : 'standard',
+        direction: orderType === 'sales' ? 'lent' : 'borrowed',
+        linkedPartyType: 'business_partner',
+        linkedPartyId: partner.id,
+        linkedPartyName: partner.name,
+        borrowerName: partner.name,
+        borrowerPhone: partner.phone || '',
+        borrowerAddress: [partner.address, partner.city, partner.country].filter(Boolean).join(', '),
+        borrowerNationalId: '',
+        principalAmount: order.balanceAmount,
+        settlementCurrency: order.currency,
+        exchangeRateSnapshot: order.exchangeRates || null,
+        installmentCount: order.paymentMethod === 'installments'
+            ? Math.max(1, order.installmentCount)
+            : order.firstDueDate ? 1 : 0,
+        installmentFrequency: order.installmentFrequency || 'monthly',
+        firstDueDate: order.firstDueDate || null,
+        notes: `Financing for ${orderType} order ${order.orderNumber}`,
+        createdBy: order.createdBy || undefined
+    })
+    return result.loan.id
+}
+
 export async function updateSalesOrderStatus(id: string, status: SalesOrderStatus) {
     const existing = await db.sales_orders.get(id)
     if (!existing || existing.isDeleted) {
@@ -1606,6 +1622,25 @@ export async function updateSalesOrderStatus(id: string, status: SalesOrderStatu
 
     if (existing.status === 'completed' && status !== 'completed') {
         throw new Error('Completed sales orders are immutable')
+    }
+    if (status === 'pending' && existing.status !== 'draft') {
+        throw new Error('invalid_order_transition')
+    }
+    if (status === 'completed' && existing.status !== 'pending') {
+        throw new Error('invalid_order_transition')
+    }
+
+    let linkedLoanId = existing.linkedLoanId || null
+    if (status === 'pending') {
+        await assertSalesStockAvailable(existing, existing.id)
+        linkedLoanId = await activateOrderFinancing('sales', existing)
+    }
+    if (status === 'cancelled' && existing.linkedLoanId) {
+        if ((existing.initialPaymentAmount || 0) > 0) {
+            throw new Error('financed_order_has_payment_history')
+        }
+        const { cancelOrderLinkedLoan } = await import('./hooks')
+        await cancelOrderLinkedLoan(existing.linkedLoanId)
     }
 
     const now = new Date().toISOString()
@@ -1618,6 +1653,7 @@ export async function updateSalesOrderStatus(id: string, status: SalesOrderStatu
         ...existing,
         ...counterparty,
         status,
+        linkedLoanId,
         updatedAt: now,
         version: existing.version + 1,
         reservedAt: status === 'pending' ? (existing.reservedAt || now) : existing.reservedAt,
@@ -1626,13 +1662,7 @@ export async function updateSalesOrderStatus(id: string, status: SalesOrderStatu
     }
 
     let updatedProducts: ProductLike[] = []
-    if (status === 'pending') {
-        await assertSalesCreditLimit(updated, existing.id)
-        await assertSalesStockAvailable(updated, existing.id)
-    }
-
     if (status === 'completed') {
-        await assertSalesCreditLimit(updated, existing.id)
         await assertSalesStockAvailable(updated, existing.id)
         const fulfillment = await deductInventoryForSalesOrder(updated)
         updatedProducts = fulfillment.updatedProducts
@@ -1673,6 +1703,12 @@ export async function setSalesOrderPaymentStatus(
     if (!existing || existing.isDeleted) {
         throw new Error('Sales order not found')
     }
+    if (isOrderFinancingMethod(existing.paymentMethod) || existing.linkedLoanId) {
+        throw new Error('financed_order_payments_managed_in_loan_module')
+    }
+    if (!input.isPaid && existing.status !== 'draft') {
+        throw new Error('non_financed_order_must_be_paid')
+    }
 
     const now = new Date().toISOString()
     const counterparty = await normalizeSalesOrderCounterparty({
@@ -1687,7 +1723,8 @@ export async function setSalesOrderPaymentStatus(
         paymentStatus: input.isPaid ? 'paid' : 'unpaid',
         paidAmount: input.isPaid ? existing.total : 0,
         balanceAmount: input.isPaid ? 0 : existing.total,
-        paymentMethod: input.isPaid ? input.paymentMethod || existing.paymentMethod : 'credit',
+        paymentMethod: input.paymentMethod || existing.paymentMethod || 'cash',
+        initialPaymentAmount: 0,
         paidAt: input.isPaid ? (input.paidAt || now) : null,
         nextDueDate: input.isPaid ? null : existing.firstDueDate || null,
         updatedAt: now,
@@ -1697,10 +1734,6 @@ export async function setSalesOrderPaymentStatus(
 
     if (existing.isLocked) {
         throw new Error('locked_order_immutable')
-    }
-
-    if ((updated.status === 'pending' || updated.status === 'completed') && !updated.isPaid) {
-        await assertSalesCreditLimit(updated, existing.id)
     }
 
     await db.sales_orders.put(updated)
@@ -1789,8 +1822,14 @@ export async function createPurchaseOrder(
         status,
         createdBy: createdBy ?? null
     }) as PurchaseOrder
-    const installments = buildOrderInstallments('purchase', order, now)
-    order.nextDueDate = installments.find((item) => item.balanceAmount > 0)?.dueDate || null
+    order.nextDueDate = isOrderFinancingMethod(order.paymentMethod) ? order.firstDueDate || null : null
+
+    if (status !== 'draft' && isOrderFinancingMethod(order.paymentMethod)) {
+        throw new Error('Financed orders must be activated from draft')
+    }
+    if (status !== 'draft' && !order.isPaid) {
+        throw new Error('non_financed_order_must_be_paid')
+    }
 
     let receiptResult: PurchaseReceiptResult | null = null
     if (status === 'received' || status === 'completed') {
@@ -1798,12 +1837,9 @@ export async function createPurchaseOrder(
     }
     await db.transaction(
         'rw',
-        [db.purchase_orders, db.order_installments, db.products, db.inventory, db.stock_batches, db.storages],
+        [db.purchase_orders, db.products, db.inventory, db.stock_batches, db.storages],
         async () => {
             await db.purchase_orders.put(order)
-            if (installments.length > 0) {
-                await db.order_installments.bulkPut(installments)
-            }
             if (status === 'received' || status === 'completed') {
                 receiptResult = await receiveInventoryForPurchaseOrder(order)
             }
@@ -1811,16 +1847,11 @@ export async function createPurchaseOrder(
     )
 
     await syncUpsertEntities('purchase_orders', [order as unknown as Record<string, unknown> & { id: string; version: number }], workspaceId)
-    await syncUpsertEntities(
-        'order_installments',
-        installments as unknown as Array<Record<string, unknown> & { id: string; version: number }>,
-        workspaceId
-    )
     await syncPurchaseReceiptResult(workspaceId, receiptResult)
     await recalculateSupplierAndPartnerSummaries(workspaceId, order.supplierId, order.businessPartnerId)
     const createdOrder = (await db.purchase_orders.get(order.id)) as PurchaseOrder
 
-    if (createdOrder.paidAmount > 0) {
+    if (createdOrder.paidAmount > 0 && !isOrderFinancingMethod(createdOrder.paymentMethod)) {
         const { appendPaymentTransaction } = await import('./payments')
         await appendPaymentTransaction(workspaceId, {
             sourceModule: 'orders',
@@ -1837,7 +1868,7 @@ export async function createPurchaseOrder(
             note: createdOrder.notes || null,
             metadata: {
                 orderStatus: createdOrder.status,
-                isDownPayment: createdOrder.isInstallmentBased
+                isDownPayment: false
             }
         })
     }
@@ -1873,6 +1904,7 @@ export async function updatePurchaseOrder(id: string, data: Partial<PurchaseOrde
         total: data.total ?? existing.total,
         currency: data.currency ?? existing.currency,
         paidAmount: activePayments.length > 0 ? activePaidAmount : data.paidAmount ?? getOrderPaidAmount(existing),
+        initialPaymentAmount: data.initialPaymentAmount ?? existing.initialPaymentAmount ?? 0,
         paymentMethod: (activePayments.at(-1)?.paymentMethod as OrderPaymentMethod | undefined)
             || data.paymentMethod
             || existing.paymentMethod,
@@ -1887,14 +1919,13 @@ export async function updatePurchaseOrder(id: string, data: Partial<PurchaseOrde
         ...data,
         ...paymentState,
         ...counterparty,
+        linkedLoanId: existing.linkedLoanId || null,
         updatedAt: now,
         version: existing.version + 1,
         ...getSyncMetadata(existing.workspaceId, now)
     }
 
-    await db.purchase_orders.put(updated)
-    const installments = await replaceOrderInstallments('purchase', updated, now)
-    updated.nextDueDate = installments.find((item) => item.balanceAmount > 0)?.dueDate || null
+    updated.nextDueDate = isOrderFinancingMethod(updated.paymentMethod) ? updated.firstDueDate || null : null
     await db.purchase_orders.put(updated)
     await syncUpsertEntities('purchase_orders', [updated as unknown as Record<string, unknown> & { id: string; version: number }], existing.workspaceId)
 
@@ -1927,6 +1958,27 @@ export async function updatePurchaseOrderStatus(id: string, status: PurchaseOrde
     if (existing.status === 'completed' && status !== 'completed') {
         throw new Error('Completed purchase orders are immutable')
     }
+    if (status === 'ordered' && existing.status !== 'draft') {
+        throw new Error('invalid_order_transition')
+    }
+    if (status === 'received' && existing.status !== 'ordered') {
+        throw new Error('invalid_order_transition')
+    }
+    if (status === 'completed' && existing.status !== 'received') {
+        throw new Error('invalid_order_transition')
+    }
+
+    let linkedLoanId = existing.linkedLoanId || null
+    if (status === 'ordered') {
+        linkedLoanId = await activateOrderFinancing('purchase', existing)
+    }
+    if (status === 'cancelled' && existing.linkedLoanId) {
+        if ((existing.initialPaymentAmount || 0) > 0) {
+            throw new Error('financed_order_has_payment_history')
+        }
+        const { cancelOrderLinkedLoan } = await import('./hooks')
+        await cancelOrderLinkedLoan(existing.linkedLoanId)
+    }
 
     const now = new Date().toISOString()
     const counterparty = await normalizePurchaseOrderCounterparty({
@@ -1938,6 +1990,7 @@ export async function updatePurchaseOrderStatus(id: string, status: PurchaseOrde
         ...existing,
         ...counterparty,
         status,
+        linkedLoanId,
         updatedAt: now,
         version: existing.version + 1,
         actualDeliveryDate: status === 'received' || status === 'completed' ? (existing.actualDeliveryDate || now) : existing.actualDeliveryDate,
@@ -1989,6 +2042,12 @@ export async function setPurchaseOrderPaymentStatus(
     if (!existing || existing.isDeleted) {
         throw new Error('Purchase order not found')
     }
+    if (isOrderFinancingMethod(existing.paymentMethod) || existing.linkedLoanId) {
+        throw new Error('financed_order_payments_managed_in_loan_module')
+    }
+    if (!input.isPaid && existing.status !== 'draft') {
+        throw new Error('non_financed_order_must_be_paid')
+    }
 
     const now = new Date().toISOString()
     const counterparty = await normalizePurchaseOrderCounterparty({
@@ -2003,7 +2062,8 @@ export async function setPurchaseOrderPaymentStatus(
         paymentStatus: input.isPaid ? 'paid' : 'unpaid',
         paidAmount: input.isPaid ? existing.total : 0,
         balanceAmount: input.isPaid ? 0 : existing.total,
-        paymentMethod: input.isPaid ? input.paymentMethod || existing.paymentMethod : 'credit',
+        paymentMethod: input.paymentMethod || existing.paymentMethod || 'cash',
+        initialPaymentAmount: 0,
         paidAt: input.isPaid ? (input.paidAt || now) : null,
         nextDueDate: input.isPaid ? null : existing.firstDueDate || null,
         updatedAt: now,

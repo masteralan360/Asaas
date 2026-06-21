@@ -209,7 +209,9 @@ function resolvePaymentLabel(t: (key: string) => string, method?: string | null)
         case 'zaincash': return 'Zain Cash'
         case 'fastpay': return 'FastPay'
         case 'bank_transfer': return 'Bank Transfer'
-        default: return 'Credit'
+        case 'loan': return t('nav.loans') || 'Loans'
+        case 'installments': return t('nav.installments') || 'Installments'
+        default: return method || '-'
     }
 }
 

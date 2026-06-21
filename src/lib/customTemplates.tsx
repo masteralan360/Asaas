@@ -483,6 +483,8 @@ const SAMPLE_ORDER_DATA: SalesOrder = {
     paidAmount: 50,
     balanceAmount: 149.5,
     paymentMethod: 'cash',
+    initialPaymentAmount: 0,
+    linkedLoanId: null,
     isInstallmentBased: false,
     installmentCount: 0,
     shippingAddress: 'Business District, Erbil',

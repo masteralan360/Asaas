@@ -280,7 +280,7 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
         tax: '',
         notes: '',
         isPaid: false,
-        paymentMethod: 'credit',
+        paymentMethod: 'cash',
         items: [createEmptyItem(defaultStorageId)]
     })
 
@@ -292,7 +292,7 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
         discount: '',
         notes: '',
         isPaid: false,
-        paymentMethod: 'credit',
+        paymentMethod: 'cash',
         items: [createEmptyItem(defaultStorageId)]
     })
 
@@ -524,8 +524,12 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                 return 'Cash'
             case 'bank_transfer':
                 return 'Bank Transfer'
+            case 'loan':
+                return 'Loans'
+            case 'installments':
+                return 'Installments'
             default:
-                return 'Credit'
+                return paymentMethod
         }
     }
 
@@ -542,7 +546,7 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
             tax: '',
             notes: '',
             isPaid: false,
-            paymentMethod: 'credit',
+            paymentMethod: 'cash',
             items: [createEmptyItem(defaultStorageId)]
         })
     }
@@ -558,65 +562,17 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
             discount: '',
             notes: '',
             isPaid: false,
-            paymentMethod: 'credit',
+            paymentMethod: 'cash',
             items: [createEmptyItem(defaultStorageId)]
         })
     }
 
     function openSalesEdit(order: SalesOrder) {
-        setActiveTab('sales')
-        setEditingSalesOrder(order)
-        setSalesForm({
-            customerId: order.businessPartnerId || order.customerId,
-            sourceStorageId: order.sourceStorageId || defaultStorageId,
-            currency: order.currency,
-            shippingAddress: order.shippingAddress || '',
-            expectedDeliveryDate: order.expectedDeliveryDate ? formatLocalDateTimeValue(order.expectedDeliveryDate) : '',
-            discount: order.discount ? String(order.discount) : '',
-            tax: order.tax ? String(order.tax) : '',
-            notes: order.notes || '',
-            isPaid: order.isPaid,
-            paymentMethod: order.paymentMethod || 'credit',
-            items: order.items.map((item) => ({
-                id: item.id || generateId(),
-                productId: item.productId,
-                storageId: item.storageId || order.sourceStorageId || defaultStorageId,
-                quantity: String(item.quantity),
-                unitPrice: String(item.convertedUnitPrice),
-                batchNumber: '',
-                batchSalePrice: '',
-                batchExpiryDate: '',
-                batchManufacturingDate: ''
-            }))
-        })
-        setDialogOpen(true)
+        navigate(`/orders/edit/sales/${order.id}`)
     }
 
     function openPurchaseEdit(order: PurchaseOrder) {
-        setActiveTab('purchase')
-        setEditingPurchaseOrder(order)
-        setPurchaseForm({
-            supplierId: order.businessPartnerId || order.supplierId,
-            destinationStorageId: order.destinationStorageId || defaultStorageId,
-            currency: order.currency,
-            expectedDeliveryDate: order.expectedDeliveryDate ? formatLocalDateTimeValue(order.expectedDeliveryDate) : '',
-            discount: order.discount ? String(order.discount) : '',
-            notes: order.notes || '',
-            isPaid: order.isPaid,
-            paymentMethod: order.paymentMethod || 'credit',
-            items: order.items.map((item) => ({
-                id: item.id || generateId(),
-                productId: item.productId,
-                storageId: item.storageId || order.destinationStorageId || defaultStorageId,
-                quantity: String(item.quantity),
-                unitPrice: String(item.convertedUnitPrice),
-                batchNumber: item.batchNumber || '',
-                batchSalePrice: item.batchSalePrice == null ? '' : String(item.batchSalePrice),
-                batchExpiryDate: item.batchExpiryDate || '',
-                batchManufacturingDate: item.batchManufacturingDate || ''
-            }))
-        })
-        setDialogOpen(true)
+        navigate(`/orders/edit/purchase/${order.id}`)
     }
 
     async function handleOrderSettlement(input: { paymentMethod: WorkspacePaymentMethod; paidAt: string; amount?: number; note?: string }) {
@@ -791,10 +747,6 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
             toast({ title: t('common.error') || 'Error', description: t('orders.noCustomers') || 'Add customers before creating orders.', variant: 'destructive' })
             return
         }
-        if (salesForm.isPaid && salesForm.paymentMethod === 'credit') {
-            toast({ title: t('common.error') || 'Error', description: 'Select an actual payment method for paid orders.', variant: 'destructive' })
-            return
-        }
 
         setIsSaving(true)
         try {
@@ -831,7 +783,9 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                 paidAmount: salesForm.isPaid ? total : editingSalesOrder?.paidAmount || 0,
                 balanceAmount: salesForm.isPaid ? 0 : editingSalesOrder?.balanceAmount ?? total,
                 paidAt: salesForm.isPaid ? new Date().toISOString() : null,
-                paymentMethod: salesForm.isPaid ? (salesForm.paymentMethod as SalesOrder['paymentMethod']) : 'credit',
+                paymentMethod: salesForm.paymentMethod as SalesOrder['paymentMethod'],
+                initialPaymentAmount: 0,
+                linkedLoanId: editingSalesOrder?.linkedLoanId || null,
                 isInstallmentBased: editingSalesOrder?.isInstallmentBased || false,
                 installmentCount: editingSalesOrder?.installmentCount || 0,
                 installmentFrequency: editingSalesOrder?.installmentFrequency || null,
@@ -862,10 +816,6 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
         const supplier = suppliers.find((entry) => entry.id === purchaseForm.supplierId)
         if (!supplier) {
             toast({ title: t('common.error') || 'Error', description: 'Add suppliers before creating purchase orders.', variant: 'destructive' })
-            return
-        }
-        if (purchaseForm.isPaid && purchaseForm.paymentMethod === 'credit') {
-            toast({ title: t('common.error') || 'Error', description: 'Select an actual payment method for paid orders.', variant: 'destructive' })
             return
         }
 
@@ -902,7 +852,9 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                 paidAmount: purchaseForm.isPaid ? total : editingPurchaseOrder?.paidAmount || 0,
                 balanceAmount: purchaseForm.isPaid ? 0 : editingPurchaseOrder?.balanceAmount ?? total,
                 paidAt: purchaseForm.isPaid ? new Date().toISOString() : null,
-                paymentMethod: purchaseForm.isPaid ? (purchaseForm.paymentMethod as PurchaseOrder['paymentMethod']) : 'credit',
+                paymentMethod: purchaseForm.paymentMethod as PurchaseOrder['paymentMethod'],
+                initialPaymentAmount: 0,
+                linkedLoanId: editingPurchaseOrder?.linkedLoanId || null,
                 isInstallmentBased: editingPurchaseOrder?.isInstallmentBased || false,
                 installmentCount: editingPurchaseOrder?.installmentCount || 0,
                 installmentFrequency: editingPurchaseOrder?.installmentFrequency || null,
@@ -1026,7 +978,7 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                                                     {canManageOrders && row.status === 'draft' && <Button size="sm" onClick={() => runAction(() => updateSalesOrderStatus(row.id, 'pending'), 'Sales order reserved')}>{t('orders.actions.reserve') || 'Reserve'}</Button>}
                                                     {canManageOrders && row.status === 'pending' && <Button size="sm" onClick={() => runAction(() => updateSalesOrderStatus(row.id, 'completed'), 'Sales order completed')}>{t('orders.actions.complete') || 'Complete'}</Button>}
                                                     {canManageOrders && (row.status === 'draft' || row.status === 'pending') && <Button variant="outline" size="sm" onClick={() => runAction(() => updateSalesOrderStatus(row.id, 'cancelled'), 'Sales order cancelled')}>{t('orders.actions.cancel') || 'Cancel'}</Button>}
-                                                    {canManageOrders && !row.isLocked && (
+                                                    {canManageOrders && !row.isLocked && row.paymentMethod !== 'loan' && row.paymentMethod !== 'installments' && !row.linkedLoanId && (
                                                         <Button
                                                             variant="outline"
                                                             size="sm"
@@ -1049,7 +1001,7 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                                                     {canManageOrders && row.status === 'ordered' && <Button size="sm" onClick={() => runAction(() => updatePurchaseOrderStatus(row.id, 'received'), 'Purchase order received')}>{t('orders.actions.receive') || 'Receive'}</Button>}
                                                     {canManageOrders && row.status === 'received' && <Button size="sm" onClick={() => runAction(() => updatePurchaseOrderStatus(row.id, 'completed'), 'Purchase order completed')}>{t('orders.actions.complete') || 'Complete'}</Button>}
                                                     {canManageOrders && (row.status === 'draft' || row.status === 'ordered') && <Button variant="outline" size="sm" onClick={() => runAction(() => updatePurchaseOrderStatus(row.id, 'cancelled'), 'Purchase order cancelled')}>{t('orders.actions.cancel') || 'Cancel'}</Button>}
-                                                    {canManageOrders && !row.isLocked && (
+                                                    {canManageOrders && !row.isLocked && row.paymentMethod !== 'loan' && row.paymentMethod !== 'installments' && !row.linkedLoanId && (
                                                         <Button
                                                             variant="outline"
                                                             size="sm"
@@ -1163,7 +1115,7 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                                         {canManageOrders && row.status === 'pending' && <Button size="sm" className="h-9 rounded-xl px-3 text-[10px] font-bold uppercase shadow-sm ring-1 ring-primary/20" onClick={() => runAction(() => updateSalesOrderStatus(row.id, 'completed'), 'Sales order completed')}>{t('orders.actions.complete') || 'Complete'}</Button>}
                                         {canManageOrders && (row.status === 'draft' || row.status === 'pending') && <Button variant="outline" size="sm" className="h-9 rounded-xl px-3 text-[10px] font-bold uppercase" onClick={() => runAction(() => updateSalesOrderStatus(row.id, 'cancelled'), 'Sales order cancelled')}>{t('orders.actions.cancel') || 'Cancel'}</Button>}
                                         {canEdit && <Button variant="outline" size="sm" className="h-9 rounded-xl px-3" onClick={() => openSalesEdit(row as SalesOrder)}><Pencil className="h-3.5 w-3.5" /></Button>}
-                                        {canManageOrders && !row.isLocked && (
+                                        {canManageOrders && !row.isLocked && row.paymentMethod !== 'loan' && row.paymentMethod !== 'installments' && !row.linkedLoanId && (
                                             <Button
                                                 variant="outline"
                                                 size="sm"
@@ -1186,7 +1138,7 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                                         {canManageOrders && row.status === 'received' && <Button size="sm" className="h-9 rounded-xl px-3 text-[10px] font-bold uppercase shadow-sm ring-1 ring-primary/20" onClick={() => runAction(() => updatePurchaseOrderStatus(row.id, 'completed'), 'Purchase order completed')}>{t('orders.actions.complete') || 'Complete'}</Button>}
                                         {canManageOrders && (row.status === 'draft' || row.status === 'ordered') && <Button variant="outline" size="sm" className="h-9 rounded-xl px-3 text-[10px] font-bold uppercase" onClick={() => runAction(() => updatePurchaseOrderStatus(row.id, 'cancelled'), 'Purchase order cancelled')}>{t('orders.actions.cancel') || 'Cancel'}</Button>}
                                         {canEdit && <Button variant="outline" size="sm" className="h-9 rounded-xl px-3" onClick={() => openPurchaseEdit(row as PurchaseOrder)}><Pencil className="h-3.5 w-3.5" /></Button>}
-                                        {canManageOrders && !row.isLocked && (
+                                        {canManageOrders && !row.isLocked && row.paymentMethod !== 'loan' && row.paymentMethod !== 'installments' && !row.linkedLoanId && (
                                             <Button
                                                 variant="outline"
                                                 size="sm"
@@ -1582,7 +1534,6 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                                                     <Select value={salesForm.paymentMethod} onValueChange={(value) => setSalesForm((current) => ({ ...current, paymentMethod: value }))}>
                                                         <SelectTrigger id="sales-payment"><SelectValue /></SelectTrigger>
                                                         <SelectContent>
-                                                            <SelectItem value="credit">Credit</SelectItem>
                                                             <SelectItem value="cash">Cash</SelectItem>
                                                             <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
                                                         </SelectContent>
@@ -1860,7 +1811,6 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                                                     <Select value={purchaseForm.paymentMethod} onValueChange={(value) => setPurchaseForm((current) => ({ ...current, paymentMethod: value }))}>
                                                         <SelectTrigger id="purchase-payment"><SelectValue /></SelectTrigger>
                                                         <SelectContent>
-                                                            <SelectItem value="credit">Credit</SelectItem>
                                                             <SelectItem value="cash">Cash</SelectItem>
                                                             <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
                                                         </SelectContent>
@@ -2053,6 +2003,8 @@ export function Orders() {
     const [, navigate] = useLocation()
     const [salesNewMatch] = useRoute('/orders/new/sales')
     const [purchaseNewMatch] = useRoute('/orders/new/purchase')
+    const [salesEditMatch, salesEditParams] = useRoute('/orders/edit/sales/:orderId')
+    const [purchaseEditMatch, purchaseEditParams] = useRoute('/orders/edit/purchase/:orderId')
     const [salesTabMatch] = useRoute('/orders/sales')
     const [purchaseTabMatch] = useRoute('/orders/purchase')
     const [detailMatch, params] = useRoute('/orders/:orderId')
@@ -2077,6 +2029,28 @@ export function Orders() {
             <PurchaseOrderFormPage
                 workspaceId={workspaceId}
                 onCancel={() => navigate('/orders')}
+                onCreated={(orderId) => navigate(`/orders/${orderId}`)}
+            />
+        )
+    }
+
+    if (salesEditMatch && salesEditParams?.orderId) {
+        return (
+            <SalesOrderFormPage
+                workspaceId={workspaceId}
+                editingOrderId={salesEditParams.orderId}
+                onCancel={() => navigate(`/orders/${salesEditParams.orderId}`)}
+                onCreated={(orderId) => navigate(`/orders/${orderId}`)}
+            />
+        )
+    }
+
+    if (purchaseEditMatch && purchaseEditParams?.orderId) {
+        return (
+            <PurchaseOrderFormPage
+                workspaceId={workspaceId}
+                editingOrderId={purchaseEditParams.orderId}
+                onCancel={() => navigate(`/orders/${purchaseEditParams.orderId}`)}
                 onCreated={(orderId) => navigate(`/orders/${orderId}`)}
             />
         )

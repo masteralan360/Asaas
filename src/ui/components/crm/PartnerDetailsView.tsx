@@ -88,6 +88,10 @@ type RelatedTransaction = {
     isActive: boolean
     isCompleted: boolean
     isOutstanding: boolean
+    financingReference?: string | null
+    financingLabel?: string | null
+    financingStatus?: string | null
+    financingStatusLabel?: string | null
 }
 type TranslationFn = (key: string, options?: Record<string, unknown>) => string
 const LOAN_REPAYMENT_SOURCE_TYPES = new Set(['loan_payment', 'simple_loan', 'loan_installment'])
@@ -194,7 +198,22 @@ function toPartnerCurrencyFromTravelSale(sale: TravelAgencySale, currency: Sales
     )
 }
 
-function normalizeSalesOrder(order: SalesOrder, currency: SalesOrder['currency'], t: TranslationFn): RelatedTransaction {
+function linkedOrderFinancingFields(loan: Loan | undefined, t: TranslationFn) {
+    if (!loan) return {}
+    return {
+        financingReference: loan.loanNo,
+        financingLabel: isSimpleLoan(loan)
+            ? t('businessPartners.orderLoan', { defaultValue: 'Order Loan' })
+            : t('businessPartners.orderInstallments', { defaultValue: 'Order Installments' }),
+        financingStatus: loan.status,
+        financingStatusLabel: loanStatusLabel(t, loan.status)
+    }
+}
+
+function normalizeSalesOrder(order: SalesOrder, currency: SalesOrder['currency'], t: TranslationFn, linkedLoan?: Loan): RelatedTransaction {
+    const paidAmount = Math.min(order.total, Math.max(0, order.paidAmount ?? (order.isPaid ? order.total : 0)))
+    const remainingAmount = Math.max(0, order.balanceAmount ?? order.total - paidAmount)
+    const financingFields = linkedOrderFinancingFields(linkedLoan, t)
     return {
         id: order.id,
         source: 'sales_order',
@@ -205,22 +224,28 @@ function normalizeSalesOrder(order: SalesOrder, currency: SalesOrder['currency']
         status: order.status,
         statusLabel: statusLabel(t, order.status),
         isPaid: order.isPaid,
-        summary: getOrderSummary(order.items),
+        summary: linkedLoan
+            ? `${getOrderSummary(order.items)} · ${financingFields.financingLabel}`
+            : getOrderSummary(order.items),
         total: order.total,
         originalAmount: order.total,
-        paidAmount: order.isPaid ? order.total : 0,
-        remainingAmount: order.isPaid ? 0 : order.total,
+        paidAmount,
+        remainingAmount,
         currency: order.currency,
         totalInPartnerCurrency: toPartnerCurrency(order, currency),
         units: order.items.reduce((sum, item) => sum + item.quantity, 0),
         viewHref: `/orders/${order.id}`,
         isActive: order.status !== 'cancelled',
         isCompleted: order.status === 'completed',
-        isOutstanding: !order.isPaid && (order.status === 'pending' || order.status === 'completed')
+        isOutstanding: remainingAmount > 0 && (order.status === 'pending' || order.status === 'completed'),
+        ...financingFields
     }
 }
 
-function normalizePurchaseOrder(order: PurchaseOrder, currency: SalesOrder['currency'], t: TranslationFn): RelatedTransaction {
+function normalizePurchaseOrder(order: PurchaseOrder, currency: SalesOrder['currency'], t: TranslationFn, linkedLoan?: Loan): RelatedTransaction {
+    const paidAmount = Math.min(order.total, Math.max(0, order.paidAmount ?? (order.isPaid ? order.total : 0)))
+    const remainingAmount = Math.max(0, order.balanceAmount ?? order.total - paidAmount)
+    const financingFields = linkedOrderFinancingFields(linkedLoan, t)
     return {
         id: order.id,
         source: 'purchase_order',
@@ -231,18 +256,21 @@ function normalizePurchaseOrder(order: PurchaseOrder, currency: SalesOrder['curr
         status: order.status,
         statusLabel: statusLabel(t, order.status),
         isPaid: order.isPaid,
-        summary: getOrderSummary(order.items),
+        summary: linkedLoan
+            ? `${getOrderSummary(order.items)} · ${financingFields.financingLabel}`
+            : getOrderSummary(order.items),
         total: order.total,
         originalAmount: order.total,
-        paidAmount: order.isPaid ? order.total : 0,
-        remainingAmount: order.isPaid ? 0 : order.total,
+        paidAmount,
+        remainingAmount,
         currency: order.currency,
         totalInPartnerCurrency: toPartnerCurrency(order, currency),
         units: order.items.reduce((sum, item) => sum + item.quantity, 0),
         viewHref: `/orders/${order.id}`,
         isActive: order.status !== 'cancelled',
         isCompleted: order.status === 'received' || order.status === 'completed',
-        isOutstanding: !order.isPaid && (order.status === 'ordered' || order.status === 'received' || order.status === 'completed')
+        isOutstanding: remainingAmount > 0 && (order.status === 'ordered' || order.status === 'received' || order.status === 'completed'),
+        ...financingFields
     }
 }
 
@@ -466,6 +494,18 @@ export function PartnerDetailsView({
         [filterByDate, supplierTravelSales]
     )
     const dateFilteredLoans = useMemo(() => filterByDate(partnerLoans), [filterByDate, partnerLoans])
+    const standaloneDateFilteredLoans = useMemo(
+        () => dateFilteredLoans.filter((loan) => loan.source !== 'order'),
+        [dateFilteredLoans]
+    )
+    const linkedLoanByOrderId = useMemo(
+        () => new Map(
+            partnerLoans
+                .filter((loan) => loan.source === 'order' && !!loan.orderId)
+                .map((loan) => [loan.orderId as string, loan])
+        ),
+        [partnerLoans]
+    )
     const directTransactions = useMemo(
         () => paymentTransactions.filter(tx => tx.sourceType === 'direct_transaction' && tx.metadata?.businessPartnerId === partnerId),
         [paymentTransactions, partnerId]
@@ -566,10 +606,10 @@ export function PartnerDetailsView({
 
     const relatedTransactions = useMemo(
         () => [
-            ...dateFilteredCustomerOrders.map((order) => normalizeSalesOrder(order, defaultCurrency, t)),
-            ...dateFilteredSupplierOrders.map((order) => normalizePurchaseOrder(order, defaultCurrency, t)),
+            ...dateFilteredCustomerOrders.map((order) => normalizeSalesOrder(order, defaultCurrency, t, linkedLoanByOrderId.get(order.id))),
+            ...dateFilteredSupplierOrders.map((order) => normalizePurchaseOrder(order, defaultCurrency, t, linkedLoanByOrderId.get(order.id))),
             ...dateFilteredTravelSales.map((sale) => normalizeTravelSale(sale, defaultCurrency)),
-            ...dateFilteredLoans.map((loan) => normalizeLoan(
+            ...standaloneDateFilteredLoans.map((loan) => normalizeLoan(
                 loan,
                 defaultCurrency,
                 t,
@@ -578,7 +618,7 @@ export function PartnerDetailsView({
             )),
             ...dateFilteredPayments.map((tx) => normalizePaymentTransaction(tx, defaultCurrency, conversionRates, t))
         ],
-        [dateFilteredCustomerOrders, defaultCurrency, dateFilteredLoans, dateFilteredSupplierOrders, dateFilteredTravelSales, dateFilteredPayments, conversionRates, linkedSaleReferenceById, t]
+        [dateFilteredCustomerOrders, defaultCurrency, standaloneDateFilteredLoans, dateFilteredSupplierOrders, dateFilteredTravelSales, dateFilteredPayments, conversionRates, linkedLoanByOrderId, linkedSaleReferenceById, t]
     )
     const sortedTransactions = useMemo(
         () => [...relatedTransactions].sort((a, b) => new Date(b.sortDate).getTime() - new Date(a.sortDate).getTime()),
@@ -618,12 +658,12 @@ export function PartnerDetailsView({
     )
     const providedByYou = useMemo(() => {
         const rows: RelatedTransaction[] = [
-            ...dateFilteredCustomerOrders.map((order) => normalizeSalesOrder(order, defaultCurrency, t)),
+            ...dateFilteredCustomerOrders.map((order) => normalizeSalesOrder(order, defaultCurrency, t, linkedLoanByOrderId.get(order.id))),
             ...dateFilteredPayments
                 .filter((tx) => tx.direction === 'outgoing')
                 .map((tx) => normalizePaymentTransaction(tx, defaultCurrency, conversionRates, t)),
         ]
-        for (const loan of dateFilteredLoans) {
+        for (const loan of standaloneDateFilteredLoans) {
             const direction = getLoanDirection(loan)
             const isProvidedByYou = isSimpleLoan(loan)
                 ? direction !== 'borrowed'
@@ -638,18 +678,17 @@ export function PartnerDetailsView({
                 ))
             }
         }
-        rows.sort((a, b) => new Date(b.sortDate).getTime() - new Date(a.sortDate).getTime())
-        return rows
-    }, [dateFilteredCustomerOrders, dateFilteredPayments, dateFilteredLoans, dateFilteredInstallments, defaultCurrency, conversionRates, linkedSaleReferenceById, t])
+        return rows.sort((a, b) => new Date(b.sortDate).getTime() - new Date(a.sortDate).getTime())
+    }, [dateFilteredCustomerOrders, dateFilteredPayments, standaloneDateFilteredLoans, dateFilteredInstallments, defaultCurrency, conversionRates, linkedLoanByOrderId, linkedSaleReferenceById, t])
     const providedByPartner = useMemo(() => {
         const rows: RelatedTransaction[] = [
-            ...dateFilteredSupplierOrders.map((order) => normalizePurchaseOrder(order, defaultCurrency, t)),
+            ...dateFilteredSupplierOrders.map((order) => normalizePurchaseOrder(order, defaultCurrency, t, linkedLoanByOrderId.get(order.id))),
             ...dateFilteredTravelSales.map((sale) => normalizeTravelSale(sale, defaultCurrency)),
             ...dateFilteredPayments
                 .filter((tx) => tx.direction === 'incoming')
                 .map((tx) => normalizePaymentTransaction(tx, defaultCurrency, conversionRates, t)),
         ]
-        for (const loan of dateFilteredLoans) {
+        for (const loan of standaloneDateFilteredLoans) {
             const direction = getLoanDirection(loan)
             const isProvidedByPartner = isSimpleLoan(loan)
                 ? direction === 'borrowed'
@@ -664,9 +703,8 @@ export function PartnerDetailsView({
                 ))
             }
         }
-        rows.sort((a, b) => new Date(b.sortDate).getTime() - new Date(a.sortDate).getTime())
-        return rows
-    }, [dateFilteredSupplierOrders, dateFilteredTravelSales, dateFilteredPayments, dateFilteredLoans, dateFilteredInstallments, defaultCurrency, conversionRates, linkedSaleReferenceById, t])
+        return rows.sort((a, b) => new Date(b.sortDate).getTime() - new Date(a.sortDate).getTime())
+    }, [dateFilteredSupplierOrders, dateFilteredTravelSales, dateFilteredPayments, standaloneDateFilteredLoans, dateFilteredInstallments, defaultCurrency, conversionRates, linkedLoanByOrderId, linkedSaleReferenceById, t])
     const directTransactionsVolume = useMemo(
         () => dateFilteredPayments.reduce((sum, tx) => sum + convertToStoreBase(tx.amount, tx.currency, defaultCurrency, conversionRates), 0),
         [dateFilteredPayments, defaultCurrency, conversionRates]
@@ -936,7 +974,7 @@ export function PartnerDetailsView({
                 currency: transaction.currency
             })),
             salesOrders: dateFilteredCustomerOrders.map((order) => {
-                const transaction = normalizeSalesOrder(order, defaultCurrency, t)
+                const transaction = normalizeSalesOrder(order, defaultCurrency, t, linkedLoanByOrderId.get(order.id))
                 return {
                     id: transaction.id,
                     source: transaction.source,
@@ -952,7 +990,7 @@ export function PartnerDetailsView({
                 }
             }),
             purchaseOrders: dateFilteredSupplierOrders.map((order) => {
-                const transaction = normalizePurchaseOrder(order, defaultCurrency, t)
+                const transaction = normalizePurchaseOrder(order, defaultCurrency, t, linkedLoanByOrderId.get(order.id))
                 return {
                     id: transaction.id,
                     source: transaction.source,
@@ -973,6 +1011,7 @@ export function PartnerDetailsView({
         dateFilteredCustomerOrders,
         dateFilteredSupplierOrders,
         defaultCurrency,
+        linkedLoanByOrderId,
         partner,
         partnerFlows.incoming,
         partnerFlows.outgoing,
@@ -1769,14 +1808,28 @@ export function PartnerDetailsView({
                                             </TableHeader>
                                             <TableBody>
                                                 {rows.map((tx) => (
-                                                    <TableRow key={tx.id}>
+                                                    <TableRow key={tx.id} className={cn(tx.financingReference && 'bg-orange-500/[0.025]')}>
                                                         <TableCell>{formatDate(tx.displayDate)}</TableCell>
                                                         <TableCell>
-                                                            <span className={cn('inline-flex rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide', sourceBadgeClass(tx.source))}>
-                                                                {sourceLabel(tx.source, t)}
-                                                            </span>
+                                                            <div className="flex flex-col items-start gap-1">
+                                                                <span className={cn('inline-flex rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide', sourceBadgeClass(tx.source))}>
+                                                                    {sourceLabel(tx.source, t)}
+                                                                </span>
+                                                                {tx.financingLabel ? (
+                                                                    <span className="inline-flex rounded-full border border-orange-200 bg-orange-500/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-orange-700">
+                                                                        {tx.financingLabel}
+                                                                    </span>
+                                                                ) : null}
+                                                            </div>
                                                         </TableCell>
-                                                        <TableCell className="font-semibold">{tx.reference}</TableCell>
+                                                        <TableCell className="font-semibold">
+                                                            <div>{tx.reference}</div>
+                                                            {tx.financingReference ? (
+                                                                <div className="mt-0.5 text-[10px] font-medium text-muted-foreground">
+                                                                    {t('businessPartners.financingReference', { defaultValue: 'Financing' })}: {tx.financingReference}
+                                                                </div>
+                                                            ) : null}
+                                                        </TableCell>
                                                         <TableCell>{tx.summary}</TableCell>
                                                         <TableCell className="text-end font-semibold">
                                                             {formatCurrency(tx.originalAmount, tx.currency, iqdPreference)}
@@ -1790,9 +1843,16 @@ export function PartnerDetailsView({
                                                                 : formatCurrency(tx.remainingAmount, tx.currency, iqdPreference)}
                                                         </TableCell>
                                                         <TableCell>
-                                                            <span className={cn('inline-flex rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide', statusBadgeClass(tx.status))}>
-                                                                {tx.statusLabel}
-                                                            </span>
+                                                            <div className="flex flex-col items-start gap-1">
+                                                                <span className={cn('inline-flex rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide', statusBadgeClass(tx.status))}>
+                                                                    {tx.statusLabel}
+                                                                </span>
+                                                                {tx.financingStatus && tx.financingStatusLabel ? (
+                                                                    <span className={cn('inline-flex rounded-full border px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide', statusBadgeClass(tx.financingStatus))}>
+                                                                        {tx.financingStatusLabel}
+                                                                    </span>
+                                                                ) : null}
+                                                            </div>
                                                         </TableCell>
                                                         <TableCell className="text-end">
                                                             <Button variant="ghost" size="sm" className="gap-1.5" onClick={() => navigate(tx.viewHref)}>

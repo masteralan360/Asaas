@@ -367,7 +367,7 @@ export function BusinessPartners() {
                                             <TableHead>{t('suppliers.table.contact') || 'Contact'}</TableHead>
                                             <TableHead>{t('businessPartners.form.role') || 'Role'}</TableHead>
                                             <TableHead>{t('suppliers.table.currency') || 'Currency'}</TableHead>
-                                            <TableHead>{t('customers.form.creditLimit') || 'Credit Limit'}</TableHead>
+                                            <TableHead>{t('businessPartners.creditLimits', { defaultValue: 'Credit Limits' })}</TableHead>
                                             <TableHead>{t('businessPartners.receivable') || 'Receivable'}</TableHead>
                                             <TableHead>{t('businessPartners.payable') || 'Payable'}</TableHead>
                                             <TableHead>{t('businessPartners.loans') || 'Loans'}</TableHead>
@@ -438,7 +438,10 @@ export function BusinessPartners() {
                                                         ) : null}
                                                     </TableCell>
                                                     <TableCell>{partner.defaultCurrency.toUpperCase()}</TableCell>
-                                                    <TableCell>{formatCurrency(partner.creditLimit || 0, partner.defaultCurrency, features.iqd_display_preference)}</TableCell>
+                                                    <TableCell className="text-xs">
+                                                        <div>R: {partner.receivableCreditLimit == null ? '∞' : formatCurrency(partner.receivableCreditLimit, partner.defaultCurrency, features.iqd_display_preference)}</div>
+                                                        <div>P: {partner.payableCreditLimit == null ? '∞' : formatCurrency(partner.payableCreditLimit, partner.defaultCurrency, features.iqd_display_preference)}</div>
+                                                    </TableCell>
                                                     <TableCell>{formatCurrency(partner.receivableBalance, partner.defaultCurrency, features.iqd_display_preference)}</TableCell>
                                                     <TableCell>{formatCurrency(partner.payableBalance, partner.defaultCurrency, features.iqd_display_preference)}</TableCell>
                                                     <TableCell>{formatCurrency(partner.loanOutstandingBalance, partner.defaultCurrency, features.iqd_display_preference)}</TableCell>

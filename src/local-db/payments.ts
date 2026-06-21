@@ -1053,11 +1053,11 @@ function assertSettlementPaymentMethod(paymentMethod: WorkspacePaymentMethod): a
 
 function assertStandardSettlementPaymentMethod(
     paymentMethod: WorkspacePaymentMethod
-): asserts paymentMethod is Exclude<LoanPaymentMethod, 'loan_adjustment'> {
+): asserts paymentMethod is Exclude<LoanPaymentMethod, 'loan_adjustment' | 'loan'> {
     assertSettlementPaymentMethod(paymentMethod)
 
-    if (paymentMethod === 'loan_adjustment') {
-        throw new Error('Loan adjustment is only available for loan settlements')
+    if (paymentMethod === 'loan_adjustment' || paymentMethod === 'loan') {
+        throw new Error('Select a standard settlement payment method')
     }
 }
 

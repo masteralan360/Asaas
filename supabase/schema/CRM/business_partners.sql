@@ -12,6 +12,8 @@ CREATE TABLE crm.business_partners (
   default_currency text NOT NULL DEFAULT 'usd'::text,
   role text NOT NULL DEFAULT 'customer'::text,
   credit_limit numeric NULL DEFAULT 0,
+  receivable_credit_limit numeric NULL,
+  payable_credit_limit numeric NULL,
   customer_facet_id uuid NULL,
   supplier_facet_id uuid NULL,
   agent_facet_id uuid NULL,

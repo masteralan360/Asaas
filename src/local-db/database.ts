@@ -2524,6 +2524,237 @@ export class AtlasDatabase extends Dexie {
         "id, cashierId, workspaceId, settlementCurrency, syncStatus, createdAt, updatedAt, notes, [workspaceId+createdAt]",
     });
 
+    this.version(78)
+      .stores({
+        loans:
+          "id, saleId, orderId, orderType, loanNo, workspaceId, source, loanCategory, direction, linkedPartyId, borrowerName, status, nextDueDate, createdAt, updatedAt, isDeleted, syncStatus, [workspaceId+status], [workspaceId+loanCategory], [workspaceId+direction], [orderType+orderId]",
+        sales_orders:
+          "id, orderNumber, businessPartnerId, customerId, linkedLoanId, workspaceId, status, paymentStatus, paymentMethod, currency, nextDueDate, createdAt, updatedAt, isDeleted, syncStatus",
+        purchase_orders:
+          "id, orderNumber, businessPartnerId, supplierId, linkedLoanId, workspaceId, status, paymentStatus, paymentMethod, currency, nextDueDate, createdAt, updatedAt, isDeleted, syncStatus",
+      })
+      .upgrade(async (tx) => {
+        const migratePartnerLimits = async () => {
+          const partners = (await tx.table("business_partners").toArray()) as Array<Record<string, unknown>>;
+          const migrated = partners.map((partner) => {
+            const legacy = Number(partner.creditLimit || 0);
+            const role = String(partner.role || "customer");
+            const migratedLimit = legacy > 0 ? legacy : null;
+            return {
+              ...partner,
+              receivableCreditLimit: partner.receivableCreditLimit !== undefined
+                ? partner.receivableCreditLimit
+                : role === "customer" || role === "both" ? migratedLimit : null,
+              payableCreditLimit: partner.payableCreditLimit !== undefined
+                ? partner.payableCreditLimit
+                : role === "supplier" || role === "both" ? migratedLimit : null,
+            };
+          });
+          if (migrated.length > 0) await tx.table("business_partners").bulkPut(migrated);
+        };
+
+        const migrateOrders = async (tableName: "sales_orders" | "purchase_orders", orderType: "sales" | "purchase") => {
+          const orders = (await tx.table(tableName).toArray()) as Array<Record<string, unknown>>;
+          const installmentRows = (await tx.table("order_installments").toArray()) as Array<Record<string, unknown>>;
+          const facetRows = (await tx.table(orderType === "sales" ? "customers" : "suppliers").toArray()) as Array<Record<string, unknown>>;
+          const partnerIdByFacetId = new Map(
+            facetRows
+              .filter((row) => typeof row.id === "string" && typeof row.businessPartnerId === "string")
+              .map((row) => [row.id as string, row.businessPartnerId as string]),
+          );
+          const loans: Array<Record<string, unknown>> = [];
+          const loanInstallments: Array<Record<string, unknown>> = [];
+          const retiredOrderInstallments: Array<Record<string, unknown>> = [];
+
+          for (const order of orders) {
+            const legacyCredit = order.paymentMethod === "credit";
+            const installmentFinancing = order.isInstallmentBased === true;
+            const paymentMethod = legacyCredit
+              ? installmentFinancing ? "installments" : "loan"
+              : order.paymentMethod;
+            const total = Math.max(0, Number(order.total || 0));
+            const paidAmount = Math.min(total, Math.max(0, Number(order.paidAmount ?? (order.isPaid ? total : 0))));
+            const balanceAmount = Math.max(0, Number(order.balanceAmount ?? (total - paidAmount)));
+            const isActive = orderType === "sales"
+              ? order.status === "pending" || order.status === "completed"
+              : order.status === "ordered" || order.status === "received" || order.status === "completed";
+            let linkedLoanId = typeof order.linkedLoanId === "string" ? order.linkedLoanId : null;
+
+            if (
+              legacyCredit
+              && isActive
+              && balanceAmount > 0
+              && typeof order.workspaceId === "string"
+              && isLocalWorkspaceMode(order.workspaceId)
+            ) {
+              linkedLoanId = crypto.randomUUID();
+              const now = typeof order.updatedAt === "string" ? order.updatedAt : new Date().toISOString();
+              const facetId = String(orderType === "sales" ? order.customerId || "" : order.supplierId || "");
+              const linkedPartyId = typeof order.businessPartnerId === "string"
+                ? order.businessPartnerId
+                : partnerIdByFacetId.get(facetId) || facetId;
+              const linkedPartyName = orderType === "sales" ? order.customerName : order.supplierName;
+              const firstDueDate = typeof order.firstDueDate === "string" ? order.firstDueDate.slice(0, 10) : null;
+              const category = installmentFinancing ? "standard" : "simple";
+              const direction = orderType === "sales" ? "lent" : "borrowed";
+              const existingSchedule = installmentRows
+                .filter((row) => row.orderId === order.id && row.orderType === orderType && row.isDeleted !== true && Number(row.balanceAmount || 0) > 0)
+                .sort((left, right) => Number(left.installmentNo || 0) - Number(right.installmentNo || 0));
+
+              if (installmentFinancing) {
+                for (const [index, row] of existingSchedule.entries()) {
+                  const amount = Math.max(0, Number(row.balanceAmount || 0));
+                  loanInstallments.push({
+                    ...row,
+                    id: crypto.randomUUID(),
+                    loanId: linkedLoanId,
+                    installmentNo: index + 1,
+                    plannedAmount: amount,
+                    paidAmount: 0,
+                    balanceAmount: amount,
+                    paidAt: null,
+                    syncStatus: "synced",
+                    lastSyncedAt: now,
+                  });
+                  retiredOrderInstallments.push({
+                    ...row,
+                    isDeleted: true,
+                    updatedAt: now,
+                    version: Number(row.version || 0) + 1,
+                  });
+                }
+
+                if (existingSchedule.length === 0) {
+                  const count = Math.max(1, Math.trunc(Number(order.installmentCount || 1)));
+                  const frequency = String(order.installmentFrequency || "monthly");
+                  const roundAmount = (amount: number) => order.currency === "iqd"
+                    ? Math.round(amount)
+                    : Number(amount.toFixed(2));
+                  const baseAmount = roundAmount(balanceAmount / count);
+                  let allocated = 0;
+                  const advanceDueDate = (index: number) => {
+                    if (!firstDueDate) return null;
+                    const base = new Date(`${firstDueDate}T00:00:00.000Z`);
+                    if (frequency === "weekly" || frequency === "biweekly") {
+                      base.setUTCDate(base.getUTCDate() + index * (frequency === "weekly" ? 7 : 14));
+                      return base.toISOString().slice(0, 10);
+                    }
+                    const targetMonth = base.getUTCMonth() + index;
+                    const targetYear = base.getUTCFullYear() + Math.floor(targetMonth / 12);
+                    const normalizedMonth = ((targetMonth % 12) + 12) % 12;
+                    const lastDay = new Date(Date.UTC(targetYear, normalizedMonth + 1, 0)).getUTCDate();
+                    return new Date(Date.UTC(
+                      targetYear,
+                      normalizedMonth,
+                      Math.min(base.getUTCDate(), lastDay),
+                    )).toISOString().slice(0, 10);
+                  };
+
+                  for (let index = 0; index < count; index += 1) {
+                    const amount = index === count - 1
+                      ? roundAmount(balanceAmount - allocated)
+                      : baseAmount;
+                    allocated = roundAmount(allocated + amount);
+                    const dueDate = advanceDueDate(index);
+                    loanInstallments.push({
+                      id: crypto.randomUUID(),
+                      workspaceId: order.workspaceId,
+                      loanId: linkedLoanId,
+                      installmentNo: index + 1,
+                      dueDate,
+                      plannedAmount: amount,
+                      paidAmount: 0,
+                      balanceAmount: amount,
+                      status: dueDate && dueDate < now.slice(0, 10) ? "overdue" : "unpaid",
+                      paidAt: null,
+                      createdAt: now,
+                      updatedAt: now,
+                      syncStatus: "synced",
+                      lastSyncedAt: now,
+                      version: 1,
+                      isDeleted: false,
+                    });
+                  }
+                }
+              } else if (firstDueDate) {
+                loanInstallments.push({
+                  id: crypto.randomUUID(),
+                  workspaceId: order.workspaceId,
+                  loanId: linkedLoanId,
+                  installmentNo: 1,
+                  dueDate: firstDueDate,
+                  plannedAmount: balanceAmount,
+                  paidAmount: 0,
+                  balanceAmount,
+                  status: firstDueDate < now.slice(0, 10) ? "overdue" : "unpaid",
+                  paidAt: null,
+                  createdAt: now,
+                  updatedAt: now,
+                  syncStatus: "synced",
+                  lastSyncedAt: now,
+                  version: 1,
+                  isDeleted: false,
+                });
+              }
+
+              const nextDueDate = loanInstallments.find((row) => row.loanId === linkedLoanId && Number(row.balanceAmount || 0) > 0)?.dueDate ?? null;
+              loans.push({
+                id: linkedLoanId,
+                workspaceId: order.workspaceId,
+                saleId: null,
+                orderId: order.id,
+                orderType,
+                loanNo: `${category === "simple" ? "SL" : "LN"}-${now.slice(0, 10).replace(/-/g, "")}-${linkedLoanId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
+                source: "order",
+                loanCategory: category,
+                direction,
+                linkedPartyType: "business_partner",
+                linkedPartyId,
+                linkedPartyName,
+                borrowerName: linkedPartyName || "Order counterparty",
+                borrowerPhone: "",
+                borrowerAddress: "",
+                borrowerNationalId: "",
+                principalAmount: balanceAmount,
+                totalPaidAmount: 0,
+                balanceAmount,
+                settlementCurrency: order.currency,
+                exchangeRateSnapshot: order.exchangeRates ?? null,
+                installmentCount: installmentFinancing ? loanInstallments.filter((row) => row.loanId === linkedLoanId).length : firstDueDate ? 1 : 0,
+                installmentFrequency: order.installmentFrequency || "monthly",
+                firstDueDate,
+                nextDueDate,
+                status: nextDueDate && nextDueDate < now.slice(0, 10) ? "overdue" : "active",
+                notes: `Migrated from ${orderType} order ${String(order.orderNumber || order.id)}`,
+                createdBy: order.createdBy ?? null,
+                createdAt: now,
+                updatedAt: now,
+                syncStatus: "synced",
+                lastSyncedAt: now,
+                version: 1,
+                isDeleted: false,
+              });
+            }
+
+            order.paymentMethod = paymentMethod;
+            order.initialPaymentAmount = legacyCredit
+              ? paidAmount
+              : Math.max(0, Number(order.initialPaymentAmount || 0));
+            order.linkedLoanId = linkedLoanId;
+            order.isInstallmentBased = paymentMethod === "installments";
+          }
+
+          if (orders.length > 0) await tx.table(tableName).bulkPut(orders);
+          if (loans.length > 0) await tx.table("loans").bulkPut(loans);
+          if (loanInstallments.length > 0) await tx.table("loan_installments").bulkPut(loanInstallments);
+          if (retiredOrderInstallments.length > 0) await tx.table("order_installments").bulkPut(retiredOrderInstallments);
+        };
+
+        await migratePartnerLimits();
+        await migrateOrders("sales_orders", "sales");
+        await migrateOrders("purchase_orders", "purchase");
+      });
+
     this.registerLocalModeSqliteAuthority();
     this.registerLocalModeSyncHooks();
   }

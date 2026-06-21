@@ -2,6 +2,8 @@ CREATE TABLE public.loans (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   workspace_id uuid NOT NULL,
   sale_id uuid NULL,
+  order_id uuid NULL,
+  order_type text NULL,
   loan_no text NOT NULL,
   source text NOT NULL,
   loan_category text NOT NULL DEFAULT 'standard'::text,
@@ -37,6 +39,16 @@ CREATE TABLE public.loans (
   CONSTRAINT loans_direction_check CHECK (
     direction IN ('lent', 'borrowed')
   ),
+  CONSTRAINT loans_source_check CHECK (
+    source IN ('pos', 'manual', 'order')
+  ),
+  CONSTRAINT loans_order_type_check CHECK (
+    order_type IS NULL OR order_type IN ('sales', 'purchase')
+  ),
+  CONSTRAINT loans_source_link_check CHECK (
+    (source = 'order' AND order_id IS NOT NULL AND order_type IS NOT NULL AND sale_id IS NULL)
+    OR (source <> 'order' AND order_id IS NULL AND order_type IS NULL)
+  ),
   CONSTRAINT loans_linked_party_type_check CHECK (
     linked_party_type IS NULL
     OR linked_party_type = 'business_partner'::text
@@ -63,3 +75,7 @@ CREATE INDEX IF NOT EXISTS idx_loans_workspace_linked_party
 CREATE INDEX IF NOT EXISTS idx_loans_workspace_category_direction
   ON public.loans (workspace_id, loan_category, direction)
   WHERE is_deleted = false;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_loans_active_order
+  ON public.loans (order_type, order_id)
+  WHERE order_id IS NOT NULL AND is_deleted = false;

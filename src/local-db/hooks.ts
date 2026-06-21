@@ -3656,33 +3656,60 @@ async function assertLoanCreditLimit(
     workspaceId: string,
     input: Pick<LoanCreateInput, 'linkedPartyType' | 'linkedPartyId' | 'principalAmount' | 'settlementCurrency' | 'direction' | 'exchangeRateSnapshot'>
 ) {
-    if (input.direction === 'borrowed') {
-        return
-    }
-
     const partner = await resolveLinkedBusinessPartner(input.linkedPartyType, input.linkedPartyId)
-    if (!partner?.creditLimit || partner.creditLimit <= 0) {
+    if (!partner) {
+        return
+    }
+    const direction = input.direction === 'borrowed' ? 'borrowed' : 'lent'
+    const configuredLimit = direction === 'borrowed'
+        ? partner.payableCreditLimit
+        : partner.receivableCreditLimit
+    const creditLimit = configuredLimit !== undefined
+        ? configuredLimit
+        : partner.creditLimit && partner.creditLimit > 0 ? partner.creditLimit : null
+    if (creditLimit === null) {
         return
     }
 
-    const { recalculateBusinessPartnerSummary } = await import('./businessPartners')
-    const refreshedPartner = await recalculateBusinessPartnerSummary(workspaceId, partner.id)
-    const activePartner = refreshedPartner || partner
+    const activeLoans = await db.loans
+        .where('workspaceId')
+        .equals(workspaceId)
+        .and((loan) =>
+            !loan.isDeleted
+            && loan.linkedPartyId === partner.id
+            && (loan.direction === 'borrowed' ? 'borrowed' : 'lent') === direction
+            && loan.status !== 'completed'
+            && loan.balanceAmount > 0
+        )
+        .toArray()
+    let currentUsage = 0
+    for (const loan of activeLoans) {
+        const converted = convertCurrencyAmountWithAvailableSnapshot(
+            loan.balanceAmount,
+            loan.settlementCurrency,
+            partner.defaultCurrency,
+            loan.exchangeRateSnapshot
+        )
+        if (converted === null) {
+            throw new Error(`Missing exchange rate snapshot for ${loan.settlementCurrency.toUpperCase()} to ${partner.defaultCurrency.toUpperCase()} loan conversion`)
+        }
+        currentUsage += converted
+    }
     const convertedPrincipal = convertCurrencyAmountWithAvailableSnapshot(
         input.principalAmount,
         input.settlementCurrency,
-        activePartner.defaultCurrency,
+        partner.defaultCurrency,
         input.exchangeRateSnapshot
     )
     if (convertedPrincipal === null) {
-        throw new Error(`Missing exchange rate snapshot for ${input.settlementCurrency.toUpperCase()} to ${activePartner.defaultCurrency.toUpperCase()} loan conversion`)
+        throw new Error(`Missing exchange rate snapshot for ${input.settlementCurrency.toUpperCase()} to ${partner.defaultCurrency.toUpperCase()} loan conversion`)
     }
     const nextExposure = roundLoanAmount(
-        activePartner.netExposure + convertedPrincipal,
-        activePartner.defaultCurrency
+        currentUsage + convertedPrincipal,
+        partner.defaultCurrency
     )
 
-    if (nextExposure > 0 && nextExposure > activePartner.creditLimit) {
+    if (nextExposure > creditLimit) {
         throw new Error('credit_limit_exceeded')
     }
 }
@@ -3695,6 +3722,12 @@ async function recalculateLoanLinkedBusinessPartnerSummary(workspaceId: string, 
 
     const { recalculateBusinessPartnerSummary } = await import('./businessPartners')
     await recalculateBusinessPartnerSummary(workspaceId, partner.id)
+}
+
+async function mirrorLoanToLinkedOrder(loan: Loan) {
+    if (loan.source !== 'order' || !loan.orderId) return
+    const { mirrorLinkedOrderPaymentState } = await import('./orders')
+    await mirrorLinkedOrderPaymentState(loan)
 }
 
 function generateLoanNo(id: string, now = new Date(), loanCategory: LoanCategory = 'standard'): string {
@@ -3710,13 +3743,17 @@ function addInstallmentDate(baseDate: string | null, frequency: InstallmentFrequ
         return null
     }
 
-    const d = new Date(`${baseDate}T00:00:00`)
+    const d = new Date(`${baseDate}T00:00:00.000Z`)
     if (frequency === 'weekly') {
-        d.setDate(d.getDate() + (index * 7))
+        d.setUTCDate(d.getUTCDate() + (index * 7))
     } else if (frequency === 'biweekly') {
-        d.setDate(d.getDate() + (index * 14))
+        d.setUTCDate(d.getUTCDate() + (index * 14))
     } else {
-        d.setMonth(d.getMonth() + index)
+        const targetMonth = d.getUTCMonth() + index
+        const targetYear = d.getUTCFullYear() + Math.floor(targetMonth / 12)
+        const normalizedMonth = ((targetMonth % 12) + 12) % 12
+        const lastDay = new Date(Date.UTC(targetYear, normalizedMonth + 1, 0)).getUTCDate()
+        d.setUTCFullYear(targetYear, normalizedMonth, Math.min(d.getUTCDate(), lastDay))
     }
     return d.toISOString().slice(0, 10)
 }
@@ -3877,11 +3914,18 @@ function rebuildLoanStateFromPayments(
     }
 
     const totalPaidAmount = roundLoanAmount(
-        updatedInstallments.reduce((sum, installment) => sum + installment.paidAmount, 0),
+        updatedInstallments.length > 0
+            ? updatedInstallments.reduce((sum, installment) => sum + installment.paidAmount, 0)
+            : Math.min(
+                loan.principalAmount,
+                sortedPayments.reduce((sum, item) => sum + Math.max(0, Number(item.payment.amount || 0)), 0)
+            ),
         loan.settlementCurrency
     )
     const balanceAmount = roundLoanAmount(
-        updatedInstallments.reduce((sum, installment) => sum + installment.balanceAmount, 0),
+        updatedInstallments.length > 0
+            ? updatedInstallments.reduce((sum, installment) => sum + installment.balanceAmount, 0)
+            : Math.max(loan.principalAmount - totalPaidAmount, 0),
         loan.settlementCurrency
     )
     const nextDueDate = updatedInstallments.find((installment) => installment.balanceAmount > 0)?.dueDate || null
@@ -3974,7 +4018,9 @@ async function enqueueLoanCreateMutations(workspaceId: string, loan: Loan, insta
 
 interface LoanCreateInput {
     saleId?: string | null
-    source: 'pos' | 'manual'
+    orderId?: string | null
+    orderType?: 'sales' | 'purchase' | null
+    source: 'pos' | 'manual' | 'order'
     loanCategory?: LoanCategory
     direction?: LoanDirection
     linkedPartyType?: LoanLinkedPartyType | null
@@ -3995,14 +4041,14 @@ interface LoanCreateInput {
 }
 
 export function isLoanDeletionAllowed(
-    loan: Pick<Loan, 'source' | 'saleId'>,
-    hasLinkedActiveSale: boolean,
+    loan: Pick<Loan, 'source' | 'saleId' | 'orderId'>,
+    hasLinkedActiveSource: boolean,
     hasTransactionHistory = false
 ): boolean {
     if (hasTransactionHistory) return false
     if (loan.source === 'manual') return true
-    if (!loan.saleId) return true
-    return !hasLinkedActiveSale
+    if (!loan.saleId && !loan.orderId) return true
+    return !hasLinkedActiveSource
 }
 
 async function resolveLoanExchangeRateSnapshot(input: Pick<LoanCreateInput, 'saleId' | 'exchangeRateSnapshot'>) {
@@ -4062,7 +4108,7 @@ async function createLoanAggregate(workspaceId: string, input: LoanCreateInput):
     if (!borrowerName) {
         throw new Error('Missing borrower information')
     }
-    if (loanCategory === 'standard' && (!borrowerPhone || !borrowerAddress || !borrowerNationalId)) {
+    if (loanCategory === 'standard' && input.source !== 'order' && (!borrowerPhone || !borrowerAddress || !borrowerNationalId)) {
         throw new Error('Missing borrower information')
     }
 
@@ -4085,13 +4131,15 @@ async function createLoanAggregate(workspaceId: string, input: LoanCreateInput):
         })
     }
 
-    const plan = createInstallmentPlan(
-        principalAmount,
-        input.settlementCurrency,
-        input.installmentCount,
-        input.installmentFrequency,
-        firstDueDate
-    )
+    const plan = input.source === 'order' && loanCategory === 'simple' && !firstDueDate
+        ? []
+        : createInstallmentPlan(
+            principalAmount,
+            input.settlementCurrency,
+            input.installmentCount,
+            input.installmentFrequency,
+            firstDueDate
+        )
 
     const installments: LoanInstallment[] = plan.map(entry => {
         const status = computeInstallmentStatus(entry.dueDate, entry.plannedAmount)
@@ -4120,6 +4168,8 @@ async function createLoanAggregate(workspaceId: string, input: LoanCreateInput):
         id: loanId,
         workspaceId,
         saleId: input.saleId ?? null,
+        orderId: input.orderId ?? null,
+        orderType: input.orderType ?? null,
         loanNo: generateLoanNo(loanId, new Date(now), loanCategory),
         source: input.source,
         loanCategory,
@@ -4136,7 +4186,7 @@ async function createLoanAggregate(workspaceId: string, input: LoanCreateInput):
         balanceAmount: principalAmount,
         settlementCurrency: input.settlementCurrency,
         exchangeRateSnapshot: exchangeRateSnapshot && exchangeRateSnapshot.length > 0 ? exchangeRateSnapshot : null,
-        installmentCount: Math.max(1, Math.trunc(input.installmentCount)),
+        installmentCount: plan.length,
         installmentFrequency: input.installmentFrequency,
         firstDueDate,
         nextDueDate,
@@ -4176,8 +4226,10 @@ async function createLoanAggregate(workspaceId: string, input: LoanCreateInput):
         const { error: loanError } = await runMutation('loans.create', () => supabase.from('loans').upsert(loanPayload))
         if (loanError) throw loanError
 
-        const { error: installmentError } = await runMutation('loan_installments.create', () => supabase.from('loan_installments').upsert(installmentPayload))
-        if (installmentError) throw installmentError
+        if (installmentPayload.length > 0) {
+            const { error: installmentError } = await runMutation('loan_installments.create', () => supabase.from('loan_installments').upsert(installmentPayload))
+            if (installmentError) throw installmentError
+        }
 
         const syncedAt = new Date().toISOString()
         await db.transaction('rw', [db.loans, db.loan_installments], async () => {
@@ -4313,6 +4365,83 @@ export async function createLoanFromPosSale(
     input: Omit<LoanCreateInput, 'source'>
 ): Promise<{ loan: Loan; installments: LoanInstallment[] }> {
     return createLoanAggregate(workspaceId, { ...input, source: 'pos' })
+}
+
+export async function createLoanFromOrder(
+    workspaceId: string,
+    input: Omit<LoanCreateInput, 'source' | 'saleId'> & {
+        orderId: string
+        orderType: 'sales' | 'purchase'
+    }
+): Promise<{ loan: Loan; installments: LoanInstallment[] }> {
+    return createLoanAggregate(workspaceId, {
+        ...input,
+        saleId: null,
+        source: 'order'
+    })
+}
+
+export async function cancelOrderLinkedLoan(loanId: string): Promise<void> {
+    const loan = await db.loans.get(loanId)
+    if (!loan || loan.isDeleted) return
+    if (loan.source !== 'order') throw new Error('Loan is not order-linked')
+    if (await hasLoanTransactionHistory(loan.workspaceId, loan.id)) {
+        throw new Error('financed_order_has_payment_history')
+    }
+
+    const now = new Date().toISOString()
+    const installments = await db.loan_installments.where('loanId').equals(loan.id).and((item) => !item.isDeleted).toArray()
+    const deletedLoan: Loan = {
+        ...loan,
+        isDeleted: true,
+        updatedAt: now,
+        version: loan.version + 1,
+        syncStatus: 'pending',
+        lastSyncedAt: null
+    }
+    const deletedInstallments = installments.map((item) => ({
+        ...item,
+        isDeleted: true,
+        updatedAt: now,
+        version: item.version + 1,
+        syncStatus: 'pending' as const,
+        lastSyncedAt: null
+    }))
+    await db.transaction('rw', [db.loans, db.loan_installments], async () => {
+        await db.loans.put(deletedLoan)
+        if (deletedInstallments.length > 0) await db.loan_installments.bulkPut(deletedInstallments)
+    })
+
+    const enqueue = async () => {
+        await addToOfflineMutations('loans', loan.id, 'delete', { id: loan.id }, loan.workspaceId)
+        await Promise.all(deletedInstallments.map((item) =>
+            addToOfflineMutations('loan_installments', item.id, 'delete', { id: item.id }, loan.workspaceId)
+        ))
+    }
+
+    if (!isOnline(loan.workspaceId)) {
+        await enqueue()
+    } else {
+        try {
+            const { error: loanError } = await runMutation('loans.cancelOrderLinked.loan', () =>
+                supabase.from('loans').update({ is_deleted: true, updated_at: now, version: deletedLoan.version }).eq('id', loan.id)
+            )
+            if (loanError) throw loanError
+            if (deletedInstallments.length > 0) {
+                const { error: installmentError } = await runMutation('loans.cancelOrderLinked.installments', () =>
+                    supabase.from('loan_installments').update({ is_deleted: true, updated_at: now }).eq('loan_id', loan.id)
+                )
+                if (installmentError) throw installmentError
+            }
+            const syncedAt = new Date().toISOString()
+            await db.loans.update(loan.id, { syncStatus: 'synced', lastSyncedAt: syncedAt })
+        } catch (error) {
+            if (!shouldUseOfflineMutationFallback(error)) throw normalizeSupabaseActionError(error)
+            await enqueue()
+        }
+    }
+
+    await recalculateLoanLinkedBusinessPartnerSummary(loan.workspaceId, loan.linkedPartyType, loan.linkedPartyId)
 }
 
 export async function linkLoanToBusinessPartner(
@@ -4480,9 +4609,17 @@ export async function deleteLoan(loanId: string): Promise<void> {
     }
 
     const linkedSale = loan.saleId ? await db.sales.get(loan.saleId) : undefined
-    const hasLinkedActiveSale = Boolean(linkedSale && !linkedSale.isDeleted)
+    const linkedOrder = loan.orderId
+        ? loan.orderType === 'purchase'
+            ? await db.purchase_orders.get(loan.orderId)
+            : await db.sales_orders.get(loan.orderId)
+        : undefined
+    const hasLinkedActiveSource = Boolean(
+        (linkedSale && !linkedSale.isDeleted)
+        || (linkedOrder && !linkedOrder.isDeleted && linkedOrder.status !== 'cancelled')
+    )
     const hasTransactionHistory = await hasLoanTransactionHistory(loan.workspaceId, loanId)
-    if (!isLoanDeletionAllowed(loan, hasLinkedActiveSale, hasTransactionHistory)) {
+    if (!isLoanDeletionAllowed(loan, hasLinkedActiveSource, hasTransactionHistory)) {
         throw new Error('loan_delete_not_allowed')
     }
 
@@ -4641,6 +4778,7 @@ export async function reverseLoanPayment(
         }
         await db.loan_payments.put(deletedPayment)
     })
+    await mirrorLoanToLinkedOrder(updatedLoan)
 
     const enqueueMutations = async () => {
         await addToOfflineMutations('loans', updatedLoan.id, 'update', updatedLoan as unknown as Record<string, unknown>, workspaceId)
@@ -4681,14 +4819,16 @@ export async function reverseLoanPayment(
         )
         if (loanError) throw loanError
 
-        const { error: installmentsError } = await runMutation('loans.reversePayment.installments', () =>
-            supabase.from('loan_installments').upsert(
-                updatedInstallments.map((installment) =>
-                    toSupabaseLoanPayload(installment as unknown as Record<string, unknown>)
+        if (updatedInstallments.length > 0) {
+            const { error: installmentsError } = await runMutation('loans.reversePayment.installments', () =>
+                supabase.from('loan_installments').upsert(
+                    updatedInstallments.map((installment) =>
+                        toSupabaseLoanPayload(installment as unknown as Record<string, unknown>)
+                    )
                 )
             )
-        )
-        if (installmentsError) throw installmentsError
+            if (installmentsError) throw installmentsError
+        }
 
         const { error: paymentError } = await runMutation('loans.reversePayment.payment', () =>
             supabase
@@ -4730,6 +4870,8 @@ export async function reverseLoanPayment(
             await db.loan_payments.put(payment)
         })
 
+        await mirrorLoanToLinkedOrder(loan)
+
         await recalculateLoanLinkedBusinessPartnerSummary(workspaceId, loan.linkedPartyType, loan.linkedPartyId)
         throw normalizeSupabaseActionError(error)
     }
@@ -4760,10 +4902,6 @@ export async function recordLoanPayment(workspaceId: string, input: LoanPaymentI
         .equals(input.loanId)
         .and(item => !item.isDeleted)
         .sortBy('installmentNo')
-
-    if (installmentRows.length === 0) {
-        throw new Error('Loan installments not found')
-    }
 
     const requestedAmount = roundLoanAmount(Math.max(0, Number(input.amount || 0)), loan.settlementCurrency)
     const payableAmount = roundLoanAmount(Math.min(requestedAmount, loan.balanceAmount), loan.settlementCurrency)
@@ -4879,6 +5017,7 @@ export async function recordLoanPayment(workspaceId: string, input: LoanPaymentI
         }
         await db.loan_payments.put(payment)
     })
+    await mirrorLoanToLinkedOrder(updatedLoan)
 
     const enqueueMutations = async () => {
         await addToOfflineMutations('loans', updatedLoan.id, 'update', updatedLoan as unknown as Record<string, unknown>, workspaceId)
@@ -4947,14 +5086,16 @@ export async function recordLoanPayment(workspaceId: string, input: LoanPaymentI
         )
         if (loanError) throw loanError
 
-        const { error: installmentsError } = await runMutation('loans.recordPayment.installments', () =>
-            supabase.from('loan_installments').upsert(
-                updatedInstallments.map(installment =>
-                    toSupabaseLoanPayload(installment as unknown as Record<string, unknown>)
+        if (updatedInstallments.length > 0) {
+            const { error: installmentsError } = await runMutation('loans.recordPayment.installments', () =>
+                supabase.from('loan_installments').upsert(
+                    updatedInstallments.map(installment =>
+                        toSupabaseLoanPayload(installment as unknown as Record<string, unknown>)
+                    )
                 )
             )
-        )
-        if (installmentsError) throw installmentsError
+            if (installmentsError) throw installmentsError
+        }
 
         const { error: paymentError } = await runMutation('loans.recordPayment.payment', () =>
             supabase
@@ -4996,6 +5137,8 @@ export async function recordLoanPayment(workspaceId: string, input: LoanPaymentI
             }
             await db.loan_payments.delete(payment.id)
         })
+
+        await mirrorLoanToLinkedOrder(loan)
 
         await recalculateLoanLinkedBusinessPartnerSummary(workspaceId, loan.linkedPartyType, loan.linkedPartyId)
 

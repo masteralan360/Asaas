@@ -75,7 +75,6 @@ import { LoanNoDisplay } from '@/ui/components/loans/LoanNoDisplay'
 import { useLoanPaymentModal } from '@/ui/components/loans/LoanPaymentModalProvider'
 import { SimpleLoanListView } from '@/ui/components/loans/SimpleLoanListView'
 import { RealEstateInstallmentsMirror } from '@/ui/components/real-estate/RealEstateInstallmentsMirror'
-import { OrderInstallmentsMirror } from '@/ui/components/orders/OrderInstallmentsMirror'
 import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
 
 type LoanFilter = 'all' | 'active' | 'overdue' | 'completed'
@@ -348,6 +347,7 @@ function LoanListView({
         printFormat: 'a4' as const
     }), [currency, metrics.totalOutstanding, user?.name])
     const canDeleteLoanRecord = (loan: Loan) => {
+        if (loan.source === 'order') return false
         const hasTransactionHistory = loanPaymentHistoryIdSet.has(loan.id)
         if (loan.source === 'manual' || !loan.saleId) {
             return isLoanDeletionAllowed(loan, false, hasTransactionHistory)
@@ -995,7 +995,8 @@ function LoanDetailsView({
         )
     }
 
-    const canDeleteCurrentLoan = linkedSaleMissingOrDeleted !== undefined
+    const canDeleteCurrentLoan = loan.source !== 'order'
+        && linkedSaleMissingOrDeleted !== undefined
         && hasPostedTransactionHistory !== undefined
         && isLoanDeletionAllowed(
             loan,
@@ -1047,6 +1048,7 @@ function LoanDetailsView({
     ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
 
     const canOpenLinkedSale = !!loan.saleId && linkedSaleMissingOrDeleted !== true
+    const canOpenLinkedOrder = loan.source === 'order' && !!loan.orderId
     const moduleTitle = getLoanModuleTitle(loan, t)
     const modulePath = getLoanListPath(loan)
     const loanDetailsTitle = getLoanDetailsTitle(loan, t)
@@ -1062,6 +1064,10 @@ function LoanDetailsView({
 
         setPendingSaleDetailsId(loan.saleId)
         navigate('/sales')
+    }
+
+    const openLinkedOrderDetails = () => {
+        if (loan.orderId) navigate(`/orders/${loan.orderId}`)
     }
 
     return (
@@ -1080,6 +1086,12 @@ function LoanDetailsView({
                         <Button variant="outline" allowViewer={true} onClick={openLinkedSaleDetails} className="gap-2 print:hidden">
                             <Receipt className="w-4 h-4" />
                             {t('loans.openLinkedSale', { defaultValue: 'Open Sale Details' })}
+                        </Button>
+                    )}
+                    {canOpenLinkedOrder && (
+                        <Button variant="outline" allowViewer={true} onClick={openLinkedOrderDetails} className="gap-2 print:hidden">
+                            <Receipt className="w-4 h-4" />
+                            {t('loans.openLinkedOrder', { defaultValue: 'Open Order Details' })}
                         </Button>
                     )}
                     {canUseWhatsApp && (
@@ -1419,7 +1431,6 @@ export function Installments() {
     const { hasPermission } = useWorkspacePermissions()
     const workspaceId = user?.workspaceId
     const canUseLoanInstallments = hasFeature('installments')
-    const canUseOrderInstallments = hasFeature('crm') && hasPermission('orders.access')
     const canUseRealEstateInstallments = hasFeature('real_estate') && hasPermission('realEstate.access')
 
     const openPaymentForLoan = (loan: Loan, installment?: LoanInstallment | null) => {
@@ -1442,7 +1453,7 @@ export function Installments() {
         )
     }
 
-    if (!canUseLoanInstallments && !canUseOrderInstallments && !canUseRealEstateInstallments) {
+    if (!canUseLoanInstallments && !canUseRealEstateInstallments) {
         return (
             <Card>
                 <CardContent className="py-10 text-center text-muted-foreground">
@@ -1452,15 +1463,11 @@ export function Installments() {
         )
     }
 
-    if (canUseLoanInstallments && !canUseOrderInstallments && !canUseRealEstateInstallments) {
+    if (canUseLoanInstallments && !canUseRealEstateInstallments) {
         return <LoanListView workspaceId={workspaceId} />
     }
 
-    if (canUseOrderInstallments && !canUseLoanInstallments && !canUseRealEstateInstallments) {
-        return <OrderInstallmentsMirror workspaceId={workspaceId} />
-    }
-
-    if (canUseRealEstateInstallments && !canUseLoanInstallments && !canUseOrderInstallments) {
+    if (canUseRealEstateInstallments && !canUseLoanInstallments) {
         return <RealEstateInstallmentsMirror workspaceId={workspaceId} />
     }
 
@@ -1468,17 +1475,12 @@ export function Installments() {
         <Tabs
             defaultValue={canUseLoanInstallments
                 ? 'loan-installments'
-                : canUseOrderInstallments
-                    ? 'order-installments'
-                    : 'real-estate'}
+                : 'real-estate'}
             className="space-y-4"
         >
             <TabsList>
                 {canUseLoanInstallments ? (
                     <TabsTrigger value="loan-installments">{t('loans.title', { defaultValue: 'Loan Installments' })}</TabsTrigger>
-                ) : null}
-                {canUseOrderInstallments ? (
-                    <TabsTrigger value="order-installments">{t('orders.details.installmentSchedule', { defaultValue: 'Order Installments' })}</TabsTrigger>
                 ) : null}
                 {canUseRealEstateInstallments ? (
                     <TabsTrigger value="real-estate">{t('realEstate.title', { defaultValue: 'Real Estate' })}</TabsTrigger>
@@ -1487,11 +1489,6 @@ export function Installments() {
             {canUseLoanInstallments ? (
                 <TabsContent value="loan-installments">
                     <LoanListView workspaceId={workspaceId} />
-                </TabsContent>
-            ) : null}
-            {canUseOrderInstallments ? (
-                <TabsContent value="order-installments">
-                    <OrderInstallmentsMirror workspaceId={workspaceId} />
                 </TabsContent>
             ) : null}
             {canUseRealEstateInstallments ? (

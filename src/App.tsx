@@ -115,11 +115,6 @@ const Revenue = lazy(() =>
 const Budget = lazy(() =>
   import("@/ui/pages/Budget").then((m) => ({ default: m.Budget })),
 );
-const MonthlyComparison = lazy(() =>
-  import("@/ui/pages/MonthlyComparison").then((m) => ({
-    default: m.MonthlyComparison,
-  })),
-);
 const TeamPerformance = lazy(() =>
   import("@/ui/pages/TeamPerformance").then((m) => ({
     default: m.TeamPerformance,
@@ -1117,6 +1112,28 @@ function App() {
                       <Route path="/orders/new/purchase">
                         <ProtectedRoute
                           allowedRoles={["admin", "staff", "viewer"]}
+                          requiredFeature="crm"
+                          requiredPermission="orders.access"
+                        >
+                          <Layout>
+                            <Orders />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/orders/edit/sales/:orderId">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff"]}
+                          requiredFeature="crm"
+                          requiredPermission="orders.access"
+                        >
+                          <Layout>
+                            <Orders />
+                          </Layout>
+                        </ProtectedRoute>
+                      </Route>
+                      <Route path="/orders/edit/purchase/:orderId">
+                        <ProtectedRoute
+                          allowedRoles={["admin", "staff"]}
                           requiredFeature="crm"
                           requiredPermission="orders.access"
                         >
