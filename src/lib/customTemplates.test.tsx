@@ -21,6 +21,9 @@ vi.mock('@/ui/components/SaleReceipt', () => ({
     },
     SaleReceiptBase: () => null
 }))
+vi.mock('@/ui/components/ModernA4InvoiceTemplate', () => ({
+    ModernA4InvoiceTemplate: () => null
+}))
 
 let customTemplates: typeof import('@/lib/customTemplates')
 let PartnerDetailsPrintTemplate: typeof import('@/ui/components/crm/PartnerDetailsPrintTemplate')['PartnerDetailsPrintTemplate']

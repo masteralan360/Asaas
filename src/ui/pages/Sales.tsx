@@ -71,6 +71,7 @@ import { SaleItem } from '@/types'
 import { generateTemplatePdf, type PrintFormat } from '@/services/pdfGenerator'
 import {
     SALES_HISTORY_RECEIPT_TEMPLATE_KEY,
+    SALES_HISTORY_MODERN_A4_TEMPLATE_KEY,
     buildCustomTemplateLayoutPdf,
     createCustomTemplatePreview,
     getCustomTemplatePrintLanguageWarning,
@@ -680,6 +681,8 @@ export function Sales() {
     const [showPrintPreview, setShowPrintPreview] = useState(false)
     const [customReceiptTemplates, setCustomReceiptTemplates] = useState<StoredCustomTemplateRow[]>([])
     const [selectedCustomReceiptTemplate, setSelectedCustomReceiptTemplate] = useState<StoredCustomTemplateRow | null>(null)
+    const [customA4Templates, setCustomA4Templates] = useState<StoredCustomTemplateRow[]>([])
+    const [selectedCustomA4Template, setSelectedCustomA4Template] = useState<StoredCustomTemplateRow | null>(null)
     const [isNoteModalOpen, setIsNoteModalOpen] = useState(false)
     const [selectedSaleForNote, setSelectedSaleForNote] = useState<Sale | null>(null)
     const [isExportModalOpen, setIsExportModalOpen] = useState(false)
@@ -691,20 +694,33 @@ export function Sales() {
     useEffect(() => {
         if (!showPrintPreview || !user?.workspaceId || (!isLocalMode && !isSupabaseConfigured)) {
             setCustomReceiptTemplates([])
+            setCustomA4Templates([])
             return
         }
 
         let cancelled = false
         void (async () => {
             try {
-                const templates = await fetchCachedCustomTemplates(user.workspaceId, {
-                    moduleTypeKey: SALES_HISTORY_RECEIPT_TEMPLATE_KEY,
-                    activeOnly: true
-                })
-                if (!cancelled) setCustomReceiptTemplates(templates as StoredCustomTemplateRow[])
+                const [receiptTemplates, a4Templates] = await Promise.all([
+                    fetchCachedCustomTemplates(user.workspaceId, {
+                        moduleTypeKey: SALES_HISTORY_RECEIPT_TEMPLATE_KEY,
+                        activeOnly: true
+                    }),
+                    fetchCachedCustomTemplates(user.workspaceId, {
+                        moduleTypeKey: SALES_HISTORY_MODERN_A4_TEMPLATE_KEY,
+                        activeOnly: true
+                    })
+                ])
+                if (!cancelled) {
+                    setCustomReceiptTemplates(receiptTemplates as StoredCustomTemplateRow[])
+                    setCustomA4Templates(a4Templates as StoredCustomTemplateRow[])
+                }
             } catch (templateError) {
-                console.error('[Sales] Failed to load custom receipt templates:', templateError)
-                if (!cancelled) setCustomReceiptTemplates([])
+                console.error('[Sales] Failed to load custom templates:', templateError)
+                if (!cancelled) {
+                    setCustomReceiptTemplates([])
+                    setCustomA4Templates([])
+                }
             }
         })()
 
@@ -715,6 +731,7 @@ export function Sales() {
 
     const onPrintClick = (sale: Sale) => {
         setSelectedCustomReceiptTemplate(null)
+        setSelectedCustomA4Template(null)
         setSaleToPrintSelection(sale)
         setPrintingSale(sale)
         setShowPrintPreview(true)
@@ -726,6 +743,7 @@ export function Sales() {
         }
         setPrintFormat(format)
         setSelectedCustomReceiptTemplate(format === 'receipt' ? template || null : null)
+        setSelectedCustomA4Template(format === 'a4' ? template || null : null)
         if (format === 'a4' && saleToPrintSelection && saleHasAnyReturnActivity(saleToPrintSelection)) {
             setA4Variant('refund')
         } else {
@@ -746,16 +764,27 @@ export function Sales() {
             : t('sales.print.a4desc', { defaultValue: 'Detailed full-page document' })
     }], [saleToPrintSelection, t])
     const salesCustomPrintOptions = useMemo(
-        () => customReceiptTemplates.map((template) => ({
-            format: 'receipt' as const,
-            template,
-            label: getStoredCustomTemplateLabel(template),
-            description: t('customTemplates.customReceipt', { defaultValue: 'Custom Receipt' }),
-            primary: template.primary,
-            disabled: !isCustomTemplatePrintLanguageCompatible(template, currentTemplatePrintLanguage),
-            warning: getCustomTemplatePrintLanguageWarning(template, currentTemplatePrintLanguage, t)
-        })),
-        [currentTemplatePrintLanguage, customReceiptTemplates, t]
+        () => [
+            ...customReceiptTemplates.map((template) => ({
+                format: 'receipt' as const,
+                template,
+                label: getStoredCustomTemplateLabel(template),
+                description: t('customTemplates.customReceipt', { defaultValue: 'Custom Receipt' }),
+                primary: template.primary,
+                disabled: !isCustomTemplatePrintLanguageCompatible(template, currentTemplatePrintLanguage),
+                warning: getCustomTemplatePrintLanguageWarning(template, currentTemplatePrintLanguage, t)
+            })),
+            ...customA4Templates.map((template) => ({
+                format: 'a4' as const,
+                template,
+                label: getStoredCustomTemplateLabel(template),
+                description: t('customTemplates.customA4', { defaultValue: 'Custom A4' }),
+                primary: template.primary,
+                disabled: !isCustomTemplatePrintLanguageCompatible(template, currentTemplatePrintLanguage),
+                warning: getCustomTemplatePrintLanguageWarning(template, currentTemplatePrintLanguage, t)
+            }))
+        ],
+        [currentTemplatePrintLanguage, customReceiptTemplates, customA4Templates, t]
     )
 
     const handleConfirmPrint = () => {
@@ -765,6 +794,7 @@ export function Sales() {
         setSaleToPrintSelection(null)
         setA4Variant('standard')
         setSelectedCustomReceiptTemplate(null)
+        setSelectedCustomA4Template(null)
     }
 
     const customReceiptTarget = useMemo(
@@ -837,6 +867,81 @@ export function Sales() {
             fieldMode: 'layoutOverrides'
         })
     }, [customReceiptData, customReceiptTarget, features, user?.workspaceId, workspaceName])
+
+    const customA4Target = useMemo(
+        () => getCustomTemplateTarget(SALES_HISTORY_MODERN_A4_TEMPLATE_KEY),
+        []
+    )
+    const selectedCustomA4Layout = useMemo(
+        () => selectedCustomA4Template
+            && isCustomTemplatePrintLanguageCompatible(selectedCustomA4Template, currentTemplatePrintLanguage)
+            ? readCustomTemplateLayout(selectedCustomA4Template)
+            : null,
+        [currentTemplatePrintLanguage, selectedCustomA4Template]
+    )
+    const hasCompatibleSelectedCustomA4 = Boolean(
+        selectedCustomA4Template && selectedCustomA4Layout
+    )
+    const customA4Preview = useMemo(
+        () => customA4Target && customReceiptData
+            ? createCustomTemplatePreview(customA4Target, {
+                workspaceId: user?.workspaceId,
+                workspaceName,
+                features,
+                receiptData: customReceiptData
+            })
+            : undefined,
+        [customReceiptData, customA4Target, features, user?.workspaceId, workspaceName]
+    )
+    const buildCustomA4Pdf = useCallback(async ({ effectiveId }: { format: PrintFormat; effectiveId: string }) => {
+        if (!customA4Target || !selectedCustomA4Layout || !customReceiptData) {
+            throw new Error('Custom A4 template is not available.')
+        }
+
+        return buildCustomTemplateLayoutPdf({
+            target: customA4Target,
+            layout: selectedCustomA4Layout,
+            values: {},
+            options: {
+                workspaceId: user?.workspaceId,
+                workspaceName,
+                features,
+                receiptData: customReceiptData
+            },
+            effectiveId
+        })
+    }, [customReceiptData, customA4Target, features, selectedCustomA4Layout, user?.workspaceId, workspaceName])
+    const buildEditableCustomA4Pdf = useCallback(async (
+        layout: CustomTemplateLayout,
+        _printLangOverride?: string,
+        effectiveId?: string
+    ) => {
+        if (!customA4Target || !customReceiptData) {
+            throw new Error('Custom A4 template is not available.')
+        }
+
+        return buildCustomTemplateLayoutPdf({
+            target: customA4Target,
+            layout,
+            values: {},
+            options: {
+                workspaceId: user?.workspaceId,
+                workspaceName,
+                features,
+                receiptData: customReceiptData
+            },
+            effectiveId,
+            fieldMode: 'layoutOverrides'
+        })
+    }, [customReceiptData, customA4Target, features, user?.workspaceId, workspaceName])
+
+    const activeCustomTemplate = printFormat === 'a4' ? selectedCustomA4Template : selectedCustomReceiptTemplate
+    const hasActiveCustomTemplate = printFormat === 'a4' ? hasCompatibleSelectedCustomA4 : hasCompatibleSelectedCustomReceipt
+    const activeCustomTarget = printFormat === 'a4' ? customA4Target : customReceiptTarget
+    const activeCustomLayout = printFormat === 'a4' ? selectedCustomA4Layout : selectedCustomReceiptLayout
+    const activeCustomPreview = printFormat === 'a4' ? customA4Preview : customReceiptPreview
+    const activeBuildCustomPdf = printFormat === 'a4' ? buildCustomA4Pdf : buildCustomReceiptPdf
+    const activeBuildEditableCustomPdf = printFormat === 'a4' ? buildEditableCustomA4Pdf : buildEditableCustomReceiptPdf
 
     const [isWholeSaleReturn, setIsWholeSaleReturn] = useState(false)
 
@@ -2705,10 +2810,11 @@ export function Sales() {
                         setSaleToPrintSelection(null)
                         setA4Variant('standard')
                         setSelectedCustomReceiptTemplate(null)
+                        setSelectedCustomA4Template(null)
                     }}
                     onConfirm={handleConfirmPrint}
-                    title={selectedCustomReceiptTemplate
-                        ? getStoredCustomTemplateLabel(selectedCustomReceiptTemplate)
+                    title={activeCustomTemplate
+                        ? getStoredCustomTemplateLabel(activeCustomTemplate)
                         : shouldUseLoanPrint
                         ? (printFormat === 'receipt'
                             ? (t('sales.print.receipt') || 'Receipt')
@@ -2721,7 +2827,7 @@ export function Sales() {
                     features={features}
                     workspaceName={workspaceName}
                     module="sales"
-                    pdfData={!shouldUseLoanPrint && !hasCompatibleSelectedCustomReceipt && printingSale ? mapSaleToUniversal(printingSale, { a4Variant }) : undefined}
+                    pdfData={!shouldUseLoanPrint && !hasActiveCustomTemplate && printingSale ? mapSaleToUniversal(printingSale, { a4Variant }) : undefined}
                     invoiceData={printingSale ? {
                         sequenceId: printingSale.sequenceId,
                         totalAmount: printingSale.total_amount,
@@ -2733,24 +2839,24 @@ export function Sales() {
                     } : undefined}
                     pdfBuilder={shouldUseLoanPrint
                         ? buildLoanPrintPdf
-                        : hasCompatibleSelectedCustomReceipt
-                            ? buildCustomReceiptPdf
+                        : hasActiveCustomTemplate
+                            ? activeBuildCustomPdf
                             : undefined}
                     printTemplate={shouldUseLoanPrint
                         ? ({ effectiveId }) => (printFormat === 'receipt'
                             ? renderLoanReceiptTemplate(effectiveId)
                             : renderLoanPrintTemplate(effectiveId))
                         : undefined}
-                    templatePreview={hasCompatibleSelectedCustomReceipt ? customReceiptPreview : undefined}
-                    customTemplate={hasCompatibleSelectedCustomReceipt && selectedCustomReceiptTemplate && customReceiptTarget ? {
-                        moduleTypeKey: customReceiptTarget.moduleTypeKey,
-                        nativeTemplateKey: customReceiptTarget.nativeTemplateKey,
-                        templateId: selectedCustomReceiptTemplate.id,
-                        label: getStoredCustomTemplateLabel(selectedCustomReceiptTemplate)
+                    templatePreview={hasActiveCustomTemplate ? activeCustomPreview : undefined}
+                    customTemplate={hasActiveCustomTemplate && activeCustomTemplate && activeCustomTarget ? {
+                        moduleTypeKey: activeCustomTarget.moduleTypeKey,
+                        nativeTemplateKey: activeCustomTarget.nativeTemplateKey,
+                        templateId: activeCustomTemplate.id,
+                        label: getStoredCustomTemplateLabel(activeCustomTemplate)
                     } : undefined}
-                    initialTemplateLayout={hasCompatibleSelectedCustomReceipt ? selectedCustomReceiptLayout : undefined}
-                    enableTemplatePreviewSave={hasCompatibleSelectedCustomReceipt}
-                    generateTemplateLayoutBlob={hasCompatibleSelectedCustomReceipt ? buildEditableCustomReceiptPdf : undefined}
+                    initialTemplateLayout={hasActiveCustomTemplate ? activeCustomLayout : undefined}
+                    enableTemplatePreviewSave={hasActiveCustomTemplate}
+                    generateTemplateLayoutBlob={hasActiveCustomTemplate ? activeBuildEditableCustomPdf : undefined}
                     printSelectionOptions={salesPrintSelectionOptions}
                     printSelectionTemplates={salesCustomPrintOptions}
                     onPrintSelection={handlePrintSelection}

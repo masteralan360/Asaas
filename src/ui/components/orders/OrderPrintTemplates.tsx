@@ -80,19 +80,21 @@ export const ORDER_DETAILS_MOVABLE_COMPONENT_KEYS = {
 
 type OrderDetailsMovableComponentKey = typeof ORDER_DETAILS_MOVABLE_COMPONENT_KEYS[keyof typeof ORDER_DETAILS_MOVABLE_COMPONENT_KEYS]
 
-function MovableOrderPrintBlock({
+export function MovableOrderPrintBlock({
     componentKey,
     label,
     position,
     editable,
     onPositionChange,
+    wrapperClassName,
     children
 }: {
-    componentKey: OrderDetailsMovableComponentKey
+    componentKey: string
     label: string
     position?: CustomTemplateComponentPosition
     editable?: boolean
     onPositionChange?: (key: string, position: CustomTemplateComponentPosition) => void
+    wrapperClassName?: string
     children: ReactNode
 }) {
     const resolvedPosition = position || { x: 0, y: 0 }
@@ -153,7 +155,10 @@ function MovableOrderPrintBlock({
 
     return (
         <div
-            className={editable ? 'group/order-block relative outline outline-1 outline-dashed outline-transparent hover:outline-primary/60' : undefined}
+            className={[
+                editable ? 'group/order-block relative outline outline-1 outline-dashed outline-transparent hover:outline-primary/60' : undefined,
+                wrapperClassName
+            ].filter(Boolean).join(' ')}
             style={{
                 transform: `translate(${resolvedPosition.x}mm, ${resolvedPosition.y}mm)`,
                 position: 'relative',
