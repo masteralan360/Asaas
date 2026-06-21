@@ -1,10 +1,64 @@
 use std::fs;
+use std::io::{Read, Write};
+use std::net::{TcpListener, TcpStream};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
+use std::thread;
+use std::time::Duration;
 use tauri::{Emitter, Manager};
 use tokio::sync::broadcast;
 
 mod kds_server;
+
+const SINGLE_INSTANCE_PORT: u16 = 41931;
+
+fn setup_single_instance(handle: tauri::AppHandle) -> bool {
+    match TcpListener::bind(("127.0.0.1", SINGLE_INSTANCE_PORT)) {
+        Ok(listener) => {
+            let _ = listener.set_nonblocking(true);
+            thread::spawn(move || loop {
+                match listener.accept() {
+                    Ok((mut stream, _)) => {
+                        let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
+                        let mut buf = [0; 4096];
+                        if let Ok(n) = stream.read(&mut buf) {
+                            if n > 0 {
+                                let msg = String::from_utf8_lossy(&buf[..n]).to_string();
+                                if let Some(window) = handle.get_webview_window("main") {
+                                    let _ = window.emit("deep-link", msg);
+                                }
+                            }
+                        }
+                        if let Some(window) = handle.get_webview_window("main") {
+                            let _ = window.set_focus();
+                        }
+                    }
+                    Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                        thread::sleep(Duration::from_millis(100));
+                    }
+                    Err(_) => thread::sleep(Duration::from_millis(500)),
+                }
+            });
+            true
+        }
+        Err(_) => {
+            if let Ok(mut stream) = TcpStream::connect(("127.0.0.1", SINGLE_INSTANCE_PORT)) {
+                let args: Vec<String> = std::env::args().collect();
+                for arg in &args {
+                    if let Some(route) = arg.strip_prefix("--open-route=") {
+                        let _ = stream.write_all(route.as_bytes());
+                        let _ = stream.flush();
+                        break;
+                    }
+                }
+                let _ = stream.shutdown(std::net::Shutdown::Write);
+                let mut buf = [0; 1];
+                let _ = stream.read(&mut buf);
+            }
+            false
+        }
+    }
+}
 
 pub struct KdsState {
     pub server_url: Mutex<Option<String>>,
@@ -264,26 +318,27 @@ pub fn run() {
         builder = builder.plugin(tauri_plugin_opener::init());
     }
 
-    builder
+    let app = builder
         .manage(KdsState {
             server_url: Mutex::new(None),
             tx,
             last_message: Arc::new(Mutex::new(None)),
         })
         .setup(|app| {
-        let window = app.get_webview_window("main").unwrap();
+            let handle = app.handle().clone();
+            if !setup_single_instance(handle) {
+                std::process::exit(0);
+            }
+
+            let window = app.get_webview_window("main").unwrap();
 
             #[cfg(desktop)]
             {
-                // Force disable decorations (Fix for persistent title bar)
                 let _ = window.set_decorations(false);
-                // let _ = window.set_shadow(true);
 
-                // Show window after configuration
                 let _ = window.maximize();
                 let _ = window.show();
 
-                // Parse --open-route argument for deep-link navigation
                 let args: Vec<String> = std::env::args().collect();
                 for arg in &args {
                     if let Some(route) = arg.strip_prefix("--open-route=") {
@@ -313,6 +368,14 @@ pub fn run() {
             backup_db_to_usb,
             create_desktop_shortcut
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application");
+
+    app.run(|app_handle, event| {
+        if let tauri::RunEvent::Resumed = event {
+            if let Some(window) = app_handle.get_webview_window("main") {
+                let _ = window.set_focus();
+            }
+        }
+    });
 }
