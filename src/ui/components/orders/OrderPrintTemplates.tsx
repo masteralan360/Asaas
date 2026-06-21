@@ -78,8 +78,6 @@ export const ORDER_DETAILS_MOVABLE_COMPONENT_KEYS = {
     notes: 'notes'
 } as const
 
-type OrderDetailsMovableComponentKey = typeof ORDER_DETAILS_MOVABLE_COMPONENT_KEYS[keyof typeof ORDER_DETAILS_MOVABLE_COMPONENT_KEYS]
-
 export function MovableOrderPrintBlock({
     componentKey,
     label,

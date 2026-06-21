@@ -756,12 +756,12 @@ function createSalesHistoryModernA4Preview(options: CustomTemplatePreviewOptions
         ],
         page: { widthMm: 210, heightMm: 297 },
         fixedPrintLang,
-        createElement: (data, _effectiveId, printLangOverride, renderOptions) => (
+        createElement: (data, _effectiveId, _printLangOverride, renderOptions) => (
             <ModernA4InvoiceTemplate
                 data={receiptData}
                 features={options.features || {}}
                 workspaceId={options.workspaceId}
-                workspaceName={options.workspaceName}
+                workspaceName={options.workspaceName ?? undefined}
                 workspaceFooterContacts={renderOptions?.workspaceFooterContacts || options.workspaceFooterContacts}
                 hideUnit={data.hideUnit === 'true'}
                 hideDiscount={data.hideDiscount === 'true'}
