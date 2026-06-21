@@ -217,10 +217,10 @@ export const ModernA4InvoiceTemplate = forwardRef<HTMLDivElement, ModernA4Invoic
                     </div>
                     <div className="flex-1 text-center px-4 pt-1">
                         <h1 className="text-2xl font-extrabold text-primary tracking-tight mb-1">{workspaceName || 'Atlas'}</h1>
-                        <p className="text-slate-500 text-[10px] font-medium">Providing Quality Solutions Since 1995</p>
+
                         <div className="mt-1 text-[9px] text-slate-400 flex flex-col gap-0.5">
                             {/* In a real app, these would come from workspace settings */}
-                            <span>Digital solutions for modern businesses</span>
+
                         </div>
                     </div>
                     <div className="w-16 flex flex-col items-end gap-1 flex-shrink-0">
@@ -468,21 +468,21 @@ export const ModernA4InvoiceTemplate = forwardRef<HTMLDivElement, ModernA4Invoic
                                     if (!onDataChange) return
                                     e.preventDefault()
                                     e.stopPropagation()
-                                    
+
                                     const el = e.currentTarget
                                     const startX = e.clientX
                                     const startY = e.clientY
                                     const initialX = img.x
                                     const initialY = img.y
-                                    
+
                                     const rect = el.offsetParent?.getBoundingClientRect()
                                     if (!rect) return
                                     const scale = 210 / rect.width
-                                    
+
                                     const onPointerMove = (moveEvent: PointerEvent) => {
                                         const dx = (moveEvent.clientX - startX) * scale
                                         const dy = (moveEvent.clientY - startY) * scale
-                                        
+
                                         const newImages = [...(data.attached_images || [])]
                                         newImages[idx] = {
                                             ...img,
@@ -491,12 +491,12 @@ export const ModernA4InvoiceTemplate = forwardRef<HTMLDivElement, ModernA4Invoic
                                         }
                                         onDataChange({ ...data, attached_images: newImages })
                                     }
-                                    
+
                                     const onPointerUp = () => {
                                         window.removeEventListener('pointermove', onPointerMove)
                                         window.removeEventListener('pointerup', onPointerUp)
                                     }
-                                    
+
                                     window.addEventListener('pointermove', onPointerMove)
                                     window.addEventListener('pointerup', onPointerUp)
                                 }}
@@ -507,11 +507,11 @@ export const ModernA4InvoiceTemplate = forwardRef<HTMLDivElement, ModernA4Invoic
                                     className="w-full h-auto object-contain block ring-1 ring-transparent group-hover:ring-primary transition-shadow"
                                     style={{ maxHeight: '1000mm' }}
                                 />
-                                
+
                                 {onDataChange && (
                                     <>
                                         {/* Rotation Handle */}
-                                        <div 
+                                        <div
                                             className="absolute -top-8 left-1/2 -translate-x-1/2 w-6 h-6 bg-white border border-slate-200 rounded-full shadow-sm flex items-center justify-center cursor-alias opacity-0 group-hover:opacity-100 transition-opacity hover:bg-slate-50 active:bg-slate-100"
                                             onPointerDown={(e) => {
                                                 e.stopPropagation()
@@ -542,7 +542,7 @@ export const ModernA4InvoiceTemplate = forwardRef<HTMLDivElement, ModernA4Invoic
                                         </div>
 
                                         {/* Resize Handle */}
-                                        <div 
+                                        <div
                                             className="absolute -bottom-2 -right-2 w-5 h-5 bg-white border border-slate-200 rounded shadow-sm flex items-center justify-center cursor-nwse-resize opacity-0 group-hover:opacity-100 transition-opacity hover:bg-slate-50 active:bg-slate-100"
                                             onPointerDown={(e) => {
                                                 e.stopPropagation()
@@ -609,7 +609,7 @@ export const ModernA4InvoiceTemplate = forwardRef<HTMLDivElement, ModernA4Invoic
                                         onDataChange({ ...data, attached_texts: newTexts })
                                     }}
                                     className="w-full bg-transparent border-none outline-none resize-none p-1 block ring-1 ring-transparent group-hover:ring-primary transition-shadow text-inherit font-bold overflow-hidden"
-                                    style={{ 
+                                    style={{
                                         height: 'auto',
                                         fontSize: `${txt.fontSize || 16}px`,
                                         color: txt.color || 'inherit'
@@ -624,11 +624,11 @@ export const ModernA4InvoiceTemplate = forwardRef<HTMLDivElement, ModernA4Invoic
                                     rows={1}
                                     spellCheck={false}
                                 />
-                                
+
                                 {onDataChange && (
                                     <>
                                         {/* Font Size Handle */}
-                                        <div 
+                                        <div
                                             className="absolute -top-16 left-1/2 -translate-x-1/2 h-7 bg-white border border-slate-200 rounded-md shadow-sm flex items-center justify-center opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity z-10 px-1"
                                             onPointerDown={(e) => e.stopPropagation()}
                                         >
@@ -650,7 +650,7 @@ export const ModernA4InvoiceTemplate = forwardRef<HTMLDivElement, ModernA4Invoic
                                         </div>
 
                                         {/* Move Handle */}
-                                        <div 
+                                        <div
                                             className="absolute -bottom-7 left-1/2 -translate-x-1/2 w-6 h-6 bg-white border border-slate-200 rounded-full shadow-sm flex items-center justify-center cursor-move opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity hover:bg-slate-50 active:bg-slate-100"
                                             onPointerDown={(e) => {
                                                 if (!onDataChange) return
@@ -682,7 +682,7 @@ export const ModernA4InvoiceTemplate = forwardRef<HTMLDivElement, ModernA4Invoic
                                         >
                                             <Move className="w-3 h-3 text-primary" />
                                         </div>
-                                        <div 
+                                        <div
                                             className="absolute -top-8 left-1/2 -translate-x-1/2 w-6 h-6 bg-white border border-slate-200 rounded-full shadow-sm flex items-center justify-center cursor-alias opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity hover:bg-slate-50 active:bg-slate-100"
                                             onPointerDown={(e) => {
                                                 e.stopPropagation()
@@ -714,7 +714,7 @@ export const ModernA4InvoiceTemplate = forwardRef<HTMLDivElement, ModernA4Invoic
                                         </div>
 
                                         {/* Resize (Width) Handle */}
-                                        <div 
+                                        <div
                                             className="absolute -bottom-2 -right-2 w-5 h-5 bg-white border border-slate-200 rounded shadow-sm flex items-center justify-center cursor-nwse-resize opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity hover:bg-slate-50 active:bg-slate-100"
                                             onPointerDown={(e) => {
                                                 e.stopPropagation()
@@ -763,12 +763,12 @@ export const ModernA4InvoiceTemplate = forwardRef<HTMLDivElement, ModernA4Invoic
                 )}
 
                 {/* Annotations Layer */}
-                <svg 
-                    className="absolute inset-0 z-[40] pointer-events-none" 
+                <svg
+                    className="absolute inset-0 z-[40] pointer-events-none"
                     viewBox="0 0 210 297"
                 >
                     {(data.annotations || []).map((ann, i) => (
-                        <path 
+                        <path
                             key={i}
                             d={`M ${ann.points.map(p => `${p.x},${p.y}`).join(' L ')}`}
                             stroke={ann.color}
