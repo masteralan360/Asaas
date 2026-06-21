@@ -2978,6 +2978,25 @@ export function POS() {
                                     <p className="text-xs text-muted-foreground mt-1">
                                         {t('pos.originalPriceDesc') || 'Original price will be preserved in records.'}
                                     </p>
+                                    {(() => {
+                                        const parsedPrice = parseFormattedNumber(negotiatedPriceInput)
+                                        const costPrice = editingProduct?.costPrice
+                                        if (costPrice != null && costPrice > 0 && !isNaN(parsedPrice) && parsedPrice < costPrice) {
+                                            return (
+                                                <div className="mt-2 p-3 rounded-lg bg-red-500/10 border border-red-500/20 animate-in fade-in slide-in-from-top-1 duration-200">
+                                                    <div className="flex items-center gap-2 text-red-600">
+                                                        <span className="text-sm font-semibold">
+                                                            {t('pos.priceBelowCost') || '⚠️ Price is below cost!'}
+                                                        </span>
+                                                    </div>
+                                                    <div className="text-xs text-red-500/80 mt-0.5">
+                                                        {formatCurrency(costPrice, editingProduct?.currency || 'usd', features.iqd_display_preference)}
+                                                    </div>
+                                                </div>
+                                            )
+                                        }
+                                        return null
+                                    })()}
                                 </div>
 
                                 <DialogFooter>

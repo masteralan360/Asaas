@@ -1587,6 +1587,7 @@
     "originalPriceLabel": "نرخی ڕەسەن",
     "originalPriceDesc": " ",
     "convertedValue": "بەهای گۆڕدراو",
+    "priceBelowCost": "⚠️ نرخی فرۆشتن لە تێچوو کەمترە!",
     "paymentMethod": "شێوازی پارەدان",
     "digital": "دیجیتاڵی",
     "cash": "کاش",

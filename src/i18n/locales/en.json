@@ -2391,6 +2391,7 @@
     "originalPriceLabel": "Original Price",
     "originalPriceDesc": " ",
     "convertedValue": "Converted Value",
+    "priceBelowCost": "⚠️ Price is below cost!",
     "paymentMethod": "Payment Method",
     "digital": "Digital",
     "cash": "Cash",

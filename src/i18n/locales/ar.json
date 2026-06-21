@@ -1569,6 +1569,7 @@
     "originalPriceLabel": "السعر الأصلي",
     "originalPriceDesc": " ",
     "convertedValue": "القيمة المحولة",
+    "priceBelowCost": "⚠️ السعر أقل من التكلفة!",
     "paymentMethod": "طريقة الدفع",
     "digital": "رقمي",
     "cash": "نقدي",
