@@ -105,7 +105,12 @@ const PERMISSION_MODULE_PLAN_MODULES: Partial<Record<WorkspacePermissionModule, 
     discounts: 'discounts',
     revenueAnalytics: 'revenue_analytics',
     teamPerformance: 'team_performance',
-    hr: 'hr'
+    hr: 'hr',
+    pos: 'pos',
+    instantPos: 'instant_pos',
+    salesHistory: 'sales_history',
+    products: 'products',
+    budget: 'accounting'
 }
 
 export function Members() {

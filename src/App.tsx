@@ -953,6 +953,7 @@ function App() {
                         <ProtectedRoute
                           allowedRoles={["admin", "staff", "viewer"]}
                           requiredFeature="pos"
+                          requiredPermission="pos.access"
                         >
                           <Layout>
                             <POS />
@@ -963,6 +964,7 @@ function App() {
                         <ProtectedRoute
                           allowedRoles={["admin", "staff", "viewer"]}
                           requiredFeature="instant_pos"
+                          requiredPermission="instantPos.access"
                         >
                           <Layout>
                             <InstantPOS />
@@ -985,7 +987,7 @@ function App() {
                         </div>
                       </Route>
                       <Route path="/sales">
-                        <ProtectedRoute requiredFeature="sales_history">
+                        <ProtectedRoute requiredFeature="sales_history" requiredPermission="salesHistory.access">
                           <Layout>
                             <Sales />
                           </Layout>
@@ -1039,6 +1041,7 @@ function App() {
                         <ProtectedRoute
                           allowedRoles={["admin", "staff", "viewer"]}
                           requiredFeature="agents"
+                          requiredPermission="fleet.shareLocation"
                         >
                           <Layout>
                             <AgentLocationSharing />
@@ -1457,14 +1460,14 @@ function App() {
                         <ProtectedRoute
                           allowedRoles={["admin", "staff", "viewer"]}
                           requiredFeature="budget"
-                          requiredPermission="accounting.access"
+                          requiredPermission="budget.access"
                         >
                           <Layout>
                             <Budget />
                           </Layout>
                         </ProtectedRoute>
                       </Route>
-                      <Route path="/monthly-comparison">
+                      {/* <Route path="/monthly-comparison">
                         <ProtectedRoute
                           allowedRoles={["admin", "staff", "viewer"]}
                           requiredFeature="monthly_comparison"
@@ -1473,7 +1476,7 @@ function App() {
                             <MonthlyComparison />
                           </Layout>
                         </ProtectedRoute>
-                      </Route>
+                      </Route> */}
                       <Route path="/performance">
                         <ProtectedRoute
                           allowedRoles={["admin", "staff", "viewer"]}
@@ -1496,28 +1499,28 @@ function App() {
                         </ProtectedRoute>
                       </Route>
                       <Route path="/products/new">
-                        <ProtectedRoute requiredFeature="products">
+                        <ProtectedRoute requiredFeature="products" requiredPermission="products.access">
                           <Layout>
                             <ProductCreatePage />
                           </Layout>
                         </ProtectedRoute>
                       </Route>
                       <Route path="/products/:productId/clone">
-                        <ProtectedRoute requiredFeature="products">
+                        <ProtectedRoute requiredFeature="products" requiredPermission="products.access">
                           <Layout>
                             <ProductClonePage />
                           </Layout>
                         </ProtectedRoute>
                       </Route>
                       <Route path="/products/:productId">
-                        <ProtectedRoute requiredFeature="products">
+                        <ProtectedRoute requiredFeature="products" requiredPermission="products.access">
                           <Layout>
                             <ProductEditPage />
                           </Layout>
                         </ProtectedRoute>
                       </Route>
                       <Route path="/products">
-                        <ProtectedRoute requiredFeature="products">
+                        <ProtectedRoute requiredFeature="products" requiredPermission="products.access">
                           <Layout>
                             <Products />
                           </Layout>

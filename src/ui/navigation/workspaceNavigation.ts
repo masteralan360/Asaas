@@ -115,7 +115,7 @@ export function buildWorkspaceNavigation({
   };
 
   const otherItems: WorkspaceNavigationItem[] = [
-    ...(isCoreRole && hasFeature("pos")
+    ...(isCoreRole && hasFeature("pos") && canAccessPermission("pos.access")
       ? [
         {
           name: t("nav.pos", { defaultValue: "Point of Sale" }),
@@ -124,7 +124,7 @@ export function buildWorkspaceNavigation({
         },
       ]
       : []),
-    ...(isCoreRole && hasFeature("instant_pos") && features.instant_pos
+    ...(isCoreRole && hasFeature("instant_pos") && features.instant_pos && canAccessPermission("instantPos.access")
       ? [
         {
           name: t("nav.instantPos", { defaultValue: "Instant POS" }),
@@ -140,7 +140,7 @@ export function buildWorkspaceNavigation({
         },
       ]
       : []),
-    ...(hasFeature("sales_history")
+    ...(hasFeature("sales_history") && canAccessPermission("salesHistory.access")
       ? [
         {
           name: t("nav.sales", { defaultValue: "Sales History" }),
@@ -251,7 +251,7 @@ export function buildWorkspaceNavigation({
         },
       ]
       : []),
-    ...(isCoreRole && hasFeature("agents")
+    ...(isCoreRole && hasFeature("agents") && canAccessPermission("fleet.shareLocation")
       ? [
         {
           name: t("fleet.shareLocation", { defaultValue: "Share My Location" }),
@@ -397,7 +397,7 @@ export function buildWorkspaceNavigation({
             },
           ]
           : []),
-        ...(hasFeature("budget") && canAccessPermission("accounting.access")
+        ...(hasFeature("budget") && canAccessPermission("budget.access")
           ? [
             {
               name: t("nav.budget", { defaultValue: "Accounting" }),
@@ -406,17 +406,17 @@ export function buildWorkspaceNavigation({
             },
           ]
           : []),
-        ...(hasFeature("monthly_comparison")
-          ? [
-            {
-              name: t("monthlyComparison.title", {
-                defaultValue: "Monthly Comparison",
-              }),
-              href: "/monthly-comparison",
-              icon: ArrowRightLeft,
-            },
-          ]
-          : []),
+        // ...(hasFeature("monthly_comparison")
+        //   ? [
+        //     {
+        //       name: t("monthlyComparison.title", {
+        //         defaultValue: "Monthly Comparison",
+        //       }),
+        //       href: "/monthly-comparison",
+        //       icon: ArrowRightLeft,
+        //     },
+        //   ]
+        //   : []),
         ...(hasFeature("team_performance") && canAccessPermission("teamPerformance.access")
           ? [
             {
@@ -440,7 +440,7 @@ export function buildWorkspaceNavigation({
         },
       ]
       : []),
-    ...(hasFeature("products")
+    ...(hasFeature("products") && canAccessPermission("products.access")
       ? [
         {
           name: t("nav.products", { defaultValue: "Products" }),

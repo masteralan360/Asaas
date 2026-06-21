@@ -157,7 +157,7 @@ export function Dashboard() {
     const stats = useDashboardStats(workspaceId)
 
     const showNetFlow = hasPermission('ledger.access')
-    const showOutstanding = hasFeature('budget') && hasPermission('accounting.access')
+    const showOutstanding = hasFeature('budget') && hasPermission('budget.access')
     const showPendingPayments = hasPermission('payment.access')
     const visibleCardsCount = [showNetFlow, showOutstanding, showPendingPayments].filter(Boolean).length
 
