@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { CalendarDays, CreditCard, Eye, LayoutGrid, List, Lock, PackagePlus, Pencil, Plus, Printer, Search, ShoppingCart, Trash2, Truck, UsersRound, Wallet, Warehouse } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { getLocalizedOrderError } from '@/lib/orderErrors'
 import { useLocation, useRoute } from 'wouter'
 
 import { SalesOrderFormPage } from '@/ui/components/orders/SalesOrderFormPage'
@@ -881,7 +882,11 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
             await action()
             toast({ title: successMessage })
         } catch (error: any) {
-            toast({ title: t('common.error') || 'Error', description: error?.message || 'Action failed', variant: 'destructive' })
+            toast({
+                title: t('common.error') || 'Error',
+                description: getLocalizedOrderError(error, t, 'Action failed'),
+                variant: 'destructive'
+            })
         }
     }
 
@@ -987,7 +992,7 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                                                                 : setSettlementTarget(buildSalesOrderPaymentObligation(row as SalesOrder))
                                                             }
                                                         >
-                                                            {row.isPaid ? 'Unpay' : 'Pay'}
+                                                            {row.isPaid ? (t('orders.actions.unpay') || 'Unpay') : (t('orders.actions.pay') || 'Pay')}
                                                         </Button>
                                                     )}
                                                     {canManageOrders && row.isPaid && !row.isLocked && <Button variant="outline" size="sm" onClick={() => setLockConfirm({ isOpen: true, orderId: row.id, type: 'sales' })}><Lock className="h-3.5 w-3.5" /></Button>}
@@ -1010,7 +1015,7 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                                                                 : setSettlementTarget(buildPurchaseOrderPaymentObligation(row as PurchaseOrder))
                                                             }
                                                         >
-                                                            {row.isPaid ? 'Unpay' : 'Pay'}
+                                                            {row.isPaid ? (t('orders.actions.unpay') || 'Unpay') : (t('orders.actions.pay') || 'Pay')}
                                                         </Button>
                                                     )}
                                                     {canManageOrders && row.isPaid && !row.isLocked && <Button variant="outline" size="sm" onClick={() => setLockConfirm({ isOpen: true, orderId: row.id, type: 'purchase' })}><Lock className="h-3.5 w-3.5" /></Button>}
@@ -1125,7 +1130,7 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                                                     : setSettlementTarget(buildSalesOrderPaymentObligation(row as SalesOrder))
                                                 }
                                             >
-                                                {row.isPaid ? 'Unpay' : 'Pay'}
+                                                {row.isPaid ? (t('orders.actions.unpay') || 'Unpay') : (t('orders.actions.pay') || 'Pay')}
                                             </Button>
                                         )}
                                         {canManageOrders && row.isPaid && !row.isLocked && <Button variant="outline" size="sm" className="h-9 rounded-xl px-3" onClick={() => setLockConfirm({ isOpen: true, orderId: row.id, type: 'sales' })}><Lock className="h-3.5 w-3.5" /></Button>}
@@ -1148,7 +1153,7 @@ function OrdersListView({ workspaceId, initialTab = 'sales' }: { workspaceId: st
                                                     : setSettlementTarget(buildPurchaseOrderPaymentObligation(row as PurchaseOrder))
                                                 }
                                             >
-                                                {row.isPaid ? 'Unpay' : 'Pay'}
+                                                {row.isPaid ? (t('orders.actions.unpay') || 'Unpay') : (t('orders.actions.pay') || 'Pay')}
                                             </Button>
                                         )}
                                         {canManageOrders && row.isPaid && !row.isLocked && <Button variant="outline" size="sm" className="h-9 rounded-xl px-3" onClick={() => setLockConfirm({ isOpen: true, orderId: row.id, type: 'purchase' })}><Lock className="h-3.5 w-3.5" /></Button>}

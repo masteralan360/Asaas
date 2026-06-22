@@ -966,7 +966,9 @@
       "cancel": "إلغاء",
       "lock": "قفل",
       "reverseLastPayment": "تراجع عن آخر دفعة",
-      "payInstallment": "دفع القسط"
+      "payInstallment": "دفع القسط",
+      "pay": "دفع",
+      "unpay": "تراجع عن الدفع"
     },
     "table": {
       "orderNumber": "رقم الطلب",
@@ -1059,7 +1061,7 @@
         "atLeastOneItem": "أضف بنداً واحداً على الأقل.",
         "saveSalesFailed": "تعذر حفظ طلب البيع.",
         "savePurchaseFailed": "تعذر حفظ طلب الشراء.",
-        "non_financed_order_must_be_paid": "يجب دفع الطلب غير الممول."
+        "non_financed_order_must_be_paid": "يجب دفع هذا الطلب بالكامل قبل حجزه. لحجزه مع وجود رصيد مستحق، اختر القروض أو الأقساط كطريقة دفع."
       }
     },
     "messages": {

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type ReactElement } from 'react'
 import { ArrowLeft, CalendarDays, CreditCard, LayoutGrid, List, Lock, Package, Printer, Receipt, ShoppingCart, Trash2, TrendingUp, Truck, UsersRound, Warehouse } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { getLocalizedOrderError } from '@/lib/orderErrors'
 import { Link, useLocation } from 'wouter'
 
 import { useAuth } from '@/auth'
@@ -260,7 +261,7 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
         } catch (error: any) {
             toast({
                 title: t('common.error') || 'Error',
-                description: error?.message || 'Action failed',
+                description: getLocalizedOrderError(error, t, 'Action failed'),
                 variant: 'destructive'
             })
         }
