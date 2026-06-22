@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback, type ReactNode } from 'react'
+import { resolveIsolatedTextDirection } from '@/lib/textDirection'
 
 interface EditableFieldProps {
     value: string | number
@@ -66,6 +67,7 @@ export function EditableField({
     if (!editing) {
         return (
             <span
+                dir={resolveIsolatedTextDirection(String(value) || placeholder)}
                 className={editable ? `cursor-pointer hover:bg-blue-50 rounded px-0.5 -mx-0.5 transition-colors ${className}` : className}
                 onClick={handleStart}
                 title={editable ? 'Click to edit' : undefined}
@@ -80,6 +82,7 @@ export function EditableField({
             <textarea
                 ref={inputRef as any}
                 value={draft}
+                dir={resolveIsolatedTextDirection(draft || placeholder)}
                 onChange={(e) => setDraft(e.target.value)}
                 onBlur={handleBlur}
                 onKeyDown={(e) => {
@@ -101,6 +104,7 @@ export function EditableField({
             ref={inputRef}
             type={type}
             value={draft}
+            dir={resolveIsolatedTextDirection(draft || placeholder)}
             onChange={(e) => setDraft(e.target.value)}
             onBlur={handleBlur}
             onKeyDown={handleKeyDown}

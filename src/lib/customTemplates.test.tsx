@@ -319,20 +319,29 @@ describe('Order Details custom print template', () => {
                     totals: { x: -4, y: 9 }
                 },
                 annotations: [],
-                texts: [],
+                texts: [{
+                    id: 'phone-number',
+                    text: '0770 199 0012',
+                    x: 20,
+                    y: 30,
+                    width: 45,
+                    rotation: 0
+                }],
                 images: [],
                 updatedAt: new Date().toISOString()
             },
             values: {},
             options: {
                 workspaceName: 'Atlas Test',
-                printLang: 'en'
+                printLang: 'ku'
             }
         }))
 
         expect(html).toContain('data-order-print-component="orderItems"')
         expect(html).toContain('translate(7mm, 15mm)')
         expect(html).toContain('translate(-4mm, 9mm)')
+        expect(html).toContain('dir="ltr" class="absolute whitespace-pre-wrap')
+        expect(html).toContain('0770 199 0012')
         expect(html).not.toContain('order-template-move-handle absolute')
     })
 })

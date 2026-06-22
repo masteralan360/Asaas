@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next'
 import { ReactQRCode } from '@lglab/react-qr-code'
 import { Mail, MapPin, Phone, X, RotateCw, Scaling, Move } from 'lucide-react'
 import { EditableField } from '@/ui/components/EditableField'
+import { resolveIsolatedTextDirection } from '@/lib/textDirection'
 
 interface WorkspaceContactPair {
     primary?: string
@@ -535,6 +536,7 @@ export const A4InvoiceTemplate = forwardRef<HTMLDivElement, A4InvoiceTemplatePro
                             >
                                 <textarea
                                     value={txt.text}
+                                    dir={resolveIsolatedTextDirection(txt.text)}
                                     onChange={(e) => {
                                         if (!onDataChange) return
                                         const newTexts = [...(data.attached_texts || [])]

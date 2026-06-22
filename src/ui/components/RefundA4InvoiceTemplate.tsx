@@ -6,6 +6,7 @@ import { platformService } from '@/services/platformService'
 import { useTranslation } from 'react-i18next'
 import { ReactQRCode } from '@lglab/react-qr-code'
 import { X, RotateCw, Scaling, Move } from 'lucide-react'
+import { resolveIsolatedTextDirection } from '@/lib/textDirection'
 
 interface RefundA4InvoiceTemplateProps {
     data: UniversalInvoice
@@ -404,6 +405,7 @@ export const RefundA4InvoiceTemplate = forwardRef<HTMLDivElement, RefundA4Invoic
                             >
                                 <textarea
                                     value={txt.text}
+                                    dir={resolveIsolatedTextDirection(txt.text)}
                                     onChange={(e) => {
                                         if (!onDataChange) return
                                         const newTexts = [...(data.attached_texts || [])]

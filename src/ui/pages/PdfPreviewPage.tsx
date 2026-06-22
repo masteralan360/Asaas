@@ -30,6 +30,7 @@ import {
 import { SaleReceiptBase } from '@/ui/components/SaleReceipt'
 import { DeleteConfirmationModal } from '@/ui/components/DeleteConfirmationModal'
 import { cn } from '@/lib/utils'
+import { resolveIsolatedTextDirection } from '@/lib/textDirection'
 import type { UniversalInvoice } from '@/types'
 import { useAuth } from '@/auth/AuthContext'
 import { UiAccessGate, useUiAccess } from '@/context/UiAccessContext'
@@ -1096,6 +1097,7 @@ export function PdfPreviewPage() {
                                     >
                                         <textarea
                                             value={txt.text}
+                                            dir={resolveIsolatedTextDirection(txt.text)}
                                             onChange={(e) => setTemplateTexts(prev => prev.map((t, i) => i === idx ? { ...t, text: e.target.value } : t))}
                                             onBlur={() => {
                                                 if (!txt.text.trim()) {

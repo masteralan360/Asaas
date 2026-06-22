@@ -25,6 +25,7 @@ import type {
 } from '@/local-db'
 import type { WorkspaceFeatures } from '@/workspace'
 import type { UniversalInvoice } from '@/types'
+import { resolveIsolatedTextDirection } from '@/lib/textDirection'
 import {
     SaleReceiptBase,
     SALE_RECEIPT_TEMPLATE_FIELD_KEYS
@@ -1007,6 +1008,7 @@ function CustomTemplateLayoutOverlay({ layout }: { layout: CustomTemplateLayout 
             {layout.texts.map((text, index) => (
                 <div
                     key={`text-${text.id || index}`}
+                    dir={resolveIsolatedTextDirection(text.text)}
                     className="absolute whitespace-pre-wrap break-words font-bold leading-snug"
                     style={{
                         left: `${(text.x / pageWidth) * 100}%`,

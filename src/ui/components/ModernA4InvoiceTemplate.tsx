@@ -8,6 +8,7 @@ import { Mail, MapPin, Phone, X, RotateCw, Scaling, Move } from 'lucide-react'
 import { EditableField } from '@/ui/components/EditableField'
 import { MovableOrderPrintBlock } from '@/ui/components/MovableComponentPrint'
 import type { CustomTemplateComponentPosition } from '@/lib/pdfPreviewStore'
+import { resolveIsolatedTextDirection } from '@/lib/textDirection'
 
 export const MODERN_A4_MOVABLE_COMPONENT_KEYS = {
     logo: 'logo',
@@ -672,6 +673,7 @@ export const ModernA4InvoiceTemplate = forwardRef<HTMLDivElement, ModernA4Invoic
                             >
                                 <textarea
                                     value={txt.text}
+                                    dir={resolveIsolatedTextDirection(txt.text)}
                                     onChange={(e) => {
                                         if (!onDataChange) return
                                         const newTexts = [...(data.attached_texts || [])]
