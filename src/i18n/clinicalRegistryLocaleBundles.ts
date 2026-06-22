@@ -4,6 +4,7 @@ import medicalKu from '@/i18n/locales/ku.json'
 import beautyEn from '@/i18n/locales/beauty-center/en.json'
 import beautyKu from '@/i18n/locales/beauty-center/ku.json'
 import type { ClinicalRegistryType } from '@/i18n/clinicalRegistry'
+import { isBeautyClinicalRegistryType } from '@/local-db/clinicalRegistryPreset'
 
 export type ClinicalRegistryLanguage = 'en' | 'ar' | 'ku'
 
@@ -39,5 +40,5 @@ export function getClinicalRegistryLocaleBundle(
     language: ClinicalRegistryLanguage,
     registryType: ClinicalRegistryType,
 ) {
-    return registryType === 'beauty' ? beautyBundles[language] : medicalBundles[language]
+    return isBeautyClinicalRegistryType(registryType) ? beautyBundles[language] : medicalBundles[language]
 }

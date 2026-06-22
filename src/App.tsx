@@ -1,4 +1,4 @@
-import { Route, Switch, Router, Link } from "wouter";
+import { Redirect, Route, Switch, Router, Link } from "wouter";
 import { useHashLocation } from "@/hooks/useHashLocation";
 import { AuthProvider, ProtectedRoute, GuestRoute, useAuth } from "@/auth";
 import { WorkspaceProvider } from "@/workspace";
@@ -31,6 +31,8 @@ import { useKdsStream } from "@/hooks/useKdsStream";
 import { UsbBackupWarningModal } from "@/ui/components/UsbBackupWarningModal";
 import { validateUsbBackupOnStartup, pickUsbBackupDestination, copyDbToUsb } from "@/local-db/usbBackup";
 import { clearUsbBackupSettings } from "@/local-db/usbBackupSettings";
+import { useClinicalRegistryType } from "@/local-db/clinicalPresets";
+import { supportsClinicalPatientsAndServicePresets } from "@/i18n/clinicalRegistry";
 
 // @ts-ignore
 const isTauri = !!window.__TAURI_INTERNALS__;
@@ -747,6 +749,17 @@ function KdsSecurityGuard({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+function ClinicalPatientsAndServicePresetsGuard({ children }: { children: React.ReactNode }) {
+  const { user } = useAuth();
+  const registryType = useClinicalRegistryType(user?.workspaceId);
+
+  if (!supportsClinicalPatientsAndServicePresets(registryType)) {
+    return <Redirect to="/clinical-appointments" />;
+  }
+
+  return <>{children}</>;
+}
+
 function KdsStreamAutostart() {
   const { features } = useWorkspace();
   const isHost = isDesktop();
@@ -1393,9 +1406,11 @@ function App() {
                           requiredFeature="clinical_appointments"
                           requiredPermission="clinicalPatients.access"
                         >
-                          <Layout>
-                            <ClinicalPatients />
-                          </Layout>
+                          <ClinicalPatientsAndServicePresetsGuard>
+                            <Layout>
+                              <ClinicalPatients />
+                            </Layout>
+                          </ClinicalPatientsAndServicePresetsGuard>
                         </ProtectedRoute>
                       </Route>
                       <Route path="/clinical-appointments/patients/:patientId">
@@ -1404,9 +1419,11 @@ function App() {
                           requiredFeature="clinical_appointments"
                           requiredPermission="clinicalPatients.access"
                         >
-                          <Layout>
-                            <ClinicalPatientDetails />
-                          </Layout>
+                          <ClinicalPatientsAndServicePresetsGuard>
+                            <Layout>
+                              <ClinicalPatientDetails />
+                            </Layout>
+                          </ClinicalPatientsAndServicePresetsGuard>
                         </ProtectedRoute>
                       </Route>
 
@@ -1416,9 +1433,11 @@ function App() {
                           requiredFeature="clinical_appointments"
                           requiredPermission="clinicalAppointments.access"
                         >
-                          <Layout>
-                            <ClinicalPresets />
-                          </Layout>
+                          <ClinicalPatientsAndServicePresetsGuard>
+                            <Layout>
+                              <ClinicalPresets />
+                            </Layout>
+                          </ClinicalPatientsAndServicePresetsGuard>
                         </ProtectedRoute>
                       </Route>
 

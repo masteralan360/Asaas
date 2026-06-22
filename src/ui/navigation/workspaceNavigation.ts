@@ -41,6 +41,8 @@ import {
 import type { WorkspaceFeatures } from "@/workspace";
 import type { ModuleFeatureKey } from "@/workspace/WorkspaceContext";
 import type { WorkspacePermissionKey } from "@/permissions";
+import type { ClinicalRegistryType } from "@/local-db/models";
+import { supportsClinicalPatientsAndServicePresets } from "@/i18n/clinicalRegistry";
 
 export interface WorkspaceNavigationChild {
   name: string;
@@ -79,6 +81,7 @@ interface BuildWorkspaceNavigationOptions {
   hasFeature: (feature: ModuleFeatureKey) => boolean;
   hasPermission?: (permission: WorkspacePermissionKey) => boolean;
   features: WorkspaceFeatures;
+  clinicalRegistryType?: ClinicalRegistryType;
   isDesktopDevice: boolean;
   whatsappStatus?: "live" | "off";
 }
@@ -96,6 +99,7 @@ export function buildWorkspaceNavigation({
   hasFeature,
   hasPermission,
   features,
+  clinicalRegistryType = "medical",
   isDesktopDevice,
   whatsappStatus,
 }: BuildWorkspaceNavigationOptions): WorkspaceNavigationGroup[] {
@@ -316,18 +320,20 @@ export function buildWorkspaceNavigation({
           name: t("clinicalAppointments.title", { defaultValue: "Clinical Appointments Registry" }),
           href: "/clinical-appointments",
           icon: CalendarClock,
-          children: [
-            {
-              name: t("clinicalAppointments.patients", { defaultValue: "Patients" }),
-              href: "/clinical-appointments/patients",
-              icon: Users,
-            },
-            {
-              name: t("clinicalPresets.title", { defaultValue: "Clinical Presets" }),
-              href: "/clinical-presets",
-              icon: ListChecks,
-            },
-          ],
+          children: supportsClinicalPatientsAndServicePresets(clinicalRegistryType)
+            ? [
+                {
+                  name: t("clinicalAppointments.patients", { defaultValue: "Patients" }),
+                  href: "/clinical-appointments/patients",
+                  icon: Users,
+                },
+                {
+                  name: t("clinicalPresets.title", { defaultValue: "Clinical Presets" }),
+                  href: "/clinical-presets",
+                  icon: ListChecks,
+                },
+              ]
+            : undefined,
         },
       ]
       : []),

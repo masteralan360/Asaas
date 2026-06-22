@@ -14,6 +14,7 @@ import { addToOfflineMutations, fetchTableFromSupabase } from './hooks'
 import { getOrderBalanceAmount } from './orderInstallments'
 import type {
     CurrencyCode,
+    ClinicalAppointment,
     Employee,
     ExpenseItem,
     ExpenseSeries,
@@ -1185,6 +1186,127 @@ export async function appendPaymentTransaction(
 
         throw normalizeSupabaseActionError(error)
     }
+}
+
+function getBeauty2PaymentDate(issueDate?: string | null) {
+    if (issueDate && /^\d{4}-\d{2}-\d{2}$/.test(issueDate)) {
+        return `${issueDate}T12:00:00.000Z`
+    }
+    return new Date().toISOString()
+}
+
+async function replaceBeauty2AppointmentPayment(
+    workspaceId: string,
+    appointment: ClinicalAppointment,
+    targetAmount: number,
+    targetCurrency: Extract<CurrencyCode, 'iqd' | 'usd'>,
+    createdBy?: string | null
+) {
+    const relatedTransactions = await listPaymentTransactionsForSource(workspaceId, {
+        sourceType: 'clinical_appointment',
+        sourceRecordId: appointment.id
+    })
+    const reversedIds = new Set(
+        relatedTransactions
+            .filter((transaction) => !!transaction.reversalOfTransactionId)
+            .map((transaction) => transaction.reversalOfTransactionId as string)
+    )
+    const activeAutoTransactions = relatedTransactions
+        .filter((transaction) =>
+            !transaction.isDeleted
+            && !transaction.reversalOfTransactionId
+            && !reversedIds.has(transaction.id)
+            && transaction.metadata?.beauty2AutoPayment === true
+        )
+        .sort((left, right) => right.paidAt.localeCompare(left.paidAt) || right.createdAt.localeCompare(left.createdAt))
+
+    const normalizedAmount = Math.max(0, Number(targetAmount || 0))
+    const current = activeAutoTransactions[0]
+    if (
+        activeAutoTransactions.length === 1
+        && current.currency === targetCurrency
+        && Math.abs(current.amount - normalizedAmount) <= 0.000001
+    ) {
+        return current
+    }
+
+    for (const transaction of activeAutoTransactions) {
+        await appendPaymentTransaction(workspaceId, {
+            sourceModule: 'clinical_appointments',
+            sourceType: 'clinical_appointment',
+            sourceRecordId: appointment.id,
+            sourceSubrecordId: null,
+            direction: 'incoming',
+            amount: -Math.abs(transaction.amount),
+            currency: transaction.currency,
+            paymentMethod: transaction.paymentMethod,
+            paidAt: new Date().toISOString(),
+            counterpartyName: transaction.counterpartyName || appointment.receivedFromName || appointment.patientName,
+            referenceLabel: transaction.referenceLabel || appointment.appointmentNumber || null,
+            note: `Reversal after editing appointment ${appointment.appointmentNumber || appointment.id}`,
+            createdBy: createdBy || null,
+            reversalOfTransactionId: transaction.id,
+            metadata: {
+                ...(transaction.metadata || {}),
+                beauty2AutoPayment: true,
+                reversal: true
+            }
+        })
+    }
+
+    let replacement: PaymentTransaction | null = null
+    if (normalizedAmount > 0) {
+        replacement = await appendPaymentTransaction(workspaceId, {
+            sourceModule: 'clinical_appointments',
+            sourceType: 'clinical_appointment',
+            sourceRecordId: appointment.id,
+            sourceSubrecordId: null,
+            direction: 'incoming',
+            amount: normalizedAmount,
+            currency: targetCurrency,
+            paymentMethod: 'unknown',
+            paidAt: getBeauty2PaymentDate(appointment.issueDate),
+            counterpartyName: appointment.receivedFromName || appointment.patientName,
+            referenceLabel: appointment.appointmentNumber || null,
+            note: appointment.internalNotes || null,
+            createdBy: createdBy || null,
+            metadata: {
+                beauty2AutoPayment: true,
+                appointmentId: appointment.id,
+                appointmentNumber: appointment.appointmentNumber || null,
+                calculatedAmount: normalizedAmount,
+                calculatedAmountCurrency: targetCurrency
+            }
+        })
+    }
+
+    const { updateClinicalAppointment } = await import('./clinicalAppointments')
+    await updateClinicalAppointment(appointment.id, {}, workspaceId)
+    return replacement
+}
+
+export function syncBeauty2AppointmentPayment(
+    workspaceId: string,
+    appointment: ClinicalAppointment,
+    createdBy?: string | null
+) {
+    const currency = appointment.calculatedAmountCurrency === 'usd' ? 'usd' : 'iqd'
+    return replaceBeauty2AppointmentPayment(
+        workspaceId,
+        appointment,
+        appointment.calculatedAmount || 0,
+        currency,
+        createdBy
+    )
+}
+
+export function reverseBeauty2AppointmentPayment(
+    workspaceId: string,
+    appointment: ClinicalAppointment,
+    createdBy?: string | null
+) {
+    const currency = appointment.calculatedAmountCurrency === 'usd' ? 'usd' : 'iqd'
+    return replaceBeauty2AppointmentPayment(workspaceId, appointment, 0, currency, createdBy)
 }
 
 export async function appendLoanOriginationTransactionForLoan(

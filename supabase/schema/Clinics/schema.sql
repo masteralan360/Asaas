@@ -3,6 +3,14 @@ CREATE SCHEMA IF NOT EXISTS clinics;
 CREATE TABLE clinics.clinical_patients (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   workspace_id uuid NOT NULL,
+  appointment_number text NULL,
+  issue_date date NULL,
+  next_visit_date date NULL,
+  received_from_name text NULL,
+  amount_iqd numeric NULL,
+  amount_usd numeric NULL,
+  calculated_amount numeric NULL,
+  calculated_amount_currency text NULL,
   name text NOT NULL,
   phone text NULL,
   email text NULL,
@@ -62,6 +70,12 @@ CREATE TABLE clinics.clinical_appointments (
   ),
   CONSTRAINT clinical_appointments_fee_check CHECK (consultation_fee >= 0),
   CONSTRAINT clinical_appointments_estimated_price_check CHECK (estimated_price >= 0),
+  CONSTRAINT clinical_appointments_amount_iqd_check CHECK (amount_iqd IS NULL OR amount_iqd >= 0),
+  CONSTRAINT clinical_appointments_amount_usd_check CHECK (amount_usd IS NULL OR amount_usd >= 0),
+  CONSTRAINT clinical_appointments_calculated_amount_check CHECK (calculated_amount IS NULL OR calculated_amount >= 0),
+  CONSTRAINT clinical_appointments_calculated_amount_currency_check CHECK (
+    calculated_amount_currency IS NULL OR calculated_amount_currency IN ('iqd', 'usd')
+  ),
   CONSTRAINT clinical_appointments_currency_check CHECK (currency IN ('usd', 'iqd', 'eur', 'try')),
   CONSTRAINT clinical_appointments_paid_amount_check CHECK (paid_amount >= 0),
   CONSTRAINT clinical_appointments_payment_status_check CHECK (payment_status IN ('no_fee', 'unpaid', 'partial', 'paid')),

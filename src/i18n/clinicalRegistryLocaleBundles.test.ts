@@ -29,6 +29,13 @@ describe('clinical registry locale bundles', () => {
         expect(bundle.clinicalPresets.title).toBe('Service Presets')
     })
 
+    it('uses the original Beauty Center bundle for beauty2', () => {
+        expect(getClinicalRegistryLocaleBundle('en', 'beauty2'))
+            .toBe(getClinicalRegistryLocaleBundle('en', 'beauty'))
+        expect(getClinicalRegistryLocaleBundle('ku', 'beauty2'))
+            .toBe(getClinicalRegistryLocaleBundle('ku', 'beauty'))
+    })
+
     it('falls back to the English Beauty Center bundle for Arabic', () => {
         expect(getClinicalRegistryLocaleBundle('ar', 'beauty'))
             .toBe(getClinicalRegistryLocaleBundle('en', 'beauty'))

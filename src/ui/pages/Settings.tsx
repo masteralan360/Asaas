@@ -73,6 +73,7 @@ export function Settings() {
     const canManageClinicalRegistry = canManageClinicalRegistryType(
         user?.role,
         hasFeature('clinical_appointments'),
+        clinicalRegistryType,
     )
 
     // Biometric State
@@ -168,7 +169,7 @@ export function Settings() {
     }
 
     const handleClinicalRegistryTypeChange = async (useBeautyCenterTerms: boolean) => {
-        if (!user?.workspaceId || isClinicalRegistrySaving) return
+        if (!user?.workspaceId || isClinicalRegistrySaving || clinicalRegistryType === 'beauty2') return
 
         setIsClinicalRegistrySaving(true)
         try {

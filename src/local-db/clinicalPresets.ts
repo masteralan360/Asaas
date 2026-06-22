@@ -9,7 +9,7 @@ import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
 import { runSupabaseAction } from '@/lib/supabaseRequest'
 import { fetchTableFromSupabase } from './hooks'
 import { addToOfflineMutations } from './offlineMutations'
-import type { ClinicalPreset, BaseEntity, ClinicalRegistryType } from './models'
+import type { ClinicalPreset, BaseEntity, ClinicalRegistryType, UserSelectableClinicalRegistryType } from './models'
 import {
   CLINICAL_REGISTRY_PRESET_CATEGORY,
   DEFAULT_CLINICAL_REGISTRY_TYPE,
@@ -200,7 +200,7 @@ export async function createClinicalPreset(
 
 export async function setClinicalRegistryType(
   workspaceId: string,
-  registryType: ClinicalRegistryType,
+  registryType: UserSelectableClinicalRegistryType,
   createdBy?: string | null,
 ) {
   const timestamp = new Date().toISOString()

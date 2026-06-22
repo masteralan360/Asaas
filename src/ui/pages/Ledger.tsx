@@ -1198,11 +1198,23 @@ export function Ledger() {
     const loans = useLoans(workspaceId)
     const realEstateTransactions = useRealEstateTransactions(workspaceId)
     const sales = useSales(workspaceId, dateBounds.startDate, dateBounds.endDate)
-    const paymentTransactions = usePaymentTransactions(workspaceId, { includeReversals: false })
+    const paymentTransactions = usePaymentTransactions(workspaceId, { includeReversals: true })
     const salesOrders = useSalesOrders(workspaceId, dateBounds.startDate, dateBounds.endDate)
     const purchaseOrders = usePurchaseOrders(workspaceId)
     const businessPartners = useBusinessPartners(workspaceId)
     const rawExchangeTransactions = useExchangeTransactions(workspaceId)
+    const activePaymentTransactions = useMemo(() => {
+        const reversedIds = new Set(
+            paymentTransactions
+                .filter((transaction) => !!transaction.reversalOfTransactionId)
+                .map((transaction) => transaction.reversalOfTransactionId as string)
+        )
+        return paymentTransactions.filter((transaction) =>
+            !transaction.isDeleted
+            && !transaction.reversalOfTransactionId
+            && !reversedIds.has(transaction.id)
+        )
+    }, [paymentTransactions])
     const rates = useMemo(
         () => buildConversionRates(exchangeData, eurRates, tryRates),
         [eurRates, exchangeData, tryRates]
@@ -1239,11 +1251,11 @@ export function Ledger() {
     )
     const loanOriginationIds = useMemo(
         () => new Set(
-            paymentTransactions
-                .filter((transaction) => !transaction.isDeleted && !transaction.reversalOfTransactionId && transaction.sourceType === 'loan_origination')
+            activePaymentTransactions
+                .filter((transaction) => transaction.sourceType === 'loan_origination')
                 .map((transaction) => transaction.sourceRecordId)
         ),
-        [paymentTransactions]
+        [activePaymentTransactions]
     )
     const salesOrderById = useMemo(
         () => new Map(salesOrders.map((order) => [order.id, order])),
@@ -1274,7 +1286,7 @@ export function Ledger() {
         }
         const rows = [
             ...sales.map(s => buildSaleLedgerEntry(s, t)).filter((entry): entry is LedgerEntry => !!entry),
-            ...paymentTransactions
+            ...activePaymentTransactions
                 .map((transaction) => buildPaymentLedgerEntry(transaction, context, t))
                 .filter((entry): entry is LedgerEntry => !!entry),
             ...(rawExchangeTransactions || [])
@@ -1283,7 +1295,7 @@ export function Ledger() {
         ]
 
         return rows.sort((left, right) => right.date.localeCompare(left.date) || right.transactionId.localeCompare(left.transactionId))
-    }, [loanById, loanOriginationIds, paymentTransactions, realEstateTransactionById, saleById, sales, salesOrderById, purchaseOrderById, businessPartnerByName, rawExchangeTransactions, t])
+    }, [activePaymentTransactions, loanById, loanOriginationIds, realEstateTransactionById, saleById, sales, salesOrderById, purchaseOrderById, businessPartnerByName, rawExchangeTransactions, t])
 
     const typeOptions = useMemo(
         () => Array.from(new Set(allEntries.map((entry) => entry.type))).sort((left, right) => ledgerTypeLabel(left, t).localeCompare(ledgerTypeLabel(right, t))),

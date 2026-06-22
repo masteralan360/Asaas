@@ -29,6 +29,7 @@ import { ThemeAwareLogo } from './ThemeAwareLogo'
 import { LocalAccountSwitcher } from './LocalAccountSwitcher'
 import { buildWorkspaceNavigation } from '@/ui/navigation/workspaceNavigation'
 import { useWorkspaceBranchSwitcher } from '@/hooks/useWorkspaceBranchSwitcher'
+import { useClinicalRegistryType } from '@/local-db/clinicalPresets'
 
 import {
     LogOut,
@@ -136,6 +137,7 @@ function prefetchRoute(href: string) {
 export function Layout({ children }: LayoutProps) {
     const [location, setLocation] = useLocation()
     const { user, signOut } = useAuth()
+    const clinicalRegistryType = useClinicalRegistryType(user?.workspaceId)
     const { hasFeature, hasCapability, workspaceName, isFullscreen, features, activeWorkspace, isLocalMode } = useWorkspace()
     const { hasPermission } = useWorkspacePermissions()
     const demoExpiryRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -478,6 +480,7 @@ export function Layout({ children }: LayoutProps) {
         hasFeature,
         hasPermission,
         features,
+        clinicalRegistryType,
         isDesktopDevice: isDesktop(),
         whatsappStatus
     })

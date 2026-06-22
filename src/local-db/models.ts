@@ -938,7 +938,8 @@ export type ClinicalPatientType = 'new' | 'existing';
 
 export type ClinicalPresetCategory = 'reason_for_visit' | 'appointment_type' | 'registry_type';
 
-export type ClinicalRegistryType = 'medical' | 'beauty';
+export type ClinicalRegistryType = 'medical' | 'beauty' | 'beauty2';
+export type UserSelectableClinicalRegistryType = Exclude<ClinicalRegistryType, 'beauty2'>;
 
 export interface ClinicalPreset extends BaseEntity {
   category: ClinicalPresetCategory;
@@ -993,6 +994,14 @@ export interface ClinicalPatient extends BaseEntity {
 }
 
 export interface ClinicalAppointment extends BaseEntity {
+  appointmentNumber?: string | null;
+  issueDate?: string | null;
+  nextVisitDate?: string | null;
+  receivedFromName?: string | null;
+  amountIqd?: number | null;
+  amountUsd?: number | null;
+  calculatedAmount?: number | null;
+  calculatedAmountCurrency?: Extract<CurrencyCode, 'iqd' | 'usd'> | null;
   patientId: string;
   patientName: string;
   patientPhone?: string | null;

@@ -17,6 +17,7 @@ import { isDesktop, isMobile } from '@/lib/platform'
 import { Input } from '@/ui/components/input'
 import { ThemeAwareLogo } from '@/ui/components/ThemeAwareLogo'
 import { buildWorkspaceNavigation, flattenWorkspaceNavigation } from '@/ui/navigation/workspaceNavigation'
+import { useClinicalRegistryType } from '@/local-db/clinicalPresets'
 import {
     launcherSectionOrder,
     launcherSections,
@@ -28,6 +29,7 @@ export function ModuleLauncher() {
     const { user } = useAuth()
     const { workspaceName, hasFeature, features } = useWorkspace()
     const { hasPermission } = useWorkspacePermissions()
+    const clinicalRegistryType = useClinicalRegistryType(user?.workspaceId)
     const [query, setQuery] = useState('')
     const [viewMode, setViewMode] = useState<'detail' | 'grid'>(() => {
         if (!localStorage.getItem('atlas_first_time_done')) return 'grid'
@@ -49,8 +51,9 @@ export function ModuleLauncher() {
         hasFeature,
         hasPermission,
         features,
+        clinicalRegistryType,
         isDesktopDevice: isDesktop()
-    }), [features, hasFeature, hasPermission, t, user?.role])
+    }), [clinicalRegistryType, features, hasFeature, hasPermission, t, user?.role])
 
     const sections = useMemo(() => {
         const visibleSidebarItems = flattenWorkspaceNavigation(navigation).filter((item) => !item.mobileOnly || isMobile())

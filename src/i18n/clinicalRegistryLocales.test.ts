@@ -48,4 +48,11 @@ describe('clinical registry locale synchronization', () => {
         expect(i18n.t('clinicalAppointments.title')).toBe('سجل المواعيد السريرية')
         expect(i18n.t('clinicalAppointments.patient')).toBe('المريض')
     })
+
+    it('applies the original Beauty Center terminology for beauty2', () => {
+        applyClinicalRegistryLocale('beauty2')
+
+        expect(i18n.t('clinicalAppointments.title')).toBe('Beauty Center Appointments')
+        expect(i18n.t('clinicalAppointments.patient')).toBe('Client')
+    })
 })

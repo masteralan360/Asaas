@@ -9,6 +9,8 @@ import {
   buildClinicalAppointmentPaymentObligation,
   getClinicalAppointmentPaymentSummary,
   recordObligationSettlement,
+  reverseBeauty2AppointmentPayment,
+  syncBeauty2AppointmentPayment,
   usePaymentTransactions,
   type PaymentObligation,
   type CurrencyCode,
@@ -16,9 +18,10 @@ import {
 } from '@/local-db'
 import type { ClinicalAppointment, ClinicalAppointmentStatus, ClinicalAppointmentType, ClinicalAppointmentPriority, ClinicalConfirmationMethod } from '@/local-db/clinicalAppointments'
 import { useClinicalPresetsByCategory, useClinicalRegistryType } from '@/local-db/clinicalPresets'
+import { isBeautyClinicalRegistryType } from '@/local-db/clinicalRegistryPreset'
 import { Button, Input, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Textarea, Label, Card, CardContent, CardHeader, CardTitle, DateTimePicker, SettlementDialog, useToast, DeleteConfirmationModal } from '@/ui/components'
 import { Plus, Search, Upload, Trash2, FileText, ArrowLeft, CalendarClock, Edit, Check, ChevronDown, LayoutGrid, List, HandCoins } from 'lucide-react'
-import { generateId, formatCurrency, formatNumberWithCommas, formatTime } from '@/lib/utils'
+import { generateId, formatCurrency, formatLocalDateValue, formatNumberWithCommas, formatTime, formatNumericInput, parseFormattedNumber, parseLocalDateValue, sanitizeNumericInput } from '@/lib/utils'
 import { DateRangeFilters } from '@/ui/components/DateRangeFilters'
 import { useDateRange } from '@/context/DateRangeContext'
 import { r2Service } from '@/services/r2Service'
@@ -185,12 +188,15 @@ export function ClinicalAppointments() {
   const [editMatch, editParams] = useRoute('/clinical-appointments/:id/edit')
   const workspaceId = user?.workspaceId ?? ''
   const editAppointment = useClinicalAppointment(editMatch ? editParams?.id : undefined)
+  const registryType = useClinicalRegistryType(workspaceId || undefined)
+  const isBeauty2 = registryType === 'beauty2'
 
   if (!workspaceId) return null
 
   if (createMatch) {
+    const AppointmentForm = isBeauty2 ? Beauty2AppointmentForm : CreateAppointmentForm
     return (
-      <CreateAppointmentForm
+      <AppointmentForm
         workspaceId={workspaceId}
         onCancel={() => navigate('/clinical-appointments')}
         onSaved={() => navigate('/clinical-appointments')}
@@ -199,8 +205,9 @@ export function ClinicalAppointments() {
   }
 
   if (editMatch && editAppointment) {
+    const AppointmentForm = isBeauty2 ? Beauty2AppointmentForm : CreateAppointmentForm
     return (
-      <CreateAppointmentForm
+      <AppointmentForm
         workspaceId={workspaceId}
         appointment={editAppointment}
         onCancel={() => navigate('/clinical-appointments')}
@@ -211,7 +218,343 @@ export function ClinicalAppointments() {
 
   if (editMatch && !editAppointment) return null
 
-  return <AppointmentList workspaceId={workspaceId} navigate={navigate} />
+  return isBeauty2
+    ? <Beauty2AppointmentList workspaceId={workspaceId} navigate={navigate} />
+    : <AppointmentList workspaceId={workspaceId} navigate={navigate} />
+}
+
+function Beauty2AppointmentList({ workspaceId, navigate }: { workspaceId: string; navigate: (path: string) => void }) {
+  const { t } = useTranslation()
+  const { user } = useAuth()
+  const { features } = useWorkspace()
+  const { toast } = useToast()
+  const { dateRange, customDates } = useDateRange()
+  const appointments = useClinicalAppointments(workspaceId)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
+
+  const filtered = useMemo(() => {
+    const now = new Date()
+    const query = searchQuery.trim().toLowerCase()
+    return (appointments || []).filter((appointment) => {
+      const issueDate = appointment.issueDate || appointment.appointmentDate
+      if (query && ![
+        appointment.appointmentNumber,
+        appointment.receivedFromName,
+        appointment.patientName,
+        appointment.patientPhone,
+        appointment.internalNotes,
+      ].some((value) => value?.toLowerCase().includes(query))) {
+        return false
+      }
+      if (dateRange === 'today') {
+        return issueDate === now.toISOString().slice(0, 10)
+      }
+      if (dateRange === 'month') {
+        const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
+        return issueDate >= monthStart
+      }
+      if (dateRange === 'custom') {
+        if (customDates.start && issueDate < customDates.start) return false
+        if (customDates.end && issueDate > customDates.end) return false
+      }
+      return true
+    })
+  }, [appointments, customDates.end, customDates.start, dateRange, searchQuery])
+
+  const handleDelete = useCallback(async () => {
+    if (!deleteConfirmId) return
+    setIsDeleting(true)
+    try {
+      const appointment = appointments?.find((item) => item.id === deleteConfirmId)
+      if (appointment) {
+        await reverseBeauty2AppointmentPayment(workspaceId, appointment, user?.id || null)
+      }
+      await deleteClinicalAppointment(deleteConfirmId, workspaceId)
+      toast({ title: t('clinicalAppointments.messages.deleted', { defaultValue: 'Appointment deleted' }) })
+    } catch (error) {
+      console.error('[ClinicalAppointments] Failed to delete beauty2 appointment:', error)
+      toast({
+        variant: 'destructive',
+        title: t('clinicalAppointments.messages.deleteFailed', { defaultValue: 'Failed to delete appointment' }),
+      })
+    } finally {
+      setIsDeleting(false)
+      setDeleteConfirmId(null)
+    }
+  }, [appointments, deleteConfirmId, t, toast, user?.id, workspaceId])
+
+  const renderActions = (appointment: ClinicalAppointment) => (
+    <div className="flex items-center gap-1">
+      <Button variant="ghost" size="icon" onClick={() => navigate(`/clinical-appointments/${appointment.id}/edit`)}>
+        <Edit className="h-4 w-4" />
+      </Button>
+      <Button variant="ghost" size="icon" onClick={() => setDeleteConfirmId(appointment.id)}>
+        <Trash2 className="h-4 w-4" />
+      </Button>
+    </div>
+  )
+
+  return (
+    <div className="space-y-6 p-6">
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">
+            {t('clinicalAppointments.title', { defaultValue: 'Beauty Center Appointments' })}
+          </h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {t('clinicalAppointments.subtitle', { defaultValue: 'Manage Beauty Center appointment records.' })}
+          </p>
+        </div>
+        <Button onClick={() => navigate('/clinical-appointments/new')}>
+          <Plus className="h-4 w-4 sm:mr-2" />
+          <span className="hidden sm:inline">{t('clinicalAppointments.createButton', { defaultValue: 'Create Appointment' })}</span>
+        </Button>
+      </div>
+
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div className="relative max-w-sm flex-1">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+            placeholder={t('clinicalAppointments.searchPlaceholder', { defaultValue: 'Search appointments...' })}
+            className="pl-10"
+          />
+        </div>
+        <DateRangeFilters />
+      </div>
+
+      <div className="grid gap-4 md:hidden">
+        {filtered.length === 0 ? (
+          <div className="py-12 text-center text-muted-foreground">
+            {t('clinicalAppointments.noAppointments', { defaultValue: 'No appointments found' })}
+          </div>
+        ) : filtered.map((appointment) => (
+          <div key={appointment.id} className="space-y-3 rounded-2xl border bg-background p-4 shadow-sm">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="font-semibold">{appointment.receivedFromName || appointment.patientName}</p>
+                <p className="text-xs text-muted-foreground">{appointment.appointmentNumber || '—'}</p>
+              </div>
+              {renderActions(appointment)}
+            </div>
+            <div className="grid grid-cols-2 gap-3 text-sm">
+              <div><span className="text-muted-foreground">{t('clinicalAppointments.amountIqd', { defaultValue: 'Amount in IQD' })}</span><p className="font-medium">{formatCurrency(appointment.amountIqd || 0, 'iqd', features.iqd_display_preference)}</p></div>
+              <div><span className="text-muted-foreground">{t('clinicalAppointments.amountUsd', { defaultValue: 'Amount in USD' })}</span><p className="font-medium">{formatCurrency(appointment.amountUsd || 0, 'usd', features.iqd_display_preference)}</p></div>
+              <div><span className="text-muted-foreground">{t('clinicalAppointments.calculatedAmount', { defaultValue: 'Amount (Real Calculation)' })}</span><p className="font-medium">{formatCurrency(appointment.calculatedAmount || 0, appointment.calculatedAmountCurrency || 'iqd', features.iqd_display_preference)}</p></div>
+              <div><span className="text-muted-foreground">{t('clinicalAppointments.phoneNumber', { defaultValue: 'Phone Number' })}</span><p className="font-medium">{appointment.patientPhone || '—'}</p></div>
+              <div><span className="text-muted-foreground">{t('clinicalAppointments.issueDate', { defaultValue: 'Issue Date' })}</span><p className="font-medium">{appointment.issueDate || appointment.appointmentDate}</p></div>
+              <div><span className="text-muted-foreground">{t('clinicalAppointments.nextVisitDate', { defaultValue: 'Next Visit Date' })}</span><p className="font-medium">{appointment.nextVisitDate || '—'}</p></div>
+            </div>
+            <div className="text-sm"><span className="text-muted-foreground">{t('clinicalAppointments.note', { defaultValue: 'Note' })}: </span>{appointment.internalNotes || '—'}</div>
+          </div>
+        ))}
+      </div>
+
+      <div className="hidden overflow-x-auto rounded-lg border md:block">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>{t('clinicalAppointments.appointmentNumber', { defaultValue: 'Appointment Number' })}</TableHead>
+              <TableHead>{t('clinicalAppointments.issueDate', { defaultValue: 'Issue Date' })}</TableHead>
+              <TableHead>{t('clinicalAppointments.receivedFrom', { defaultValue: 'Received From' })}</TableHead>
+              <TableHead>{t('clinicalAppointments.amountIqd', { defaultValue: 'Amount in IQD' })}</TableHead>
+              <TableHead>{t('clinicalAppointments.amountUsd', { defaultValue: 'Amount in USD' })}</TableHead>
+              <TableHead>{t('clinicalAppointments.calculatedAmount', { defaultValue: 'Amount (Real Calculation)' })}</TableHead>
+              <TableHead>{t('clinicalAppointments.phoneNumber', { defaultValue: 'Phone Number' })}</TableHead>
+              <TableHead>{t('clinicalAppointments.note', { defaultValue: 'Note' })}</TableHead>
+              <TableHead>{t('clinicalAppointments.nextVisitDate', { defaultValue: 'Next Visit Date' })}</TableHead>
+              <TableHead>{t('clinicalAppointments.actions', { defaultValue: 'Actions' })}</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {filtered.length === 0 ? (
+              <TableRow><TableCell colSpan={10} className="py-12 text-center text-muted-foreground">{t('clinicalAppointments.noAppointments', { defaultValue: 'No appointments found' })}</TableCell></TableRow>
+            ) : filtered.map((appointment) => (
+              <TableRow key={appointment.id}>
+                <TableCell className="font-medium">{appointment.appointmentNumber || '—'}</TableCell>
+                <TableCell>{appointment.issueDate || appointment.appointmentDate}</TableCell>
+                <TableCell>{appointment.receivedFromName || appointment.patientName}</TableCell>
+                <TableCell className="whitespace-nowrap">{formatCurrency(appointment.amountIqd || 0, 'iqd', features.iqd_display_preference)}</TableCell>
+                <TableCell className="whitespace-nowrap">{formatCurrency(appointment.amountUsd || 0, 'usd', features.iqd_display_preference)}</TableCell>
+                <TableCell className="whitespace-nowrap">{formatCurrency(appointment.calculatedAmount || 0, appointment.calculatedAmountCurrency || 'iqd', features.iqd_display_preference)}</TableCell>
+                <TableCell>{appointment.patientPhone || '—'}</TableCell>
+                <TableCell className="max-w-56 truncate" title={appointment.internalNotes || undefined}>{appointment.internalNotes || '—'}</TableCell>
+                <TableCell>{appointment.nextVisitDate || '—'}</TableCell>
+                <TableCell>{renderActions(appointment)}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+
+      <DeleteConfirmationModal
+        isOpen={!!deleteConfirmId}
+        onClose={() => setDeleteConfirmId(null)}
+        onConfirm={handleDelete}
+        isLoading={isDeleting}
+        itemName={deleteConfirmId
+          ? appointments?.find((appointment) => appointment.id === deleteConfirmId)?.appointmentNumber || ''
+          : ''}
+      />
+    </div>
+  )
+}
+
+function Beauty2AppointmentForm({ workspaceId, appointment, onCancel, onSaved }: { workspaceId: string; appointment?: ClinicalAppointment; onCancel: () => void; onSaved: () => void }) {
+  const { t } = useTranslation()
+  const { user } = useAuth()
+  const { toast } = useToast()
+  const [amountIqd, setAmountIqd] = useState(appointment?.amountIqd ? String(appointment.amountIqd) : '')
+  const [amountUsd, setAmountUsd] = useState(appointment?.amountUsd ? String(appointment.amountUsd) : '')
+  const [receivedFromName, setReceivedFromName] = useState(appointment?.receivedFromName || appointment?.patientName || '')
+  const [calculatedAmount, setCalculatedAmount] = useState(appointment?.calculatedAmount ? String(appointment.calculatedAmount) : '')
+  const [calculatedAmountCurrency, setCalculatedAmountCurrency] = useState<'iqd' | 'usd'>(
+    appointment?.calculatedAmountCurrency === 'usd' ? 'usd' : 'iqd',
+  )
+  const [phoneNumber, setPhoneNumber] = useState(appointment?.patientPhone || '')
+  const [note, setNote] = useState(appointment?.internalNotes || '')
+  const [appointmentNumber, setAppointmentNumber] = useState(appointment?.appointmentNumber || '')
+  const [issueDate, setIssueDate] = useState(appointment?.issueDate || appointment?.appointmentDate || '')
+  const [nextVisitDate, setNextVisitDate] = useState(appointment?.nextVisitDate || '')
+  const [saving, setSaving] = useState(false)
+
+  const handleSubmit = async () => {
+    if (!appointmentNumber.trim() || !receivedFromName.trim() || !issueDate) return
+    setSaving(true)
+    try {
+      const beauty2Fields = {
+        appointmentNumber: appointmentNumber.trim(),
+        issueDate,
+        nextVisitDate: nextVisitDate || null,
+        receivedFromName: receivedFromName.trim(),
+        amountIqd: parseFormattedNumber(amountIqd || '0'),
+        amountUsd: parseFormattedNumber(amountUsd || '0'),
+        calculatedAmount: parseFormattedNumber(calculatedAmount || '0'),
+        calculatedAmountCurrency,
+        patientName: receivedFromName.trim(),
+        patientPhone: phoneNumber.trim() || null,
+        appointmentDate: issueDate,
+        consultationFee: parseFormattedNumber(calculatedAmount || '0'),
+        currency: calculatedAmountCurrency,
+        internalNotes: note.trim() || null,
+      }
+
+      let savedAppointment: ClinicalAppointment | null
+      if (appointment) {
+        savedAppointment = await updateClinicalAppointment(appointment.id, beauty2Fields, workspaceId)
+      } else {
+        savedAppointment = await createClinicalAppointment({
+          ...beauty2Fields,
+          patientId: generateId(),
+          isNewPatient: true,
+          startTime: '00:00',
+          appointmentType: 'consultation',
+          reasonForVisit: null,
+          serviceProcedure: null,
+          estimatedPrice: 0,
+          status: 'draft',
+          confirmationMethod: null,
+          priority: 'normal',
+          createdBy: user?.id || null,
+        }, workspaceId)
+      }
+      if (!savedAppointment) throw new Error('Appointment could not be saved')
+      await syncBeauty2AppointmentPayment(workspaceId, savedAppointment, user?.id || null)
+      onSaved()
+    } catch (error) {
+      console.error('[ClinicalAppointments] Failed to save beauty2 appointment:', error)
+      toast({
+        variant: 'destructive',
+        title: t('clinicalAppointments.messages.saveFailed', { defaultValue: 'Failed to save appointment' }),
+      })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="h-full overflow-y-auto bg-background p-4 lg:p-6">
+      <form onSubmit={(event) => { event.preventDefault(); void handleSubmit() }} className="mx-auto max-w-2xl space-y-4">
+        <Button type="button" variant="ghost" className="h-auto gap-2 px-0 text-muted-foreground hover:bg-transparent hover:text-foreground" onClick={onCancel}>
+          <ArrowLeft className="h-4 w-4" />
+          {t('clinicalAppointments.title', { defaultValue: 'Beauty Center Appointments' })}
+        </Button>
+        <h1 className="text-3xl font-bold tracking-tight">
+          {appointment
+            ? t('clinicalAppointments.editTitle', { defaultValue: 'Edit Appointment' })
+            : t('clinicalAppointments.createTitle', { defaultValue: 'Create Appointment' })}
+        </h1>
+
+        <div className="grid gap-2">
+          <Label htmlFor="beauty2-amount-iqd">{t('clinicalAppointments.amountIqd', { defaultValue: 'Amount in IQD' })}</Label>
+          <Input id="beauty2-amount-iqd" inputMode="numeric" value={formatNumericInput(amountIqd)} onChange={(event) => setAmountIqd(sanitizeNumericInput(event.target.value, { allowDecimal: false }))} />
+        </div>
+        <div className="grid gap-2">
+          <Label htmlFor="beauty2-amount-usd">{t('clinicalAppointments.amountUsd', { defaultValue: 'Amount in USD' })}</Label>
+          <Input id="beauty2-amount-usd" inputMode="decimal" value={formatNumericInput(amountUsd)} onChange={(event) => setAmountUsd(sanitizeNumericInput(event.target.value, { allowDecimal: true }))} />
+        </div>
+        <div className="grid gap-2">
+          <Label htmlFor="beauty2-received-from">{t('clinicalAppointments.receivedFrom', { defaultValue: 'Received From (Name)' })}</Label>
+          <Input id="beauty2-received-from" value={receivedFromName} onChange={(event) => setReceivedFromName(event.target.value)} required />
+        </div>
+        <div className="grid gap-2">
+          <Label htmlFor="beauty2-calculated-amount">{t('clinicalAppointments.calculatedAmount', { defaultValue: 'Amount (Real Calculation)' })}</Label>
+          <div className="flex gap-2">
+            <Input className="flex-1" id="beauty2-calculated-amount" inputMode={calculatedAmountCurrency === 'iqd' ? 'numeric' : 'decimal'} value={formatNumericInput(calculatedAmount)} onChange={(event) => setCalculatedAmount(sanitizeNumericInput(event.target.value, { allowDecimal: calculatedAmountCurrency !== 'iqd' }))} />
+            <Select value={calculatedAmountCurrency} onValueChange={(value: 'iqd' | 'usd') => setCalculatedAmountCurrency(value)}>
+              <SelectTrigger className="w-28"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="iqd">IQD</SelectItem>
+                <SelectItem value="usd">USD</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        <div className="grid gap-2">
+          <Label htmlFor="beauty2-phone">{t('clinicalAppointments.phoneNumber', { defaultValue: 'Phone Number' })}</Label>
+          <Input id="beauty2-phone" type="tel" value={phoneNumber} onChange={(event) => setPhoneNumber(event.target.value)} />
+        </div>
+        <div className="grid gap-2">
+          <Label htmlFor="beauty2-note">{t('clinicalAppointments.note', { defaultValue: 'Note' })}</Label>
+          <Textarea id="beauty2-note" value={note} onChange={(event) => setNote(event.target.value)} />
+        </div>
+        <div className="grid gap-2">
+          <Label htmlFor="beauty2-appointment-number">{t('clinicalAppointments.appointmentNumber', { defaultValue: 'Appointment Number' })}</Label>
+          <Input id="beauty2-appointment-number" value={appointmentNumber} onChange={(event) => setAppointmentNumber(event.target.value)} required />
+        </div>
+        <div className="grid gap-2">
+          <Label htmlFor="beauty2-issue-date">{t('clinicalAppointments.issueDate', { defaultValue: 'Issue Date' })}</Label>
+          <DateTimePicker
+            id="beauty2-issue-date"
+            mode="date"
+            date={parseLocalDateValue(issueDate)}
+            setDate={(value) => setIssueDate(value ? formatLocalDateValue(value) : '')}
+            placeholder={t('clinicalAppointments.issueDate', { defaultValue: 'Issue Date' })}
+          />
+        </div>
+        <div className="grid gap-2">
+          <Label htmlFor="beauty2-next-visit-date">{t('clinicalAppointments.nextVisitDate', { defaultValue: 'Next Visit Date' })}</Label>
+          <DateTimePicker
+            id="beauty2-next-visit-date"
+            mode="date"
+            date={parseLocalDateValue(nextVisitDate)}
+            setDate={(value) => setNextVisitDate(value ? formatLocalDateValue(value) : '')}
+            placeholder={t('clinicalAppointments.nextVisitDate', { defaultValue: 'Next Visit Date' })}
+          />
+        </div>
+
+        <div className="flex justify-end gap-3 pt-2">
+          <Button type="button" variant="outline" onClick={onCancel} disabled={saving}>{t('common.cancel', { defaultValue: 'Cancel' })}</Button>
+          <Button type="submit" disabled={saving || !appointmentNumber.trim() || !receivedFromName.trim() || !issueDate}>
+            {saving ? t('common.saving', { defaultValue: 'Saving...' }) : t('common.save', { defaultValue: 'Save' })}
+          </Button>
+        </div>
+      </form>
+    </div>
+  )
 }
 
 function AppointmentList({ workspaceId, navigate }: { workspaceId: string; navigate: (path: string) => void }) {
@@ -1114,7 +1457,7 @@ function CreateAppointmentForm({ workspaceId, appointment, onCancel, onSaved }: 
                       {formatCurrency(formPaidAmount, currency, features.iqd_display_preference)}
                     </div>
                   </div>
-                  {registryType !== 'beauty' && (
+                  {!isBeautyClinicalRegistryType(registryType) && (
                   <div className="grid gap-2">
                     <Label>{t('clinicalAppointments.estimatedPrice', { defaultValue: 'Estimated Price' })}</Label>
                     <div className="relative">
