@@ -1058,7 +1058,8 @@
         "targetStorageRequired": "اختر المخزن المستهدف للمنتج {{productName}}.",
         "atLeastOneItem": "أضف بنداً واحداً على الأقل.",
         "saveSalesFailed": "تعذر حفظ طلب البيع.",
-        "savePurchaseFailed": "تعذر حفظ طلب الشراء."
+        "savePurchaseFailed": "تعذر حفظ طلب الشراء.",
+        "non_financed_order_must_be_paid": "يجب دفع الطلب غير الممول."
       }
     },
     "messages": {

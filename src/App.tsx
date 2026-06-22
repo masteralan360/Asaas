@@ -1115,7 +1115,7 @@ function App() {
                         <ProtectedRoute
                           allowedRoles={["admin", "staff", "viewer"]}
                           requiredFeature="crm"
-                          requiredPermission="orders.access"
+                          requiredPermission="orders.saleOrdersAccess"
                         >
                           <Layout>
                             <Orders />
@@ -1126,7 +1126,7 @@ function App() {
                         <ProtectedRoute
                           allowedRoles={["admin", "staff", "viewer"]}
                           requiredFeature="crm"
-                          requiredPermission="orders.access"
+                          requiredPermission="orders.purchaseOrdersAccess"
                         >
                           <Layout>
                             <Orders />
@@ -1137,7 +1137,7 @@ function App() {
                         <ProtectedRoute
                           allowedRoles={["admin", "staff"]}
                           requiredFeature="crm"
-                          requiredPermission="orders.access"
+                          requiredPermission="orders.saleOrdersAccess"
                         >
                           <Layout>
                             <Orders />
@@ -1148,7 +1148,7 @@ function App() {
                         <ProtectedRoute
                           allowedRoles={["admin", "staff"]}
                           requiredFeature="crm"
-                          requiredPermission="orders.access"
+                          requiredPermission="orders.purchaseOrdersAccess"
                         >
                           <Layout>
                             <Orders />
@@ -1159,7 +1159,7 @@ function App() {
                         <ProtectedRoute
                           allowedRoles={["admin", "staff", "viewer"]}
                           requiredFeature="crm"
-                          requiredPermission="orders.access"
+                          requiredAnyPermission={["orders.saleOrdersAccess", "orders.purchaseOrdersAccess"]}
                         >
                           <Layout>
                             <Orders />
@@ -1170,7 +1170,7 @@ function App() {
                         <ProtectedRoute
                           allowedRoles={["admin", "staff", "viewer"]}
                           requiredFeature="crm"
-                          requiredPermission="orders.access"
+                          requiredPermission="orders.saleOrdersAccess"
                         >
                           <Layout>
                             <Orders />
@@ -1181,7 +1181,7 @@ function App() {
                         <ProtectedRoute
                           allowedRoles={["admin", "staff", "viewer"]}
                           requiredFeature="crm"
-                          requiredPermission="orders.access"
+                          requiredPermission="orders.purchaseOrdersAccess"
                         >
                           <Layout>
                             <Orders />
@@ -1192,7 +1192,7 @@ function App() {
                         <ProtectedRoute
                           allowedRoles={["admin", "staff", "viewer"]}
                           requiredFeature="crm"
-                          requiredPermission="orders.access"
+                          requiredAnyPermission={["orders.saleOrdersAccess", "orders.purchaseOrdersAccess"]}
                         >
                           <Layout>
                             <Orders />

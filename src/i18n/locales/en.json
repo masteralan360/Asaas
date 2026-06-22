@@ -1628,7 +1628,8 @@
         "targetStorageRequired": "Select a target storage for {{productName}}.",
         "atLeastOneItem": "Add at least one item.",
         "saveSalesFailed": "Failed to save sales order.",
-        "savePurchaseFailed": "Failed to save purchase order."
+        "savePurchaseFailed": "Failed to save purchase order.",
+        "non_financed_order_must_be_paid": "Non-financed order must be paid."
       }
     },
     "messages": {

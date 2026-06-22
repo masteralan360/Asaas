@@ -17,6 +17,7 @@ interface ProtectedRouteProps {
     requiredAnyFeature?: ModuleFeatureKey[]
     requiredCapability?: PlanCapabilityKey
     requiredPermission?: WorkspacePermissionKey
+    requiredAnyPermission?: WorkspacePermissionKey[]
 }
 
 export function ProtectedRoute({
@@ -27,14 +28,15 @@ export function ProtectedRoute({
     requiredFeature,
     requiredAnyFeature,
     requiredCapability,
-    requiredPermission
+    requiredPermission,
+    requiredAnyPermission
 }: ProtectedRouteProps) {
     const { isAuthenticated, isLoading, hasRole, isKicked, user } = useAuth()
     const { hasFeature, hasCapability, features, isLoading: featuresLoading, isLocked } = useWorkspace()
     const { hasPermission, isLoading: permissionsLoading } = useWorkspacePermissions()
     const [location] = useLocation()
 
-    if (isLoading || featuresLoading || (requiredPermission && permissionsLoading)) {
+    if (isLoading || featuresLoading || ((requiredPermission || requiredAnyPermission?.length) && permissionsLoading)) {
         return (
             <div className="min-h-screen flex items-center justify-center bg-background">
                 <div className="flex flex-col items-center gap-4">
@@ -126,6 +128,18 @@ export function ProtectedRoute({
     }
 
     if (requiredPermission && !hasPermission(requiredPermission)) {
+        return (
+            <div className="min-h-screen flex items-center justify-center bg-background">
+                <div className="text-center">
+                    <h1 className="text-4xl font-bold text-destructive mb-4">403</h1>
+                    <p className="text-muted-foreground">You don't have permission to access this module.</p>
+                    <Link href="/" className="text-primary hover:underline">Return to Dashboard</Link>
+                </div>
+            </div>
+        )
+    }
+
+    if (requiredAnyPermission?.length && !requiredAnyPermission.some((p) => hasPermission(p))) {
         return (
             <div className="min-h-screen flex items-center justify-center bg-background">
                 <div className="text-center">

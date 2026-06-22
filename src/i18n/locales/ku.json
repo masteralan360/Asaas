@@ -1062,7 +1062,8 @@
         "targetStorageRequired": "کۆگای مەبەست بۆ {{productName}} هەڵبژێرە.",
         "atLeastOneItem": "لانیکەم یەک بڕگە زیاد بکە.",
         "saveSalesFailed": "پاشەکەوتکردنی داواکاری فرۆشتن سەرکەوتوو نەبوو.",
-        "savePurchaseFailed": "پاشەکەوتکردنی داواکاری کڕین سەرکەوتوو نەبوو."
+        "savePurchaseFailed": "پاشەکەوتکردنی داواکاری کڕین سەرکەوتوو نەبوو.",
+        "non_financed_order_must_be_paid": "داواکاری نەدار دەبێت بپارێزرێت."
       }
     },
     "messages": {

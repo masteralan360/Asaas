@@ -184,23 +184,27 @@ export function buildWorkspaceNavigation({
             },
           ]
           : []),
-        ...(canAccessPermission("orders.access")
+        ...(canAccessPermission("orders.saleOrdersAccess") || canAccessPermission("orders.purchaseOrdersAccess")
           ? [
             {
               name: t("nav.orders", { defaultValue: "Orders" }),
               href: "/orders",
               icon: ShoppingCart,
               children: [
-                {
-                  name: t("nav.saleOrders", { defaultValue: "Sale Orders" }),
-                  href: "/orders/sales",
-                  icon: ShoppingCart,
-                },
-                {
-                  name: t("nav.purchaseOrders", { defaultValue: "Purchase Orders" }),
-                  href: "/orders/purchase",
-                  icon: Truck,
-                },
+                ...(canAccessPermission("orders.saleOrdersAccess")
+                  ? [{
+                    name: t("nav.saleOrders", { defaultValue: "Sale Orders" }),
+                    href: "/orders/sales",
+                    icon: ShoppingCart,
+                  }]
+                  : []),
+                ...(canAccessPermission("orders.purchaseOrdersAccess")
+                  ? [{
+                    name: t("nav.purchaseOrders", { defaultValue: "Purchase Orders" }),
+                    href: "/orders/purchase",
+                    icon: Truck,
+                  }]
+                  : []),
               ],
             },
           ]
