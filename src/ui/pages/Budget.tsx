@@ -102,6 +102,7 @@ import { BudgetPrintTemplate } from '@/ui/components/budget/BudgetPrintTemplate'
 import { generateTemplatePdf, type PrintFormat } from '@/services/pdfGenerator'
 import type { TemplatePreview } from '@/lib/pdfPreviewStore'
 import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
+import { suppressExpenseReminderForSession } from '@/lib/budgetReminderSession'
 
 interface ExpenseRow {
     item: ExpenseItem
@@ -508,13 +509,17 @@ export function Budget() {
     const [expenseCurrency, setExpenseCurrency] = useState<CurrencyCode>(baseCurrency)
     const [expenseDueDay, setExpenseDueDay] = useState(1)
     const [expenseRecurrence, setExpenseRecurrence] = useState<ExpenseRecurrence>('monthly')
-    const [expenseCategory, setExpenseCategory] = useState('')
     const [expenseSubcategory, setExpenseSubcategory] = useState('')
+    const [expenseAlreadyPaid, setExpenseAlreadyPaid] = useState(false)
 
     const [deleteTarget, setDeleteTarget] = useState<{
         type: 'series' | 'occurrence';
         series?: ExpenseSeries | null;
         item?: ExpenseItem | null
+    } | null>(null)
+    const [deleteScopeTarget, setDeleteScopeTarget] = useState<{
+        series: ExpenseSeries | null;
+        item: ExpenseItem
     } | null>(null)
 
     const [snoozeTarget, setSnoozeTarget] = useState<SnoozeTarget | null>(null)
@@ -558,7 +563,6 @@ export function Budget() {
         setExpenseCurrency(editingSeries.currency)
         setExpenseDueDay(editingSeries.dueDay)
         setExpenseRecurrence(editingSeries.recurrence)
-        setExpenseCategory(editingSeries.category || '')
         setExpenseSubcategory(editingSeries.subcategory || '')
     }, [editingSeries])
 
@@ -820,8 +824,8 @@ export function Budget() {
         setExpenseCurrency(baseCurrency)
         setExpenseDueDay(1)
         setExpenseRecurrence('monthly')
-        setExpenseCategory('')
         setExpenseSubcategory('')
+        setExpenseAlreadyPaid(false)
         setEditingSeries(null)
         setEditingItem(null)
     }
@@ -839,6 +843,7 @@ export function Budget() {
         }
 
         const dueDay = Math.min(Math.max(Number(expenseDueDay) || 1, 1), 31)
+        const dueDate = buildDueDate(selectedMonth as any, dueDay)
 
         try {
             if (editingSeries) {
@@ -848,7 +853,6 @@ export function Budget() {
                     currency: expenseCurrency,
                     dueDay,
                     recurrence: expenseRecurrence,
-                    category: expenseCategory.trim() || null,
                     subcategory: expenseSubcategory.trim() || null
                 })
 
@@ -856,11 +860,11 @@ export function Budget() {
                     await updateExpenseItem(editingItem.id, {
                         amount: amountValue,
                         currency: expenseCurrency,
-                        dueDate: buildDueDate(selectedMonth as any, dueDay)
+                        dueDate
                     })
                 }
             } else {
-                await createExpenseSeries(workspaceId, {
+                const createdSeries = await createExpenseSeries(workspaceId, {
                     name: expenseName.trim(),
                     amount: amountValue,
                     currency: expenseCurrency,
@@ -868,10 +872,35 @@ export function Budget() {
                     recurrence: expenseRecurrence,
                     startMonth: selectedMonth,
                     endMonth: null,
-                    category: expenseCategory.trim() || null,
+                    category: null,
                     subcategory: expenseSubcategory.trim() || null
                 })
+
+                if (dueDate <= new Date().toISOString().slice(0, 10)) {
+                    suppressExpenseReminderForSession(workspaceId, createdSeries.id, selectedMonth)
+                }
+
                 await ensureExpenseItemsForMonth(workspaceId, selectedMonth)
+
+                if (expenseAlreadyPaid) {
+                    const createdItem = await db.expense_items
+                        .where('[seriesId+month]')
+                        .equals([createdSeries.id, selectedMonth])
+                        .first()
+                    if (!createdItem) {
+                        throw new Error('Expense item was not created')
+                    }
+
+                    await recordObligationSettlement(
+                        workspaceId,
+                        buildExpensePaymentObligation(createdItem, createdSeries),
+                        {
+                            paymentMethod: 'cash',
+                            paidAt: new Date().toISOString(),
+                            createdBy: user?.id || null
+                        }
+                    )
+                }
             }
 
             toast({
@@ -1299,11 +1328,15 @@ export function Budget() {
                                         setIsExpenseModalOpen(true)
                                     } : undefined}
                                     onDelete={item.status === 'pending' || item.status === 'snoozed' ? () => {
-                                        setDeleteTarget({
-                                            type: series?.recurrence === 'one_time' ? 'series' : 'occurrence',
-                                            item,
-                                            series
-                                        })
+                                        if (series?.recurrence === 'one_time') {
+                                            setDeleteTarget({
+                                                type: 'occurrence',
+                                                item,
+                                                series
+                                            })
+                                            return
+                                        }
+                                        setDeleteScopeTarget({ item, series })
                                     } : undefined}
                                 />
                             ))}
@@ -1409,15 +1442,20 @@ export function Budget() {
                                 <Switch checked={expenseRecurrence === 'monthly'} onCheckedChange={(checked) => setExpenseRecurrence(checked ? 'monthly' : 'one_time')} />
                             </div>
                         </div>
-                        <div className="grid gap-3 sm:grid-cols-2">
-                            <div className="grid gap-2">
-                                <Label>{t('common.category') || 'Category'}</Label>
-                                <Input value={expenseCategory} onChange={(e) => setExpenseCategory(e.target.value)} />
+                        {!editingSeries && (
+                            <div className="flex items-center justify-between rounded-xl border border-border/60 px-3 py-2">
+                                <div>
+                                    <Label className="text-xs uppercase">{t('budget.form.alreadyPaid') || 'Already paid'}</Label>
+                                    <p className="text-xs text-muted-foreground">
+                                        {t('budget.form.alreadyPaidDescription') || 'Record this expense as paid when saving.'}
+                                    </p>
+                                </div>
+                                <Switch checked={expenseAlreadyPaid} onCheckedChange={setExpenseAlreadyPaid} />
                             </div>
-                            <div className="grid gap-2">
-                                <Label>{t('budget.form.subcategory') || 'Subcategory'}</Label>
-                                <Input value={expenseSubcategory} onChange={(e) => setExpenseSubcategory(e.target.value)} />
-                            </div>
+                        )}
+                        <div className="grid gap-2">
+                            <Label>{t('budget.form.subcategory') || 'Subcategory'}</Label>
+                            <Input value={expenseSubcategory} onChange={(e) => setExpenseSubcategory(e.target.value)} />
                         </div>
                     </div>
                     <DialogFooter className="mt-4">
@@ -1458,6 +1496,68 @@ export function Budget() {
                 onSubmit={handleBudgetSettlement}
             />
 
+            <Dialog
+                open={!!deleteScopeTarget}
+                onOpenChange={(open) => { if (!open) setDeleteScopeTarget(null) }}
+            >
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>{t('budget.deleteScopeTitle') || 'Delete expense'}</DialogTitle>
+                        <DialogDescription>
+                            {t('budget.deleteScopeDescription') || 'Choose whether to remove this expense from the selected month or from every month.'}
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="grid gap-3">
+                        <Button
+                            variant="outline"
+                            className="h-auto items-start justify-start rounded-xl px-4 py-3 text-start"
+                            onClick={() => {
+                                if (!deleteScopeTarget) return
+                                setDeleteTarget({
+                                    type: 'occurrence',
+                                    item: deleteScopeTarget.item,
+                                    series: deleteScopeTarget.series
+                                })
+                                setDeleteScopeTarget(null)
+                            }}
+                        >
+                            <span>
+                                <span className="block font-semibold">{t('budget.deleteThisMonth') || 'This month only'}</span>
+                                <span className="block text-xs font-normal text-muted-foreground">
+                                    {t('budget.deleteThisMonthDescription') || 'Keep the recurring expense in other months.'}
+                                </span>
+                            </span>
+                        </Button>
+                        <Button
+                            variant="outline"
+                            className="h-auto items-start justify-start rounded-xl border-destructive/40 px-4 py-3 text-start text-destructive hover:bg-destructive/5 hover:text-destructive"
+                            onClick={() => {
+                                if (!deleteScopeTarget) return
+                                setDeleteTarget({
+                                    type: 'series',
+                                    item: deleteScopeTarget.item,
+                                    series: deleteScopeTarget.series
+                                })
+                                setDeleteScopeTarget(null)
+                            }}
+                            disabled={!deleteScopeTarget?.series}
+                        >
+                            <span>
+                                <span className="block font-semibold">{t('budget.deleteAllMonths') || 'All months'}</span>
+                                <span className="block text-xs font-normal text-muted-foreground">
+                                    {t('budget.deleteAllMonthsDescription') || 'Remove the expense and every monthly occurrence.'}
+                                </span>
+                            </span>
+                        </Button>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="ghost" onClick={() => setDeleteScopeTarget(null)}>
+                            {t('common.cancel') || 'Cancel'}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
             <DeleteConfirmationModal
                 isOpen={!!deleteTarget}
                 onClose={() => setDeleteTarget(null)}
@@ -1471,8 +1571,15 @@ export function Budget() {
                     }
                     setDeleteTarget(null)
                 }}
-                title={deleteTarget?.type === 'series' ? t('budget.deleteSeries') : t('budget.deleteOccurrence')}
+                title={deleteTarget?.type === 'series'
+                    ? t('budget.deleteAllMonthsConfirmTitle') || 'Delete expense from all months?'
+                    : t('budget.deleteThisMonthConfirmTitle') || 'Delete expense from this month?'}
+                description={deleteTarget?.type === 'series'
+                    ? t('budget.deleteAllMonthsWarning') || 'This removes the expense and all of its monthly occurrences. This action cannot be undone.'
+                    : t('budget.deleteThisMonthWarning') || 'Only the selected month will be removed. Other recurring months will remain.'}
                 itemName={deleteTarget?.series?.name || deleteTarget?.item?.id || ''}
+                requireHoldToConfirm={deleteTarget?.type === 'series'}
+                holdToConfirmLabel={t('budget.holdToDelete') || 'Hold to delete'}
             />
 
             <PrintPreviewModal

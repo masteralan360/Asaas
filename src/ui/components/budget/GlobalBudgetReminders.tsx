@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/auth'
@@ -34,6 +34,11 @@ import { BudgetSnoozeModal, type BudgetSnoozeOption } from './BudgetSnoozeModal'
 import { BudgetLockPromptModal } from './BudgetLockPromptModal'
 import { useUnifiedSnooze, type SnoozedItem } from '@/context/UnifiedSnoozeContext'
 import { SettlementDialog } from '@/ui/components'
+import {
+    getBudgetReminderSuppressionSnapshot,
+    isExpenseReminderSuppressedForSession,
+    subscribeToBudgetReminderSuppressions
+} from '@/lib/budgetReminderSession'
 
 function isCurrentlySnoozed(item: BudgetReminderItem, now: Date) {
     if (item.status !== 'snoozed') return false
@@ -141,6 +146,11 @@ export function GlobalBudgetReminders() {
     const [settlementSourceItem, setSettlementSourceItem] = useState<BudgetReminderItem | null>(null)
     const [isSubmittingSettlement, setIsSubmittingSettlement] = useState(false)
     const [isHydrating, setIsHydrating] = useState(true)
+    const suppressedExpenseReminderKeys = useSyncExternalStore(
+        subscribeToBudgetReminderSuppressions,
+        getBudgetReminderSuppressionSnapshot,
+        getBudgetReminderSuppressionSnapshot
+    )
 
     const rates = useMemo(() => buildConversionRates(exchangeData, eurRates, tryRates), [exchangeData, eurRates, tryRates])
 
@@ -218,6 +228,12 @@ export function GlobalBudgetReminders() {
         expenseItems.forEach(item => {
             if (item.status === 'paid') return
             if (!isDue(item, todayKey)) return
+            if (isExpenseReminderSuppressedForSession(
+                workspaceId,
+                item.seriesId,
+                item.month,
+                suppressedExpenseReminderKeys
+            )) return
 
             const series = seriesById.get(item.seriesId)
             const title = series?.name || t('budget.reminder.category.expense') || 'Expense'
@@ -311,7 +327,7 @@ export function GlobalBudgetReminders() {
         })
 
         return result
-    }, [workspaceId, expenseItems, expenseSeries, employees, payrollStatuses, dividendStatuses, sales, baseCurrency, rates, t])
+    }, [workspaceId, expenseItems, expenseSeries, employees, payrollStatuses, dividendStatuses, sales, baseCurrency, rates, t, suppressedExpenseReminderKeys])
 
     const handledSet = useMemo(() => new Set(sessionHandledIds), [sessionHandledIds])
     const now = new Date()

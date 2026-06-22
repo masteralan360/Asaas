@@ -1,3 +1,4 @@
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Trash2, AlertTriangle, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -18,6 +19,9 @@ interface DeleteConfirmationModalProps {
     description?: string
     isLoading?: boolean
     itemName?: string
+    requireHoldToConfirm?: boolean
+    holdToConfirmLabel?: string
+    holdDurationMs?: number
 }
 
 export function DeleteConfirmationModal({
@@ -27,9 +31,58 @@ export function DeleteConfirmationModal({
     title,
     description,
     isLoading = false,
-    itemName = ''
+    itemName = '',
+    requireHoldToConfirm = false,
+    holdToConfirmLabel,
+    holdDurationMs = 1500
 }: DeleteConfirmationModalProps) {
     const { t } = useTranslation()
+    const [holdProgress, setHoldProgress] = useState(0)
+    const animationFrameRef = useRef<number | null>(null)
+    const holdCompletedRef = useRef(false)
+
+    const cancelHold = useCallback(() => {
+        if (animationFrameRef.current !== null) {
+            cancelAnimationFrame(animationFrameRef.current)
+            animationFrameRef.current = null
+        }
+        if (!holdCompletedRef.current) {
+            setHoldProgress(0)
+        }
+    }, [])
+
+    const beginHold = useCallback(() => {
+        if (!requireHoldToConfirm || isLoading || animationFrameRef.current !== null) return
+
+        holdCompletedRef.current = false
+        const startedAt = performance.now()
+
+        const updateProgress = (now: number) => {
+            const progress = Math.min(((now - startedAt) / holdDurationMs) * 100, 100)
+            setHoldProgress(progress)
+
+            if (progress >= 100) {
+                animationFrameRef.current = null
+                holdCompletedRef.current = true
+                onConfirm()
+                return
+            }
+
+            animationFrameRef.current = requestAnimationFrame(updateProgress)
+        }
+
+        animationFrameRef.current = requestAnimationFrame(updateProgress)
+    }, [holdDurationMs, isLoading, onConfirm, requireHoldToConfirm])
+
+    useEffect(() => {
+        if (!isOpen) {
+            holdCompletedRef.current = false
+            cancelHold()
+            setHoldProgress(0)
+        }
+
+        return cancelHold
+    }, [cancelHold, isOpen])
 
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
@@ -87,17 +140,54 @@ export function DeleteConfirmationModal({
                         </Button>
                         <Button
                             variant="destructive"
-                            onClick={onConfirm}
+                            onClick={(event) => {
+                                if (requireHoldToConfirm) {
+                                    event.preventDefault()
+                                    return
+                                }
+                                onConfirm()
+                            }}
+                            onPointerDown={(event) => {
+                                if (!requireHoldToConfirm || event.button !== 0) return
+                                event.preventDefault()
+                                event.currentTarget.setPointerCapture(event.pointerId)
+                                beginHold()
+                            }}
+                            onPointerUp={cancelHold}
+                            onPointerCancel={cancelHold}
+                            onPointerLeave={cancelHold}
+                            onKeyDown={(event) => {
+                                if (!requireHoldToConfirm || event.repeat) return
+                                if (event.key === 'Enter' || event.key === ' ') {
+                                    event.preventDefault()
+                                    beginHold()
+                                }
+                            }}
+                            onKeyUp={(event) => {
+                                if (event.key === 'Enter' || event.key === ' ') {
+                                    event.preventDefault()
+                                    cancelHold()
+                                }
+                            }}
                             disabled={isLoading}
-                            className="h-12 rounded-2xl font-black shadow-lg shadow-destructive/20 bg-destructive hover:bg-destructive/90 border-t border-white/10 flex gap-2 items-center justify-center transition-all active:scale-95"
+                            className="relative h-12 overflow-hidden rounded-2xl font-black shadow-lg shadow-destructive/20 bg-destructive hover:bg-destructive/90 border-t border-white/10 flex gap-2 items-center justify-center transition-all active:scale-95"
                         >
+                            {requireHoldToConfirm && (
+                                <span
+                                    aria-hidden="true"
+                                    className="absolute inset-y-0 left-0 bg-white/20 transition-[width] duration-75"
+                                    style={{ width: `${holdProgress}%` }}
+                                />
+                            )}
                             {isLoading ? (
-                                <Loader2 className="w-5 h-5 animate-spin" />
+                                <Loader2 className="relative w-5 h-5 animate-spin" />
                             ) : (
-                                <>
+                                <span className="relative flex items-center justify-center gap-2">
                                     <Trash2 className="w-4 h-4" />
-                                    {t('common.delete') || 'Delete'}
-                                </>
+                                    {requireHoldToConfirm
+                                        ? holdToConfirmLabel || 'Hold to delete'
+                                        : t('common.delete') || 'Delete'}
+                                </span>
                             )}
                         </Button>
                     </DialogFooter>
