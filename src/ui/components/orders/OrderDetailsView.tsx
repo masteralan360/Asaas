@@ -86,7 +86,6 @@ function paymentLabel(t: (key: string) => string, method?: string | null) {
         case 'fastpay': return t('pos.fastpay') || 'FastPay'
         case 'loan': return t('pos.loan') || 'Loan'
         case 'bank_transfer': return 'Bank Transfer'
-        case 'loan': return t('nav.loans') || 'Loans'
         case 'installments': return t('nav.installments') || 'Installments'
         default: return method || '-'
     }
@@ -274,8 +273,18 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
     }
 
     const orderInvoice = useLiveQuery(
-        () => orderId ? db.invoices.where('orderId').equals(orderId).first() : undefined,
-        [orderId]
+        async () => {
+            if (!orderId) return undefined
+
+            const invoices = await db.invoices
+                .where('orderId')
+                .equals(orderId)
+                .and(invoice => invoice.workspaceId === workspaceId && !invoice.isDeleted)
+                .toArray()
+
+            return invoices.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0]
+        },
+        [orderId, workspaceId]
     )
 
     const handleShowInvoice = useCallback(async () => {

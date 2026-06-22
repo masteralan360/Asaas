@@ -2,6 +2,7 @@ CREATE TABLE public.invoices (
   id uuid NOT NULL DEFAULT uuid_generate_v4(),
   user_id uuid NULL,
   invoiceid character varying NOT NULL,
+  order_id uuid NULL,
   total numeric NOT NULL DEFAULT 0,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   updated_at timestamp with time zone NOT NULL DEFAULT now(),
@@ -23,3 +24,7 @@ CREATE TABLE public.invoices (
   file_mime_type text NULL,
   PRIMARY KEY (id)
 );
+
+CREATE INDEX idx_invoices_order_id
+  ON public.invoices (order_id)
+  WHERE order_id IS NOT NULL AND is_deleted = false;

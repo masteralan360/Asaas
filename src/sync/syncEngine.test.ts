@@ -70,7 +70,7 @@ const dbMock = vi.hoisted(() => {
 
 const supabaseMock = vi.hoisted(() => {
     const mutationError = new Error('permission denied')
-    const upsert = vi.fn(async () => ({ data: null, error: mutationError }))
+    const upsert = vi.fn(async (): Promise<{ data: null; error: Error | null }> => ({ data: null, error: mutationError }))
     const rpc = vi.fn(async () => ({ data: null as any, error: null as any }))
     let saleLookup: Record<string, any> | null = null
 
@@ -294,6 +294,42 @@ describe('fullSync error reporting', () => {
                 syncStatus: 'synced'
             })
         )
+        expect(dbMock.rows[0]).toMatchObject({ status: 'synced' })
+    })
+
+    it('preserves an invoice order link when pushing an offline mutation', async () => {
+        supabaseMock.upsert.mockResolvedValueOnce({ data: null, error: null })
+        dbMock.rows.push({
+            id: 'mutation-invoice-1',
+            workspaceId: 'workspace-1',
+            entityType: 'invoices',
+            entityId: '65cd27b9-0000-4000-8000-000000000001',
+            operation: 'create',
+            payload: {
+                id: '65cd27b9-0000-4000-8000-000000000001',
+                workspaceId: 'workspace-1',
+                invoiceid: '#00008',
+                orderId: '65cd27b9-0000-4000-8000-000000000002',
+                totalAmount: 1000,
+                settlementCurrency: 'iqd',
+                pdfBlobA4: new Blob(['pdf']),
+                syncStatus: 'pending',
+                lastSyncedAt: null
+            },
+            createdAt: '2026-06-03T00:00:00.000Z',
+            status: 'pending'
+        })
+
+        const result = await fullSync('user-1', 'workspace-1', null)
+
+        expect(result.success).toBe(true)
+        expect(supabaseMock.upsert).toHaveBeenCalledWith(expect.objectContaining({
+            id: '65cd27b9-0000-4000-8000-000000000001',
+            order_id: '65cd27b9-0000-4000-8000-000000000002'
+        }))
+        const invoiceUpsertCall = supabaseMock.upsert.mock.calls[0] as unknown as [Record<string, unknown>]
+        const invoicePayload = invoiceUpsertCall[0]
+        expect(invoicePayload).not.toHaveProperty('pdf_blob_a4')
         expect(dbMock.rows[0]).toMatchObject({ status: 'synced' })
     })
 

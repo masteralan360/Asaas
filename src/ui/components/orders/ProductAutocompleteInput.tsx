@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useTranslation } from 'react-i18next'
 import { Check, Package } from 'lucide-react'
 
 import type { Product } from '@/local-db'

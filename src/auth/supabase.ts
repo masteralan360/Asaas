@@ -122,6 +122,7 @@ export type SupabaseOrder = {
 export type SupabaseInvoice = {
     id: string
     invoiceid: string
+    order_id?: string | null
     items: object[]
     subtotal: number
     discount: number

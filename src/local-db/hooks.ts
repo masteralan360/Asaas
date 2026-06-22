@@ -95,7 +95,6 @@ function sanitizeInvoiceRemotePayload(source: Record<string, unknown>): Record<s
         pdfBlobReceipt,
         localPathA4,
         localPathReceipt,
-        orderId,
         customerId,
         status,
         isSnapshot,
