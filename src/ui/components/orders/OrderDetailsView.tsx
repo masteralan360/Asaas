@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState, type ReactElement } from 'react'
-import { ArrowLeft, CalendarDays, CreditCard, LayoutGrid, List, Lock, Package, Printer, Receipt, ShoppingCart, Trash2, TrendingUp, Truck, UsersRound, Warehouse } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState, type ReactElement } from 'react'
+import { ArrowLeft, CalendarDays, CreditCard, Eye, FileText, LayoutGrid, List, Lock, Package, Printer, Receipt, ShoppingCart, Trash2, TrendingUp, Truck, UsersRound, Warehouse } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { getLocalizedOrderError } from '@/lib/orderErrors'
 import { Link, useLocation } from 'wouter'
@@ -8,8 +8,9 @@ import { useAuth } from '@/auth'
 import { useProfileData } from '@/hooks/useProfileData'
 import { cn, formatCurrency, formatDate, formatDateTime, formatSnapshotTime } from '@/lib/utils'
 import { generateTemplatePdf, type PrintFormat } from '@/services/pdfGenerator'
-import type { TemplatePreview, TemplatePreviewRenderOptions } from '@/lib/pdfPreviewStore'
+import { setInvoicePreviewSource, type TemplatePreview, type TemplatePreviewRenderOptions } from '@/lib/pdfPreviewStore'
 import {
+    db,
     deletePurchaseOrder,
     deleteSalesOrder,
     findLatestUnreversedPaymentTransaction,
@@ -29,6 +30,7 @@ import {
     useSalesOrder,
     useStorages,
     useWorkspaceContacts,
+    type Invoice,
     type PaymentObligation,
     type OrderInstallment,
     type PurchaseOrder,
@@ -63,6 +65,10 @@ import {
     useToast
 } from '@/ui/components'
 
+import { useLiveQuery } from 'dexie-react-hooks'
+import { platformService } from '@/services/platformService'
+import { getStoredLocalInvoicePdfPath } from '@/services/localInvoiceStorage'
+import { r2Service } from '@/services/r2Service'
 import { OrderDetailsPrintTemplate } from './OrderPrintTemplates'
 import { OrderStatusBadge } from './OrderStatusBadge'
 import { useOrderCustomPrint } from './useOrderCustomPrint'
@@ -229,6 +235,7 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
     const [isLocking, setIsLocking] = useState(false)
     const [settlementTarget, setSettlementTarget] = useState<PaymentObligation | null>(null)
     const [isSubmittingSettlement, setIsSubmittingSettlement] = useState(false)
+    const [isLoadingOrderInvoice, setIsLoadingOrderInvoice] = useState(false)
 
     useEffect(() => {
         localStorage.setItem('order_details_view_mode', viewMode)
@@ -266,6 +273,55 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
             })
         }
     }
+
+    const orderInvoice = useLiveQuery(
+        () => orderId ? db.invoices.where('orderId').equals(orderId).first() : undefined,
+        [orderId]
+    )
+
+    const handleShowInvoice = useCallback(async () => {
+        if (!orderInvoice) return
+        setIsLoadingOrderInvoice(true)
+        try {
+            const format = (orderInvoice.printFormat === 'receipt' ? 'receipt' : 'a4') as 'a4' | 'receipt'
+            const localPath = getStoredLocalInvoicePdfPath(orderInvoice, format)
+            const pdfBlob = format === 'a4' ? orderInvoice.pdfBlobA4 : orderInvoice.pdfBlobReceipt
+            const r2Path = format === 'a4' ? orderInvoice.r2PathA4 : orderInvoice.r2PathReceipt
+
+            let url: string | null = null
+
+            if (localPath) {
+                const exists = await platformService.exists(localPath)
+                if (exists) {
+                    try {
+                        const content = await platformService.readFile(localPath)
+                        const base64 = platformService.uint8ArrayToBase64(content)
+                        url = `data:application/pdf;base64,${base64}`
+                    } catch (_err) {
+                        url = platformService.convertFileSrc(localPath)
+                    }
+                }
+            }
+
+            if (!url && pdfBlob) {
+                url = URL.createObjectURL(pdfBlob)
+            }
+
+            if (!url && r2Path) {
+                url = r2Service.getUrl(r2Path)
+            }
+
+            if (!url) return
+
+            setInvoicePreviewSource({
+                url,
+                title: `Invoice ${orderInvoice.invoiceid}`
+            })
+            navigate('/pdf-preview')
+        } finally {
+            setIsLoadingOrderInvoice(false)
+        }
+    }, [orderInvoice, navigate])
 
     const orderDetailsPreview = useMemo<TemplatePreview | undefined>(() => {
         if (!resolved) return undefined
@@ -544,6 +600,19 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                         <Button variant="destructive" onClick={() => setDeleteOpen(true)}>
                             <Trash2 className="mr-2 h-4 w-4" />
                             {t('common.delete') || 'Delete'}
+                        </Button>
+                    )}
+                    {orderInvoice && (
+                        <Button
+                            variant="outline"
+                            onClick={handleShowInvoice}
+                            disabled={isLoadingOrderInvoice}
+                            className="gap-2 print:hidden bg-background"
+                        >
+                            <Eye className="h-4 w-4" />
+                            {isLoadingOrderInvoice
+                                ? (t('common.loading') || 'Loading...')
+                                : (t('orders.actions.showPrintedInvoice') || 'Show Printed Invoice (PDF)')}
                         </Button>
                     )}
                     <Button
@@ -1078,7 +1147,8 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                     origin: 'sales_order' as const,
                     createdByName: user?.name || 'Unknown',
                     cashierName: user?.name || 'Unknown',
-                    printFormat: 'a4' as const
+                    printFormat: 'a4' as const,
+                    orderId: order.id
                 }}
                 pdfBuilder={customOrderPrint.isCustomSelected
                     ? customOrderPrint.buildPdf

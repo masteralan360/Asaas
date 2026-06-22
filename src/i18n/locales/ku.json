@@ -970,7 +970,8 @@
       "reverseLastPayment": "پاشگەزکردنەوەی دوا پارەدان",
       "payInstallment": "پارەدانی قیست",
       "pay": "پارەدان",
-      "unpay": "پاشگەزکردنەوەی پارەدان"
+      "unpay": "پاشگەزکردنەوەی پارەدان",
+      "showPrintedInvoice": "پیشاندانی فاتوورای چاپکراو"
     },
     "table": {
       "orderNumber": "داواکاری #",

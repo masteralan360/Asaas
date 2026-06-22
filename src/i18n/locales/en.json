@@ -1534,7 +1534,8 @@
       "cancel": "Cancel",
       "lock": "Lock",
       "pay": "Pay",
-      "unpay": "Unpay"
+      "unpay": "Unpay",
+      "showPrintedInvoice": "Show Printed Invoice"
     },
     "table": {
       "orderNumber": "Order #",
