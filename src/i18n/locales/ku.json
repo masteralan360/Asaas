@@ -2882,6 +2882,9 @@
     "providedByPartner": "پێشکەشکراوە لەلایەن هاوبەش",
     "moneyIn": "پارەی هاتوو (وەرگیراو)",
     "moneyOut": "پارەی ڕۆیشتوو (دراو)",
+    "receivableCreditLimit": "سنووری قەرزی سەر ئەوان",
+    "payableCreditLimit": "سنووری قەرزی سەر ئێمە",
+    "unlimited": "جێگای بەتاڵ واتە بێسنوور",
     "form": {
       "role": "ڕۆڵ",
       "contactName": "ناوی پەیوەندی"

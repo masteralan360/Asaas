@@ -1298,7 +1298,7 @@ export function Budget() {
                                         setEditingItem(item)
                                         setIsExpenseModalOpen(true)
                                     } : undefined}
-                                    onDelete={item.status === 'pending' ? () => {
+                                    onDelete={item.status === 'pending' || item.status === 'snoozed' ? () => {
                                         setDeleteTarget({
                                             type: series?.recurrence === 'one_time' ? 'series' : 'occurrence',
                                             item,
