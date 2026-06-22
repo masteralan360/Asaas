@@ -830,7 +830,8 @@ export function Budget() {
         setEditingItem(null)
     }
 
-    const handleSaveExpense = async () => {
+    const handleSaveExpense = async (event: React.FormEvent<HTMLFormElement>) => {
+        event.preventDefault()
         if (!workspaceId) return
 
         const amountValue = parseFormattedNumber(expenseAmount || '0')
@@ -1412,58 +1413,63 @@ export function Budget() {
             </Tabs>
 
             <Dialog open={isExpenseModalOpen} onOpenChange={(open) => { if (!open) resetExpenseForm(); setIsExpenseModalOpen(open) }}>
-                <DialogContent className="sm:max-w-lg">
-                    <DialogHeader>
+                <DialogContent className="top-[calc(50%+var(--titlebar-height)/2+var(--safe-area-top)/2)] flex max-h-[calc(100dvh-var(--titlebar-height)-var(--safe-area-top)-var(--safe-area-bottom)-0.75rem)] w-[calc(100vw-0.75rem)] max-w-4xl flex-col overflow-hidden rounded-[1.25rem] border-border/60 p-0 sm:w-full sm:max-h-[min(calc(100dvh-var(--titlebar-height)-var(--safe-area-top)-var(--safe-area-bottom)-2rem),820px)] sm:rounded-[1.75rem]">
+                    <DialogHeader className="border-b bg-muted/30 px-4 py-4 pr-14 text-start sm:px-6 sm:py-5">
                         <DialogTitle>{editingSeries ? t('common.edit') : t('budget.addExpense') || 'New Expense'}</DialogTitle>
-                        <DialogDescription>{t('budget.addExpenseSubtitle') || 'Add a manual cost to your monthly tracks'}</DialogDescription>
                     </DialogHeader>
-                    <div className="grid gap-4">
-                        <div className="grid gap-2">
-                            <Label>{t('common.description') || 'Description'}</Label>
-                            <Input value={expenseName} onChange={(e) => setExpenseName(e.target.value)} />
-                        </div>
-                        <div className="grid gap-3 sm:grid-cols-[1fr_160px]">
-                            <div className="grid gap-2">
-                                <Label>{t('common.amount') || 'Amount'}</Label>
-                                <Input value={expenseAmount} onChange={(e) => setExpenseAmount(formatNumberWithCommas(e.target.value))} />
-                            </div>
-                            <CurrencySelector value={expenseCurrency} onChange={setExpenseCurrency} iqdDisplayPreference={iqdPreference} />
-                        </div>
-                        <div className="grid gap-3 sm:grid-cols-2">
-                            <div className="grid gap-2">
-                                <Label>{t('budget.dueDay') || 'Due Day (1-31)'}</Label>
-                                <Input type="number" min={1} max={31} value={expenseDueDay} onChange={(e) => setExpenseDueDay(Number(e.target.value))} />
-                            </div>
-                            <div className="flex items-center justify-between rounded-xl border border-border/60 px-3 py-2">
-                                <div>
-                                    <Label className="text-xs uppercase">{t('budget.recurring') || 'Recurring'}</Label>
-                                    <p className="text-xs text-muted-foreground">{t('budget.recurringDesc') || 'Repeat every month'}</p>
+
+                    <form onSubmit={handleSaveExpense} className="flex min-h-0 flex-1 flex-col">
+                        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6 sm:py-6">
+                            <div className="grid gap-4">
+                                <div className="grid gap-2">
+                                    <Label>{t('common.description') || 'Description'}</Label>
+                                    <Input value={expenseName} onChange={(e) => setExpenseName(e.target.value)} />
                                 </div>
-                                <Switch checked={expenseRecurrence === 'monthly'} onCheckedChange={(checked) => setExpenseRecurrence(checked ? 'monthly' : 'one_time')} />
-                            </div>
-                        </div>
-                        {!editingSeries && (
-                            <div className="flex items-center justify-between rounded-xl border border-border/60 px-3 py-2">
-                                <div>
-                                    <Label className="text-xs uppercase">{t('budget.form.alreadyPaid') || 'Already paid'}</Label>
-                                    <p className="text-xs text-muted-foreground">
-                                        {t('budget.form.alreadyPaidDescription') || 'Record this expense as paid when saving.'}
-                                    </p>
+                                <div className="grid gap-3 sm:grid-cols-[1fr_160px]">
+                                    <div className="grid gap-2">
+                                        <Label>{t('common.amount') || 'Amount'}</Label>
+                                        <Input value={expenseAmount} onChange={(e) => setExpenseAmount(formatNumberWithCommas(e.target.value))} />
+                                    </div>
+                                    <CurrencySelector value={expenseCurrency} onChange={setExpenseCurrency} iqdDisplayPreference={iqdPreference} />
                                 </div>
-                                <Switch checked={expenseAlreadyPaid} onCheckedChange={setExpenseAlreadyPaid} />
+                                <div className="grid gap-3 sm:grid-cols-2">
+                                    <div className="grid gap-2">
+                                        <Label>{t('budget.dueDay') || 'Due Day (1-31)'}</Label>
+                                        <Input type="number" min={1} max={31} value={expenseDueDay} onChange={(e) => setExpenseDueDay(Number(e.target.value))} />
+                                    </div>
+                                    <div className="flex items-center justify-between rounded-xl border border-border/60 px-3 py-2">
+                                        <div>
+                                            <Label className="text-xs uppercase">{t('budget.recurring') || 'Recurring'}</Label>
+                                            <p className="text-xs text-muted-foreground">{t('budget.recurringDesc') || 'Repeat every month'}</p>
+                                        </div>
+                                        <Switch checked={expenseRecurrence === 'monthly'} onCheckedChange={(checked) => setExpenseRecurrence(checked ? 'monthly' : 'one_time')} />
+                                    </div>
+                                </div>
+                                {!editingSeries && (
+                                    <div className="flex items-center justify-between rounded-xl border border-border/60 px-3 py-2">
+                                        <div>
+                                            <Label className="text-xs uppercase">{t('budget.form.alreadyPaid') || 'Already paid'}</Label>
+                                            <p className="text-xs text-muted-foreground">
+                                                {t('budget.form.alreadyPaidDescription') || 'Record this expense as paid when saving.'}
+                                            </p>
+                                        </div>
+                                        <Switch checked={expenseAlreadyPaid} onCheckedChange={setExpenseAlreadyPaid} />
+                                    </div>
+                                )}
+                                <div className="grid gap-2">
+                                    <Label>{t('budget.form.subcategory') || 'Subcategory'}</Label>
+                                    <Input value={expenseSubcategory} onChange={(e) => setExpenseSubcategory(e.target.value)} />
+                                </div>
                             </div>
-                        )}
-                        <div className="grid gap-2">
-                            <Label>{t('budget.form.subcategory') || 'Subcategory'}</Label>
-                            <Input value={expenseSubcategory} onChange={(e) => setExpenseSubcategory(e.target.value)} />
                         </div>
-                    </div>
-                    <DialogFooter className="mt-4">
-                        <Button variant="outline" onClick={() => setIsExpenseModalOpen(false)}>
-                            {t('common.cancel') || 'Cancel'}
-                        </Button>
-                        <Button onClick={handleSaveExpense}>{t('common.save') || 'Save'}</Button>
-                    </DialogFooter>
+
+                        <DialogFooter className="border-t bg-muted/20 px-4 py-4 pb-[calc(1rem+var(--safe-area-bottom))] sm:justify-between sm:px-6">
+                            <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={() => setIsExpenseModalOpen(false)}>
+                                {t('common.cancel') || 'Cancel'}
+                            </Button>
+                            <Button type="submit" className="w-full sm:w-auto">{t('common.save') || 'Save'}</Button>
+                        </DialogFooter>
+                    </form>
                 </DialogContent>
             </Dialog>
 
