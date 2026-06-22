@@ -504,6 +504,7 @@ export function SalesOrderFormPage({
                                                             onSelectProduct={(product) => updateItem(index, { productId: product.id, productSearch: product.name })}
                                                             products={getSalesProductOptions(item.storageId, item.productId)}
                                                             placeholder={t('orders.form.selectProduct', { defaultValue: 'Select Product' })}
+                                                            hasSelection={!!item.productId}
                                                         />
                                                     </div>
                                                     <div className="space-y-2">

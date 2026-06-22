@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Package } from 'lucide-react'
+import { Check, Package } from 'lucide-react'
 
 import type { Product } from '@/local-db'
 import { Input } from '@/ui/components'
@@ -15,6 +15,7 @@ interface ProductAutocompleteInputProps {
     placeholder?: string
     className?: string
     disabled?: boolean
+    hasSelection?: boolean
 }
 
 function getDisplayImageUrl(url?: string): string {
@@ -56,7 +57,8 @@ export function ProductAutocompleteInput({
     products,
     placeholder,
     className,
-    disabled
+    disabled,
+    hasSelection
 }: ProductAutocompleteInputProps) {
     const [isFocused, setIsFocused] = useState(false)
     const [justSelected, setJustSelected] = useState(false)
@@ -101,17 +103,30 @@ export function ProductAutocompleteInput({
 
     return (
         <div ref={containerRef} className={cn('relative w-full', className)}>
-            <Input
-                value={value}
-                onChange={(e) => {
-                    setJustSelected(false)
-                    onChange(e.target.value)
-                }}
-                onFocus={() => setIsFocused(true)}
-                placeholder={placeholder}
-                disabled={disabled}
-                className="flex-1"
-            />
+            <div className="relative">
+                <Input
+                    value={value}
+                    onChange={(e) => {
+                        setJustSelected(false)
+                        onChange(e.target.value)
+                    }}
+                    onFocus={() => setIsFocused(true)}
+                    placeholder={placeholder}
+                    disabled={disabled}
+                    className={cn(
+                        'flex-1 pr-20',
+                        hasSelection && 'border-green-500/50 bg-green-50/30 dark:bg-green-950/10'
+                    )}
+                />
+                {hasSelection && (
+                    <div className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2">
+                        <span className="inline-flex items-center gap-1 rounded-full bg-green-500/10 px-2 py-0.5 text-[11px] font-medium text-green-600 dark:text-green-400">
+                            <Check className="h-3 w-3" />
+                            Linked
+                        </span>
+                    </div>
+                )}
+            </div>
             {showDropdown ? (
                 <div className="absolute left-0 right-0 top-full z-[100] mt-1 max-h-56 overflow-y-auto rounded-xl border bg-popover shadow-lg">
                     {filtered.map((product) => (
