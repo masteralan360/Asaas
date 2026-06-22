@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type ReactElement } from 'react'
-import { ArrowLeft, CalendarDays, CreditCard, Eye, FileText, LayoutGrid, List, Lock, Package, Printer, Receipt, ShoppingCart, Trash2, TrendingUp, Truck, UsersRound, Warehouse } from 'lucide-react'
+import { ArrowLeft, CalendarDays, CreditCard, Eye, LayoutGrid, List, Lock, Package, Printer, Receipt, ShoppingCart, Trash2, TrendingUp, Truck, UsersRound, Warehouse } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { getLocalizedOrderError } from '@/lib/orderErrors'
 import { Link, useLocation } from 'wouter'
@@ -30,7 +30,6 @@ import {
     useSalesOrder,
     useStorages,
     useWorkspaceContacts,
-    type Invoice,
     type PaymentObligation,
     type OrderInstallment,
     type PurchaseOrder,
@@ -246,7 +245,7 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
         : purchaseOrder
             ? { kind: 'purchase' as const, order: purchaseOrder }
             : null,
-    [purchaseOrder, salesOrder])
+        [purchaseOrder, salesOrder])
 
     const creatorId = (resolved?.order as any)?.createdBy ?? null
     const { profile: creatorProfile } = useProfileData(creatorId)
@@ -895,7 +894,7 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                                 </div>
                             </div>
 
-                             <div className="mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                            <div className="mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                                 <div className="rounded-2xl border bg-background/70 p-4">
                                     <div className="text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">{t('orders.details.items') || 'Items'}</div>
                                     <div className="mt-2 text-2xl font-black">{order.items.length}</div>
@@ -1039,7 +1038,7 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                                 </div>
                             )}
 
-                             <div className="mt-4 grid gap-3 md:grid-cols-3">
+                            <div className="mt-4 grid gap-3 md:grid-cols-3">
                                 <div className="rounded-2xl border bg-muted/20 p-4">
                                     <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground"><ShoppingCart className="h-4 w-4" />{t('orders.details.subtotal') || 'Subtotal'}</div>
                                     <div className="mt-2 text-xl font-black">{formatCurrency(order.subtotal, currency, iqd)}</div>
