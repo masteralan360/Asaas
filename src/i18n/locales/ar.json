@@ -85,6 +85,8 @@
     "remaining": "المبلغ المتبقي",
     "address": "العنوان",
     "location": "الموقع",
+    "buyingPrice": "سعر الشراء",
+    "sellingPrice": "سعر البيع",
     "pagination": {
       "previous": "السابق",
       "next": "التالي",

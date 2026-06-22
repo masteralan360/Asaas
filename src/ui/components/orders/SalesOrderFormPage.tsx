@@ -49,6 +49,7 @@ import {
     useToast
 } from '@/ui/components'
 import { PartnerAutocompleteInput } from '@/ui/components/crm/PartnerAutocompleteInput'
+import { ProductAutocompleteInput } from './ProductAutocompleteInput'
 import { LoanPartyPickerDialog } from '@/ui/components/loans/LoanPartyPickerDialog'
 
 interface SalesOrderFormPageProps {
@@ -57,16 +58,16 @@ interface SalesOrderFormPageProps {
     onCreated?: (orderId: string) => void
     editingOrderId?: string
 }
-
 type FormItem = {
     productId: string
+    productSearch: string
     storageId: string
     quantity: string
     unitPrice: string
 }
 
 function createEmptyItem(storageId = ''): FormItem {
-    return { productId: '', storageId, quantity: '1', unitPrice: '' }
+    return { productId: '', productSearch: '', storageId, quantity: '1', unitPrice: '' }
 }
 
 function roundFormAmount(value: number) {
@@ -124,12 +125,16 @@ export function SalesOrderFormPage({
     )
     const [items, setItems] = useState<FormItem[]>(() => {
         if (editingOrder) {
-            return editingOrder.items.map((item) => ({
-                productId: item.productId,
-                storageId: item.storageId || editingOrder.sourceStorageId || defaultStorageId,
-                quantity: String(item.quantity),
-                unitPrice: String(item.convertedUnitPrice)
-            }))
+            return editingOrder.items.map((item) => {
+                const product = products.find((p) => p.id === item.productId)
+                return {
+                    productId: item.productId,
+                    productSearch: product?.name || '',
+                    storageId: item.storageId || editingOrder.sourceStorageId || defaultStorageId,
+                    quantity: String(item.quantity),
+                    unitPrice: String(item.convertedUnitPrice)
+                }
+            })
         }
         return [createEmptyItem(defaultStorageId)]
     })
@@ -151,12 +156,16 @@ export function SalesOrderFormPage({
         setInstallmentFrequency(editingOrder.installmentFrequency || 'monthly')
         setFirstDueDate(editingOrder.firstDueDate?.slice(0, 10) || '')
         setInitialPaymentAmount(editingOrder.initialPaymentAmount ? String(editingOrder.initialPaymentAmount) : '')
-        setItems(editingOrder.items.map((item) => ({
-            productId: item.productId,
-            storageId: item.storageId || editingOrder.sourceStorageId || defaultStorageId,
-            quantity: String(item.quantity),
-            unitPrice: String(item.convertedUnitPrice)
-        })))
+        setItems(editingOrder.items.map((item) => {
+            const product = products.find((p) => p.id === item.productId)
+            return {
+                productId: item.productId,
+                productSearch: product?.name || '',
+                storageId: item.storageId || editingOrder.sourceStorageId || defaultStorageId,
+                quantity: String(item.quantity),
+                unitPrice: String(item.convertedUnitPrice)
+            }
+        }))
     }, [defaultStorageId, editingOrder])
 
     const liveRates = useMemo(() => ({ exchangeData, eurRates, tryRates }), [exchangeData, eurRates, tryRates])
@@ -488,18 +497,17 @@ export function SalesOrderFormPage({
                                             return (
                                                 <div key={`sales-item-${index}`} className="grid gap-3 rounded-2xl border bg-background p-4 md:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)_110px_140px_40px]">
                                                     <div className="space-y-2">
-                                                        <Label className="md:hidden">{t('orders.form.table.product', { defaultValue: 'Product' })}</Label>
-                                                        <Select value={item.productId} onValueChange={(value) => updateItem(index, { productId: value })}>
-                                                            <SelectTrigger><SelectValue placeholder={t('orders.form.selectProduct', { defaultValue: 'Select Product' })} /></SelectTrigger>
-                                                            <SelectContent>
-                                                                {getSalesProductOptions(item.storageId, item.productId).map((productOption) => (
-                                                                    <SelectItem key={productOption.id} value={productOption.id}>{productOption.name}</SelectItem>
-                                                                ))}
-                                                            </SelectContent>
-                                                        </Select>
+                                                        <Label>{t('orders.form.selectProduct', { defaultValue: 'Select Product' })}</Label>
+                                                        <ProductAutocompleteInput
+                                                            value={item.productSearch}
+                                                            onChange={(value) => updateItem(index, { productSearch: value, productId: '' })}
+                                                            onSelectProduct={(product) => updateItem(index, { productId: product.id, productSearch: product.name })}
+                                                            products={getSalesProductOptions(item.storageId, item.productId)}
+                                                            placeholder={t('orders.form.selectProduct', { defaultValue: 'Select Product' })}
+                                                        />
                                                     </div>
                                                     <div className="space-y-2">
-                                                        <Label className="md:hidden">{t('orders.form.sourceStorage', { defaultValue: 'Source Storage' })}</Label>
+                                                        <Label>{t('orders.form.selectStorage', { defaultValue: 'Select Storage' })}</Label>
                                                         <Select value={item.storageId} onValueChange={(value) => updateItem(index, { storageId: value })}>
                                                             <SelectTrigger><SelectValue placeholder={t('orders.form.selectStorage', { defaultValue: 'Select Storage' })} /></SelectTrigger>
                                                             <SelectContent>
@@ -509,7 +517,7 @@ export function SalesOrderFormPage({
                                                                     </SelectItem>
                                                                 ))}
                                                             </SelectContent>
-                                                    </Select>
+                                                        </Select>
                                                         <p className="text-xs text-muted-foreground">
                                                             {item.storageId && item.productId
                                                                 ? t('orders.form.availableQuantity', {
@@ -520,15 +528,15 @@ export function SalesOrderFormPage({
                                                         </p>
                                                     </div>
                                                     <div className="space-y-2">
-                                                        <Label className="md:hidden">{t('orders.form.table.qty', { defaultValue: 'Qty' })}</Label>
+                                                        <Label>{t('common.quantity', { defaultValue: 'Quantity' })}</Label>
                                                         <div className="flex items-center gap-1">
                                                             <Input type="number" min={isDynamicUnit(product?.unit) ? "0.01" : "1"} step={isDynamicUnit(product?.unit) ? "0.01" : "1"} value={item.quantity} onChange={(event) => updateItem(index, { quantity: event.target.value })} placeholder={t('common.quantity', { defaultValue: 'Quantity' })} />
                                                             {product?.unit && <span className="text-xs text-muted-foreground shrink-0">{t(`products.units.${product.unit}`, product.unit)}</span>}
                                                         </div>
                                                     </div>
                                                     <div className="space-y-2">
-                                                        <Label className="md:hidden">{t('orders.form.table.price', { defaultValue: 'Unit Price' })}</Label>
-                                                        <Input type="number" min="0" step="0.01" value={item.unitPrice} onChange={(event) => updateItem(index, { unitPrice: event.target.value })} placeholder={t('common.price', { defaultValue: 'Price' })} />
+                                                        <Label>{t('common.sellingPrice', { defaultValue: 'Selling Price' })}</Label>
+                                                        <Input type="number" min="0" step="0.01" value={item.unitPrice} onChange={(event) => updateItem(index, { unitPrice: event.target.value })} placeholder={t('common.sellingPrice', { defaultValue: 'Selling Price' })} />
                                                     </div>
                                                     <div className="flex items-start justify-end">
                                                         <Button type="button" variant="ghost" size="icon" className="text-destructive" onClick={() => setItems((current) => current.filter((_, itemIndex) => itemIndex !== index))}>
@@ -635,17 +643,17 @@ export function SalesOrderFormPage({
                                                         onChange={(event) => setInstallmentCount(event.target.value)}
                                                     />
                                                 </div>
-                                                <div className="space-y-2">
-                                                    <Label>{t('orders.form.installmentFrequency', { defaultValue: 'Frequency' })}</Label>
-                                                    <Select value={installmentFrequency} onValueChange={(value) => setInstallmentFrequency(value as InstallmentFrequency)}>
-                                                        <SelectTrigger><SelectValue /></SelectTrigger>
-                                                        <SelectContent>
-                                                            <SelectItem value="weekly">{t('orders.form.weekly', { defaultValue: 'Weekly' })}</SelectItem>
-                                                            <SelectItem value="biweekly">{t('orders.form.biweekly', { defaultValue: 'Every two weeks' })}</SelectItem>
-                                                            <SelectItem value="monthly">{t('orders.form.monthly', { defaultValue: 'Monthly' })}</SelectItem>
-                                                        </SelectContent>
-                                                    </Select>
-                                                </div></> : null}
+                                                    <div className="space-y-2">
+                                                        <Label>{t('orders.form.installmentFrequency', { defaultValue: 'Frequency' })}</Label>
+                                                        <Select value={installmentFrequency} onValueChange={(value) => setInstallmentFrequency(value as InstallmentFrequency)}>
+                                                            <SelectTrigger><SelectValue /></SelectTrigger>
+                                                            <SelectContent>
+                                                                <SelectItem value="weekly">{t('orders.form.weekly', { defaultValue: 'Weekly' })}</SelectItem>
+                                                                <SelectItem value="biweekly">{t('orders.form.biweekly', { defaultValue: 'Every two weeks' })}</SelectItem>
+                                                                <SelectItem value="monthly">{t('orders.form.monthly', { defaultValue: 'Monthly' })}</SelectItem>
+                                                            </SelectContent>
+                                                        </Select>
+                                                    </div></> : null}
                                                 <div className="space-y-2">
                                                     <Label htmlFor="sales-first-due">{isInstallmentBased
                                                         ? t('orders.form.firstDueDate', { defaultValue: 'First due date' })

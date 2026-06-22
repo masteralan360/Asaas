@@ -81,6 +81,8 @@
     "unsnooze": "Un-snooze",
     "am": "AM",
     "pm": "PM",
+    "buyingPrice": "Buying Price",
+    "sellingPrice": "Selling Price",
     "pagination": {
       "previous": "Previous",
       "next": "Next",

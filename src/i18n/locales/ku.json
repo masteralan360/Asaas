@@ -87,6 +87,8 @@
     "location": "شوێن",
     "phone": "مۆبایل",
     "email": "ئیمەیڵ",
+    "buyingPrice": "نرخی کڕین",
+    "sellingPrice": "نرخی فرۆشتن",
     "pagination": {
       "previous": "پێشتر",
       "next": "دواتر",
