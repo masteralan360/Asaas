@@ -74,4 +74,35 @@ describe('ProfessionalA4InvoiceTemplate', () => {
         expect(html).toContain('First Product')
         expect(html).toContain('Second Product')
     })
+
+    it('omits hidden professional card values from static print output', () => {
+        const html = renderToStaticMarkup(
+            <ProfessionalA4InvoiceTemplate
+                data={{
+                    id: 'invoice-2',
+                    invoiceid: '#002',
+                    created_at: new Date('2026-06-23T08:00:00Z').toISOString(),
+                    cashier_name: 'Hidden Cashier',
+                    items: [],
+                    total_amount: 120,
+                    subtotal_amount: 120,
+                    settlement_currency: 'usd',
+                    payment_method: 'cash',
+                    hiddenPrintFields: {
+                        'professional.saleSummary.soldBy': true
+                    }
+                }}
+                features={{
+                    print_lang: 'en',
+                    print_qr: false,
+                    iqd_display_preference: 'IQD'
+                }}
+                workspaceName="Atlas Test"
+            />
+        )
+
+        expect(html).toContain('Invoice #')
+        expect(html).not.toContain('Sold By')
+        expect(html).not.toContain('Hidden Cashier')
+    })
 })

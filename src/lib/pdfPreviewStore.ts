@@ -26,8 +26,10 @@ export type TemplatePreviewRenderOptions = {
     dataKeys?: TemplatePreviewDataKey[]
     tokenFieldTemplates?: Record<string, string>
     componentPositions?: Record<string, CustomTemplateComponentPosition>
+    hiddenFields?: Record<string, boolean>
     onFieldChange?: (key: string, value: string) => void
     onComponentPositionChange?: (key: string, position: CustomTemplateComponentPosition) => void
+    onHiddenFieldChange?: (key: string, hidden: boolean) => void
     workspaceFooterContacts?: Record<string, { primary?: string; nonPrimary?: string }>
 }
 
@@ -99,6 +101,7 @@ export type CustomTemplateLayout = {
     fields: Record<string, string>
     fieldTokenTemplates?: Record<string, string>
     componentPositions?: Record<string, CustomTemplateComponentPosition>
+    hiddenFields?: Record<string, boolean>
     annotations: CustomTemplateAnnotation[]
     texts: CustomTemplateText[]
     images: CustomTemplateImage[]

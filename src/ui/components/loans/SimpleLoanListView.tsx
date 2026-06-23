@@ -14,7 +14,7 @@ import { whatsappManager } from '@/lib/whatsappWebviewManager'
 import { deleteLoan, isLoanDeletionAllowed, type Loan, useLoanInstallments, useLoanPayments, useLoans } from '@/local-db'
 import { db } from '@/local-db/database'
 import { generateTemplatePdf, type PrintFormat } from '@/services/pdfGenerator'
-import type { TemplatePreview } from '@/lib/pdfPreviewStore'
+import type { TemplatePreview, TemplatePreviewRenderOptions } from '@/lib/pdfPreviewStore'
 import {
     AppPagination,
     Button,
@@ -209,7 +209,7 @@ export function SimpleLoanListView({
             { key: 'hideNextDue', label: t('loans.hideNextDue', { defaultValue: 'Hide Next Due' }), value: localStorage.getItem('atlas_print_hide_next_due') || 'false', type: 'boolean' },
             { key: 'hideDueDate', label: t('loans.hideDueDate', { defaultValue: 'Hide Due Date' }), value: localStorage.getItem('atlas_print_hide_due_date') || 'false', type: 'boolean' }
         ],
-        createElement: (data: Record<string, string>, effectiveId?: string, printLangOverride?: string) => (
+        createElement: (data: Record<string, string>, effectiveId?: string, printLangOverride?: string, renderOptions?: TemplatePreviewRenderOptions) => (
             <LoanListPrintTemplate
                 workspaceName={workspaceName}
                 printLang={printLangOverride || printLang}
@@ -230,6 +230,8 @@ export function SimpleLoanListView({
                 subtitleOverride={data.subtitle}
                 notesOverride={data.notes}
                 hideNextDue={data.hideNextDue === 'true'}
+                hiddenFields={renderOptions?.hiddenFields}
+                onHiddenFieldChange={renderOptions?.onHiddenFieldChange}
             />
         ),
         buildPdf: async (element: ReactElement, printLangOverride?: string) => generateTemplatePdf({
@@ -277,7 +279,7 @@ export function SimpleLoanListView({
                 { key: 'hideNextDue', label: t('loans.hideNextDue', { defaultValue: 'Hide Next Due' }), value: localStorage.getItem('atlas_print_hide_next_due') || 'false', type: 'boolean' },
                 { key: 'hideDueDate', label: t('loans.hideDueDate', { defaultValue: 'Hide Due Date' }), value: localStorage.getItem('atlas_print_hide_due_date') || 'false', type: 'boolean' }
             ],
-            createElement: (data: Record<string, string>, effectiveId?: string, printLangOverride?: string) => (
+            createElement: (data: Record<string, string>, effectiveId?: string, printLangOverride?: string, renderOptions?: TemplatePreviewRenderOptions) => (
                 <LoanDetailsPrintTemplate
                     workspaceName={workspaceName}
                     printLang={printLangOverride || printLang}
@@ -289,6 +291,8 @@ export function SimpleLoanListView({
                     qrValue={effectiveId ? buildQrValue(effectiveId) : undefined}
                     hideNextDue={data.hideNextDue === 'true'}
                     hideDueDate={data.hideDueDate === 'true'}
+                    hiddenFields={renderOptions?.hiddenFields}
+                    onHiddenFieldChange={renderOptions?.onHiddenFieldChange}
                 />
             ),
             buildPdf: async (element: ReactElement, printLangOverride?: string) => generateTemplatePdf({

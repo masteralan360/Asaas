@@ -15,6 +15,7 @@ import { MapPin, Phone } from 'lucide-react'
 import type { ReactNode } from 'react'
 import type { CustomTemplateComponentPosition } from '@/lib/pdfPreviewStore'
 import { MovableOrderPrintBlock } from '../MovableComponentPrint'
+import { HideablePrintFieldCard } from '@/ui/components/print/HideablePrintFieldCard'
 
 type OrderTab = 'sales' | 'purchase'
 
@@ -59,8 +60,10 @@ interface OrderDetailsPrintTemplateProps {
     hideDiscount?: boolean
     tableRowCount?: number
     componentPositions?: Record<string, CustomTemplateComponentPosition>
+    hiddenFields?: Record<string, boolean>
     editableComponents?: boolean
     onComponentPositionChange?: (key: string, position: CustomTemplateComponentPosition) => void
+    onHiddenFieldChange?: (key: string, hidden: boolean) => void
     workspaceFooterContacts?: WorkspaceFooterContacts
 }
 
@@ -406,8 +409,10 @@ export function OrderDetailsPrintTemplate({
     hideDiscount,
     tableRowCount,
     componentPositions,
+    hiddenFields,
     editableComponents,
     onComponentPositionChange,
+    onHiddenFieldChange,
     workspaceFooterContacts
 }: OrderDetailsPrintTemplateProps) {
     const { i18n } = useTranslation()
@@ -474,13 +479,26 @@ export function OrderDetailsPrintTemplate({
                     editable={editableComponents}
                     onPositionChange={onComponentPositionChange}
                 >
-                <div className="h-full border border-slate-300 rounded-md p-3">
-                    <h2 className="font-semibold mb-2">{counterpartyLabel}</h2>
-                    <p className="font-bold text-sm">{counterpartyName}</p>
-                    {isSales && salesOrder?.shippingAddress ? (
-                        <p className="text-slate-600 mt-1">{salesOrder.shippingAddress}</p>
-                    ) : null}
-                </div>
+                <HideablePrintFieldCard
+                    title={counterpartyLabel}
+                    className="h-full border border-slate-300 rounded-md p-3"
+                    hiddenFields={hiddenFields}
+                    onHiddenFieldChange={onHiddenFieldChange}
+                    fields={[
+                        {
+                            key: 'orders.counterparty.name',
+                            label: counterpartyLabel,
+                            value: counterpartyName,
+                            render: <p className="font-bold text-sm">{counterpartyName}</p>
+                        },
+                        ...(isSales && salesOrder?.shippingAddress ? [{
+                            key: 'orders.counterparty.shippingAddress',
+                            label: t('orders.details.shippingAddress', { defaultValue: 'Shipping Address' }),
+                            value: salesOrder.shippingAddress,
+                            render: <p className="text-slate-600 mt-1">{salesOrder.shippingAddress}</p>
+                        }] : [])
+                    ]}
+                />
                 </MovableOrderPrintBlock>
                 <MovableOrderPrintBlock
                     componentKey={ORDER_DETAILS_MOVABLE_COMPONENT_KEYS.commercials}
@@ -489,20 +507,61 @@ export function OrderDetailsPrintTemplate({
                     editable={editableComponents}
                     onPositionChange={onComponentPositionChange}
                 >
-                <div className="h-full border border-slate-300 rounded-md p-3">
-                    <h2 className="font-semibold mb-2">{t('orders.details.commercials') || 'Order Summary'}</h2>
-                    <p>{t('orders.details.subtotal') || 'Subtotal'}: {formatCurrency(order.subtotal, currency, iqdPreference)}</p>
-                    {!hideDiscount && <p>{t('orders.details.discount') || 'Discount'}: {formatCurrency(order.discount, currency, iqdPreference)}</p>}
-                    {isSales && salesOrder ? (
-                        <p>{t('orders.details.tax') || 'Tax'}: {formatCurrency(salesOrder.tax, currency, iqdPreference)}</p>
-                    ) : null}
-                    <p className="font-bold">{t('common.total') || 'Total'}: {formatCurrency(order.total, currency, iqdPreference)}</p>
-                    <p>{t('common.status') || 'Status'}: {resolveStatusLabel(t, order.status)}</p>
-                    <p>{t('pos.paymentMethod') || 'Payment'}: {resolvePaymentLabel(t, order.paymentMethod)}</p>
-                    <p>{resolvePaymentStatusLabel(t, order)}{order.paidAt ? ` • ${formatDate(order.paidAt)}` : ''}</p>
-                    <p>{t('orders.details.paidAmount', { defaultValue: 'Paid' })}: {formatCurrency(getOrderPaidAmount(order), order.currency, iqdPreference)}</p>
-                    <p>{t('orders.details.outstanding', { defaultValue: 'Outstanding' })}: {formatCurrency(getOrderBalanceAmount(order), order.currency, iqdPreference)}</p>
-                </div>
+                <HideablePrintFieldCard
+                    title={t('orders.details.commercials') || 'Order Summary'}
+                    className="h-full border border-slate-300 rounded-md p-3"
+                    hiddenFields={hiddenFields}
+                    onHiddenFieldChange={onHiddenFieldChange}
+                    fields={[
+                        {
+                            key: 'orders.commercials.subtotal',
+                            label: t('orders.details.subtotal') || 'Subtotal',
+                            value: formatCurrency(order.subtotal, currency, iqdPreference)
+                        },
+                        ...(!hideDiscount ? [{
+                            key: 'orders.commercials.discount',
+                            label: t('orders.details.discount') || 'Discount',
+                            value: formatCurrency(order.discount, currency, iqdPreference)
+                        }] : []),
+                        ...(isSales && salesOrder ? [{
+                            key: 'orders.commercials.tax',
+                            label: t('orders.details.tax') || 'Tax',
+                            value: formatCurrency(salesOrder.tax, currency, iqdPreference)
+                        }] : []),
+                        {
+                            key: 'orders.commercials.total',
+                            label: t('common.total') || 'Total',
+                            value: formatCurrency(order.total, currency, iqdPreference),
+                            className: 'font-bold'
+                        },
+                        {
+                            key: 'orders.commercials.status',
+                            label: t('common.status') || 'Status',
+                            value: resolveStatusLabel(t, order.status)
+                        },
+                        {
+                            key: 'orders.commercials.paymentMethod',
+                            label: t('pos.paymentMethod') || 'Payment',
+                            value: resolvePaymentLabel(t, order.paymentMethod)
+                        },
+                        {
+                            key: 'orders.commercials.paymentStatus',
+                            label: t('payments.status', { defaultValue: 'Payment Status' }),
+                            value: `${resolvePaymentStatusLabel(t, order)}${order.paidAt ? ` \u2022 ${formatDate(order.paidAt)}` : ''}`,
+                            render: <p>{resolvePaymentStatusLabel(t, order)}{order.paidAt ? ` \u2022 ${formatDate(order.paidAt)}` : ''}</p>
+                        },
+                        {
+                            key: 'orders.commercials.paidAmount',
+                            label: t('orders.details.paidAmount', { defaultValue: 'Paid' }),
+                            value: formatCurrency(getOrderPaidAmount(order), order.currency, iqdPreference)
+                        },
+                        {
+                            key: 'orders.commercials.outstanding',
+                            label: t('orders.details.outstanding', { defaultValue: 'Outstanding' }),
+                            value: formatCurrency(getOrderBalanceAmount(order), order.currency, iqdPreference)
+                        }
+                    ]}
+                />
                 </MovableOrderPrintBlock>
             </div>
 
@@ -514,10 +573,21 @@ export function OrderDetailsPrintTemplate({
                     editable={editableComponents}
                     onPositionChange={onComponentPositionChange}
                 >
-                <div className="h-full border border-slate-300 rounded-md p-2">
-                    <p className="text-slate-500 text-center">{t('orders.details.created') || 'Created'}</p>
-                    <p className="font-bold text-center">{formatDateTime(order.createdAt)}</p>
-                </div>
+                <HideablePrintFieldCard
+                    title={t('orders.details.created') || 'Created'}
+                    className="h-full border border-slate-300 rounded-md p-2"
+                    titleClassName="text-slate-500 text-center font-normal mb-0"
+                    hiddenFields={hiddenFields}
+                    onHiddenFieldChange={onHiddenFieldChange}
+                    fields={[
+                        {
+                            key: 'orders.created.createdAt',
+                            label: t('orders.details.created') || 'Created',
+                            value: formatDateTime(order.createdAt),
+                            render: <p className="font-bold text-center">{formatDateTime(order.createdAt)}</p>
+                        }
+                    ]}
+                />
                 </MovableOrderPrintBlock>
                 <MovableOrderPrintBlock
                     componentKey={ORDER_DETAILS_MOVABLE_COMPONENT_KEYS.expectedDelivery}
@@ -526,10 +596,21 @@ export function OrderDetailsPrintTemplate({
                     editable={editableComponents}
                     onPositionChange={onComponentPositionChange}
                 >
-                <div className="h-full border border-slate-300 rounded-md p-2">
-                    <p className="text-slate-500 text-center">{t('orders.details.expectedDelivery') || 'Expected Delivery'}</p>
-                    <p className="font-bold text-center">{order.expectedDeliveryDate ? formatDateTime(order.expectedDeliveryDate) : 'N/A'}</p>
-                </div>
+                <HideablePrintFieldCard
+                    title={t('orders.details.expectedDelivery') || 'Expected Delivery'}
+                    className="h-full border border-slate-300 rounded-md p-2"
+                    titleClassName="text-slate-500 text-center font-normal mb-0"
+                    hiddenFields={hiddenFields}
+                    onHiddenFieldChange={onHiddenFieldChange}
+                    fields={[
+                        {
+                            key: 'orders.expectedDelivery.date',
+                            label: t('orders.details.expectedDelivery') || 'Expected Delivery',
+                            value: order.expectedDeliveryDate ? formatDateTime(order.expectedDeliveryDate) : 'N/A',
+                            render: <p className="font-bold text-center">{order.expectedDeliveryDate ? formatDateTime(order.expectedDeliveryDate) : 'N/A'}</p>
+                        }
+                    ]}
+                />
                 </MovableOrderPrintBlock>
             </div>
 

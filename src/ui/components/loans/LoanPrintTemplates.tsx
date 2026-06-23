@@ -21,6 +21,7 @@ import { platformService } from '@/services/platformService'
 import { useTranslation } from 'react-i18next'
 import { ReactQRCode } from '@lglab/react-qr-code'
 import { LoanNoDisplay } from './LoanNoDisplay'
+import { HideablePrintFieldCard } from '@/ui/components/print/HideablePrintFieldCard'
 
 type LoanFilter = 'all' | 'active' | 'overdue' | 'completed' | 'lent' | 'borrowed'
 
@@ -48,6 +49,8 @@ interface LoanListPrintTemplateProps {
     subtitleOverride?: string
     notesOverride?: string
     hideNextDue?: boolean
+    hiddenFields?: Record<string, boolean>
+    onHiddenFieldChange?: (key: string, hidden: boolean) => void
 }
 
 interface LoanReceiptPrintTemplateProps {
@@ -73,6 +76,8 @@ interface LoanDetailsPrintTemplateProps {
     qrValue?: string | null
     hideNextDue?: boolean
     hideDueDate?: boolean
+    hiddenFields?: Record<string, boolean>
+    onHiddenFieldChange?: (key: string, hidden: boolean) => void
 }
 
 function isLoanOverdue(loan: Loan): boolean {
@@ -180,7 +185,9 @@ export function LoanListPrintTemplate({
     titleOverride,
     subtitleOverride,
     notesOverride,
-    hideNextDue
+    hideNextDue,
+    hiddenFields,
+    onHiddenFieldChange
 }: LoanListPrintTemplateProps) {
     const { i18n } = useTranslation()
     const t = i18n.getFixedT(printLang)
@@ -216,42 +223,82 @@ export function LoanListPrintTemplate({
             />
 
             <div className="grid grid-cols-2 gap-3 mb-4 text-xs">
-                <div className="border border-slate-300 rounded-md p-2">
-                    <p className="text-slate-500 text-center">
-                        {isSimpleVariant
-                            ? t('loans.totalLent', { defaultValue: 'Total Lent' })
-                            : (t('loans.totalOutstanding') || 'Total Outstanding')}
-                    </p>
-                    <p className="font-bold text-center">
-                        {formatCurrency(isSimpleVariant ? (metrics.totalLent || 0) : (metrics.totalOutstanding || 0), displayCurrency as any, iqdPreference)}
-                    </p>
-                </div>
-                <div className="border border-slate-300 rounded-md p-2">
-                    <p className="text-slate-500 text-center">
-                        {isSimpleVariant
-                            ? t('loans.totalBorrowed', { defaultValue: 'Total Borrowed' })
-                            : (t('loans.dueToday') || 'Due Today')}
-                    </p>
-                    <p className="font-bold text-center">
-                        {formatCurrency(isSimpleVariant ? (metrics.totalBorrowed || 0) : (metrics.dueToday || 0), displayCurrency as any, iqdPreference)}
-                    </p>
-                </div>
-                <div className="border border-slate-300 rounded-md p-2">
-                    <p className="text-slate-500 text-center">
-                        {isSimpleVariant
-                            ? t('loans.activeEntries', { defaultValue: 'Active Entries' })
-                            : (t('loans.activeLoans') || 'Active Loans')}
-                    </p>
-                    <p className="font-bold text-center">{isSimpleVariant ? (metrics.activeEntries || 0) : (metrics.activeLoans || 0)}</p>
-                </div>
-                <div className="border border-slate-300 rounded-md p-2">
-                    <p className="text-slate-500 text-center">
-                        {isSimpleVariant
-                            ? t('loans.settledEntries', { defaultValue: 'Settled Entries' })
-                            : (t('loans.overdueLoans') || 'Overdue Loans')}
-                    </p>
-                    <p className="font-bold text-center">{isSimpleVariant ? (metrics.settledEntries || 0) : (metrics.overdueLoans || 0)}</p>
-                </div>
+                <HideablePrintFieldCard
+                    title={isSimpleVariant
+                        ? t('loans.totalLent', { defaultValue: 'Total Lent' })
+                        : (t('loans.totalOutstanding') || 'Total Outstanding')}
+                    className="border border-slate-300 rounded-md p-2"
+                    titleClassName="text-slate-500 text-center font-normal mb-0"
+                    hiddenFields={hiddenFields}
+                    onHiddenFieldChange={onHiddenFieldChange}
+                    fields={[
+                        {
+                            key: 'loans.list.totalPrimary',
+                            label: isSimpleVariant
+                                ? t('loans.totalLent', { defaultValue: 'Total Lent' })
+                                : (t('loans.totalOutstanding') || 'Total Outstanding'),
+                            value: formatCurrency(isSimpleVariant ? (metrics.totalLent || 0) : (metrics.totalOutstanding || 0), displayCurrency as any, iqdPreference),
+                            render: <p className="font-bold text-center">{formatCurrency(isSimpleVariant ? (metrics.totalLent || 0) : (metrics.totalOutstanding || 0), displayCurrency as any, iqdPreference)}</p>
+                        }
+                    ]}
+                />
+                <HideablePrintFieldCard
+                    title={isSimpleVariant
+                        ? t('loans.totalBorrowed', { defaultValue: 'Total Borrowed' })
+                        : (t('loans.dueToday') || 'Due Today')}
+                    className="border border-slate-300 rounded-md p-2"
+                    titleClassName="text-slate-500 text-center font-normal mb-0"
+                    hiddenFields={hiddenFields}
+                    onHiddenFieldChange={onHiddenFieldChange}
+                    fields={[
+                        {
+                            key: 'loans.list.totalSecondary',
+                            label: isSimpleVariant
+                                ? t('loans.totalBorrowed', { defaultValue: 'Total Borrowed' })
+                                : (t('loans.dueToday') || 'Due Today'),
+                            value: formatCurrency(isSimpleVariant ? (metrics.totalBorrowed || 0) : (metrics.dueToday || 0), displayCurrency as any, iqdPreference),
+                            render: <p className="font-bold text-center">{formatCurrency(isSimpleVariant ? (metrics.totalBorrowed || 0) : (metrics.dueToday || 0), displayCurrency as any, iqdPreference)}</p>
+                        }
+                    ]}
+                />
+                <HideablePrintFieldCard
+                    title={isSimpleVariant
+                        ? t('loans.activeEntries', { defaultValue: 'Active Entries' })
+                        : (t('loans.activeLoans') || 'Active Loans')}
+                    className="border border-slate-300 rounded-md p-2"
+                    titleClassName="text-slate-500 text-center font-normal mb-0"
+                    hiddenFields={hiddenFields}
+                    onHiddenFieldChange={onHiddenFieldChange}
+                    fields={[
+                        {
+                            key: 'loans.list.activeCount',
+                            label: isSimpleVariant
+                                ? t('loans.activeEntries', { defaultValue: 'Active Entries' })
+                                : (t('loans.activeLoans') || 'Active Loans'),
+                            value: isSimpleVariant ? (metrics.activeEntries || 0) : (metrics.activeLoans || 0),
+                            render: <p className="font-bold text-center">{isSimpleVariant ? (metrics.activeEntries || 0) : (metrics.activeLoans || 0)}</p>
+                        }
+                    ]}
+                />
+                <HideablePrintFieldCard
+                    title={isSimpleVariant
+                        ? t('loans.settledEntries', { defaultValue: 'Settled Entries' })
+                        : (t('loans.overdueLoans') || 'Overdue Loans')}
+                    className="border border-slate-300 rounded-md p-2"
+                    titleClassName="text-slate-500 text-center font-normal mb-0"
+                    hiddenFields={hiddenFields}
+                    onHiddenFieldChange={onHiddenFieldChange}
+                    fields={[
+                        {
+                            key: 'loans.list.statusCount',
+                            label: isSimpleVariant
+                                ? t('loans.settledEntries', { defaultValue: 'Settled Entries' })
+                                : (t('loans.overdueLoans') || 'Overdue Loans'),
+                            value: isSimpleVariant ? (metrics.settledEntries || 0) : (metrics.overdueLoans || 0),
+                            render: <p className="font-bold text-center">{isSimpleVariant ? (metrics.settledEntries || 0) : (metrics.overdueLoans || 0)}</p>
+                        }
+                    ]}
+                />
             </div>
 
             <table className="w-full border-collapse text-xs">
@@ -322,7 +369,9 @@ export function LoanDetailsPrintTemplate({
     logoUrl,
     qrValue,
     hideNextDue,
-    hideDueDate
+    hideDueDate,
+    hiddenFields,
+    onHiddenFieldChange
 }: LoanDetailsPrintTemplateProps) {
     const { i18n } = useTranslation()
     const t = i18n.getFixedT(printLang)
@@ -365,27 +414,80 @@ export function LoanDetailsPrintTemplate({
             />
 
             <div className="grid grid-cols-2 gap-4 mb-4 text-xs text-center">
-                <div className="border border-slate-300 rounded-md p-3">
-                    <h2 className="font-semibold mb-2">{getLoanIdentityTitle(loan, t)}</h2>
-                    {getLoanLinkedPartySummary(loan, t) ? (
-                        <p className="mb-1 text-slate-600">{getLoanLinkedPartySummary(loan, t)}</p>
-                    ) : null}
-                    {isSimpleLoan(loan) ? (
-                        <p className="mb-1 font-semibold text-slate-700">{getLoanDirectionLabel(getLoanDirection(loan), t)}</p>
-                    ) : null}
-                    <p>{loan.borrowerName}</p>
-                    <p>{loan.borrowerPhone}</p>
-                    <p>{loan.borrowerAddress}</p>
-                    <p className="text-slate-600">{loan.borrowerNationalId}</p>
-                </div>
-                <div className="border border-slate-300 rounded-md p-3 text-center">
-                    <h2 className="font-semibold mb-2">{loanSummaryTitle}</h2>
-                    <p>{t('loans.principal') || 'Principal'}: {formatCurrency(loan.principalAmount, loan.settlementCurrency, iqdPreference)}</p>
-                    <p>{t('loans.paid') || 'Paid'}: {formatCurrency(loan.totalPaidAmount, loan.settlementCurrency, iqdPreference)}</p>
-                    <p>{t('loans.balance') || 'Balance'}: {formatCurrency(loan.balanceAmount, loan.settlementCurrency, iqdPreference)}</p>
-                    {!hideNextDue && <p>{t('loans.nextDue') || 'Next Due'}: {loan.nextDueDate ? formatDate(loan.nextDueDate) : '-'}</p>}
-                    <p>{t('loans.status') || 'Status'}: {resolveStatusLabel(loan, t)}</p>
-                </div>
+                <HideablePrintFieldCard
+                    title={getLoanIdentityTitle(loan, t)}
+                    className="border border-slate-300 rounded-md p-3"
+                    hiddenFields={hiddenFields}
+                    onHiddenFieldChange={onHiddenFieldChange}
+                    fields={[
+                        ...(getLoanLinkedPartySummary(loan, t) ? [{
+                            key: 'loans.identity.linkedParty',
+                            label: t('loans.linkedParty', { defaultValue: 'Linked Party' }),
+                            value: getLoanLinkedPartySummary(loan, t),
+                            render: <p className="mb-1 text-slate-600">{getLoanLinkedPartySummary(loan, t)}</p>
+                        }] : []),
+                        ...(isSimpleLoan(loan) ? [{
+                            key: 'loans.identity.direction',
+                            label: t('loans.direction', { defaultValue: 'Direction' }),
+                            value: getLoanDirectionLabel(getLoanDirection(loan), t),
+                            render: <p className="mb-1 font-semibold text-slate-700">{getLoanDirectionLabel(getLoanDirection(loan), t)}</p>
+                        }] : []),
+                        {
+                            key: 'loans.identity.name',
+                            label: getLoanCounterpartyLabel(loan, t),
+                            value: loan.borrowerName
+                        },
+                        {
+                            key: 'loans.identity.phone',
+                            label: t('common.phone', { defaultValue: 'Phone' }),
+                            value: loan.borrowerPhone
+                        },
+                        {
+                            key: 'loans.identity.address',
+                            label: t('common.address', { defaultValue: 'Address' }),
+                            value: loan.borrowerAddress
+                        },
+                        {
+                            key: 'loans.identity.nationalId',
+                            label: t('loans.nationalId', { defaultValue: 'National ID' }),
+                            value: loan.borrowerNationalId,
+                            className: 'text-slate-600'
+                        }
+                    ]}
+                />
+                <HideablePrintFieldCard
+                    title={loanSummaryTitle}
+                    className="border border-slate-300 rounded-md p-3 text-center"
+                    hiddenFields={hiddenFields}
+                    onHiddenFieldChange={onHiddenFieldChange}
+                    fields={[
+                        {
+                            key: 'loans.summary.principal',
+                            label: t('loans.principal') || 'Principal',
+                            value: formatCurrency(loan.principalAmount, loan.settlementCurrency, iqdPreference)
+                        },
+                        {
+                            key: 'loans.summary.paid',
+                            label: t('loans.paid') || 'Paid',
+                            value: formatCurrency(loan.totalPaidAmount, loan.settlementCurrency, iqdPreference)
+                        },
+                        {
+                            key: 'loans.summary.balance',
+                            label: t('loans.balance') || 'Balance',
+                            value: formatCurrency(loan.balanceAmount, loan.settlementCurrency, iqdPreference)
+                        },
+                        ...(!hideNextDue ? [{
+                            key: 'loans.summary.nextDue',
+                            label: t('loans.nextDue') || 'Next Due',
+                            value: loan.nextDueDate ? formatDate(loan.nextDueDate) : '-'
+                        }] : []),
+                        {
+                            key: 'loans.summary.status',
+                            label: t('loans.status') || 'Status',
+                            value: resolveStatusLabel(loan, t)
+                        }
+                    ]}
+                />
             </div>
 
             <h3 className="font-semibold mb-2 text-sm">{loanScheduleTitle}</h3>

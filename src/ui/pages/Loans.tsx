@@ -42,7 +42,7 @@ import { whatsappManager } from '@/lib/whatsappWebviewManager'
 import { WhatsAppNumberInputModal } from '@/ui/components/modals/WhatsAppNumberInputModal'
 import { isMobile } from '@/lib/platform'
 import { generateTemplatePdf, type PrintFormat } from '@/services/pdfGenerator'
-import type { TemplatePreview } from '@/lib/pdfPreviewStore'
+import type { TemplatePreview, TemplatePreviewRenderOptions } from '@/lib/pdfPreviewStore'
 import {
     Button,
     Card,
@@ -255,7 +255,7 @@ function LoanListView({
             { key: 'hideNextDue', label: t('loans.hideNextDue', { defaultValue: 'Hide Next Due' }), value: localStorage.getItem('atlas_print_hide_next_due') || 'false', type: 'boolean' },
             { key: 'hideDueDate', label: t('loans.hideDueDate', { defaultValue: 'Hide Due Date' }), value: localStorage.getItem('atlas_print_hide_due_date') || 'false', type: 'boolean' }
         ],
-        createElement: (data: Record<string, string>, effectiveId?: string, printLangOverride?: string) => (
+        createElement: (data: Record<string, string>, effectiveId?: string, printLangOverride?: string, renderOptions?: TemplatePreviewRenderOptions) => (
             <LoanListPrintTemplate
                 workspaceName={workspaceName}
                 printLang={printLangOverride || printLang}
@@ -270,6 +270,8 @@ function LoanListView({
                 subtitleOverride={data.subtitle}
                 notesOverride={data.notes}
                 hideNextDue={data.hideNextDue === 'true'}
+                hiddenFields={renderOptions?.hiddenFields}
+                onHiddenFieldChange={renderOptions?.onHiddenFieldChange}
             />
         ),
         buildPdf: async (element: ReactElement, printLangOverride?: string) => generateTemplatePdf({
@@ -317,7 +319,7 @@ function LoanListView({
                 { key: 'hideNextDue', label: t('loans.hideNextDue', { defaultValue: 'Hide Next Due' }), value: localStorage.getItem('atlas_print_hide_next_due') || 'false', type: 'boolean' },
                 { key: 'hideDueDate', label: t('loans.hideDueDate', { defaultValue: 'Hide Due Date' }), value: localStorage.getItem('atlas_print_hide_due_date') || 'false', type: 'boolean' }
             ],
-            createElement: (data: Record<string, string>, effectiveId?: string, printLangOverride?: string) => (
+            createElement: (data: Record<string, string>, effectiveId?: string, printLangOverride?: string, renderOptions?: TemplatePreviewRenderOptions) => (
                 <LoanDetailsPrintTemplate
                     workspaceName={workspaceName}
                     printLang={printLangOverride || printLang}
@@ -329,6 +331,8 @@ function LoanListView({
                     qrValue={effectiveId ? buildQrValue(effectiveId) : undefined}
                     hideNextDue={data.hideNextDue === 'true'}
                     hideDueDate={data.hideDueDate === 'true'}
+                    hiddenFields={renderOptions?.hiddenFields}
+                    onHiddenFieldChange={renderOptions?.onHiddenFieldChange}
                 />
             ),
             buildPdf: async (element: ReactElement, printLangOverride?: string) => generateTemplatePdf({
@@ -966,7 +970,7 @@ function LoanDetailsView({
                 { key: 'hideNextDue', label: t('loans.hideNextDue', { defaultValue: 'Hide Next Due' }), value: localStorage.getItem('atlas_print_hide_next_due') || 'false', type: 'boolean' },
                 { key: 'hideDueDate', label: t('loans.hideDueDate', { defaultValue: 'Hide Due Date' }), value: localStorage.getItem('atlas_print_hide_due_date') || 'false', type: 'boolean' }
             ],
-            createElement: (data: Record<string, string>, effectiveId?: string, printLangOverride?: string) => (
+            createElement: (data: Record<string, string>, effectiveId?: string, printLangOverride?: string, renderOptions?: TemplatePreviewRenderOptions) => (
                 <LoanDetailsPrintTemplate
                     workspaceName={workspaceName}
                     printLang={printLangOverride || printLang}
@@ -978,6 +982,8 @@ function LoanDetailsView({
                     qrValue={effectiveId ? buildQrValue(effectiveId) : undefined}
                     hideNextDue={data.hideNextDue === 'true'}
                     hideDueDate={data.hideDueDate === 'true'}
+                    hiddenFields={renderOptions?.hiddenFields}
+                    onHiddenFieldChange={renderOptions?.onHiddenFieldChange}
                 />
             ),
             buildPdf: async (element: ReactElement, printLangOverride?: string) => generateTemplatePdf({

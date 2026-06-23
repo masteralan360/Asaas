@@ -65,6 +65,11 @@ function readStoredLayout(row?: CustomTemplateRow | null): CustomTemplateLayout 
 
     const layout = row.layout_json as Partial<CustomTemplateLayout>
     const targetPage = getCustomTemplateTarget(row.module_type_key)?.page
+    const hiddenFields = layout.hiddenFields && typeof layout.hiddenFields === 'object'
+        ? Object.fromEntries(
+            Object.entries(layout.hiddenFields).filter(([, value]) => typeof value === 'boolean')
+        )
+        : {}
 
     return {
         version: 1,
@@ -79,6 +84,7 @@ function readStoredLayout(row?: CustomTemplateRow | null): CustomTemplateLayout 
             heightMm: targetPage?.heightMm || layout.page?.heightMm || 297
         },
         fields: layout.fields || {},
+        hiddenFields,
         componentPositions: layout.componentPositions || {},
         annotations: layout.annotations || [],
         texts: layout.texts || [],
@@ -94,6 +100,7 @@ function countLayoutItems(row: CustomTemplateRow) {
         + layout.texts.length
         + layout.images.length
         + Object.keys(layout.fields).length
+        + Object.keys(layout.hiddenFields || {}).length
         + Object.keys(layout.componentPositions || {}).length
 }
 

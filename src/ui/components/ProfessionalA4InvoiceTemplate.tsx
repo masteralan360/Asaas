@@ -10,6 +10,7 @@ import { platformService } from '@/services/platformService'
 import type { UniversalInvoice, UniversalInvoiceItem } from '@/types'
 import { EditableField } from '@/ui/components/EditableField'
 import { MovableOrderPrintBlock } from '@/ui/components/MovableComponentPrint'
+import { HideablePrintFieldCard } from '@/ui/components/print/HideablePrintFieldCard'
 
 export const PROFESSIONAL_A4_TABLE_ROW_COUNT = 10
 
@@ -54,8 +55,10 @@ interface ProfessionalA4InvoiceTemplateProps {
     hideDiscount?: boolean
     tableRowCount?: number
     componentPositions?: Record<string, CustomTemplateComponentPosition>
+    hiddenFields?: Record<string, boolean>
     editableComponents?: boolean
     onComponentPositionChange?: (key: string, position: CustomTemplateComponentPosition) => void
+    onHiddenFieldChange?: (key: string, hidden: boolean) => void
 }
 
 function isRTL(lang: string): boolean {
@@ -120,8 +123,10 @@ export const ProfessionalA4InvoiceTemplate = forwardRef<HTMLDivElement, Professi
         hideDiscount,
         tableRowCount,
         componentPositions,
+        hiddenFields,
         editableComponents,
-        onComponentPositionChange
+        onComponentPositionChange,
+        onHiddenFieldChange
     }, ref) => {
         const { i18n } = useTranslation()
         const printLang = features?.print_lang && features.print_lang !== 'auto' ? features.print_lang : i18n.language
@@ -139,6 +144,7 @@ export const ProfessionalA4InvoiceTemplate = forwardRef<HTMLDivElement, Professi
         const taxAmount = safeNumber(data.tax_amount)
         const totalAmount = safeNumber(data.total_amount)
         const invoiceNumber = data.invoiceid || `#${String(data.id).slice(0, 8)}`
+        const effectiveHiddenFields = hiddenFields || data.hiddenPrintFields || {}
         const qrValue = features?.print_qr && effectiveWorkspaceId && (data.sequenceId || data.invoiceid)
             ? `https://asaas-r2-proxy.alanepic360.workers.dev/${effectiveWorkspaceId}/printed-invoices/A4/${data.id}.pdf`
             : null
@@ -267,28 +273,71 @@ export const ProfessionalA4InvoiceTemplate = forwardRef<HTMLDivElement, Professi
                         </div>
                     ))}
                     {mp(PROFESSIONAL_A4_MOVABLE_COMPONENT_KEYS.saleSummary, 'Sale Summary', (
-                        <div className="h-full border border-slate-300 rounded-md p-3">
-                            <h2 className="font-semibold mb-2">{t('orders.details.commercials', { defaultValue: 'Commercials' })}</h2>
-                            <p>{t('invoice.number', { defaultValue: 'Invoice #' })}: <span className="font-bold">{invoiceNumber}</span></p>
-                            <p>{t('invoice.soldBy', { defaultValue: 'Sold By' })}: <span className="font-bold">{data.cashier_name || '-'}</span></p>
-                            <p>{t('common.status', { defaultValue: 'Status' })}: <span className="font-bold">{data.status || 'paid'}</span></p>
-                            <p>{t('common.total', { defaultValue: 'Total' })}: <span className="font-bold">{formatCurrency(totalAmount, settlementCurrency, iqdPreference)}</span></p>
-                        </div>
+                        <HideablePrintFieldCard
+                            title={t('orders.details.commercials', { defaultValue: 'Commercials' })}
+                            className="h-full border border-slate-300 rounded-md p-3"
+                            hiddenFields={effectiveHiddenFields}
+                            onHiddenFieldChange={onHiddenFieldChange}
+                            fields={[
+                                {
+                                    key: 'professional.saleSummary.invoiceNumber',
+                                    label: t('invoice.number', { defaultValue: 'Invoice #' }),
+                                    value: <span className="font-bold">{invoiceNumber}</span>
+                                },
+                                {
+                                    key: 'professional.saleSummary.soldBy',
+                                    label: t('invoice.soldBy', { defaultValue: 'Sold By' }),
+                                    value: <span className="font-bold">{data.cashier_name || '-'}</span>
+                                },
+                                {
+                                    key: 'professional.saleSummary.status',
+                                    label: t('common.status', { defaultValue: 'Status' }),
+                                    value: <span className="font-bold">{data.status || 'paid'}</span>
+                                },
+                                {
+                                    key: 'professional.saleSummary.total',
+                                    label: t('common.total', { defaultValue: 'Total' }),
+                                    value: <span className="font-bold">{formatCurrency(totalAmount, settlementCurrency, iqdPreference)}</span>
+                                }
+                            ]}
+                        />
                     ))}
                 </div>
 
                 <div className="grid grid-cols-2 gap-3 mb-4 text-xs">
                     {mp(PROFESSIONAL_A4_MOVABLE_COMPONENT_KEYS.created, 'Created', (
-                        <div className="h-full border border-slate-300 rounded-md p-2">
-                            <p className="text-slate-500 text-center">{t('orders.details.created', { defaultValue: 'Created' })}</p>
-                            <p className="font-bold text-center">{formatDateTime(data.created_at)}</p>
-                        </div>
+                        <HideablePrintFieldCard
+                            title={t('orders.details.created', { defaultValue: 'Created' })}
+                            className="h-full border border-slate-300 rounded-md p-2"
+                            titleClassName="text-slate-500 text-center font-normal mb-0"
+                            hiddenFields={effectiveHiddenFields}
+                            onHiddenFieldChange={onHiddenFieldChange}
+                            fields={[
+                                {
+                                    key: 'professional.created.createdAt',
+                                    label: t('orders.details.created', { defaultValue: 'Created' }),
+                                    value: formatDateTime(data.created_at),
+                                    render: <p className="font-bold text-center">{formatDateTime(data.created_at)}</p>
+                                }
+                            ]}
+                        />
                     ))}
                     {mp(PROFESSIONAL_A4_MOVABLE_COMPONENT_KEYS.payment, 'Payment', (
-                        <div className="h-full border border-slate-300 rounded-md p-2">
-                            <p className="text-slate-500 text-center">{t('pos.paymentMethod', { defaultValue: 'Payment' })}</p>
-                            <p className="font-bold text-center">{resolvePaymentLabel(t, data.payment_method)}</p>
-                        </div>
+                        <HideablePrintFieldCard
+                            title={t('pos.paymentMethod', { defaultValue: 'Payment' })}
+                            className="h-full border border-slate-300 rounded-md p-2"
+                            titleClassName="text-slate-500 text-center font-normal mb-0"
+                            hiddenFields={effectiveHiddenFields}
+                            onHiddenFieldChange={onHiddenFieldChange}
+                            fields={[
+                                {
+                                    key: 'professional.payment.method',
+                                    label: t('pos.paymentMethod', { defaultValue: 'Payment' }),
+                                    value: resolvePaymentLabel(t, data.payment_method),
+                                    render: <p className="font-bold text-center">{resolvePaymentLabel(t, data.payment_method)}</p>
+                                }
+                            ]}
+                        />
                     ))}
                 </div>
 

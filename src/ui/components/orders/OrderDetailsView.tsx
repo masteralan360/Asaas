@@ -365,6 +365,8 @@ export function OrderDetailsView({ workspaceId, orderId }: { workspaceId: string
                         qrValue={effectiveId ? `https://asaas-r2-proxy.alanepic360.workers.dev/${workspaceId}/printed-invoices/A4/${effectiveId}.pdf` : undefined}
                         hideUnit={data.hideUnit === 'true'}
                         hideDiscount={data.hideDiscount === 'true'}
+                        hiddenFields={renderOptions?.hiddenFields}
+                        onHiddenFieldChange={renderOptions?.onHiddenFieldChange}
                         workspaceFooterContacts={renderOptions?.workspaceFooterContacts || workspaceFooterContacts}
                     />
                 )

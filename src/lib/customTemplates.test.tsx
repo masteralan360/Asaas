@@ -106,7 +106,11 @@ describe('Sales History custom A4 templates', () => {
             itemsTable: { x: 4, y: 8 },
             totals: { x: -6, y: 3 }
         }
+        const hiddenFields = {
+            'professional.saleSummary.soldBy': true
+        }
         const onComponentPositionChange = vi.fn()
+        const onHiddenFieldChange = vi.fn()
         const preview = customTemplates.createCustomTemplatePreview(target!, {
             workspaceName: 'Atlas Test',
             printLang: 'en'
@@ -117,7 +121,9 @@ describe('Sales History custom A4 templates', () => {
         }, undefined, undefined, {
             editableComponents: true,
             componentPositions,
-            onComponentPositionChange
+            hiddenFields,
+            onComponentPositionChange,
+            onHiddenFieldChange
         })
 
         expect(preview.fields).toEqual([
@@ -148,8 +154,10 @@ describe('Sales History custom A4 templates', () => {
         expect(element.props.hideUnit).toBe(true)
         expect(element.props.hideDiscount).toBe(true)
         expect(element.props.componentPositions).toBe(componentPositions)
+        expect(element.props.hiddenFields).toBe(hiddenFields)
         expect(element.props.editableComponents).toBe(true)
         expect(element.props.onComponentPositionChange).toBe(onComponentPositionChange)
+        expect(element.props.onHiddenFieldChange).toBe(onHiddenFieldChange)
     })
 })
 
@@ -321,14 +329,20 @@ describe('Order Details custom print template', () => {
             orderItems: { x: 0, y: 20 },
             totals: { x: -8, y: 12 }
         }
+        const hiddenFields = {
+            'orders.commercials.outstanding': true
+        }
         const onComponentPositionChange = vi.fn()
+        const onHiddenFieldChange = vi.fn()
         const element = preview.createElement({
             [customTemplates.ORDER_DETAILS_TEMPLATE_FIELD_KEYS.hideUnit]: 'true',
             [customTemplates.ORDER_DETAILS_TEMPLATE_FIELD_KEYS.hideDiscount]: 'true'
         }, undefined, undefined, {
             editableComponents: true,
             componentPositions,
-            onComponentPositionChange
+            hiddenFields,
+            onComponentPositionChange,
+            onHiddenFieldChange
         })
 
         expect(preview.fields).toEqual([
@@ -372,8 +386,10 @@ describe('Order Details custom print template', () => {
         expect(element.props.hideUnit).toBe(true)
         expect(element.props.hideDiscount).toBe(true)
         expect(element.props.componentPositions).toBe(componentPositions)
+        expect(element.props.hiddenFields).toBe(hiddenFields)
         expect(element.props.editableComponents).toBe(true)
         expect(element.props.onComponentPositionChange).toBe(onComponentPositionChange)
+        expect(element.props.onHiddenFieldChange).toBe(onHiddenFieldChange)
 
         const html = renderToStaticMarkup(element)
         expect(html.match(/data-order-print-component=/g)).toHaveLength(12)
@@ -384,10 +400,13 @@ describe('Order Details custom print template', () => {
         expect(html).toContain('data-order-print-component="totals"')
     })
 
-    it('preserves movable component positions when reading a saved layout', () => {
+    it('preserves movable component positions and hidden fields when reading a saved layout', () => {
         const componentPositions = {
             customer: { x: 10, y: 5 },
             commercials: { x: -6, y: 8 }
+        }
+        const hiddenFields = {
+            'orders.commercials.paidAmount': true
         }
         const layout = customTemplates.readCustomTemplateLayout({
             id: 'movable-order-template',
@@ -398,6 +417,7 @@ describe('Order Details custom print template', () => {
                 page: { widthMm: 210, heightMm: 297 },
                 fields: {},
                 componentPositions,
+                hiddenFields,
                 annotations: [],
                 texts: [],
                 images: [],
@@ -406,6 +426,7 @@ describe('Order Details custom print template', () => {
         })
 
         expect(layout?.componentPositions).toEqual(componentPositions)
+        expect(layout?.hiddenFields).toEqual(hiddenFields)
     })
 
     it('applies saved component positions to the printable custom layout without editor controls', () => {

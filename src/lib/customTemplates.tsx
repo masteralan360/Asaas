@@ -253,6 +253,11 @@ export function readCustomTemplateLayout(row?: StoredCustomTemplateRow | null): 
 
     const layout = row.layout_json as Partial<CustomTemplateLayout>
     const targetPage = getCustomTemplateTarget(row.module_type_key)?.page
+    const hiddenFields = layout.hiddenFields && typeof layout.hiddenFields === 'object'
+        ? Object.fromEntries(
+            Object.entries(layout.hiddenFields).filter(([, value]) => typeof value === 'boolean')
+        )
+        : {}
 
     return {
         version: 1,
@@ -267,6 +272,7 @@ export function readCustomTemplateLayout(row?: StoredCustomTemplateRow | null): 
             heightMm: targetPage?.heightMm || layout.page?.heightMm || 297
         },
         fields: layout.fields || {},
+        hiddenFields,
         componentPositions: layout.componentPositions || {},
         annotations: layout.annotations || [],
         texts: layout.texts || [],
@@ -870,8 +876,10 @@ function createSalesHistoryProfessionalA4Preview(options: CustomTemplatePreviewO
                 hideDiscount={data.hideDiscount === 'true'}
                 tableRowCount={Number(data.tableRowCount) || PROFESSIONAL_A4_TABLE_ROW_COUNT}
                 componentPositions={renderOptions?.componentPositions}
+                hiddenFields={renderOptions?.hiddenFields}
                 editableComponents={renderOptions?.editableComponents}
                 onComponentPositionChange={renderOptions?.onComponentPositionChange}
+                onHiddenFieldChange={renderOptions?.onHiddenFieldChange}
             />
         ),
         buildPdf: (element, printLangOverride) => generateTemplatePdf({
@@ -991,8 +999,10 @@ function createOrderDetailsPreview(options: CustomTemplatePreviewOptions): Templ
                 hideDiscount={data[ORDER_DETAILS_TEMPLATE_FIELD_KEYS.hideDiscount] === 'true'}
                 tableRowCount={Number(data.tableRowCount) || 10}
                 componentPositions={renderOptions?.componentPositions}
+                hiddenFields={renderOptions?.hiddenFields}
                 editableComponents={renderOptions?.editableComponents}
                 onComponentPositionChange={renderOptions?.onComponentPositionChange}
+                onHiddenFieldChange={renderOptions?.onHiddenFieldChange}
                 workspaceFooterContacts={renderOptions?.workspaceFooterContacts || options.workspaceFooterContacts}
             />
         ),
@@ -1189,7 +1199,8 @@ export function renderCustomTemplateLayoutElement({
             <div className="relative z-10">
                 {preview.createElement(fieldValues, effectiveId, preview.fixedPrintLang, {
                     tokenFieldTemplates: layout.fieldTokenTemplates,
-                    componentPositions: layout.componentPositions
+                    componentPositions: layout.componentPositions,
+                    hiddenFields: layout.hiddenFields
                 })}
             </div>
             <CustomTemplateLayoutOverlay layout={layout} heightMm={Math.max(layoutHeight, getCustomTemplateLayoutHeightMm(layout))} />

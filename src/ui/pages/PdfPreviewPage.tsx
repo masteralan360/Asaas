@@ -117,6 +117,8 @@ function EditableInvoicePreview({
     hideUnit,
     hideDiscount,
     tableRowCount,
+    hiddenFields,
+    onHiddenFieldChange,
 }: {
     data: UniversalInvoice
     features: any
@@ -129,6 +131,8 @@ function EditableInvoicePreview({
     hideUnit?: boolean
     hideDiscount?: boolean
     tableRowCount?: number
+    hiddenFields?: Record<string, boolean>
+    onHiddenFieldChange?: (key: string, hidden: boolean) => void
 }) {
     const { i18n } = useTranslation()
     const printLang = features?.print_lang && features.print_lang !== 'auto' ? features.print_lang : i18n.language
@@ -189,6 +193,8 @@ function EditableInvoicePreview({
                     drawingMode={drawingMode}
                     hideUnit={hideUnit}
                     hideDiscount={hideDiscount}
+                    hiddenFields={hiddenFields || data.hiddenPrintFields}
+                    onHiddenFieldChange={onHiddenFieldChange}
                 />
             </div>
         )
@@ -369,6 +375,7 @@ export function PdfPreviewPage() {
         ])),
         ...(initialTemplateLayout?.componentPositions || {})
     }))
+    const [templateHiddenFields, setTemplateHiddenFields] = useState<Record<string, boolean>>(() => initialTemplateLayout?.hiddenFields || {})
     const handleTemplateComponentPositionChange = useCallback((
         key: string,
         position: CustomTemplateComponentPosition
@@ -454,6 +461,7 @@ export function PdfPreviewPage() {
         templateAnnotations,
         templateComponentPositions,
         templateImages,
+        templateHiddenFields,
         templatePreview,
         templateTexts
     ])
@@ -530,12 +538,13 @@ export function PdfPreviewPage() {
             fields: fieldValues,
             fieldTokenTemplates: initialTemplateLayout?.fieldTokenTemplates,
             componentPositions: templateComponentPositions,
+            hiddenFields: templateHiddenFields,
             annotations: templateAnnotations,
             texts: templateTexts,
             images: templateImages,
             updatedAt: new Date().toISOString()
         }
-    }, [source, templatePreview, fieldValues, initialTemplateLayout?.label, templateAnnotations, templateComponentPositions, templateTexts, templateImages, templatePageHeight, templatePageWidth])
+    }, [source, templatePreview, fieldValues, initialTemplateLayout?.label, templateAnnotations, templateComponentPositions, templateHiddenFields, templateTexts, templateImages, templatePageHeight, templatePageWidth])
 
     const saveTemplatePreview = useCallback(async (layout?: CustomTemplateLayout, label?: string) => {
         if (!source || !templatePreview || !fieldValues || isSaving) return
@@ -558,7 +567,10 @@ export function PdfPreviewPage() {
                 const blob = source.generateTemplateLayoutBlob && layoutForBlob
                     ? await source.generateTemplateLayoutBlob(layoutForBlob, overrideLang, source.effectiveId)
                     : await templatePreview.buildPdf(
-                        templatePreview.createElement(fieldValues, source.effectiveId, overrideLang),
+                        templatePreview.createElement(fieldValues, source.effectiveId, overrideLang, {
+                            hiddenFields: templateHiddenFields,
+                            workspaceFooterContacts: sourceWorkspaceFooterContacts
+                        }),
                         overrideLang
                     )
 
@@ -584,7 +596,7 @@ export function PdfPreviewPage() {
                 window.history.back()
             }
         }
-    }, [source, templatePreview, fieldValues, isSaving, fixedTemplatePrintLang, tempPrintLang, buildTemplateLayout])
+    }, [source, templatePreview, fieldValues, isSaving, fixedTemplatePrintLang, tempPrintLang, buildTemplateLayout, sourceWorkspaceFooterContacts, templateHiddenFields])
 
     const handleTemplatePreviewSave = useCallback(async () => {
         if (!source || !templatePreview || !fieldValues || isSaving) return
@@ -635,6 +647,34 @@ export function PdfPreviewPage() {
             localStorage.setItem('atlas_print_table_row_count', value)
         }
         setFieldValues(prev => ({ ...prev, [key]: value }))
+    }, [])
+
+    const handleTemplateHiddenFieldChange = useCallback((key: string, hidden: boolean) => {
+        setTemplateHiddenFields((current) => {
+            const next = { ...current }
+            if (hidden) {
+                next[key] = true
+            } else {
+                delete next[key]
+            }
+            return next
+        })
+    }, [])
+
+    const handleInvoiceHiddenFieldChange = useCallback((key: string, hidden: boolean) => {
+        setEditableData((current) => {
+            if (!current) return current
+            const nextHiddenFields = { ...(current.hiddenPrintFields || {}) }
+            if (hidden) {
+                nextHiddenFields[key] = true
+            } else {
+                delete nextHiddenFields[key]
+            }
+            return {
+                ...current,
+                hiddenPrintFields: nextHiddenFields
+            }
+        })
     }, [])
 
     const handleAddTemplateImage = useCallback(async () => {
@@ -1388,8 +1428,10 @@ export function PdfPreviewPage() {
                                             editableComponents: canEditTemplateFields && drawingMode === 'none' && (Boolean(source?.onSaveTemplateLayout) || isAccessKeyHeld),
                                             dataKeys: templatePreview.dataKeys,
                                             componentPositions: templateComponentPositions,
+                                            hiddenFields: templateHiddenFields,
                                             onFieldChange: handleFieldChange,
                                             onComponentPositionChange: handleTemplateComponentPositionChange,
+                                            onHiddenFieldChange: drawingMode === 'none' ? handleTemplateHiddenFieldChange : undefined,
                                             workspaceFooterContacts: sourceWorkspaceFooterContacts
                                         }
                                     )}
@@ -1883,6 +1925,8 @@ export function PdfPreviewPage() {
                                 hideUnit={fieldValues.hideUnit === 'true'}
                                 hideDiscount={fieldValues.hideDiscount === 'true'}
                                 tableRowCount={Number(fieldValues.tableRowCount) || 10}
+                                hiddenFields={editableData.hiddenPrintFields}
+                                onHiddenFieldChange={drawingMode === 'none' ? handleInvoiceHiddenFieldChange : undefined}
                             />
                         )}
                         {source.printFormat === 'a4' && (

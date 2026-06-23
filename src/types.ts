@@ -242,4 +242,5 @@ export interface UniversalInvoice {
     }
     annotations?: Annotation[]
     attached_texts?: AttachedText[]
+    hiddenPrintFields?: Record<string, boolean>
 }
