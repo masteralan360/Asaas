@@ -84,6 +84,28 @@ async function waitForImages(container: HTMLElement) {
     })))
 }
 
+async function expandContainerToRenderedBounds(container: HTMLElement) {
+    await new Promise(requestAnimationFrame)
+
+    const containerRect = container.getBoundingClientRect()
+    let maxBottomPx = Math.max(container.scrollHeight, container.offsetHeight)
+
+    container.querySelectorAll<HTMLElement>('*').forEach((element) => {
+        const rect = element.getBoundingClientRect()
+        if (rect.width <= 0 && rect.height <= 0) return
+
+        const bottomPx = rect.bottom - containerRect.top
+        if (Number.isFinite(bottomPx)) {
+            maxBottomPx = Math.max(maxBottomPx, bottomPx)
+        }
+    })
+
+    if (maxBottomPx > container.offsetHeight) {
+        container.style.minHeight = `${Math.ceil(maxBottomPx)}px`
+        await new Promise(requestAnimationFrame)
+    }
+}
+
 async function renderToCanvas(element: ReturnType<typeof createElement>, widthMm: number): Promise<RenderResult> {
     const { default: html2canvas } = await import('html2canvas')
     const container = document.createElement('div')
@@ -108,6 +130,7 @@ async function renderToCanvas(element: ReturnType<typeof createElement>, widthMm
         await document.fonts.ready
     }
     await waitForImages(container)
+    await expandContainerToRenderedBounds(container)
 
     const HIGH_SCALE = 6 // Higher scale for perfect QR pixel capture
     const LOW_SCALE = 2.5

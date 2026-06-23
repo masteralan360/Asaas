@@ -64,6 +64,7 @@ function readStoredLayout(row?: CustomTemplateRow | null): CustomTemplateLayout 
     if (!row || !row.layout_json || typeof row.layout_json !== 'object') return null
 
     const layout = row.layout_json as Partial<CustomTemplateLayout>
+    const targetPage = getCustomTemplateTarget(row.module_type_key)?.page
 
     return {
         version: 1,
@@ -74,8 +75,8 @@ function readStoredLayout(row?: CustomTemplateRow | null): CustomTemplateLayout 
             ? layout.printLanguage
             : undefined,
         page: {
-            widthMm: layout.page?.widthMm || 210,
-            heightMm: layout.page?.heightMm || 297
+            widthMm: targetPage?.widthMm || layout.page?.widthMm || 210,
+            heightMm: targetPage?.heightMm || layout.page?.heightMm || 297
         },
         fields: layout.fields || {},
         componentPositions: layout.componentPositions || {},

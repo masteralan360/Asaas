@@ -105,6 +105,73 @@ export type CustomTemplateLayout = {
     updatedAt: string
 }
 
+export const A4_PAGE_HEIGHT_MM = 297
+const DEFAULT_OVERFLOW_COMPONENT_HEIGHT_MM = 40
+const DEFAULT_OVERFLOW_IMAGE_HEIGHT_RATIO = 1
+const PX_TO_MM = 0.2645833333
+
+function getPositiveNumber(value: unknown, fallback = 0) {
+    return typeof value === 'number' && Number.isFinite(value) ? value : fallback
+}
+
+function estimateTextHeightMm(text: CustomTemplateText) {
+    const fontSizePx = getPositiveNumber(text.fontSize, 16)
+    const lineHeightMm = fontSizePx * PX_TO_MM * 1.3
+    const lines = Math.max(1, text.text.split('\n').length)
+
+    return lines * lineHeightMm
+}
+
+export function getFixedPageCountForHeight(heightMm: number, pageHeightMm = A4_PAGE_HEIGHT_MM) {
+    const fixedPageHeight = Math.max(1, getPositiveNumber(pageHeightMm, A4_PAGE_HEIGHT_MM))
+
+    return Math.max(1, Math.ceil(Math.max(0, heightMm) / fixedPageHeight))
+}
+
+export function getCustomTemplateLayoutHeightMm(layout: Pick<CustomTemplateLayout, 'page' | 'annotations' | 'texts' | 'images' | 'componentPositions'>) {
+    const pageHeightMm = getPositiveNumber(layout.page?.heightMm, A4_PAGE_HEIGHT_MM)
+    let maxBottomMm = pageHeightMm
+
+    layout.annotations?.forEach((annotation) => {
+        annotation.points.forEach((point) => {
+            maxBottomMm = Math.max(
+                maxBottomMm,
+                getPositiveNumber(point.y) + getPositiveNumber(annotation.brushSize)
+            )
+        })
+    })
+
+    layout.images?.forEach((image) => {
+        maxBottomMm = Math.max(
+            maxBottomMm,
+            getPositiveNumber(image.y) + (getPositiveNumber(image.width) * DEFAULT_OVERFLOW_IMAGE_HEIGHT_RATIO)
+        )
+    })
+
+    layout.texts?.forEach((text) => {
+        maxBottomMm = Math.max(
+            maxBottomMm,
+            getPositiveNumber(text.y) + estimateTextHeightMm(text)
+        )
+    })
+
+    Object.values(layout.componentPositions || {}).forEach((position) => {
+        maxBottomMm = Math.max(
+            maxBottomMm,
+            getPositiveNumber(position.y) + DEFAULT_OVERFLOW_COMPONENT_HEIGHT_MM
+        )
+    })
+
+    return maxBottomMm
+}
+
+export function getCustomTemplateLayoutPageCount(layout: Pick<CustomTemplateLayout, 'page' | 'annotations' | 'texts' | 'images' | 'componentPositions'>) {
+    return getFixedPageCountForHeight(
+        getCustomTemplateLayoutHeightMm(layout),
+        getPositiveNumber(layout.page?.heightMm, A4_PAGE_HEIGHT_MM)
+    )
+}
+
 export type CustomTemplatePreviewTarget = {
     moduleTypeKey: string
     nativeTemplateKey?: string

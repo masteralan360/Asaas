@@ -5,6 +5,10 @@ import type {
     TemplatePreview,
     TemplatePreviewDataKey
 } from '@/lib/pdfPreviewStore'
+import {
+    getCustomTemplateLayoutHeightMm,
+    getCustomTemplateLayoutPageCount
+} from '@/lib/pdfPreviewStore'
 import { isLocalWorkspaceMode } from '@/workspace/workspaceMode'
 import { platformService } from '@/services/platformService'
 import {
@@ -248,6 +252,7 @@ export function readCustomTemplateLayout(row?: StoredCustomTemplateRow | null): 
     if (!row || !row.layout_json || typeof row.layout_json !== 'object') return null
 
     const layout = row.layout_json as Partial<CustomTemplateLayout>
+    const targetPage = getCustomTemplateTarget(row.module_type_key)?.page
 
     return {
         version: 1,
@@ -258,8 +263,8 @@ export function readCustomTemplateLayout(row?: StoredCustomTemplateRow | null): 
             ? layout.printLanguage
             : undefined,
         page: {
-            widthMm: layout.page?.widthMm || 210,
-            heightMm: layout.page?.heightMm || 297
+            widthMm: targetPage?.widthMm || layout.page?.widthMm || 210,
+            heightMm: targetPage?.heightMm || layout.page?.heightMm || 297
         },
         fields: layout.fields || {},
         componentPositions: layout.componentPositions || {},
@@ -1065,16 +1070,15 @@ function nonBlankFields(fields: Record<string, string>) {
     )
 }
 
-function CustomTemplateLayoutOverlay({ layout }: { layout: CustomTemplateLayout }) {
+function CustomTemplateLayoutOverlay({ layout, heightMm }: { layout: CustomTemplateLayout; heightMm: number }) {
     const pageWidth = layout.page.widthMm || 210
-    const pageHeight = layout.page.heightMm || 297
 
     return (
         <div
-            className="pointer-events-none absolute start-0 top-0 z-50 overflow-hidden"
-            style={{ width: '100%', height: `${pageHeight}mm` }}
+            className="pointer-events-none absolute start-0 top-0 z-50 overflow-visible"
+            style={{ width: '100%', height: `${heightMm}mm` }}
         >
-            <svg className="absolute inset-0 h-full w-full" viewBox={`0 0 ${pageWidth} ${pageHeight}`}>
+            <svg className="absolute inset-0 h-full w-full" viewBox={`0 0 ${pageWidth} ${heightMm}`}>
                 {layout.annotations.map((annotation, index) => (
                     <path
                         key={`annotation-${index}`}
@@ -1097,7 +1101,7 @@ function CustomTemplateLayoutOverlay({ layout }: { layout: CustomTemplateLayout 
                     className="absolute block select-none"
                     style={{
                         left: `${(image.x / pageWidth) * 100}%`,
-                        top: `${(image.y / pageHeight) * 100}%`,
+                        top: `${(image.y / heightMm) * 100}%`,
                         width: `${(image.width / pageWidth) * 100}%`,
                         transform: `rotate(${image.rotation || 0}deg)`,
                         transformOrigin: 'top left',
@@ -1113,7 +1117,7 @@ function CustomTemplateLayoutOverlay({ layout }: { layout: CustomTemplateLayout 
                     className="absolute whitespace-pre-wrap break-words font-bold leading-snug"
                     style={{
                         left: `${(text.x / pageWidth) * 100}%`,
-                        top: `${(text.y / pageHeight) * 100}%`,
+                        top: `${(text.y / heightMm) * 100}%`,
                         width: `${(text.width / pageWidth) * 100}%`,
                         transform: `rotate(${text.rotation || 0}deg)`,
                         transformOrigin: 'top left',
@@ -1149,20 +1153,46 @@ export function renderCustomTemplateLayoutElement({
         ...values,
         ...(fieldMode === 'layoutOverrides' ? layout.fields || {} : nonBlankFields(layout.fields || {}))
     }
+    const pageHeight = layout.page.heightMm || 297
+    const layoutHeight = getCustomTemplateLayoutPageCount(layout) * pageHeight
 
     return (
         <div
+            data-custom-template-export-root=""
             className="relative mx-auto overflow-visible bg-white text-black"
             style={{
                 width: `${layout.page.widthMm || 210}mm`,
-                minHeight: `${layout.page.heightMm || 297}mm`
+                minHeight: `${layoutHeight}mm`
             }}
         >
-            {preview.createElement(fieldValues, effectiveId, preview.fixedPrintLang, {
-                tokenFieldTemplates: layout.fieldTokenTemplates,
-                componentPositions: layout.componentPositions
-            })}
-            <CustomTemplateLayoutOverlay layout={layout} />
+            <style
+                dangerouslySetInnerHTML={{
+                    __html: `
+[data-custom-template-export-root] [data-order-print-page] {
+    min-height: ${layoutHeight}mm !important;
+    overflow: visible !important;
+}
+`
+                }}
+            />
+            {Array.from({ length: getCustomTemplateLayoutPageCount(layout) }).map((_, pageIndex) => (
+                <div
+                    key={`template-page-bg-${pageIndex}`}
+                    className="absolute left-0 top-0 z-0 bg-white"
+                    style={{
+                        width: '100%',
+                        height: `${pageHeight}mm`,
+                        transform: `translateY(${pageIndex * pageHeight}mm)`
+                    }}
+                />
+            ))}
+            <div className="relative z-10">
+                {preview.createElement(fieldValues, effectiveId, preview.fixedPrintLang, {
+                    tokenFieldTemplates: layout.fieldTokenTemplates,
+                    componentPositions: layout.componentPositions
+                })}
+            </div>
+            <CustomTemplateLayoutOverlay layout={layout} heightMm={Math.max(layoutHeight, getCustomTemplateLayoutHeightMm(layout))} />
         </div>
     )
 }

@@ -2,8 +2,11 @@ import { type FormEvent, useEffect, useState, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft, ExternalLink, Printer, Loader2, Edit3, X, ZoomIn, ZoomOut, Maximize, ImagePlus, Trash2, PenTool, Brush, Palette, Eraser, Hand, Type, RotateCw, Scaling, Move, Languages, Check } from 'lucide-react'
 import {
+    A4_PAGE_HEIGHT_MM,
     getInvoicePreviewSource,
     clearInvoicePreviewSource,
+    getCustomTemplateLayoutHeightMm,
+    getFixedPageCountForHeight,
     type CustomTemplateAnnotation,
     type CustomTemplateComponentPosition,
     type CustomTemplateImage,
@@ -237,6 +240,8 @@ export function PdfPreviewPage() {
 
     const sourceRef = useRef(getInvoicePreviewSource())
     const source = sourceRef.current
+    const templateStageRef = useRef<HTMLDivElement>(null)
+    const templateContentLayerRef = useRef<HTMLDivElement>(null)
     const [editableData, setEditableData] = useState<UniversalInvoice | null>(null)
     const [zoom, setZoom] = useState(100)
     const [isFitToWidth, setIsFitToWidth] = useState(false)
@@ -249,6 +254,7 @@ export function PdfPreviewPage() {
     const [isTemplateLabelDialogOpen, setIsTemplateLabelDialogOpen] = useState(false)
     const [templateSaveLabel, setTemplateSaveLabel] = useState('')
     const [pendingTemplateLayout, setPendingTemplateLayout] = useState<CustomTemplateLayout | null>(null)
+    const [measuredTemplateHeightMm, setMeasuredTemplateHeightMm] = useState(0)
     const title = source?.title || t('pdfPreview.title') || 'Invoice Preview'
 
     const handleZoomIn = useCallback(() => {
@@ -372,6 +378,85 @@ export function PdfPreviewPage() {
             [key]: position
         }))
     }, [])
+    const isFixedPageTemplatePreview = source?.printFormat !== 'receipt'
+    const templateLayoutForMeasurement = {
+        page: {
+            widthMm: templatePageWidth,
+            heightMm: templatePageHeight || A4_PAGE_HEIGHT_MM
+        },
+        annotations: templateAnnotations,
+        texts: templateTexts,
+        images: templateImages,
+        componentPositions: templateComponentPositions
+    }
+    const estimatedTemplateHeightMm = getCustomTemplateLayoutHeightMm(templateLayoutForMeasurement)
+    const templateContentHeightMm = Math.max(
+        templatePageHeight,
+        estimatedTemplateHeightMm,
+        measuredTemplateHeightMm
+    )
+    const templatePageCount = isFixedPageTemplatePreview
+        ? getFixedPageCountForHeight(templateContentHeightMm, templatePageHeight || A4_PAGE_HEIGHT_MM)
+        : 1
+    const templateStackHeight = isFixedPageTemplatePreview
+        ? templatePageCount * (templatePageHeight || A4_PAGE_HEIGHT_MM)
+        : templateContentHeightMm
+    const drawingCoordinateHeight = templatePreview ? templateStackHeight : templatePageHeight
+    const measureTemplatePreviewHeight = useCallback(() => {
+        const stage = templateStageRef.current
+        if (!stage || !templatePreview) return
+
+        const stageRect = stage.getBoundingClientRect()
+        if (stageRect.width <= 0) return
+
+        const pxToMm = templatePageWidth / stageRect.width
+        let maxBottomMm = templatePageHeight
+        const contentLayer = templateContentLayerRef.current
+        if (contentLayer) {
+            maxBottomMm = Math.max(maxBottomMm, contentLayer.scrollHeight * pxToMm)
+        }
+
+        stage.querySelectorAll<HTMLElement>('[data-template-overflow-measure], [data-order-print-component]').forEach((element) => {
+            const rect = element.getBoundingClientRect()
+            const bottomMm = (rect.bottom - stageRect.top) * pxToMm
+            if (Number.isFinite(bottomMm)) {
+                maxBottomMm = Math.max(maxBottomMm, bottomMm)
+            }
+        })
+
+        setMeasuredTemplateHeightMm((current) => (
+            Math.abs(current - maxBottomMm) < 0.5 ? current : maxBottomMm
+        ))
+    }, [templatePageHeight, templatePageWidth, templatePreview])
+
+    useEffect(() => {
+        if (!templatePreview) return
+
+        let frame = window.requestAnimationFrame(measureTemplatePreviewHeight)
+        let observer: ResizeObserver | null = null
+
+        if (typeof ResizeObserver !== 'undefined') {
+            observer = new ResizeObserver(measureTemplatePreviewHeight)
+            if (templateStageRef.current) observer.observe(templateStageRef.current)
+            if (templateContentLayerRef.current) observer.observe(templateContentLayerRef.current)
+        }
+
+        window.addEventListener('resize', measureTemplatePreviewHeight)
+
+        return () => {
+            window.cancelAnimationFrame(frame)
+            observer?.disconnect()
+            window.removeEventListener('resize', measureTemplatePreviewHeight)
+        }
+    }, [
+        fieldValues,
+        measureTemplatePreviewHeight,
+        templateAnnotations,
+        templateComponentPositions,
+        templateImages,
+        templatePreview,
+        templateTexts
+    ])
 
     const showNativePdf = source?.url && !source?.data
     const hasTemplatePrimaryAction = Boolean(
@@ -643,18 +728,18 @@ export function PdfPreviewPage() {
         const svg = e.currentTarget
         const rect = svg.getBoundingClientRect()
         const x = (e.clientX - rect.left) * (templatePageWidth / rect.width)
-        const y = (e.clientY - rect.top) * (templatePageHeight / rect.height)
+        const y = (e.clientY - rect.top) * (drawingCoordinateHeight / rect.height)
         setCurrentPath([{ x, y }])
-    }, [drawingMode, templatePageHeight, templatePageWidth])
+    }, [drawingCoordinateHeight, drawingMode, templatePageWidth])
 
     const handlePointerMove = useCallback((e: React.PointerEvent<SVGSVGElement>) => {
         if (!isDrawing || !currentPath || drawingMode === 'none') return
         const svg = e.currentTarget
         const rect = svg.getBoundingClientRect()
         const x = (e.clientX - rect.left) * (templatePageWidth / rect.width)
-        const y = (e.clientY - rect.top) * (templatePageHeight / rect.height)
+        const y = (e.clientY - rect.top) * (drawingCoordinateHeight / rect.height)
         setCurrentPath(prev => prev ? [...prev, { x, y }] : [{ x, y }])
-    }, [isDrawing, currentPath, drawingMode, templatePageHeight, templatePageWidth])
+    }, [isDrawing, currentPath, drawingMode, drawingCoordinateHeight, templatePageWidth])
 
     const handlePointerUp = useCallback(() => {
         if (!isDrawing || !currentPath) return
@@ -932,13 +1017,45 @@ export function PdfPreviewPage() {
                                     transform: isFitToWidth ? 'none' : `scale(${zoom / 100})`,
                                 }}
                             >
+                                <div
+                                    ref={templateStageRef}
+                                    className="relative mx-auto overflow-visible text-black"
+                                    style={{
+                                        width: `${templatePageWidth}mm`,
+                                        height: `${templateStackHeight}mm`
+                                    }}
+                                >
+                                    {Array.from({ length: templatePageCount }).map((_, pageIndex) => (
+                                        <div
+                                            key={`template-preview-page-${pageIndex}`}
+                                            className="absolute left-0 z-0 bg-white shadow-sm ring-1 ring-slate-200"
+                                            style={{
+                                                top: `${pageIndex * templatePageHeight}mm`,
+                                                width: `${templatePageWidth}mm`,
+                                                height: `${templatePageHeight}mm`
+                                            }}
+                                        >
+                                            {templatePageCount > 1 ? (
+                                                <div className="absolute end-2 top-2 rounded bg-slate-900/60 px-1.5 py-0.5 text-[9px] font-semibold text-white">
+                                                    {pageIndex + 1}
+                                                </div>
+                                            ) : null}
+                                        </div>
+                                    ))}
+                                    {templatePageCount > 1 ? Array.from({ length: templatePageCount - 1 }).map((_, pageIndex) => (
+                                        <div
+                                            key={`template-preview-break-${pageIndex}`}
+                                            className="pointer-events-none absolute left-0 right-0 z-[45] border-t border-dashed border-red-400"
+                                            style={{ top: `${(pageIndex + 1) * templatePageHeight}mm` }}
+                                        />
+                                    )) : null}
                                 {/* Drawing Overlay for templatePreview */}
                                 <svg
                                     className={cn(
                                         "absolute inset-0 z-[40] touch-none",
                                         drawingMode !== 'none' ? "cursor-crosshair" : "pointer-events-none"
                                     )}
-                                    viewBox={`0 0 ${templatePageWidth} ${templatePageHeight}`}
+                                    viewBox={`0 0 ${templatePageWidth} ${templateStackHeight}`}
                                     onPointerDown={handlePointerDown}
                                     onPointerMove={handlePointerMove}
                                     onPointerUp={() => {
@@ -1004,10 +1121,11 @@ export function PdfPreviewPage() {
                                 {templateImages.map((img, idx) => (
                                     <div
                                         key={`timg-${idx}`}
+                                        data-template-overflow-measure=""
                                         className="absolute z-[35] cursor-move group/img"
                                         style={{
                                             left: `${(img.x / templatePageWidth) * 100}%`,
-                                            top: `${(img.y / templatePageHeight) * 100}%`,
+                                            top: `${(img.y / templateStackHeight) * 100}%`,
                                             width: `${(img.width / templatePageWidth) * 100}%`,
                                             transform: `rotate(${img.rotation || 0}deg)`,
                                             transformOrigin: 'top left',
@@ -1024,7 +1142,7 @@ export function PdfPreviewPage() {
                                             const container = (e.currentTarget.parentElement as HTMLElement)
                                             const cRect = container.getBoundingClientRect()
                                             const scaleX = templatePageWidth / cRect.width
-                                            const scaleY = templatePageHeight / cRect.height
+                                            const scaleY = templateStackHeight / cRect.height
                                             const onMove = (ev: PointerEvent) => {
                                                 const dx = (ev.clientX - startX) * scaleX
                                                 const dy = (ev.clientY - startY) * scaleY
@@ -1114,10 +1232,11 @@ export function PdfPreviewPage() {
                                 {templateTexts.map((txt, idx) => (
                                     <div
                                         key={`ttxt-${txt.id}`}
+                                        data-template-overflow-measure=""
                                         className="absolute z-[35] group/txt"
                                         style={{
                                             left: `${(txt.x / templatePageWidth) * 100}%`,
-                                            top: `${(txt.y / templatePageHeight) * 100}%`,
+                                            top: `${(txt.y / templateStackHeight) * 100}%`,
                                             width: `${(txt.width / templatePageWidth) * 100}%`,
                                             transform: `rotate(${txt.rotation}deg)`,
                                             transformOrigin: 'top left',
@@ -1177,7 +1296,7 @@ export function PdfPreviewPage() {
                                                 const container = (e.currentTarget.parentElement?.parentElement as HTMLElement)
                                                 const cRect = container.getBoundingClientRect()
                                                 const scaleX = templatePageWidth / cRect.width
-                                                const scaleY = templatePageHeight / cRect.height
+                                                const scaleY = templateStackHeight / cRect.height
                                                 const onMoveEv = (ev: PointerEvent) => {
                                                     const dx = (ev.clientX - startX) * scaleX
                                                     const dy = (ev.clientY - startY) * scaleY
@@ -1259,20 +1378,22 @@ export function PdfPreviewPage() {
                                     </div>
                                 ))}
 
-                                {templatePreview.createElement(
-                                    fieldValues,
-                                    source.effectiveId,
-                                    fixedTemplatePrintLang || (tempPrintLang !== 'auto' ? tempPrintLang : undefined),
-                                    {
-                                        editableFields: canEditTemplateFields && drawingMode === 'none',
-                                        editableComponents: canEditTemplateFields && drawingMode === 'none' && (Boolean(source?.onSaveTemplateLayout) || isAccessKeyHeld),
-                                        dataKeys: templatePreview.dataKeys,
-                                        componentPositions: templateComponentPositions,
-                                        onFieldChange: handleFieldChange,
-                                        onComponentPositionChange: handleTemplateComponentPositionChange,
-                                        workspaceFooterContacts: sourceWorkspaceFooterContacts
-                                    }
-                                )}
+                                <div ref={templateContentLayerRef} className="relative z-20">
+                                    {templatePreview.createElement(
+                                        fieldValues,
+                                        source.effectiveId,
+                                        fixedTemplatePrintLang || (tempPrintLang !== 'auto' ? tempPrintLang : undefined),
+                                        {
+                                            editableFields: canEditTemplateFields && drawingMode === 'none',
+                                            editableComponents: canEditTemplateFields && drawingMode === 'none' && (Boolean(source?.onSaveTemplateLayout) || isAccessKeyHeld),
+                                            dataKeys: templatePreview.dataKeys,
+                                            componentPositions: templateComponentPositions,
+                                            onFieldChange: handleFieldChange,
+                                            onComponentPositionChange: handleTemplateComponentPositionChange,
+                                            workspaceFooterContacts: sourceWorkspaceFooterContacts
+                                        }
+                                    )}
+                                </div>
                                 {source.printFormat !== 'receipt' && (
                                     <TooltipProvider>
                                         <Tooltip delayDuration={200}>
@@ -1285,6 +1406,7 @@ export function PdfPreviewPage() {
                                         </Tooltip>
                                     </TooltipProvider>
                                 )}
+                                </div>
                             </div>
                         </div>
                     </div>
