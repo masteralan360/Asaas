@@ -1707,7 +1707,8 @@
     "saveErrorDesc": "لم يتم حفظ سجل الفاتورة."
   },
   "pdfPreview": {
-    "fitPage": "ملائمة"
+    "fitPage": "ملائمة",
+    "bottomWarning": "تجنب وضع المكونات هنا — قد يتم قصها عند الطباعة على A4."
   },
   "invoice": {
     "date": "التاريخ",

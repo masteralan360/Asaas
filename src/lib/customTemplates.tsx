@@ -1137,14 +1137,10 @@ export function renderCustomTemplateLayoutElement({
 
     return (
         <div
-            className={`relative mx-auto bg-white text-black ${supportsMultiplePages ? 'overflow-visible' : 'overflow-hidden'}`}
+            className="relative mx-auto overflow-visible bg-white text-black"
             style={{
                 width: `${layout.page.widthMm || 210}mm`,
-                ...(isReceipt
-                    ? { minHeight: `${layout.page.heightMm || 297}mm` }
-                    : supportsMultiplePages
-                    ? { minHeight: `${layout.page.heightMm || 297}mm` }
-                    : { height: `${layout.page.heightMm || 297}mm` })
+                minHeight: `${layout.page.heightMm || 297}mm`
             }}
         >
             {preview.createElement(fieldValues, effectiveId, preview.fixedPrintLang, {

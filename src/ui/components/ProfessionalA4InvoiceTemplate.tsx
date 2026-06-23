@@ -11,7 +11,7 @@ import type { UniversalInvoice, UniversalInvoiceItem } from '@/types'
 import { EditableField } from '@/ui/components/EditableField'
 import { MovableOrderPrintBlock } from '@/ui/components/MovableComponentPrint'
 
-export const PROFESSIONAL_A4_TABLE_ROW_COUNT = 20
+export const PROFESSIONAL_A4_TABLE_ROW_COUNT = 10
 
 export const PROFESSIONAL_A4_MOVABLE_COMPONENT_KEYS = {
     logo: 'logo',

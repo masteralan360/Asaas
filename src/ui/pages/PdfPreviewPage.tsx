@@ -26,7 +26,11 @@ import {
     ModernA4InvoiceTemplate,
     ProfessionalA4InvoiceTemplate,
     RefundA4InvoiceTemplate,
-    RefundPrimaryA4InvoiceTemplate
+    RefundPrimaryA4InvoiceTemplate,
+    Tooltip,
+    TooltipContent,
+    TooltipProvider,
+    TooltipTrigger
 } from '@/ui/components'
 import { SaleReceiptBase } from '@/ui/components/SaleReceipt'
 import { DeleteConfirmationModal } from '@/ui/components/DeleteConfirmationModal'
@@ -1263,6 +1267,18 @@ export function PdfPreviewPage() {
                                         workspaceFooterContacts: sourceWorkspaceFooterContacts
                                     }
                                 )}
+                                {source.printFormat !== 'receipt' && (
+                                    <TooltipProvider>
+                                        <Tooltip delayDuration={200}>
+                                            <TooltipTrigger asChild>
+                                                <div className="absolute bottom-0 left-0 right-0 h-14 bg-red-500/20 z-[35] cursor-help select-none" />
+                                            </TooltipTrigger>
+                                            <TooltipContent side="top" className="max-w-[260px] p-3 text-xs">
+                                                {t('pdfPreview.bottomWarning')}
+                                            </TooltipContent>
+                                        </Tooltip>
+                                    </TooltipProvider>
+                                )}
                             </div>
                         </div>
                     </div>
@@ -1739,6 +1755,18 @@ export function PdfPreviewPage() {
                                 hideUnit={fieldValues.hideUnit === 'true'}
                                 hideDiscount={fieldValues.hideDiscount === 'true'}
                             />
+                        )}
+                        {source.printFormat === 'a4' && (
+                            <TooltipProvider>
+                                <Tooltip delayDuration={200}>
+                                    <TooltipTrigger asChild>
+                                        <div className="absolute bottom-0 left-0 right-0 h-14 bg-red-500/20 z-[35] cursor-help select-none" />
+                                    </TooltipTrigger>
+                                    <TooltipContent side="top" className="max-w-[260px] p-3 text-xs">
+                                        {t('pdfPreview.bottomWarning')}
+                                    </TooltipContent>
+                                </Tooltip>
+                            </TooltipProvider>
                         )}
                     </div>
                 </div>
