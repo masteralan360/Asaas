@@ -2285,6 +2285,7 @@ export function Settings() {
                                             <SelectContent>
                                                 <SelectItem value="primary">{t('settings.printing.primary') || 'Primary'}</SelectItem>
                                                 <SelectItem value="modern">{t('settings.printing.modern') || 'Modern'}</SelectItem>
+                                                <SelectItem value="professional">{t('settings.printing.professional', { defaultValue: 'Professional' })}</SelectItem>
                                             </SelectContent>
                                         </Select>
                                         <p className="text-[10px] text-muted-foreground italic">

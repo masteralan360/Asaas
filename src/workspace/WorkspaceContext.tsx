@@ -83,7 +83,7 @@ export interface WorkspaceFeatures {
     print_lang: 'auto' | 'en' | 'ar' | 'ku'
     print_qr: boolean
     receipt_template: 'primary' | 'modern'
-    a4_template: 'primary' | 'modern'
+    a4_template: 'primary' | 'modern' | 'professional'
     print_quality: 'high'
     thermal_printing: boolean
     subscription_expires_at: string | null

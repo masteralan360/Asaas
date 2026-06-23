@@ -71,7 +71,7 @@ import { SaleItem } from '@/types'
 import { generateTemplatePdf, type PrintFormat } from '@/services/pdfGenerator'
 import {
     SALES_HISTORY_RECEIPT_TEMPLATE_KEY,
-    SALES_HISTORY_MODERN_A4_TEMPLATE_KEY,
+    SALES_HISTORY_A4_TEMPLATE_KEYS,
     buildCustomTemplateLayoutPdf,
     createCustomTemplatePreview,
     getCustomTemplatePrintLanguageWarning,
@@ -701,19 +701,21 @@ export function Sales() {
         let cancelled = false
         void (async () => {
             try {
-                const [receiptTemplates, a4Templates] = await Promise.all([
+                const [receiptTemplates, a4TemplateGroups] = await Promise.all([
                     fetchCachedCustomTemplates(user.workspaceId, {
                         moduleTypeKey: SALES_HISTORY_RECEIPT_TEMPLATE_KEY,
                         activeOnly: true
                     }),
-                    fetchCachedCustomTemplates(user.workspaceId, {
-                        moduleTypeKey: SALES_HISTORY_MODERN_A4_TEMPLATE_KEY,
-                        activeOnly: true
-                    })
+                    Promise.all(SALES_HISTORY_A4_TEMPLATE_KEYS.map((moduleTypeKey) =>
+                        fetchCachedCustomTemplates(user.workspaceId, {
+                            moduleTypeKey,
+                            activeOnly: true
+                        })
+                    ))
                 ])
                 if (!cancelled) {
                     setCustomReceiptTemplates(receiptTemplates as StoredCustomTemplateRow[])
-                    setCustomA4Templates(a4Templates as StoredCustomTemplateRow[])
+                    setCustomA4Templates(a4TemplateGroups.flat() as StoredCustomTemplateRow[])
                 }
             } catch (templateError) {
                 console.error('[Sales] Failed to load custom templates:', templateError)
@@ -869,8 +871,10 @@ export function Sales() {
     }, [customReceiptData, customReceiptTarget, features, user?.workspaceId, workspaceName])
 
     const customA4Target = useMemo(
-        () => getCustomTemplateTarget(SALES_HISTORY_MODERN_A4_TEMPLATE_KEY),
-        []
+        () => selectedCustomA4Template
+            ? getCustomTemplateTarget(selectedCustomA4Template.module_type_key)
+            : undefined,
+        [selectedCustomA4Template]
     )
     const selectedCustomA4Layout = useMemo(
         () => selectedCustomA4Template

@@ -2,7 +2,7 @@ import { createElement, type ReactElement } from 'react'
 import { createRoot } from 'react-dom/client'
 import i18n from '@/i18n/config'
 import { I18nextProvider } from 'react-i18next'
-import { A4InvoiceTemplate, ModernA4InvoiceTemplate, RefundA4InvoiceTemplate, RefundPrimaryA4InvoiceTemplate } from '@/ui/components'
+import { A4InvoiceTemplate, ModernA4InvoiceTemplate, ProfessionalA4InvoiceTemplate, RefundA4InvoiceTemplate, RefundPrimaryA4InvoiceTemplate } from '@/ui/components'
 import { SaleReceiptBase } from '@/ui/components/SaleReceipt'
 import { UniversalInvoice } from '@/types'
 
@@ -330,6 +330,7 @@ export async function generateInvoicePdf(options: PDFGeneratorOptions): Promise<
 
     const isRefundA4 = !!data.is_refund_invoice
     const isModernA4 = features?.a4_template === 'modern'
+    const isProfessionalA4 = features?.a4_template === 'professional'
     const element = createElement(
         I18nextProvider,
         { i18n: pdfI18n },
@@ -348,6 +349,14 @@ export async function generateInvoicePdf(options: PDFGeneratorOptions): Promise<
                     workspaceName: workspaceName || workspaceId || 'Atlas',
                     workspaceFooterContacts
                 }))
+            : isProfessionalA4
+            ? createElement(ProfessionalA4InvoiceTemplate, {
+                data,
+                features: processedFeatures,
+                workspaceId,
+                workspaceName: workspaceName || workspaceId || 'Atlas',
+                workspaceFooterContacts
+            })
             : isModernA4
             ? createElement(ModernA4InvoiceTemplate, {
                 data,

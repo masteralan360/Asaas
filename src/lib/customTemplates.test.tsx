@@ -24,8 +24,29 @@ vi.mock('@/ui/components/SaleReceipt', () => ({
 vi.mock('@/ui/components/ModernA4InvoiceTemplate', () => ({
     ModernA4InvoiceTemplate: () => null
 }))
+vi.mock('@/ui/components/ProfessionalA4InvoiceTemplate', () => ({
+    ProfessionalA4InvoiceTemplate: () => null,
+    PROFESSIONAL_A4_MOVABLE_COMPONENT_KEYS: {
+        logo: 'logo',
+        qrCode: 'qrCode',
+        workspaceName: 'workspaceName',
+        title: 'title',
+        subtitle: 'subtitle',
+        customer: 'customer',
+        saleSummary: 'saleSummary',
+        created: 'created',
+        payment: 'payment',
+        itemsTable: 'itemsTable',
+        totals: 'totals',
+        terms: 'terms',
+        exchangeRates: 'exchangeRates',
+        contacts: 'contacts',
+        generatedBy: 'generatedBy'
+    }
+}))
 
 let customTemplates: typeof import('@/lib/customTemplates')
+let ProfessionalA4InvoiceTemplate: typeof import('@/ui/components/ProfessionalA4InvoiceTemplate')['ProfessionalA4InvoiceTemplate']
 let PartnerDetailsPrintTemplate: typeof import('@/ui/components/crm/PartnerDetailsPrintTemplate')['PartnerDetailsPrintTemplate']
 let OrderDetailsPrintTemplate: typeof import('@/ui/components/orders/OrderPrintTemplates')['OrderDetailsPrintTemplate']
 
@@ -49,9 +70,86 @@ beforeAll(async () => {
     })
 
     customTemplates = await import('@/lib/customTemplates')
+    ;({ ProfessionalA4InvoiceTemplate } = await import('@/ui/components/ProfessionalA4InvoiceTemplate'))
     ;({ PartnerDetailsPrintTemplate } = await import('@/ui/components/crm/PartnerDetailsPrintTemplate'))
     ;({ OrderDetailsPrintTemplate } = await import('@/ui/components/orders/OrderPrintTemplates'))
 }, 30_000)
+
+describe('Sales History custom A4 templates', () => {
+    it('registers modern and professional A4 sales history targets', () => {
+        expect(customTemplates.SALES_HISTORY_A4_TEMPLATE_KEYS).toEqual([
+            customTemplates.SALES_HISTORY_MODERN_A4_TEMPLATE_KEY,
+            customTemplates.SALES_HISTORY_PROFESSIONAL_A4_TEMPLATE_KEY
+        ])
+
+        const professionalTarget = customTemplates.getCustomTemplateTarget(customTemplates.SALES_HISTORY_PROFESSIONAL_A4_TEMPLATE_KEY)
+
+        expect(professionalTarget).toMatchObject({
+            moduleTypeKey: customTemplates.SALES_HISTORY_PROFESSIONAL_A4_TEMPLATE_KEY,
+            workspaceModuleKey: 'sales_history',
+            typeLabel: 'Professional A4 Print',
+            nativeTemplateAvailable: true,
+            printFormat: 'a4',
+            page: {
+                widthMm: 210,
+                heightMm: 297
+            }
+        })
+    })
+
+    it('uses the professional A4 layout with movable components', () => {
+        const target = customTemplates.getCustomTemplateTarget(customTemplates.SALES_HISTORY_PROFESSIONAL_A4_TEMPLATE_KEY)
+        expect(target).toBeDefined()
+
+        const componentPositions = {
+            itemsTable: { x: 4, y: 8 },
+            totals: { x: -6, y: 3 }
+        }
+        const onComponentPositionChange = vi.fn()
+        const preview = customTemplates.createCustomTemplatePreview(target!, {
+            workspaceName: 'Atlas Test',
+            printLang: 'en'
+        })
+        const element = preview.createElement({
+            hideUnit: 'true',
+            hideDiscount: 'true'
+        }, undefined, undefined, {
+            editableComponents: true,
+            componentPositions,
+            onComponentPositionChange
+        })
+
+        expect(preview.fields).toEqual([
+            expect.objectContaining({ key: 'hideUnit', value: 'false', type: 'boolean' }),
+            expect.objectContaining({ key: 'hideDiscount', value: 'false', type: 'boolean' })
+        ])
+        expect(preview.movableComponents?.map((component) => component.key)).toEqual([
+            'logo',
+            'qrCode',
+            'workspaceName',
+            'title',
+            'subtitle',
+            'customer',
+            'saleSummary',
+            'created',
+            'payment',
+            'itemsTable',
+            'totals',
+            'terms',
+            'exchangeRates',
+            'contacts',
+            'generatedBy'
+        ])
+        expect(preview.fixedPrintLang).toBe('en')
+        expect(element.type).toBe(ProfessionalA4InvoiceTemplate)
+        expect(element.props.workspaceName).toBe('Atlas Test')
+        expect(element.props.hideUnit).toBe(true)
+        expect(element.props.hideDiscount).toBe(true)
+        expect(element.props.componentPositions).toBe(componentPositions)
+        expect(element.props.editableComponents).toBe(true)
+        expect(element.props.onComponentPositionChange).toBe(onComponentPositionChange)
+    })
+})
 
 describe('Partner Details custom print template', () => {
     it('stores and validates the resolved workspace print language', () => {
@@ -163,8 +261,8 @@ describe('Partner Details custom print template', () => {
         expect(html).toContain('Incoming Cash')
         expect(html).toContain('Outgoing Cash')
         expect(html).toContain('Net Flow')
-        expect(html).toContain('What You Provided')
-        expect(html).toContain('What the Partner Provided')
+        expect(html).toContain('Provided by you')
+        expect(html).toContain('Provided by partner')
         expect(html).not.toContain('Unified Activity Timeline')
         expect(html).not.toContain('Average Document')
     })

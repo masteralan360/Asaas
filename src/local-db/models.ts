@@ -1497,7 +1497,7 @@ export interface Workspace extends BaseEntity {
   print_lang?: "auto" | "en" | "ar" | "ku";
   print_qr?: boolean;
   receipt_template?: "primary" | "modern";
-  a4_template?: "primary" | "modern";
+  a4_template?: "primary" | "modern" | "professional";
   thermal_printing?: boolean;
   subscription_expires_at?: string | null;
   upload_limit_mb?: number | null;

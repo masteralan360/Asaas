@@ -24,6 +24,7 @@ import {
     Input,
     Label,
     ModernA4InvoiceTemplate,
+    ProfessionalA4InvoiceTemplate,
     RefundA4InvoiceTemplate,
     RefundPrimaryA4InvoiceTemplate
 } from '@/ui/components'
@@ -161,6 +162,24 @@ function EditableInvoicePreview({
                     workspaceName={workspaceName || 'Atlas'}
                     workspaceFooterContacts={workspaceFooterContacts}
                     drawingMode={drawingMode}
+                />
+            </div>
+        )
+    }
+
+    if (features.a4_template === 'professional') {
+        return (
+            <div className="max-w-[900px] mx-auto">
+                <ProfessionalA4InvoiceTemplate
+                    data={data}
+                    features={features}
+                    workspaceId={workspaceId}
+                    workspaceName={workspaceName || 'Atlas'}
+                    workspaceFooterContacts={workspaceFooterContacts}
+                    onDataChange={onDataChange}
+                    drawingMode={drawingMode}
+                    hideUnit={hideUnit}
+                    hideDiscount={hideDiscount}
                 />
             </div>
         )

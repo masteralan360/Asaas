@@ -89,7 +89,11 @@ function readStoredLayout(row?: CustomTemplateRow | null): CustomTemplateLayout 
 function countLayoutItems(row: CustomTemplateRow) {
     const layout = readStoredLayout(row)
     if (!layout) return 0
-    return layout.annotations.length + layout.texts.length + layout.images.length + Object.keys(layout.fields).length
+    return layout.annotations.length
+        + layout.texts.length
+        + layout.images.length
+        + Object.keys(layout.fields).length
+        + Object.keys(layout.componentPositions || {}).length
 }
 
 function collectLayoutImagePaths(layout?: CustomTemplateLayout | null) {

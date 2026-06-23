@@ -12,6 +12,7 @@ import {
     useToast,
     A4InvoiceTemplate,
     ModernA4InvoiceTemplate,
+    ProfessionalA4InvoiceTemplate,
     RefundA4InvoiceTemplate,
     RefundPrimaryA4InvoiceTemplate,
     SaleReceiptBase
@@ -288,6 +289,14 @@ export function PrintPreviewModal({
                             workspaceName={workspaceName || workspaceId || 'Atlas'}
                         />
                     )
+                ) : printableFeatures?.a4_template === 'professional' ? (
+                    <ProfessionalA4InvoiceTemplate
+                        data={pdfData}
+                        features={printableFeatures}
+                        workspaceId={workspaceId || undefined}
+                        workspaceName={workspaceName || workspaceId || 'Atlas'}
+                        workspaceFooterContacts={workspaceFooterContacts}
+                    />
                 ) : printableFeatures?.a4_template === 'modern' ? (
                     <ModernA4InvoiceTemplate
                         data={pdfData}
