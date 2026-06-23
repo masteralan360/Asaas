@@ -41,7 +41,8 @@ import {
 import { ModernA4InvoiceTemplate, MODERN_A4_MOVABLE_COMPONENT_KEYS } from '@/ui/components/ModernA4InvoiceTemplate'
 import {
     ProfessionalA4InvoiceTemplate,
-    PROFESSIONAL_A4_MOVABLE_COMPONENT_KEYS
+    PROFESSIONAL_A4_MOVABLE_COMPONENT_KEYS,
+    PROFESSIONAL_A4_TABLE_ROW_COUNT
 } from '@/ui/components/ProfessionalA4InvoiceTemplate'
 
 export const SALES_HISTORY_RECEIPT_TEMPLATE_KEY = 'salesHistory.Receipt'
@@ -567,6 +568,16 @@ const SALES_HISTORY_MODERN_A4_FIELDS = [
     }
 ]
 
+const SALES_HISTORY_PROFESSIONAL_A4_FIELDS = [
+    ...SALES_HISTORY_MODERN_A4_FIELDS,
+    {
+        key: 'tableRowCount',
+        label: 'Table row count',
+        value: String(PROFESSIONAL_A4_TABLE_ROW_COUNT),
+        type: 'number' as const
+    }
+]
+
 const SALES_HISTORY_RECEIPT_FIELDS = [
     {
         key: SALE_RECEIPT_TEMPLATE_FIELD_KEYS.showExchangeRateSnapshots,
@@ -817,7 +828,7 @@ function createSalesHistoryProfessionalA4Preview(options: CustomTemplatePreviewO
             : 'en'
 
     return {
-        fields: SALES_HISTORY_MODERN_A4_FIELDS,
+        fields: SALES_HISTORY_PROFESSIONAL_A4_FIELDS,
         movableComponents: [
             { key: PROFESSIONAL_A4_MOVABLE_COMPONENT_KEYS.logo, label: 'Logo' },
             { key: PROFESSIONAL_A4_MOVABLE_COMPONENT_KEYS.qrCode, label: 'QR Code' },
@@ -846,6 +857,7 @@ function createSalesHistoryProfessionalA4Preview(options: CustomTemplatePreviewO
                 workspaceFooterContacts={renderOptions?.workspaceFooterContacts || options.workspaceFooterContacts}
                 hideUnit={data.hideUnit === 'true'}
                 hideDiscount={data.hideDiscount === 'true'}
+                tableRowCount={Number(data.tableRowCount) || PROFESSIONAL_A4_TABLE_ROW_COUNT}
                 componentPositions={renderOptions?.componentPositions}
                 editableComponents={renderOptions?.editableComponents}
                 onComponentPositionChange={renderOptions?.onComponentPositionChange}

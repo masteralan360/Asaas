@@ -52,6 +52,7 @@ interface ProfessionalA4InvoiceTemplateProps {
     drawingMode?: string
     hideUnit?: boolean
     hideDiscount?: boolean
+    tableRowCount?: number
     componentPositions?: Record<string, CustomTemplateComponentPosition>
     editableComponents?: boolean
     onComponentPositionChange?: (key: string, position: CustomTemplateComponentPosition) => void
@@ -86,11 +87,11 @@ function safeNumber(value: unknown, fallback = 0) {
     return Number.isFinite(parsed) ? parsed : fallback
 }
 
-function buildTwentyItemRows(items: UniversalInvoiceItem[]) {
-    const overflowItems = items.slice(PROFESSIONAL_A4_TABLE_ROW_COUNT - 1)
-    return Array.from({ length: PROFESSIONAL_A4_TABLE_ROW_COUNT }, (_, index) => {
-        if (index < PROFESSIONAL_A4_TABLE_ROW_COUNT - 1) return items[index] || null
-        if (items.length <= PROFESSIONAL_A4_TABLE_ROW_COUNT) return items[index] || null
+function buildTwentyItemRows(items: UniversalInvoiceItem[], rowCount: number) {
+    const overflowItems = items.slice(rowCount - 1)
+    return Array.from({ length: rowCount }, (_, index) => {
+        if (index < rowCount - 1) return items[index] || null
+        if (items.length <= rowCount) return items[index] || null
         const overflowTotal = overflowItems.reduce((sum, item) => sum + safeNumber(item.total_price), 0)
         return {
             product_id: 'additional-items',
@@ -117,6 +118,7 @@ export const ProfessionalA4InvoiceTemplate = forwardRef<HTMLDivElement, Professi
         drawingMode,
         hideUnit,
         hideDiscount,
+        tableRowCount,
         componentPositions,
         editableComponents,
         onComponentPositionChange
@@ -126,7 +128,8 @@ export const ProfessionalA4InvoiceTemplate = forwardRef<HTMLDivElement, Professi
         const t = i18n.getFixedT(printLang)
         const isRtl = isRTL(printLang)
         const items = data.items || []
-        const itemRows = buildTwentyItemRows(items)
+        const rowCount = tableRowCount || PROFESSIONAL_A4_TABLE_ROW_COUNT
+        const itemRows = buildTwentyItemRows(items, rowCount)
         const effectiveWorkspaceId = propWorkspaceId || data.workspaceId
         const logoSrc = resolveLogoSrc(features?.logo_url)
         const settlementCurrency = (data.settlement_currency || 'usd').toLowerCase()

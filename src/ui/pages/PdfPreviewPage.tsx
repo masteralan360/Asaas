@@ -113,6 +113,7 @@ function EditableInvoicePreview({
     drawingMode,
     hideUnit,
     hideDiscount,
+    tableRowCount,
 }: {
     data: UniversalInvoice
     features: any
@@ -124,6 +125,7 @@ function EditableInvoicePreview({
     drawingMode?: string
     hideUnit?: boolean
     hideDiscount?: boolean
+    tableRowCount?: number
 }) {
     const { i18n } = useTranslation()
     const printLang = features?.print_lang && features.print_lang !== 'auto' ? features.print_lang : i18n.language
@@ -217,9 +219,10 @@ function EditableInvoicePreview({
                 workspaceFooterContacts={workspaceFooterContacts}
                 onDataChange={onDataChange}
                 drawingMode={drawingMode}
-                hideUnit={hideUnit}
-                hideDiscount={hideDiscount}
-            />
+                    hideUnit={hideUnit}
+                    hideDiscount={hideDiscount}
+                    tableRowCount={tableRowCount}
+                />
         </div>
     )
 }
@@ -332,6 +335,7 @@ export function PdfPreviewPage() {
                 hideDiscount: localStorage.getItem('atlas_print_hide_discount') || 'false',
                 hideNextDue: localStorage.getItem('atlas_print_hide_next_due') || 'false',
                 hideDueDate: localStorage.getItem('atlas_print_hide_due_date') || 'false',
+                tableRowCount: localStorage.getItem('atlas_print_table_row_count') || '10',
             }
             if (templatePreview) {
                 templatePreview.fields.forEach(f => {
@@ -542,6 +546,8 @@ export function PdfPreviewPage() {
             localStorage.setItem('atlas_print_hide_unit', value)
         } else if (key === 'hideDiscount') {
             localStorage.setItem('atlas_print_hide_discount', value)
+        } else if (key === 'tableRowCount') {
+            localStorage.setItem('atlas_print_table_row_count', value)
         }
         setFieldValues(prev => ({ ...prev, [key]: value }))
     }, [])
@@ -1754,6 +1760,7 @@ export function PdfPreviewPage() {
                                 drawingMode={drawingMode}
                                 hideUnit={fieldValues.hideUnit === 'true'}
                                 hideDiscount={fieldValues.hideDiscount === 'true'}
+                                tableRowCount={Number(fieldValues.tableRowCount) || 10}
                             />
                         )}
                         {source.printFormat === 'a4' && (
@@ -1854,6 +1861,22 @@ export function PdfPreviewPage() {
                                     </button>
                                 </div>
                             </div>
+
+                            {source.features?.a4_template === 'professional' && (
+                                <div className="pt-2 border-t space-y-1">
+                                    <label className="text-[11px] font-medium text-muted-foreground">
+                                        {'Table row count'}
+                                    </label>
+                                    <input
+                                        type="number"
+                                        min={1}
+                                        max={50}
+                                        value={fieldValues.tableRowCount ?? '10'}
+                                        onChange={(e) => handleFieldChange('tableRowCount', e.target.value)}
+                                        className="flex h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-xs shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                                    />
+                                </div>
+                            )}
 
                             <div className="pt-2">
                                 <div className="flex items-center justify-between mb-2">

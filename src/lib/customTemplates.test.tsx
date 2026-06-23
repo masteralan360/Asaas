@@ -26,6 +26,7 @@ vi.mock('@/ui/components/ModernA4InvoiceTemplate', () => ({
 }))
 vi.mock('@/ui/components/ProfessionalA4InvoiceTemplate', () => ({
     ProfessionalA4InvoiceTemplate: () => null,
+    PROFESSIONAL_A4_TABLE_ROW_COUNT: 10,
     PROFESSIONAL_A4_MOVABLE_COMPONENT_KEYS: {
         logo: 'logo',
         qrCode: 'qrCode',
@@ -121,7 +122,8 @@ describe('Sales History custom A4 templates', () => {
 
         expect(preview.fields).toEqual([
             expect.objectContaining({ key: 'hideUnit', value: 'false', type: 'boolean' }),
-            expect.objectContaining({ key: 'hideDiscount', value: 'false', type: 'boolean' })
+            expect.objectContaining({ key: 'hideDiscount', value: 'false', type: 'boolean' }),
+            expect.objectContaining({ key: 'tableRowCount', value: '10', type: 'number' })
         ])
         expect(preview.movableComponents?.map((component) => component.key)).toEqual([
             'logo',
